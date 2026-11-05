@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
@@ -25,7 +26,7 @@ func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input fil
 		return fillerstructure.Artifact{}, errors.New("structure window runtime source is invalid")
 	}
 	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
-	plan, err := fillerstructurewindow.NewPlan(source)
+	plan, err := fillerstructurewindow.NewPlan(source, fillerstructuremedia.SoftwareProfile())
 	if err != nil {
 		return fillerstructure.Artifact{}, fmt.Errorf("plan structure windows: %w", err)
 	}

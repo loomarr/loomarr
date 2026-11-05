@@ -2,6 +2,7 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -39,11 +40,7 @@ const WizardAiBlock = () => {
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() }),
-        ]);
+        await invalidateSettings(queryClient);
         setEdits({});
       },
     },
@@ -113,12 +110,7 @@ const WizardAiBlock = () => {
 
       {/* The real picker: local installed/download list, OR the hosted model picker — chosen
           by the LIVE provider. onModelChange flips the wizard's green dot when a model is set. */}
-      <AiModelSettings
-        provider={liveProvider}
-        baseUrl={liveBaseUrl}
-        onBaseUrlChange={(value) => setEdits((current) => ({ ...current, "llm.url": value }))}
-        onModelChange={refreshSetupStatus}
-      />
+      <AiModelSettings provider={liveProvider} baseUrl={liveBaseUrl} onModelChange={refreshSetupStatus} />
     </div>
   );
 };

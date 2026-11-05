@@ -33,16 +33,26 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
-// Kind is the source type — it selects the downloader.
-type Kind string
+// Kind is the provider a source belongs to — it selects the downloader.
+type Kind = sourceprovider.ID
 
+// The providers whose media Loomarr downloads. Their IDs are the provider packages' own
+// (internal/sourceprovider/youtube, internal/sourceprovider/archive), which this package cannot
+// import: they import it. A test pins the two together.
 const (
 	YouTube Kind = "youtube" // a YouTube playlist/video (yt-dlp)
 	Archive Kind = "archive" // an Archive.org collection/item (net/http)
 )
+
+// Downloaders are the download half of the providers, by provider ID. The Ingestor asks the map,
+// so a provider's downloader is one registration rather than a branch here, and a provider with
+// none (an installation without yt-dlp has no YouTube downloader) is reported per source instead
+// of stopping the pass.
+type Downloaders map[Kind]Downloader
 
 // Source is one ingestion target the sidecar pulls into the drop-folder.
 type Source struct {
@@ -127,22 +137,21 @@ type ArchiveCommitter interface {
 	CommitArchive(dropDir, publicationDir string, outputs []Output) error
 }
 
-// Ingestor orchestrates a pass over all sources, dispatching each to the right
+// Ingestor orchestrates a pass over all sources, dispatching each to its provider's
 // downloader. Deliberately thin — the value is in "which downloader, into where",
 // not in the download mechanics.
 type Ingestor struct {
-	youtube Downloader
-	archive Downloader
-	dropDir string
-	log     *slog.Logger
-	writer  ArtifactWriter
-	storage *storagegovernor.Governor
-	now     func() time.Time
+	downloaders Downloaders
+	dropDir     string
+	log         *slog.Logger
+	writer      ArtifactWriter
+	storage     *storagegovernor.Governor
+	now         func() time.Time
 }
 
-// New builds an Ingestor from the two real (or fake) downloaders + the drop dir.
-func New(youtube, archive Downloader, dropDir string, log *slog.Logger) *Ingestor {
-	return &Ingestor{youtube: youtube, archive: archive, dropDir: dropDir, log: log, now: time.Now}
+// New builds an Ingestor from the providers' (real or fake) downloaders + the drop dir.
+func New(downloaders Downloaders, dropDir string, log *slog.Logger) *Ingestor {
+	return &Ingestor{downloaders: downloaders, dropDir: dropDir, log: log, now: time.Now}
 }
 
 // WithArtifactWriter enables durable staged publication. Production always supplies it; the
@@ -534,15 +543,9 @@ func publishFile(source, target string) error {
 	return os.Rename(source, target)
 }
 
+// downloaderFor is the provider's downloader, or nil when none is registered for it.
 func (i *Ingestor) downloaderFor(k Kind) Downloader {
-	switch k {
-	case YouTube:
-		return i.youtube
-	case Archive:
-		return i.archive
-	default:
-		return nil
-	}
+	return i.downloaders[k]
 }
 
 func (i *Ingestor) logf(format string, args ...any) {

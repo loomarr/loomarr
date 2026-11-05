@@ -275,9 +275,9 @@ func TestNotificationProductVocabularyMigrationPreservesAccountDelivery(t *testi
 	}
 }
 
-func TestFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
+func TestFillerAdmissionDecisionTablesAreRetired(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "decision-mode.db"))
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "retired-decisions.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,30 +287,21 @@ func TestFillerDecisionApplicationModeMigrationBackfillsShadow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.UpTo(ctx, 70); err != nil {
-		t.Fatalf("migrate through 70: %v", err)
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO filler_admission_decisions (
-		id, clip_hash, evidence_hash, evidence_version, schema_version, policy_version,
-		taxonomy_version, outcome_kind, verdict, result_json, created_at
-	) VALUES ('pre-mode', 'clip-1', 'evidence-1', 'e1', 2, 'p1', 't1',
-		'semantic', 'admit', '{}', 1)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.UpTo(ctx, 71); err != nil {
-		t.Fatalf("migrate through 71: %v", err)
-	}
-	var mode string
-	if err := db.QueryRowContext(ctx,
-		`SELECT application_mode FROM filler_admission_decisions WHERE id = 'pre-mode'`).Scan(&mode); err != nil {
-		t.Fatal(err)
-	}
-	if mode != "shadow" {
-		t.Fatalf("pre-migration application mode = %q, want shadow", mode)
-	}
-	if _, err := db.ExecContext(ctx,
-		`UPDATE filler_admission_decisions SET application_mode = 'automatic' WHERE id = 'pre-mode'`); err == nil {
-		t.Fatal("application mode CHECK accepted an unknown value")
+	for _, table := range []string{
+		"filler_admission_decisions", "filler_admission_decision_inference_refs",
+		"filler_admission_actions", "filler_diagnostic_recovery_actions",
+	} {
+		var n int
+		if err := db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Errorf("table %s survives the latest schema", table)
+		}
 	}
 }
 

@@ -58,7 +58,7 @@ const useSourceActions = ({ onSourceRemoved }: { onSourceRemoved: () => void }) 
     },
   });
 
-  const [togglingProvider, setTogglingProvider] = useState<"archive" | "youtube">();
+  const [togglingProvider, setTogglingProvider] = useState<string>();
   const toggleProviderMutation = fillerApi.useSetFillerProviderEnabled({
     mutation: {
       onSettled: () => setTogglingProvider(undefined),
@@ -98,7 +98,7 @@ const useSourceActions = ({ onSourceRemoved }: { onSourceRemoved: () => void }) 
     },
     removing: removeSourceMutation.isPending,
     removingSourceID: removeSourceMutation.isPending ? removingSource : undefined,
-    toggleProvider: (kind: "archive" | "youtube", enabled: boolean) => {
+    toggleProvider: (kind: string, enabled: boolean) => {
       setTogglingProvider(kind);
       toggleProviderMutation.mutate({ kind, data: { enabled } });
     },

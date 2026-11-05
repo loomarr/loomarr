@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -114,10 +113,8 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 		return TranscriptionResult{}, fmt.Errorf("audio transcription: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var buf bytes.Buffer
-		_, _ = buf.ReadFrom(io.LimitReader(resp.Body, 512))
-		return TranscriptionResult{}, fmt.Errorf("audio transcription: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
+	if err := checkStatusWithBody(resp, "audio transcription"); err != nil {
+		return TranscriptionResult{}, err
 	}
 	var out transcriptionResponse
 	if err := decodeOpenAIJSON(resp, &out, "transcription response"); err != nil {

@@ -23,9 +23,9 @@ func newConfiguredSearchHandler(
 		Auth:   testAuthorizer{},
 		Log:    log,
 		Search: search,
-		LiveConfig: func(key string) string {
+		LiveSettings: stringSettings(func(key string) string {
 			return cfg[key]
-		},
+		}),
 		LibraryConfigured: func() bool {
 			return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
 		},

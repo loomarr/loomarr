@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/images/rustgen"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -76,9 +78,9 @@ func newImageService(
 		return nil, err
 	}
 	return images.New(images.Config{
-		Dir:            set.str("images.dir"),
-		MaxUploadBytes: func() int64 { return int64(set.intv("images.max_upload_bytes")) },
-		PublicBaseURL:  func() string { return set.str("server.public_url") },
+		Dir:            settings.ImagesDir.Get(set),
+		MaxUploadBytes: func() int64 { return int64(settings.ImagesMaxUploadBytes.Get(set)) },
+		PublicBaseURL:  func() string { return settings.ServerPublicURL.Get(set) },
 		Observer: images.Observer{
 			QueueWait: recorder.ImageWorkerQueueWait,
 			InFlight:  recorder.ImageWorkerInFlight,
@@ -91,7 +93,7 @@ func resolveImageWorker(explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
 	}
-	if configured := os.Getenv("LOOMARR_IMAGE_WORKER"); configured != "" {
+	if configured, _ := config.LookupEnv("LOOMARR_IMAGE_WORKER"); configured != "" {
 		return configured, nil
 	}
 	if self, err := os.Executable(); err == nil {

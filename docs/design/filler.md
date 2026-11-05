@@ -444,7 +444,18 @@ Unattended fetching can fill a disk, so it is bounded by limits that fail toward
   choice, station searches and metadata screen); the fetch pass owns the budget, lease, shared
   rejection, dedupe, selection and queueing. A source whose provider is not registered is inert:
   a scheduled pass skips it, a manual check refuses it, and the row is kept. The folder and the
-  library are registered as scanned providers, never fetched.
+  library are registered as scanned providers, never fetched. The registry also answers what the
+  API and the Sources page need to know about a kind: its label and address hint, how an operator's
+  address is read (`Addresser`), how sources are suggested and verified (`Finder`), whether a
+  source can be searched in place (`Searcher`), and what is shown under its rows.
+  `GET /v1/filler/providers` publishes each registered provider with its capabilities and the
+  words the Sources page shows for it (heading blurb, source noun, finder copy and minimum
+  query, address label and hint), so a provider added to the registry reaches the client without
+  a client change. The web names no provider: provider ids on the wire are plain strings checked
+  against the registry, a source row carries its provider's page (`pageUrl`) and each example its
+  player (`embedUrl`), and the suggestions route answers an address with the one source it names
+  (`exact`) because only the provider (`Recognizer`) can tell an address from words to search for.
+  A web test fails on an `"archive"` or `"youtube"` literal in production source.
   URL inference is kept only for a URL an admin typed. Both share the same bounds, governor,
   acquisition record, held lifecycle, sidecar and admission authority.
 - **Look for new clips** runs one bounded fetch pass for the selected source and then scans local
@@ -587,8 +598,8 @@ within `filler.incoming.ready_window`, default `24h`, one hour to 30 days, hot-a
 window is returned with the projection). Each group is counted by the predicate that returns its
 rows, and row arrays are capped at 100 with separately counted totals. Ready clips age out of
 Incoming but stay in the Library. Rejections, retries, provider failures and optional enrichment
-belong in Activity or Diagnostics. Bumpers, station IDs and compilations are never "add tags"
-tasks.
+stay in the preparing group's processing details. Bumpers, station IDs and compilations are never
+"add tags" tasks.
 
 A row carries one server-owned sentence. Its panel may reveal **Processing details**: the server's
 ordered stages, each with a name, outcome, time and safe explanation, routine skipped stages behind

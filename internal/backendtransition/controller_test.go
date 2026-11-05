@@ -632,7 +632,7 @@ func transitionFaultStore(
 	}
 }
 
-// transientRefreshErr mimics setup.TransientError: a media-server failure that outlived its
+// transientRefreshErr mimics livetvpublish.TransientError: a media-server failure that outlived its
 // retry budget but clears on its own (#1407: Emby 500 ServiceUnavailable during a stall).
 type transientRefreshErr struct{}
 

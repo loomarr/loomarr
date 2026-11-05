@@ -13,14 +13,11 @@ package binder
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
@@ -152,28 +149,21 @@ func (b *Binder) PlanSubmittedChannel(ctx context.Context, p store.Proposal) (st
 	return b.planChannel(ctx, p)
 }
 
+// planChannel is the impure shell around Bind: it reads the channel the job changes, the job
+// itself, a free number and the availability of the existing lineup, hands them to the pure Bind,
+// and logs what an unattended auto-curate bind dropped.
 func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Channel, error) {
 	intentRef := p.JobID
 	if intentRef == "" {
 		return store.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
 	}
-
-	var proposal suggest.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &proposal); err != nil {
-		return store.Channel{}, fmt.Errorf("decode proposal %s: %w", p.ID, err)
-	}
-	lineup, err := lineupEntries(proposal)
-	if err != nil {
-		return store.Channel{}, fmt.Errorf("resolve lineup: %w", err)
-	}
-
 	existing, err := b.channelForJob(ctx, intentRef)
 	if err != nil {
 		return store.Channel{}, err
 	}
 
-	ch := existing
-	if ch.ID == "" { // first approval of this intent → a new channel
+	in := BindInput{Proposal: p, Existing: existing, Now: time.Now().UTC()}
+	if existing.ID == "" {
 		// A first approval always has its job. A job that is gone (purged, or never existed)
 		// may have been a refine or re-curation that lost its link to a channel, and creating
 		// one here would duplicate that channel. This is a plain error for the approver to
@@ -184,82 +174,40 @@ func (b *Binder) planChannel(ctx context.Context, p store.Proposal) (store.Chann
 		} else if jerr != nil {
 			return store.Channel{}, fmt.Errorf("proposal %s: read job %s: %w", p.ID, intentRef, jerr)
 		}
-		identity := sha256.Sum256([]byte(intentRef))
-		ch.ID = "ch_" + hex.EncodeToString(identity[:8])
-		// The job that creates a channel is its origin and stays its intent_ref for life; a later
-		// refine or re-curation is a different job that names the channel instead.
-		ch.IntentRef = intentRef
-		// Whoever asked is recorded once. A refine or re-curation never changes it, so the
-		// requester stays the person who made the request after housekeeping purges the job.
-		ch.RequestedBy = p.CreatedBy
-		// Sequential is the channel Strategy that decides ordering ONLY when the grounded
-		// policy leaves Ordering == OrderInherit — i.e. a single-series channel, where
-		// episodes-in-order is correct. A multi-series channel's grounded policy carries
-		// OrderSyndication explicitly (groundPolicy multiSeries default), and policy ordering
-		// WINS over the strategy inherit (policy.Resolved) — so this does NOT force a Star
-		// Trek channel chronological. Don't "simplify" this to syndication: that would make a
-		// genuinely single-series channel intermix nothing-but-itself and lose episode order.
-		ch.Strategy = schedule.Sequential
-		ch.Name = channelNameFromIntent(p)
-		ch.Number, err = b.nextFreeChannelNumber(ctx)
-		if err != nil {
+		if in.Number, err = b.nextFreeChannelNumber(ctx); err != nil {
 			return store.Channel{}, err
 		}
+	} else if isAutoCurate(p) {
+		in.Unavailable = b.unavailableTitles(ctx, existing.Lineup)
 	}
-	// Lineup binding differs by WHO approved (§8.2). A human-in-the-loop approval (manual
-	// approve, or a manual refine the operator drove) REPLACES the lineup — a person decided,
-	// including to remove titles. Scheduled AUTO-CURATE runs unattended, so it must be
-	// NON-DESTRUCTIVE: it ADDS the refreshed picks onto the existing lineup and only drops a
-	// title that's clearly off-intent (genuinely gone from the library, or explicitly excluded)
-	// — never a still-available title the stochastic LLM just didn't re-pick this run. Without
-	// this, weekly re-curation would churn a channel, silently dropping good titles nobody chose
-	// to remove (the §8.2 "never drop a currently-airing available title just for churn" rule).
-	// Both branches go through the one lineup primitive (schedule.ApplyLineup, §9): the human
-	// path is a plain Replace, auto-curate is Additive with the store-backed Drop predicate.
-	if isAutoCurate(p) && existing.ID != "" {
-		// ⚠ `retiredKeys(p)` carries the turnstile's rotate-out decisions (§8.2a). They arrive
-		// as an INPUT to the union rather than as a channel write `recurate` made moments
-		// earlier — which is what stops the union from re-adding what the turnstile removed.
-		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupAdditive,
-			schedule.ApplyOpts{Drop: b.dropPredicate(ctx, mustExcludeKeys(p), retiredKeys(p))})
-	} else {
-		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupReplace, schedule.ApplyOpts{})
-	}
-	// Policy ownership is enforced in ONE place (schedule.MergeFromProposal, §2.1/§8.2): the
-	// fresh proposal refreshes what it owns (scope/audience/separation/ordering/seasonal) —
-	// EXCEPT any field the operator pinned — while operator-owned fields (filler/window/
-	// autoCurate), operator-pinned fields, and the reconcile-owned Applied are preserved, and
-	// rules merge by provenance. This replaces the old capture-then-restore block; a refine can
-	// no longer silently revert an operator's era/ceiling edit or turn off its own AutoCurate.
-	ch.Policy = existing.Policy.MergeFromProposal(proposal.Policy)
-	// A generated channel hands grounded era + audience facts to its operator-owned filler
-	// selection once. A present selection—including one whose fields are all unset—is
-	// operator-owned and never re-seeded by refine or auto-curation. Unset era retains its
-	// documented live scope inheritance in channels.SelectionFrom.
-	if ch.Policy.Filler == nil {
-		ch.Policy.Filler = schedule.SeedFillerSelection(ch.Policy.ProposalPolicy)
-	}
-	// The channel keeps the approved request itself, so a refine or a re-curation can be seeded
-	// from it long after the job that produced it is purged.
-	ch.IntentJSON, err = channelIntentJSON(proposal)
-	if err != nil {
-		return store.Channel{}, fmt.Errorf("proposal %s: %w", p.ID, err)
-	}
-	ch.Status = schedule.StatusBuilding
-	// ⚠ **Due NOW, so the sweep owns this channel from the moment it exists** (§9 V54). The
-	// immediate reconcile below is best-effort; this is what makes the "the sweep retries"
-	// promise true rather than aspirational. Belt-and-braces with the claim predicate (a zero
-	// deadline is also due now) — but stamping it here means the row never depends on that
-	// reading, and a future writer that re-adds a `> 0` guard breaks one defence, not both.
-	ch.ReconcileDeadline = time.Now().UTC()
 
-	if err := ch.Validate(); err != nil {
-		return store.Channel{}, fmt.Errorf("invalid channel: %w", err)
+	bound, err := Bind(in)
+	if err != nil {
+		return store.Channel{}, err
 	}
-	if err := ch.Policy.Validate(); err != nil {
-		return store.Channel{}, fmt.Errorf("invalid channel policy: %w", err)
+	if b.log != nil {
+		for _, e := range bound.Retired {
+			b.log.Info("auto-curate retired a title to make room", "title", e.Title, "key", e.Key)
+		}
+		for _, e := range bound.Dropped {
+			b.log.Info("auto-curate dropped a clearly-off-intent title", "title", e.Title, "key", e.Key)
+		}
 	}
-	return ch, nil
+	return bound.Channel, nil
+}
+
+// unavailableTitles reads which titles of an existing lineup have left the acquisition pipeline
+// entirely (§8.2 conservative pruning). An in-flight title (wanted, requested, downloading) is on
+// its way, not off the channel. A read error is treated as "keep": never drop a title on a
+// transient error.
+func (b *Binder) unavailableTitles(ctx context.Context, lineup []schedule.LineupEntry) map[provision.Key]bool {
+	out := make(map[provision.Key]bool)
+	for _, e := range lineup {
+		if rec, err := b.store.GetTitle(ctx, e.Key); err == nil && rec.State == provision.Unavailable {
+			out[e.Key] = true
+		}
+	}
+	return out
 }
 
 // AfterApprovalCommitted performs the non-transactional half of approval. Both
@@ -402,36 +350,6 @@ func (b *Binder) nextFreeChannelNumber(ctx context.Context) (int, error) {
 	}
 }
 
-// channelNameFromIntent derives a channel-sized label for a newly-approved channel. It
-// prefers the LLM's proposed channelName (a real network-style name — "Springfield
-// Classics" — §8), falling back to a truncated intent description, then a generic label.
-// A starting point, not a decision: name is an ordinary editable field (§7 PATCH).
-func channelNameFromIntent(p store.Proposal) string {
-	var parsed suggest.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &parsed); err == nil {
-		if n := strings.TrimSpace(parsed.ChannelName); n != "" {
-			return truncateLabel(n, 60)
-		}
-		if d := strings.TrimSpace(parsed.Intent.Description); d != "" {
-			return truncateLabel(d, 60)
-		}
-	}
-	return "Suggested channel"
-}
-
-// truncateLabel shortens on a word boundary so a long intent doesn't produce a name
-// cut mid-word in the middle of a TV guide.
-func truncateLabel(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	cut := s[:max]
-	if i := strings.LastIndex(cut, " "); i > max/2 {
-		cut = cut[:i]
-	}
-	return strings.TrimRight(cut, " ,.;:-") + "…"
-}
-
 // LineupFromIntent resolves the approved proposal identified by intentRef (the
 // suggestion job id) and maps its lineup into the scheduler's []LineupEntry —
 // the "create a channel from an approved proposal (intent + lineup)" flow the
@@ -448,11 +366,7 @@ func (b *Binder) LineupFromIntent(ctx context.Context, intentRef string) ([]sche
 	if err != nil {
 		return nil, err
 	}
-	var p suggest.Proposal
-	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
-		return nil, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
-	}
-	return lineupEntries(p)
+	return lineupEntries(prop.Body, time.Now().UTC())
 }
 
 // RequestFromIntent resolves who asked for the approved proposal identified by intentRef and what
@@ -466,25 +380,11 @@ func (b *Binder) RequestFromIntent(ctx context.Context, intentRef string) (inten
 	if err != nil {
 		return "", "", err
 	}
-	var p suggest.Proposal
-	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
-		return "", "", fmt.Errorf("decode proposal %s: %w", prop.ID, err)
-	}
-	intentJSON, err = channelIntentJSON(p)
+	intentJSON, err = channelIntentJSON(prop.Body)
 	if err != nil {
 		return "", "", fmt.Errorf("proposal %s: %w", prop.ID, err)
 	}
 	return intentJSON, prop.CreatedBy, nil
-}
-
-// channelIntentJSON is the approved intent a channel stores: the proposal's request without the
-// inputs that belong to the one run that produced it.
-func channelIntentJSON(p suggest.Proposal) (string, error) {
-	blob, err := json.Marshal(p.Intent.ChannelIntent())
-	if err != nil {
-		return "", fmt.Errorf("marshal intent: %w", err)
-	}
-	return string(blob), nil
 }
 
 // PolicyFromIntent resolves the approved proposal's grounded ChannelPolicy
@@ -500,11 +400,7 @@ func (b *Binder) PolicyFromIntent(ctx context.Context, intentRef string) (schedu
 	if err != nil {
 		return schedule.ChannelPolicy{}, err
 	}
-	var p suggest.Proposal
-	if err := json.Unmarshal([]byte(prop.ProposalJSON), &p); err != nil {
-		return schedule.ChannelPolicy{}, fmt.Errorf("decode proposal %s: %w", prop.ID, err)
-	}
-	return p.Policy, nil
+	return prop.Body.Policy, nil
 }
 
 // ApprovedProposalForJob finds the proposal for a suggestion job.
@@ -542,56 +438,4 @@ func (b *Binder) ApprovedProposalForJob(ctx context.Context, jobID string) (stor
 	// content reach a live channel (prime directive #3). An explicit create maps this to
 	// a 422 so the caller sees a clear "approve the proposal first" signal.
 	return store.Proposal{}, fmt.Errorf("no approved proposal for intent %q", jobID)
-}
-
-// lineupEntries maps an approved proposal's picks — BOTH the in-library lineup
-// AND the acquisition list — to scheduler entries. This is the fix for the #9
-// seam: acquisitions previously never entered ch.Lineup, so once a title landed
-// `available` it had no entry to fill and was permanently unschedulable (the
-// backfill sweep re-derives desired slots from ch.Lineup, so an absent key can
-// never be recovered). Every approved pick is an entry; whether it renders as a
-// program or a pending slot is decided at reconcile time by resolveEntry against
-// live availability (§9), NOT by the proposal's (possibly stale) InLibrary flag.
-//
-// Ordering: lineup picks first (the human-curated order), then acquisitions —
-// which start as pending slots and swap to programs in place as they land.
-// Duplicate keys are collapsed so a title that appears in both lists (e.g. an
-// acquisition the human also marked in-library) yields exactly one entry.
-func lineupEntries(p suggest.Proposal) ([]schedule.LineupEntry, error) {
-	out := make([]schedule.LineupEntry, 0, len(p.Lineup))
-	seen := make(map[provision.Key]struct{}, len(p.Lineup))
-	for _, items := range [][]suggest.ProposalItem{p.Lineup, p.Acquisitions} {
-		for _, it := range items {
-			key, err := provision.KeyFromWebhook(it.MediaType, it.TMDBID, it.TVDBID)
-			if err != nil {
-				return nil, fmt.Errorf("lineup key for %q: %w", it.Name, err)
-			}
-			if _, dup := seen[key]; dup {
-				continue // same title in both lists → one entry
-			}
-			seen[key] = struct{}{}
-			out = append(out, schedule.LineupEntry{
-				Key:   key,
-				Title: it.Name,
-				// DurationMs is left 0 (unknown) here; the reconciler resolves real
-				// runtime from the library when it computes desired slots (§9). An
-				// acquisition not yet in the library resolves to a pending slot.
-				//
-				// Policy-enforcement metadata is stamped from the grounded pick
-				// (programming-design §4): the full ProposalItem is in hand here and
-				// currently the only place it is, so the audience/era/genre filters
-				// enforce off the entry without a per-reconcile library hit.
-				OfficialRating: schedule.NormalizeRating(it.OfficialRating),
-				Genres:         it.Genres,
-				Year:           it.Year,
-				// Airing season window (§8): a series pick the suggester scoped to an
-				// era ("classic Simpsons" → 1–10) carries its window onto the entry, so
-				// series expansion airs only those seasons (§9 inSeasonRange). 0 = all.
-				SeasonMin:        it.SeasonMin,
-				SeasonMax:        it.SeasonMax,
-				EpisodeSelection: it.EpisodeSelection,
-			})
-		}
-	}
-	return out, nil
 }

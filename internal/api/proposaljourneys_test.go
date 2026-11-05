@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -22,11 +23,11 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 	workflow := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
 		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1",
 		Milestone: proposalworkflow.MilestoneAwaitingApproval,
-		Intent:    suggest.Intent{Description: "Saturday morning cartoons"},
+		Intent:    proposal.Intent{Description: "Saturday morning cartoons"},
 		Attempts: []proposalworkflow.Attempt{{
 			Version: proposalworkflow.WorkflowVersion1, Number: 1, Status: proposalworkflow.AttemptSucceeded,
 		}},
-		Proposal: &proposalworkflow.ProposalRef{ID: "proposal-1", Status: proposalworkflow.ProposalSubmitted, Proposal: suggest.Proposal{Trace: suggest.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Disposition: "selected", Reason: "selected"}}}}},
+		Proposal: &proposalworkflow.ProposalRef{ID: "proposal-1", Status: proposalworkflow.ProposalSubmitted, Proposal: proposal.Proposal{Trace: proposal.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Disposition: "selected", Reason: "selected"}}}}},
 		Actions:  []proposalworkflow.Action{proposalworkflow.ActionReview},
 	}}
 	srv := proposalJourneyServer(t, workflow)
@@ -103,7 +104,7 @@ func TestProposalJourneyListEndpointUsesCallerScope(t *testing.T) {
 
 	workflow := &fakeProposalWorkflow{journeys: []proposalworkflow.Journey{{
 		Version: proposalworkflow.WorkflowVersion1, JobID: "job-running",
-		Milestone: proposalworkflow.MilestoneGenerating, Intent: suggest.Intent{Description: "Anime after school"},
+		Milestone: proposalworkflow.MilestoneGenerating, Intent: proposal.Intent{Description: "Anime after school"},
 	}}}
 	srv := proposalJourneyServer(t, workflow)
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs?mine=true&status=generating", memberToken, "")
@@ -152,10 +153,10 @@ func TestProposalJourneyEndpointFailsClosedForForbiddenAndCorruptState(t *testin
 func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing.T) {
 	t.Parallel()
 
-	private := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true,
+	private := proposal.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true,
 		Terminal: suggest.TerminalProviderFailure,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "private-candidate", Ownership: "library",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
+		Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "private-candidate", Ownership: "library",
+			Rank: proposal.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
 	if err := suggest.ValidateDecisionTrace(private); err != nil {
 		t.Fatalf("private trace must be valid: %v", err)
 	}
@@ -223,7 +224,7 @@ type fakeProposalWorkflow struct {
 	viewer   proposalworkflow.Viewer
 	jobID    string
 	options  proposalworkflow.ListOptions
-	intent   suggest.Intent
+	intent   proposal.Intent
 }
 
 func (f *fakeProposalWorkflow) List(
@@ -248,7 +249,7 @@ func (f *fakeProposalWorkflow) Revise(
 	_ context.Context,
 	viewer proposalworkflow.Viewer,
 	jobID string,
-	intent suggest.Intent,
+	intent proposal.Intent,
 ) error {
 	f.viewer, f.jobID, f.intent = viewer, jobID, intent
 	return f.err
@@ -276,7 +277,7 @@ func TestProposalJourneyReportsWhoApprovedAndWhen(t *testing.T) {
 	workflow := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
 		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1",
 		Milestone: proposalworkflow.MilestoneLive,
-		Intent:    suggest.Intent{Description: "Saturday morning cartoons"},
+		Intent:    proposal.Intent{Description: "Saturday morning cartoons"},
 		Proposal: &proposalworkflow.ProposalRef{
 			ID: "proposal-1", Status: proposalworkflow.ProposalApproved,
 			ApprovedBy: suggest.AutoApprovedBy, ApprovedAt: approvedAt,

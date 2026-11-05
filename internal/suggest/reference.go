@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/textmatch"
@@ -58,7 +59,7 @@ var (
 
 type referenceGrounding struct {
 	candidates []catalog.Candidate
-	trace      DecisionTrace
+	trace      proposal.DecisionTrace
 	messages   []llm.Message
 }
 

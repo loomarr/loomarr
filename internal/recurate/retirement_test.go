@@ -2,10 +2,10 @@ package recurate_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -48,12 +48,8 @@ func retiredOf(t *testing.T, st store.Store, proposalID string) map[provision.Ke
 	if err != nil {
 		t.Fatal(err)
 	}
-	var body suggest.Proposal
-	if uerr := json.Unmarshal([]byte(p.ProposalJSON), &body); uerr != nil {
-		t.Fatalf("proposal %s malformed: %v", proposalID, uerr)
-	}
 	out := map[provision.Key]bool{}
-	for _, k := range body.Retired {
+	for _, k := range p.Body.Retired {
 		out[k] = true
 	}
 	return out
@@ -85,17 +81,13 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
 	item := acqItem(300, "Much Better Fit", 0.95)
-	body := suggest.Proposal{Acquisitions: []suggest.ProposalItem{item}, Trace: suggest.DecisionTrace{
+	body := proposal.Proposal{Acquisitions: []proposal.ProposalItem{item}, Trace: proposal.DecisionTrace{
 		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000300", Name: item.Name, Ownership: "acquisition",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
+		Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000300", Name: item.Name, Ownership: "acquisition",
+			Rank: proposal.RankTuple{TieKey: "movie:tmdb:90000300"}, Disposition: suggest.DispositionSelected, Reason: "selected"}},
 	}}
-	blob, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Now()
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: string(blob), CreatedAt: now, UpdatedAt: now}
+	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -116,10 +108,7 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var after suggest.Proposal
-	if err := json.Unmarshal([]byte(persisted.ProposalJSON), &after); err != nil {
-		t.Fatal(err)
-	}
+	after := persisted.Body
 	if len(after.Trace.Candidates) != 1 || after.Trace.Candidates[0] != body.Trace.Candidates[0] {
 		t.Fatalf("re-curation rewrote original decision evidence: before=%+v after=%+v", body.Trace, after.Trace)
 	}
@@ -150,7 +139,7 @@ func TestCurator_KeepFeedbackProtectsTitleFromAutomaticRetirement(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	p := seedProposal(t, st, "p-keep", "job-keep", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p-keep", "job-keep", nil, []proposal.ProposalItem{
 		acqItem(300, "New Candidate", 0.99),
 	})
 	d, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2}).Consider(context.Background(), p)
@@ -176,7 +165,7 @@ func TestCurator_NeverRetiresSomethingCurrentlyAiring(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "Airing Title")},
 		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "Much Better Fit", 0.99),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 1})
@@ -201,7 +190,7 @@ func TestCurator_BelowTheCapNothingIsRetired(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "Keeper"), lineupEntry(200, "Also Keeper")},
 		nil) // nothing airing ⇒ both retirable, but there's room
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "New Title", 0.95),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 10})
@@ -226,7 +215,7 @@ func TestCurator_UnknownScheduleRetiresNothing(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B")},
 		nil) // never reconciled ⇒ Desired empty ⇒ schedule UNKNOWN
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "Better", 0.99), acqItem(400, "Also Better", 0.98),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2})
@@ -256,7 +245,7 @@ func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
 
 	// A lineup entry carries no stored confidence, so the bench scores 0 — an incoming 0
 	// therefore ties it and must NOT displace it.
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "Ties The Bench", 0),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 0, maxTitles: 2})
@@ -284,7 +273,7 @@ func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
 		},
 		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(400, "Fresh Pick", 0.95),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4})
@@ -320,7 +309,7 @@ func TestCurator_BelowRotationTargetJustGrows(t *testing.T) {
 		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B")},
 		[]provision.Key{provision.Key("movie:tmdb:90000100")})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(300, "New", 0.95),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 10})
@@ -346,7 +335,7 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 			provision.Key("movie:tmdb:90000100"), provision.Key("movie:tmdb:90000200"), provision.Key("movie:tmdb:90000300"),
 		})
 
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(400, "New", 0.95),
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4})
@@ -366,5 +355,124 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 		if !lineup[key] {
 			t.Errorf("airing title %s was retired", key)
 		}
+	}
+}
+
+// recordAiring marks film n as last aired `ago` before now on the channel (one unit per film).
+func recordAiring(t *testing.T, st store.Store, channelID string, n int, ago time.Duration) {
+	t.Helper()
+	at := time.Now().Add(-ago)
+	if err := st.RecordAiring(context.Background(), channelID, movieKey(n), "lib-"+string(movieKey(n)), at, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// scoredEntry is film n's lineup entry with a stored fit.
+func scoredEntry(n int, title string, fit float64) schedule.LineupEntry {
+	e := lineupEntry(n, title)
+	e.Fit = fit
+	return e
+}
+
+// THE BUG THIS CLOSES: every lineup entry used to read confidence 0, so the turnstile retired
+// the alphabetically first retirable title. Here the alphabetically first title fits well and
+// aired yesterday; the other fits poorly and has been off the air for a month. The poor, stale
+// one must go.
+func TestCurator_RetiresLowFitStaleTitleNotTheAlphabeticallyFirst(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{
+			lineupEntry(100, "On The Air"),
+			scoredEntry(200, "Aardvark Adventures", 0.9),
+			scoredEntry(300, "Zed Zone", 0.2),
+		},
+		[]provision.Key{movieKey(100)})
+	recordAiring(t, st, "ch1", 200, 24*time.Hour)
+	recordAiring(t, st, "ch1", 300, 30*24*time.Hour)
+
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{acqItem(400, "Newcomer", 0.95)})
+	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 3})
+
+	if _, err := cur.Consider(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	retired := retiredOf(t, st, "p1")
+	if !retired[movieKey(300)] {
+		t.Errorf("the low-fit stale title was not retired: retired=%v", retired)
+	}
+	if retired[movieKey(200)] {
+		t.Error("the high-fit recently aired title was retired (alphabetical order)")
+	}
+}
+
+// At equal fit the title that has gone longest without airing goes first, whatever its name.
+func TestCurator_AtEqualFitTheLongestIdleTitleIsRetired(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{
+			lineupEntry(100, "On The Air"),
+			scoredEntry(200, "Zed Zone", 0.6),
+			scoredEntry(300, "Aardvark Adventures", 0.6),
+		},
+		[]provision.Key{movieKey(100)})
+	recordAiring(t, st, "ch1", 200, 2*24*time.Hour)
+	recordAiring(t, st, "ch1", 300, 6*24*time.Hour)
+
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{acqItem(400, "Newcomer", 0.95)})
+	if _, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 3}).Consider(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	retired := retiredOf(t, st, "p1")
+	if !retired[movieKey(300)] || retired[movieKey(200)] {
+		t.Errorf("retired = %v, want only the title idle for 6 days", retired)
+	}
+}
+
+// A newcomer must beat the title's FIT: a well fitting title is never retired for a weaker
+// candidate, however long it has been idle.
+func TestCurator_ADeservedButIdleTitleIsNotRetiredForAWeakerCandidate(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{lineupEntry(100, "On The Air"), scoredEntry(200, "Idle Classic", 0.95)},
+		[]provision.Key{movieKey(100)})
+	recordAiring(t, st, "ch1", 200, 60*24*time.Hour)
+
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{acqItem(300, "Weaker", 0.7)})
+	if _, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 2}).Consider(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	if retiredOf(t, st, "p1")[movieKey(200)] {
+		t.Fatal("an idle title that fits better than the candidate was retired")
+	}
+}
+
+// THE FLOOR. Rotation begins at rotationTarget(max_titles) and not before, and every retirement
+// is paired with an admission, so retirement never takes the lineup below the target. Cap 4 ⇒
+// target 3: three candidates rotate out the two retirable titles, and the lineup still ends up
+// with at least three titles counting what was admitted.
+func TestCurator_RetirementNeverTakesTheLineupBelowTheTarget(t *testing.T) {
+	t.Parallel()
+	st := newStore(t)
+	seedFullChannel(t, st, "ch1", "job1",
+		[]schedule.LineupEntry{lineupEntry(100, "On The Air"), scoredEntry(200, "B", 0.2), scoredEntry(300, "C", 0.2)},
+		[]provision.Key{movieKey(100)})
+
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
+		acqItem(400, "D", 0.95), acqItem(500, "E", 0.94), acqItem(600, "F", 0.93),
+	})
+	d, err := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 4}).Consider(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retired := retiredOf(t, st, "p1")
+	if len(retired) != 2 {
+		t.Fatalf("retired = %v, want both retirable titles rotated out", retired)
+	}
+	remaining := 3 - len(retired)
+	if remaining+d.Enqueued < 3 {
+		t.Fatalf("lineup would shrink to %d (kept %d + admitted %d), below the target of 3", remaining+d.Enqueued, remaining, d.Enqueued)
 	}
 }

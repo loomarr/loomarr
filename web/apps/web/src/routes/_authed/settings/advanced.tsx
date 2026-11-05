@@ -1,4 +1,5 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -29,7 +30,7 @@ const AdvancedSettings = () => {
   // real want, but `?q=` here would be the only searchable Settings surface with one — worth
   // doing when there is a second, so the convention is set once rather than guessed.
   const [query, setQuery] = useState("");
-  const refresh = () => queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+  const refresh = () => invalidateSettings(queryClient);
   const envOverride = settingsApi.useSettingsEnvOverride({ mutation: { onSuccess: refresh } });
   const clear = settingsApi.useSettingsClear({ mutation: { onSuccess: refresh } });
 

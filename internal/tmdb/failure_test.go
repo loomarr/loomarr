@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 func TestFailureClass(t *testing.T) {
@@ -19,11 +21,11 @@ func TestFailureClass(t *testing.T) {
 		{"no key", ErrAPIKeyRequired, FailureNoKey},
 		{"canceled", fmt.Errorf("get: %w", context.Canceled), FailureCanceled},
 		{"deadline", context.DeadlineExceeded, FailureTimeout},
-		{"429", &StatusError{Status: http.StatusTooManyRequests}, FailureRateLimited},
-		{"401", &StatusError{Status: http.StatusUnauthorized}, FailureUnauthorized},
-		{"403", &StatusError{Status: http.StatusForbidden}, FailureUnauthorized},
-		{"404", &StatusError{Status: http.StatusNotFound}, FailureClientError},
-		{"503", fmt.Errorf("wrapped: %w", &StatusError{Status: 503}), FailureServerError},
+		{"429", &httpx.StatusError{Status: http.StatusTooManyRequests}, FailureRateLimited},
+		{"401", &httpx.StatusError{Status: http.StatusUnauthorized}, FailureUnauthorized},
+		{"403", &httpx.StatusError{Status: http.StatusForbidden}, FailureUnauthorized},
+		{"404", &httpx.StatusError{Status: http.StatusNotFound}, FailureClientError},
+		{"503", fmt.Errorf("wrapped: %w", &httpx.StatusError{Status: 503}), FailureServerError},
 		{"decode", &decodeError{err: errors.New("bad json")}, FailureDecode},
 		{"other", errors.New("boom"), FailureOther},
 	} {

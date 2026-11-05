@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<!-- A two-part episode in one file; every title and id is invented. -->
+<episodedetails>
+    <title>The Tide Ledger (1)</title>
+    <showtitle>The Lantern Office</showtitle>
+    <season>2</season>
+    <episode>3</episode>
+    <plot>An entry in the ledger predicts a storm that already happened.</plot>
+    <mpaa>US:TV-MA</mpaa>
+    <uniqueid type="tvdb" default="true">90001023</uniqueid>
+    <aired>2020-10-01</aired>
+</episodedetails>
+<episodedetails>
+    <title>The Tide Ledger (2)</title>
+    <showtitle>The Lantern Office</showtitle>
+    <season>2</season>
+    <episode>4</episode>
+    <plot>The storm arrives.</plot>
+    <uniqueid type="tvdb" default="true">90001024</uniqueid>
+    <aired>2020-10-08</aired>
+</episodedetails>

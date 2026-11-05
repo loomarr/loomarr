@@ -7,18 +7,17 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
-func screeningProfileFixture(axis filler.SegmentScreeningAxis, digit string) SegmentScreeningAxisProfile {
+func screeningProfileFixture(axis SegmentScreeningAxis, digit string) SegmentScreeningAxisProfile {
 	profile := SegmentScreeningAxisProfile{
 		Axis: axis, EvidenceContract: "axis-evidence-v1",
 		PolicySHA256: strings.Repeat(digit, 64), CertificationSHA256: strings.Repeat("a", 64), ImplementationSHA256: strings.Repeat("b", 64),
 	}
 	airworthiness, safety := airworthinessAxis(axis)
 	if safety {
-		for _, flag := range fillerairworthiness.Vocabulary() {
-			if slices.Contains(fillerairworthiness.AxesForFlag(flag), airworthiness) {
+		for _, flag := range airworthinessVocabulary() {
+			if slices.Contains(airworthinessAxesForFlag(flag), airworthiness) {
 				profile.CertifiedSuitabilityFlags = append(profile.CertifiedSuitabilityFlags, flag)
 			}
 		}
@@ -73,13 +72,13 @@ func passingAxisEvidence(t *testing.T, subject filler.SegmentScreeningSubject) [
 	for index, axis := range segmentScreeningAxisOrder {
 		reason := "policy_clear"
 		switch axis {
-		case filler.ScreenPlayback:
+		case ScreenPlayback:
 			reason = "playback_verified"
 		}
 		profile := screeningProfileFixture(axis, string(rune('1'+index)))
 		raw := []byte("recorded-" + string(axis))
 		recorded, err := NewSegmentScreeningAxisEvidence(
-			subject, profile, filler.ScreenPass, reason, screeningSuitabilityForOutcome(subject, profile, filler.ScreenPass, raw),
+			subject, profile, ScreenPass, reason, screeningSuitabilityForOutcome(subject, profile, ScreenPass, raw),
 			raw, time.Date(2026, time.September, 12, 4, 0, 0, 0, time.UTC),
 		)
 		if err != nil {
@@ -90,34 +89,34 @@ func passingAxisEvidence(t *testing.T, subject filler.SegmentScreeningSubject) [
 	return records
 }
 
-func screeningSuitabilityForOutcome(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome filler.SegmentScreeningOutcome, raw []byte) *fillerairworthiness.AxisEvidence {
+func screeningSuitabilityForOutcome(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, raw []byte) *AirworthinessAxisEvidence {
 	axisProfile, err := segmentAirworthinessProfile(profile)
 	if err != nil {
 		return nil
 	}
-	coverage := fillerairworthiness.CoverageComplete
-	if outcome == filler.ScreenHold {
-		coverage = fillerairworthiness.CoverageIncomplete
+	coverage := CoverageComplete
+	if outcome == ScreenHold {
+		coverage = CoverageIncomplete
 	}
-	if outcome == filler.ScreenReject {
-		coverage = fillerairworthiness.CoverageConflict
+	if outcome == ScreenReject {
+		coverage = CoverageConflict
 	}
-	return &fillerairworthiness.AxisEvidence{
+	return &AirworthinessAxisEvidence{
 		SubjectSHA256: subject.SHA256, Profile: axisProfile, Coverage: coverage,
-		EvidenceSHA256: filler.ScreeningBytesSHA256(raw), Observations: []fillerairworthiness.Observation{},
+		EvidenceSHA256: filler.ScreeningBytesSHA256(raw), Observations: []AirworthinessObservation{},
 	}
 }
 
-func screeningAirworthinessEvaluator(t *testing.T, profiles []SegmentScreeningAxisProfile) *fillerairworthiness.Evaluator {
+func screeningAirworthinessEvaluator(t *testing.T, profiles []SegmentScreeningAxisProfile) *AirworthinessEvaluator {
 	t.Helper()
-	evaluator, err := NewSegmentAirworthinessEvaluator(fillerairworthiness.ProfileAllAges, profiles)
+	evaluator, err := NewSegmentAirworthinessEvaluator(ProfileAllAges, profiles)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return evaluator
 }
 
-func screeningAirworthinessDecision(t *testing.T, subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence) fillerairworthiness.Decision {
+func screeningAirworthinessDecision(t *testing.T, subject filler.SegmentScreeningSubject, records []RecordedSegmentScreeningAxisEvidence) AirworthinessDecision {
 	t.Helper()
 	profiles := make([]SegmentScreeningAxisProfile, 0, len(records))
 	for _, record := range records {

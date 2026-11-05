@@ -6,7 +6,9 @@
 // previews sources, and how it searches beyond its registered sources. Filler owns the rules every
 // provider shares — budgets, leases, selection, queueing — and asks the provider for the rest, so
 // adding a provider is one package plus one registration. Download is the provider's too, through
-// clipfetch.Downloader, because it shares clipfetch's staging and storage plumbing.
+// clipfetch.Downloader, because it shares clipfetch's staging and storage plumbing; clipfetch.
+// Downloaders maps a provider's ID to its downloader, and the app registers the two together.
+// The downloader's types are clipfetch's, which imports filler, so it is not held here.
 //
 // The package imports nothing from Loomarr, so filler, fillerstore, api and the provider packages
 // can all name it without importing each other.
@@ -36,6 +38,99 @@ type Description struct {
 	// Fetched is false for a provider whose sources are scanned where they are (a folder, the
 	// media library) rather than downloaded.
 	Fetched bool
+	// GroupDetail is the sentence under the provider's row in the source list, which rolls up the
+	// sources registered under it. Empty for a provider whose sources are not grouped.
+	GroupDetail string
+	// SourceDetail is the sentence under each of its registered sources. Empty shows the source's
+	// own address instead.
+	SourceDetail string
+	// SearchDown and ResolveDown are what an operator reads when the provider's service cannot be
+	// reached while searching for a source or checking one. Empty falls back to a generic message.
+	SearchDown, ResolveDown string
+	// BadAddress is what an operator reads when the address they typed is not one this provider
+	// can use. It names the shape the provider accepts.
+	BadAddress Problem
+	// Blurb is the sentence under the provider's heading on the source page, saying what it offers.
+	Blurb string
+	// SourceNoun names what one registered source of this provider is, as the drawer's subtitle:
+	// "Archive.org collection", "Folder on this server".
+	SourceNoun string
+	// AddressLabel names the field an operator types a source's address into when the provider
+	// takes sources by hand and has no finder: "Folder path".
+	AddressLabel string
+	// PreviewHeading introduces the examples shown from a source. Empty for a provider with no
+	// previews.
+	PreviewHeading string
+	// Find is the copy of the finder a Finder provider offers. Zero for any other.
+	Find FindCopy
+}
+
+// FindCopy is the words around a provider's source finder.
+type FindCopy struct {
+	// Label names the finder's field: "Find a YouTube channel or playlist".
+	Label string
+	// Placeholder shows the two ways in, a search and an address.
+	Placeholder string
+	// Add is the button that registers the chosen source.
+	Add string
+	// NoMatches is what a search with no results tells the operator to do next.
+	NoMatches string
+	// MinQuery is the fewest characters a search is worth running with.
+	MinQuery int
+}
+
+// Problem is a refusal's headline and the way out of it.
+type Problem struct {
+	Title, Detail string
+}
+
+// Addresser reads the address an operator typed when registering a source. A provider without one
+// cannot have sources registered by hand.
+type Addresser interface {
+	// Address returns the canonical address to store, or "" when the provider cannot use raw. A
+	// provider validates by its own grammar: an archive.org identifier and a YouTube URL share no
+	// rule.
+	Address(raw string) string
+}
+
+// Linker gives the places an operator can look at a provider's material in the provider's own
+// service. A provider without one has nothing to link to.
+type Linker interface {
+	// SourceURL is the public page of a registered source, from the address stored for it, or ""
+	// when it has none.
+	SourceURL(address string) string
+	// EmbedURL is a player that plays an item the provider listed, from the item's page URL, or ""
+	// when the provider does not allow the item to be embedded.
+	EmbedURL(itemURL string) string
+}
+
+// Recognizer tells an address from words to search for, so a finder given either does the right
+// thing with it. It is stricter than Addresser: a bare word is a valid address and also a search.
+type Recognizer interface {
+	// Recognizes reports whether input is an address of one of this provider's sources.
+	Recognizes(input string) bool
+}
+
+// Capabilities are the optional interfaces a provider implements, as the UI needs to know them.
+type Capabilities struct {
+	// Listable providers are fetched: filler checks their sources on a schedule.
+	Listable bool
+	// Searchable providers search inside a registered source.
+	Searchable bool
+	// Discoverable providers suggest sources for a query and verify an address before it is
+	// registered.
+	Discoverable bool
+	// OpenSearchable providers search beyond their registered sources.
+	OpenSearchable bool
+}
+
+// CapabilitiesOf reports which optional interfaces p implements.
+func CapabilitiesOf(p Provider) Capabilities {
+	_, listable := p.(Lister)
+	_, searchable := p.(Searcher)
+	_, discoverable := p.(Finder)
+	_, openSearchable := p.(OpenSearcher)
+	return Capabilities{Listable: listable, Searchable: searchable, Discoverable: discoverable, OpenSearchable: openSearchable}
 }
 
 // Source is the part of a registered source a provider reads.
@@ -165,7 +260,8 @@ type OpenSearcher interface {
 }
 
 // Finder helps an operator choose a source: it suggests sources for a query and resolves an
-// address the operator typed.
+// address the operator typed. It returns only targets the provider can register as a source, such
+// as a channel or playlist, so a caller need not check the target's type.
 type Finder interface {
 	Suggest(ctx context.Context, query string, limit int) ([]Suggestion, error)
 	Resolve(ctx context.Context, input string) (Suggestion, error)

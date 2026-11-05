@@ -31,13 +31,13 @@ func TestDropFillerStructureAssessmentLedgerMigrationKeepsWindowLedgerSQLite(t *
 	if _, err := provider.UpTo(ctx, 146); err != nil {
 		t.Fatalf("migrate through 146: %v", err)
 	}
-	if !tableExists("filler_structure_assessment_ledger") || !tableExists("filler_structure_window_call_ledger") {
+	if !tableExists("filler_structure_assessment_ledger") || !tableExists("filler_structure_window_call_ledger") { // retired-ok: the drop's own test
 		t.Fatal("both structure ledgers should exist before the drop")
 	}
 	if _, err := provider.UpTo(ctx, 149); err != nil {
 		t.Fatalf("apply the drop: %v", err)
 	}
-	if tableExists("filler_structure_assessment_ledger") {
+	if tableExists("filler_structure_assessment_ledger") { // retired-ok: the drop's own test
 		t.Fatal("the whole-video assessment ledger survived the drop")
 	}
 	if !tableExists("filler_structure_window_call_ledger") {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -22,6 +23,7 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 	sourceRoot string
 	mediaRoot  string
 	ffmpegPath string
+	profile    fillerstructuremedia.Profile
 	probe      filler.Prober
 	identify   func(context.Context, string) (mediatools.MediaToolIdentity, error)
 	run        func(context.Context, string, []string) error
@@ -30,14 +32,18 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 }
 
 // NewFFmpegStructureAssessmentMediaPreparer binds production media preparation to the configured
-// ffmpeg toolchain, the retained-source root, and a separately owned private derivative root.
-func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath string) (*FFmpegStructureAssessmentMediaPreparer, error) {
+// ffmpeg toolchain, the retained-source root, a separately owned private derivative root, and the
+// one media profile it cuts to.
+func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath string, profile fillerstructuremedia.Profile) (*FFmpegStructureAssessmentMediaPreparer, error) {
 	if sourceRoot == "" || !filepath.IsAbs(sourceRoot) || filepath.Clean(sourceRoot) != sourceRoot ||
 		mediaRoot == "" || !filepath.IsAbs(mediaRoot) || filepath.Clean(mediaRoot) != mediaRoot {
 		return nil, errors.New("structure assessment media preparer requires clean absolute source and media roots")
 	}
+	if !fillerstructuremedia.Supported(profile) {
+		return nil, errors.New("structure assessment media preparer requires a supported media profile")
+	}
 	return &FFmpegStructureAssessmentMediaPreparer{
-		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, probe: filler.FFprobeNextTo(ffmpegPath),
+		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, profile: profile, probe: filler.FFprobeNextTo(ffmpegPath),
 		identify: mediatools.IdentifyFFmpeg, run: runStructureAssessmentFFmpeg,
 		decode:   runStructureAssessmentDecode,
 		snapshot: filler.SnapshotOwnedFile,

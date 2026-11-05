@@ -99,6 +99,20 @@ never decides.
   recipe identity. Every call binds the source and the derivative as distinct identities. The
   preparer gets two roots, the applied filler root and a private assessment-media root, and
   neither is derived from the other.
+- **The cut encodes on the channels' GPU (#2121).** Decode, cadence, scale and pad stay on the CPU,
+  so every family cuts the same picture; only the encoder differs, through the shared
+  `encode.FileVideoArgs`. Each family with a measured cut level is its **own profile**, with its own
+  digest: x264 `medium` CRF 23 in software, NVENC `-cq 29`. The NVENC level is the highest whose
+  VMAF against the same scaled source matched or beat the software cut's on every one of 20 real
+  masters (60 s each; median 94.4 against 93.8), at a median 80% of its size; `-cq 31` fell below it
+  on all 20. A family without a measured cut level (VAAPI,
+  VideoToolbox, the generic encoders) cuts in software.
+- **A certification covers one profile.** The authority pins its media-profile digest, and the
+  runtime cuts to exactly that profile: a host whose encoder is not the certified family (a GPU
+  certification on a host in software, or the reverse) sends each proposal to split review rather
+  than assessing a picture nobody reviewed. Moving a household to the GPU cut means certifying the
+  GPU profile. The certify tools in the frozen research module still build the old software
+  profile, so a new certificate needs them back in the main module first.
 - The runtime prepares and validates every window's media, and stays inside the certified duration
   and byte envelope, **before** any provider metadata refresh, reservation or request. Nothing
   extrapolates beyond the plan's capacity or truncates a reel; a longer source holds at split

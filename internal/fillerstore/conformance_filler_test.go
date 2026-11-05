@@ -2,7 +2,6 @@ package fillerstore
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -14,11 +13,9 @@ import (
 	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filleradmission"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
@@ -1042,26 +1039,13 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	digest := strings.Repeat("b", 64)
-	if err := s.PutSpokenSafetyRun(ctx, fillersafety.LedgerRun{
+	if err := s.PutSpokenSafetyRun(ctx, fillerscreening.SpokenSafetyLedgerRun{
 		ID: "ready-safety-run", ClipHash: old.Hash, AuthoritySHA256: digest, SourceSHA256: digest,
 		SourceBytes: 4096, DurationMS: 30_000, CertificationSHA256: digest, PolicySHA256: digest, ProposerSHA256: digest,
 		Implementation: "spoken-safety-v1", CreatedAt: at,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutFillerDecision(ctx, fillerdecision.Record{
-		ID: "ready-decision", ClipHash: old.Hash, EvidenceHash: "ready-evidence",
-		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
-		PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
-		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
-		Result: filleradmission.Result{Decision: &filleradmission.Decision{
-			Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
-			EvidenceRefs: []string{"evidence-a"},
-		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
 	reencoded := old
 	reencoded.Hash, reencoded.Path = "ready-new-bytes", "re/ad/ready-new-bytes.mp4"
 	reencoded.UpdatedAt = at.Add(time.Hour)
@@ -1085,9 +1069,6 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}
 	if run, err := s.GetSpokenSafetyRun(ctx, "ready-safety-run"); err != nil || run.ClipHash != reencoded.Hash {
 		t.Errorf("spoken-safety run did not follow the re-key: %+v, %v", run, err)
-	}
-	if decision, err := s.GetFillerDecision(ctx, "ready-decision"); err != nil || decision.ClipHash != reencoded.Hash {
-		t.Errorf("admission decision did not follow the re-key: %+v, %v", decision, err)
 	}
 }
 
@@ -5209,575 +5190,44 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	}
 }
 
-func testFillerAdmissionDecisionAudit(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	s := newStore(t)
-	ctx := context.Background()
-	at := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)
-	record := func(id string, result filleradmission.Result) fillerdecision.Record {
-		return fillerdecision.Record{
-			ID: id, ClipHash: "clip-" + id, EvidenceHash: "evidence-" + id,
-			EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
-			PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
-			ApplicationMode: fillerdecision.ApplicationModeShadow, Result: result, CreatedAt: at,
-		}
-	}
-	semantic := func(verdict filleradmission.Verdict) filleradmission.Result {
-		decision := &filleradmission.Decision{
-			Verdict: verdict, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
-			EvidenceRefs: []string{"evidence-a"},
-		}
-		if verdict == filleradmission.VerdictReview {
-			decision.ReviewQuestion = "What product is this clip advertising?"
-		}
-		return filleradmission.Result{Decision: decision}
-	}
-
-	for _, row := range []fillerdecision.Record{
-		record("d-admit", semantic(filleradmission.VerdictAdmit)),
-		record("d-reject", semantic(filleradmission.VerdictReject)),
-		record("d-review", semantic(filleradmission.VerdictReview)),
-		record("d-hold", filleradmission.Result{Hold: &filleradmission.Hold{
-			Code: filleradmission.HoldProviderUnavailable, Detail: "provider response is deliberately not projected", Retryable: true,
-		}}),
-	} {
-		if err := s.PutFillerDecision(ctx, row); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got, err := s.GetFillerDecision(ctx, "d-review")
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantJSON, _ := json.Marshal(record("d-review", semantic(filleradmission.VerdictReview)).Result)
-	gotJSON, _ := json.Marshal(got.Result)
-	if string(gotJSON) != string(wantJSON) || got.CreatedAt != at || got.ApplicationMode != fillerdecision.ApplicationModeShadow {
-		t.Fatalf("decision round trip = %+v (%s), want canonical %s", got, gotJSON, wantJSON)
-	}
-	second := openSecondConformanceStore(t, s)
-	fromSecond, err := second.GetFillerDecision(ctx, "d-review")
-	if err != nil || fromSecond.Result.Decision == nil || fromSecond.Result.Decision.ReviewQuestion == "" ||
-		fromSecond.ApplicationMode != fillerdecision.ApplicationModeShadow {
-		_ = second.Close()
-		t.Fatalf("decision did not survive a fresh store pool: %+v, %v", fromSecond, err)
-	}
-	if err := second.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutFillerDecision(ctx, record("d-review", semantic(filleradmission.VerdictReview))); err != nil {
-		t.Fatalf("idempotent insert: %v", err)
-	}
-	unknownMode := record("d-unknown-mode", semantic(filleradmission.VerdictAdmit))
-	unknownMode.ApplicationMode = "automatic"
-	if err := s.PutFillerDecision(ctx, unknownMode); !errors.Is(err, fillerdecision.ErrInvalid) {
-		t.Fatalf("unknown application mode = %v, want ErrInvalid", err)
-	}
-	conflict := record("d-review", semantic(filleradmission.VerdictReject))
-	if err := s.PutFillerDecision(ctx, conflict); !errors.Is(err, fillerdecision.ErrConflict) {
-		t.Fatalf("conflicting immutable insert = %v", err)
-	}
-	missingReference := record("d-missing-inference", semantic(filleradmission.VerdictAdmit))
-	missingReference.Result.Decision.Attribution = []filleradmission.Attribution{{EvaluationID: "eval-missing"}}
-	if err := s.PutFillerDecision(ctx, missingReference); err == nil {
-		t.Fatal("decision with a missing inference evaluation was persisted")
-	}
-	if _, err := s.GetFillerDecision(ctx, missingReference.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("failed decision transaction left a row behind: %v", err)
-	}
-
-	page, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Cursor: fillerdecision.Cursor{}, Limit: 2,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.Total != 3 || len(page.Rows) != 2 || page.Rows[0].ID != "d-review" || page.Rows[1].ID != "d-reject" {
-		t.Fatalf("first keyset page = %+v", page)
-	}
-	next, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind:   fillerdecision.OutcomeSemantic,
-		Cursor: fillerdecision.Cursor{BeforeCreatedAt: page.Rows[1].CreatedAt, BeforeID: page.Rows[1].ID}, Limit: 2,
-	})
-	if err != nil || next.Total != 3 || len(next.Rows) != 1 || next.Rows[0].ID != "d-admit" {
-		t.Fatalf("second keyset page = %+v, %v", next, err)
-	}
-
-	counts, err := s.FillerDecisionCounts(ctx)
-	if err != nil || counts.Admitted != 1 || counts.Rejected != 1 || counts.Reviews != 1 ||
-		counts.Operational != 1 || counts.Retryable != 1 || counts.UnresolvedReviews != 1 {
-		t.Fatalf("decision counts = %+v, %v", counts, err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-on-current-hold", DecisionID: "d-hold", Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", CreatedAt: at.Add(250 * time.Millisecond),
-	}); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
-		t.Fatalf("current operational hold accepted a semantic action: %v", err)
-	}
-	// A recovered clip gets a new immutable decision. Current health and diagnostics follow that
-	// latest outcome, while the earlier hold remains durable history for Activity and audit reads.
-	recovered := record("d-recovered", semantic(filleradmission.VerdictAdmit))
-	recovered.ClipHash = "clip-d-hold"
-	recovered.CreatedAt = at.Add(500 * time.Millisecond)
-	if err := s.PutFillerDecision(ctx, recovered); err != nil {
-		t.Fatal(err)
-	}
-	currentHolds, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeOperational, CurrentOnly: true, Limit: 10,
-	})
-	if err != nil || currentHolds.Total != 0 || len(currentHolds.Rows) != 0 {
-		t.Fatalf("recovered hold remained in current diagnostics = %+v, %v", currentHolds, err)
-	}
-	historicalHolds, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeOperational, Limit: 10,
-	})
-	if err != nil || historicalHolds.Total != 1 || len(historicalHolds.Rows) != 1 {
-		t.Fatalf("recovered hold disappeared from history = %+v, %v", historicalHolds, err)
-	}
-	counts, err = s.FillerDecisionCounts(ctx)
-	if err != nil || counts.Admitted != 2 || counts.Operational != 0 || counts.Retryable != 0 || counts.UnresolvedReviews != 1 {
-		t.Fatalf("recovered current counts = %+v, %v", counts, err)
-	}
-
-	abandon := fillerdecision.Action{
-		ID: "action-abandon", DecisionID: "d-review", Kind: fillerdecision.ActionAbandon,
-		ActorID: "admin-1", Reason: "skip for now", CreatedAt: at.Add(750 * time.Millisecond),
-	}
-	if err := s.CommitFillerDecisionAction(ctx, abandon); err != nil {
-		t.Fatal(err)
-	}
-	stillUnresolved, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		UnresolvedOnly: true, Limit: 10,
-	})
-	if err != nil || stillUnresolved.Total != 1 {
-		t.Fatalf("abandoned review was treated as resolved = %+v, %v", stillUnresolved, err)
-	}
-
-	resolution := fillerdecision.Action{
-		ID: "action-admit", DecisionID: "d-review", Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", Reason: "closing card proves product", CreatedAt: at.Add(time.Second),
-	}
-	if err := s.CommitFillerDecisionAction(ctx, resolution); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, resolution); err != nil {
-		t.Fatalf("idempotent action: %v", err)
-	}
-	changed := resolution
-	changed.Reason = "different payload"
-	if err := s.CommitFillerDecisionAction(ctx, changed); !errors.Is(err, fillerdecision.ErrConflict) {
-		t.Fatalf("conflicting action = %v", err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-reject", DecisionID: "d-review", Kind: fillerdecision.ActionReject,
-		ActorID: "admin-1", SupersedesID: resolution.ID, CreatedAt: at.Add(2 * time.Second),
-	}); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
-		t.Fatalf("invalid transition = %v", err)
-	}
-	reversal := fillerdecision.Action{
-		ID: "action-z-reverse", DecisionID: "d-review", Kind: fillerdecision.ActionReverse,
-		ActorID: "admin-1", Reason: "review answer was later disproven",
-		SupersedesID: resolution.ID, CreatedAt: at.Add(3*time.Second + 100*time.Nanosecond),
-	}
-	if err := s.CommitFillerDecisionAction(ctx, reversal); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-a-restore", DecisionID: "d-review", Kind: fillerdecision.ActionRestore,
-		ActorID: "admin-1", Reason: "new evidence restored the reviewed answer",
-		SupersedesID: reversal.ID, CreatedAt: at.Add(3*time.Second + 200*time.Nanosecond),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.PutFillerDecision(ctx, record("d-correct", semantic(filleradmission.VerdictReview))); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-correct", DecisionID: "d-correct", Kind: fillerdecision.ActionCorrect,
-		ActorID: "admin-1", Answer: "The closing card identifies soda.",
-		CorrectedVerdict: filleradmission.VerdictAdmit, CreatedAt: at.Add(5 * time.Second),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDecisionAction(ctx, fillerdecision.Action{
-		ID: "action-on-hold", DecisionID: "d-hold", Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", CreatedAt: at.Add(6 * time.Second),
-	}); !errors.Is(err, fillerdecision.ErrActionStale) {
-		t.Fatalf("superseded operational hold accepted a stale semantic action: %v", err)
-	}
-
-	reviews, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		UnresolvedOnly: true, Limit: 10,
-	})
-	if err != nil || reviews.Total != 0 || len(reviews.Rows) != 0 {
-		t.Fatalf("resolved review remained actionable = %+v, %v", reviews, err)
-	}
-	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: "d-review", Limit: 10})
-	if err != nil || actions.Total != 4 || len(actions.Rows) != 4 || actions.Rows[0].ID != "action-a-restore" {
-		t.Fatalf("action history = %+v, %v", actions, err)
-	}
-	activity, err := s.ListFillerDecisionActivity(ctx, fillerdecision.Cursor{}, 10)
-	if err != nil || activity.Total != 10 || len(activity.Rows) != 10 || activity.Rows[0].Kind != fillerdecision.ActivityCorrection {
-		t.Fatalf("activity projection = %+v, %v", activity, err)
-	}
-	kinds := make(map[fillerdecision.ActivityKind]int)
-	for _, item := range activity.Rows {
-		if item.ApplicationMode != fillerdecision.ApplicationModeShadow {
-			t.Fatalf("activity %q application mode = %q, want shadow", item.ID, item.ApplicationMode)
-		}
-		kinds[item.Kind]++
-	}
-	for kind, want := range map[fillerdecision.ActivityKind]int{
-		fillerdecision.ActivityAutomaticAdmit: 2, fillerdecision.ActivityAutomaticReject: 1,
-		fillerdecision.ActivityReviewRequested: 2, fillerdecision.ActivityActionAdmit: 1,
-		fillerdecision.ActivityCorrection: 1, fillerdecision.ActivityRestore: 1,
-		fillerdecision.ActivityReversal: 1, fillerdecision.ActivityReviewAbandoned: 1,
-	} {
-		if kinds[kind] != want {
-			t.Fatalf("activity kind %q = %d, want %d: %+v", kind, kinds[kind], want, activity.Rows)
-		}
-	}
-	counts, err = s.FillerDecisionCounts(ctx)
-	if err != nil || counts.UnresolvedReviews != 0 {
-		t.Fatalf("resolved counts = %+v, %v", counts, err)
-	}
-}
-
-func testFillerDiagnosticRecoveryActions(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	s := newStore(t)
-	ctx := context.Background()
-	at := time.Date(2026, 9, 12, 16, 0, 0, 0, time.UTC)
-	record := fillerdecision.Record{
-		ID: "diagnostic-retry", ClipHash: "clip-diagnostic", EvidenceHash: "evidence-diagnostic",
-		EvidenceVersion: "e1", SchemaVersion: filleradmission.SchemaVersion,
-		PolicyVersion: "policy-1", TaxonomyVersion: "taxonomy-1",
-		ApplicationMode: fillerdecision.ApplicationModeShadow, CreatedAt: at,
-		Result: filleradmission.Result{Hold: &filleradmission.Hold{
-			Code: filleradmission.HoldExtractionFailed, Retryable: true,
-		}},
-	}
-	if err := s.PutFillerDecision(ctx, record); err != nil {
-		t.Fatal(err)
-	}
-	request := fillerdecision.DiagnosticRecoveryRequest{
-		ID: "diagnostic-action-1", DecisionID: record.ID, ActorID: "admin-1",
-		Action: fillerdecision.DiagnosticRecoveryRetry, CreatedAt: at.Add(time.Second),
-	}
-	if err := s.CommitFillerDiagnosticRecovery(ctx, request); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.CommitFillerDiagnosticRecovery(ctx, request); err != nil {
-		t.Fatalf("idempotent diagnostic recovery = %v", err)
-	}
-	got, found, err := s.FindFillerDiagnosticRecovery(ctx, request.ID)
-	if err != nil || !found || !fillerdecision.SameDiagnosticRecovery(got, request) || got.CreatedAt != request.CreatedAt {
-		t.Fatalf("diagnostic recovery round trip = %+v, %v, %v", got, found, err)
-	}
-	changed := request
-	changed.DecisionID = "other-decision"
-	if err := s.CommitFillerDiagnosticRecovery(ctx, changed); !errors.Is(err, fillerdecision.ErrConflict) {
-		t.Fatalf("conflicting diagnostic action = %v", err)
-	}
-
-	nonRetryable := record
-	nonRetryable.ID, nonRetryable.ClipHash = "diagnostic-inspect", "clip-inspect"
-	nonRetryable.Result.Hold = &filleradmission.Hold{Code: filleradmission.HoldExtractionFailed, Retryable: false}
-	if err := s.PutFillerDecision(ctx, nonRetryable); err != nil {
-		t.Fatal(err)
-	}
-	denied := request
-	denied.ID, denied.DecisionID = "diagnostic-action-denied", nonRetryable.ID
-	if err := s.CommitFillerDiagnosticRecovery(ctx, denied); !errors.Is(err, fillerdecision.ErrActionNotAllowed) {
-		t.Fatalf("non-retryable diagnostic action = %v", err)
-	}
-
-	recovered := record
-	recovered.ID = "diagnostic-recovered"
-	recovered.Result = filleradmission.Result{Decision: &filleradmission.Decision{
-		Verdict: filleradmission.VerdictAdmit, ReasonCodes: []filleradmission.ReasonCode{filleradmission.ReasonEvidenceSatisfied},
-	}}
-	recovered.CreatedAt = at.Add(2 * time.Second)
-	if err := s.PutFillerDecision(ctx, recovered); err != nil {
-		t.Fatal(err)
-	}
-	stale := request
-	stale.ID = "diagnostic-action-stale"
-	if err := s.CommitFillerDiagnosticRecovery(ctx, stale); !errors.Is(err, fillerdecision.ErrActionStale) {
-		t.Fatalf("stale diagnostic action = %v", err)
-	}
-}
-
-func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) {
+// The ordinary scan upsert cannot release a hold, even when its caller supplies held=false. An
+// unknown role is not rejected at this boundary; terminal readiness owns its Placement. A released
+// composite of an unknown role stays out of playback.
+func testFillerHeldClipUpsertAndCompositeRelease(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC)
-	newDecision := func(id, hash string) fillerdecision.Record {
-		return fillerdecision.Record{
-			ID: id, ClipHash: hash, EvidenceHash: "admission-evidence-" + id,
-			EvidenceVersion: "applied-v1", SchemaVersion: filleradmission.SchemaVersion,
-			PolicyVersion: "policy-v1", TaxonomyVersion: "taxonomy-v1",
-			ApplicationMode:         fillerdecision.ApplicationModeApplied,
-			ScreeningEvidenceSHA256: strings.Repeat("b", 64),
-			ReleaseAuthoritySHA256:  strings.Repeat("c", 64),
-			Result: filleradmission.Result{Decision: &filleradmission.Decision{
-				Verdict:        filleradmission.VerdictReview,
-				ReasonCodes:    []filleradmission.ReasonCode{filleradmission.ReasonMissingCommercialIdentity},
-				ReviewQuestion: "What product is this clip advertising?",
-			}},
-			CreatedAt: at,
-		}
-	}
-	seedKind := func(hash, path string, kind filler.Kind, withPipeline bool) {
-		t.Helper()
-		if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
-			Hash: hash, Path: path, Name: "Applied candidate", Kind: kind,
-			DurationMs: 30_000, Held: true,
-		}, UpdatedAt: at}); err != nil {
-			t.Fatal(err)
-		}
-		if withPipeline {
-			if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-				ClipHash: hash, Stage: filler.StageID("admission"), Status: filler.StatusDone,
-				Disposition: filler.DispositionReview, UpdatedAt: at,
-			}); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	seed := func(hash, path string, withPipeline bool) {
-		t.Helper()
-		seedKind(hash, path, filler.Commercial, withPipeline)
-	}
-
-	hash := strings.Repeat("a", 64)
-	seed(hash, "aa/aa/"+hash+".mp4", true)
-	decision := newDecision("applied-review", hash)
-	if err := s.PutFillerDecision(ctx, decision); err != nil {
-		t.Fatal(err)
-	}
-	action := fillerdecision.Action{
-		ID: "applied-admit", DecisionID: decision.ID, Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", CreatedAt: at.Add(time.Minute),
-	}
-	if err := s.CommitFillerDecisionAction(ctx, action); !errors.Is(err, fillerdecision.ErrActionMode) {
-		t.Fatalf("ordinary writer accepted applied decision: %v", err)
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, action); err != nil {
+	hash := strings.Repeat("8", 64)
+	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+		Hash: hash, Path: "88/88/" + hash + ".mp4", Name: "Held candidate", Kind: filler.Unclassified,
+		DurationMs: 30_000, Held: true,
+	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
 	clip, err := s.GetClip(ctx, hash)
-	if err != nil || clip.Held {
-		t.Fatalf("applied admit clip = %+v, err = %v", clip, err)
-	}
-	pipeline, found, err := s.GetClipPipeline(ctx, hash)
-	if err != nil || !found || pipeline.Disposition != filler.DispositionReady || pipeline.Status != filler.StatusDone {
-		t.Fatalf("applied admit pipeline = %+v, found = %v, err = %v", pipeline, found, err)
-	}
-	// The clip and pipeline rows keep their tables' Unix-seconds codec; only the decision ledger's own
-	// rows are nanoseconds. A nanosecond value there reads back millions of years in the future.
-	if !clip.UpdatedAt.Equal(action.CreatedAt.Truncate(time.Second)) || !pipeline.UpdatedAt.Equal(action.CreatedAt.Truncate(time.Second)) {
-		t.Fatalf("applied admit stamped clip %v, pipeline %v; want the action's time %v", clip.UpdatedAt, pipeline.UpdatedAt, action.CreatedAt)
-	}
-	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: decision.ID, Limit: 10})
-	if err != nil || actions.Total != 1 || actions.Rows[0].ID != action.ID {
-		t.Fatalf("applied admit actions = %+v, err = %v", actions, err)
-	}
-	reverse := fillerdecision.Action{
-		ID: "applied-reverse", DecisionID: decision.ID, Kind: fillerdecision.ActionReverse,
-		ActorID: "admin-1", Reason: "current evidence was withdrawn", SupersedesID: action.ID,
-		CreatedAt: at.Add(2 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, reverse); err != nil {
-		t.Fatal(err)
-	}
-	clip, _ = s.GetClip(ctx, hash)
-	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
-	if !clip.Held || pipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("applied reversal left clip=%+v pipeline=%+v", clip, pipeline)
-	}
-	restore := fillerdecision.Action{
-		ID: "applied-restore", DecisionID: decision.ID, Kind: fillerdecision.ActionRestore,
-		ActorID: "admin-1", Reason: "fresh terminal release replay passed", SupersedesID: reverse.ID,
-		CreatedAt: at.Add(3 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, restore); err != nil {
-		t.Fatal(err)
-	}
-	clip, _ = s.GetClip(ctx, hash)
-	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
-	if !clip.Held || pipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("applied restore left clip=%+v pipeline=%+v", clip, pipeline)
-	}
-	reviews, err := s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		UnresolvedOnly: true, Limit: 10,
-	})
-	if err != nil || reviews.Total != 1 || len(reviews.Rows) != 1 ||
-		!decisionPageContains(reviews, decision.ID) {
-		t.Fatalf("applied restored review queue = %+v, err = %v", reviews, err)
-	}
-	counts, err := s.FillerDecisionCounts(ctx)
-	if err != nil || counts.UnresolvedReviews != reviews.Total {
-		t.Fatalf("applied restored review counts = %+v, rows = %+v, err = %v", counts, reviews, err)
-	}
-	readmit := fillerdecision.Action{
-		ID: "applied-readmit", DecisionID: decision.ID, Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", SupersedesID: restore.ID, CreatedAt: at.Add(3*time.Minute + time.Second),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, readmit); err != nil {
-		t.Fatalf("applied restored review did not accept a new decision: %v", err)
-	}
-	clip, _ = s.GetClip(ctx, hash)
-	pipeline, _, _ = s.GetClipPipeline(ctx, hash)
-	if clip.Held || pipeline.Disposition != filler.DispositionReady {
-		t.Fatalf("applied readmit left clip=%+v pipeline=%+v", clip, pipeline)
-	}
-
-	rejectedHash := strings.Repeat("e", 64)
-	seed(rejectedHash, "ee/ee/"+rejectedHash+".mp4", true)
-	rejectedDecision := newDecision("applied-reject-review", rejectedHash)
-	if err := s.PutFillerDecision(ctx, rejectedDecision); err != nil {
-		t.Fatal(err)
-	}
-	reject := fillerdecision.Action{
-		ID: "applied-reject", DecisionID: rejectedDecision.ID, Kind: fillerdecision.ActionReject,
-		ActorID: "admin-1", CreatedAt: at.Add(4 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, reject); err != nil {
-		t.Fatal(err)
-	}
-	playable, err := s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
-	if err != nil || len(playable) != 0 {
-		t.Fatalf("applied reject remained playable = %+v, err = %v", playable, err)
-	}
-	pipeline, _, _ = s.GetClipPipeline(ctx, rejectedHash)
-	if pipeline.Disposition != filler.DispositionDismissed {
-		t.Fatalf("applied reject pipeline = %+v", pipeline)
-	}
-	if removed, err := s.GetClip(ctx, rejectedHash); err != nil || !removed.RemovedAt.Equal(reject.CreatedAt.Truncate(time.Second)) {
-		t.Fatalf("applied reject removed the clip at %v, want %v (err %v)", removed.RemovedAt, reject.CreatedAt, err)
-	}
-	restoreRejected := fillerdecision.Action{
-		ID: "applied-restore-rejected", DecisionID: rejectedDecision.ID, Kind: fillerdecision.ActionRestore,
-		ActorID: "admin-1", Reason: "new terminal release replay passed", SupersedesID: reject.ID,
-		CreatedAt: at.Add(5 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, restoreRejected); err != nil {
-		t.Fatal(err)
-	}
-	playable, err = s.ListClips(ctx, ClipFilter{Hashes: []string{rejectedHash}})
-	if err != nil || len(playable) != 0 {
-		t.Fatalf("restored reject remained playable = %+v, err = %v", playable, err)
-	}
-	restoredReject, err := s.GetClip(ctx, rejectedHash)
-	if err != nil || !restoredReject.Held || !restoredReject.RemovedAt.IsZero() {
-		t.Fatalf("restored reject is not held = %+v, err = %v", restoredReject, err)
-	}
-	pipeline, _, err = s.GetClipPipeline(ctx, rejectedHash)
-	if err != nil || pipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("restored reject pipeline = %+v, err = %v", pipeline, err)
-	}
-	reviews, err = s.ListFillerDecisions(ctx, fillerdecision.DecisionFilter{
-		Kind: fillerdecision.OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		UnresolvedOnly: true, Limit: 10,
-	})
-	if err != nil || reviews.Total != 1 || len(reviews.Rows) != 1 ||
-		!decisionPageContains(reviews, rejectedDecision.ID) {
-		t.Fatalf("restored reject review queue = %+v, err = %v", reviews, err)
-	}
-	counts, err = s.FillerDecisionCounts(ctx)
-	if err != nil || counts.UnresolvedReviews != reviews.Total {
-		t.Fatalf("restored reject review counts = %+v, rows = %+v, err = %v", counts, reviews, err)
-	}
-
-	rollbackHash := strings.Repeat("d", 64)
-	seed(rollbackHash, "dd/dd/"+rollbackHash+".mp4", false)
-	rollbackDecision := newDecision("applied-without-pipeline", rollbackHash)
-	if err := s.PutFillerDecision(ctx, rollbackDecision); err != nil {
-		t.Fatal(err)
-	}
-	rollbackAction := fillerdecision.Action{
-		ID: "applied-rollback", DecisionID: rollbackDecision.ID, Kind: fillerdecision.ActionAdmit,
-		ActorID: "admin-1", CreatedAt: at.Add(6 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, rollbackAction); !errors.Is(err, fillerdecision.ErrActionStale) {
-		t.Fatalf("missing pipeline effect = %v, want stale rollback", err)
-	}
-	clip, err = s.GetClip(ctx, rollbackHash)
-	if err != nil || !clip.Held {
-		t.Fatalf("rolled-back clip = %+v, err = %v", clip, err)
-	}
-	actions, err = s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: rollbackDecision.ID, Limit: 10})
-	if err != nil || actions.Total != 0 {
-		t.Fatalf("rolled-back action persisted = %+v, err = %v", actions, err)
-	}
-
-	// The ordinary scan upsert cannot release a hold, even when its caller supplies held=false. An
-	// unknown role is no longer rejected at this boundary; terminal readiness owns its Placement.
-	unclassifiedHash := strings.Repeat("8", 64)
-	seedKind(unclassifiedHash, "88/88/"+unclassifiedHash+".mp4", filler.Unclassified, true)
-	unclassifiedClip, err := s.GetClip(ctx, unclassifiedHash)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unheld := unclassifiedClip
+	unheld := clip
 	unheld.Held = false
 	if err := s.UpsertClip(ctx, unheld); err != nil {
 		t.Fatalf("ordinary upsert rejected descriptive unclassified state: %v", err)
 	}
-	unclassifiedClip, err = s.GetClip(ctx, unclassifiedHash)
-	if err != nil || !unclassifiedClip.Held {
-		t.Fatalf("ordinary upsert released hold = %+v, err = %v", unclassifiedClip, err)
+	clip, err = s.GetClip(ctx, hash)
+	if err != nil || !clip.Held {
+		t.Fatalf("ordinary upsert released hold = %+v, err = %v", clip, err)
 	}
-	if err := s.SetClipComposite(ctx, unclassifiedHash, true, at.Add(6*time.Minute+time.Second)); err != nil {
+	if err := s.SetClipComposite(ctx, hash, true, at.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ReleaseCompositeHolds(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err != nil {
+	if _, err := s.ReleaseCompositeHolds(ctx, []string{clip.Path}, at.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	playableUnknown, err := s.ListClips(ctx, ClipFilter{Hashes: []string{unclassifiedHash}, IncludeComposites: true})
-	if err != nil || len(playableUnknown) != 0 {
-		t.Fatalf("released composite became playable despite not_playable placement: %+v, err=%v", playableUnknown, err)
+	playable, err := s.ListClips(ctx, ClipFilter{Hashes: []string{hash}, IncludeComposites: true})
+	if err != nil || len(playable) != 0 {
+		t.Fatalf("released composite became playable despite not_playable placement: %+v, err=%v", playable, err)
 	}
-	if _, err := s.HoldClips(ctx, []string{unclassifiedClip.Path}, at.Add(6*time.Minute+time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	unclassifiedDecision := newDecision("applied-unclassified", unclassifiedHash)
-	if err := s.PutFillerDecision(ctx, unclassifiedDecision); err != nil {
-		t.Fatal(err)
-	}
-	unclassifiedAction := fillerdecision.Action{
-		ID: "applied-unclassified-admit", DecisionID: unclassifiedDecision.ID,
-		Kind: fillerdecision.ActionAdmit, ActorID: "admin-1", CreatedAt: at.Add(7 * time.Minute),
-	}
-	if err := s.CommitAppliedFillerDecisionAction(ctx, unclassifiedAction); !errors.Is(err, fillerdecision.ErrActionStale) {
-		t.Fatalf("unclassified applied admission = %v, want stale", err)
-	}
-	unclassifiedClip, err = s.GetClip(ctx, unclassifiedHash)
-	if err != nil || !unclassifiedClip.Held || unclassifiedClip.Kind != filler.Unclassified {
-		t.Fatalf("unclassified admission changed clip = %+v, err = %v", unclassifiedClip, err)
-	}
-	unclassifiedPipeline, found, err := s.GetClipPipeline(ctx, unclassifiedHash)
-	if err != nil || !found || unclassifiedPipeline.Disposition != filler.DispositionReview {
-		t.Fatalf("unclassified admission changed pipeline = %+v, found = %t, err = %v", unclassifiedPipeline, found, err)
-	}
-	unclassifiedActions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: unclassifiedDecision.ID, Limit: 10})
-	if err != nil || unclassifiedActions.Total != 0 {
-		t.Fatalf("unclassified admission persisted action = %+v, err = %v", unclassifiedActions, err)
-	}
-}
-
-func decisionPageContains(page fillerdecision.DecisionPage, id string) bool {
-	for _, record := range page.Rows {
-		if record.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
@@ -6001,7 +5451,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	at := time.Date(2026, 9, 2, 14, 0, 0, 123, time.UTC)
 	hash := strings.Repeat("a", 64)
-	run := fillersafety.LedgerRun{
+	run := fillerscreening.SpokenSafetyLedgerRun{
 		ID: "safety-run-1", ClipHash: "clip-safety-1", AuthoritySHA256: hash, SourceSHA256: hash,
 		SourceBytes: 4096, DurationMS: 10_000, CertificationSHA256: hash, PolicySHA256: hash, ProposerSHA256: hash,
 		Implementation: "spoken-safety-v1", CreatedAt: at,
@@ -6011,7 +5461,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	invalidRun := run
 	invalidRun.ID = "source.mp4"
-	if err := s.PutSpokenSafetyRun(ctx, invalidRun); !errors.Is(err, fillersafety.ErrLedgerInvalid) {
+	if err := s.PutSpokenSafetyRun(ctx, invalidRun); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerInvalid) {
 		t.Fatalf("source-shaped run ID = %v, want ErrLedgerInvalid", err)
 	}
 	if _, err := s.GetSpokenSafetyRun(ctx, invalidRun.ID); !errors.Is(err, ErrNotFound) {
@@ -6022,7 +5472,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	conflict := run
 	conflict.SourceBytes++
-	if err := s.PutSpokenSafetyRun(ctx, conflict); !errors.Is(err, fillersafety.ErrLedgerConflict) {
+	if err := s.PutSpokenSafetyRun(ctx, conflict); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerConflict) {
 		t.Fatalf("conflicting run = %v, want ErrLedgerConflict", err)
 	}
 	gotRun, err := s.GetSpokenSafetyRun(ctx, run.ID)
@@ -6035,32 +5485,32 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("run did not survive fresh store pool: %+v, %v, close=%v", fromSecond, err, closeErr)
 	}
 
-	plan := fillersafety.LedgerEvent{
-		ID: "safety-event-plan", RunID: run.ID, Ordinal: 0, Kind: fillersafety.LedgerSourcePlanned,
-		Source: &fillersafety.SourcePlanned{
-			Audio: fillersafety.Span{EndMS: 10_000}, Video: fillersafety.Span{EndMS: 10_000},
+	plan := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "safety-event-plan", RunID: run.ID, Ordinal: 0, Kind: fillerscreening.LedgerSourcePlanned,
+		Source: &fillerscreening.SpokenSafetySourcePlanned{
+			Audio: fillerscreening.SpokenSafetySpan{EndMS: 10_000}, Video: fillerscreening.SpokenSafetySpan{EndMS: 10_000},
 		}, CreatedAt: at.Add(time.Nanosecond),
 	}
 	invalidEvent := plan
 	invalidEvent.ID = "source.mp4"
-	if err := s.AppendSpokenSafetyEvent(ctx, invalidEvent); !errors.Is(err, fillersafety.ErrLedgerInvalid) {
+	if err := s.AppendSpokenSafetyEvent(ctx, invalidEvent); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerInvalid) {
 		t.Fatalf("source-shaped event ID = %v, want ErrLedgerInvalid", err)
 	}
 	if events, err := s.ListSpokenSafetyEvents(ctx, run.ID); err != nil || len(events) != 0 {
 		t.Fatalf("invalid event persisted: %+v, %v", events, err)
 	}
-	proposal := fillersafety.LedgerEvent{
-		ID: "safety-event-proposal", RunID: run.ID, Ordinal: 1, Kind: fillersafety.LedgerProposalCompleted,
-		Proposal:  &fillersafety.ProposalCompleted{State: fillersafety.ProposalComplete, ProposerSHA256: hash, Candidates: []fillersafety.Candidate{}},
+	proposal := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "safety-event-proposal", RunID: run.ID, Ordinal: 1, Kind: fillerscreening.LedgerProposalCompleted,
+		Proposal:  &fillerscreening.SpokenSafetyProposalCompleted{State: fillerscreening.ProposalComplete, ProposerSHA256: hash, Candidates: []fillerscreening.SpokenSafetyCandidate{}},
 		CreatedAt: at.Add(2 * time.Nanosecond),
 	}
-	evidence := fillersafety.Evidence{ProposalState: fillersafety.ProposalComplete, Candidates: []fillersafety.Candidate{}, Audio: []fillersafety.AudioAssessment{}, Video: fillersafety.VideoNoSignal}
-	terminal := fillersafety.LedgerEvent{
-		ID: "safety-event-terminal", RunID: run.ID, Ordinal: 2, Kind: fillersafety.LedgerTerminal,
-		Terminal:  &fillersafety.TerminalResult{Evidence: evidence, Result: fillersafety.Reduce(evidence), EventIDs: []string{plan.ID, proposal.ID}},
+	evidence := fillerscreening.SpokenSafetyEvidence{ProposalState: fillerscreening.ProposalComplete, Candidates: []fillerscreening.SpokenSafetyCandidate{}, Audio: []fillerscreening.SpokenSafetyAudioAssessment{}, Video: fillerscreening.VideoNoSignal}
+	terminal := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "safety-event-terminal", RunID: run.ID, Ordinal: 2, Kind: fillerscreening.LedgerTerminal,
+		Terminal:  &fillerscreening.SpokenSafetyTerminalResult{Evidence: evidence, Result: fillerscreening.ReduceSpokenSafety(evidence), EventIDs: []string{plan.ID, proposal.ID}},
 		CreatedAt: at.Add(3 * time.Nanosecond),
 	}
-	for _, event := range []fillersafety.LedgerEvent{plan, proposal, terminal} {
+	for _, event := range []fillerscreening.SpokenSafetyLedgerEvent{plan, proposal, terminal} {
 		if err := s.AppendSpokenSafetyEvent(ctx, event); err != nil {
 			t.Fatalf("append %s: %v", event.Kind, err)
 		}
@@ -6077,18 +5527,18 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("event %d ordinal = %d", index, event.Ordinal)
 		}
 	}
-	if events[2].Terminal == nil || events[2].Terminal.Result.Outcome != fillersafety.OutcomeCandidateRejected {
+	if events[2].Terminal == nil || events[2].Terminal.Result.Outcome != fillerscreening.SpokenSafetyOutcomeCandidateRejected {
 		t.Fatalf("terminal event = %+v", events[2])
 	}
 
 	afterTerminal := proposal
 	afterTerminal.ID, afterTerminal.Ordinal = "safety-event-after-terminal", 3
-	if err := s.AppendSpokenSafetyEvent(ctx, afterTerminal); !errors.Is(err, fillersafety.ErrLedgerConflict) {
+	if err := s.AppendSpokenSafetyEvent(ctx, afterTerminal); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerConflict) {
 		t.Fatalf("append after terminal = %v, want ErrLedgerConflict", err)
 	}
 	wrongOrdinal := terminal
 	wrongOrdinal.ID, wrongOrdinal.Ordinal = "safety-event-gap", 8
-	if err := s.AppendSpokenSafetyEvent(ctx, wrongOrdinal); !errors.Is(err, fillersafety.ErrLedgerConflict) {
+	if err := s.AppendSpokenSafetyEvent(ctx, wrongOrdinal); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerConflict) {
 		t.Fatalf("ordinal gap = %v, want ErrLedgerConflict", err)
 	}
 	if _, err := s.GetSpokenSafetyRun(ctx, "missing-run"); !errors.Is(err, ErrNotFound) {
@@ -6100,13 +5550,13 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	if err := s.PutSpokenSafetyRun(ctx, callRun); err != nil {
 		t.Fatal(err)
 	}
-	candidate := fillersafety.Candidate{ID: "candidate-call", StartMS: 100, EndMS: 500}
+	candidate := fillerscreening.SpokenSafetyCandidate{ID: "candidate-call", StartMS: 100, EndMS: 500}
 	callPlan := plan
 	callPlan.ID, callPlan.RunID, callPlan.CreatedAt = "call-plan", callRun.ID, callRun.CreatedAt.Add(time.Nanosecond)
 	callProposal := proposal
 	callProposal.ID, callProposal.RunID, callProposal.CreatedAt = "call-proposal", callRun.ID, callRun.CreatedAt.Add(2*time.Nanosecond)
-	callProposal.Proposal = &fillersafety.ProposalCompleted{State: fillersafety.ProposalComplete, ProposerSHA256: hash, Candidates: []fillersafety.Candidate{candidate}}
-	for _, event := range []fillersafety.LedgerEvent{callPlan, callProposal} {
+	callProposal.Proposal = &fillerscreening.SpokenSafetyProposalCompleted{State: fillerscreening.ProposalComplete, ProposerSHA256: hash, Candidates: []fillerscreening.SpokenSafetyCandidate{candidate}}
+	for _, event := range []fillerscreening.SpokenSafetyLedgerEvent{callPlan, callProposal} {
 		if err := s.AppendSpokenSafetyEvent(ctx, event); err != nil {
 			t.Fatal(err)
 		}
@@ -6127,25 +5577,25 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		EventID: "call-reserve", RunID: callRun.ID, CandidateID: candidate.ID,
 		RequestSHA256: hash, Ordinal: 2, CreatedAt: reserveAt,
 	}
-	forgedReserve := fillersafety.LedgerEvent{
-		ID: "call-forged-reserve", RunID: callRun.ID, Ordinal: 3, Kind: fillersafety.LedgerInferenceReserved,
-		Reserve: &fillersafety.InferenceReserved{
+	forgedReserve := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "call-forged-reserve", RunID: callRun.ID, Ordinal: 3, Kind: fillerscreening.LedgerInferenceReserved,
+		Reserve: &fillerscreening.SpokenSafetyInferenceReserved{
 			EvaluationID: evaluation.ID, RequestSHA256: reserveCommand.RequestSHA256,
 			RequestedProvider: evaluation.RequestedProvider, RequestedModel: evaluation.RequestedModel,
 			UpstreamProvider: evaluation.UpstreamProvider, CapabilitySHA256: evaluation.Versions.CapabilitySnapshot,
 			PromptSHA256: evaluation.Versions.Prompt, CandidateID: candidate.ID,
 			Modalities: evaluation.Modalities, RequestedNanoUSD: evaluation.ReservedNanoUSD,
-			ReservedNanoUSD: evaluation.ReservedNanoUSD, State: fillersafety.ReservationAccepted,
+			ReservedNanoUSD: evaluation.ReservedNanoUSD, State: fillerscreening.ReservationAccepted,
 		},
 		CreatedAt: reserveAt.Add(time.Nanosecond),
 	}
-	if _, err := fillersafety.CanonicalLedgerEvent(forgedReserve); err != nil {
+	if _, err := fillerscreening.CanonicalSpokenSafetyLedgerEvent(forgedReserve); err != nil {
 		t.Fatalf("forged reservation must be canonical-valid: %v", err)
 	}
 	reserved, reserveEvent, err := s.ReserveSpokenSafetyInference(ctx, reserveCommand, evaluation,
 		InferenceBudget{PerClipNanoUSD: 1000, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000})
 	if err != nil || reserved.State != InferenceReserved || reserveEvent.Reserve == nil ||
-		reserveEvent.Reserve.State != fillersafety.ReservationAccepted {
+		reserveEvent.Reserve.State != fillerscreening.ReservationAccepted {
 		t.Fatalf("atomic reservation = %+v, %+v, %v", reserved, reserveEvent, err)
 	}
 	if reserveEvent.Reserve.RequestedProvider != evaluation.RequestedProvider ||
@@ -6157,7 +5607,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		InferenceBudget{PerClipNanoUSD: 1000, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000}); err != nil || again.ID != reserved.ID || event.ID != reserveEvent.ID {
 		t.Fatalf("idempotent atomic reservation = %+v, %+v, %v", again, event, err)
 	}
-	if err := s.AppendSpokenSafetyEvent(ctx, forgedReserve); !errors.Is(err, fillersafety.ErrLedgerInvalid) {
+	if err := s.AppendSpokenSafetyEvent(ctx, forgedReserve); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerInvalid) {
 		t.Fatalf("generic reservation = %v, want ErrLedgerInvalid", err)
 	}
 	if events, err := s.ListSpokenSafetyEvents(ctx, callRun.ID); err != nil || len(events) != 3 {
@@ -6173,29 +5623,29 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		ResolvedProvider: "OpenRouter Route", ResolvedModel: "openai/gpt-5-mini.2026-08-07", UpstreamProvider: "OpenAI Provider",
 		Tokens: InferenceTokens{Prompt: 20, Completion: 4, Audio: 10}, ChargedAmount: "0.00000005",
 		ChargedCurrency: "USD", ChargedNanoUSD: 50, Attempts: 1, GenerationID: "generation-1",
-		Outcome: string(fillersafety.AudioAbsent), State: InferenceCompleted, UpdatedAt: settleAt,
+		Outcome: string(fillerscreening.AudioAbsent), State: InferenceCompleted, UpdatedAt: settleAt,
 	}
 	settleCommand := SpokenSafetyInferenceSettlement{
 		EventID: "call-settle", RunID: callRun.ID, ReservationEventID: reserveEvent.ID,
 		ResponseSHA256: strings.Repeat("b", 64), ChargeKnown: true, Ordinal: 3, CreatedAt: settleAt,
 	}
-	forgedSettlement := fillersafety.LedgerEvent{
-		ID: "call-forged-settle", RunID: callRun.ID, Ordinal: 3, Kind: fillersafety.LedgerInferenceSettled,
-		Settle: &fillersafety.InferenceSettled{
+	forgedSettlement := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "call-forged-settle", RunID: callRun.ID, Ordinal: 3, Kind: fillerscreening.LedgerInferenceSettled,
+		Settle: &fillerscreening.SpokenSafetyInferenceSettled{
 			ReservationEventID: reserveEvent.ID, EvaluationID: evaluation.ID,
 			ResponseSHA256: settleCommand.ResponseSHA256, ResolvedProvider: settlement.ResolvedProvider,
 			ResolvedModel: settlement.ResolvedModel, UpstreamProvider: settlement.UpstreamProvider,
-			GenerationID: settlement.GenerationID, State: fillersafety.SettlementCompleted,
-			Outcome: string(fillersafety.AudioAbsent), ChargedAmountUSD: "0.0000001",
+			GenerationID: settlement.GenerationID, State: fillerscreening.SettlementCompleted,
+			Outcome: string(fillerscreening.AudioAbsent), ChargedAmountUSD: "0.0000001",
 			ChargedNanoUSD: evaluation.ReservedNanoUSD, AccountedNanoUSD: evaluation.ReservedNanoUSD,
 			ChargeKnown: true, PromptTokens: settlement.Tokens.Prompt, CompletionTokens: settlement.Tokens.Completion,
 		},
 		CreatedAt: settleAt,
 	}
-	if _, err := fillersafety.CanonicalLedgerEvent(forgedSettlement); err != nil {
+	if _, err := fillerscreening.CanonicalSpokenSafetyLedgerEvent(forgedSettlement); err != nil {
 		t.Fatalf("forged settlement must be canonical-valid: %v", err)
 	}
-	if err := s.AppendSpokenSafetyEvent(ctx, forgedSettlement); !errors.Is(err, fillersafety.ErrLedgerInvalid) {
+	if err := s.AppendSpokenSafetyEvent(ctx, forgedSettlement); !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerInvalid) {
 		t.Fatalf("generic settlement = %v, want ErrLedgerInvalid", err)
 	}
 	if events, err := s.ListSpokenSafetyEvents(ctx, callRun.ID); err != nil || len(events) != 3 {
@@ -6206,7 +5656,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	settled, settleEvent, err := s.SettleSpokenSafetyInference(ctx, settleCommand, settlement)
 	if err != nil || settled.State != InferenceCompleted || settleEvent.Settle == nil ||
-		settleEvent.Settle.State != fillersafety.SettlementCompleted {
+		settleEvent.Settle.State != fillerscreening.SettlementCompleted {
 		t.Fatalf("atomic settlement = %+v, %+v, %v", settled, settleEvent, err)
 	}
 	if settleEvent.Settle.ResolvedProvider != settlement.ResolvedProvider ||
@@ -6215,14 +5665,14 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("atomic settlement response identities = %+v", settleEvent.Settle)
 	}
 
-	callEvidence := fillersafety.Evidence{
-		ProposalState: fillersafety.ProposalComplete, Candidates: []fillersafety.Candidate{candidate},
-		Audio: []fillersafety.AudioAssessment{{CandidateID: candidate.ID, State: fillersafety.AudioAbsent}},
-		Video: fillersafety.VideoNoSignal,
+	callEvidence := fillerscreening.SpokenSafetyEvidence{
+		ProposalState: fillerscreening.ProposalComplete, Candidates: []fillerscreening.SpokenSafetyCandidate{candidate},
+		Audio: []fillerscreening.SpokenSafetyAudioAssessment{{CandidateID: candidate.ID, State: fillerscreening.AudioAbsent}},
+		Video: fillerscreening.VideoNoSignal,
 	}
-	callTerminal := fillersafety.LedgerEvent{
-		ID: "call-terminal", RunID: callRun.ID, Ordinal: 4, Kind: fillersafety.LedgerTerminal,
-		Terminal: &fillersafety.TerminalResult{Evidence: callEvidence, Result: fillersafety.Reduce(callEvidence),
+	callTerminal := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "call-terminal", RunID: callRun.ID, Ordinal: 4, Kind: fillerscreening.LedgerTerminal,
+		Terminal: &fillerscreening.SpokenSafetyTerminalResult{Evidence: callEvidence, Result: fillerscreening.ReduceSpokenSafety(callEvidence),
 			EventIDs: []string{callPlan.ID, callProposal.ID, reserveEvent.ID, settleEvent.ID}},
 		CreatedAt: callRun.CreatedAt.Add(5 * time.Nanosecond),
 	}
@@ -6242,7 +5692,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		EventID: "rollback-event", RunID: rollbackRun.ID, CandidateID: candidate.ID, RequestSHA256: hash, Ordinal: 4,
 		CreatedAt: rollbackRun.CreatedAt,
 	}, rollbackEvaluation, InferenceBudget{PerClipNanoUSD: 1000, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000})
-	if !errors.Is(err, fillersafety.ErrLedgerConflict) {
+	if !errors.Is(err, fillerscreening.ErrSpokenSafetyLedgerConflict) {
 		t.Fatalf("invalid ledger append = %v, want ErrLedgerConflict", err)
 	}
 	if _, err := s.GetInferenceEvaluation(ctx, rollbackEvaluation.ID); !errors.Is(err, ErrNotFound) {
@@ -6257,8 +5707,8 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	heldPlan, heldProposal := plan, proposal
 	heldPlan.ID, heldPlan.RunID, heldPlan.CreatedAt = "held-plan", heldRun.ID, heldRun.CreatedAt.Add(time.Nanosecond)
 	heldProposal.ID, heldProposal.RunID, heldProposal.CreatedAt = "held-proposal", heldRun.ID, heldRun.CreatedAt.Add(2*time.Nanosecond)
-	heldProposal.Proposal = &fillersafety.ProposalCompleted{State: fillersafety.ProposalComplete, ProposerSHA256: hash, Candidates: []fillersafety.Candidate{candidate}}
-	for _, event := range []fillersafety.LedgerEvent{heldPlan, heldProposal} {
+	heldProposal.Proposal = &fillerscreening.SpokenSafetyProposalCompleted{State: fillerscreening.ProposalComplete, ProposerSHA256: hash, Candidates: []fillerscreening.SpokenSafetyCandidate{candidate}}
+	for _, event := range []fillerscreening.SpokenSafetyLedgerEvent{heldPlan, heldProposal} {
 		if err := s.AppendSpokenSafetyEvent(ctx, event); err != nil {
 			t.Fatal(err)
 		}
@@ -6271,17 +5721,17 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 		RequestSHA256: hash, Ordinal: 2, CreatedAt: heldEvaluation.CreatedAt,
 	}, heldEvaluation, InferenceBudget{})
 	if err != nil || held.State != InferenceHeldBudget || heldEvent.Reserve == nil ||
-		heldEvent.Reserve.State != fillersafety.ReservationHeldBudget || heldEvent.Reserve.ReservedNanoUSD != 0 {
+		heldEvent.Reserve.State != fillerscreening.ReservationHeldBudget || heldEvent.Reserve.ReservedNanoUSD != 0 {
 		t.Fatalf("held reservation = %+v, %+v, %v", held, heldEvent, err)
 	}
-	heldEvidence := fillersafety.Evidence{
-		ProposalState: fillersafety.ProposalComplete, Candidates: []fillersafety.Candidate{candidate},
-		Audio: []fillersafety.AudioAssessment{{CandidateID: candidate.ID, State: fillersafety.AudioFailed}},
-		Video: fillersafety.VideoNotRun,
+	heldEvidence := fillerscreening.SpokenSafetyEvidence{
+		ProposalState: fillerscreening.ProposalComplete, Candidates: []fillerscreening.SpokenSafetyCandidate{candidate},
+		Audio: []fillerscreening.SpokenSafetyAudioAssessment{{CandidateID: candidate.ID, State: fillerscreening.AudioFailed}},
+		Video: fillerscreening.VideoNotRun,
 	}
-	heldTerminal := fillersafety.LedgerEvent{
-		ID: "held-terminal", RunID: heldRun.ID, Ordinal: 3, Kind: fillersafety.LedgerTerminal,
-		Terminal: &fillersafety.TerminalResult{Evidence: heldEvidence, Result: fillersafety.Reduce(heldEvidence),
+	heldTerminal := fillerscreening.SpokenSafetyLedgerEvent{
+		ID: "held-terminal", RunID: heldRun.ID, Ordinal: 3, Kind: fillerscreening.LedgerTerminal,
+		Terminal: &fillerscreening.SpokenSafetyTerminalResult{Evidence: heldEvidence, Result: fillerscreening.ReduceSpokenSafety(heldEvidence),
 			EventIDs: []string{heldPlan.ID, heldProposal.ID, heldEvent.ID}},
 		CreatedAt: heldRun.CreatedAt.Add(4 * time.Nanosecond),
 	}
@@ -6295,7 +5745,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	recoveredEvents, err := s.ListSpokenSafetyEvents(ctx, rollbackRun.ID)
 	if err != nil || len(recoveredEvents) != 3 || recoveredEvents[2].Terminal == nil ||
-		recoveredEvents[2].Terminal.Result.Outcome != fillersafety.OutcomeHold {
+		recoveredEvents[2].Terminal.Result.Outcome != fillerscreening.SpokenSafetyOutcomeHold {
 		t.Fatalf("header-only recovery = %+v, %v", recoveredEvents, err)
 	}
 
@@ -6307,7 +5757,7 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	interruptedPlan, interruptedProposal := callPlan, callProposal
 	interruptedPlan.ID, interruptedPlan.RunID, interruptedPlan.CreatedAt = "interrupted-plan", interruptedRun.ID, interruptedRun.CreatedAt.Add(time.Nanosecond)
 	interruptedProposal.ID, interruptedProposal.RunID, interruptedProposal.CreatedAt = "interrupted-proposal", interruptedRun.ID, interruptedRun.CreatedAt.Add(2*time.Nanosecond)
-	for _, event := range []fillersafety.LedgerEvent{interruptedPlan, interruptedProposal} {
+	for _, event := range []fillerscreening.SpokenSafetyLedgerEvent{interruptedPlan, interruptedProposal} {
 		if err := s.AppendSpokenSafetyEvent(ctx, event); err != nil {
 			t.Fatal(err)
 		}
@@ -6327,9 +5777,9 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 	}
 	interruptedEvents, err := s.ListSpokenSafetyEvents(ctx, interruptedRun.ID)
 	if err != nil || len(interruptedEvents) != 5 || interruptedEvents[3].Settle == nil ||
-		interruptedEvents[3].Settle.State != fillersafety.SettlementUnknown ||
+		interruptedEvents[3].Settle.State != fillerscreening.SettlementUnknown ||
 		interruptedEvents[3].Settle.AccountedNanoUSD != evaluation.ReservedNanoUSD ||
-		interruptedEvents[4].Terminal == nil || interruptedEvents[4].Terminal.Result.Outcome != fillersafety.OutcomeHold {
+		interruptedEvents[4].Terminal == nil || interruptedEvents[4].Terminal.Result.Outcome != fillerscreening.SpokenSafetyOutcomeHold {
 		t.Fatalf("unsettled recovery = %+v, %v", interruptedEvents, err)
 	}
 	recoveredInference, err := s.GetInferenceEvaluation(ctx, interruptedEvaluation.ID)

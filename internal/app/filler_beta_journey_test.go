@@ -105,11 +105,11 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if err != nil {
 		t.Fatal(err)
 	}
-	fetcher := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, layout.WatchDir(), nil).
+	fetcher := clipfetch.New(clipfetch.Downloaders{clipfetch.YouTube: clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, layout.WatchDir(), nil).
 		WithArtifactWriter(st).
 		WithStorageGovernor(governor)
 	adapter := fillerServiceAdapter{
-		fetcher: fetcher, acquisitions: st, sources: st,
+		fetcher: fetcher, acquisitions: st, sources: st, providers: testFillerProviders(),
 		newID:   func() string { return "acq-beta-journey" },
 		now:     func() time.Time { return now },
 		timeout: time.Minute,

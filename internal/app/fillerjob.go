@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // fillerSyncJob declares the filler catalog sync (§10, §18.1).
@@ -28,7 +29,7 @@ func fillerSyncJob(s *filler.Syncer) jobs.Job {
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-sync", Group: jobs.GroupFiller, Title: "Sync the filler catalogue",
 		Description: "Scans configured folders and libraries so new filler becomes available for channel breaks.",
-		DefaultCron: "0 */15 * * * *", ScheduleKey: "job.filler_sync.schedule",
+		DefaultCron: "0 */15 * * * *", ScheduleKey: settings.JobFillerSyncSchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := s.Sync(ctx); return err },
 	}
 }
@@ -168,7 +169,7 @@ func fillerPipelineJob(runner fillerPipelineRunner) jobs.Job {
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-pipeline", Group: jobs.GroupFiller, Title: "Prepare new filler",
 		Description: "Prepares incoming clips for playback, then fills in useful details for clips that are ready.",
-		DefaultCron: "0 */2 * * * *", ScheduleKey: "job.filler_pipeline.schedule",
+		DefaultCron: "0 */2 * * * *", ScheduleKey: settings.JobFillerPipelineSchedule.Key(),
 		Run: func(ctx context.Context) error {
 			if runner == nil {
 				return nil
@@ -194,7 +195,7 @@ func fillerSplitSweepJob(sw *filler.SplitSweeper) jobs.Job {
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-split-sweep", Group: jobs.GroupFiller, Title: "Expire split suggestions",
 		Description: "Removes expired split proposals and their source recordings while retaining produced clips.",
-		DefaultCron: "0 45 4 * * *", ScheduleKey: "job.filler_split_sweep.schedule",
+		DefaultCron: "0 45 4 * * *", ScheduleKey: settings.JobFillerSplitSweepSchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := sw.Run(ctx); return err },
 	}
 }
@@ -208,7 +209,7 @@ func fillerIdentityJob(ci *filler.CreativeIdentity) jobs.Job {
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-identity", Group: jobs.GroupFiller, Title: "Keep one copy of each ad",
 		Description: "Matches copies of the same ad by picture and sound, keeps the best copy, and links cut-downs and other versions.",
-		DefaultCron: "0 20 * * * *", ScheduleKey: "job.filler_identity.schedule",
+		DefaultCron: "0 20 * * * *", ScheduleKey: settings.JobFillerIdentitySchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := ci.Run(ctx); return err },
 	}
 }
@@ -222,7 +223,7 @@ func fillerDefectsJob(d *fillerdefectfloor.DefectFloor) jobs.Job {
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-defects", Group: jobs.GroupFiller, Title: "Check ad picture and sound",
 		Description: "Measures each ad's picture and sound defects against the standard for its era, removes copies that fail, and asks for a better copy.",
-		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.filler_defects.schedule",
+		DefaultCron: "0 */5 * * * *", ScheduleKey: settings.JobFillerDefectsSchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := d.Run(ctx); return err },
 	}
 }

@@ -59,6 +59,10 @@ classify() {
     cmd/seed/*|cmd/demo-library/*|internal/demolibrary/*|web/*.stories.tsx|web/apps/web/tests/e2e/mock-backend.ts|web/scripts/tv-emulator-fixture-server.mjs)
       select_gate contracts
       ;;
+    # inventedGoFixtures: Go test fixtures written as invented data.
+    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/movie.json|internal/testkit/fixtures/radarr/config_metadata.json|internal/metadataprovider/nfo/testdata/*)
+      select_gate contracts
+      ;;
     web/packages/fixtures/src/*)
       [[ "$path" == *.test.* ]] || select_gate contracts
       ;;
@@ -216,6 +220,13 @@ classify() {
       select_gate clients
       select_gate apple_mobile
       select_gate expo_android_mobile
+      ;;
+    web/packages/native-app/*)
+      # The bootstrap both native apps call: every native client builds it.
+      known=true
+      select_gate clients
+      select_all_native_clients
+      select_gate android
       ;;
     web/packages/design-system/*|web/packages/ui/*|web/packages/ui-tv/*)
       known=true
