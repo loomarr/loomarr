@@ -22,11 +22,14 @@ const (
 	kindExtra   inventory.ItemKind = "extra"
 )
 
+// authorityPrefix starts every scan root's authority.
+const authorityPrefix = "scan:"
+
 // Authority is the inventory authority of one scan root: every file under it is an origin of that
 // authority, so a walk of the root marks exactly its own files unseen.
 func Authority(root string) inventory.AuthorityID {
 	digest := sha256.Sum256([]byte(root))
-	return inventory.AuthorityID("scan:" + hex.EncodeToString(digest[:12]))
+	return inventory.AuthorityID(authorityPrefix + hex.EncodeToString(digest[:12]))
 }
 
 // fileOrigin is a media file's origin: its path within its root.

@@ -30,6 +30,9 @@ type LibraryRootService interface {
 	Counts(ctx context.Context) (store.LibraryFileCounts, error)
 	Rescan() error
 	ConfirmRemovals(ctx context.Context, root string) error
+
+	Items(ctx context.Context, q store.LibraryItemQuery) (store.LibraryItemPage, error)
+	Item(ctx context.Context, id string) (scan.ItemDetail, error)
 }
 
 func (s *Server) registerLibrary(api huma.API) {
@@ -86,6 +89,7 @@ func (s *Server) registerLibrary(api huma.API) {
 		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
 	}, RoleAdmin), s.confirmLibraryRemoval)
 	s.registerLibraryHooks(api)
+	s.registerLibraryItems(api)
 }
 
 type libraryFolderNameDTO struct {

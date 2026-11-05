@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -152,6 +153,9 @@ func (s *Scanner) Run(ctx context.Context) {
 type Library struct {
 	*Roots
 	Scanner *Scanner
+	// ItemStore and Inventory read what the scanner wrote, for Library → Items.
+	ItemStore store.LibraryItemStore
+	Inventory inventory.Service
 }
 
 // Progress is the scanner's current state; the zero Progress when no scanner runs.

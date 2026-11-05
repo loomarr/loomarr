@@ -234,6 +234,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
   registration starts failing publishes `library_changes_degraded`, at most once a day. The daily
   batch of unmatched files waits for Library → Unmatched (step 11).
+- **Library → Items** (step 10, decisions 22 and 25) reads a small list the importer keeps as it
+  writes, rather than decoding every inventory observation: `library_items` holds each movie and
+  series it wrote (id, kind, resolved name, sort name, year), and each `library_files` row records
+  the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
+  while it has a present, importable file, and is "getting ready" while any of those files'
+  headers is unread. A file row from before these columns has no item, so the next pass writes it
+  again. `GET /v1/library/items` pages and searches the list (admin-only);
+  `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
+  files, or a series' episodes by season.
 
 ## Cached series episodes
 

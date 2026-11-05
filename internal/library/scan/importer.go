@@ -34,6 +34,7 @@ type ImportStore interface {
 	LibraryRoots(ctx context.Context) (store.LibraryRoots, error)
 	CheckLibraryRoot(ctx context.Context, check store.LibraryRootCheck, at time.Time) (bool, error)
 	store.LibraryFileStore
+	SaveLibraryItems(ctx context.Context, items []store.LibraryItem, at time.Time) error
 }
 
 // Importer is the shadow scanner (#2151 step 5). Each pass walks every in-use root, writes each
@@ -140,6 +141,12 @@ type pending struct {
 	file File
 	id   identity
 	b    *builder
+}
+
+// episodeRow is an episode's row in a pass's save list, and its series folder.
+type episodeRow struct {
+	at        int
+	seriesDir string
 }
 
 // Run makes one pass. Passes never overlap: a second caller waits for the first.
@@ -379,6 +386,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	b := newBuilder(im, root, idx)
 	var save []store.LibraryFile
 	var queue []pending
+	var episodes []episodeRow
 	found := map[string]bool{}
 	for _, file := range walk.Files {
 		found[file.Path] = true
@@ -413,7 +421,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			row.Header = old.Header
 		}
 		switch {
-		case sameBytes && old.Identity == id.digest:
+		case sameBytes && old.Identity == id.digest && old.ItemID != "":
 			// Unchanged: never written, never opened again.
 			if prev[file.Path].Held {
 				save = append(save, old)
@@ -440,7 +448,8 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			}
 		}
 		snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(file, header, now)}
-		if problem, err := im.applyFile(ctx, snapshot); err != nil {
+		itemID, problem, err := im.applyFile(ctx, snapshot)
+		if err != nil {
 			return result, nil, err
 		} else if problem != "" {
 			// No digest: a file that could not be written is tried again on the next pass.
@@ -448,12 +457,34 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			save = append(save, row)
 			continue
 		}
+		row.ItemID = itemID
+		if snapshot.Kind == kindMovie {
+			b.listed(itemID, snapshot)
+		}
+		if id.seriesDir != "" {
+			episodes = append(episodes, episodeRow{at: len(save), seriesDir: id.seriesDir})
+		}
 		save = append(save, row)
 		if row.Header == store.LibraryHeaderPending {
 			queue = append(queue, pending{row: row, file: file, id: id, b: b})
 		}
 	}
 	if err := b.writeSeries(ctx, now); err != nil {
+		return result, nil, err
+	}
+	// An episode written this pass belongs to the series item writeSeries wrote for its folder.
+	for _, ep := range episodes {
+		if s := b.series[ep.seriesDir]; s != nil {
+			save[ep.at].SeriesID = s.itemID
+		}
+	}
+	// The header stage saves its own copy of each row it reads.
+	for i := range queue {
+		if s := b.series[queue[i].id.seriesDir]; s != nil && queue[i].row.SeriesID == "" {
+			queue[i].row.SeriesID = s.itemID
+		}
+	}
+	if err := im.Store.SaveLibraryItems(ctx, b.items, now); err != nil {
 		return result, nil, err
 	}
 
@@ -497,20 +528,20 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	return result, queue, nil
 }
 
-// applyFile writes one file's item. A snapshot the inventory refuses is a problem on that file,
-// not a failed pass.
-func (im *Importer) applyFile(ctx context.Context, snapshot inventory.Snapshot) (string, error) {
-	err := im.apply(ctx, snapshot)
+// applyFile writes one file's item and returns its id. A snapshot the inventory refuses is a
+// problem on that file, not a failed pass.
+func (im *Importer) applyFile(ctx context.Context, snapshot inventory.Snapshot) (string, string, error) {
+	id, err := im.apply(ctx, snapshot)
 	switch {
 	case err == nil:
-		return "", nil
+		return string(id), "", nil
 	case errors.Is(err, inventory.ErrIdentityConflict):
-		return ProblemIdentityConflict, nil
+		return "", ProblemIdentityConflict, nil
 	case errors.Is(err, inventory.ErrInvalid):
 		im.log().Warn("library scan: a file's facts were refused", "err", err)
-		return ProblemInvalid, nil
+		return "", ProblemInvalid, nil
 	default:
-		return "", err
+		return "", "", err
 	}
 }
 
@@ -605,9 +636,8 @@ func (im *Importer) markUnseen(ctx context.Context, root string, seen map[invent
 	return im.Inventory.MarkUnseen(ctx, Authority(root), at, keys)
 }
 
-func (im *Importer) apply(ctx context.Context, snapshot inventory.Snapshot) error {
-	_, err := im.Inventory.ApplySnapshot(ctx, snapshot)
-	return err
+func (im *Importer) apply(ctx context.Context, snapshot inventory.Snapshot) (inventory.ItemID, error) {
+	return im.Inventory.ApplySnapshot(ctx, snapshot)
 }
 
 // lastHeader is the header facts the inventory holds for a file origin, nil when it holds none.

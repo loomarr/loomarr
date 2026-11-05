@@ -186,6 +186,53 @@ func TestImportWritesOnceAndSkipsUnchanged(t *testing.T) {
 	}
 }
 
+// Library → Items lists the movie and the series a pass wrote, with the series counting its
+// episodes and an extra counting toward nothing; once headers are read nothing is getting ready.
+func TestImportListsMoviesAndSeries(t *testing.T) {
+	h := newHarness(t)
+	h.file("Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001).mkv", 10)
+	h.file("Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001)-trailer.mkv", 4)
+	h.file("Bravo Show {tvdb-90081189}/Season 01/Bravo Show S01E02.mkv", 12)
+	h.file("Bravo Show {tvdb-90081189}/Season 01/Bravo Show S01E03.mkv", 12)
+	h.run()
+
+	page, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("items = %+v, want the movie and the series", page.Items)
+	}
+	movie := h.item(fileOrigin(h.root, "Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001).mkv"))
+	series := h.item(seriesOrigin(h.root, "Bravo Show {tvdb-90081189}"))
+	got := map[string]store.LibraryItemSummary{}
+	for _, it := range page.Items {
+		got[it.ID] = it
+	}
+	if m := got[string(movie.ID)]; m.Kind != "movie" || m.Name == "" || m.Files != 1 || m.Pending != 0 {
+		t.Errorf("movie row = %+v", m)
+	}
+	if s := got[string(series.ID)]; s.Kind != "series" || s.Name != "Bravo Show" || s.Files != 2 || s.Pending != 0 {
+		t.Errorf("series row = %+v", s)
+	}
+
+	// A row written before items were listed has no item: the next pass writes it again.
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range rows {
+		rows[i].ItemID, rows[i].SeriesID = "", ""
+	}
+	if err := h.st.SaveLibraryFiles(context.Background(), rows); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	if again, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{}); err != nil || again.Total != 2 {
+		t.Fatalf("after relinking = %+v, %v", again, err)
+	}
+}
+
 // A changed NFO rewrites the item without reading the header again; its ids join the item.
 func TestImportSidecarChangeRewritesIdentityOnly(t *testing.T) {
 	h := newHarness(t)

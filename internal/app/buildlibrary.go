@@ -27,6 +27,7 @@ import (
 type libraryStore interface {
 	store.LibraryRootStore
 	store.LibraryFileStore
+	store.LibraryItemStore
 	inventory.Repository
 }
 
@@ -84,10 +85,11 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Disk:    scan.OSDisk{},
 		Now:     time.Now,
 	}
+	inv := inventory.New(st)
 	resolver, err := precedence.New("US")
 	if err != nil {
 		deps.log.Error("library scan: not started", "err", err)
-		return libraryServices{roots: &scan.Library{Roots: roots}}
+		return libraryServices{roots: &scan.Library{Roots: roots, ItemStore: st, Inventory: inv}}
 	}
 	conns := set.arrConns()
 	managers := []scan.Manager{
@@ -96,7 +98,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	im := &scan.Importer{
 		Store:     st,
-		Inventory: inventory.New(st),
+		Inventory: inv,
 		Disk:      scan.OSDisk{},
 		Managers:  func() []scan.Manager { return managers },
 		NFO:       nfo.New(),
@@ -129,7 +131,10 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
 	deps.owner.goRunAfterBuild(hooks.Run)
-	return libraryServices{roots: &scan.Library{Roots: roots, Scanner: scanner}, hooks: hooks}
+	return libraryServices{
+		roots: &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv},
+		hooks: hooks,
+	}
 }
 
 // libraryHookURL is where app posts its events: Loomarr's own address as the arrs reach it, the
