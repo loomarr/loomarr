@@ -224,7 +224,7 @@ test("declares the shared TV journey and native playback boundaries", async () =
   const bundled = await bundledNativeModules();
   assert.equal(`~${manifest.dependencies["expo-video"]}`, bundled["expo-video"]);
   assert.equal(`~${manifest.dependencies["expo-crypto"]}`, bundled["expo-crypto"]);
-  assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.88.0-0");
+  assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.88.1-0");
   assert.match(manifest.scripts.bundle, /--platform android/);
   assert.match(manifest.scripts.bundle, /--platform ios/);
 });

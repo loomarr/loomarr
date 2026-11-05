@@ -876,7 +876,7 @@ type TunerRescanner interface {
 
 // TunarrConnector wires the media server as *Tunarr's* media source (§6) so Tunarr
 // can stream + index the library — backs POST /v1/setup/tunarr-connect and the
-// tunarr_library setup check. Idempotent. Implemented by setup.MediaSourceConnector.
+// tunarr_library setup check. Idempotent. Implemented by livetvpublish.MediaSourceConnector.
 type TunarrConnector interface {
 	Connect(ctx context.Context) (sourceID string, librariesEnabled int, err error)
 	LibrariesReady(ctx context.Context) (bool, error)
