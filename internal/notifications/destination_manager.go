@@ -29,23 +29,19 @@ type DestinationCommand struct {
 	Audience RecipientKind
 	Topics   []Topic
 	Enabled  bool
-	// Settings is the one public provider input object. When supplied, the server-owned provider
-	// definition classifies every field into Configuration or Credentials.
-	Settings      map[string]string
-	Configuration map[string]string
-	// A nil Credentials update preserves the stored credentials; a non-nil empty map explicitly
-	// clears them. Create treats nil as empty. Credential values never appear in summaries.
-	Credentials *map[string]string
+	// Settings is the only provider input. The server-owned provider definition classifies every
+	// field into configuration or write-only credentials; credential values never appear in summaries.
+	Settings map[string]string
 }
 
 type DestinationUpdateCommand struct {
-	Label         string
-	Audience      RecipientKind
-	Topics        []Topic
-	Enabled       bool
-	Settings      *map[string]string
-	Configuration *map[string]string
-	Credentials   *map[string]string
+	Label    string
+	Audience RecipientKind
+	Topics   []Topic
+	Enabled  bool
+	// Settings merges into the stored provider fields: nil keeps them all, an empty value clears
+	// that one field, and a sensitive field left out keeps its stored credential.
+	Settings *map[string]string
 }
 
 type DestinationValidator interface {
@@ -135,18 +131,13 @@ func (m *DestinationManager) Create(
 	destination := Destination{
 		ID: m.newID(), Means: command.Means, Label: command.Label, Scope: command.Scope,
 		OwnerID: command.OwnerID, Audience: command.Audience, Topics: append([]Topic(nil), command.Topics...),
-		Enabled: command.Enabled, Configuration: cloneStringMap(command.Configuration),
-		CreatedAt: now, UpdatedAt: now,
+		Enabled: command.Enabled, CreatedAt: now, UpdatedAt: now,
 	}
-	if command.Settings != nil {
-		configuration, credentials, err := classifyDestinationSettings(command.Means, command.Settings)
-		if err != nil {
-			return DestinationSummary{}, err
-		}
-		destination.Configuration, destination.Credentials = configuration, credentials
-	} else if command.Credentials != nil {
-		destination.Credentials = cloneStringMap(*command.Credentials)
+	configuration, credentials, err := classifyDestinationSettings(command.Means, command.Settings)
+	if err != nil {
+		return DestinationSummary{}, err
 	}
+	destination.Configuration, destination.Credentials = configuration, credentials
 	setWebPushSubscriptionFingerprint(&destination)
 	if destination.Means == MeansWebPush && destination.SubscriptionFingerprint == "" {
 		return DestinationSummary{}, fmt.Errorf("web push destination requires a subscription endpoint")
@@ -223,14 +214,7 @@ func (m *DestinationManager) Update(
 	if err != nil {
 		return DestinationSummary{}, err
 	}
-	credentials := current.Credentials
-	if command.Credentials != nil {
-		credentials = cloneStringMap(*command.Credentials)
-	}
-	configuration := current.Configuration
-	if command.Configuration != nil {
-		configuration = cloneStringMap(*command.Configuration)
-	}
+	configuration, credentials := current.Configuration, current.Credentials
 	if command.Settings != nil {
 		configuration, credentials, err = mergeDestinationSettings(
 			current.Means, configuration, credentials, *command.Settings,

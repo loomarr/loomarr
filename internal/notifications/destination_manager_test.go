@@ -28,12 +28,11 @@ func TestDestinationManagerKeepsCredentialsWriteOnlyAndScopesMemberReads(t *test
 		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansWebPush}},
 		sequentialDestinationIDs(), func() time.Time { return now },
 	)
-	credentials := map[string]string{"endpoint": "https://push.example.test/subscription-private"}
 	summary, err := manager.Create(t.Context(), notifications.Principal{PersonID: "user-1"}, notifications.DestinationCommand{
 		Means: notifications.MeansWebPush, Label: "This browser", Scope: notifications.ScopePerson,
 		OwnerID: "user-1", Audience: notifications.RecipientPerson,
 		Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true,
-		Configuration: map[string]string{"endpointHost": "push.example"}, Credentials: &credentials,
+		Settings: map[string]string{"endpoint": "https://push.example.test/subscription-private"},
 	})
 	if err != nil || !summary.CredentialsConfigured {
 		t.Fatalf("create personal destination = %+v, %v", summary, err)
@@ -226,12 +225,11 @@ func TestDestinationManagerUpdatePreservesWriteOnlyCredentialsAndOwnership(t *te
 		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansWebPush}},
 		sequentialDestinationIDs(), func() time.Time { return now },
 	)
-	credentials := map[string]string{"endpoint": "https://push.example.test/subscription-preserved"}
 	created, err := manager.Create(t.Context(), notifications.Principal{PersonID: "user-1"}, notifications.DestinationCommand{
 		Means: notifications.MeansWebPush, Label: "Browser", Scope: notifications.ScopePerson,
 		OwnerID: "user-1", Audience: notifications.RecipientPerson,
 		Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true,
-		Credentials: &credentials,
+		Settings: map[string]string{"endpoint": "https://push.example.test/subscription-preserved"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -240,7 +238,6 @@ func TestDestinationManagerUpdatePreservesWriteOnlyCredentialsAndOwnership(t *te
 	updated, err := manager.Update(t.Context(), notifications.Principal{PersonID: "user-1"}, created.ID, notifications.DestinationUpdateCommand{
 		Label: "Living-room browser", Audience: notifications.RecipientPerson,
 		Topics: []notifications.Topic{notifications.TopicChannelLive}, Enabled: true,
-		Credentials: nil,
 	})
 	if err != nil || updated.Label != "Living-room browser" || !updated.CredentialsConfigured {
 		t.Fatalf("update destination = %+v, %v", updated, err)
