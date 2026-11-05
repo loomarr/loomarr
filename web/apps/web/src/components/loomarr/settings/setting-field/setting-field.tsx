@@ -1,5 +1,6 @@
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKind } from "@loomarr/api/models/settingKind";
+import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
 import { FieldHint } from "@loomarr/design-system";
@@ -111,7 +112,7 @@ const SettingField = ({
   // the key, and the surface must have supplied a handler.
   const canUnlock = onEnvOverride !== undefined && entry.envPinnable === true;
   const invalid = result?.status === SettingResultStatus.invalid;
-  const inlineSwitch = entry.kind === SettingKind.bool && entry.presentation === "switch";
+  const inlineSwitch = entry.kind === SettingKind.bool && entry.presentation === SettingPresentation.switch;
   const problem = invalid ? result?.problem : undefined;
   // Compact mode renders none of the explanatory elements, so pointing at one would be a dangling
   // reference. Full fields associate the ordinary help, any unavailable reason, and the server's
@@ -133,7 +134,7 @@ const SettingField = ({
 
   const control = () => {
     if (entry.kind === SettingKind.bool) {
-      if (entry.presentation === "switch") {
+      if (entry.presentation === SettingPresentation.switch) {
         return (
           <Switch
             id={id}
@@ -180,7 +181,7 @@ const SettingField = ({
         </Select>
       );
     }
-    if (entry.presentation === "filler_download_schedule") {
+    if (entry.presentation === SettingPresentation.filler_download_schedule) {
       const preset = editingCustomSchedule ? "custom" : fillerSchedulePreset(value);
       const current = durationParts(value);
       return (
@@ -282,7 +283,7 @@ const SettingField = ({
         </div>
       );
     }
-    if (entry.presentation === "bytes") {
+    if (entry.presentation === SettingPresentation.bytes) {
       const current = byteParts(value);
       return (
         <WithUnit unit={current.unit}>

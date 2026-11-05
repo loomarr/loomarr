@@ -49,6 +49,12 @@ const (
 	PresentationFillerDownloadSchedule Presentation = "filler_download_schedule"
 )
 
+// Presentations is the closed set of non-default editors, in declaration order, for the wire
+// schema. The default is absent on the wire, so it is not a member.
+func Presentations() []Presentation {
+	return []Presentation{PresentationBytes, PresentationPath, PresentationLanguage, PresentationSwitch, PresentationFillerDownloadSchedule}
+}
+
 // Unit names what a plain number setting counts, shown beside its input. The key's suffix says it
 // too (`_gb`, `_mb`, `_pct`), but a person reads the label and the box, never the key.
 type Unit string

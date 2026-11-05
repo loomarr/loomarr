@@ -20,3 +20,17 @@ func TestKindsCoverTheRegistry(t *testing.T) {
 		}
 	}
 }
+
+// Presentations is the wire's closed set of editors: every declared presentation is in it, and
+// the default (absent on the wire) is not.
+func TestPresentationsCoverTheRegistry(t *testing.T) {
+	presentations := Presentations()
+	if slices.Contains(presentations, PresentationDefault) {
+		t.Error("Presentations() lists the default, which the wire omits")
+	}
+	for _, s := range NewRegistry().All() {
+		if s.Presentation != PresentationDefault && !slices.Contains(presentations, s.Presentation) {
+			t.Errorf("%s: presentation %q is missing from Presentations()", s.Key, s.Presentation)
+		}
+	}
+}

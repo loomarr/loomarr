@@ -10313,8 +10313,7 @@ components:
           description: Stable task id for the setting's one curated editor. Browser paths are frontend-owned.
           type: string
         presentation:
-          description: Human editor semantics beyond kind, e.g. bytes, path, or language.
-          type: string
+          $ref: "#/components/schemas/SettingPresentation"
         preview:
           description: "For secrets: masked '…a1b2' tail (§4)."
           type: string
@@ -10704,6 +10703,15 @@ components:
         - secret
         - string_list
         - cron
+      type: string
+    SettingPresentation:
+      description: Human editor semantics beyond kind, e.g. bytes, path, or language. Absent for the kind's plain control.
+      enum:
+        - bytes
+        - path
+        - language
+        - switch
+        - filler_download_schedule
       type: string
     SettingResult:
       additionalProperties: false

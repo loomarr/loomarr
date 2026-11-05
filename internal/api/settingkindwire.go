@@ -6,34 +6,44 @@ import (
 	"github.com/loomarr/loomarr/internal/settings"
 )
 
-// The components every setting entry reads, so orval emits one SettingKind and one SettingKey
-// symbol for the frontend to use instead of re-typing the registry.
+// The components every setting entry reads, so orval emits one SettingKind, SettingPresentation
+// and SettingKey symbol for the frontend to use instead of re-typing the registry.
 const (
-	settingKindSchema = "SettingKind"
-	settingKeySchema  = "SettingKey"
+	settingKindSchema         = "SettingKind"
+	settingPresentationSchema = "SettingPresentation"
+	settingKeySchema          = "SettingKey"
 )
 
-// TransformSchema publishes SettingEntry.kind and SettingEntry.key as the registry's closed sets.
-// The Go fields stay strings; the enums come from the registry, so a new kind or key reaches the
-// spec without a second list to keep in step.
+// TransformSchema publishes SettingEntry.kind, .presentation and .key as the registry's closed
+// sets. The Go fields stay strings; the enums come from the registry, so a new kind, editor or
+// key reaches the spec without a second list to keep in step.
 func (SettingEntry) TransformSchema(r huma.Registry, s *huma.Schema) *huma.Schema {
-	if _, ok := r.Map()[settingKindSchema]; !ok {
-		values := make([]any, 0, len(settings.Kinds()))
-		for _, kind := range settings.Kinds() {
-			values = append(values, string(kind))
-		}
-		r.Map()[settingKindSchema] = &huma.Schema{
-			Type:        huma.TypeString,
-			Enum:        values,
-			Description: "A setting's value type (config-design §2): it decides how the value parses and which control edits it.",
-		}
-	}
-	if _, ok := r.Map()[settingKeySchema]; !ok {
-		r.Map()[settingKeySchema] = settingKeyWire()
-	}
-	s.Properties["kind"] = &huma.Schema{Ref: "#/components/schemas/" + settingKindSchema}
-	s.Properties["key"] = &huma.Schema{Ref: "#/components/schemas/" + settingKeySchema}
+	s.Properties["kind"] = namedSettingEnum(r, settingKindSchema, func() *huma.Schema {
+		return stringEnum(settings.Kinds(),
+			"A setting's value type (config-design §2): it decides how the value parses and which control edits it.")
+	})
+	s.Properties["presentation"] = namedSettingEnum(r, settingPresentationSchema, func() *huma.Schema {
+		return stringEnum(settings.Presentations(),
+			"Human editor semantics beyond kind, e.g. bytes, path, or language. Absent for the kind's plain control.")
+	})
+	s.Properties["key"] = namedSettingEnum(r, settingKeySchema, settingKeyWire)
 	return s
+}
+
+// namedSettingEnum registers a component once and returns the $ref every use reads.
+func namedSettingEnum(r huma.Registry, name string, build func() *huma.Schema) *huma.Schema {
+	if _, ok := r.Map()[name]; !ok {
+		r.Map()[name] = build()
+	}
+	return &huma.Schema{Ref: "#/components/schemas/" + name}
+}
+
+func stringEnum[T ~string](values []T, description string) *huma.Schema {
+	enum := make([]any, 0, len(values))
+	for _, v := range values {
+		enum = append(enum, string(v))
+	}
+	return &huma.Schema{Type: huma.TypeString, Enum: enum, Description: description}
 }
 
 // settingKeyWire lists every public key in registry order. x-enum-varnames gives each generated

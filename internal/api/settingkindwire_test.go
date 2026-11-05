@@ -38,6 +38,28 @@ func TestSettingKindIsTheRegistrysClosedSet(t *testing.T) {
 	}
 }
 
+// A setting's presentation is the registry's closed set too, so the UI picks its editor from the
+// generated SettingPresentation symbol. The default presentation is absent on the wire, not "".
+func TestSettingPresentationIsTheRegistrysClosedSet(t *testing.T) {
+	_, humaAPI := schemaOnlyAPI(slog.New(slog.DiscardHandler))
+	schemas := humaAPI.OpenAPI().Components.Schemas.Map()
+
+	named, ok := schemas["SettingPresentation"]
+	if !ok {
+		t.Fatal("components.schemas.SettingPresentation is missing")
+	}
+	var want []any
+	for _, p := range settings.Presentations() {
+		want = append(want, string(p))
+	}
+	if named.Type != "string" || !slices.Equal(named.Enum, want) {
+		t.Errorf("SettingPresentation = type %q enum %v, want string %v", named.Type, named.Enum, want)
+	}
+	if got := schemas["SettingEntry"].Properties["presentation"]; got == nil || got.Ref != "#/components/schemas/SettingPresentation" {
+		t.Errorf("SettingEntry.presentation = %+v, want a $ref to SettingPresentation", got)
+	}
+}
+
 // Every public setting key is one named enum whose member names are the Go handle names, so the
 // frontend reads SettingKey.FillerHomeCountry where the backend reads settings.FillerHomeCountry
 // and a mistyped key is a compile error on both sides (#2147 wave 4).
