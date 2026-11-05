@@ -16,44 +16,114 @@ const (
 	endMarker   = "<!-- END GENERATED: package-map -->"
 )
 
-// spineFanIn is the importer count at which a package is considered part of the
-// load-bearing spine and appears in the diagram.
+// areaPagesDir holds one generated page per area, beside the package map. The generator
+// owns the whole directory: a file there that is not an area page is removed.
+const areaPagesDir = "areas"
+
+// spineFanIn is the importer count at which a package is part of the load-bearing spine.
 //
-// The diagram deliberately shows the SPINE, not the whole graph: 36 nodes and ~90
-// edges renders as a hairball that nobody reads, and an unreadable diagram in an
-// orientation document is worse than none — it looks like the answer while conveying
-// nothing. The full edge set is in the list below it, which is greppable.
+// The spine is a short table, not the whole graph: 100 packages and their edges read as a
+// hairball nobody follows. The full edge set is on the area pages, which are greppable.
 const spineFanIn = 5
 
-// render produces the generated block for the package-map page.
+// render produces the generated block for the package-map page: the area index, the two
+// traced flows and the dependency spine.
 //
-// Deterministic by construction — every list is sorted — so the CI drift check is
-// stable and a regeneration with no source change produces a byte-identical file.
-func render(pkgs []Package) string {
+// It carries no per-package rows or counts. Those change on most PRs, and in one shared
+// block every such PR edited the same lines, so the merge queue dropped whichever landed
+// second. They live on the area pages, where an import change touches only the areas whose
+// packages it names. Deterministic by construction — every list is sorted.
+func render(table []area, pkgs []Package) string {
 	var b strings.Builder
 
 	b.WriteString(beginMarker + "\n\n")
-	b.WriteString(renderStartHere(areas, pkgs))
-	b.WriteString("## The measured map\n\n")
+	b.WriteString("## Start here\n\n")
+	b.WriteString("The packages under `internal/` group into the areas below. Each area has its own " +
+		"generated page listing its packages, what each one imports, how many packages import it, " +
+		"and which other areas it reaches into (counted as package-to-package imports). The area " +
+		"table lives in `cmd/arch-docs/areas.go`; a new package must be added to one area before " +
+		"it merges.\n\n")
+	for _, a := range table {
+		fmt.Fprintf(&b, "### [%s](%s/%s.md)\n\n%s\n\n", a.Title, areaPagesDir, a.Name, a.Description)
+	}
+
+	b.WriteString("## Two flows, end to end\n\n")
+	for _, f := range flows {
+		fmt.Fprintf(&b, "### %s\n\n%s\n\n", f.Title, f.Text)
+	}
+
+	b.WriteString(renderSpine(pkgs, fanInCounts(pkgs)))
+
+	b.WriteString("## How the area pages are made\n\n")
 	b.WriteString("Generated recursively from each package's own doc comment and exact internal imports, ")
-	b.WriteString("using full paths below `internal/`, so it cannot drift from the code the way a ")
-	b.WriteString("hand-maintained list does. **Layer** is derived: the longest ")
-	b.WriteString("path from that package to one with no internal dependencies. It is the measured ")
-	b.WriteString("layering, not an aspirational one.\n\n")
-	b.WriteString("Sizes are deliberately absent — they change on nearly every commit, which would make ")
-	b.WriteString("the drift check red by default and train everyone to regenerate without reading.\n\n")
+	b.WriteString("using full paths below `internal/`, so they cannot drift from the code the way a ")
+	b.WriteString("hand-maintained list does. Sizes are deliberately absent — they change on nearly every ")
+	b.WriteString("commit, which would make the drift check red by default and train everyone to ")
+	b.WriteString("regenerate without reading.\n\n")
 
-	fanIn := fanInCounts(pkgs)
-
-	b.WriteString(renderSpine(pkgs, fanIn))
-	b.WriteString(renderLayers(pkgs, fanIn))
-
-	// Every layer group already ends with a blank line, so the marker follows directly.
 	b.WriteString(endMarker)
 	return b.String()
 }
 
-// renderSpine lists the packages that most of the tree depends on.
+// renderAreaPages produces one whole page per area, keyed by area name: its description,
+// the other areas it imports from, and each of its production packages with its importer
+// count, imports and synopsis. Packages the scan does not see (directories of tests alone)
+// are named on one line, so they never read as production rows.
+func renderAreaPages(table []area, pkgs []Package) map[string]string {
+	areaOf := map[string]string{}
+	for _, a := range table {
+		for _, p := range a.Packages {
+			areaOf[p] = a.Name
+		}
+	}
+	byName := make(map[string]Package, len(pkgs))
+	for _, p := range pkgs {
+		byName[p.Name] = p
+	}
+	fanIn := fanInCounts(pkgs)
+
+	pages := make(map[string]string, len(table))
+	for _, a := range table {
+		var b strings.Builder
+		fmt.Fprintf(&b, "# %s\n\n", a.Title)
+		b.WriteString("<!-- GENERATED by `make arch-docs` from cmd/arch-docs/areas.go and the code. " +
+			"DO NOT EDIT BY HAND. -->\n\n")
+		fmt.Fprintf(&b, "%s\n\n", a.Description)
+		b.WriteString("One area of the [package map](../package-map.md#start-here).\n\n")
+		fmt.Fprintf(&b, "**Imports from other areas:** %s\n\n", crossAreaImports(a, byName, areaOf, table))
+		b.WriteString("## Packages\n\n")
+
+		names := append([]string(nil), a.Packages...)
+		sort.Strings(names)
+		var testsOnly []string
+		for _, n := range names {
+			p, ok := byName[n]
+			if !ok {
+				testsOnly = append(testsOnly, n)
+				continue
+			}
+			fmt.Fprintf(&b, "- **`%s`**", n)
+			if count := fanIn[n]; count > 0 {
+				fmt.Fprintf(&b, " · %d %s", count, plural(count, "importer"))
+			}
+			if len(p.Imports) > 0 {
+				fmt.Fprintf(&b, " · → %s", codeList(p.Imports))
+			}
+			b.WriteString("\n")
+			if p.Synopsis != "" {
+				fmt.Fprintf(&b, "  %s\n", p.Synopsis)
+			}
+		}
+		if len(testsOnly) > 0 {
+			fmt.Fprintf(&b, "\n**Tests only:** %s\n", codeList(testsOnly))
+		}
+		pages[a.Name] = b.String()
+	}
+	return pages
+}
+
+// renderSpine lists the packages that most of the tree depends on, without their importer
+// counts: the counts move on most PRs, membership of the spine rarely does.
 func renderSpine(pkgs []Package, fanIn map[string]int) string {
 	spine := map[string]bool{}
 	for _, p := range pkgs {
@@ -70,15 +140,14 @@ func renderSpine(pkgs []Package, fanIn map[string]int) string {
 	fmt.Fprintf(&b, "Packages imported by %d or more others, and their dependencies within the spine. ",
 		spineFanIn)
 	b.WriteString("Everything else in the tree sits on top of these packages.\n\n")
-	b.WriteString("| Package | Direct importers | Depends on |\n")
-	b.WriteString("| --- | ---: | --- |\n")
+	b.WriteString("| Package | Depends on |\n")
+	b.WriteString("| --- | --- |\n")
 
 	byName := make(map[string]Package, len(pkgs))
 	for _, p := range pkgs {
 		byName[p.Name] = p
 	}
-	names := sortedKeys(spine)
-	for _, n := range names {
+	for _, n := range sortedKeys(spine) {
 		var deps []string
 		for _, dep := range byName[n].Imports {
 			if spine[dep] {
@@ -89,52 +158,9 @@ func renderSpine(pkgs []Package, fanIn map[string]int) string {
 		if len(deps) > 0 {
 			dependencyList = codeList(deps)
 		}
-		fmt.Fprintf(&b, "| `%s` | %d | %s |\n", n, fanIn[n], dependencyList)
+		fmt.Fprintf(&b, "| `%s` | %s |\n", n, dependencyList)
 	}
 	b.WriteString("\n")
-	return b.String()
-}
-
-// renderLayers lists every package grouped by its derived layer.
-func renderLayers(pkgs []Package, fanIn map[string]int) string {
-	byLayer := map[int][]Package{}
-	maxLayer := 0
-	for _, p := range pkgs {
-		byLayer[p.Layer] = append(byLayer[p.Layer], p)
-		if p.Layer > maxLayer {
-			maxLayer = p.Layer
-		}
-	}
-
-	var b strings.Builder
-	b.WriteString("## Every package, by layer\n\n")
-
-	for layer := 0; layer <= maxLayer; layer++ {
-		group := byLayer[layer]
-		if len(group) == 0 {
-			continue
-		}
-		sort.Slice(group, func(i, j int) bool { return group[i].Name < group[j].Name })
-
-		fmt.Fprintf(&b, "### Layer %d\n\n", layer)
-		if layer == 0 {
-			b.WriteString("No internal dependencies. These are the vocabulary the rest agrees on.\n\n")
-		}
-		for _, p := range group {
-			fmt.Fprintf(&b, "- **`%s`**", p.Name)
-			if n := fanIn[p.Name]; n > 0 {
-				fmt.Fprintf(&b, " · %d %s", n, plural(n, "importer"))
-			}
-			if len(p.Imports) > 0 {
-				fmt.Fprintf(&b, " · → %s", codeList(p.Imports))
-			}
-			b.WriteString("\n")
-			if p.Synopsis != "" {
-				fmt.Fprintf(&b, "  %s\n", p.Synopsis)
-			}
-		}
-		b.WriteString("\n")
-	}
 	return b.String()
 }
 

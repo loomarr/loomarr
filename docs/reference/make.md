@@ -206,8 +206,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make arch-docs` |  | regenerate the package map in docs/design/package-map.md from the code |
-| `make arch-docs-verify` | ✅ | regenerated package map must match committed (CI red on drift) <br>*runs:* `arch-docs` |
+| `make arch-docs` |  | regenerate the package map and its area pages in docs/design/ from the code |
+| `make arch-docs-verify` | ✅ | regenerated package map and area pages must match committed (CI red on drift) <br>*runs:* `arch-docs` |
 
 ## Dev docs (the command contract)
 

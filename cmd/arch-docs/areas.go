@@ -204,56 +204,6 @@ func areaInventory(table []area) (listed map[string]bool, duplicates []string) {
 	return listed, duplicates
 }
 
-// renderStartHere renders the orientation section: each area with its description, the
-// other areas it imports from today, and its packages; then the two traced flows.
-//
-// Package rows are a table rather than the "- **`name`**" list the layer listing uses,
-// because the coverage gate parses that list as the production-package inventory.
-func renderStartHere(table []area, pkgs []Package) string {
-	areaOf := map[string]string{}
-	for _, a := range table {
-		for _, p := range a.Packages {
-			areaOf[p] = a.Name
-		}
-	}
-	byName := make(map[string]Package, len(pkgs))
-	for _, p := range pkgs {
-		byName[p.Name] = p
-	}
-
-	var b strings.Builder
-	b.WriteString("## Start here\n\n")
-	b.WriteString("The packages under `internal/` group into the areas below. Each area says what it " +
-		"is for, which other areas it imports from today (counted as package-to-package imports), " +
-		"and which packages make it up. The area table lives in `cmd/arch-docs/areas.go`; a new " +
-		"package must be added to one area before it merges.\n\n")
-
-	for _, a := range table {
-		fmt.Fprintf(&b, "### %s\n\n%s\n\n", a.Title, a.Description)
-		fmt.Fprintf(&b, "**Imports from other areas:** %s\n\n", crossAreaImports(a, byName, areaOf, table))
-		b.WriteString("| Package | What it is |\n| --- | --- |\n")
-		names := append([]string(nil), a.Packages...)
-		sort.Strings(names)
-		for _, n := range names {
-			synopsis := "Tests only."
-			if p, ok := byName[n]; ok {
-				synopsis = p.Synopsis
-				if synopsis == "" {
-					synopsis = "—"
-				}
-			}
-			fmt.Fprintf(&b, "| `%s` | %s |\n", n, strings.ReplaceAll(synopsis, "|", `\|`))
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString("## Two flows, end to end\n\n")
-	for _, f := range flows {
-		fmt.Fprintf(&b, "### %s\n\n%s\n\n", f.Title, f.Text)
-	}
-	return b.String()
-}
-
 // crossAreaImports summarises a's imports of packages in other areas, busiest area first.
 func crossAreaImports(a area, byName map[string]Package, areaOf map[string]string, table []area) string {
 	counts := map[string]int{}

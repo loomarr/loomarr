@@ -29,7 +29,7 @@ func TestArchDocs_NoDrift(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan internal/: %v", err)
 	}
-	next, err := splice(string(committed), render(pkgs), anchor)
+	next, err := splice(string(committed), render(areas, pkgs), anchor)
 	if err != nil {
 		t.Fatalf("splice: %v", err)
 	}
@@ -37,9 +37,28 @@ func TestArchDocs_NoDrift(t *testing.T) {
 		t.Errorf("%s is stale — run `make arch-docs` and commit.\n"+
 			"committed %d bytes, generated %d bytes", defaultDocPath, len(committed), len(next))
 	}
+
+	pagesDir := filepath.Join(filepath.Dir(docPath), areaPagesDir)
+	want := renderAreaPages(areas, pkgs)
+	files, err := os.ReadDir(pagesDir)
+	if err != nil {
+		t.Fatalf("read area pages: %v", err)
+	}
+	for _, f := range files {
+		name := strings.TrimSuffix(f.Name(), ".md")
+		if _, ok := want[name]; !ok {
+			t.Errorf("%s/%s is not an area page — run `make arch-docs` and commit", areaPagesDir, f.Name())
+		}
+	}
+	for name, page := range want {
+		committed, err := os.ReadFile(filepath.Join(pagesDir, name+".md"))
+		if err != nil || string(committed) != page {
+			t.Errorf("%s/%s.md is stale or missing — run `make arch-docs` and commit", areaPagesDir, name)
+		}
+	}
 }
 
-// The committed generated block is an exact set inventory: every source package is
+// The committed area pages are, together, an exact set inventory: every source package is
 // present, including nested packages, and no removed package survives as a stale row.
 // Source discovery here is deliberately independent of scan(), so one recursive-walk
 // bug cannot make both the generator and its coverage gate agree on the same omission.
@@ -49,11 +68,21 @@ func TestArchDocs_CoversEveryPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discover source packages: %v", err)
 	}
-	doc, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(defaultDocPath)))
+	pagesDir := filepath.Join(root, filepath.FromSlash(filepath.Dir(defaultDocPath)), areaPagesDir)
+	files, err := os.ReadDir(pagesDir)
 	if err != nil {
-		t.Fatalf("read package map: %v", err)
+		t.Fatalf("read area pages: %v", err)
 	}
-	rendered := renderedPackageNames(string(doc))
+	rendered := map[string]bool{}
+	for _, f := range files {
+		page, err := os.ReadFile(filepath.Join(pagesDir, f.Name()))
+		if err != nil {
+			t.Fatalf("read area page: %v", err)
+		}
+		for name := range renderedPackageNames(string(page)) {
+			rendered[name] = true
+		}
+	}
 	missing, stale := packageInventoryDiff(source, rendered)
 	if len(missing) > 0 || len(stale) > 0 {
 		t.Errorf("generated package inventory differs from source\nmissing: %v\nstale: %v", missing, stale)
@@ -109,38 +138,69 @@ func TestAreaInventoryReportsDuplicates(t *testing.T) {
 	}
 }
 
-// Each area's import count is the number of package-to-package imports that cross into
-// another area, grouped by that area and listed busiest first.
-func TestRenderStartHere_CountsCrossAreaImports(t *testing.T) {
-	fixture := []area{
+var (
+	fixtureAreas = []area{
 		{Name: "channels", Title: "Channels", Description: "Channel things.", Packages: []string{"schedule", "binder"}},
 		{Name: "platform", Title: "Platform", Description: "Shared ground.", Packages: []string{"store", "httpx"}},
 		{Name: "library", Title: "Library", Description: "What is owned.", Packages: []string{"library", "itest"}},
 	}
-	pkgs := []Package{
+	fixturePackages = []Package{
 		{Name: "binder", Synopsis: "Plans a channel.", Imports: []string{"httpx", "library", "schedule", "store"}},
 		{Name: "httpx", Synopsis: "HTTP client."},
 		{Name: "library", Synopsis: "Library port.", Imports: []string{"httpx"}},
 		{Name: "schedule", Synopsis: "Scheduler.", Imports: []string{"store"}},
 		{Name: "store", Synopsis: "Persistence."},
 	}
+)
 
-	out := renderStartHere(fixture, pkgs)
-	for _, want := range []string{
-		"**Imports from other areas:** platform (3), library (1)",
-		"**Imports from other areas:** none",
-		"**Imports from other areas:** platform (1)",
-		"| `binder` | Plans a channel. |",
-		"| `itest` | Tests only. |",
+// An area's page counts the package-to-package imports that cross into each other area,
+// busiest first, and lists only its own packages: each with its importers, its imports and
+// its synopsis, and test-only packages by name.
+func TestRenderAreaPages_EachPageOwnsItsPackages(t *testing.T) {
+	pages := renderAreaPages(fixtureAreas, fixturePackages)
+	for name, want := range map[string][]string{
+		"channels": {
+			"**Imports from other areas:** platform (3), library (1)",
+			"- **`binder`** · → `httpx`, `library`, `schedule`, `store`\n  Plans a channel.",
+			"- **`schedule`** · 1 importer · → `store`\n  Scheduler.",
+		},
+		"platform": {"**Imports from other areas:** none", "- **`store`** · 2 importers\n  Persistence."},
+		"library":  {"**Imports from other areas:** platform (1)", "**Tests only:** `itest`"},
 	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("start-here section missing %q\n%s", want, out)
+		for _, w := range want {
+			if !strings.Contains(pages[name], w) {
+				t.Errorf("%s page missing %q\n%s", name, w, pages[name])
+			}
 		}
 	}
-	// The coverage gate parses "- **`name`**" rows as the layer inventory; the area tables
-	// must not look like one, or a test-only package would read as a stale layer row.
-	if strings.Contains(out, "- **`") {
-		t.Error("start-here section uses the layer-row prefix the inventory gate parses")
+	if strings.Contains(pages["channels"], "**`store`**") {
+		t.Error("the channels page lists a platform package")
+	}
+	if strings.Contains(pages["library"], "- **`itest`") {
+		t.Error("a test-only package uses the row prefix the inventory gate parses as production")
+	}
+}
+
+// The point of one page per area: an import that changes inside one area rewrites that
+// area's page and nothing else, so two PRs in different areas never edit the same lines.
+// The index carries no per-package rows or counts for the same reason.
+func TestRender_AnImportInsideOneAreaChangesOnlyThatAreasPage(t *testing.T) {
+	before := renderAreaPages(fixtureAreas, fixturePackages)
+	changed := append([]Package(nil), fixturePackages...)
+	changed[0].Imports = []string{"httpx", "library", "store"} // binder stops importing schedule
+	after := renderAreaPages(fixtureAreas, changed)
+
+	for name := range before {
+		if differs := before[name] != after[name]; differs != (name == "channels") {
+			t.Errorf("%s page changed = %v after an import inside channels", name, differs)
+		}
+	}
+	if render(fixtureAreas, fixturePackages) != render(fixtureAreas, changed) {
+		t.Error("the index changed after an import inside one area")
+	}
+	if index := render(fixtureAreas, fixturePackages); strings.Contains(index, "- **`") ||
+		strings.Contains(index, "importer") {
+		t.Errorf("the index carries per-package rows or counts\n%s", index)
 	}
 }
 
@@ -184,15 +244,16 @@ import _ "github.com/loomarr/loomarr/internal/nested"
 	}
 	want := []Package{
 		{Name: "nested", Synopsis: "Parent fixture.", Imports: []string{}},
-		{Name: "nested/child", Synopsis: "Imports its parent package.", Imports: []string{"nested"}, Layer: 1},
+		{Name: "nested/child", Synopsis: "Imports its parent package.", Imports: []string{"nested"}},
 		{Name: "nested/leaf", Synopsis: "Nested leaf fixture.", Imports: []string{}},
-		{Name: "top", Synopsis: "Top-level fixture.", Imports: []string{"nested/leaf"}, Layer: 1},
+		{Name: "top", Synopsis: "Top-level fixture.", Imports: []string{"nested/leaf"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("scan()\n got %#v\nwant %#v", got, want)
 	}
-	if block := render(got); strings.Contains(block, "**`testonly`**") {
-		t.Error("render included a directory containing only test Go files")
+	table := []area{{Name: "all", Title: "All", Packages: []string{"nested", "nested/child", "nested/leaf", "top", "testonly"}}}
+	if page := renderAreaPages(table, got)["all"]; strings.Contains(page, "- **`testonly`**") {
+		t.Error("a directory containing only test Go files rendered as a production package")
 	}
 }
 
@@ -240,36 +301,13 @@ func TestRender_IsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
-	first := render(pkgs)
+	first, firstPages := render(areas, pkgs), renderAreaPages(areas, pkgs)
 	for i := 0; i < 8; i++ {
-		if got := render(pkgs); got != first {
-			t.Fatalf("render is not deterministic (run %d differed)", i+2)
+		if got := render(areas, pkgs); got != first {
+			t.Fatalf("the index is not deterministic (run %d differed)", i+2)
 		}
-	}
-}
-
-func TestAssignLayers_IsDeterministicForMalformedCycles(t *testing.T) {
-	orders := [][]string{{"app", "metrics", "provision"}, {"provision", "app", "metrics"}, {"metrics", "provision", "app"}}
-	var want map[string]int
-	for _, order := range orders {
-		packages := map[string]*Package{}
-		for _, name := range order {
-			imports := map[string][]string{
-				"app": {"metrics"}, "metrics": {"provision"}, "provision": {"app"},
-			}[name]
-			packages[name] = &Package{Name: name, Imports: imports}
-		}
-		assignLayers(packages)
-		got := map[string]int{}
-		for name, pkg := range packages {
-			got[name] = pkg.Layer
-		}
-		if want == nil {
-			want = got
-			continue
-		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("layers depend on map insertion order: got %v, want %v", got, want)
+		if got := renderAreaPages(areas, pkgs); !reflect.DeepEqual(got, firstPages) {
+			t.Fatalf("the area pages are not deterministic (run %d differed)", i+2)
 		}
 	}
 }
@@ -360,14 +398,10 @@ func goPackageNames(root string, includeTests bool) (map[string]bool, error) {
 	return names, err
 }
 
-func renderedPackageNames(doc string) map[string]bool {
+// renderedPackageNames reads the "- **`name`**" production rows of one area page.
+func renderedPackageNames(page string) map[string]bool {
 	names := map[string]bool{}
-	start := strings.Index(doc, beginMarker)
-	end := strings.Index(doc, endMarker)
-	if start < 0 || end <= start {
-		return names
-	}
-	for _, line := range strings.Split(doc[start:end], "\n") {
+	for _, line := range strings.Split(page, "\n") {
 		const prefix = "- **`"
 		if !strings.HasPrefix(line, prefix) {
 			continue

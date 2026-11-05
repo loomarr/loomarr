@@ -211,7 +211,7 @@ Air run at pinned versions from the harness.
 - `api/openapi.yaml` → `make openapi`; verify with `make openapi-verify`
 - `docs/reference/settings.md` → `make config-docs`
 - `docs/reference/make.md` → `make dev-docs`
-- `docs/design/package-map.md` → `make arch-docs`
+- `docs/design/package-map.md` and `docs/design/areas/` → `make arch-docs`
 - `web/packages/tokens/generated/` → `make fe-tokens`
 - `web/packages/api/generated/` and `web/apps/web/src/routeTree.gen.ts` → `make fe-codegen`; both are
   gitignored and absent from a fresh worktree
