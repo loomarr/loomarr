@@ -89,13 +89,16 @@ never decides.
   separately certified role module. Until that module exists, an interval with no unanimous role
   is not materialized: the role-sliced authority and the V67 projection both hold it.
 
-- A **complete-timeline assessor** sees no peer answer and must describe every millisecond. One
-  content-addressed assessment-media contract owns the derivative: MP4, H.264/yuv420p, 960×720 at
-  30 fps with aspect-preserving padding, AAC stereo 48 kHz, 90 kHz timescale, stripped metadata,
-  bitexact, at most 64 MiB, with the argument templates part of the recipe identity. Every
-  assessment binds the source and the derivative as distinct identities. The preparer gets two
-  roots, the applied filler root and a private assessment-media root, and neither is derived from
-  the other.
+- A **window assessor** sees no peer answer and must describe every millisecond of its window. A
+  source is planned into windows (a 120 s primary span with 15 s of context on each side, at most
+  15 windows and 30 minutes), every assessor family answers every window, and a deterministic
+  stitch projects the overlapping answers onto one complete timeline; a conflict in an overlap
+  holds. One content-addressed assessment-media contract owns each window's derivative: MP4,
+  H.264/yuv420p, 960×720 at 30 fps with aspect-preserving padding, AAC stereo 48 kHz, 90 kHz
+  timescale, stripped metadata, bitexact, at most 64 MiB, with the argument templates part of the
+  recipe identity. Every call binds the source and the derivative as distinct identities. The
+  preparer gets two roots, the applied filler root and a private assessment-media root, and
+  neither is derived from the other.
 - **The cut encodes on the channels' GPU (#2121).** Decode, cadence, scale and pad stay on the CPU,
   so every family cuts the same picture; only the encoder differs, through the shared
   `encode.FileVideoArgs`. Each family with a measured cut level is its **own profile**, with its own
@@ -110,10 +113,10 @@ never decides.
   than assessing a picture nobody reviewed. Moving a household to the GPU cut means certifying the
   GPU profile. The certify tools in the frozen research module still build the old software
   profile, so a new certificate needs them back in the main module first.
-- The runtime prepares and validates all media, and stays inside the certified duration and byte
-  envelope, **before** any provider metadata refresh, reservation or request. Nothing extrapolates
-  from shorter cases, truncates a reel or substitutes chunks; long reels need their own certified
-  protocol.
+- The runtime prepares and validates every window's media, and stays inside the certified duration
+  and byte envelope, **before** any provider metadata refresh, reservation or request. Nothing
+  extrapolates beyond the plan's capacity or truncates a reel; a longer source holds at split
+  review.
 - The OpenRouter adapter uses one fallback-disabled, zero-retention route and a strict schema,
   hashes everything, and durably reserves the request digest and worst-case charge in the shared
   filler-inference budget before sending. A journal refuses a second reservation for the same

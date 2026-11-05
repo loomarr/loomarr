@@ -264,7 +264,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 - **`fillerdefectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
 - **`fillerstructureassessment`** · 2 importers · → `bgexec`, `filler`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `mediatools`
-  Complete-timeline structure-assessment runtime: the ffmpeg media preparers that render and verify the normalized whole-source and per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
+  Complete-timeline structure-assessment runtime: the ffmpeg media preparer that renders and verifies the normalized per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
 - **`library`** · 11 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 
@@ -298,7 +298,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 - **`devbootstrap`** · → `auth`, `settings`
   Prepares an isolated agent worktree for UI development.
 - **`fillerstore`** · 3 importers · → `filler`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
-  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
+  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`housekeeping`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`, `settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`images`** · 2 importers · → `httpx`, `images/rustgen`, `jobs`, `logchange`, `settings`
