@@ -129,6 +129,7 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 		t.Fatalf("empty connection made %d media-server requests, want none", got)
 	}
 
+	h.ms.SetAdminToken("jellyfin-token-one")
 	if code := h.patchSettings(admin, map[string]string{
 		"library.flavor": "jellyfin",
 		"library.url":    h.ms.URL,
@@ -145,6 +146,8 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	assertJellyfinUserAuth(t, requests, "jellyfin-token-one")
 	assertFillerLibraryScanned(t, requests, "jellyfin-token-one")
 
+	// The operator rotates the key on the media server, then in Loomarr: the old key now fails.
+	h.ms.SetAdminToken("jellyfin-token-two")
 	if code := h.patchSettings(admin, map[string]string{"library.token": "jellyfin-token-two"}); code != http.StatusOK {
 		t.Fatalf("rotate Jellyfin token → %d, want 200", code)
 	}

@@ -73,7 +73,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Decides whether two filler clips are the same advert (#2033).
 - **`defects`** · 7 importers
   Measures and judges real picture and sound defects in a filler clip (#2034).
-- **`demolibrary`**
+- **`demolibrary`** · 1 importer
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
@@ -312,7 +312,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 11
 
-- **`testkit`** · 1 importer · → `fillerstore`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+- **`testkit`** · 1 importer · → `demolibrary`, `fillerstore`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/moviecollectionsfixture`** · → `moviecollections`
   The shared deterministic source for movie-collection resolver tests.

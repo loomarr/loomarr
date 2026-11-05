@@ -1,29 +1,26 @@
 import type { Intent, ProposalItem, ProposalJourneyDTO, Scores } from "@loomarr/api";
 import { getGetProposalJobMockHandler, getReviseProposalJobMockHandler } from "@loomarr/api/msw";
-import type { EventHandlers } from "@loomarr/core/events";
 import { provisionKey } from "@loomarr/core/provision";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { LoomarrEventsProvider } from "@/events";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { server } from "@/test/msw/server";
 import { isSuggestionExpansion } from "../suggestion-expansion";
 import { useProposalReviewEdit } from "../use-proposal-review-edit";
 import { useSuggestionRun } from "../use-suggestion-run";
 import { useAiResume } from "./use-ai-resume";
 
-// The real provider is an EventSource jsdom cannot run; the Journey poll is what moves this test.
-let handlers: EventHandlers | undefined;
-vi.mock("@/events/events-provider", () => ({
-  useLoomarrEventListener: (h: EventHandlers) => {
-    handlers = h;
-  },
-}));
-
+// The Journey poll moves this test; the terminal phase arrives down the real events provider's
+// stream, which the shared fake feeds.
 const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <QueryClientProvider client={client}>
+      <LoomarrEventsProvider>{children}</LoomarrEventsProvider>
+    </QueryClientProvider>
   );
 };
 
@@ -85,7 +82,6 @@ const useResumeHarness = () => {
 describe("useAiResume", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
-    handlers = undefined;
   });
 
   // Resumes the manual Job with AI, captures the one expansion revision, then lands the model's
@@ -130,7 +126,7 @@ describe("useAiResume", () => {
       },
     };
     await act(async () => {
-      handlers?.onSuggestion?.({ jobId: "job-manual", phase: "done", round: 0 });
+      FakeEventSource.broadcast("suggestion", { jobId: "job-manual", phase: "done", round: 0 });
     });
     await waitFor(() => expect(hook.result.current.run.proposal?.id).toBe("proposal-expanded"));
     return { ...hook, revision, revisions };

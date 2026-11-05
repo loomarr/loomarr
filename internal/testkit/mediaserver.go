@@ -32,7 +32,8 @@ type MediaServer struct {
 	// it exists so a test can assert that N programmes cost ONE request rather than N — the
 	// property that makes the XMLTV guide affordable on a route a media server polls.
 	metadataRequests int
-	// AdminToken is the token the mock accepts for /Users and /Items.
+	// AdminToken is the only token the mock accepts for /Users, /Items and
+	// /Library/VirtualFolders; any other request is answered 401, as Emby does.
 	AdminToken string
 	// GoodUser/GoodPass authenticate successfully via /Users/AuthenticateByName.
 	GoodUser string
@@ -270,6 +271,9 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	// real server.
 	mux.HandleFunc("GET /Library/VirtualFolders", func(w http.ResponseWriter, r *http.Request) {
 		ms.capture(r)
+		if !ms.authorized(w, r) {
+			return
+		}
 		_, _ = w.Write(Fixture(t, "emby/virtual_folders.json"))
 	})
 
@@ -277,6 +281,9 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	// to the search fixture; otherwise AnyProviderIdEquals decides present/absent.
 	mux.HandleFunc("GET /Items", func(w http.ResponseWriter, r *http.Request) {
 		ms.capture(r)
+		if !ms.authorized(w, r) {
+			return
+		}
 		// Episode enumeration (§9) is also ParentId-scoped. Scripted episodes take
 		// precedence; the pinned filler fixture remains the default for §10 reads.
 		if pid := r.URL.Query().Get("ParentId"); pid != "" {
@@ -411,6 +418,9 @@ func NewMediaServer(t testing.TB) *MediaServer {
 	// /Users — list for import/sync (§11).
 	mux.HandleFunc("GET /Users", func(w http.ResponseWriter, r *http.Request) {
 		ms.capture(r)
+		if !ms.authorized(w, r) {
+			return
+		}
 		if ms.Users != nil {
 			type policy struct {
 				IsAdministrator bool `json:"IsAdministrator"`
@@ -484,6 +494,34 @@ func NewMediaServer(t testing.TB) *MediaServer {
 
 	ms.Server = httptest.NewServer(mux)
 	return ms
+}
+
+// authorized reports whether the request carries AdminToken in one of the forms Emby and
+// Jellyfin accept; otherwise it answers 401, as Emby does.
+func (ms *MediaServer) authorized(w http.ResponseWriter, r *http.Request) bool {
+	ms.mu.RLock()
+	token := ms.AdminToken
+	ms.mu.RUnlock()
+	for _, v := range []string{r.Header.Get("X-Emby-Token"), r.Header.Get("X-MediaBrowser-Token"), r.URL.Query().Get("api_key")} {
+		if v != "" && v == token {
+			return true
+		}
+	}
+	for _, h := range []string{r.Header.Get("Authorization"), r.Header.Get("X-Emby-Authorization")} {
+		if token != "" && strings.Contains(h, `Token="`+token+`"`) {
+			return true
+		}
+	}
+	http.Error(w, "Access token is invalid or expired.", http.StatusUnauthorized)
+	return false
+}
+
+// SetAdminToken rotates the accepted API key under the lock, as an operator rotating the media
+// server's key would, for a test that reconfigures the connection while requests are in flight.
+func (ms *MediaServer) SetAdminToken(token string) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	ms.AdminToken = token
 }
 
 func (ms *MediaServer) capture(r *http.Request) {
