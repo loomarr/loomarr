@@ -157,24 +157,24 @@ func TestMQTTAdapterClassifiesConnectionAndProtocolFailures(t *testing.T) {
 	for _, brokerURL := range []string{
 		"http://broker.example.test", "mqtt://user:pass@broker.example.test", "mqtt://broker.example.test/path",
 	} {
-		if err := validator.ValidateDestination(map[string]string{
+		if err := validator.ValidateDestination(notifications.NewProviderSettings(map[string]string{
 			"baseTopic": "loomarr", "qos": "0", "retain": "false",
-		}, map[string]string{"brokerUrl": brokerURL}); err == nil {
+		}, map[string]string{"brokerUrl": brokerURL})); err == nil {
 			t.Errorf("accepted invalid broker URL %q", brokerURL)
 		}
 	}
-	if err := validator.ValidateDestination(map[string]string{
+	if err := validator.ValidateDestination(notifications.NewProviderSettings(map[string]string{
 		"baseTopic": "bad/+/topic", "qos": "2", "retain": "false",
-	}, map[string]string{"brokerUrl": "mqtts://broker.example.test"}); err == nil {
+	}, map[string]string{"brokerUrl": "mqtts://broker.example.test"})); err == nil {
 		t.Fatal("accepted unsupported QoS and wildcard topic")
 	}
 	for name, configuration := range map[string]map[string]string{
 		"null client ID": {"baseTopic": "loomarr", "clientId": "bad\x00id"},
 		"long client ID": {"baseTopic": "loomarr", "clientId": strings.Repeat("x", 65536)},
 	} {
-		if err := validator.ValidateDestination(configuration, map[string]string{
+		if err := validator.ValidateDestination(notifications.NewProviderSettings(configuration, map[string]string{
 			"brokerUrl": "mqtt://broker.example.test",
-		}); err == nil {
+		})); err == nil {
 			t.Errorf("accepted %s", name)
 		}
 	}
@@ -189,7 +189,9 @@ func TestMQTTAdapterClassifiesConnectionAndProtocolFailures(t *testing.T) {
 			"brokerUrl": "mqtts://broker.example.test", "tlsCaCertificate": "not PEM",
 		},
 	} {
-		if err := validator.ValidateDestination(map[string]string{"baseTopic": "loomarr"}, credentials); err == nil {
+		if err := validator.ValidateDestination(notifications.NewProviderSettings(
+			map[string]string{"baseTopic": "loomarr"}, credentials,
+		)); err == nil {
 			t.Errorf("accepted %s", name)
 		}
 	}
