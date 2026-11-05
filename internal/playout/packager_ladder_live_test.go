@@ -104,7 +104,7 @@ func TestLive_PackagerLadderStepsDownWithoutAnAudioGap(t *testing.T) {
 	o := NewOrigin(OriginDependencies{Packager: m})
 	ctx, cancel := context.WithTimeout(context.Background(), wall)
 	defer cancel()
-	tuner, err := o.Tune(ctx, TuneRequest{ChannelID: "ch", Plan: PlanBaseline, Delivery: DeliveryMPEGTS})
+	tuner, err := o.Tune(ctx, TuneRequest{ChannelID: "ch", Delivery: DeliveryMPEGTS})
 	if err != nil {
 		t.Fatal(err)
 	}

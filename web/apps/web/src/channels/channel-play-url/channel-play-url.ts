@@ -1,6 +1,5 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
-import { deviceProfile } from "../use-hls-player/device-profile";
 import type { ChannelPlaySource } from "./channel-play-url.type";
 
 // qualityHint caps what the server offers; the player still adapts among those renditions.
@@ -24,12 +23,7 @@ const mintChannelPlaySource = async (
   channelId: string,
   signal: AbortSignal,
 ): Promise<ChannelPlaySource | undefined> => {
-  const response = await channelsApi.channelPlayUrl(
-    channelId,
-    deviceProfile(),
-    { quality: qualityHint() },
-    { signal },
-  );
+  const response = await channelsApi.channelPlayUrl(channelId, { quality: qualityHint() }, { signal });
   const body = unwrap(response);
   const url = body?.relativeUrl || body?.url;
   if (!url) return undefined;

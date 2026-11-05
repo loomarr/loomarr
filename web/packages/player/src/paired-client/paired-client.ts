@@ -68,7 +68,6 @@ const usePairedClient = ({
         onTune: (report) => onTuneRef.current?.(report),
         // The signed still needs no auth header, so the platform image cache can hold it for the overlay.
         prefetchStill: (uri) => void Image.prefetch(uri).catch(() => undefined),
-        profile: {},
         restoreChannelId: lastChannel?.load,
         source: createPlayUrlSourcePort({ baseUrl: credential.serverUrl, fetch: request }),
         transport,

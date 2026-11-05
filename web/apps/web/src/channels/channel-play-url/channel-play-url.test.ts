@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { channelPlayUrl, unwrap, deviceProfile } = vi.hoisted(() => ({
+const { channelPlayUrl, unwrap } = vi.hoisted(() => ({
   channelPlayUrl: vi.fn(),
   unwrap: vi.fn((response: unknown) => response),
-  deviceProfile: vi.fn(() => ({ video: [], audio: [], video10bit: false })),
 }));
 
 vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => ({
@@ -11,7 +10,6 @@ vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => ({
   channelPlayUrl,
 }));
 vi.mock("@loomarr/api/unwrap", () => ({ unwrap }));
-vi.mock("../use-hls-player/device-profile", () => ({ deviceProfile }));
 
 import { mintChannelPlaySource } from "./channel-play-url";
 
@@ -21,7 +19,7 @@ describe("channel play URL", () => {
     unwrap.mockClear();
   });
 
-  it("mints with the device profile and prefers the browser's same-origin URL", async () => {
+  it("mints with a quality hint and prefers the browser's same-origin URL", async () => {
     channelPlayUrl.mockResolvedValue({
       relativeUrl: "/v1/playout/hls/ch-2/master.m3u8?sig=signed",
       url: "https://loomarr.example/v1/playout/hls/ch-2/master.m3u8?sig=signed",
@@ -35,7 +33,6 @@ describe("channel play URL", () => {
     });
     expect(channelPlayUrl).toHaveBeenCalledWith(
       "ch-2",
-      { video: [], audio: [], video10bit: false },
       { quality: expect.stringMatching(/^(auto|720|480)$/) },
       { signal: controller.signal },
     );
