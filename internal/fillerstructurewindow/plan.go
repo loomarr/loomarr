@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
 
 const (
@@ -38,12 +39,16 @@ type Plan struct {
 }
 
 // NewPlan deterministically partitions the exact source timeline into primary spans and expands
-// only the supplied media context. It performs no media I/O and grants no production authority.
-func NewPlan(source fillerstructure.Source) (Plan, error) {
+// only the supplied media context, cut to the media profile. It performs no media I/O and grants
+// no production authority.
+func NewPlan(source fillerstructure.Source, media fillerstructuremedia.Profile) (Plan, error) {
 	if err := fillerstructure.ValidateSource(source); err != nil {
 		return Plan{}, err
 	}
-	profile := CanonicalProfile()
+	if !fillerstructuremedia.Supported(media) {
+		return Plan{}, errors.New("structure window plan media profile is unsupported")
+	}
+	profile := ProfileFor(media)
 	if source.DurationMS > profile.MaximumSourceDurationMS {
 		return Plan{}, fmt.Errorf("structure window source duration %d exceeds protocol capacity %d", source.DurationMS, profile.MaximumSourceDurationMS)
 	}

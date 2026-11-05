@@ -107,14 +107,17 @@ func ClassifyStatus(code int) Class {
 	}
 }
 
+// isRetryableStatus is "try again later": 408, 425, 429 and every 5xx except 501 Not
+// Implemented and 505 HTTP Version Not Supported, which name a mismatch a retry cannot cure.
+// A CDN's 52x, 507 and 511 are therefore transient.
 func isRetryableStatus(code int) bool {
 	switch code {
-	case http.StatusRequestTimeout, http.StatusTooManyRequests,
-		http.StatusInternalServerError, http.StatusBadGateway,
-		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests:
 		return true
+	case http.StatusNotImplemented, http.StatusHTTPVersionNotSupported:
+		return false
 	}
-	return false
+	return code >= 500 && code <= 599
 }
 
 // Classify classifies an error from an outbound call: a *StatusError (anywhere in

@@ -93,7 +93,7 @@ func TestIDs_IsTheClosedSet(t *testing.T) {
 			t.Errorf("ParseID(%q) = %q, %v", id, got, err)
 		}
 	}
-	if _, err := mp.ParseID("tmdb"); err == nil {
+	if _, err := mp.ParseID("tvdb"); err == nil {
 		t.Error("ParseID accepted a provider that is not in the set")
 	}
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/watermark"
 )
@@ -90,12 +91,12 @@ type watermarkGate struct{ works, colour atomic.Bool }
 // image service is built later and bound with withOriginals. Rendered bugs are derived files, kept
 // beside the image store rather than inside it (the image GC owns that tree).
 func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved, calendar func() schedule.Calendar, events *diagnostics.Recorder, log *slog.Logger) *channelWatermarks {
-	ffmpeg := set.str("playout.ffmpeg_path")
+	ffmpeg := settings.PlayoutFFmpegPath.Get(set)
 	c := &channelWatermarks{
 		ffmpeg:   func() string { return ffmpeg },
 		tonemap:  playout.TonemapperFor(ffmpeg),
 		gpu:      playout.GPUFiltersFor(ffmpeg),
-		dir:      filepath.Join(filepath.Dir(filepath.Clean(set.str("images.dir"))), "watermarks"),
+		dir:      filepath.Join(filepath.Dir(filepath.Clean(settings.ImagesDir.Get(set))), "watermarks"),
 		install:  watermarkInstall(set),
 		calendar: calendar,
 		channels: st, log: log, lifetime: rootCtx,
@@ -111,8 +112,8 @@ func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved,
 // without a restart (the rendered-bug cache is keyed by both, so a new value re-renders).
 func watermarkInstall(set resolved) func() schedule.WatermarkInstall {
 	return func() schedule.WatermarkInstall {
-		return schedule.WatermarkInstall{Opacity: float64(set.intv("playout.watermark_opacity_pct")) / 100,
-			Look: set.str("playout.watermark_look")}
+		return schedule.WatermarkInstall{Opacity: float64(settings.PlayoutWatermarkOpacityPct.Get(set)) / 100,
+			Look: settings.PlayoutWatermarkLook.Get(set)}
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 func TestReducerCandidateProjectsOneCompleteFamilyWithoutInventingVideo(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestReducerCandidateProjectsOneCompleteFamilyWithoutInventingVideo(t *testi
 }
 
 func TestTwoStitchedFamiliesEnterSharedReducerAsTwoVotes(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestTwoStitchedFamiliesEnterSharedReducerAsTwoVotes(t *testing.T) {
 }
 
 func TestHeldStitchBecomesOneOperationalCandidate(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -40,7 +40,7 @@ func TestSuggest_NetworkEpochAllowsEditorialDecadeWithoutEpisodeCutoff(t *testin
 				testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "genres": []any{"Documentary"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 				testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 			)
-			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: description})
+			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: description})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -66,7 +66,7 @@ func TestSuggest_FranchiseChannelIsNotNetworkProgramming(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Marigold Protocol"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "I'd like a Marigold franchise channel."})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "I'd like a Marigold franchise channel."})
 	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != marigoldCandidate().TMDBID {
 		t.Fatalf("franchise was forced through network discovery: proposal=%+v err=%v", proposal, err)
 	}
@@ -83,7 +83,7 @@ func TestSuggest_NetworkEpochRepairsMistakenEpisodeAiringConstraintBeforeDiscove
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: description})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestSuggest_NetworkEpochRepairsUnnecessaryDateClarification(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: description})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestSuggest_NetworkStyleRejectsTitleLookupBeforeNetworkDiscovery(t *testing
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "genres": []any{"Documentary"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the almanac channel from the 90s"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "A channel like the almanac channel from the 90s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestSuggest_NetworkStyleRejectsTitleLookupBeforeNetworkDiscovery(t *testing
 }
 
 func TestSuggest_NetworkEpochDoesNotEraseSeparateExplicitDates(t *testing.T) {
-	for name, intent := range map[string]suggest.Intent{
+	for name, intent := range map[string]proposal.Intent{
 		"era field":                   {Description: "A channel like the Almanac Channel from the 1990s", Era: "1990s"},
 		"separate airing restriction": {Description: "A channel like the Almanac Channel from the 1990s. Only episodes aired during the 2000s."},
 		"ordinary dated series":       {Description: "1990s documentary episodes on the Almanac Channel"},
@@ -160,7 +160,7 @@ func TestSuggest_NetworkStyleDirectFinalMustDiscoverInsteadOfGroundingTitleNames
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestSuggest_NetworkEpochCoverageFindsChoicesBeyondExemplarTopic(t *testing.
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "keywords": []any{"engineering"}, "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the Almanac Channel from the 1990s, when Gear Ledger was around"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "A channel like the Almanac Channel from the 1990s, when Gear Ledger was around"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestSuggest_NetworkEpochExposesOnlyRelevantLookupInterface(t *testing.T) {
 			initial = model.LastOpts
 		}
 	}
-	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
+	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestSuggest_NetworkStyleRejectsUnrequestedPopularityThresholdBeforeDispatch
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestSuggest_NetworkStyleRejectsGenericDiscovery(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(epochFinal(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the almanac channel from the 90s"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "A channel like the almanac channel from the 90s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestSuggest_NetworkStyleDoesNotReopenToolsOnJSONRepair(t *testing.T) {
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{epochCandidate()}}
 	lookup := testkit.ToolCallResponse("catalog_search", map[string]any{"network": "Almanac", "media_type": "series", "dateMeaning": dateMeaningNone()})
 	model := testkit.NewLLM(lookup, testkit.FinalResponse("{"), lookup, testkit.FinalResponse(epochFinal(t, dateMeaningNone())))
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "A channel like the Almanac Channel from the 1990s"})
 	if err != nil {
 		t.Fatal(err)
 	}

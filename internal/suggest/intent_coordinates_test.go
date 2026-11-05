@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/proposal"
 )
 
 func TestIntentCoordinatesPreserveSubmittedRuneSpans(t *testing.T) {
-	intent := Intent{Description: "  🎬 café\u2003films from the 1990s", Era: "\t1995–2000\n", RefineText: "keep été", MustInclude: []string{"", "  1980s TV", "é 2000s"}, MustExclude: []string{"\n1991 films"}}
+	intent := Intent{Intent: proposal.Intent{Description: "  🎬 café\u2003films from the 1990s", Era: "\t1995–2000\n", RefineText: "keep été", MustInclude: []string{"", "  1980s TV", "é 2000s"}, MustExclude: []string{"\n1991 films"}}}
 	prompt := userPrompt(intent)
 	const marker = "Do not count the surrounding prompt labels.\n"
 	_, raw, ok := strings.Cut(prompt, marker)

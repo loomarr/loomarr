@@ -8,7 +8,7 @@ import (
 )
 
 func TestStitchProducesOneTimelineAndPreservesSameRoleSeam(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestStitchProducesOneTimelineAndPreservesSameRoleSeam(t *testing.T) {
 }
 
 func TestStitchReconcilesSameFamilyOverlapObservationWithinTolerance(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestStitchReconcilesSameFamilyOverlapObservationWithinTolerance(t *testing.
 }
 
 func TestStitchHoldsWholeFamilyOnOverlapConflict(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestStitchHoldsWholeFamilyOnOverlapConflict(t *testing.T) {
 }
 
 func TestStitchRetainsOperationalFailureAsWholeFamilyHold(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestStitchRetainsOperationalFailureAsWholeFamilyHold(t *testing.T) {
 }
 
 func TestStitchRejectsMissingOrMixedAssessmentAuthority(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestStitchRejectsMissingOrMixedAssessmentAuthority(t *testing.T) {
 }
 
 func TestValidateStitchResultRejectsRehashedProjectionDrift(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}

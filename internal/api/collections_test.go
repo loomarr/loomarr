@@ -31,7 +31,7 @@ func newCollectionsHarness(t *testing.T, svc api.CollectionService) *apiHarness 
 			Auth:              defaults.Auth,
 			Log:               defaults.Log,
 			Collections:       svc,
-			LiveConfig:        func(key string) string { return "http://media.local" },
+			LiveSettings:      stringSettings(func(key string) string { return "http://media.local" }),
 			LibraryConfigured: func() bool { return true },
 		})
 	})

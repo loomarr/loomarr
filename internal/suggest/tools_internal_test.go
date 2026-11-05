@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
@@ -26,7 +27,7 @@ func TestSuggestCuratedTitleSubjectRejectsModelSteeredAmbiguity(t *testing.T) {
 		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"The Mudpuddles"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	), catalog.New(nil, corpus), nil, 10)
 
-	_, err := s.Suggest(context.Background(), Intent{Description: "Classic Mudpuddles"})
+	_, err := s.Suggest(context.Background(), proposal.Intent{Description: "Classic Mudpuddles"})
 	if !errors.Is(err, ErrNoGroundedTitles) {
 		t.Fatalf("model type/year steering admitted ambiguous curated subject: %v", err)
 	}
@@ -42,7 +43,7 @@ func TestGroundCuratedTitleSubjectTreatsDuplicateKeyRowsAsOneIdentity(t *testing
 		{MediaType: provision.Series, Name: "The Mudpuddles", Year: 1989, TMDBID: 90000456},
 	}}
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
-	intent := Intent{Description: "Classic Mudpuddles", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+	intent := Intent{Intent: proposal.Intent{Description: "Classic Mudpuddles"}, membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
 
 	candidates, err := s.groundCuratedTitleSubject(context.Background(), &intent)
 	if err != nil {
@@ -249,9 +250,9 @@ func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testi
 		{MediaType: "series", Name: "Crumb Street Bakery", TVDBID: 90000767},
 	}}
 	intent := Intent{
-		Description:    "90s family comedies like Grand Oak Hotel",
-		membershipKeys: make(map[provision.Key]bool),
-	}
+		Intent:         proposal.Intent{Description: "90s family comedies like Grand Oak Hotel"},
+		membershipKeys: make(map[provision.Key]bool)}
+
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
 	_, candidates, _, _ := s.runTool(context.Background(), llm.ToolCall{
 		Name: catalogToolName, Arguments: map[string]any{"query": "family comedies", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}},
@@ -265,7 +266,7 @@ func TestRunToolDoesNotTurnAnOrdinaryPositiveExampleIntoMembershipProof(t *testi
 }
 
 func TestPrepareToolCallProjectsThematicKeywordToExplicitDiscovery(t *testing.T) {
-	intent := Intent{Description: "British murder mysteries: cozy village cases from the UK."}
+	intent := Intent{Intent: proposal.Intent{Description: "British murder mysteries: cozy village cases from the UK."}}
 	prepared, result, _, valid := prepareToolCall(llm.ToolCall{
 		Name: catalogToolName,
 		Arguments: map[string]any{
@@ -289,9 +290,9 @@ func TestRunToolSourceResolutionIsBoundedAndDeduplicatedPerRequest(t *testing.T)
 		{MediaType: "series", Name: "Crumb Street Bakery", TVDBID: 90000767},
 	}}
 	intent := Intent{
-		Description:    "A named programming block with Grand Oak Hotel and Crumb Street Bakery",
-		membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState(),
-	}
+		Intent:         proposal.Intent{Description: "A named programming block with Grand Oak Hotel and Crumb Street Bakery"},
+		membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+
 	s := New(nil, catalog.New(nil, corpus), nil, 10)
 	call := llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"query": "family night", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}}
 	_, _, _, _ = s.runTool(context.Background(), call, intent, nil)
@@ -324,7 +325,7 @@ func TestRunCollectionToolUsesUnfilteredSourceIdentityBeforeModelYear(t *testing
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			corpus := &catalogfixture.Corpus{Candidates: tt.candidates}
-			intent := Intent{Description: "A named programming block with Grand Oak Hotel", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+			intent := Intent{Intent: proposal.Intent{Description: "A named programming block with Grand Oak Hotel"}, membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
 			s := New(nil, catalog.New(nil, corpus), nil, 10)
 			_, candidates, _, _ := s.runCollectionTool(context.Background(), map[string]any{
 				"mode": "collection", "media_type": "series", "titles": []any{map[string]any{"name": "Grand Oak Hotel", "year": float64(1987)}},

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 type productNotificationCoordinator struct {
@@ -124,22 +122,19 @@ func (c *productNotificationCoordinator) logPublicationFailure(err error, refere
 	}
 }
 
-func proposalSubject(proposal store.Proposal) string {
-	var body suggest.Proposal
-	if json.Unmarshal([]byte(proposal.ProposalJSON), &body) == nil {
-		if name := strings.TrimSpace(body.ChannelName); name != "" {
-			return name
-		}
-		if description := strings.TrimSpace(body.Intent.Description); description != "" {
-			if len(description) > 200 {
-				end := 200
-				for end > 0 && !utf8.RuneStart(description[end]) {
-					end--
-				}
-				return description[:end]
+func proposalSubject(row store.Proposal) string {
+	if name := strings.TrimSpace(row.Body.ChannelName); name != "" {
+		return name
+	}
+	if description := strings.TrimSpace(row.Body.Intent.Description); description != "" {
+		if len(description) > 200 {
+			end := 200
+			for end > 0 && !utf8.RuneStart(description[end]) {
+				end--
 			}
-			return description
+			return description[:end]
 		}
+		return description
 	}
 	return "Channel proposal"
 }

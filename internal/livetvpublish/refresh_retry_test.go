@@ -1,4 +1,4 @@
-package setup_test
+package livetvpublish_test
 
 import (
 	"context"
@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // fakeEmby serves the media-server surface RefreshTarget touches. Each POST /LiveTv/TunerHosts
@@ -60,19 +61,19 @@ func (f *fakeEmby) handler() http.Handler {
 	})
 }
 
-func refreshFixture(t *testing.T, statuses ...int) (*fakeEmby, *setup.LiveTVConnector, setup.LiveTVURLs) {
+func refreshFixture(t *testing.T, statuses ...int) (*fakeEmby, *livetvpublish.LiveTVConnector, tunarr.LiveTVURLs) {
 	t.Helper()
 	fake := &fakeEmby{t: t, statuses: statuses}
 	srv := httptest.NewServer(fake.handler())
 	t.Cleanup(srv.Close)
-	urls := setup.LiveTVURLs{M3U: "http://192.0.2.79:8001/api/channels.m3u", XMLTV: "http://192.0.2.79:8001/api/xmltv.xml"}
+	urls := tunarr.LiveTVURLs{M3U: "http://192.0.2.79:8001/api/channels.m3u", XMLTV: "http://192.0.2.79:8001/api/xmltv.xml"}
 	client := library.New(library.Emby, srv.URL, "test-token", "dev-1")
-	return fake, setup.NewLiveTVConnectorFixed(client, urls), urls
+	return fake, livetvpublish.NewLiveTVConnectorFixed(client, urls), urls
 }
 
 // A stalled Emby that recovers within the retry budget must not fail the refresh.
 func TestRefreshTarget_RetriesTransient5xxThenSucceeds(t *testing.T) {
-	defer setup.SetRefreshBackoffForTest(time.Millisecond, time.Millisecond)()
+	defer livetvpublish.SetRefreshBackoffForTest(time.Millisecond, time.Millisecond)()
 	fake, connector, urls := refreshFixture(t, 500, 500, 200)
 
 	if err := connector.RefreshTarget(context.Background(), urls); err != nil {
@@ -89,7 +90,7 @@ func TestRefreshTarget_RetriesTransient5xxThenSucceeds(t *testing.T) {
 // Persistent 500s exhaust the bounded budget and surface as a TRANSIENT error carrying the
 // cause class, so callers can tell "media server is busy" from "wiring is wrong".
 func TestRefreshTarget_PersistentServerErrorIsBoundedAndClassified(t *testing.T) {
-	defer setup.SetRefreshBackoffForTest(time.Millisecond, time.Millisecond)()
+	defer livetvpublish.SetRefreshBackoffForTest(time.Millisecond, time.Millisecond)()
 	fake, connector, urls := refreshFixture(t, 500)
 
 	err := connector.RefreshTarget(context.Background(), urls)
@@ -113,7 +114,7 @@ func TestRefreshTarget_PersistentServerErrorIsBoundedAndClassified(t *testing.T)
 
 // A 4xx means the wiring itself is wrong: retrying only delays the real signal.
 func TestRefreshTarget_ClientErrorIsNotRetriedNorTransient(t *testing.T) {
-	defer setup.SetRefreshBackoffForTest(time.Millisecond, time.Millisecond)()
+	defer livetvpublish.SetRefreshBackoffForTest(time.Millisecond, time.Millisecond)()
 	fake, connector, urls := refreshFixture(t, 401)
 
 	err := connector.RefreshTarget(context.Background(), urls)
@@ -131,7 +132,7 @@ func TestRefreshTarget_ClientErrorIsNotRetriedNorTransient(t *testing.T) {
 
 // Cancellation during backoff stops the retries immediately.
 func TestRefreshTarget_StopsRetryingWhenContextCancelled(t *testing.T) {
-	defer setup.SetRefreshBackoffForTest(time.Hour, time.Hour)()
+	defer livetvpublish.SetRefreshBackoffForTest(time.Hour, time.Hour)()
 	fake, connector, urls := refreshFixture(t, 500)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

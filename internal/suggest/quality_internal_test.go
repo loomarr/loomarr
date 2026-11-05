@@ -5,19 +5,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/quality"
 )
 
 func TestClassifySuggestionQualityFailureStageBoundaries(t *testing.T) {
 	tests := []struct {
 		name    string
-		trace   DecisionTrace
+		trace   proposal.DecisionTrace
 		failure *Failure
 		want    []quality.Observation
 	}{
 		{
 			name:    "catalog failure",
-			trace:   DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure},
+			trace:   proposal.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalRetrievalFailure},
 			failure: &Failure{Code: FailureCodeNoGroundedTitles},
 			want: []quality.Observation{
 				{Stage: quality.StageRetrieval, Outcome: quality.OutcomeFailed},
@@ -27,7 +28,7 @@ func TestClassifySuggestionQualityFailureStageBoundaries(t *testing.T) {
 		},
 		{
 			name:    "alternate searches returned no candidates",
-			trace:   DecisionTrace{Version: DecisionTraceVersion, Terminal: ReasonRetrievalEmpty},
+			trace:   proposal.DecisionTrace{Version: DecisionTraceVersion, Terminal: ReasonRetrievalEmpty},
 			failure: &Failure{Code: FailureCodeNoGroundedTitles},
 			want: []quality.Observation{
 				{Stage: quality.StageRetrieval, Outcome: quality.OutcomeEmpty},
@@ -37,7 +38,7 @@ func TestClassifySuggestionQualityFailureStageBoundaries(t *testing.T) {
 		},
 		{
 			name:    "provider failed before retrieval",
-			trace:   DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalProviderFailure},
+			trace:   proposal.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalProviderFailure},
 			failure: &Failure{Code: FailureProvider},
 			want: []quality.Observation{
 				{Stage: quality.StageGeneration, Outcome: quality.OutcomeFailed, Duration: time.Second},
@@ -45,7 +46,7 @@ func TestClassifySuggestionQualityFailureStageBoundaries(t *testing.T) {
 		},
 		{
 			name:    "provider failed after retrieval",
-			trace:   DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 4, Terminal: TerminalProviderFailure},
+			trace:   proposal.DecisionTrace{Version: DecisionTraceVersion, SurfacedTotal: 4, Terminal: TerminalProviderFailure},
 			failure: &Failure{Code: FailureProvider},
 			want: []quality.Observation{
 				{Stage: quality.StageRetrieval, Outcome: quality.OutcomeSucceeded, CandidateCount: 4},

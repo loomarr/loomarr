@@ -22,7 +22,7 @@ type PodAdapter struct {
 	// policy is RESOLVED PER CALL, not captured once.
 	//
 	// ⚠ **It was a plain `Policy` value, and that quietly broke every filler setting's
-	// hot-apply.** `app.go` builds the struct at boot with `set.intv(…)`/`set.dur(…)`, so the
+	// hot-apply.** `app.go` builds the struct at boot from `settings.X.Get(set)` reads, so the
 	// values were a snapshot: changing `filler.pod_max`, `filler.min_quality` or (from V51f)
 	// `filler.min_clip_duration`/`max_clip_duration` did nothing until the process restarted.
 	// The setting persisted, the API read it back, and the assembler kept using the old number.
