@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
-func screeningProfileFixture(axis filler.SegmentScreeningAxis, digit string) SegmentScreeningAxisProfile {
+func screeningProfileFixture(axis SegmentScreeningAxis, digit string) SegmentScreeningAxisProfile {
 	profile := SegmentScreeningAxisProfile{
 		Axis: axis, EvidenceContract: "axis-evidence-v1",
 		PolicySHA256: strings.Repeat(digit, 64), CertificationSHA256: strings.Repeat("a", 64), ImplementationSHA256: strings.Repeat("b", 64),
@@ -73,13 +73,13 @@ func passingAxisEvidence(t *testing.T, subject filler.SegmentScreeningSubject) [
 	for index, axis := range segmentScreeningAxisOrder {
 		reason := "policy_clear"
 		switch axis {
-		case filler.ScreenPlayback:
+		case ScreenPlayback:
 			reason = "playback_verified"
 		}
 		profile := screeningProfileFixture(axis, string(rune('1'+index)))
 		raw := []byte("recorded-" + string(axis))
 		recorded, err := NewSegmentScreeningAxisEvidence(
-			subject, profile, filler.ScreenPass, reason, screeningSuitabilityForOutcome(subject, profile, filler.ScreenPass, raw),
+			subject, profile, ScreenPass, reason, screeningSuitabilityForOutcome(subject, profile, ScreenPass, raw),
 			raw, time.Date(2026, time.September, 12, 4, 0, 0, 0, time.UTC),
 		)
 		if err != nil {
@@ -90,16 +90,16 @@ func passingAxisEvidence(t *testing.T, subject filler.SegmentScreeningSubject) [
 	return records
 }
 
-func screeningSuitabilityForOutcome(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome filler.SegmentScreeningOutcome, raw []byte) *fillerairworthiness.AxisEvidence {
+func screeningSuitabilityForOutcome(subject filler.SegmentScreeningSubject, profile SegmentScreeningAxisProfile, outcome SegmentScreeningOutcome, raw []byte) *fillerairworthiness.AxisEvidence {
 	axisProfile, err := segmentAirworthinessProfile(profile)
 	if err != nil {
 		return nil
 	}
 	coverage := fillerairworthiness.CoverageComplete
-	if outcome == filler.ScreenHold {
+	if outcome == ScreenHold {
 		coverage = fillerairworthiness.CoverageIncomplete
 	}
-	if outcome == filler.ScreenReject {
+	if outcome == ScreenReject {
 		coverage = fillerairworthiness.CoverageConflict
 	}
 	return &fillerairworthiness.AxisEvidence{

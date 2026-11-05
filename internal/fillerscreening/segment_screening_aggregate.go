@@ -1,4 +1,4 @@
-package filler
+package fillerscreening
 
 import (
 	"crypto/sha256"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerairworthiness"
 )
 
@@ -22,12 +23,6 @@ var segmentScreeningAxisOrder = []SegmentScreeningAxis{
 	ScreenSpokenSafety,
 	ScreenWrittenSafety,
 	ScreenPlayback,
-}
-
-// SegmentScreeningAxes returns the four screening axes in canonical order. The caller owns the
-// returned slice.
-func SegmentScreeningAxes() []SegmentScreeningAxis {
-	return slices.Clone(segmentScreeningAxisOrder)
 }
 
 // ValidateSegmentScreeningAxis reports whether axis is one of the four screening axes.
@@ -78,8 +73,8 @@ type SegmentScreeningEvidence struct {
 	SHA256          string                       `json:"sha256"`
 }
 
-func NewSegmentScreeningEvidence(subject SegmentScreeningSubject, results []SegmentScreeningResult, airworthiness fillerairworthiness.Decision, assessedAt time.Time) (SegmentScreeningEvidence, error) {
-	if err := ValidateSegmentScreeningSubject(subject); err != nil {
+func NewSegmentScreeningEvidence(subject filler.SegmentScreeningSubject, results []SegmentScreeningResult, airworthiness fillerairworthiness.Decision, assessedAt time.Time) (SegmentScreeningEvidence, error) {
+	if err := filler.ValidateSegmentScreeningSubject(subject); err != nil {
 		return SegmentScreeningEvidence{}, err
 	}
 	evidence := SegmentScreeningEvidence{
@@ -106,7 +101,7 @@ func cloneAirworthinessDecision(decision fillerairworthiness.Decision) fillerair
 
 func ValidateSegmentScreeningEvidence(evidence SegmentScreeningEvidence) error {
 	if evidence.SchemaVersion != SegmentScreeningSchemaVersion || evidence.ContractVersion != SegmentScreeningContractVersion ||
-		!isContentHash(evidence.SubjectSHA256) || evidence.AssessedAt.IsZero() ||
+		!filler.IsContentHash(evidence.SubjectSHA256) || evidence.AssessedAt.IsZero() ||
 		fillerairworthiness.ValidateDecision(evidence.Airworthiness) != nil || evidence.Airworthiness.SubjectSHA256 != evidence.SubjectSHA256 {
 		return fmt.Errorf("segment screening identity or interval is invalid")
 	}
@@ -134,7 +129,7 @@ func ValidateSegmentScreeningResult(result SegmentScreeningResult) error {
 	if result.Outcome != ScreenPass && result.Outcome != ScreenReject && result.Outcome != ScreenHold {
 		return fmt.Errorf("segment screening outcome is invalid")
 	}
-	if !isContentHash(result.AuthoritySHA256) || !ValidScreeningReasonCode(result.ReasonCode) {
+	if !filler.IsContentHash(result.AuthoritySHA256) || !ValidScreeningReasonCode(result.ReasonCode) {
 		return fmt.Errorf("segment screening authority is invalid")
 	}
 	return nil
@@ -162,10 +157,19 @@ func SegmentScreeningEvidenceSHA256(evidence SegmentScreeningEvidence) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// ScreeningBytesSHA256 is the lowercase hex SHA-256 every screening identity is built from.
-func ScreeningBytesSHA256(raw []byte) string {
-	digest := sha256.Sum256(raw)
-	return hex.EncodeToString(digest[:])
+// NewSegmentScreeningReference builds the sidecar locator for an aggregate that binds subject.
+func NewSegmentScreeningReference(subject filler.SegmentScreeningSubject, evidence SegmentScreeningEvidence) (filler.SegmentScreeningReference, error) {
+	if ValidateSegmentScreeningEvidence(evidence) != nil {
+		return filler.SegmentScreeningReference{}, fmt.Errorf("segment screening reference requires valid subject and aggregate evidence")
+	}
+	reference, err := filler.NewSegmentScreeningReference(subject, evidence.SHA256)
+	if err != nil {
+		return filler.SegmentScreeningReference{}, err
+	}
+	if evidence.SubjectSHA256 != subject.SHA256 {
+		return filler.SegmentScreeningReference{}, fmt.Errorf("segment screening reference does not bind the subject and aggregate")
+	}
+	return reference, nil
 }
 
 // ValidScreeningReasonCode reports whether value is a closed, opaque screening reason code.

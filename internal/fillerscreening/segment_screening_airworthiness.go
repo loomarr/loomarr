@@ -34,7 +34,7 @@ func evaluateSegmentAirworthiness(subject filler.SegmentScreeningSubject, record
 		ContractVersion: fillerairworthiness.EvidenceContractVersion,
 		SubjectSHA256:   subject.SHA256, DurationMS: subject.EvidenceDurationMs,
 	}
-	seen := make(map[filler.SegmentScreeningAxis]struct{}, 3)
+	seen := make(map[SegmentScreeningAxis]struct{}, 3)
 	for _, recorded := range records {
 		axis := recorded.Evidence.Profile.Axis
 		if _, safety := airworthinessAxis(axis); !safety {
