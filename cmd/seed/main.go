@@ -51,7 +51,7 @@ import (
 const (
 	adminUser = "admin"
 	adminPass = "loomarr-dev" // at least auth.MinPasswordLen: bootstrap refuses a shorter one
-	chanSeed  = 42 // channel shuffle/ordering seed; any constant → reproducible slots
+	chanSeed  = 42            // channel shuffle/ordering seed; any constant → reproducible slots
 )
 
 func main() {
