@@ -3,7 +3,7 @@ package tunarrtest
 import "context"
 
 // This models Tunarr's media-source surface for the tunarr-connect flow (§6): the
-// double implements setup.MediaSourceProgrammer so the integration test drives the
+// double implements livetvpublish.MediaSourceProgrammer so the integration test drives the
 // REAL MediaSourceConnector against it. It models the two facts that matter: a
 // source is created idempotently with the token Loomarr passes (the admin key, no
 // user login), and enabling a library is what makes it "ready" for programming.

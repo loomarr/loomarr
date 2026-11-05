@@ -1,4 +1,4 @@
-package setup_test
+package livetvpublish_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
@@ -26,7 +26,7 @@ func TestMediaSourceConnect_SnapshotsConnectionAndUsersOnce(t *testing.T) {
 	}
 	var snapshots int
 	programmer := tunarrtest.NewTunarr()
-	connector := setup.NewMediaSourceConnector(func() setup.MediaSourceLibrary {
+	connector := livetvpublish.NewMediaSourceConnector(func() livetvpublish.MediaSourceLibrary {
 		snapshots++
 		if snapshots == 1 {
 			return primary

@@ -19,8 +19,7 @@ type Adapter interface {
 	// Guide reads Tunarr's generated schedule (see Guide's doc comment on *Tunarr).
 	Guide(ctx context.Context, from, to time.Time) (map[string][]GuideEntry, error)
 
-	// Media-source wiring (previously reached via setup.MediaSourceProgrammer, satisfied
-	// by a type-assertion on the concrete client in buildchannels.go).
+	// Media-source wiring; the Adapter satisfies livetvpublish.MediaSourceProgrammer.
 	EnsureEmbySource(ctx context.Context, flavor, embyURL, token, userID string) (string, error)
 	ConnectLibraries(ctx context.Context, sourceID string) (int, error)
 	MediaLibrariesReady(ctx context.Context) (bool, error)

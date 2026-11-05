@@ -1,4 +1,4 @@
-package setup_test
+package livetvpublish_test
 
 import (
 	"context"
@@ -7,14 +7,14 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
-func newConnector(lib *testkit.LiveTV) *setup.LiveTVConnector {
+func newConnector(lib *testkit.LiveTV) *livetvpublish.LiveTVConnector {
 	urls := tunarr.LiveTVURLsAt("http://tunarr:8000")
-	return setup.NewLiveTVConnectorFixed(lib, urls)
+	return livetvpublish.NewLiveTVConnectorFixed(lib, urls)
 }
 
 // The first connect registers both tuner + guide; the SECOND connect is a no-op
@@ -59,7 +59,7 @@ func TestConnect_SnapshotsLibraryOnceAcrossCompoundOperation(t *testing.T) {
 	rotated := testkit.NewLiveTV()
 	rotated.AddTunerErr = errors.New("rotated server must not receive this operation")
 	var snapshots int
-	connector := setup.NewLiveTVConnector(func() library.LiveTV {
+	connector := livetvpublish.NewLiveTVConnector(func() library.LiveTV {
 		snapshots++
 		if snapshots == 1 {
 			return primary
@@ -85,12 +85,12 @@ func TestReconnectTargetUsesExplicitAppliedBackendURLs(t *testing.T) {
 	lib := testkit.NewLiveTV()
 	ctx := context.Background()
 	oldURLs := tunarr.LiveTVURLsAt("http://tunarr:8000")
-	target := setup.InternalPlayoutURLs("http://loomarr:8080", "current-token")
+	target := livetvpublish.InternalPlayoutURLs("http://loomarr:8080", "current-token")
 	lib.SeedTuner(oldURLs.M3U, "loomarr")
 	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
 		t.Fatal(err)
 	}
-	connector := setup.NewLiveTVConnectorFixed(lib, oldURLs)
+	connector := livetvpublish.NewLiveTVConnectorFixed(lib, oldURLs)
 
 	result, err := connector.ReconnectTarget(ctx, target)
 	if err != nil {
@@ -118,7 +118,7 @@ func TestReconnectTargetForceRepairsCurrentListing(t *testing.T) {
 		t.Fatal(err)
 	}
 	callStart := len(lib.Calls())
-	connector := setup.NewLiveTVConnectorFixed(lib, target)
+	connector := livetvpublish.NewLiveTVConnectorFixed(lib, target)
 
 	result, err := connector.ReconnectTarget(ctx, target)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestReconnectTargetRepairsMissingListing(t *testing.T) {
 	lib := testkit.NewLiveTV()
 	target := tunarr.LiveTVURLsAt("http://tunarr:8000")
 	lib.SeedTuner(target.M3U, "loomarr")
-	connector := setup.NewLiveTVConnectorFixed(lib, target)
+	connector := livetvpublish.NewLiveTVConnectorFixed(lib, target)
 
 	result, err := connector.ReconnectTarget(context.Background(), target)
 	if err != nil {
@@ -187,7 +187,7 @@ func TestReconnectTargetPropagatesListingRepairFailures(t *testing.T) {
 			lib := testkit.NewLiveTV()
 			lib.SeedTuner(target.M3U, "loomarr")
 			tt.setup(lib)
-			connector := setup.NewLiveTVConnectorFixed(lib, target)
+			connector := livetvpublish.NewLiveTVConnectorFixed(lib, target)
 
 			if _, err := connector.ReconnectTarget(context.Background(), target); !errors.Is(err, wantErr) {
 				t.Fatalf("ReconnectTarget error = %v, want %v", err, wantErr)
@@ -236,7 +236,7 @@ func TestPrepare_TunerAddFailureLeavesOldPair(t *testing.T) {
 	}
 	lib.AddTunerErr = errors.New("media server unavailable")
 
-	c := setup.NewLiveTVConnectorFixed(lib, target)
+	c := livetvpublish.NewLiveTVConnectorFixed(lib, target)
 	if _, err := c.Prepare(ctx, target); err == nil {
 		t.Fatal("Prepare should surface the target tuner add failure")
 	}
@@ -256,7 +256,7 @@ func TestPrepare_ListingAddFailureRetainsOldPairAndRetriesMissingHalf(t *testing
 		t.Fatal(err)
 	}
 	lib.AddListingErr = errors.New("listing endpoint unavailable")
-	c := setup.NewLiveTVConnectorFixed(lib, target)
+	c := livetvpublish.NewLiveTVConnectorFixed(lib, target)
 
 	first, err := c.Prepare(ctx, target)
 	if err == nil {
@@ -294,7 +294,7 @@ func TestRetireStale_FailureLeavesTargetAndRetryCompletes(t *testing.T) {
 	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
 		t.Fatal(err)
 	}
-	c := setup.NewLiveTVConnectorFixed(lib, target)
+	c := livetvpublish.NewLiveTVConnectorFixed(lib, target)
 	if _, err := c.Prepare(ctx, target); err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestRetireStale_RefusesBeforeBothTargetHalvesExist(t *testing.T) {
 	if err := lib.AddTuner(ctx, target.M3U); err != nil {
 		t.Fatal(err)
 	}
-	c := setup.NewLiveTVConnectorFixed(lib, target)
+	c := livetvpublish.NewLiveTVConnectorFixed(lib, target)
 
 	if _, err := c.RetireStale(ctx, target); err == nil {
 		t.Fatal("RetireStale should refuse while the target listing is absent")
@@ -351,7 +351,7 @@ func TestConnect_PreparesBothTargetHalvesBeforeAnyRetirement(t *testing.T) {
 	if err := lib.AddListingProvider(ctx, oldURLs.XMLTV); err != nil {
 		t.Fatal(err)
 	}
-	c := setup.NewLiveTVConnectorFixed(lib, target)
+	c := livetvpublish.NewLiveTVConnectorFixed(lib, target)
 
 	if _, err := c.Connect(ctx); err != nil {
 		t.Fatal(err)
@@ -530,8 +530,8 @@ func TestConnect_URLChange_Pokes(t *testing.T) {
 func TestRescanTargetUsesExplicitPreparedURL(t *testing.T) {
 	lib := testkit.NewLiveTV()
 	applied := tunarr.LiveTVURLsAt("http://tunarr:8000")
-	prepared := setup.InternalPlayoutURLs("http://loomarr:8080", "device-token")
-	c := setup.NewLiveTVConnectorFixed(lib, applied)
+	prepared := livetvpublish.InternalPlayoutURLs("http://loomarr:8080", "device-token")
+	c := livetvpublish.NewLiveTVConnectorFixed(lib, applied)
 
 	if err := c.RescanTarget(context.Background(), prepared); err != nil {
 		t.Fatal(err)
@@ -608,7 +608,7 @@ func TestTunerPublishingDisabled_NeitherAddsNorRetires(t *testing.T) {
 	lib := testkit.NewLiveTV()
 	lib.SeedTuner("http://stale.invalid/old.m3u", "loomarr")
 	target := tunarr.LiveTVURLsAt("http://tunarr:8000")
-	c := setup.NewLiveTVConnectorFixed(lib, target).WithTunerPublishingDisabled(true, nil)
+	c := livetvpublish.NewLiveTVConnectorFixed(lib, target).WithTunerPublishingDisabled(true, nil)
 	ctx := context.Background()
 
 	assertNoMutatingCalls := func(t *testing.T, label string) {

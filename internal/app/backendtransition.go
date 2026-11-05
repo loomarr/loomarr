@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/backendtransition"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -43,13 +43,13 @@ func buildBackendTransition(
 // concurrent save cannot make one transition prepare one target/server and refresh or retire
 // against another.
 type backendPublisher struct {
-	connector       *setup.LiveTVConnector
+	connector       *livetvpublish.LiveTVConnector
 	urls            func(context.Context, string) (tunarr.LiveTVURLs, error)
 	log             *slog.Logger // optional
 	mu              sync.Mutex
 	preparedTarget  string
 	preparedURLs    tunarr.LiveTVURLs
-	preparedLibrary *setup.LiveTVConnector
+	preparedLibrary *livetvpublish.LiveTVConnector
 }
 
 // currentBackendTransition refreshes the settings snapshot, then keeps the mutation and desired
@@ -116,7 +116,7 @@ func (p *backendPublisher) Refresh(ctx context.Context, target string) error {
 		return err
 	}
 	err = operation.RefreshTarget(ctx, urls)
-	var transient *setup.TransientError
+	var transient *livetvpublish.TransientError
 	if errors.As(err, &transient) && p.log != nil {
 		// Logged here, once per exhausted retry budget, so the controller can defer the failure
 		// to the next maintenance run without the cause vanishing (#1407).
@@ -147,7 +147,7 @@ func (p *backendPublisher) Reconnect(ctx context.Context, target string) (int, e
 	return result.TunerRemoved, err
 }
 
-func (p *backendPublisher) prepared(target string) (*setup.LiveTVConnector, tunarr.LiveTVURLs, error) {
+func (p *backendPublisher) prepared(target string) (*livetvpublish.LiveTVConnector, tunarr.LiveTVURLs, error) {
 	if p == nil || p.connector == nil {
 		return nil, tunarr.LiveTVURLs{}, fmt.Errorf("live TV publisher is unavailable")
 	}

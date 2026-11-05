@@ -1,7 +1,8 @@
-// Package setup owns the operator connection flows (§7, §13): the Live TV wiring
-// and setup-status checklist. It composes the media-server LiveTV capability (§6);
-// either Loomarr or Tunarr can publish the playlist and guide that the media server consumes.
-package setup
+// Package livetvpublish publishes Loomarr's channels to the media server's Live TV (§6, §9.1):
+// it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and
+// wires the media server as Tunarr's media source. It composes the media-server LiveTV
+// capability (§6); either Loomarr or Tunarr can serve the playlist and guide it registers.
+package livetvpublish
 
 import (
 	"context"

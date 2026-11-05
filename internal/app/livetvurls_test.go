@@ -6,16 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/tunarr"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
-// liveTVURLsFor replaced the deleted setup.LiveTVURLsFor free function (Refs #1564 PR 2).
-// PR 3 (Refs #1564) flipped the fallback: `tunarr` reads the adapter's own URLs; everything
-// else, including an unrecognised value, reads Loomarr's own internal URLs and logs a warning —
-// internal is the default backend and Tunarr is now optional, so a stale/corrupted setting must
-// not silently serve a backend the household doesn't run.
+// liveTVURLsFor: `tunarr` reads the adapter's own URLs; everything else, including an
+// unrecognised value, reads Loomarr's own internal URLs and logs a warning — internal is the
+// default backend and Tunarr is optional, so a stale/corrupted setting must not silently serve
+// a backend the household doesn't run.
 func TestLiveTVURLsFor_TunarrReadsTheAdapter(t *testing.T) {
 	t.Parallel()
 	prog := fakeLiveTVAdapter{
@@ -39,7 +38,7 @@ func TestLiveTVURLsFor_UnrecognisedFallsBackToInternalAndWarns(t *testing.T) {
 		Tunarr: tunarrtest.NewTunarr(),
 		urls:   tunarr.LiveTVURLs{M3U: "http://tunarr/api/channels.m3u", XMLTV: "http://tunarr/api/xmltv.xml"},
 	}
-	want := setup.InternalPlayoutURLs("http://loomarr:8080", "tok")
+	want := livetvpublish.InternalPlayoutURLs("http://loomarr:8080", "tok")
 	for _, backend := range []string{"internal", "", "something-else"} {
 		var buf bytes.Buffer
 		log := slog.New(slog.NewTextHandler(&buf, nil))

@@ -9,8 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/backendtransition"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -61,7 +61,7 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 	primary := testkit.NewLiveTV()
 	rotated := testkit.NewLiveTV()
 	librarySnapshots := 0
-	connector := setup.NewLiveTVConnector(func() library.LiveTV {
+	connector := livetvpublish.NewLiveTVConnector(func() library.LiveTV {
 		librarySnapshots++
 		if librarySnapshots == 1 {
 			return primary
@@ -107,9 +107,9 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 
 func TestTransportTunerRescannerUsesPublishedTarget(t *testing.T) {
 	liveTV := testkit.NewLiveTV()
-	connector := setup.NewLiveTVConnectorFixed(liveTV,
+	connector := livetvpublish.NewLiveTVConnectorFixed(liveTV,
 		tunarr.LiveTVURLsAt("http://applied-tunarr:8000"))
-	target := setup.InternalPlayoutURLs("http://prepared-loomarr:8080", "device-token")
+	target := livetvpublish.InternalPlayoutURLs("http://prepared-loomarr:8080", "device-token")
 	rescanner := transportTunerRescanner{
 		c: connector,
 		urls: func(context.Context) (tunarr.LiveTVURLs, error) {
@@ -189,7 +189,7 @@ func TestBuildInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransi
 // completing them must never add or retire its Live TV tuner/listing. Both the settings-save
 // transition (MutateAndApplyCurrent) and the channel-maintenance repair tick (ApplyCurrent) route
 // through the SAME steady-state repair path (Controller.applyLocked -> repairPublished -> the real
-// backendPublisher -> setup.LiveTVConnector), so exercising both against one disabled connector
+// backendPublisher -> livetvpublish.LiveTVConnector), so exercising both against one disabled connector
 // proves every current caller of AddTuner/RemoveTuner/AddListingProvider/RemoveListingProvider.
 func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T) {
 	run := func(t *testing.T, disabled bool) *testkit.LiveTV {
@@ -199,7 +199,7 @@ func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T)
 		// A stale Loomarr-owned tuner at a DIFFERENT url: if retirement ran, it would be removed.
 		lib.SeedTuner("http://stale-tuner.invalid/old.m3u", "loomarr")
 		urls := tunarr.LiveTVURLs{M3U: "http://lane.invalid/tuner.m3u", XMLTV: "http://lane.invalid/guide.xml"}
-		connector := setup.NewLiveTVConnectorFixed(lib, urls).
+		connector := livetvpublish.NewLiveTVConnectorFixed(lib, urls).
 			WithTunerPublishingDisabled(disabled, slog.New(slog.DiscardHandler))
 		publisher := &backendPublisher{
 			connector: connector,
@@ -264,10 +264,10 @@ func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T)
 func TestBackendPublisherRefreshLogsTransientCauseOnce(t *testing.T) {
 	lib := testkit.NewLiveTV()
 	urls := tunarr.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}
-	lib.RescanErr = setup.NewTransientError("server-error", 3, errors.New("POST /LiveTv/TunerHosts: status 500: ServiceUnavailable"))
+	lib.RescanErr = livetvpublish.NewTransientError("server-error", 3, errors.New("POST /LiveTv/TunerHosts: status 500: ServiceUnavailable"))
 	var logs strings.Builder
 	publisher := &backendPublisher{
-		connector: setup.NewLiveTVConnectorFixed(lib, urls),
+		connector: livetvpublish.NewLiveTVConnectorFixed(lib, urls),
 		urls:      func(context.Context, string) (tunarr.LiveTVURLs, error) { return urls, nil },
 		log:       slog.New(slog.NewTextHandler(&logs, nil)),
 	}

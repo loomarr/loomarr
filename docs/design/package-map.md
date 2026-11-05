@@ -284,10 +284,10 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
 - **`fillerstructurewindowopenrouter`** · 1 importer · → `encode`, `filler`, `fillerstructure`, `fillerstructureassessment`, `fillerstructuremedia`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
+- **`livetvpublish`** · 1 importer · → `library`, `tunarr`
+  Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
 - **`settings`** · 8 importers · → `config`, `library`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
-- **`setup`** · 1 importer · → `library`, `tunarr`
-  Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
 - **`sourceprovider/archive`** · 1 importer · → `clipfetch`, `sourceprovider`
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
 - **`sourceprovider/youtube`** · 1 importer · → `clipfetch`, `filler`, `sourceprovider`
@@ -355,7 +355,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 16
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `housekeeping`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposal`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `schedule`, `secretprotection`, `settings`, `setup`, `sourceprovider`, `sourceprovider/archive`, `sourceprovider/youtube`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `housekeeping`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `livetvpublish`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposal`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `schedule`, `secretprotection`, `settings`, `sourceprovider`, `sourceprovider/archive`, `sourceprovider/youtube`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->
