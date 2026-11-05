@@ -106,7 +106,7 @@ const DialogContent = ({
     outline: "none",
   };
   return (
-    <DialogPrimitive.Portal container={portalContainer}>
+    <DialogPrimitive.Portal container={portalContainer as HTMLElement | ShadowRoot | null | undefined}>
       <DialogPrimitive.Backdrop
         style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / 0.6)" }}
       />

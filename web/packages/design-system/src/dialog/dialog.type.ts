@@ -1,5 +1,12 @@
-/// <reference lib="dom" />
 import type { ReactElement, ReactNode } from "react";
+
+/**
+ * A DOM element or shadow root, typed by shape so these shared props do not pull the DOM library
+ * into the native packages that import the design system.
+ */
+interface PortalContainer {
+  readonly nodeType: number;
+}
 
 interface DialogProps {
   children: ReactNode;
@@ -26,7 +33,7 @@ interface DialogContentProps {
    */
   layout?: "padded" | "sectioned";
   /** Web only: where the dialog portals, for a contained renderer such as the story gallery. */
-  portalContainer?: HTMLElement | ShadowRoot | null;
+  portalContainer?: PortalContainer | null;
   /** The panel's widest: `default` 448, `form` 672, `reading` 768. */
   size?: "default" | "form" | "reading";
 }
