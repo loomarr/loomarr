@@ -20,6 +20,8 @@ import { ChannelWatch } from "./channel-watch";
 const hls = vi.hoisted(() => ({
   status: "playing",
   onManifest: undefined as (() => void) | undefined,
+  ladder: { rungs: [] } as { rungs: { height: number; index: number }[]; height?: number },
+  quality: undefined as unknown,
   attach: vi.fn(() => () => undefined),
   liveTransport: {
     state: {
@@ -37,13 +39,15 @@ const hls = vi.hoisted(() => ({
 const diagnosticsRecord = vi.hoisted(() => vi.fn());
 
 vi.mock("../use-hls-player", () => ({
-  useHlsPlayer: (_channelId: string, _attempt?: unknown, onManifest?: () => void) => {
+  useHlsPlayer: (_channelId: string, _attempt?: unknown, onManifest?: () => void, quality?: unknown) => {
     hls.onManifest = onManifest;
+    hls.quality = quality;
     return {
       status: hls.status,
       playbackSessionId: "playback_1",
       attach: hls.attach,
       liveTransport: hls.liveTransport,
+      ladder: hls.ladder,
     };
   },
 }));
@@ -378,6 +382,59 @@ describe("ChannelWatch — full-bleed route", () => {
     expect(within(settings).getByRole("list", { name: "Audio language" })).toBeInTheDocument();
     expect(within(settings).queryByRole("radio")).not.toBeInTheDocument();
     expect(within(settings).getByText(/An admin sets it on the channel’s page/)).toBeInTheDocument();
+  });
+
+  // Quality (#2088 decision 7): Auto naming the rung on air, then the channel's own rungs; the
+  // viewer's choice goes to the player and is remembered.
+  describe("quality", () => {
+    beforeEach(() => {
+      localStorage.clear();
+      hls.ladder = {
+        height: 2160,
+        rungs: [
+          { height: 1080, index: 0 },
+          { height: 2160, index: 1 },
+        ],
+      };
+    });
+    afterEach(() => {
+      hls.ladder = { rungs: [] };
+    });
+
+    it("offers Auto, naming the rung on air, and the channel's rungs; a pick is played and remembered", async () => {
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      const quality = within(await openSettings()).getByRole("radiogroup", { name: "Quality" });
+      const options = within(quality).getAllByRole("radio");
+      expect(options.map((o) => o.getAttribute("aria-label"))).toEqual(["Auto · 4K", "1080p", "4K"]);
+      expect(within(quality).getByRole("radio", { name: "Auto · 4K" })).toBeChecked();
+      expect(hls.quality).toBe("auto");
+
+      await userEvent.click(within(quality).getByRole("radio", { name: "1080p" }));
+      expect(hls.quality).toBe(1080);
+      expect(within(quality).getByRole("radio", { name: "1080p" })).toBeChecked();
+      expect(localStorage.getItem("loomarr.player.quality")).toBe("1080");
+    });
+
+    it("shows Auto chosen when the remembered rung isn't offered here, because Auto plays", async () => {
+      localStorage.setItem("loomarr.player.quality", "720");
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      const quality = within(await openSettings()).getByRole("radiogroup", { name: "Quality" });
+      expect(within(quality).getByRole("radio", { name: "Auto · 4K" })).toBeChecked();
+    });
+
+    it("has no Quality while the player offers no ladder", async () => {
+      hls.ladder = { rungs: [] };
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      expect(
+        within(await openSettings()).queryByRole("radiogroup", { name: "Quality" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("closes Settings from its ✕ and from Escape, handing focus back to ⚙", async () => {

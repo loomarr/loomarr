@@ -20,6 +20,7 @@ import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-defau
 import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
 import { useHlsPlayer } from "@/channels/use-hls-player";
 import { useNumberEntry } from "@/channels/use-number-entry";
+import { useQualityPreference } from "@/channels/use-quality-preference";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/ui/video-player";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
@@ -90,6 +91,9 @@ const SEEK_STEP_MS = 10_000;
 const IDENT_MS = 5_000;
 const INFO_PLAYING_MS = 8_000;
 
+// A rung as Settings names it: the premium by its class, the rest by lines.
+const rungLabel = (height: number) => (height >= 2160 ? "4K" : `${height}p`);
+
 // The one sheet the chrome can have open at a time (§9.1, plane 5).
 type WatchSheet = "channels" | "info" | "settings";
 
@@ -134,7 +138,9 @@ const ChannelWatch = ({
   // warm requests would otherwise share the browser's per-host connections with the target's
   // manifest and first segments (#1484). It is still well ahead of the first frame.
   const onManifest = useCallback(() => tunerReady?.(channel.id), [channel.id, tunerReady]);
-  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest);
+  // The viewer's quality, remembered across channels: a rung a channel doesn't offer plays Auto.
+  const [quality, setQuality] = useQualityPreference();
+  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest, quality);
   // The player's own <video>, caught at the attach seam, so the channel-change sound can follow the
   // player's volume and mute, and Go live can act on it, without VideoPlayer knowing about either.
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -251,6 +257,22 @@ const ChannelWatch = ({
     selected: option.value === selectedAudio,
     value: option.value,
   }));
+
+  // Quality (#2088 decision 7): Auto, naming the rung on air, then the channel's rungs. A remembered
+  // rung this channel doesn't offer shows Auto chosen, because Auto is what plays.
+  const { rungs, height: onAir } = player.ladder;
+  const pinned = quality !== "auto" && rungs.some((rung) => rung.height === quality);
+  const qualityOptions =
+    rungs.length > 0
+      ? [
+          { label: onAir ? `Auto · ${rungLabel(onAir)}` : "Auto", selected: !pinned, value: "auto" },
+          ...rungs.map((rung) => ({
+            label: rungLabel(rung.height),
+            selected: pinned && rung.height === quality,
+            value: String(rung.height),
+          })),
+        ]
+      : undefined;
 
   const osdChannel = tuner?.requestedChannel ?? channel;
   const tuning = player.status === "loading";
@@ -411,6 +433,12 @@ const ChannelWatch = ({
           audio={audio}
           density={density}
           onSwitchSound={setSwitchSoundOn}
+          quality={
+            qualityOptions && {
+              onSelect: (value) => setQuality(value === "auto" ? "auto" : Number(value)),
+              options: qualityOptions,
+            }
+          }
           switchSound={switchSoundOn}
         />
       </PlayerSheet>
