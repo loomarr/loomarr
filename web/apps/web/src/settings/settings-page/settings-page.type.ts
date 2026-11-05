@@ -3,8 +3,8 @@ import type { SettingKey } from "@loomarr/api/models/settingKey";
 import type { ReactNode } from "react";
 
 interface SettingsRenderContext {
-  liveValue: (key: string) => string;
-  setEdit: (key: string, value: string) => void;
+  liveValue: (key: SettingKey) => string;
+  setEdit: (key: SettingKey, value: string) => void;
 }
 
 // A page groups one or more registry groups behind a single save bar (config-design §5).

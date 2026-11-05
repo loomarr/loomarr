@@ -1,3 +1,4 @@
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
@@ -8,7 +9,7 @@ import { SecretsSettings } from "@/settings/secrets-settings";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
-const publicURLKey = "access.public_url";
+const publicURLKey = SettingKey.AccessPublicURL;
 
 const SsoNote = () => (
   <section className="border-border rounded-lg border p-4">
@@ -26,7 +27,7 @@ interface PublicURLDefaultProps {
   loaded: boolean;
   persistedValue: string;
   liveValue: () => string;
-  setEdit: (key: string, value: string) => void;
+  setEdit: (key: SettingKey, value: string) => void;
 }
 
 const PublicURLDefault = ({
@@ -101,9 +102,9 @@ const AccessSettings = () => {
           <InstallationLocation
             entries={entries}
             values={{
-              "filler.home_country": liveValue("filler.home_country"),
-              "filler.home_place": liveValue("filler.home_place"),
-              "filler.local_radius_km": liveValue("filler.local_radius_km"),
+              [SettingKey.FillerHomeCountry]: liveValue(SettingKey.FillerHomeCountry),
+              [SettingKey.FillerHomePlace]: liveValue(SettingKey.FillerHomePlace),
+              [SettingKey.FillerLocalRadiusKm]: liveValue(SettingKey.FillerLocalRadiusKm),
             }}
             onChange={setEdit}
             card
