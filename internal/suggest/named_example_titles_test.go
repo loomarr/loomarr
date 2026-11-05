@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
@@ -114,12 +115,12 @@ func TestSuggest_ExampleTitlesInRequestAreAnchored(t *testing.T) {
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
 
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+	prop, err := s.Suggest(context.Background(), proposal.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	for _, item := range append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...) {
+	for _, item := range append(append([]proposal.ProposalItem(nil), prop.Lineup...), prop.Acquisitions...) {
 		names = append(names, item.Name)
 	}
 	if !slices.Contains(names, "The Tinkerlings") {
@@ -148,7 +149,7 @@ func TestSuggest_LikeAsVerbNamesNoExample(t *testing.T) {
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(tinkerlings.TMDBID)+`","name":"The Tinkerlings"}]}`, meaning),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	if _, err := s.Suggest(context.Background(), suggest.Intent{Description: description}); err != nil {
+	if _, err := s.Suggest(context.Background(), proposal.Intent{Description: description}); err != nil {
 		t.Fatal(err)
 	}
 	for _, search := range corpus.Searches() {
@@ -198,12 +199,12 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 			collections, presence := atlasFinchCollection(corpus)
 			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
 				WithMovieCollections(moviecollections.New(collections).WithPresenceSource(func() catalog.LibraryPresence { return presence }))
-			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: tc.description})
+			prop, err := s.Suggest(context.Background(), proposal.Intent{Description: tc.description})
 			if err != nil {
 				t.Fatal(err)
 			}
 			var names []string
-			for _, item := range append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...) {
+			for _, item := range append(append([]proposal.ProposalItem(nil), prop.Lineup...), prop.Acquisitions...) {
 				names = append(names, item.Name)
 			}
 			for _, want := range tc.want {
@@ -250,12 +251,12 @@ func TestSuggest_ExampleTitleSurvivesTrailingParenthetical(t *testing.T) {
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002016","name":"Pocket Robots 5"}]}`, meaning),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+	prop, err := s.Suggest(context.Background(), proposal.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var names []string
-	for _, item := range proposal.Lineup {
+	for _, item := range prop.Lineup {
 		names = append(names, item.Name)
 	}
 	if !slices.Contains(names, "The Tinkerlings") {
@@ -274,12 +275,12 @@ func TestSuggest_ExampleAnchorsSurviveUnusableFinal(t *testing.T) {
 		responses = append(responses, llm.Response{Content: "I could not decide."})
 	}
 	s := suggest.New(testkit.NewLLM(responses...), catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+	prop, err := s.Suggest(context.Background(), proposal.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "The Tinkerlings" {
-		t.Fatalf("lineup = %+v, want the named example", proposal.Lineup)
+	if len(prop.Lineup) != 1 || prop.Lineup[0].Name != "The Tinkerlings" {
+		t.Fatalf("lineup = %+v, want the named example", prop.Lineup)
 	}
 }
 
@@ -294,11 +295,11 @@ func TestSuggest_ExampleAnchorSurvivesEmptyPicks(t *testing.T) {
 		finalResponseWithDateMeaning(`{"picks":[]}`, meaning),
 	)
 	s := suggest.New(model, catalog.New(nil, namedTitlesCorpus()), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+	prop, err := s.Suggest(context.Background(), proposal.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "The Tinkerlings" {
-		t.Fatalf("lineup = %+v, want the named example", proposal.Lineup)
+	if len(prop.Lineup) != 1 || prop.Lineup[0].Name != "The Tinkerlings" {
+		t.Fatalf("lineup = %+v, want the named example", prop.Lineup)
 	}
 }

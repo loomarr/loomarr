@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -79,7 +80,7 @@ type Assessment struct {
 }
 
 // Assess shares preparation with approval, but has no store-writing capability.
-func (s *Service) Assess(ctx context.Context, proposal store.Proposal, edit *suggest.ApprovalEdit) (Assessment, error) {
+func (s *Service) Assess(ctx context.Context, row store.Proposal, edit *suggest.ApprovalEdit) (Assessment, error) {
 	if s == nil || s.config.Planner == nil || s.config.Preview == nil {
 		return Assessment{}, errors.New("proposal outlook is not configured")
 	}
@@ -89,10 +90,11 @@ func (s *Service) Assess(ctx context.Context, proposal store.Proposal, edit *sug
 	if err != nil {
 		return Assessment{}, err
 	}
-	prepared, body, err := suggest.PrepareApproval(proposal, resolvedEdit, s.config.Holidays.Current())
+	prepared, err := suggest.PrepareApproval(row, resolvedEdit, s.config.Holidays.Current())
 	if err != nil {
 		return Assessment{}, err
 	}
+	body := prepared.Body
 	channel, err := s.config.Planner.PlanSubmittedChannel(ctx, prepared)
 	if err != nil {
 		return Assessment{}, err
@@ -138,9 +140,9 @@ func (s *Service) Assess(ctx context.Context, proposal store.Proposal, edit *sug
 	// change must invalidate an older estimate even when the proposal JSON is unchanged.
 	channel.ReconcileDeadline = time.Time{} // operational due-now time is not proposal content
 	snapshot, err := json.Marshal(struct {
-		Proposal string
+		Proposal proposal.Proposal
 		Channel  store.Channel
-	}{prepared.ProposalJSON, channel})
+	}{prepared.Body, channel})
 	if err != nil {
 		return Assessment{}, err
 	}
@@ -190,10 +192,10 @@ func summarize(cycle channels.CycleResult) Assessment {
 	return result
 }
 
-func editorialMix(proposal suggest.Proposal, lineup []schedule.LineupEntry) Mix {
+func editorialMix(prop proposal.Proposal, lineup []schedule.LineupEntry) Mix {
 	// Historical and edited additions without run-local role evidence stay unknown.
-	roles := map[provision.Key]suggest.EditorialRole{}
-	for _, items := range [][]suggest.ProposalItem{proposal.Lineup, proposal.Acquisitions} {
+	roles := map[provision.Key]proposal.EditorialRole{}
+	for _, items := range [][]proposal.ProposalItem{prop.Lineup, prop.Acquisitions} {
 		for _, item := range items {
 			if key, err := item.Key(); err == nil {
 				if _, present := roles[key]; !present {
@@ -205,11 +207,11 @@ func editorialMix(proposal suggest.Proposal, lineup []schedule.LineupEntry) Mix 
 	var mix Mix
 	for _, entry := range lineup {
 		switch roles[entry.Key] {
-		case suggest.EditorialCore:
+		case proposal.EditorialCore:
 			mix.Core++
-		case suggest.EditorialAdjacent:
+		case proposal.EditorialAdjacent:
 			mix.Adjacent++
-		case suggest.EditorialDiscovery:
+		case proposal.EditorialDiscovery:
 			mix.Discovery++
 		default:
 			mix.Unknown++

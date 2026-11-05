@@ -99,7 +99,7 @@ fetches by, the field families it supplies (technical, identity and numbering, d
 certification, artwork), its **basis** (the kind of evidence it is: manager, sidecar, catalog …), the
 catalog its text comes from, and rate hints. It fetches one item by id and may also list everything
 (`Lister`) or report changes since a cursor (`ChangeFeed`). Provider ids are a closed set (`sonarr`,
-`radarr`, `nfo`, `tmdb`), and a guard test fails on any code that compares them.
+`radarr`, `nfo`, `tmdb`, `localart`), and a guard test fails on any code that compares them.
 
 - **Sonarr and Radarr** (`metadataprovider/arr`) are managers. Sonarr returns a series by TVDB id with
   every episode: the episode's own TVDB id, its numbering including the air-order position of specials,
@@ -122,6 +122,13 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   `metadata.language` and `metadata.country`; a country other than the US is refused. The change
   feed reads `/movie/changes` and `/tv/changes` and answers within TMDB's 14-day window; an older
   cursor is `ErrUnsupported` and the caller refetches. Keywords per item are capped at 40.
+- **Local artwork** (`metadataprovider/localart`) is a sidecar too, found by one listing of the media's
+  folder in Kodi's naming: a movie's `<file>-poster.jpg` (and `-fanart`, `-clearlogo`, `-banner`,
+  `-landscape`, `-clearart`, `-discart`), then the folder's `poster`, `folder`, `fanart`, `clearlogo` …
+  when it holds only that video; a series folder's same names; an episode's `<file>-thumb.jpg`. Any of
+  `.jpg`, `.jpeg`, `.png`, `.webp`, matched whatever the case. Records carry the image's path, never
+  its bytes, and only regular files: the image service imports one, keyed by its content, the first
+  time something shows it. Season art is not read; Loomarr has no season items.
 - **Arr requests never follow a redirect**, so the API key cannot reach another host.
 
 **Precedence** lives in one place, `metadataprovider/precedence`, and ranks bases and catalogs, never

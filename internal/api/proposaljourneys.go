@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -18,7 +19,7 @@ import (
 type ProposalWorkflow interface {
 	Inspect(context.Context, proposalworkflow.Viewer, string) (proposalworkflow.Journey, error)
 	List(context.Context, proposalworkflow.Viewer, proposalworkflow.ListOptions) ([]proposalworkflow.Journey, error)
-	Revise(context.Context, proposalworkflow.Viewer, string, suggest.Intent) error
+	Revise(context.Context, proposalworkflow.Viewer, string, proposal.Intent) error
 }
 
 // ProposalProgress reads the live snapshot of a generation that is running on this process.
@@ -55,7 +56,7 @@ type ProposalJourneyDTO struct {
 	Version   int                         `json:"version" doc:"Current First-channel Journey schema version"`
 	JobID     string                      `json:"jobId"`
 	Milestone string                      `json:"milestone" enum:"generating,awaiting_approval,denied,building,live,failed"`
-	Intent    suggest.Intent              `json:"intent"`
+	Intent    proposal.Intent             `json:"intent"`
 	Attempts  []ProposalJobAttemptDTO     `json:"attempts"`
 	Failure   *ProposalJourneyFailureDTO  `json:"failure,omitempty"`
 	Progress  *ProposalJourneyProgressDTO `json:"progress,omitempty" doc:"Live generation progress; present only while generating and running on this server"`
@@ -76,24 +77,24 @@ type ProposalJobAttemptDTO struct {
 }
 
 type ProposalJourneyFailureDTO struct {
-	Code           string                `json:"code" enum:"no_grounded_titles,selection_empty,budget_exhausted,generation_failed"`
-	Reason         string                `json:"reason" enum:"retrieval_unavailable,reference_unreadable,no_catalog_match,named_set_unproven,constraints_conflict,date_semantics_unclear,invalid_tool_calls,provider_timeout,provider_unavailable,provider_response_invalid,discovery_budget_exhausted,generation_failed"`
-	RecoveryAction string                `json:"recoveryAction" enum:"edit_reference,broaden_request,provide_examples,resolve_constraints,clarify_dates,simplify_request,retry_later"`
-	Message        string                `json:"message"`
-	Guidance       string                `json:"guidance"`
-	Trace          suggest.DecisionTrace `json:"trace,omitempty"`
+	Code           string                 `json:"code" enum:"no_grounded_titles,selection_empty,budget_exhausted,generation_failed"`
+	Reason         string                 `json:"reason" enum:"retrieval_unavailable,reference_unreadable,no_catalog_match,named_set_unproven,constraints_conflict,date_semantics_unclear,invalid_tool_calls,provider_timeout,provider_unavailable,provider_response_invalid,discovery_budget_exhausted,generation_failed"`
+	RecoveryAction string                 `json:"recoveryAction" enum:"edit_reference,broaden_request,provide_examples,resolve_constraints,clarify_dates,simplify_request,retry_later"`
+	Message        string                 `json:"message"`
+	Guidance       string                 `json:"guidance"`
+	Trace          proposal.DecisionTrace `json:"trace,omitempty"`
 }
 
 type ProposalJourneyProposalDTO struct {
-	ID             string           `json:"id"`
-	Status         string           `json:"status" enum:"submitted,approved,denied,superseded"`
-	ApprovedBy     string           `json:"approvedBy,omitempty"`
-	ApprovedByName string           `json:"approvedByName,omitempty" doc:"Display name of the approver, or Automatic for an auto-approval; empty if unknown"`
-	ApprovedAt     string           `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
-	DenyReason     string           `json:"denyReason,omitempty"`
-	ModSummary     string           `json:"modSummary,omitempty"`
-	Note           string           `json:"note,omitempty"`
-	Proposal       suggest.Proposal `json:"proposal"`
+	ID             string            `json:"id"`
+	Status         string            `json:"status" enum:"submitted,approved,denied,superseded"`
+	ApprovedBy     string            `json:"approvedBy,omitempty"`
+	ApprovedByName string            `json:"approvedByName,omitempty" doc:"Display name of the approver, or Automatic for an auto-approval; empty if unknown"`
+	ApprovedAt     string            `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
+	DenyReason     string            `json:"denyReason,omitempty"`
+	ModSummary     string            `json:"modSummary,omitempty"`
+	Note           string            `json:"note,omitempty"`
+	Proposal       proposal.Proposal `json:"proposal"`
 }
 
 type ProposalJourneyChannelDTO struct {
@@ -177,7 +178,7 @@ type proposalJourneyOutput struct {
 
 type reviseProposalJourneyInput struct {
 	JobID string `path:"jobId"`
-	Body  suggest.Intent
+	Body  proposal.Intent
 }
 
 type reviseProposalJourneyOutput struct {

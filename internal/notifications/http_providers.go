@@ -74,17 +74,13 @@ func NewHTTPProviderAdapters(client HTTPDoer, publicURL func() string) ([]Adapte
 
 func (a *HTTPProviderAdapter) Means() Means { return a.means }
 
-func (a *HTTPProviderAdapter) ValidateDestination(configuration, credentials map[string]string) error {
+func (a *HTTPProviderAdapter) ValidateDestination(settings ProviderSettings) error {
 	definition, ok := ProviderDefinitionFor(a.means)
 	if !ok {
 		return fmt.Errorf("notification provider is unsupported")
 	}
 	for _, field := range definition.Fields {
-		value := configuration[field.Key]
-		if field.Sensitive {
-			value = credentials[field.Key]
-		}
-		if field.Required && strings.TrimSpace(value) == "" {
+		if field.Required && strings.TrimSpace(settings.field(field)) == "" {
 			return fmt.Errorf("notification provider requires %s", field.Label)
 		}
 	}
@@ -92,7 +88,7 @@ func (a *HTTPProviderAdapter) ValidateDestination(configuration, credentials map
 		EventID: "validation", EventType: TopicDeliveryTest, Occurred: time.Unix(1, 0).UTC(),
 		Severity: "info", Title: "Loomarr test", Body: "Loomarr notification provider test.",
 	}
-	_, err := buildProviderRequest(a.means, configuration, credentials, message)
+	_, err := buildProviderRequest(a.means, settings, message)
 	return err
 }
 
@@ -100,12 +96,12 @@ func (a *HTTPProviderAdapter) Deliver(ctx context.Context, delivery Delivery) Re
 	if a == nil || a.client == nil || delivery.Destination == nil || delivery.Destination.Means != a.means {
 		return providerConfigurationFailure()
 	}
-	destination := delivery.Destination
-	if err := a.ValidateDestination(destination.Configuration, destination.Credentials); err != nil {
+	settings := delivery.Destination.ProviderSettings()
+	if err := a.ValidateDestination(settings); err != nil {
 		return providerConfigurationFailure()
 	}
 	message := providerMessage(delivery.Intent, a.publicURL)
-	spec, err := buildProviderRequest(a.means, destination.Configuration, destination.Credentials, message)
+	spec, err := buildProviderRequest(a.means, settings, message)
 	if err != nil {
 		return providerConfigurationFailure()
 	}
@@ -236,37 +232,37 @@ func topicSeverity(topic Topic) string {
 
 func buildProviderRequest(
 	means Means,
-	configuration, credentials map[string]string,
+	settings ProviderSettings,
 	message ProviderMessage,
 ) (providerRequest, error) {
 	switch means {
 	case MeansWebhook:
-		return webhookRequest(configuration, credentials, message)
+		return webhookRequest(settings, message)
 	case MeansDiscord:
-		return discordRequest(credentials, message)
+		return discordRequest(settings, message)
 	case MeansNtfy:
-		return ntfyRequest(configuration, credentials, message)
+		return ntfyRequest(settings, message)
 	case MeansGotify:
-		return gotifyRequest(configuration, credentials, message)
+		return gotifyRequest(settings, message)
 	case MeansApprise:
-		return appriseRequest(configuration, credentials, message)
+		return appriseRequest(settings, message)
 	case MeansPushover:
-		return pushoverRequest(credentials, message)
+		return pushoverRequest(settings, message)
 	case MeansTelegram:
-		return telegramRequest(credentials, message)
+		return telegramRequest(settings, message)
 	case MeansMattermost:
-		return mattermostRequest(credentials, message)
+		return mattermostRequest(settings, message)
 	case MeansMatrix:
-		return matrixRequest(configuration, credentials, message)
+		return matrixRequest(settings, message)
 	case MeansSlack:
-		return slackRequest(credentials, message)
+		return slackRequest(settings, message)
 	default:
 		return providerRequest{}, fmt.Errorf("notification provider is unsupported")
 	}
 }
 
-func webhookRequest(configuration, credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	target, err := providerURL(credentials["url"], false, nil)
+func webhookRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	target, err := providerURL(settings.secret(keyURL), false, nil)
 	if err != nil {
 		return providerRequest{}, err
 	}
@@ -277,11 +273,11 @@ func webhookRequest(configuration, credentials map[string]string, message Provid
 	}
 	headers := jsonHeaders()
 	headers.Set("X-Loomarr-Event-ID", message.EventID)
-	if token := credentials["bearerToken"]; token != "" {
+	if token := settings.secret(keyBearerToken); token != "" {
 		headers.Set("Authorization", "Bearer "+token)
 	}
-	if secret := credentials["hmacSecret"]; secret != "" {
-		mac := hmac.New(sha256.New, []byte(secret))
+	if signing := settings.secret(keyHMACSecret); signing != "" {
+		mac := hmac.New(sha256.New, []byte(signing))
 		_, _ = mac.Write(body)
 		headers.Set("X-Loomarr-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 	}
@@ -300,8 +296,8 @@ func providerEventPayload(message ProviderMessage) map[string]any {
 	return payload
 }
 
-func discordRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	target, err := providerURL(credentials["webhookUrl"], true, []string{"discord.com", "discordapp.com"})
+func discordRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	target, err := providerURL(settings.secret(keyWebhookURL), true, []string{"discord.com", "discordapp.com"})
 	if err != nil || !strings.Contains(target.Path, "/api/webhooks/") {
 		return providerRequest{}, fmt.Errorf("discord incoming webhook URL must use an official host and path")
 	}
@@ -316,8 +312,8 @@ func discordRequest(credentials map[string]string, message ProviderMessage) (pro
 	return post(target, jsonHeaders(), body), nil
 }
 
-func slackRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	target, err := providerURL(credentials["webhookUrl"], true, []string{"hooks.slack.com", "hooks.slack-gov.com"})
+func slackRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	target, err := providerURL(settings.secret(keyWebhookURL), true, []string{"hooks.slack.com", "hooks.slack-gov.com"})
 	if err != nil || !strings.HasPrefix(target.Path, "/services/") {
 		return providerRequest{}, fmt.Errorf("slack incoming webhook URL must use an official host and path")
 	}
@@ -334,8 +330,8 @@ func slackRequest(credentials map[string]string, message ProviderMessage) (provi
 	return post(target, jsonHeaders(), body), nil
 }
 
-func mattermostRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	target, err := providerURL(credentials["webhookUrl"], false, nil)
+func mattermostRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	target, err := providerURL(settings.secret(keyWebhookURL), false, nil)
 	if err != nil || !strings.Contains(target.Path, "/hooks/") {
 		return providerRequest{}, fmt.Errorf("mattermost incoming webhook URL must contain a hooks path")
 	}
@@ -347,12 +343,12 @@ func mattermostRequest(credentials map[string]string, message ProviderMessage) (
 	return post(target, jsonHeaders(), body), nil
 }
 
-func ntfyRequest(configuration, credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	base, err := providerURL(configuration["baseUrl"], false, nil)
+func ntfyRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	base, err := providerURL(settings.plain(keyBaseURL), false, nil)
 	if err != nil {
 		return providerRequest{}, err
 	}
-	base = base.JoinPath(credentials["topic"])
+	base = base.JoinPath(settings.secret(keyTopic))
 	body := []byte(truncate(message.Body, providerBodyLimit))
 	headers := http.Header{"Content-Type": []string{"text/plain; charset=utf-8"}}
 	headers.Set("Title", truncate(message.Title, 250))
@@ -366,8 +362,8 @@ func ntfyRequest(configuration, credentials map[string]string, message ProviderM
 	if message.Link != "" {
 		headers.Set("Click", message.Link)
 	}
-	if password := credentials["password"]; password != "" {
-		if username := configuration["username"]; username != "" {
+	if password := settings.secret(keyPassword); password != "" {
+		if username := settings.plain(keyUsername); username != "" {
 			headers.Set("Authorization", "Basic "+basicAuth(username, password))
 		} else {
 			headers.Set("Authorization", "Bearer "+password)
@@ -376,14 +372,14 @@ func ntfyRequest(configuration, credentials map[string]string, message ProviderM
 	return post(base, headers, body), nil
 }
 
-func gotifyRequest(configuration, credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	target, err := providerURL(configuration["serverUrl"], false, nil)
+func gotifyRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	target, err := providerURL(settings.plain(keyServerURL), false, nil)
 	if err != nil {
 		return providerRequest{}, err
 	}
 	target.Path = strings.TrimRight(target.Path, "/") + "/message"
 	headers := jsonHeaders()
-	headers.Set("X-Gotify-Key", credentials["applicationToken"])
+	headers.Set("X-Gotify-Key", settings.secret(keyApplicationToken))
 	priority := 2
 	if message.Severity == "warning" {
 		priority = 5
@@ -400,12 +396,12 @@ func gotifyRequest(configuration, credentials map[string]string, message Provide
 	return post(target, headers, body), nil
 }
 
-func appriseRequest(configuration, credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	base, err := providerURL(configuration["baseUrl"], false, nil)
+func appriseRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	base, err := providerURL(settings.plain(keyBaseURL), false, nil)
 	if err != nil {
 		return providerRequest{}, err
 	}
-	key, destination := credentials["configurationKey"], credentials["destinationUrl"]
+	key, destination := settings.secret(keyConfigurationKey), settings.secret(keyDestinationURL)
 	if (key == "") == (destination == "") {
 		return providerRequest{}, fmt.Errorf("apprise requires either a configuration key or destination URL")
 	}
@@ -423,19 +419,19 @@ func appriseRequest(configuration, credentials map[string]string, message Provid
 	}
 	body, _ := json.Marshal(payload)
 	headers := jsonHeaders()
-	if token := credentials["token"]; token != "" {
+	if token := settings.secret(keyToken); token != "" {
 		headers.Set("Authorization", "Bearer "+token)
 	}
 	return post(base, headers, body), nil
 }
 
-func pushoverRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
+func pushoverRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
 	values := url.Values{
-		"token": {credentials["applicationToken"]}, "user": {credentials["recipientKey"]},
+		"token": {settings.secret(keyApplicationToken)}, "user": {settings.secret(keyRecipientKey)},
 		"title": {truncate(message.Title, 250)}, "message": {truncate(message.Body, 1024)},
 		"priority": {map[string]string{"warning": "1", "info": "0"}[message.Severity]},
 	}
-	if device := credentials["device"]; device != "" {
+	if device := settings.secret(keyDevice); device != "" {
 		values.Set("device", device)
 	}
 	if message.Link != "" {
@@ -457,8 +453,8 @@ func pushoverRequest(credentials map[string]string, message ProviderMessage) (pr
 // telegramBotToken is the documented bot token shape: a numeric bot ID, a colon, then URL-safe characters.
 var telegramBotToken = regexp.MustCompile(`^[0-9]+:[A-Za-z0-9_-]+$`)
 
-func telegramRequest(credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	token := credentials["botToken"]
+func telegramRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	token := settings.secret(keyBotToken)
 	if !telegramBotToken.MatchString(token) {
 		return providerRequest{}, fmt.Errorf("telegram requires a valid bot token")
 	}
@@ -467,10 +463,10 @@ func telegramRequest(credentials map[string]string, message ProviderMessage) (pr
 		return providerRequest{}, fmt.Errorf("telegram bot token does not form a valid URL: %w", err)
 	}
 	payload := map[string]any{
-		"chat_id": credentials["chatId"], "text": truncate(joinBodyLink(message), 4096),
+		"chat_id": settings.secret(keyChatID), "text": truncate(joinBodyLink(message), 4096),
 		"link_preview_options": map[string]bool{"is_disabled": true},
 	}
-	if thread := credentials["threadId"]; thread != "" {
+	if thread := settings.secret(keyThreadID); thread != "" {
 		value, err := strconv.ParseInt(thread, 10, 64)
 		if err != nil {
 			return providerRequest{}, fmt.Errorf("telegram thread ID must be a number")
@@ -494,19 +490,19 @@ func telegramRequest(credentials map[string]string, message ProviderMessage) (pr
 	return spec, nil
 }
 
-func matrixRequest(configuration, credentials map[string]string, message ProviderMessage) (providerRequest, error) {
-	base, err := providerURL(configuration["homeserverUrl"], false, nil)
+func matrixRequest(settings ProviderSettings, message ProviderMessage) (providerRequest, error) {
+	base, err := providerURL(settings.plain(keyHomeserver), false, nil)
 	if err != nil {
 		return providerRequest{}, err
 	}
-	room := credentials["roomId"]
+	room := settings.secret(keyRoomID)
 	if room == "" {
 		return providerRequest{}, fmt.Errorf("matrix requires a room ID")
 	}
 	base = base.JoinPath("_matrix", "client", "v3", "rooms", room, "send", "m.room.message", message.EventID)
 	body, _ := json.Marshal(map[string]string{"msgtype": "m.text", "body": truncate(joinBodyLink(message), 4000)})
 	headers := jsonHeaders()
-	headers.Set("Authorization", "Bearer "+credentials["accessToken"])
+	headers.Set("Authorization", "Bearer "+settings.secret(keyAccessToken))
 	spec := providerRequest{method: http.MethodPut, url: base.String(), headers: headers, body: body}
 	spec.accept = func(body []byte) (string, bool) {
 		var response struct {

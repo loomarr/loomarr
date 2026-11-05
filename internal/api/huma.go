@@ -24,6 +24,7 @@ import (
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -662,17 +663,17 @@ type GuideReader interface {
 type SuggestService interface {
 	// Submit enqueues a suggestion job for an intent and returns the job id. It takes
 	// the DOMAIN intent rather than flat args: the flat form was "dependency-light",
-	// but this package already imports suggest (ProposalDTO carries suggest.Proposal),
+	// but this package already imports suggest (ProposalDTO carries proposal.Proposal),
 	// and the flat mirror had silently dropped RuntimeTgt — a knob the suggester
 	// honors (suggester.go prompt + scoring) that no client could set.
-	Submit(ctx context.Context, intent suggest.Intent, createdBy string) (jobID string, err error)
+	Submit(ctx context.Context, intent proposal.Intent, createdBy string) (jobID string, err error)
 	// Refine submits a new job for the channel with a refine-flavored intent, so its
 	// proposal binds back to the same channel (§7 POST /v1/channels/{id}/refine) and is
 	// listed as the refining admin's own request. Returns the job id to poll.
-	Refine(ctx context.Context, channelID string, intent suggest.Intent, requestedBy string) (string, error)
+	Refine(ctx context.Context, channelID string, intent proposal.Intent, requestedBy string) (string, error)
 	// SubmitBuilt queues a proposal that needed no generation (a library channel idea, #1720)
 	// as the requester's own request, and returns its job id. The model never runs.
-	SubmitBuilt(ctx context.Context, intent suggest.Intent, proposal suggest.Proposal, createdBy string) (jobID string, err error)
+	SubmitBuilt(ctx context.Context, intent proposal.Intent, proposal proposal.Proposal, createdBy string) (jobID string, err error)
 }
 
 // SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM
@@ -875,7 +876,7 @@ type TunerRescanner interface {
 
 // TunarrConnector wires the media server as *Tunarr's* media source (§6) so Tunarr
 // can stream + index the library — backs POST /v1/setup/tunarr-connect and the
-// tunarr_library setup check. Idempotent. Implemented by setup.MediaSourceConnector.
+// tunarr_library setup check. Idempotent. Implemented by livetvpublish.MediaSourceConnector.
 type TunarrConnector interface {
 	Connect(ctx context.Context) (sourceID string, librariesEnabled int, err error)
 	LibrariesReady(ctx context.Context) (bool, error)
@@ -895,7 +896,7 @@ type ProposalApprover interface {
 	// (manual/AI-off channel creation, #1817 G2), splitting it into owned titles and titles to
 	// acquire. It shares the one approval-addition resolver with Approve's edit.Add, so a
 	// manually submitted proposal gets the same "client presence is not authority" guarantee.
-	ResolveManualLineup(ctx context.Context, items []suggest.ProposalItem) (lineup, acquisitions []suggest.ProposalItem, err error)
+	ResolveManualLineup(ctx context.Context, items []proposal.ProposalItem) (lineup, acquisitions []proposal.ProposalItem, err error)
 }
 
 // ProposalDecisionQuality receives a denial only after its submitted-to-denied

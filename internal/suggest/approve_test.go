@@ -2,12 +2,12 @@ package suggest_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store"
@@ -15,26 +15,33 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-const validApprovalProposalJSON = `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines"}]}`
+// validApprovalBody is a proposal with one grounded acquisition, fresh per call.
+func validApprovalBody() proposal.Proposal {
+	return proposal.Proposal{Acquisitions: []proposal.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Quiet Engines"},
+	}}
+}
 
 func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 	st := &testkit.ApprovalStore{}
 	channels := &testkit.ApprovalChannels{}
-	owned := suggest.ProposalItem{
+	owned := proposal.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned addition",
 		InLibrary: true, LibraryItemID: "library-90000672", OfficialRating: "PG",
 	}
-	missing := suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition"}
-	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+	missing := proposal.ProposalItem{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition"}
+	resolver := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
 		{Item: owned, Owned: true},
 		{Item: missing, Owned: false},
 	}}
 	approver := suggest.NewApprover(st, channels, time.Now).WithApprovalAdditionResolver(resolver)
 	p := store.Proposal{
 		ID: "p-owned-add", JobID: "job-owned-add", Status: "submitted",
-		ProposalJSON: `{"lineup":[{"mediaType":"movie","tmdbId":90000671,"name":"Existing","inLibrary":true,"libraryItemId":"library-90000671"}]}`,
+		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{
+			{MediaType: provision.Movie, TMDBID: 90000671, Name: "Existing", InLibrary: true, LibraryItemID: "library-90000671"},
+		}},
 	}
-	edit := &suggest.ApprovalEdit{Add: []suggest.ProposalItem{
+	edit := &suggest.ApprovalEdit{Add: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned addition", InLibrary: false},
 		{MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing addition", InLibrary: true, LibraryItemID: "forged"},
 	}}
@@ -52,10 +59,7 @@ func TestApproverResolvesOwnedReviewAdditionBeforeCommitting(t *testing.T) {
 	if records[2].Key != "movie:tmdb:90000673" || records[2].State != provision.Wanted || records[2].LibraryID != "" {
 		t.Fatalf("missing record = %+v, want wanted without forged Library id", records[2])
 	}
-	var committed suggest.Proposal
-	if err := json.Unmarshal([]byte(st.Commits[0].Proposal.ProposalJSON), &committed); err != nil {
-		t.Fatal(err)
-	}
+	committed := st.Commits[0].Proposal.Body
 	if len(committed.Lineup) != 2 || len(committed.Acquisitions) != 1 {
 		t.Fatalf("committed proposal = %+v, want owned addition in lineup and missing addition in acquisitions", committed)
 	}
@@ -71,7 +75,7 @@ func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 				return ch
 			}}
 			approver := suggest.NewApprover(st, channels, time.Now)
-			p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: validApprovalProposalJSON}
+			p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 			result, err := approver.Approve(context.Background(), p, nil, "admin")
 			if err != nil {
@@ -92,7 +96,7 @@ func TestApproverReplansAfterChannelWriteRace(t *testing.T) {
 
 func TestApproverRechecksSupersessionAfterStaleChannelRetry(t *testing.T) {
 	p := store.Proposal{
-		ID: "older", JobID: "job1", Status: "submitted", ProposalJSON: validApprovalProposalJSON,
+		ID: "older", JobID: "job1", Status: "submitted", Body: validApprovalBody(),
 		CreatedAt: time.Unix(100, 0),
 	}
 	newer := store.Proposal{ID: "newer", JobID: p.JobID, Status: "approved", CreatedAt: time.Unix(200, 0)}
@@ -134,7 +138,7 @@ func TestApproverOwnsPlanCommitPostCommitOrdering(t *testing.T) {
 		WithDecisionQuality(decisionQuality)
 	p := store.Proposal{
 		ID: "p1", JobID: "job1", Status: "submitted",
-		ProposalJSON: `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines"}]}`,
+		Body: validApprovalBody(),
 	}
 
 	result, err := approver.Approve(context.Background(), p, nil, "admin")
@@ -167,7 +171,7 @@ func TestApproverPlanFailureDoesNotReachStore(t *testing.T) {
 	st := &testkit.ApprovalStore{}
 	channels := &testkit.ApprovalChannels{PlanError: errors.New("cannot plan")}
 	approver := suggest.NewApprover(st, channels, time.Now)
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: validApprovalProposalJSON}
+	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {
 		t.Fatal("approval succeeded despite channel-plan failure")
@@ -183,7 +187,7 @@ func TestApproverStoreFailureDoesNotRunPostCommit(t *testing.T) {
 	qualitySink := &testkit.QualityRecorder{}
 	decisionQuality := quality.NewProposalDecisionRecorder(qualitySink, slog.New(slog.DiscardHandler))
 	approver := suggest.NewApprover(st, channels, time.Now).WithDecisionQuality(decisionQuality)
-	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", ProposalJSON: validApprovalProposalJSON}
+	p := store.Proposal{ID: "p1", JobID: "job1", Status: "submitted", Body: validApprovalBody()}
 
 	if _, err := approver.Approve(context.Background(), p, nil, "admin"); err == nil {
 		t.Fatal("approval succeeded despite local transaction failure")

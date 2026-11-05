@@ -11,41 +11,42 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 type scriptedGenerator struct {
-	proposal suggest.Proposal
+	proposal proposal.Proposal
 	err      error
 }
 
 type providerGenerator struct {
 	provider llm.Provider
-	proposal suggest.Proposal
+	proposal proposal.Proposal
 	calls    int
 }
 
-func (g providerGenerator) Suggest(ctx context.Context, _ suggest.Intent) (suggest.Proposal, error) {
+func (g providerGenerator) Suggest(ctx context.Context, _ proposal.Intent) (proposal.Proposal, error) {
 	calls := g.calls
 	if calls <= 0 {
 		calls = 1
 	}
 	for range calls {
 		if _, err := g.provider.Chat(ctx, nil, llm.ChatOptions{}); err != nil {
-			return suggest.Proposal{}, err
+			return proposal.Proposal{}, err
 		}
 	}
 	return g.proposal, nil
 }
 
-func (g scriptedGenerator) Suggest(context.Context, suggest.Intent) (suggest.Proposal, error) {
+func (g scriptedGenerator) Suggest(context.Context, proposal.Intent) (proposal.Proposal, error) {
 	return g.proposal, g.err
 }
 
 type sequenceGenerator struct {
-	proposals []suggest.Proposal
+	proposals []proposal.Proposal
 	next      int
 }
 
@@ -54,10 +55,10 @@ type sequenceErrorGenerator struct {
 	next   int
 }
 
-func (g *sequenceErrorGenerator) Suggest(context.Context, suggest.Intent) (suggest.Proposal, error) {
+func (g *sequenceErrorGenerator) Suggest(context.Context, proposal.Intent) (proposal.Proposal, error) {
 	err := g.errors[g.next]
 	g.next++
-	return suggest.Proposal{}, err
+	return proposal.Proposal{}, err
 }
 
 type sequenceJudge struct {
@@ -80,7 +81,7 @@ func (j *sequenceJudge) Score(context.Context, JudgeEvidence) (JudgeScores, erro
 	return score, nil
 }
 
-func (g *sequenceGenerator) Suggest(context.Context, suggest.Intent) (suggest.Proposal, error) {
+func (g *sequenceGenerator) Suggest(context.Context, proposal.Intent) (proposal.Proposal, error) {
 	proposal := g.proposals[g.next]
 	g.next++
 	return proposal, nil
@@ -88,9 +89,9 @@ func (g *sequenceGenerator) Suggest(context.Context, suggest.Intent) (suggest.Pr
 
 func TestDeterministicChecksCountGroundedTitlesAcrossOwnership(t *testing.T) {
 	caseUnderTest := Case{MinGrounded: 2}
-	proposal := suggest.Proposal{
-		Lineup:       []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Owned"}},
-		Acquisitions: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000002, Name: "Discovered"}},
+	proposal := proposal.Proposal{
+		Lineup:       []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Owned"}},
+		Acquisitions: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000002, Name: "Discovered"}},
 	}
 	if failures := deterministicChecks(caseUnderTest, proposal, nil); len(failures) != 0 {
 		t.Fatalf("ownership-neutral grounded count failed: %v", failures)
@@ -186,7 +187,7 @@ func TestDeterministicChecksRejectNegativeConstraintViolations(t *testing.T) {
 	caseUnderTest := Case{
 		MinLineup: 1, ForbidGenres: []string{"horror"}, ForbidTitleTerms: []string{"Lark"},
 	}
-	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{
+	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Lark II", Genres: []string{"Horror"}},
 	}}
 	failures := deterministicChecks(caseUnderTest, proposal, nil)
@@ -196,7 +197,7 @@ func TestDeterministicChecksRejectNegativeConstraintViolations(t *testing.T) {
 }
 
 func TestDeterministicChecksRejectWrongOrdering(t *testing.T) {
-	proposal := suggest.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSequential}}}
+	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSequential}}}
 	failures := deterministicChecks(Case{ExpectOrdering: "syndication"}, proposal, nil)
 	if len(failures) != 1 {
 		t.Fatalf("ordering failures = %v, want one", failures)

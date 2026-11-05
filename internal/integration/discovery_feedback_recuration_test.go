@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -152,7 +152,7 @@ func (r *toolOrderRecorder) all() [][]provision.Key {
 // awaitRecuratedProposalAfter waits until the channel has more re-curation proposals than
 // `previous` and returns the newest one with the new count. Every re-curation is its own job
 // that names the channel, so the proposals are found through the jobs that produced them.
-func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, previous int) (suggest.Proposal, int) {
+func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, previous int) (proposal.Proposal, int) {
 	t.Helper()
 	ctx := context.Background()
 	deadline := time.Now().Add(workerWait)
@@ -172,22 +172,18 @@ func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, pre
 		}
 		if len(found) > previous {
 			slices.SortFunc(found, func(a, b store.Proposal) int { return a.CreatedAt.Compare(b.CreatedAt) })
-			var proposal suggest.Proposal
-			if err := json.Unmarshal([]byte(found[len(found)-1].ProposalJSON), &proposal); err != nil {
-				t.Fatal(err)
-			}
-			return proposal, len(found)
+			return found[len(found)-1].Body, len(found)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("recurate for %s did not complete", channelID)
-	return suggest.Proposal{}, 0
+	return proposal.Proposal{}, 0
 }
 
-func assertProposalKeys(t *testing.T, proposal suggest.Proposal, want []provision.Key) {
+func assertProposalKeys(t *testing.T, prop proposal.Proposal, want []provision.Key) {
 	t.Helper()
-	got := make([]provision.Key, 0, len(proposal.Lineup)+len(proposal.Acquisitions))
-	items := append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...)
+	got := make([]provision.Key, 0, len(prop.Lineup)+len(prop.Acquisitions))
+	items := append(append([]proposal.ProposalItem(nil), prop.Lineup...), prop.Acquisitions...)
 	for _, item := range items {
 		key, err := item.Key()
 		if err != nil {

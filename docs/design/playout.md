@@ -588,7 +588,12 @@ lineup and filler.
   API key), enables the movie and show libraries and scans them. `/v1/setup/status` reports a
   `tunarr_library` check until that is done. The wizard's dedicated "Give Tunarr your library" step
   (`web-ui.md` §13 step 5) is the only UI that triggers this connect; it exists only on the Tunarr
-  path and is never shown to an internal-playout install.
+  path and is never shown to an internal-playout install. Saving a media-server or Tunarr
+  connection setting re-runs the connect, which pushes the current library token to the source
+  Loomarr created. Channel maintenance re-runs it whenever this process has not yet wired the
+  current library connection: after a restart (an environment-set token can change with no save)
+  or after a failed connect. Tunarr redacts the token it stores, so the process's own last push is
+  the only staleness signal.
 - Programming entries need Tunarr's own program id, so the adapter maps media-server item ids through
   Tunarr's persisted `/programs` index (never the ephemeral browse handles). An unindexed item airs
   as flex, and a reconcile with misses triggers one best-effort library scan.
