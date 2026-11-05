@@ -13,13 +13,13 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/tmdb"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -40,8 +40,8 @@ func (t recurateThresholds) MaxTitles(context.Context) int {
 // resolver matters on Postgres: another replica can advance the checkpoint without changing this
 // process's controller Runtime, so request-path status must read DurableView instead.
 type liveTVAdapter struct {
-	c    *setup.LiveTVConnector
-	urls func(context.Context) (setup.LiveTVURLs, error)
+	c    *livetvpublish.LiveTVConnector
+	urls func(context.Context) (tunarr.LiveTVURLs, error)
 }
 
 func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
@@ -61,8 +61,8 @@ func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
 // it becomes the applied UI backend, and pause/detach must disappear from that prepared
 // M3U rather than pointlessly rescanning the still-applied Tunarr tuner.
 type transportTunerRescanner struct {
-	c    *setup.LiveTVConnector
-	urls func(context.Context) (setup.LiveTVURLs, error)
+	c    *livetvpublish.LiveTVConnector
+	urls func(context.Context) (tunarr.LiveTVURLs, error)
 }
 
 func (r transportTunerRescanner) RescanTuner(ctx context.Context) error {

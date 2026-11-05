@@ -8,9 +8,10 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/backendtransition"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // backendTransitionDependencies are the composition-owned adapters needed to construct the
@@ -42,13 +43,13 @@ func buildBackendTransition(
 // concurrent save cannot make one transition prepare one target/server and refresh or retire
 // against another.
 type backendPublisher struct {
-	connector       *setup.LiveTVConnector
-	urls            func(context.Context, string) (setup.LiveTVURLs, error)
+	connector       *livetvpublish.LiveTVConnector
+	urls            func(context.Context, string) (tunarr.LiveTVURLs, error)
 	log             *slog.Logger // optional
 	mu              sync.Mutex
 	preparedTarget  string
-	preparedURLs    setup.LiveTVURLs
-	preparedLibrary *setup.LiveTVConnector
+	preparedURLs    tunarr.LiveTVURLs
+	preparedLibrary *livetvpublish.LiveTVConnector
 }
 
 // currentBackendTransition refreshes the settings snapshot, then keeps the mutation and desired
@@ -115,7 +116,7 @@ func (p *backendPublisher) Refresh(ctx context.Context, target string) error {
 		return err
 	}
 	err = operation.RefreshTarget(ctx, urls)
-	var transient *setup.TransientError
+	var transient *livetvpublish.TransientError
 	if errors.As(err, &transient) && p.log != nil {
 		// Logged here, once per exhausted retry budget, so the controller can defer the failure
 		// to the next maintenance run without the cause vanishing (#1407).
@@ -146,14 +147,14 @@ func (p *backendPublisher) Reconnect(ctx context.Context, target string) (int, e
 	return result.TunerRemoved, err
 }
 
-func (p *backendPublisher) prepared(target string) (*setup.LiveTVConnector, setup.LiveTVURLs, error) {
+func (p *backendPublisher) prepared(target string) (*livetvpublish.LiveTVConnector, tunarr.LiveTVURLs, error) {
 	if p == nil || p.connector == nil {
-		return nil, setup.LiveTVURLs{}, fmt.Errorf("live TV publisher is unavailable")
+		return nil, tunarr.LiveTVURLs{}, fmt.Errorf("live TV publisher is unavailable")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.preparedTarget != target || p.preparedLibrary == nil {
-		return nil, setup.LiveTVURLs{}, fmt.Errorf("live TV publisher target %q was not prepared", target)
+		return nil, tunarr.LiveTVURLs{}, fmt.Errorf("live TV publisher target %q was not prepared", target)
 	}
 	return p.preparedLibrary, p.preparedURLs, nil
 }
