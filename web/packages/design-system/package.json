@@ -47,7 +47,7 @@
     "jsdom": "30.0.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-native": "npm:react-native-tvos@0.88.0-0",
+    "react-native": "npm:react-native-tvos@0.88.1-0",
     "react-native-web": "0.21.4",
     "tsx": "4.23.15",
     "typescript": "7.0.2",

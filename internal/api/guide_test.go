@@ -135,21 +135,15 @@ func newGuideHarness(t *testing.T, config guideHarnessConfig) *guideHarness {
 			TimelineThumbs: config.TimelineThumbs,
 			Images:         config.Images,
 		}
+		live := mapSettings{}
 		if config.Timezone != "" {
-			opts.LiveConfig = func(key string) string {
-				if key == "guide.timezone" {
-					return config.Timezone
-				}
-				return ""
-			}
+			live["guide.timezone"] = config.Timezone
 		}
 		if config.RetentionHours != 0 {
-			opts.LiveConfigInt = func(key string) int {
-				if key == "guide.retention_hours" {
-					return config.RetentionHours
-				}
-				return 0
-			}
+			live["guide.retention_hours"] = config.RetentionHours
+		}
+		if len(live) > 0 {
+			opts.LiveSettings = live
 		}
 		return api.Router(defaults.Log, opts)
 	})

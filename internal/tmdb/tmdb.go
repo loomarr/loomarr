@@ -597,18 +597,7 @@ func (c *Client) Exists(ctx context.Context, mt provision.MediaType, tmdbID int)
 	if mt == provision.Series {
 		path = "/tv/" + strconv.Itoa(tmdbID)
 	}
-	status, err := c.getStatus(ctx, path, nil)
-	if err != nil {
-		return false, err
-	}
-	switch status {
-	case http.StatusOK:
-		return true, nil
-	case http.StatusNotFound:
-		return false, nil
-	default:
-		return false, fmt.Errorf("tmdb exists %s: status %d", path, status)
-	}
+	return c.getOptional(ctx, path, nil)
 }
 
 // CollectionForMovie returns TMDB's authoritative belongs_to_collection reference
@@ -932,15 +921,8 @@ func (c *Client) EpisodeStillURL(ctx context.Context, tmdbID, season, episode in
 	var body struct {
 		StillPath string `json:"still_path"`
 	}
-	status, err := c.getStatus(ctx, path, &body)
-	if err != nil {
+	if _, err := c.getOptional(ctx, path, &body); err != nil {
 		return "", err
-	}
-	if status == http.StatusNotFound {
-		return "", nil
-	}
-	if status < 200 || status >= 300 {
-		return "", &StatusError{Path: path, Status: status}
 	}
 	if p := strings.TrimSpace(body.StillPath); p != "" {
 		return imageBase + p, nil // still_path already has a leading "/"
@@ -948,40 +930,47 @@ func (c *Client) EpisodeStillURL(ctx context.Context, tmdbID, season, episode in
 	return "", nil
 }
 
+// get decodes a 2xx answer into out; any other status is an *httpx.StatusError.
 func (c *Client) get(ctx context.Context, path string, out any) error {
-	status, err := c.getStatus(ctx, path, out)
-	if err != nil {
-		return err
-	}
-	if status < 200 || status >= 300 {
-		return &StatusError{Path: path, Status: status}
-	}
-	return nil
+	_, err := c.fetch(ctx, path, out, false)
+	return err
 }
 
-func (c *Client) getStatus(ctx context.Context, path string, out any) (int, error) {
+// getOptional is get for a resource whose absence is an answer: it reports
+// whether TMDB has it, and a 404 is (false, nil) rather than an error.
+func (c *Client) getOptional(ctx context.Context, path string, out any) (bool, error) {
+	return c.fetch(ctx, path, out, true)
+}
+
+func (c *Client) fetch(ctx context.Context, path string, out any, notFoundIsAnswer bool) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
-		return 0, err
+		return false, err
 	}
 	// Bearer auth (v4 token style) keeps the key out of the URL (§6 anti-leak).
 	snapshot, ok := ctx.Value(operationAPIKey{}).(operationAPIKey)
 	if !ok || snapshot.value == "" {
-		return 0, ErrAPIKeyRequired
+		return false, ErrAPIKeyRequired
 	}
 	req.Header.Set("Authorization", "Bearer "+snapshot.value)
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("tmdb GET %s: %w", path, err)
+		return false, fmt.Errorf("tmdb GET %s: %w", path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if out != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if notFoundIsAnswer && resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if err := httpx.CheckStatus(resp); err != nil {
+		return false, fmt.Errorf("tmdb %w", err)
+	}
+	if out != nil {
 		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-			return resp.StatusCode, &decodeError{err: fmt.Errorf("tmdb decode %s: %w", path, err)}
+			return false, &decodeError{err: fmt.Errorf("tmdb decode %s: %w", path, err)}
 		}
 	}
-	return resp.StatusCode, nil
+	return true, nil
 }
 
 // mediaType maps TMDB's media_type to provision's, reporting whether it's a kind

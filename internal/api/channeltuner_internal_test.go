@@ -95,13 +95,8 @@ func TestChannelOperationsFailClosedWhenCheckpointReadFails(t *testing.T) {
 func TestTunerReturnsUnavailableWhenCheckpointReadFails(t *testing.T) {
 	want := errors.New("checkpoint unavailable")
 	s := &Server{
-		log: testkit.Logger(),
-		liveConfig: func(key string) string {
-			if key == "server.public_url" {
-				return "http://loomarr.test"
-			}
-			return ""
-		},
+		log:          testkit.Logger(),
+		liveSettings: mapSettings{"server.public_url": "http://loomarr.test"},
 		backendCheckpoint: func(context.Context) (BackendCheckpoint, error) {
 			return BackendCheckpoint{}, want
 		},

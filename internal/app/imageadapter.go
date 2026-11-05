@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/images/rustgen"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -77,9 +78,9 @@ func newImageService(
 		return nil, err
 	}
 	return images.New(images.Config{
-		Dir:            set.str("images.dir"),
-		MaxUploadBytes: func() int64 { return int64(set.intv("images.max_upload_bytes")) },
-		PublicBaseURL:  func() string { return set.str("server.public_url") },
+		Dir:            settings.ImagesDir.Get(set),
+		MaxUploadBytes: func() int64 { return int64(settings.ImagesMaxUploadBytes.Get(set)) },
+		PublicBaseURL:  func() string { return settings.ServerPublicURL.Get(set) },
 		Observer: images.Observer{
 			QueueWait: recorder.ImageWorkerQueueWait,
 			InFlight:  recorder.ImageWorkerInFlight,

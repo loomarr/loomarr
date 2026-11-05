@@ -2,10 +2,10 @@ package suggest
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -66,13 +66,9 @@ func PendingFor(ctx context.Context, st QuotaStore, userID string, limit int) (U
 		if p.Status != "approved" {
 			continue
 		}
-		var body Proposal
-		if err := json.Unmarshal([]byte(p.ProposalJSON), &body); err != nil {
-			// The cap is a safety boundary. If an approved audit row cannot be read,
-			// its pending spend is unknown, so unattended approval must fail closed.
-			return Usage{}, fmt.Errorf("quota: proposal %s is malformed: %w", p.ID, err)
-		}
-		for _, a := range body.Acquisitions {
+		// The cap is a safety boundary. An approved audit row the store cannot decode fails the
+		// list above, so its pending spend is never guessed and unattended approval fails closed.
+		for _, a := range p.Body.Acquisitions {
 			key, kerr := acquisitionKey(a)
 			if kerr != nil || seen[string(key)] {
 				continue
@@ -97,7 +93,7 @@ func PendingFor(ctx context.Context, st QuotaStore, userID string, limit int) (U
 }
 
 // acquisitionKey derives the provisioning key for a proposed acquisition.
-func acquisitionKey(a ProposalItem) (provision.Key, error) {
+func acquisitionKey(a proposal.ProposalItem) (provision.Key, error) {
 	title := provision.Title{
 		MediaType: provision.MediaType(a.MediaType),
 		TMDBID:    a.TMDBID, TVDBID: a.TVDBID, Name: a.Name, Year: a.Year, Seasons: a.Seasons,

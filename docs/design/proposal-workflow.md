@@ -19,8 +19,15 @@ channel reconciliation. Any ordering or quota-read failure leaves the Proposal `
 A **Proposal Job** is the caller-owned durable execution of an Intent. `internal/proposalworkflow`
 owns its lifecycle, attempt recovery, caller visibility and the First-channel **Journey** projection.
 Its interface is small: submit an Intent (fresh, or for an existing Channel), claim bounded work, complete or fail one claimed
-Attempt, and read or list Journeys. The Store and the model runner are private ports; API, worker
+Attempt, and read or list Journeys. The workflow's one `Repository` (backed by `store.ProposalRepository`,
+the single persistence surface for Proposals and their Jobs) and the model runner are private ports; API, worker
 and frontend never rebuild lifecycle rules from raw rows.
+
+The Intent, the Proposal and the evidence they carry (Scores, Decision Trace) are the value types of the
+leaf package `internal/proposal`. The store is the one place a Proposal's JSON is encoded and
+decoded: `store.Proposal.Body` is the typed value, an empty column reads as the zero Proposal, and
+a column the store cannot decode is an error rather than an empty Proposal. Everything above the
+store passes the typed value.
 
 The Job id is the correlation spine, not a state machine that takes over domain ownership. The
 Proposal stays the grounded artifact and approval audit; the Channel owns `building`/`live`. The
@@ -46,7 +53,11 @@ separately. An impossible combination fails the read closed and is recorded for 
   (`FOR UPDATE SKIP LOCKED` on PostgreSQL). A crash causes bounded re-execution, never a stranded row.
 - Completion and failure compare-and-swap on `(job_id, attempt)`, so a stale worker cannot publish.
   Success inserts the Proposal and marks Attempt and Job terminal in one transaction; a failed
-  execution materialises neither a Proposal nor a Channel.
+  execution materialises neither a Proposal nor a Channel. The suggest worker has no other job
+  lifecycle: `suggest.NewService` requires the workflow, a stale Attempt's result is dropped
+  without a failure write, and approvers are told a request is waiting only when a person still has
+  to act: a Proposal an automatic grant approved sends no waiting notice. A claimed Job whose stored
+  Intent cannot decode is failed on its own and never aborts the rest of the claim batch.
 - Retrying a failed first request creates a fresh Job. Refine and re-curate also create a fresh Job,
   seeded from the intent the Channel owns (`channels.intent_json`); the Job names the Channel
   (`jobs.channel_id`), so approving its Proposal patches that Channel in place. It never reuses or

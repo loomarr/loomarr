@@ -107,7 +107,7 @@ func validateStructureAssessmentLineage(lineage StructureAssessmentMediaLineage)
 		lineage.ContractVersion != structureAssessmentMediaContractVersion ||
 		!filler.IsContentHash(lineage.OperationSHA256) || !filler.IsContentHash(lineage.SHA256) ||
 		lineage.SHA256 != structureAssessmentLineageSHA256(lineage) ||
-		lineage.Profile != fillerstructuremedia.CanonicalProfile() ||
+		!fillerstructuremedia.Supported(lineage.Profile) ||
 		lineage.Profile.SHA256 != fillerstructuremedia.ProfileSHA256(lineage.Profile) ||
 		(lineage.Source.Role != filler.SplitSourceEvidence && lineage.Source.Role != filler.SplitSourceLegacyPlayback) {
 		return errors.New("structure assessment media lineage authority is invalid")

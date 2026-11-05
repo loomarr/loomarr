@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
@@ -316,7 +317,7 @@ func notificationDeliveryJob(service *notifications.Service) jobs.Job {
 	return jobs.Job{
 		Name: "notification-delivery", Group: jobs.GroupSystem, Title: "Deliver account messages",
 		Description: "Sends queued invitation and recovery messages through their configured delivery means.",
-		DefaultCron: "*/15 * * * * *", ScheduleKey: "job.notification_delivery.schedule",
+		DefaultCron: "*/15 * * * * *", ScheduleKey: settings.JobNotificationDeliverySchedule.Key(),
 		Run: func(ctx context.Context) error {
 			for range notificationWorkerLimit {
 				ran, err := service.RunOne(ctx, "notification-delivery")
@@ -381,7 +382,7 @@ func buildAccountDelivery(
 	materializer := invitationEmailMaterializer{
 		invitations: invitationService, recovery: recoveryService,
 		contacts:  st,
-		publicURL: func() string { return set.str("access.public_url") },
+		publicURL: func() string { return settings.AccessPublicURL.Get(set) },
 	}
 	adapter := notifications.NewEmailAdapter(materializer, notifications.NewSMTPSender(15*time.Second))
 	adapters := append([]notifications.Adapter{adapter}, providerAdapters...)

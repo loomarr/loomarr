@@ -220,6 +220,19 @@ func TestRecorderConcurrentScrapesSynchronizeSuccessfulSnapshots(t *testing.T) {
 	}
 }
 
+func TestRecorderLabelsRetryOfUnlistedTransientStatus(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	recorder.OutboundRetried("tmdb", metrics.OutboundRetryStatusOther)
+	body := scrape(t, recorder)
+	if want := `loomarr_outbound_retries_total{reason="other_status",target="tmdb"} 1`; !strings.Contains(body, want) {
+		t.Errorf("scrape does not contain %q", want)
+	}
+	// The reason is pre-registered so a dashboard sees a zero before the first retry.
+	if want := `loomarr_outbound_retries_total{reason="other_status",target="tunarr"} 0`; !strings.Contains(body, want) {
+		t.Errorf("scrape does not contain %q", want)
+	}
+}
+
 func TestRecorderBoundsOutboundTargetAndRetryReason(t *testing.T) {
 	recorder := metrics.New(metrics.Options{})
 	hostile := "https://user@example.invalid/private/title/123"

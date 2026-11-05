@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -23,14 +24,14 @@ func TestSuggest_BlockEditorialEpochDoesNotRequireEpisodeDates(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Marigold Protocol"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: description})
+	proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: description})
 	if err != nil || len(proposal.Lineup) != 1 || proposal.Policy.Scope.Dates != nil {
 		t.Fatalf("editorial block reference became a playback restriction: proposal=%+v err=%v", proposal, err)
 	}
 }
 
 func TestSuggest_BlockEpochDoesNotEraseSeparateDateRequirements(t *testing.T) {
-	for name, intent := range map[string]suggest.Intent{
+	for name, intent := range map[string]proposal.Intent{
 		"era field": {Description: "QFUN as it felt in the 1990s", Era: "1990s"},
 		"airing":    {Description: "QFUN as it felt in the 1990s. Only episodes aired in the 2000s."},
 		"release":   {Description: "QFUN as it felt in the 1990s, plus movies released in the 2000s."},
@@ -67,7 +68,7 @@ func TestSuggest_NegatedLibraryOnlyDoesNotDropOutsideCandidates(t *testing.T) {
 				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{owned.Name, missing.Name}, "dateMeaning": dateMeaningNone()}),
 				testkit.FinalResponse(final),
 			)
-			proposal, err := suggest.New(model, catalog.New(nil, corpus), validator, 10).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: description})
+			proposal, err := suggest.New(model, catalog.New(nil, corpus), validator, 10).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: description})
 			if err != nil || len(proposal.Lineup) != 1 || len(proposal.Acquisitions) != 1 || proposal.Acquisitions[0].TMDBID != missing.TMDBID {
 				t.Fatalf("negated qualifier dropped a valid acquisition: proposal=%+v err=%v", proposal, err)
 			}
@@ -100,7 +101,7 @@ func TestSuggest_LibraryOnlyDropsSourceCompletedAcquisitions(t *testing.T) {
 				testkit.ToolCallResponse("catalog_search", map[string]any{"mode": "collection", "media_type": "series", "titles": []any{owned.Name, missing.Name}, "dateMeaning": dateMeaningNone()}),
 				testkit.FinalResponse(final),
 			)
-			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), suggest.Intent{Description: description})
+			proposal, err := dateExecutionSuggester(model, corpus).WithReferences(references).Suggest(context.Background(), proposal.Intent{Description: description})
 			if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != owned.TMDBID || len(proposal.Acquisitions) != 0 || len(proposal.Alternates) != 0 {
 				t.Fatalf("library-only reference restored outside picks: proposal=%+v err=%v", proposal, err)
 			}

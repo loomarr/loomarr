@@ -1,0 +1,65 @@
+{
+  "adult": false,
+  "backdrop_path": "/detail-backdrop-90000701.jpg",
+  "created_by": [],
+  "episode_run_time": [42],
+  "first_air_date": "2021-03-02",
+  "genres": [
+    { "id": 18, "name": "Drama" },
+    { "id": 9648, "name": "Mystery" }
+  ],
+  "homepage": "https://series.example/tidewater",
+  "id": 90000701,
+  "in_production": true,
+  "languages": ["en"],
+  "last_air_date": "2024-05-14",
+  "name": "Tidewater Station",
+  "networks": [
+    { "id": 90000951, "logo_path": null, "name": "Northlight Network", "origin_country": "US" }
+  ],
+  "number_of_episodes": 24,
+  "number_of_seasons": 3,
+  "origin_country": ["US"],
+  "original_language": "en",
+  "original_name": "Tidewater Station",
+  "overview": "The crew of a remote signal station keeps a harbor honest.",
+  "popularity": 30.1,
+  "poster_path": "/detail-poster-90000701.jpg",
+  "status": "Returning Series",
+  "tagline": "",
+  "type": "Scripted",
+  "vote_average": 8.1,
+  "vote_count": 340,
+  "external_ids": {
+    "id": 90000701,
+    "imdb_id": "tt9000701",
+    "tvdb_id": 90000711,
+    "wikidata_id": null,
+    "facebook_id": null,
+    "instagram_id": null,
+    "twitter_id": null
+  },
+  "content_ratings": {
+    "results": [
+      { "descriptors": [], "iso_3166_1": "DE", "rating": "12" },
+      { "descriptors": [], "iso_3166_1": "US", "rating": "TV-14" }
+    ]
+  },
+  "keywords": {
+    "results": [
+      { "id": 90001101, "name": "lighthouse" },
+      { "id": 90001102, "name": "harbor" }
+    ]
+  },
+  "images": {
+    "backdrops": [
+      { "aspect_ratio": 1.778, "height": 1080, "iso_639_1": null, "file_path": "/img-backdrop-textless-90000701.jpg", "vote_average": 5.6, "vote_count": 3, "width": 1920 }
+    ],
+    "logos": [
+      { "aspect_ratio": 2.9, "height": 250, "iso_639_1": "en", "file_path": "/img-logo-en-90000701.png", "vote_average": 5.5, "vote_count": 2, "width": 725 }
+    ],
+    "posters": [
+      { "aspect_ratio": 0.667, "height": 3000, "iso_639_1": "en", "file_path": "/img-poster-en-90000701.jpg", "vote_average": 5.7, "vote_count": 3, "width": 2000 }
+    ]
+  }
+}

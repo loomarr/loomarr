@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/textmatch"
@@ -54,7 +55,7 @@ type deterministicIntentPolicy struct {
 // holiday is read against.
 func deriveIntentPolicy(intent Intent, holidays holidayvocab.Vocabulary) deterministicIntentPolicy {
 	return deterministicIntentPolicy{
-		episodeSelection:        EpisodeSelectionForIntent(intent, holidays),
+		episodeSelection:        EpisodeSelectionForIntent(intent.Intent, holidays),
 		explicitAudienceCeiling: intentExplicitAudienceCeiling(intent),
 		excludeUnrated:          intentExcludesUnrated(intent),
 		safetyCeiling:           intentDeterministicSafetyCeiling(intent),
@@ -73,7 +74,7 @@ func deriveIntentPolicy(intent Intent, holidays holidayvocab.Vocabulary) determi
 // NOT two series. Movies are ignored for the count: a channel is "multi-series" only when
 // ≥2 different shows are present. A Key() error (an ungrounded item — shouldn't happen post-
 // validation) is skipped defensively rather than counted.
-func multiSeries(lineup []ProposalItem) bool {
+func multiSeries(lineup []proposal.ProposalItem) bool {
 	seen := map[provision.Key]struct{}{}
 	for _, it := range lineup {
 		if it.MediaType != provision.Series {
@@ -91,7 +92,7 @@ func multiSeries(lineup []ProposalItem) bool {
 	return false
 }
 
-func singleSeriesOnly(groups ...[]ProposalItem) bool {
+func singleSeriesOnly(groups ...[]proposal.ProposalItem) bool {
 	seen := map[provision.Key]struct{}{}
 	for _, group := range groups {
 		for _, it := range group {
@@ -147,7 +148,8 @@ func intentMatchesAnyCue(intent Intent, cues ...string) bool {
 // disables highlights but can still order a holiday-filtered pool sequentially.
 // EpisodeSelectionForIntent is the server-owned series policy preview used by
 // proposal review and the approval gate. Clients may display it but never choose it.
-func EpisodeSelectionForIntent(intent Intent, v holidayvocab.Vocabulary) schedule.EpisodeSelection {
+func EpisodeSelectionForIntent(request proposal.Intent, v holidayvocab.Vocabulary) schedule.EpisodeSelection {
+	intent := Intent{Intent: request}
 	selection := schedule.EpisodeSelection{Mode: schedule.EpisodeComplete}
 	if holidays := v.MatchIntent(affirmativeIntentText(intent)); len(holidays) > 0 {
 		selection = schedule.EpisodeSelection{
@@ -161,7 +163,7 @@ func EpisodeSelectionForIntent(intent Intent, v holidayvocab.Vocabulary) schedul
 	return selection
 }
 
-func stampEpisodeSelection(items []ProposalItem, intent Intent, holidays holidayvocab.Vocabulary) bool {
+func stampEpisodeSelection(items []proposal.ProposalItem, intent proposal.Intent, holidays holidayvocab.Vocabulary) bool {
 	selection := EpisodeSelectionForIntent(intent, holidays)
 	changed := false
 	for i := range items {
@@ -355,7 +357,7 @@ func seasonalPolicyForIntent(intent Intent, v holidayvocab.Vocabulary) schedule.
 // it alone would never air its season: it plays all year instead. The holidays left out are
 // reported by label for the approval card. Episode selection still honours them; only the
 // season is the country's.
-func seasonKeptIn(seasonal schedule.SeasonalPolicy, cal schedule.Calendar) (schedule.SeasonalPolicy, *SeasonNotKept) {
+func seasonKeptIn(seasonal schedule.SeasonalPolicy, cal schedule.Calendar) (schedule.SeasonalPolicy, *proposal.SeasonNotKept) {
 	if seasonal.Mode != schedule.SeasonalExclusive || len(seasonal.Holidays) == 0 {
 		return seasonal, nil
 	}
@@ -371,7 +373,7 @@ func seasonKeptIn(seasonal schedule.SeasonalPolicy, cal schedule.Calendar) (sche
 	if len(dropped) == 0 {
 		return seasonal, nil
 	}
-	notKept := &SeasonNotKept{Country: v.CalendarCountry(cal.Country), Holidays: dropped}
+	notKept := &proposal.SeasonNotKept{Country: v.CalendarCountry(cal.Country), Holidays: dropped}
 	if len(kept) == 0 {
 		return schedule.SeasonalPolicy{}, notKept
 	}

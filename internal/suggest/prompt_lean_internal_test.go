@@ -3,6 +3,8 @@ package suggest
 import (
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/proposal"
 )
 
 // The output template is what the model imitates token by token, and generation is the slowest
@@ -25,7 +27,7 @@ func TestSystemPromptFinalTemplateIsLean(t *testing.T) {
 }
 
 func TestFinalizationNoteTellsModelToOmitAcceptedDateMeaning(t *testing.T) {
-	meaning, err := validateIntentDateMeaning(Intent{Description: "action films"}, &DateMeaning{Kind: DateMeaningNone})
+	meaning, err := validateIntentDateMeaning(Intent{Intent: proposal.Intent{Description: "action films"}}, &DateMeaning{Kind: DateMeaningNone})
 	if err != nil {
 		t.Fatal(err)
 	}

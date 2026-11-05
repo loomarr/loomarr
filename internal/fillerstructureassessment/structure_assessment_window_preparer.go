@@ -28,6 +28,9 @@ func (p *FFmpegStructureAssessmentMediaPreparer) PrepareWindows(ctx context.Cont
 	if plan.Source != wantSource {
 		return StructureAssessmentWindowMediaSet{}, errors.New("structure assessment window plan does not bind the supplied source")
 	}
+	if plan.Profile.AssessmentMediaProfileSHA256 != p.profile.SHA256 {
+		return StructureAssessmentWindowMediaSet{}, errors.New("structure assessment window plan cuts to another media profile than this preparer")
+	}
 	prepared, err := p.prepareSource(ctx, input)
 	if err != nil {
 		return StructureAssessmentWindowMediaSet{}, err
@@ -85,7 +88,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 	_ = os.Remove(outputPath)
 	defer func() { _ = os.Remove(outputPath) }()
 	durationMS := window.MediaEndMS - window.MediaStartMS
-	arguments := fillerstructuremedia.PartArguments(prepared.SnapshotPath, window.MediaStartMS, durationMS, outputPath)
+	arguments := fillerstructuremedia.PartArguments(prepared.Profile, prepared.SnapshotPath, window.MediaStartMS, durationMS, outputPath)
 	if err := p.run(ctx, mediatools.FFmpegOr(p.ffmpegPath), arguments); err != nil {
 		return StructureAssessmentWindowMedia{}, fmt.Errorf("render: %w", err)
 	}
@@ -93,7 +96,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, fmt.Errorf("probe: %w", err)
 	}
-	if err := validateStructureAssessmentWindowOutput(outputPath, probe, window, plan.Profile); err != nil {
+	if err := validateStructureAssessmentWindowOutput(outputPath, probe, window, plan.Profile, prepared.Profile); err != nil {
 		return StructureAssessmentWindowMedia{}, err
 	}
 	if err := p.decode(ctx, p.ffmpegPath, outputPath); err != nil {
@@ -167,7 +170,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) reuseWindow(ctx context.Context
 	if err != nil {
 		return StructureAssessmentWindowMedia{}, fmt.Errorf("probe reused window: %w", err)
 	}
-	if err := validateStructureAssessmentWindowOutput(mediaPath, probe, window, plan.Profile); err != nil ||
+	if err := validateStructureAssessmentWindowOutput(mediaPath, probe, window, plan.Profile, prepared.Profile); err != nil ||
 		probe.DurationMs != lineage.Media.DurationMS {
 		return StructureAssessmentWindowMedia{}, errors.New("reused structure assessment window profile does not match lineage")
 	}
@@ -177,13 +180,12 @@ func (p *FFmpegStructureAssessmentMediaPreparer) reuseWindow(ctx context.Context
 	return preparedStructureAssessmentWindowMedia(window, lineage, mediaPath), nil
 }
 
-func validateStructureAssessmentWindowOutput(path string, probe filler.Probed, window fillerstructurewindow.Window, profile fillerstructurewindow.Profile) error {
+func validateStructureAssessmentWindowOutput(path string, probe filler.Probed, window fillerstructurewindow.Window, profile fillerstructurewindow.Profile, wantProfile fillerstructuremedia.Profile) error {
 	info, err := os.Lstat(path)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > profile.MaximumWindowBytes {
 		return errors.New("structure assessment window is not a bounded regular file")
 	}
 	sampleAspect := strings.ReplaceAll(probe.SampleAspect, ":", "/")
-	wantProfile := fillerstructuremedia.CanonicalProfile()
 	wantDuration := window.MediaEndMS - window.MediaStartMS
 	durationDrift := absoluteDurationDifference(probe.DurationMs, wantDuration)
 	if probe.NoVideo || probe.Silent || probe.Width != wantProfile.Width || probe.Height != wantProfile.Height ||

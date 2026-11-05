@@ -3,8 +3,6 @@ package tunarr
 import (
 	"context"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/setup"
 )
 
 // Adapter is the single seam for Loomarr's optional Tunarr playout backend (§6/§9,
@@ -21,8 +19,7 @@ type Adapter interface {
 	// Guide reads Tunarr's generated schedule (see Guide's doc comment on *Tunarr).
 	Guide(ctx context.Context, from, to time.Time) (map[string][]GuideEntry, error)
 
-	// Media-source wiring (previously reached via setup.MediaSourceProgrammer, satisfied
-	// by a type-assertion on the concrete client in buildchannels.go).
+	// Media-source wiring; the Adapter satisfies livetvpublish.MediaSourceProgrammer.
 	EnsureEmbySource(ctx context.Context, flavor, embyURL, token, userID string) (string, error)
 	ConnectLibraries(ctx context.Context, sourceID string) (int, error)
 	MediaLibrariesReady(ctx context.Context) (bool, error)
@@ -33,11 +30,8 @@ type Adapter interface {
 	ListLocalFillerClipsAll(ctx context.Context) ([]LocalClip, error)
 
 	// LiveTVURLs returns Tunarr's own Live TV URL pair, derived from the live-configured
-	// base URL (§6) — byte-for-byte what setup.TunarrURLsFrom(configured base URL) gave
-	// the deleted setup.LiveTVURLsFor free function on its non-internal branch. Callers
-	// still decide internal-vs-Tunarr themselves; that branch collapses onto the adapter
-	// in a later PR.
-	LiveTVURLs() setup.LiveTVURLs
+	// base URL (§6). Callers decide internal-vs-Tunarr themselves.
+	LiveTVURLs() LiveTVURLs
 }
 
 var _ Adapter = (*Tunarr)(nil)

@@ -37,19 +37,27 @@ type Profile struct {
 	SHA256                       string `json:"sha256"`
 }
 
-// CanonicalProfile returns a fresh value to prevent mutation of process-global protocol state.
-func CanonicalProfile() Profile {
+// ProfileFor returns a fresh window profile over one assessment-media profile, to prevent mutation
+// of process-global protocol state. The window geometry is the same for every media profile.
+func ProfileFor(media fillerstructuremedia.Profile) Profile {
 	profile := Profile{
 		SchemaVersion: ProfileSchemaVersion, ContractVersion: ProfileContractVersion,
-		AssessmentMediaProfileSHA256: fillerstructuremedia.CanonicalProfile().SHA256,
-		MaximumWindowBytes:           fillerstructuremedia.CanonicalProfile().MaximumVideoBytes,
-		MaximumTimelineDriftMS:       fillerstructuremedia.CanonicalProfile().MaximumTimelineDriftMS,
+		AssessmentMediaProfileSHA256: media.SHA256,
+		MaximumWindowBytes:           media.MaximumVideoBytes,
+		MaximumTimelineDriftMS:       media.MaximumTimelineDriftMS,
 		PrimarySpanMS:                PrimarySpanMS, ContextOverlapMS: ContextOverlapMS,
 		MaximumWindowDurationMS: MaximumWindowDurationMS,
 		MaximumSourceDurationMS: MaximumSourceDurationMS, MaximumWindows: MaximumWindows,
 	}
 	profile.SHA256 = ProfileSHA256(profile)
 	return profile
+}
+
+// supportedProfile resolves the media profile a window profile pins and reports whether the window
+// profile is exactly the one built over it.
+func supportedProfile(profile Profile) (fillerstructuremedia.Profile, bool) {
+	media, ok := fillerstructuremedia.ProfileBySHA256(profile.AssessmentMediaProfileSHA256)
+	return media, ok && profile == ProfileFor(media)
 }
 
 // ProfileSHA256 returns the content identity with the self-digest field excluded.
