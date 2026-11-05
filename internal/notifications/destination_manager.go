@@ -236,8 +236,12 @@ func (m *DestinationManager) Update(
 	if err := updated.Validate(); err != nil {
 		return DestinationSummary{}, err
 	}
-	if err := m.validateProvider(updated); err != nil {
-		return DestinationSummary{}, err
+	// Turning a destination off or relabelling it never rewrites its settings, so it is always
+	// allowed: a destination whose settings stopped validating can still be switched off.
+	if updated.Enabled || command.Settings != nil {
+		if err := m.validateProvider(updated); err != nil {
+			return DestinationSummary{}, err
+		}
 	}
 	if err := m.repository.SaveNotificationDestination(ctx, updated); err != nil {
 		return DestinationSummary{}, err
@@ -458,8 +462,8 @@ func (m *DestinationManager) Test(
 	return m.tester.PublishDestinationTest(ctx, destination, requestID)
 }
 
-// validateProvider runs the provider's own validation whatever the enabled state, so a saved
-// destination always holds settings its adapter can deliver with once it is enabled.
+// validateProvider runs the provider's own validation, whatever the enabled state, on every write
+// of settings, so saved settings are always ones its adapter can deliver with once it is enabled.
 func (m *DestinationManager) validateProvider(destination Destination) error {
 	validator := m.validators[destination.Means]
 	if validator == nil {

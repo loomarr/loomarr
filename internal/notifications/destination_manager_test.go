@@ -182,7 +182,32 @@ func TestDestinationManagerRejectsIncompleteOrUnavailableProviderEvenWhenDisable
 	}
 }
 
-func TestDestinationManagerRejectsDisablingUpdateThatLeavesInvalidSettings(t *testing.T) {
+func TestDestinationManagerTurnsOffABrokenDestinationWithoutRewritingSettings(t *testing.T) {
+	manager, validator, admin, id := brokenSlackDestination(t)
+	validator.err = errors.New("webhook URL required")
+	if _, err := manager.Update(t.Context(), admin, id, notifications.DestinationUpdateCommand{
+		Label: "Operations", Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: false,
+	}); err != nil {
+		t.Fatalf("turning off a destination whose settings no longer validate was refused: %v", err)
+	}
+}
+
+func TestDestinationManagerRejectsDisabledUpdateThatWritesInvalidSettings(t *testing.T) {
+	manager, validator, admin, id := brokenSlackDestination(t)
+	validator.err = errors.New("webhook URL required")
+	settings := map[string]string{"webhookUrl": ""}
+	if _, err := manager.Update(t.Context(), admin, id, notifications.DestinationUpdateCommand{
+		Label: "Operations", Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: false,
+		Settings: &settings,
+	}); err == nil {
+		t.Fatal("disabled update writing invalid settings was accepted")
+	}
+}
+
+// brokenSlackDestination creates an enabled Slack destination whose validator the test can then
+// make fail, standing in for settings that stopped validating after they were saved.
+func brokenSlackDestination(t *testing.T) (*notifications.DestinationManager, *switchableDestinationValidator, notifications.Principal, string) {
+	t.Helper()
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
 	validator := &switchableDestinationValidator{means: notifications.MeansSlack}
@@ -199,12 +224,7 @@ func TestDestinationManagerRejectsDisablingUpdateThatLeavesInvalidSettings(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	validator.err = errors.New("webhook URL required")
-	if _, err := manager.Update(t.Context(), admin, created.ID, notifications.DestinationUpdateCommand{
-		Label: "Operations", Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: false,
-	}); err == nil {
-		t.Fatal("disabled update with invalid settings was accepted")
-	}
+	return manager, validator, admin, created.ID
 }
 
 type switchableDestinationValidator struct {
