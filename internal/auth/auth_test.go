@@ -356,8 +356,27 @@ func TestBootstrap_OnceOnly(t *testing.T) {
 		t.Errorf("wrong local password → %v, want ErrInvalidCredentials", lerr)
 	}
 	// A second bootstrap is closed.
-	if _, err := prov.Bootstrap(ctx, "other", "pw2"); !errors.Is(err, ErrBootstrapClosed) {
+	if _, err := prov.Bootstrap(ctx, "other", "other-pw-2"); !errors.Is(err, ErrBootstrapClosed) {
 		t.Errorf("second bootstrap → %v, want ErrBootstrapClosed", err)
+	}
+}
+
+// The owning admin's password meets the same floor as every other password Loomarr stores;
+// a short one is refused before anything is written, so the install stays unclaimed.
+func TestBootstrapRefusesAShortPassword(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	prov := NewProvisioner(st, nil, seqID(), time.Now)
+
+	short := strings.Repeat("x", MinPasswordLen-1)
+	if _, err := prov.Bootstrap(ctx, "owner", short); !errors.Is(err, ErrWeakPassword) {
+		t.Fatalf("bootstrap with %d characters → %v, want ErrWeakPassword", len(short), err)
+	}
+	if n, err := st.CountAdmins(ctx); err != nil || n != 0 {
+		t.Fatalf("a refused bootstrap left %d admins (%v); the install must stay unclaimed", n, err)
+	}
+	if _, err := prov.Bootstrap(ctx, "owner", short+"x"); err != nil {
+		t.Fatalf("bootstrap at exactly %d characters → %v, want success", MinPasswordLen, err)
 	}
 }
 

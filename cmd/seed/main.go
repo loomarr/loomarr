@@ -50,7 +50,7 @@ import (
 // scheduler output is byte-stable run to run — determinism, §10).
 const (
 	adminUser = "admin"
-	adminPass = "loomarr"
+	adminPass = "loomarr-dev" // at least auth.MinPasswordLen: bootstrap refuses a shorter one
 	chanSeed  = 42 // channel shuffle/ordering seed; any constant → reproducible slots
 )
 

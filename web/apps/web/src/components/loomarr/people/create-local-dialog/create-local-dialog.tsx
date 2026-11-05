@@ -1,4 +1,5 @@
 import type { CreateLocalUserInputBodyRole } from "@loomarr/api/models/createLocalUserInputBodyRole";
+import { createLocalUserBodyPasswordMin } from "@loomarr/api/zod/users";
 import {
   Dialog,
   DialogClose,
@@ -52,8 +53,8 @@ const CreateLocalDialog = ({
       setValidationError("Pick a username.");
       return;
     }
-    if (password.length < 8) {
-      setValidationError("Use at least 8 characters.");
+    if (password.length < createLocalUserBodyPasswordMin) {
+      setValidationError(`Use at least ${createLocalUserBodyPasswordMin} characters.`);
       return;
     }
     setValidationError("");

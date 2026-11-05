@@ -2,6 +2,7 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
+import { changePasswordBodyNextMin } from "@loomarr/api/zod/auth";
 import { formatRelative } from "@loomarr/core/format";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -75,7 +76,8 @@ const AccountScreen = () => {
     // Checked here as well as server-side: a mismatch is the user's typo, and making
     // them wait for a round-trip to learn it is worse than saying so immediately.
     if (!current) return setFormError("Enter your current password.");
-    if (next.length < 8) return setFormError("Use at least 8 characters.");
+    if (next.length < changePasswordBodyNextMin)
+      return setFormError(`Use at least ${changePasswordBodyNextMin} characters.`);
     if (next !== confirm) return setFormError("New passwords don't match.");
     setFormError("");
     changePassword.mutate({ data: { current, next } });

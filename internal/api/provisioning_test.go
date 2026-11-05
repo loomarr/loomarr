@@ -78,7 +78,7 @@ func TestBootstrap_OnceViaAPI(t *testing.T) {
 	}
 
 	// Second bootstrap → 409 (the door is closed).
-	resp = do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"other","password":"pw2"}`)
+	resp = do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"other","password":"other-pw-2"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("second bootstrap → %d, want 409", resp.StatusCode)
 	}
@@ -130,6 +130,18 @@ func TestBootstrap_Invalid(t *testing.T) {
 	resp := do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"","password":""}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("empty bootstrap → %d, want 422", resp.StatusCode)
+	}
+	// A password below auth.MinPasswordLen is refused, and the install stays unclaimed.
+	resp = do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"owner","password":"short"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("short-password bootstrap → %d, want 422", resp.StatusCode)
+	}
+	resp = do(t, srv, http.MethodGet, "/v1/setup/state", "", "")
+	var state struct {
+		Bootstrapped bool `json:"bootstrapped"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&state); err != nil || state.Bootstrapped {
+		t.Errorf("a refused bootstrap claimed the install: bootstrapped=%v (%v)", state.Bootstrapped, err)
 	}
 }
 
