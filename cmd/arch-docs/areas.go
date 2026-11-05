@@ -82,7 +82,7 @@ var areas = []area{
 			"real hardware.",
 		Packages: []string{
 			"playout", "playout/packager", "playoutbench", "watermark", "tunarr", "tunarr/tunarrtest",
-			"setup", "backendtransition", "landiscovery",
+			"livetvpublish", "backendtransition", "landiscovery",
 		},
 	},
 	{
@@ -169,7 +169,7 @@ var flows = []flow{
 			"the approved lineup and what is actually available into ordered programming, and the " +
 			"`channels` reconcile engine keeps that current for the channel's backend: either Loomarr's " +
 			"own `playout` engine, whose `playout/packager` stitches one continuous stream, or `tunarr`. " +
-			"`setup` wires the playlist and guide into the media server's Live TV through `library`, and " +
+			"`livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and " +
 			"when the household changes backend, `backendtransition` prepares the new one fully before " +
 			"publishing it to the media server.",
 	},
