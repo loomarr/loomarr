@@ -177,7 +177,7 @@ var areas = []area{
 			"language-model and OpenRouter clients, the embedded web app, release tooling, and small " +
 			"shared vocabularies such as holidays, language codes and whole-word text matching.",
 		Packages: []string{
-			"store", "store/storedb", "store/storetest", "store/catalogstore", "store/identitystore",
+			"store", "store/storedb", "store/catalogstore", "store/identitystore",
 			"settings", "config", "jobs", "housekeeping", "activity", "diagnostics", "metrics", "httpx",
 			"events", "storagegovernor", "logchange", "releasenotes", "releaseverify", "buildinfo", "web",
 			"devbootstrap", "llm", "openroutercatalog", "openroutermedia", "holidayvocab", "langcode",
@@ -194,7 +194,6 @@ var areas = []area{
 			"people": "the identity store persists accounts, invitations, recovery, contacts, notifications " +
 				"and wrapped keys; housekeeping applies each one's retention; dev bootstrap provisions the " +
 				"dev admin",
-			"test": "`store/storetest` starts the Postgres test image, until that helper moves into test support",
 		},
 	},
 	{
@@ -209,14 +208,15 @@ var areas = []area{
 		Name:  "test",
 		Title: "Test support",
 		Description: "Code that exists for tests and never ships in the server: the shared test doubles " +
-			"and fixtures, the invented demo library, the end-to-end integration journeys, and the " +
-			"evaluation harness that runs only under its own build tag.",
+			"and fixtures, the store's SQLite and Postgres test databases, the invented demo library, the " +
+			"end-to-end integration journeys, and the evaluation harness that runs only under its own " +
+			"build tag.",
 		Packages: []string{
 			"testkit", "testkit/execfixture", "testkit/httpfixture", "testkit/operationfixture",
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
-			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "demolibrary", "integration",
-			"eval",
+			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "store/storetest",
+			"demolibrary", "integration", "eval",
 		},
 		ImportsAnyArea: true,
 	},
