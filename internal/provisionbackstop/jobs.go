@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // Each service declares its OWN scheduler job (§18.1).
@@ -24,7 +25,7 @@ func (r *Reconciler) Job() jobs.Job {
 	return jobs.Job{
 		Name: "reconcile", Group: jobs.GroupAcquisitions, Title: "Reconcile acquisitions",
 		Description: "Advances approved requests through download, retry, and completion states.",
-		DefaultCron: "0 */5 * * * *", ScheduleKey: "job.reconcile.schedule",
+		DefaultCron: "0 */5 * * * *", ScheduleKey: settings.JobReconcileSchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := r.Tick(ctx); return err },
 	}
 }
@@ -40,13 +41,13 @@ func (s *LibraryScan) Jobs() []jobs.Job {
 		{
 			Name: "library-scan", Group: jobs.GroupAcquisitions, Title: "Scan recent library additions",
 			Description: "Marks approved titles as available when they appear among recent media-server additions.",
-			DefaultCron: "0 */5 * * * *", ScheduleKey: "job.library_scan.schedule",
+			DefaultCron: "0 */5 * * * *", ScheduleKey: settings.JobLibraryScanSchedule.Key(),
 			Run: func(ctx context.Context) error { _, err := s.Incremental(ctx); return err },
 		},
 		{
 			Name: "library-full-scan", Group: jobs.GroupAcquisitions, Title: "Scan the full library",
 			Description: "Checks the entire media-server library as a daily safety net for missed additions.",
-			DefaultCron: "0 0 3 * * *", ScheduleKey: "job.library_full_scan.schedule",
+			DefaultCron: "0 0 3 * * *", ScheduleKey: settings.JobLibraryFullScanSchedule.Key(),
 			Run: func(ctx context.Context) error { _, err := s.Full(ctx); return err },
 		},
 	}

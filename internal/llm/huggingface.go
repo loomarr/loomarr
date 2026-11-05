@@ -792,8 +792,8 @@ func hfGetJSON(ctx context.Context, reqURL string, v any) error {
 		return fmt.Errorf("hugging face: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("hugging face: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "hugging face"); err != nil {
+		return err
 	}
 	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
 		return fmt.Errorf("hugging face: decode: %w", err)

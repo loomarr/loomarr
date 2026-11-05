@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -389,9 +390,9 @@ func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID
 	return catalog.Presence{LibraryItemID: d.ID, OfficialRating: d.OfficialRating, Genres: d.Genres}, true, nil
 }
 
-// mapIntent converts the corpus Intent to a suggest.Intent.
-func mapIntent(i Intent) suggest.Intent {
-	return suggest.Intent{
+// mapIntent converts the corpus Intent to a proposal.Intent.
+func mapIntent(i Intent) proposal.Intent {
+	return proposal.Intent{
 		Description: i.Description, Era: i.Era, Tone: i.Tone, RuntimeTgt: i.RuntimeTgt,
 		RefineText: i.RefineText, CurrentLineup: i.CurrentLineup,
 		MustInclude: i.MustInclude, MustExclude: i.MustExclude, MaxAcquire: i.MaxAcquire,
@@ -447,7 +448,7 @@ func (r *Result) addFailures(stage FailureStage, failures ...string) {
 // deterministicChecks applies the corpus case's hard expectations to a proposal.
 // These are the assertions a mock could never make — they run against the real
 // grounded output. Returns the list of failures (empty = all gates passed).
-func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []string {
+func deterministicChecks(c Case, prop proposal.Proposal, groundErr error) []string {
 	var f []string
 
 	// No-fabrication case: the grounded set may be any size (even 0), but EVERY item
@@ -670,8 +671,8 @@ func normalizeExactTitle(title string) string {
 	return strings.ToLower(strings.Join(strings.Fields(title), " "))
 }
 
-func allItems(p suggest.Proposal) []suggest.ProposalItem {
-	out := append([]suggest.ProposalItem{}, p.Lineup...)
+func allItems(p proposal.Proposal) []proposal.ProposalItem {
+	out := append([]proposal.ProposalItem{}, p.Lineup...)
 	return append(out, p.Acquisitions...)
 }
 

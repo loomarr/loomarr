@@ -40,7 +40,7 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []catalogstore.C
 		Auth:         api.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
-		LiveConfig:   func(k string) string { return cfg[k] },
+		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
 
 		SourceProviders: testSourceProviders(t),
 	})
@@ -456,7 +456,7 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 		Auth:         api.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
-		LiveConfig:   func(k string) string { return cfg[k] },
+		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
 
 		SourceProviders: testSourceProviders(t),
 	})
@@ -484,13 +484,13 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 	}
 }
 
-// The drop-folder switch is read through the BOOL seam, driven by a REAL settings service.
+// The drop-folder switch is read through its typed handle, driven by a REAL settings service.
 //
-// ⚠ A map[string]string stub is what hid this: the route read the bool key through
-// LiveConfig (settings.String), which PANICS on a non-string Kind, so GET /v1/filler/sources
-// died with an empty reply on every real install while every stubbed test passed. Wiring the
-// real service is the point of this test — a fake that cannot panic would only prove the fake
-// does not panic. Sabotage it by pointing folderEnabled back at s.liveConfig.
+// ⚠ A map[string]string stub is what once hid a kind-mismatch panic: the route read the bool key
+// through a string accessor, so GET /v1/filler/sources died with an empty reply on every real
+// install while every stubbed test passed. Wiring the real service keeps the read honest — a
+// fake that cannot answer the wrong kind would only prove the fake does not panic. Sabotage it by
+// hardcoding folderEnabled in the route.
 func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 	ctx := context.Background()
 	st := openTestStore(t, t.TempDir()+"/api.db")
@@ -524,13 +524,7 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 			return layout
 		}(),
 		// Wired exactly as the composition root wires them, typed per Kind.
-		LiveConfig: func(k string) string { return svc.String(k) },
-		LiveConfigBoolOn: func(k string) bool {
-			if b, ok := svc.Resolve(k).Value.(bool); ok {
-				return b
-			}
-			return true
-		},
+		LiveSettings: svc,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

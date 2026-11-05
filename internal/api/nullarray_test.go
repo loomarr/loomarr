@@ -10,8 +10,9 @@ import (
 
 	"log/slog"
 
-	"github.com/loomarr/loomarr/internal/api"
 	"gopkg.in/yaml.v3"
+
+	"github.com/loomarr/loomarr/internal/api"
 )
 
 // The spec declares NOTHING nullable (V53b set huma.DefaultArrayNullable = false, taking the

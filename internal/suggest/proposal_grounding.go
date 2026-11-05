@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -24,12 +25,12 @@ var errNamedSetMembershipUnproven = errors.New("suggester: named-set membership 
 // Proposal. This is the grounding chokepoint: a pick survives ONLY if it matches
 // a candidate a Catalog operation actually surfaced (real id), and acquisitions must also
 // pass the exists re-validation. Unresolvable picks are dropped, never actioned.
-func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *DecisionTrace, meaning ValidatedDateMeaning) (Proposal, error) {
+func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalOutput, surfaced map[provision.Key]catalog.Candidate, trace *proposal.DecisionTrace, meaning ValidatedDateMeaning) (proposal.Proposal, error) {
 	name := strings.TrimSpace(intent.ChannelName)
 	if name == "" {
 		name = strings.TrimSpace(out.ChannelName)
 	}
-	prop := Proposal{Intent: intent, ChannelName: name, Rationale: out.Rationale}
+	prop := proposal.Proposal{Intent: intent.Intent, ChannelName: name, Rationale: out.Rationale}
 	picks := out.Picks
 	acqCount := 0
 	membershipRejected := false
@@ -44,11 +45,11 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		cand, rejection := resolvePick(intent, p, surfaced)
 		switch rejection {
 		case pickMalformed:
-			traceDecision(trace, DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
+			traceDecision(trace, proposal.DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
 			otherRejection = true
 			continue // no usable id → not grounded, drop
 		case pickNotSurfaced:
-			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNotSurfaced})
+			traceDecision(trace, proposal.DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNotSurfaced})
 			otherRejection = true
 			continue // GROUNDING: the model named an id the tool never returned — drop it
 		case pickIrrelevant:
@@ -94,7 +95,7 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 		}
 		exists, err := s.validator.Exists(ctx, cand.MediaType, cand.TMDBID)
 		if err != nil {
-			return Proposal{}, fmt.Errorf("validate acquisition %s: %w", cand.Name, err)
+			return proposal.Proposal{}, fmt.Errorf("validate acquisition %s: %w", cand.Name, err)
 		}
 		if !exists {
 			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonValidationDropped)
@@ -123,9 +124,9 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// what a legitimately-empty result does.
 	if len(prop.Lineup)+len(prop.Acquisitions)+len(prop.Alternates) == 0 {
 		if membershipRejected && !otherRejection {
-			return Proposal{}, fmt.Errorf("%w: %w", ErrNoGroundedTitles, errNamedSetMembershipUnproven)
+			return proposal.Proposal{}, fmt.Errorf("%w: %w", ErrNoGroundedTitles, errNamedSetMembershipUnproven)
 		}
-		return Proposal{}, ErrNoGroundedTitles
+		return proposal.Proposal{}, ErrNoGroundedTitles
 	}
 
 	// Ground the extracted policy (programming-design §8): the model proposed rule
@@ -151,12 +152,12 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	)
 	for _, refused := range prop.Refused {
 		if key, err := refused.Item.Key(); err == nil {
-			traceDecision(trace, DecisionCandidate{Key: string(key), Disposition: DispositionRefused, Reason: refused.Reason})
+			traceDecision(trace, proposal.DecisionCandidate{Key: string(key), Disposition: DispositionRefused, Reason: refused.Reason})
 		}
 	}
-	stampEpisodeSelection(prop.Lineup, intent, holidays)
-	stampEpisodeSelection(prop.Acquisitions, intent, holidays)
-	stampEpisodeSelection(prop.Alternates, intent, holidays)
+	stampEpisodeSelection(prop.Lineup, intent.Intent, holidays)
+	stampEpisodeSelection(prop.Acquisitions, intent.Intent, holidays)
+	stampEpisodeSelection(prop.Alternates, intent.Intent, holidays)
 	if requiresMembershipEvidence(intent) {
 		prop.Rationale = membershipProposalRationale(intent, prop.Lineup, prop.Acquisitions, prop.Alternates)
 	}
@@ -186,7 +187,7 @@ func membershipItemRationale(intent Intent, key provision.Key) string {
 	return "You named this title as part of the lineup or collection."
 }
 
-func membershipProposalRationale(intent Intent, groups ...[]ProposalItem) string {
+func membershipProposalRationale(intent Intent, groups ...[]proposal.ProposalItem) string {
 	hasUser, hasReference := false, false
 	for _, items := range groups {
 		for _, item := range items {
@@ -211,7 +212,7 @@ func membershipProposalRationale(intent Intent, groups ...[]ProposalItem) string
 	}
 }
 
-func traceDecision(trace *DecisionTrace, update DecisionCandidate) {
+func traceDecision(trace *proposal.DecisionTrace, update proposal.DecisionCandidate) {
 	if trace == nil {
 		return
 	}
@@ -231,15 +232,15 @@ func traceDecision(trace *DecisionTrace, update DecisionCandidate) {
 	trace.RecordedTotal++
 }
 
-func traceGroundedDecision(trace *DecisionTrace, candidate catalog.Candidate, disposition, reason string) {
+func traceGroundedDecision(trace *proposal.DecisionTrace, candidate catalog.Candidate, disposition, reason string) {
 	key, err := candidate.Key()
 	if err != nil {
-		traceDecision(trace, DecisionCandidate{Disposition: disposition, Reason: reason})
+		traceDecision(trace, proposal.DecisionCandidate{Disposition: disposition, Reason: reason})
 		return
 	}
-	traceDecision(trace, DecisionCandidate{
+	traceDecision(trace, proposal.DecisionCandidate{
 		Key: string(key), Name: candidate.Name, Source: string(candidate.Source),
-		Ownership: ownership(candidate.InLibrary), Rank: RankTuple{TieKey: string(key)},
+		Ownership: ownership(candidate.InLibrary), Rank: proposal.RankTuple{TieKey: string(key)},
 		Disposition: disposition, Reason: reason,
 	})
 }
@@ -261,24 +262,24 @@ func traceGroundedDecision(trace *DecisionTrace, candidate catalog.Candidate, di
 //
 // Nothing is admitted by that ordinary-intent leniency that was not already admitted: the §4
 // enforcer still fails closed at airtime.
-func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalItem, refuseUnrated bool) (
-	keptLineup, keptAcquisitions []ProposalItem, refused []RefusedPick,
+func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []proposal.ProposalItem, refuseUnrated bool) (
+	keptLineup, keptAcquisitions []proposal.ProposalItem, refused []proposal.RefusedPick,
 ) {
 	if a.Ceiling == "" && a.Unrated != schedule.UnratedExclude {
 		return lineup, acquisitions, nil // adult/general channel — nothing to refuse
 	}
-	sift := func(items []ProposalItem) []ProposalItem {
-		kept := make([]ProposalItem, 0, len(items))
+	sift := func(items []proposal.ProposalItem) []proposal.ProposalItem {
+		kept := make([]proposal.ProposalItem, 0, len(items))
 		for _, it := range items {
 			rating := schedule.NormalizeRating(it.OfficialRating)
 			if rating == "" && (refuseUnrated || a.Unrated == schedule.UnratedExclude) {
-				refused = append(refused, RefusedPick{Item: it, Reason: "over_ceiling"})
+				refused = append(refused, proposal.RefusedPick{Item: it, Reason: "over_ceiling"})
 				continue
 			}
 			// Outside an explicit child-safety request, only a KNOWN rating can produce a
 			// certain refusal; the reconcile heal can still fill an ordinary metadata gap.
 			if ok, reason := a.Admits(rating); !ok && reason == "over_ceiling" {
-				refused = append(refused, RefusedPick{Item: it, Reason: reason})
+				refused = append(refused, proposal.RefusedPick{Item: it, Reason: reason})
 				continue
 			}
 			kept = append(kept, it)
@@ -295,7 +296,7 @@ func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalI
 // model can't scope to a series that never surfaced. Explicit child-safety intent and a rating
 // cap written by the user contribute deterministic ceilings even when the model omits or
 // hallucinates the policy. A named holiday similarly determines exclusive mode + holiday subset.
-func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent Intent, holidays holidayvocab.Vocabulary) schedule.ChannelPolicy {
+func groundPolicy(raw *pickPolicy, lineup, acquisitions []proposal.ProposalItem, intent Intent, holidays holidayvocab.Vocabulary) schedule.ChannelPolicy {
 	intentPolicy := deriveIntentPolicy(intent, holidays)
 	requestedCeiling := stricterCeiling(intentPolicy.explicitAudienceCeiling, intentPolicy.safetyCeiling)
 	if raw == nil {
@@ -417,7 +418,7 @@ func knownHolidayIDs(raw []string, holidays holidayvocab.Vocabulary) []string {
 	return out
 }
 
-func groundRules(raw []pickRule, lineup []ProposalItem, channelCeiling schedule.Rating, holidays holidayvocab.Vocabulary) []schedule.SchedulingRule {
+func groundRules(raw []pickRule, lineup []proposal.ProposalItem, channelCeiling schedule.Rating, holidays holidayvocab.Vocabulary) []schedule.SchedulingRule {
 	if len(raw) == 0 {
 		return nil
 	}
@@ -563,19 +564,19 @@ func intersectSeries(want, grounded []provision.Key) []provision.Key {
 
 // editorialRole is called only after identity and membership grounding. These
 // categories describe explicit choices and provenance, not inferred preferences.
-func editorialRole(intent Intent, key provision.Key, source catalog.Scope, votes int) EditorialRole {
+func editorialRole(intent Intent, key provision.Key, source catalog.Scope, votes int) proposal.EditorialRole {
 	if intent.membershipKeys[key] || intent.referenceKeys[key] || (intent.curatedTitleSet && intent.curatedTitleKey == key) {
-		return EditorialCore
+		return proposal.EditorialCore
 	}
 	for _, retained := range intent.CurrentLineup {
 		if retained.Key == string(key) {
-			return EditorialCore
+			return proposal.EditorialCore
 		}
 	}
 	if source == catalog.ScopeAdjacent && votes > 0 {
-		return EditorialAdjacent
+		return proposal.EditorialAdjacent
 	}
-	return EditorialDiscovery
+	return proposal.EditorialDiscovery
 }
 
 // pickRejection is why a model pick cannot become a proposal item; pickAccepted (zero)

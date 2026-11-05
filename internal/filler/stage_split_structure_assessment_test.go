@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 )
 
@@ -323,7 +324,7 @@ func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joi
 func structureWindowDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joinMS int64) fillerstructure.Artifact {
 	t.Helper()
 	core := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
-	plan, err := fillerstructurewindow.NewPlan(core)
+	plan, err := fillerstructurewindow.NewPlan(core, fillerstructuremedia.SoftwareProfile())
 	if err != nil {
 		t.Fatal(err)
 	}

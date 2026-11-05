@@ -25,10 +25,10 @@ func SafeCause(err error) string {
 	if err == nil {
 		return ""
 	}
-	var statusErr *StatusError
+	var statusErr *callStatusError
 	if errors.As(err, &statusErr) {
-		text := fmt.Sprintf("%s: status %d", statusErr.Op, statusErr.Code)
-		if msg := providerMessage(statusErr.Body); msg != "" {
+		text := fmt.Sprintf("%s: status %d", statusErr.op, statusErr.err.Status)
+		if msg := providerMessage(statusErr.err.Body); msg != "" {
 			text += ": " + msg
 		}
 		return clean(text)

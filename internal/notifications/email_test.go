@@ -245,7 +245,7 @@ func TestEmailAdapterUsesTheEncryptedProviderSettingsForProductDelivery(t *testi
 		config.Security != notifications.EmailSecurityTLS || config.Password != "provider-password" {
 		t.Fatalf("SMTP provider config = %+v", config)
 	}
-	if err := adapter.ValidateDestination(destination.Configuration, destination.Credentials); err != nil {
+	if err := adapter.ValidateDestination(destination.ProviderSettings()); err != nil {
 		t.Fatalf("valid SMTP provider rejected: %v", err)
 	}
 }

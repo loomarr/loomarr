@@ -849,7 +849,8 @@ describe("Settings honesty", () => {
     expect(screen.queryByRole("region", { name: "Transcription" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Speech recognition" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("combobox", { name: "Speech recognition" }));
-    await userEvent.click(screen.getByRole("option", { name: "Connected speech service" }));
+    // The listbox mounts after the popup opens; on a loaded runner that is after the click resolves.
+    await userEvent.click(await screen.findByRole("option", { name: "Connected speech service" }));
     await userEvent.click(screen.getByRole("button", { name: "Show advanced (3)" }));
     expect(screen.getByLabelText("Speech service address")).toBeInTheDocument();
     expect(screen.getByLabelText("Speech model")).toBeInTheDocument();

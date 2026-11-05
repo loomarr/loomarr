@@ -19,13 +19,13 @@ import (
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -70,8 +70,9 @@ func buildChannels(
 	var liveTVSvc api.LiveTVService
 	var tunerRescanner api.TunerRescanner
 	var tunarrConnectSvc api.TunarrConnector
+	var mediaSource *livetvpublish.MediaSourceConnector
 	var channelEngine *channels.Engine
-	var liveTVConnector *setup.LiveTVConnector
+	var liveTVConnector *livetvpublish.LiveTVConnector
 	var backendController *backendtransition.Controller
 	var backendView backendtransition.CheckpointView
 	// A replica may enter the transition lock after another replica saved a newer
@@ -87,7 +88,7 @@ func buildChannels(
 		return nil
 	}
 	desiredBackend := func(context.Context) (string, error) {
-		return set.str("playout.backend"), nil
+		return settings.PlayoutBackend.Get(set), nil
 	}
 	resolveDesiredBackend := func(ctx context.Context) (string, error) {
 		if err := refreshBackendSettings(ctx); err != nil {
@@ -149,60 +150,61 @@ func buildChannels(
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
-		liveTVConnector = setup.NewLiveTVConnector(
-			func() library.LiveTV { return libraryClient.Snapshot() }, setup.LiveTVURLs{},
+		liveTVConnector = livetvpublish.NewLiveTVConnector(
+			func() library.LiveTV { return libraryClient.Snapshot() }, tunarr.LiveTVURLs{},
 		).WithTunerPublishingDisabled(ov.TunerPublishingDisabled, log)
 		liveTVSvc = liveTVAdapter{
 			c: liveTVConnector,
-			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
+			urls: func(ctx context.Context) (tunarr.LiveTVURLs, error) {
 				if set.svc != nil {
 					if err := set.svc.Refresh(ctx); err != nil {
-						return setup.LiveTVURLs{}, fmt.Errorf("refresh settings before live TV status: %w", err)
+						return tunarr.LiveTVURLs{}, fmt.Errorf("refresh settings before live TV status: %w", err)
 					}
 				}
 				backend, err := appliedBackendContext(ctx)
 				if err != nil {
-					return setup.LiveTVURLs{}, err
+					return tunarr.LiveTVURLs{}, err
 				}
 				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 				if err != nil {
-					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
+					return tunarr.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
 				}
-				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok, log), nil
+				return liveTVURLsFor(prog, backend, settings.ServerPublicURL.Get(set), tok, log), nil
 			},
 		}
 		transportFreshness := transportTunerRescanner{
 			c: liveTVConnector,
-			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
+			urls: func(ctx context.Context) (tunarr.LiveTVURLs, error) {
 				backend, err := transportBackendContext(ctx)
 				if err != nil {
-					return setup.LiveTVURLs{}, err
+					return tunarr.LiveTVURLs{}, err
 				}
 				tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 				if err != nil {
-					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
+					return tunarr.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
 				}
-				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok, log), nil
+				return liveTVURLsFor(prog, backend, settings.ServerPublicURL.Get(set), tok, log), nil
 			},
 		}
 		tunerRescanner = transportFreshness
 
 		// Wire the media server as Tunarr's media source (§6, POST /v1/setup/tunarr-connect):
 		// uses the concrete Tunarr client's media-source methods (prog), or the injected
-		// double in tests (tunarr.Adapter satisfies setup.MediaSourceProgrammer structurally,
+		// double in tests (tunarr.Adapter satisfies livetvpublish.MediaSourceProgrammer structurally,
 		// so no type-assertion is needed). Library flavor/url/token resolved live.
-		var msProg setup.MediaSourceProgrammer = prog
+		var msProg livetvpublish.MediaSourceProgrammer = prog
 		if ov.Programmer != nil {
 			msProg = ov.Programmer
 		}
-		tunarrConnectSvc = setup.NewMediaSourceConnector(
-			func() setup.MediaSourceLibrary { return libraryClient.Snapshot() }, msProg)
+		mediaSource = livetvpublish.NewMediaSourceConnector(
+			func() livetvpublish.MediaSourceLibrary { return libraryClient.Snapshot() }, msProg)
+		tunarrConnectSvc = mediaSource
 
 		// Program duration comes from the media server (§9/§10): give the scheduler
 		// a resolver so program slots carry a real runtime before the Tunarr push,
 		// and an episode resolver so a series entry expands into its episodes (§9).
 		avail := channels.NewStoreAvailability(rootCtx, st, lib.ItemDurationMs, episodeResolver(lib))
-		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return set.dur("episodes.max_age") })
+		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return settings.EpisodesMaxAge.Get(set) })
 		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
 		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches
 		// by id list — the bulk answer simply was not wired to the scheduler's duration path, so
@@ -224,14 +226,14 @@ func buildChannels(
 			// alternative is future design work; backfill is stable today
 			// placement, handled inside the engine, not the placeholder kind.
 			Policy:               schedule.PodFill,
-			ReconcileTTL:         set.dur("channel.reconcile_every"),
-			BreaksPerHour:        set.intv("filler.breaks_per_hour"),
-			BreakDuration:        set.dur("filler.break_duration"),
-			DefaultWindow:        set.dur("sched.window_hours"),
-			ResolveReconcileTTL:  func() time.Duration { return set.dur("channel.reconcile_every") },
-			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
-			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
-			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
+			ReconcileTTL:         settings.ChannelReconcileEvery.Get(set),
+			BreaksPerHour:        settings.FillerBreaksPerHour.Get(set),
+			BreakDuration:        settings.FillerBreakDuration.Get(set),
+			DefaultWindow:        settings.SchedWindowHours.Get(set),
+			ResolveReconcileTTL:  func() time.Duration { return settings.ChannelReconcileEvery.Get(set) },
+			ResolveBreaksPerHour: func() int { return settings.FillerBreaksPerHour.Get(set) },
+			ResolveBreakDuration: func() time.Duration { return settings.FillerBreakDuration.Get(set) },
+			ResolveDefaultWindow: func() time.Duration { return settings.SchedWindowHours.Get(set) },
 			ResolveCalendar:      calendar,
 			// Backend selection is durable and per-channel-aware inside the engine: this closure
 			// supplies the durable in-progress target when one exists, otherwise the applied
@@ -296,15 +298,21 @@ func buildChannels(
 		resourceBudget = playoutBuilt.budget
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
 		setResidentVRAM = playoutBuilt.setResidentVRAM
-		chEvery := set.dur("channel.reconcile_every")
+		chEvery := settings.ChannelReconcileEvery.Get(set)
 		// The channel sweep is a scheduler job now (§18.1) — same desired-vs-actual Sweep
 		// (with its own ClaimDueChannels lease), driven by River. The Runner's lease/batch are
 		// constructed here; it has no standalone loop.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
 		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
+		}, func(ctx context.Context) error {
+			// Same gate as the auto-wire after a save: no Tunarr configured, nothing to wire.
+			if settings.TunarrURL.Get(set) == "" {
+				return nil
+			}
+			return mediaSource.Converge(ctx)
 		}))
-		log.Info("channel scheduler registered", "tunarr", set.str("tunarr.url"), "sweep_every", chEvery)
+		log.Info("channel scheduler registered", "tunarr", settings.TunarrURL.Get(set), "sweep_every", chEvery)
 	}
 	return channelBuild{
 		channelService: channelSvc, liveTV: liveTVSvc, tunerRescanner: tunerRescanner,
@@ -321,14 +329,12 @@ func buildChannels(
 	}, nil
 }
 
-// liveTVURLsFor picks the Live TV URL pair for the backend that will actually stream (§9.1),
-// replacing the deleted setup.LiveTVURLsFor free function. `tunarr` reads the adapter's own
-// URLs; anything else, including an unrecognised value, falls back to the declared default
-// (internal playout, Loomarr's own endpoints) and logs a warning naming the value — the
-// maintainer's call-site consolidation decision (Refs #1564 PR 3): internal is the default
-// backend and Tunarr is now optional, so a stale or corrupted setting must not silently serve
-// a backend the household doesn't run.
-func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, log *slog.Logger) setup.LiveTVURLs {
+// liveTVURLsFor picks the Live TV URL pair for the backend that will actually stream (§9.1).
+// `tunarr` reads the adapter's own URLs; anything else, including an unrecognised value, falls
+// back to the declared default (internal playout, Loomarr's own endpoints) and logs a warning
+// naming the value: internal is the default backend and Tunarr is optional, so a stale or
+// corrupted setting must not silently serve a backend the household doesn't run.
+func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, log *slog.Logger) tunarr.LiveTVURLs {
 	normalized := schedule.NormalizePlayoutBackend(backend)
 	if normalized == schedule.PlayoutBackendTunarr {
 		return prog.LiveTVURLs()
@@ -336,17 +342,17 @@ func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, 
 	if normalized != schedule.PlayoutBackendInternal {
 		log.Warn("unrecognised playout.backend value; Live TV URLs fall back to internal playout", "backend", backend)
 	}
-	return setup.InternalPlayoutURLs(publicURL, deviceToken)
+	return livetvpublish.InternalPlayoutURLs(publicURL, deviceToken)
 }
 
 // householdCalendar is the calendar every channel arrangement and on-screen logo reads (#2030):
 // the window grid's wall clock (windowZone), the household's country (filler.home_country) and
 // the holiday definitions. Each read resolves the settings live.
 func householdCalendar(set resolved, holidays holidayvocab.Source, log *slog.Logger) func() schedule.Calendar {
-	zone := windowZone(func() string { return set.str("guide.timezone") }, log)
+	zone := windowZone(func() string { return settings.GuideTimezone.Get(set) }, log)
 	return func() schedule.Calendar {
 		defs := holidays.Current()
-		return schedule.Calendar{Zone: zone(), Country: set.str("filler.home_country"), Holidays: &defs}
+		return schedule.Calendar{Zone: zone(), Country: settings.FillerHomeCountry.Get(set), Holidays: &defs}
 	}
 }
 

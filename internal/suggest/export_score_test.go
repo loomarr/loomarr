@@ -1,15 +1,17 @@
 package suggest
 
+import "github.com/loomarr/loomarr/internal/proposal"
+
 // ScoreForTest exposes the production scorer without supplying date constraints.
-func ScoreForTest(intent Intent, lineup, acquisitions []ProposalItem) Scores {
-	return score(intent, lineup, acquisitions, ValidatedDateMeaning{})
+func ScoreForTest(request proposal.Intent, lineup, acquisitions []proposal.ProposalItem) proposal.Scores {
+	return score(Intent{Intent: request}, lineup, acquisitions, ValidatedDateMeaning{})
 }
 
-func ScoreWithDateForTest(intent Intent, lineup, acquisitions []ProposalItem, meaning ValidatedDateMeaning) Scores {
-	return score(intent, lineup, acquisitions, meaning)
+func ScoreWithDateForTest(request proposal.Intent, lineup, acquisitions []proposal.ProposalItem, meaning ValidatedDateMeaning) proposal.Scores {
+	return score(Intent{Intent: request}, lineup, acquisitions, meaning)
 }
 
-func ThemeFitForTest(intent Intent, lineup, acquisitions []ProposalItem) *float64 {
-	value, _ := themeFit(intent, append(append([]ProposalItem{}, lineup...), acquisitions...))
+func ThemeFitForTest(request proposal.Intent, lineup, acquisitions []proposal.ProposalItem) *float64 {
+	value, _ := themeFit(Intent{Intent: request}, append(append([]proposal.ProposalItem{}, lineup...), acquisitions...))
 	return value
 }

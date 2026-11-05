@@ -308,7 +308,7 @@ func newSettingsHarness(t *testing.T, configs ...settingsHarnessConfig) *setting
 			Channels:          config.Channels,
 			LiveTV:            config.LiveTV,
 			BackendTransition: transition,
-			LiveConfig:        func(key string) string { return config.Config[key] },
+			LiveSettings:      stringSettings(func(key string) string { return config.Config[key] }),
 			LibraryConfigured: func() bool {
 				return config.Config["library.flavor"] != "" &&
 					config.Config["library.url"] != "" && config.Config["library.token"] != ""

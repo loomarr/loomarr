@@ -33,6 +33,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -102,7 +104,8 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 
 	// The REAL worker service that runs jobs → persists proposals.
 	ids := newIDGen()
-	svc := suggest.NewService(st, suggester, suggest.Config{Workers: 1, Timeout: 30 * time.Second}, ids, clock, testkit.Logger())
+	svc := suggest.NewService(st, proposalworkflow.New(st, ids, clock), suggester,
+		suggest.Config{Workers: 1, Timeout: 30 * time.Second}, clock, testkit.Logger())
 
 	// Real availability (over the store's title records) WITH a real duration
 	// resolver, so program slots carry runtime and the break interleave fires.
@@ -176,7 +179,7 @@ func (r *rig) getJSON(t *testing.T, path string, v any) {
 // appears (the worker ran) or the deadline passes. Returns the proposal id + the
 // decoded proposal. A worker failure (no proposal) fails the test with the job's
 // last error, so a broken suggester surfaces clearly rather than as a timeout.
-func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposal) {
+func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposal.Proposal) {
 	t.Helper()
 	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
@@ -190,7 +193,7 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposa
 		r.getJSON(t, "/v1/proposals?status=submitted", &list)
 		for _, p := range list.Proposals {
 			if p.JobID == jobID {
-				var prop suggest.Proposal
+				var prop proposal.Proposal
 				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
 					t.Fatalf("decode proposal body: %v", err)
 				}
@@ -205,7 +208,7 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposa
 		t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
 	}
 	t.Fatalf("proposal never appeared for job %s (job lookup failed: %v)", jobID, err)
-	return "", suggest.Proposal{}
+	return "", proposal.Proposal{}
 }
 
 // seedFillerClips lands a catalog of matched commercials + bumpers as a Tunarr sync

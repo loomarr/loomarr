@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 func (s *Server) registerMovieCollections(api huma.API) {
@@ -25,7 +27,7 @@ type movieCollectionsOutput struct {
 }
 
 func (s *Server) doResolveMovieCollections(ctx context.Context, in *movieCollectionsInput) (*movieCollectionsOutput, error) {
-	if s.movieCollections == nil || (s.liveConfig != nil && strings.TrimSpace(s.liveConfig("tmdb.api_key")) == "") {
+	if s.movieCollections == nil || (s.liveSettings != nil && strings.TrimSpace(settings.TMDBAPIKey.Get(s.liveSettings)) == "") {
 		return nil, errNotImplemented("Movie collections aren't ready",
 			"Connect TMDB in Settings to see the other films in a collection.")
 	}

@@ -76,7 +76,7 @@ type programMeta struct {
 }
 
 // EnsureLocalSourceResult reports what EnsureLocalSource did, so a caller/UI can
-// distinguish "created the source" from "already there" (mirrors setup.ConnectResult).
+// distinguish "created the source" from "already there" (mirrors livetvpublish.ConnectResult).
 type EnsureLocalSourceResult struct {
 	SourceID    string
 	LibraryIDs  []string
@@ -142,11 +142,10 @@ func (t *Tunarr) EnsureLocalFillerSource(ctx context.Context, dir string) (Ensur
 		// Scan is best-effort and non-fatal: a 202 means accepted, but a "scan
 		// already in progress" (4xx) or a transient 5xx must NOT abort the sync —
 		// listing already-scanned clips still works, and the scan retries next tick.
-		// Only a transport error (doStatus err) is worth surfacing, and even then we
-		// log via the returned error at the sync layer rather than failing the list.
-		status, _, err := t.doStatus(ctx, t.http, http.MethodPost,
+		// Only a scan that was accepted counts as Scanned.
+		err := t.do(ctx, t.http, http.MethodPost,
 			"/api/media-sources/"+res.SourceID+"/libraries/"+lib.ID+"/scan", nil, nil)
-		if err == nil && status >= 200 && status < 300 {
+		if err == nil {
 			res.Scanned = true
 		}
 		// A non-2xx or transient error is tolerated: the clips already indexed are

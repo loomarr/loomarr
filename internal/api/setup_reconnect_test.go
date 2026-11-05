@@ -19,7 +19,7 @@ func TestLiveTVReconnectUsesSerializedTransitionWithoutTunarr(t *testing.T) {
 	libraryConfigured := false
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: api.NewTokenAuthorizer(adminToken), BackendTransition: transition,
-		LiveConfig:        func(string) string { return "" },
+		LiveSettings:      mapSettings{},
 		LibraryConfigured: func() bool { return libraryConfigured },
 	})
 

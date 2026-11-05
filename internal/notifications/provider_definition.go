@@ -168,103 +168,104 @@ var providerDefinitions = []ProviderDefinition{
 	{
 		Means: MeansEmail, Name: "SMTP", Topics: productProviderTopics,
 		Fields: []ProviderField{
-			field("host", "SMTP host", ProviderFieldText, true, false),
-			{Key: "port", Label: "Port", Kind: ProviderFieldNumber, Required: true, Default: "587"},
-			{Key: "security", Label: "Security", Kind: ProviderFieldSelect, Required: true, Default: "starttls", Options: []ProviderFieldOption{
-				{Value: "starttls", Label: "STARTTLS"}, {Value: "tls", Label: "TLS"}, {Value: "none", Label: "None"},
-			}},
-			field("fromAddress", "From address", ProviderFieldText, true, false),
-			field("fromName", "From name", ProviderFieldText, false, false),
-			field("username", "Username", ProviderFieldText, false, false),
-			field("password", "Password", ProviderFieldPassword, false, true),
+			plain(keyHost, "SMTP host", ProviderFieldText, true),
+			withDefault(plain(keyPort, "Port", ProviderFieldNumber, true), "587"),
+			withOptions(withDefault(plain(keySecurity, "Security", ProviderFieldSelect, true), "starttls"),
+				ProviderFieldOption{Value: "starttls", Label: "STARTTLS"},
+				ProviderFieldOption{Value: "tls", Label: "TLS"},
+				ProviderFieldOption{Value: "none", Label: "None"}),
+			plain(keyFromAddress, "From address", ProviderFieldText, true),
+			plain(keyFromName, "From name", ProviderFieldText, false),
+			plain(keyUsername, "Username", ProviderFieldText, false),
+			secret(keyPassword, "Password", ProviderFieldPassword, false),
 		},
 	},
 	{
 		Means: MeansWebhook, Name: "Webhook", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
-			field("url", "Webhook URL", ProviderFieldURL, true, true),
-			field("bearerToken", "Bearer token", ProviderFieldPassword, false, true),
-			field("hmacSecret", "HMAC signing secret", ProviderFieldPassword, false, true),
+			secret(keyURL, "Webhook URL", ProviderFieldURL, true),
+			secret(keyBearerToken, "Bearer token", ProviderFieldPassword, false),
+			secret(keyHMACSecret, "HMAC signing secret", ProviderFieldPassword, false),
 		},
 	},
 	webhookDefinition(MeansDiscord, "Discord", "Discord webhook URL"),
 	{
 		Means: MeansNtfy, Name: "ntfy", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
-			field("baseUrl", "Server URL", ProviderFieldURL, true, false),
-			field("topic", "Topic", ProviderFieldPassword, true, true),
-			field("username", "Username", ProviderFieldText, false, false),
-			field("password", "Password or token", ProviderFieldPassword, false, true),
+			plain(keyBaseURL, "Server URL", ProviderFieldURL, true),
+			secret(keyTopic, "Topic", ProviderFieldPassword, true),
+			plain(keyUsername, "Username", ProviderFieldText, false),
+			secret(keyPassword, "Password or token", ProviderFieldPassword, false),
 		},
 	},
 	{
 		Means: MeansGotify, Name: "Gotify", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
-			field("serverUrl", "Server URL", ProviderFieldURL, true, false),
-			field("applicationToken", "Application token", ProviderFieldPassword, true, true),
+			plain(keyServerURL, "Server URL", ProviderFieldURL, true),
+			secret(keyApplicationToken, "Application token", ProviderFieldPassword, true),
 		},
 	},
 	{
 		Means: MeansApprise, Name: "Apprise API", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
-			field("baseUrl", "Apprise API URL", ProviderFieldURL, true, false),
-			field("configurationKey", "Configuration key", ProviderFieldPassword, false, true),
-			field("destinationUrl", "Stateless destination URL", ProviderFieldPassword, false, true),
-			field("token", "Authentication token", ProviderFieldPassword, false, true),
+			plain(keyBaseURL, "Apprise API URL", ProviderFieldURL, true),
+			secret(keyConfigurationKey, "Configuration key", ProviderFieldPassword, false),
+			secret(keyDestinationURL, "Stateless destination URL", ProviderFieldPassword, false),
+			secret(keyToken, "Authentication token", ProviderFieldPassword, false),
 		},
 	},
 	{
 		Means: MeansPushover, Name: "Pushover", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
-			field("applicationToken", "Application token", ProviderFieldPassword, true, true),
-			field("recipientKey", "User or group key", ProviderFieldPassword, true, true),
-			field("device", "Device", ProviderFieldPassword, false, true),
+			secret(keyApplicationToken, "Application token", ProviderFieldPassword, true),
+			secret(keyRecipientKey, "User or group key", ProviderFieldPassword, true),
+			secret(keyDevice, "Device", ProviderFieldPassword, false),
 		},
 	},
 	{
 		Means: MeansTelegram, Name: "Telegram Bot", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
-			field("botToken", "Bot token", ProviderFieldPassword, true, true),
-			field("chatId", "Chat ID", ProviderFieldPassword, true, true),
-			field("threadId", "Topic or thread ID", ProviderFieldPassword, false, true),
+			secret(keyBotToken, "Bot token", ProviderFieldPassword, true),
+			secret(keyChatID, "Chat ID", ProviderFieldPassword, true),
+			secret(keyThreadID, "Topic or thread ID", ProviderFieldPassword, false),
 		},
 	},
 	webhookDefinition(MeansMattermost, "Mattermost", "Incoming webhook URL"),
 	{
 		Means: MeansMatrix, Name: "Matrix", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
-			field("homeserverUrl", "Homeserver URL", ProviderFieldURL, true, false),
-			field("roomId", "Room ID", ProviderFieldPassword, true, true),
-			field("accessToken", "Access token", ProviderFieldPassword, true, true),
+			plain(keyHomeserver, "Homeserver URL", ProviderFieldURL, true),
+			secret(keyRoomID, "Room ID", ProviderFieldPassword, true),
+			secret(keyAccessToken, "Access token", ProviderFieldPassword, true),
 		},
 	},
 	{
 		Means: MeansWebPush, Name: "Browser Push", Topics: productProviderTopics, MemberOwned: true,
 		Fields: []ProviderField{
-			field("endpoint", "Push endpoint", ProviderFieldPassword, true, true),
-			field("p256dh", "Browser public key", ProviderFieldPassword, true, true),
-			field("auth", "Browser authentication secret", ProviderFieldPassword, true, true),
+			secret(keyEndpoint, "Push endpoint", ProviderFieldPassword, true),
+			secret(keyP256dh, "Browser public key", ProviderFieldPassword, true),
+			secret(keyAuth, "Browser authentication secret", ProviderFieldPassword, true),
 		},
 	},
 	{
 		Means: MeansMQTT, Name: "MQTT", Topics: sharedProviderTopics,
 		Fields: []ProviderField{
-			field("brokerUrl", "Broker URL", ProviderFieldPassword, true, true),
-			{Key: "clientId", Label: "Client ID", Kind: ProviderFieldText,
-				Description: "Optional. Loomarr derives a stable client ID when blank."},
-			field("username", "Username", ProviderFieldText, false, false),
-			field("password", "Password", ProviderFieldPassword, false, true),
-			field("baseTopic", "Base topic", ProviderFieldText, true, false),
-			{Key: "qos", Label: "QoS", Kind: ProviderFieldSelect, Default: "0", Options: []ProviderFieldOption{
-				{Value: "0", Label: "At most once"}, {Value: "1", Label: "At least once"},
-			}},
-			{Key: "retain", Label: "Retain messages", Kind: ProviderFieldToggle, Default: "false"},
-			{Key: "tlsCaCertificate", Label: "TLS CA certificate", Kind: ProviderFieldTextarea, Sensitive: true,
-				Description: "Optional PEM certificate authority for a private broker."},
-			{Key: "tlsClientCertificate", Label: "TLS client certificate", Kind: ProviderFieldTextarea, Sensitive: true,
-				Description: "Optional PEM certificate for mutual TLS; requires a client key."},
-			{Key: "tlsClientKey", Label: "TLS client key", Kind: ProviderFieldTextarea, Sensitive: true,
-				Description: "Optional PEM private key for mutual TLS; requires a client certificate."},
+			secret(keyBrokerURL, "Broker URL", ProviderFieldPassword, true),
+			described(plain(keyClientID, "Client ID", ProviderFieldText, false),
+				"Optional. Loomarr derives a stable client ID when blank."),
+			plain(keyUsername, "Username", ProviderFieldText, false),
+			secret(keyPassword, "Password", ProviderFieldPassword, false),
+			plain(keyBaseTopic, "Base topic", ProviderFieldText, true),
+			withOptions(withDefault(plain(keyQoS, "QoS", ProviderFieldSelect, false), "0"),
+				ProviderFieldOption{Value: "0", Label: "At most once"},
+				ProviderFieldOption{Value: "1", Label: "At least once"}),
+			withDefault(plain(keyRetain, "Retain messages", ProviderFieldToggle, false), "false"),
+			described(secret(keyTLSCACertificate, "TLS CA certificate", ProviderFieldTextarea, false),
+				"Optional PEM certificate authority for a private broker."),
+			described(secret(keyTLSClientCertificate, "TLS client certificate", ProviderFieldTextarea, false),
+				"Optional PEM certificate for mutual TLS; requires a client key."),
+			described(secret(keyTLSClientKey, "TLS client key", ProviderFieldTextarea, false),
+				"Optional PEM private key for mutual TLS; requires a client certificate."),
 		},
 	},
 	webhookDefinition(MeansSlack, "Slack", "Slack webhook URL"),
@@ -287,14 +288,33 @@ func ProviderDefinitionFor(means Means) (ProviderDefinition, bool) {
 	return ProviderDefinition{}, false
 }
 
-func field(key, label string, kind ProviderFieldKind, required, sensitive bool) ProviderField {
-	return ProviderField{Key: key, Label: label, Kind: kind, Required: required, Sensitive: sensitive}
+func plain(key plainKey, label string, kind ProviderFieldKind, required bool) ProviderField {
+	return ProviderField{Key: string(key), Label: label, Kind: kind, Required: required}
+}
+
+func secret(key secretKey, label string, kind ProviderFieldKind, required bool) ProviderField {
+	return ProviderField{Key: string(key), Label: label, Kind: kind, Required: required, Sensitive: true}
+}
+
+func withDefault(field ProviderField, value string) ProviderField {
+	field.Default = value
+	return field
+}
+
+func withOptions(field ProviderField, options ...ProviderFieldOption) ProviderField {
+	field.Options = options
+	return field
+}
+
+func described(field ProviderField, description string) ProviderField {
+	field.Description = description
+	return field
 }
 
 func webhookDefinition(means Means, name, label string) ProviderDefinition {
 	return ProviderDefinition{
 		Means: means, Name: name, Topics: sharedProviderTopics,
-		Fields: []ProviderField{field("webhookUrl", label, ProviderFieldURL, true, true)},
+		Fields: []ProviderField{secret(keyWebhookURL, label, ProviderFieldURL, true)},
 	}
 }
 
