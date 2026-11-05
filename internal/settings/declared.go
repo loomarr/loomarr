@@ -1084,6 +1084,10 @@ func declared() []Setting {
 		{
 			Key: "filler.fetch.every", Label: "Look for new clips", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
 			Kind: KindDuration, Presentation: PresentationFillerDownloadSchedule, Default: "6h", Validate: fillerFetchInterval,
+			Presets: []Preset{
+				preset("0s", "Never"), preset("6h", "Every 6 hours"), preset("12h", "Every 12 hours"),
+				preset("24h", "Daily"), preset("168h", "Weekly"),
+			},
 			Doc: "How often Loomarr checks enabled sources for new clips. Never stops sources that use this default; you can still check one yourself.",
 		},
 		{

@@ -357,6 +357,13 @@ type SettingEnumOption struct {
 	Label string `json:"label"`
 }
 
+// SettingPreset is one common choice for an open-ended setting, offered ahead of a custom value.
+// Value is canonical, so it equals a resolved value that matches it.
+type SettingPreset struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 type SettingEntry struct {
 	Key          string              `json:"key"`
 	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
@@ -378,6 +385,7 @@ type SettingEntry struct {
 	Secret       bool                `json:"secret"`
 	Enum         []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
 	EnumOptions  []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
+	Presets      []SettingPreset     `json:"presets,omitempty" doc:"Common choices offered before a custom value, in canonical form. Any value the setting accepts still saves."`
 	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
 	RequiredFor  string              `json:"requiredFor,omitempty"`
 	Doc          string              `json:"doc"`

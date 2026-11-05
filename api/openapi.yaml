@@ -10314,6 +10314,11 @@ components:
           type: string
         presentation:
           $ref: "#/components/schemas/SettingPresentation"
+        presets:
+          description: Common choices offered before a custom value, in canonical form. Any value the setting accepts still saves.
+          items:
+            $ref: "#/components/schemas/SettingPreset"
+          type: array
         preview:
           description: "For secrets: masked '…a1b2' tail (§4)."
           type: string
@@ -10713,6 +10718,17 @@ components:
         - switch
         - filler_download_schedule
       type: string
+    SettingPreset:
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+      required:
+        - value
+        - label
+      type: object
     SettingResult:
       additionalProperties: false
       properties:

@@ -1451,6 +1451,13 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   group: "filler",
                   kind: "duration",
                   presentation: "filler_download_schedule",
+                  presets: [
+                    { value: "0s", label: "Never" },
+                    { value: "6h0m0s", label: "Every 6 hours" },
+                    { value: "12h0m0s", label: "Every 12 hours" },
+                    { value: "24h0m0s", label: "Daily" },
+                    { value: "168h0m0s", label: "Weekly" },
+                  ],
                   doc: "How often Loomarr checks enabled sources for new clips.",
                   advanced: false,
                   secret: false,

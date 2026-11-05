@@ -400,7 +400,11 @@ This keeps `720h` as the stable wire/storage value while every UI says “30 day
 ceiling from appearing as an unexplained integer. A plain number stored in a larger unit declares
 that `Unit` (`GiB`, `MiB`, `%`), which the editor shows beside the box. The key suffix (`_gb`, `_mb`,
 `_pct`) and the declared unit must agree, and a registry test enforces it. Enum options remain
-`[]EnumOption{Value, Label}` for the same reason. **Language presentation is the intentional
+`[]EnumOption{Value, Label}` for the same reason. An open-ended setting may also declare
+`Presets []Preset{Value, Label}`: common choices offered ahead of Custom, without closing the set.
+The registry parses every preset as the setting itself would (a preset it would refuse fails the
+build) and publishes it in canonical form (`24h` is served as `24h0m0s`), so a UI matches the
+current value by string and keeps no list of its own. **Language presentation is the intentional
 localization exception:** the registry owns the supported BCP 47 codes, while a client renders those
 codes in its active interface locale through CLDR/`Intl.DisplayNames`; the enum label is only a
 code-shaped fallback for clients without localization support. This prevents English language names

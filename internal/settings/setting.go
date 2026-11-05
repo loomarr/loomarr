@@ -181,6 +181,18 @@ type EnumOption struct {
 // opt is a terse constructor for the registry declarations: opt("ollama", "Ollama").
 func opt(value, label string) EnumOption { return EnumOption{Value: value, Label: label} }
 
+// Preset is a common choice for an open-ended setting, offered ahead of a custom value. Unlike an
+// EnumOption it does not close the set: any value the Kind and Validate accept still saves. The
+// registry stores Value in canonical form (ValueString of the parsed value), so it compares
+// equal to a resolved value on the wire.
+type Preset struct {
+	Value string
+	Label string
+}
+
+// preset is a terse constructor for the registry declarations: preset("24h", "Daily").
+func preset(value, label string) Preset { return Preset{Value: value, Label: label} }
+
 // Setting declares one app-managed configuration key (config-design §2). Declared
 // exactly once, in the registry; nothing constructs a Setting elsewhere.
 type Setting struct {
@@ -198,6 +210,7 @@ type Setting struct {
 	// database's own directory, so a bare-metal install needs no /data. Replaces Default.
 	DataSubdir string
 	Enum       []EnumOption // Kind == KindEnum: the closed set, each with a display label
+	Presets    []Preset     // common choices offered before a custom value; each must parse as Kind
 	Advanced   bool         // hidden behind the per-page "Show advanced" toggle (§5)
 	// MigrationOnly retains a former setting solely long enough to import it into its successor.
 	// It is resolvable by the migration, but absent from every settings read/write and docs surface.
