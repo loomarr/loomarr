@@ -302,7 +302,7 @@ func (c *Client) StaleLoomarrListings(ctx context.Context, desiredXMLTV string) 
 // streaming (fact T2 in the v2 plan — nothing is broken until we retarget, which is
 // what makes it easy to miss).
 const (
-	tunarrGuideSuffix  = "/api/xmltv.xml"     // Tunarr's XMLTV (see TunarrURLsFrom)
+	tunarrGuideSuffix  = "/api/xmltv.xml"     // Tunarr's XMLTV (see tunarr.LiveTVURLsAt)
 	loomarrGuideSuffix = "/playout/guide.xml" // internal playout's own (§9.1)
 )
 

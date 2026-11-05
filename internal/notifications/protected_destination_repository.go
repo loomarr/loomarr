@@ -254,7 +254,7 @@ func (r *ProtectedDestinationRepository) open(
 	}
 	if destination.Means == MeansWebPush && destination.SubscriptionFingerprint != "" && !sameFingerprint(
 		destination.SubscriptionFingerprint,
-		webPushSubscriptionFingerprint(destination.Credentials["endpoint"]),
+		webPushSubscriptionFingerprint(destination.ProviderSettings().secret(keyEndpoint)),
 	) {
 		return Destination{}, fmt.Errorf("validate notification destination %q: subscription fingerprint mismatch", record.ID)
 	}
