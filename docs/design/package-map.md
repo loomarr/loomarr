@@ -22,33 +22,37 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `bgexec` | 5 | — |
 | `broadcaststation` | 5 | — |
 | `catalog` | 7 | `library`, `provision` |
+| `config` | 5 | — |
 | `contact` | 6 | — |
 | `creative` | 6 | — |
 | `defects` | 7 | — |
 | `diagnostics` | 7 | `storagegovernor` |
-| `encode` | 6 | — |
-| `filler` | 10 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy` |
+| `encode` | 8 | `config` |
+| `filler` | 11 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 6 | — |
 | `fillerstructurewindow` | 5 | `fillerstructure` |
 | `holidayvocab` | 8 | — |
-| `httpx` | 10 | `metrics` |
+| `httpx` | 11 | `metrics` |
 | `inventory` | 6 | — |
 | `invitation` | 7 | `contact` |
 | `jobs` | 6 | `store` |
 | `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 9 | `httpx`, `metrics` |
 | `mediatools` | 6 | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
+| `metadataprovider` | 6 | — |
 | `metrics` | 8 | `provision` |
 | `notifications` | 6 | `httpx` |
-| `playout` | 6 | `diagnostics`, `encode`, `provision`, `schedule` |
-| `provision` | 24 | — |
+| `playout` | 6 | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
+| `proposal` | 10 | `provision`, `schedule`, `storagegovernor` |
+| `provision` | 25 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 6 | — |
-| `schedule` | 22 | `holidayvocab`, `inventory`, `provision` |
+| `schedule` | 25 | `holidayvocab`, `inventory`, `provision` |
+| `settings` | 8 | `config`, `library` |
 | `sourceprovider` | 7 | — |
 | `storagegovernor` | 6 | — |
-| `store` | 16 | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
-| `suggest` | 8 | `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
+| `store` | 16 | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `suggest` | 7 | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 6 | — |
 
 ## Every package, by layer
@@ -61,7 +65,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Carries the version stamped into the binary at build time.
 - **`clipcatalog`** · 4 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
-- **`config`** · 2 importers
+- **`config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).
@@ -71,20 +75,14 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Measures and judges real picture and sound defects in a filler clip (#2034).
 - **`demolibrary`**
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
-- **`encode`** · 6 importers
-  Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags and rate control.
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 3 importers
+- **`filleradmission`**
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillerairworthiness`** · 2 importers
-  Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
 - **`fillereval`**
   The budget arithmetic that paid filler assessment shares with certification.
-- **`fillersafety`** · 1 importer
-  Owns the fail-closed spoken-safety cascade and its shadow evidence.
 - **`fillerstructure`** · 6 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
@@ -103,13 +101,15 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   One rule for correcting a filler clip's level (#2032).
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
+- **`metadataprovider`** · 6 importers
+  Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
 - **`openroutermedia`** · 3 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`playout/packager`** · 2 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
 - **`proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
-- **`provision`** · 24 importers
+- **`provision`** · 25 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`recovery`** · 6 importers
   Owns local-password recovery records and their bearer grants (§11).
@@ -119,8 +119,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`releaseverify`**
   Validates the repository's release publication policy.
-- **`secretprotection`** · 3 importers
-  Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`sourceprovider`** · 7 importers
   Contract every filler source provider implements: a place filler comes from, such as YouTube or archive.org, or a local folder or library.
 - **`storagegovernor`** · 6 importers
@@ -158,46 +156,62 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
-- **`fillerdecision`** · 3 importers · → `filleradmission`
-  Owns the durable lifecycle and operator projections for filler-admission results.
+- **`encode`** · 8 importers · → `config`
+  Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags and rate control.
 - **`holidayvocab`** · 8 importers · → `textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`invitation`** · 7 importers · → `contact`
   Owns administrator admission decisions and their bearer grants (§11).
 - **`mediaheader`** · 1 importer · → `inventory`
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
+- **`metadataprovider/arr`** · → `metadataprovider`
+  Sonarr and Radarr as metadata providers (#2151 decisions 7, 15, 38).
+- **`metadataprovider/localart`** · → `metadataprovider`
+  The artwork beside the media as a metadata provider (#2151 decision 19).
+- **`metadataprovider/nfo`** · → `metadataprovider`
+  Kodi NFO sidecars as a metadata provider (#2151 decision 2).
+- **`metadataprovider/providertest`** · → `metadataprovider`
+  Conformance suite every metadata provider runs.
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
+- **`secretprotection`** · 3 importers · → `config`
+  Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
 
 ### Layer 2
 
-- **`httpx`** · 10 importers · → `metrics`
+- **`httpx`** · 11 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`ideas`** · 2 importers · → `holidayvocab`, `provision`
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`schedule`** · 22 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
+- **`schedule`** · 25 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
 ### Layer 3
 
 - **`llm`** · 9 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
+- **`metadataprovider/precedence`** · → `metadataprovider`, `schedule`
+  Decides which source's value Loomarr uses for each field of a media item (#2151 decision 7, ADR 0046).
 - **`notifications`** · 6 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
 - **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
-- **`playout`** · 6 importers · → `diagnostics`, `encode`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
+- **`playout`** · 6 importers · → `config`, `diagnostics`, `encode`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
+- **`proposal`** · 10 importers · → `provision`, `schedule`, `storagegovernor`
+  The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
 - **`store/catalogstore`** · 4 importers · → `broadcaststation`, `clipcatalog`, `creative`, `defects`, `holidayvocab`, `schedule`, `store/storedb`, `taxonomy`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
+- **`tunarr`** · 4 importers · → `httpx`, `metrics`, `schedule`
+  Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 
 ### Layer 4
 
@@ -213,14 +227,18 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 - **`store/identitystore`** · 4 importers · → `contact`, `invitation`, `notifications`, `recovery`, `store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
+- **`testkit/channeljourney`** · → `proposal`, `provision`, `schedule`
+  The public synthetic approval-to-schedule fixtures for #1103.
+- **`tunarr/tunarrtest`** · → `schedule`, `tunarr`
+  The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
 
 ### Layer 5
 
-- **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
+- **`fillerstructuremedia`** · 4 importers · → `encode`, `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediaheader`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
-- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`, `taxonomy`
+- **`store`** · 16 importers · → `broadcaststation`, `clipcatalog`, `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 ### Layer 6
@@ -236,12 +254,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 7
 
-- **`filler`** · 10 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerairworthiness`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
+- **`filler`** · 11 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`images`** · 2 importers · → `httpx`, `images/rustgen`, `jobs`, `logchange`
-  One pipeline every image in Loomarr travels (§22).
-- **`retention`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`
-  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 
 ### Layer 8
 
@@ -249,8 +263,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillerdefectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
-- **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
-  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`fillerstructureassessment`** · 2 importers · → `bgexec`, `filler`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `mediatools`
   Complete-timeline structure-assessment runtime: the ffmpeg media preparers that render and verify the normalized whole-source and per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
 - **`library`** · 11 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
@@ -262,22 +274,18 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Issues and validates Loomarr sessions (design §11).
 - **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`fillerscreening`** · 1 importer · → `filler`, `fillerairworthiness`, `fillerstructureassessment`, `mediatools`
+- **`fillerscreening`** · 2 importers · → `filler`, `fillerstructureassessment`, `mediatools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
-- **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructureassessment`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
+- **`fillerstructurewindowopenrouter`** · 1 importer · → `encode`, `filler`, `fillerstructure`, `fillerstructureassessment`, `fillerstructuremedia`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
-- **`provisionbackstop`** · 1 importer · → `activity`, `jobs`, `library`, `provision`, `requester`, `schedule`, `store`
-  Provisioning backstop (design §4, §7, §18).
-- **`settings`** · 1 importer · → `config`, `library`
+- **`livetvpublish`** · 1 importer · → `library`, `tunarr`
+  Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
+- **`settings`** · 8 importers · → `config`, `library`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
-- **`setup`** · 3 importers · → `library`
-  Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
 - **`sourceprovider/archive`** · 1 importer · → `clipfetch`, `sourceprovider`
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
-- **`sourceprovider/youtube`** · 1 importer · → `clipfetch`, `sourceprovider`
+- **`sourceprovider/youtube`** · 1 importer · → `clipfetch`, `filler`, `sourceprovider`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
-- **`testkit`** · 1 importer · → `fillerstore`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
-  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/libraryfixture`** · → `library`, `provision`, `schedule`
   No-network adapters for library-facing tests.
 - **`testkit/outlookfixture`** · → `library`, `schedule`
@@ -285,45 +293,51 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 10
 
-- **`devbootstrap`** · → `auth`
+- **`channels`** · 3 importers · → `filler`, `jobs`, `playout`, `provision`, `schedule`, `settings`, `store`, `tunarr`
+  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
+- **`devbootstrap`** · → `auth`, `settings`
   Prepares an isolated agent worktree for UI development.
+- **`fillerstore`** · 3 importers · → `filler`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
+  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
+- **`housekeeping`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`, `settings`
+  Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
+- **`images`** · 2 importers · → `httpx`, `images/rustgen`, `jobs`, `logchange`, `settings`
+  One pipeline every image in Loomarr travels (§22).
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
+- **`provisionbackstop`** · 1 importer · → `activity`, `jobs`, `library`, `provision`, `requester`, `schedule`, `settings`, `store`
+  Provisioning backstop (design §4, §7, §18).
 - **`testkit/catalogfixture`** · → `catalog`, `library`, `provision`
   Shared no-network adapters for catalog tests.
-- **`tunarr`** · 3 importers · → `httpx`, `metrics`, `schedule`, `setup`
-  Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 
 ### Layer 11
 
-- **`channels`** · 3 importers · → `filler`, `jobs`, `playout`, `provision`, `schedule`, `store`, `tunarr`
-  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
+- **`testkit`** · 1 importer · → `fillerstore`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/moviecollectionsfixture`** · → `moviecollections`
   The shared deterministic source for movie-collection resolver tests.
-- **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
+- **`tmdb`** · 4 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
-- **`tunarr/tunarrtest`** · → `schedule`, `setup`, `tunarr`
-  The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
 
 ### Layer 12
 
-- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `provision`, `quality`, `reference`, `schedule`, `storagegovernor`, `store`, `textmatch`, `tmdb`
+- **`metadataprovider/tmdb`** · → `httpx`, `metadataprovider`, `schedule`, `tmdb`
+  TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
+- **`suggest`** · 7 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `proposal`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 
 ### Layer 13
 
-- **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
+- **`binder`** · 2 importers · → `proposal`, `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
-- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `openroutercatalog`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
+- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `openroutercatalog`, `proposal`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
-- **`proposaloutlook`** · 2 importers · → `channels`, `holidayvocab`, `library`, `provision`, `schedule`, `store`, `suggest`
+- **`proposaloutlook`** · 2 importers · → `channels`, `holidayvocab`, `library`, `proposal`, `provision`, `schedule`, `store`, `suggest`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
-- **`proposalworkflow`** · 2 importers · → `schedule`, `store`, `suggest`
+- **`proposalworkflow`** · 2 importers · → `proposal`, `schedule`, `store`, `suggest`
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
-- **`recurate`** · 1 importer · → `catalog`, `jobs`, `provision`, `schedule`, `store`, `suggest`
+- **`recurate`** · 1 importer · → `catalog`, `jobs`, `proposal`, `provision`, `schedule`, `settings`, `store`, `suggest`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
-- **`testkit/channeljourney`** · → `provision`, `schedule`, `suggest`
-  The public synthetic approval-to-schedule fixtures for #1103.
 
 ### Layer 14
 
@@ -332,12 +346,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 15
 
-- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `sourceprovider`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `broadcaststation`, `buildinfo`, `channeledit`, `channels`, `clipcatalog`, `contact`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposal`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `settings`, `sourceprovider`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 16
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdecision`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `secretprotection`, `settings`, `setup`, `sourceprovider`, `sourceprovider/archive`, `sourceprovider/youtube`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `broadcaststation`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `creative`, `defects`, `diagnostics`, `encode`, `events`, `filler`, `fillerdefectfloor`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstore`, `fillerstructuremedia`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `holidayvocab`, `housekeeping`, `httpx`, `ideas`, `images`, `images/rustgen`, `installationlocation`, `inventory`, `invitation`, `jobs`, `library`, `livetvpublish`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `openroutermedia`, `playout`, `proposal`, `proposaloutlook`, `proposalworkflow`, `provision`, `provisionbackstop`, `quality`, `recovery`, `recurate`, `reference`, `requester`, `schedule`, `secretprotection`, `settings`, `sourceprovider`, `sourceprovider/archive`, `sourceprovider/youtube`, `storagegovernor`, `store`, `store/catalogstore`, `store/identitystore`, `suggest`, `taxonomy`, `tmdb`, `tunarr`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 <!-- END GENERATED: package-map -->

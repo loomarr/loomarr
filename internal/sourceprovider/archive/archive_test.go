@@ -245,3 +245,85 @@ func TestSearch_FindsItemsInsideOneSource(t *testing.T) {
 		t.Fatalf("got %v, %v (limits %v)", ids(got), err, catalog.searchLimits)
 	}
 }
+
+func TestProvider_IsDiscoverableAndAddable(t *testing.T) {
+	var p sourceprovider.Provider = archive.New(archive.Config{})
+	for name, ok := range map[string]bool{
+		"Finder":    func() bool { _, ok := p.(sourceprovider.Finder); return ok }(),
+		"Addresser": func() bool { _, ok := p.(sourceprovider.Addresser); return ok }(),
+		"Searcher":  func() bool { _, ok := p.(sourceprovider.Searcher); return ok }(),
+	} {
+		if !ok {
+			t.Errorf("the archive provider does not implement %s", name)
+		}
+	}
+	if p.Describe().BadAddress.Title == "" {
+		t.Error("the archive provider does not say what address it accepts")
+	}
+}
+
+// What an operator pastes into "Add a source" is not consistent, and the three shapes below are
+// all things people really paste. Anything else must be REFUSED rather than guessed at: a row
+// built from an unparseable string is a source that can never fetch and never explains why.
+func TestProvider_AddressReadsTheShapesAnOperatorPastes(t *testing.T) {
+	p := archive.New(archive.Config{})
+	for _, tc := range []struct{ in, want string }{
+		{"classic_tv_commercials", "classic_tv_commercials"},
+		{"https://archive.org/details/classic_tv_commercials", "classic_tv_commercials"},
+		{"http://archive.org/details/classic_tv_commercials/", "classic_tv_commercials"},
+		{"archive.org/details/classic_tv_commercials?sort=date", "classic_tv_commercials"},
+		{"/details/classic_tv_commercials", "classic_tv_commercials"},
+		{"  classic_tv_commercials  ", "classic_tv_commercials"},
+
+		// Refused. Each of these would otherwise become a row that looks registered.
+		{"", ""},
+		{"https://example.com/some/page", ""},
+		{"not an id", ""},
+		{"https://archive.org/", ""},
+		{"archive.org/details/", ""},
+	} {
+		if got := p.Address(tc.in); got != tc.want {
+			t.Errorf("Address(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// A finder given an address checks it; given words it searches. A bare word is a valid
+// identifier and also a search, so only a separated slug or a URL counts as an address.
+func TestProvider_RecognizesAddressesNotWords(t *testing.T) {
+	p := archive.New(archive.Config{})
+	for in, want := range map[string]bool{
+		"https://archive.org/details/classic_tv_commercials": true,
+		"archive.org/metadata/classic_tv":                    true,
+		"classic_tv_commercials":                             true,
+		"classic-tv":                                         true,
+		"cartoons":                                           false,
+		"classic tv commercials":                             false,
+		"https://example.com/details/x_y":                    false,
+	} {
+		if got := p.Recognizes(in); got != want {
+			t.Errorf("Recognizes(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestProvider_LinksToItsOwnPages(t *testing.T) {
+	p := archive.New(archive.Config{})
+	for in, want := range map[string]string{
+		"classic_tv":                    "https://archive.org/details/classic_tv",
+		"https://archive.org/details/x": "https://archive.org/details/x",
+		"  ":                            "",
+	} {
+		if got := p.SourceURL(in); got != want {
+			t.Errorf("SourceURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := p.EmbedURL("https://archive.org/details/break_one"); got != "https://archive.org/embed/break_one?autoplay=1" {
+		t.Errorf("EmbedURL = %q", got)
+	}
+	for _, refused := range []string{"https://archive.org/details/a/b", "https://evil.test/details/a", "https://archive.org/search?q=x"} {
+		if got := p.EmbedURL(refused); got != "" {
+			t.Errorf("EmbedURL(%q) = %q, want none", refused, got)
+		}
+	}
+}

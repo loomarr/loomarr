@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/proposal"
 )
 
 func TestValidateDateMeaningRejectsMalformedValues(t *testing.T) {
 	index := 0
-	intent := Intent{Description: "café classics", Era: "the nineties", MustInclude: []string{"épisodes", "Kestrel One"}}
+	intent := Intent{Intent: proposal.Intent{Description: "café classics", Era: "the nineties", MustInclude: []string{"épisodes", "Kestrel One"}}}
 	validAnchor := DateAnchor{Field: DateAnchorDescription, Start: 0, End: 4}
 	cases := []struct {
 		name    string
@@ -61,7 +63,7 @@ func TestValidateIntentDateMeaningDoesNotTreatBareTitleYearAsFilter(t *testing.T
 		"Build a channel around 2001: A Lighthouse Odyssey.",
 		"Build a channel around That '70s Kitchen.",
 	} {
-		if _, err := validateIntentDateMeaning(Intent{Description: description}, &DateMeaning{Kind: DateMeaningNone}); err != nil {
+		if _, err := validateIntentDateMeaning(Intent{Intent: proposal.Intent{Description: description}}, &DateMeaning{Kind: DateMeaningNone}); err != nil {
 			t.Fatalf("description %q: %v", description, err)
 		}
 	}
@@ -69,7 +71,7 @@ func TestValidateIntentDateMeaningDoesNotTreatBareTitleYearAsFilter(t *testing.T
 
 func TestValidateDateMeaningIndexesArrayAnchorsByRunes(t *testing.T) {
 	meaning := &DateMeaning{Kind: DateMeaningAmbiguous, Anchors: []DateAnchor{{Field: DateAnchorMustInclude, Index: ptr(0), Start: 0, End: 3}}}
-	got, err := ValidateDateMeaning(Intent{MustInclude: []string{"été films"}}, meaning)
+	got, err := ValidateDateMeaning(Intent{Intent: proposal.Intent{MustInclude: []string{"été films"}}}, meaning)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +81,7 @@ func TestValidateDateMeaningIndexesArrayAnchorsByRunes(t *testing.T) {
 }
 
 func TestValidateDateMeaningCanonicalizesAndPreservesEvidence(t *testing.T) {
-	intent := Intent{Description: "1990s and 2000s films", Era: "1990s"}
+	intent := Intent{Intent: proposal.Intent{Description: "1990s and 2000s films", Era: "1990s"}}
 	// The source fields sort independently of their submitted order, and the
 	// duplicated era anchor becomes one anchor with all interval references remapped.
 	raw := &DateMeaning{Kind: DateMeaningConstraints,
@@ -147,7 +149,7 @@ func TestValidateDateMeaningCanonicalizesAndPreservesEvidence(t *testing.T) {
 }
 
 func TestValidateDateMeaningCanonicalBoundaryAndEquality(t *testing.T) {
-	intent := Intent{Description: "films from 1990 through 1999"}
+	intent := Intent{Intent: proposal.Intent{Description: "films from 1990 through 1999"}}
 	anchor := DateAnchor{Field: DateAnchorDescription, Start: 0, End: 5}
 	joined := &DateMeaning{Kind: DateMeaningConstraints, Anchors: []DateAnchor{anchor}, Axes: []DateAxis{{Kind: DateAxisMovieRelease, Combine: DateCombineAny, Intervals: []DateInterval{{Anchor: 0, Start: 1990, End: 1999}}}}}
 	split := &DateMeaning{Kind: DateMeaningConstraints, Anchors: []DateAnchor{anchor}, Axes: []DateAxis{{Kind: DateAxisMovieRelease, Combine: DateCombineAny, Intervals: []DateInterval{{Anchor: 0, Start: 1990, End: 1994}, {Anchor: 0, Start: 1995, End: 1999}, {Anchor: 0, Start: 1992, End: 1993}}}}}
@@ -224,7 +226,7 @@ func TestDateMeaningNoneMarshalsAsStrictEmptyArrays(t *testing.T) {
 }
 
 func TestValidateDateMeaningPreservesMultiAnchorSourceClauses(t *testing.T) {
-	intent := Intent{Description: "1990 films", Era: "1991 films"}
+	intent := Intent{Intent: proposal.Intent{Description: "1990 films", Era: "1991 films"}}
 	raw := &DateMeaning{Kind: DateMeaningConstraints, Anchors: []DateAnchor{{Field: DateAnchorDescription, Start: 0, End: 4}, {Field: DateAnchorEra, Start: 0, End: 4}}, Axes: []DateAxis{{Kind: DateAxisMovieRelease, Combine: DateCombineAny, Intervals: []DateInterval{{Anchor: 0, Start: 1990, End: 1994}, {Anchor: 1, Start: 1995, End: 1999}}}}}
 	got, err := ValidateDateMeaning(intent, raw)
 	if err != nil {
@@ -245,7 +247,7 @@ func TestValidateDateMeaningPreservesMultiAnchorSourceClauses(t *testing.T) {
 }
 
 func TestValidateDateMeaningAllConflictAndCrossAxisIndependence(t *testing.T) {
-	intent := Intent{Description: "a long running show", Era: "the nineties"}
+	intent := Intent{Intent: proposal.Intent{Description: "a long running show", Era: "the nineties"}}
 	anchors := []DateAnchor{{Field: DateAnchorDescription, Start: 0, End: 1}, {Field: DateAnchorEra, Start: 0, End: 3}}
 	conflict := &DateMeaning{Kind: DateMeaningConstraints, Anchors: anchors, Axes: []DateAxis{{Kind: DateAxisMovieRelease, Combine: DateCombineAll, Intervals: []DateInterval{{Anchor: 0, Start: 1990, End: 1992}, {Anchor: 1, Start: 1995, End: 1997}}}}}
 	_, err := ValidateDateMeaning(intent, conflict)
@@ -268,7 +270,7 @@ func TestValidateDateMeaningAllConflictAndCrossAxisIndependence(t *testing.T) {
 }
 
 func TestValidateDateMeaningAmbiguityIsValid(t *testing.T) {
-	got, err := ValidateDateMeaning(Intent{Description: "classic movies"}, &DateMeaning{Kind: DateMeaningAmbiguous, Anchors: []DateAnchor{{Field: DateAnchorDescription, Start: 0, End: 7}}})
+	got, err := ValidateDateMeaning(Intent{Intent: proposal.Intent{Description: "classic movies"}}, &DateMeaning{Kind: DateMeaningAmbiguous, Anchors: []DateAnchor{{Field: DateAnchorDescription, Start: 0, End: 7}}})
 	if err != nil {
 		t.Fatal(err)
 	}

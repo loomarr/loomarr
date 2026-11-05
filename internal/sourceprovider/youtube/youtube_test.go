@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -51,6 +52,38 @@ func list(t *testing.T, p *youtube.Provider, cp sourceprovider.Checkpoint, req s
 		t.Fatal(err)
 	}
 	return listing
+}
+
+// Registration is stricter than ingest: a registered source is fetched unattended, so a typo'd or
+// look-alike host must be refused rather than stored as a row that can never fetch.
+func TestProvider_AddressAcceptsOnlyYouTubeHosts(t *testing.T) {
+	p := youtube.New(nil)
+	for _, tc := range []struct{ in, want string }{
+		{"https://www.youtube.com/playlist?list=PL123", "https://www.youtube.com/playlist?list=PL123"},
+		{"youtube.com/@vault/videos", "https://youtube.com/@vault/videos"},
+		{"https://youtu.be/abc", "https://youtu.be/abc"},
+		{"  https://m.youtube.com/channel/UC1  ", "https://m.youtube.com/channel/UC1"},
+
+		{"", ""},
+		{"https://example.com/playlist?list=PL123", ""},
+		{"https://youtube.com.evil.test/playlist?list=PL123", ""},
+		{"https://www.youtube.com/", ""},
+	} {
+		if got := p.Address(tc.in); got != tc.want {
+			t.Errorf("Address(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// Without yt-dlp the provider still answers, naming the sentinel the API turns into advice.
+func TestProvider_FinderFailsWithTheProviderSentinelWhenUnavailable(t *testing.T) {
+	p := youtube.New(nil)
+	if _, err := p.Suggest(t.Context(), "retro", 3); !errors.Is(err, filler.ErrSourceProvider) {
+		t.Errorf("Suggest without a finder = %v, want filler.ErrSourceProvider", err)
+	}
+	if _, err := p.Resolve(t.Context(), "https://www.youtube.com/@vault"); !errors.Is(err, filler.ErrSourceProvider) {
+		t.Errorf("Resolve without a finder = %v, want filler.ErrSourceProvider", err)
+	}
 }
 
 func TestProvider_IsFetchedAndListsByAReadBoundedByTheLookback(t *testing.T) {
@@ -223,5 +256,39 @@ printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/wa
 		!items[0].DurationKnown || items[0].DurationMS != 31_500 ||
 		items[0].Availability != "public" || items[0].LiveStatus != "not_live" {
 		t.Fatalf("items = %+v, want bounded YouTube result", items)
+	}
+}
+
+// A finder given an address checks it; given words it searches. The provider draws the line.
+func TestProvider_RecognizesAddressesNotWords(t *testing.T) {
+	p := youtube.New(nil)
+	for in, want := range map[string]bool{
+		"https://www.youtube.com/@vault/videos": true,
+		"youtu.be/abc":                          true,
+		"@vault":                                true,
+		"UCabcdefghijklmnop":                    true,
+		"PLabcdefghij":                          true,
+		"retro ads":                             false,
+		"vault":                                 false,
+		"https://example.com/watch":             false,
+	} {
+		if got := p.Recognizes(in); got != want {
+			t.Errorf("Recognizes(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestProvider_LinksToItsOwnPages(t *testing.T) {
+	p := youtube.New(nil)
+	if got := p.SourceURL(" https://www.youtube.com/@vault "); got != "https://www.youtube.com/@vault" {
+		t.Errorf("SourceURL = %q", got)
+	}
+	if got := p.EmbedURL("https://www.youtube.com/watch?v=abc_123"); got != "https://www.youtube-nocookie.com/embed/abc_123?autoplay=1&playsinline=1" {
+		t.Errorf("EmbedURL = %q", got)
+	}
+	for _, refused := range []string{"https://youtube.com.evil.test/watch?v=abc", "https://www.youtube.com/watch?v=a/../b", "https://www.youtube.com/watch", "::"} {
+		if got := p.EmbedURL(refused); got != "" {
+			t.Errorf("EmbedURL(%q) = %q, want none", refused, got)
+		}
 	}
 }

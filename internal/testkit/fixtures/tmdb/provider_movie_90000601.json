@@ -1,0 +1,85 @@
+{
+  "adult": false,
+  "backdrop_path": "/detail-backdrop-90000601.jpg",
+  "belongs_to_collection": {
+    "id": 90000801,
+    "name": "The Lantern Archive Collection",
+    "poster_path": "/collection-poster-90000801.jpg",
+    "backdrop_path": "/collection-backdrop-90000801.jpg"
+  },
+  "budget": 1000000,
+  "genres": [
+    { "id": 12, "name": "Adventure" },
+    { "id": 14, "name": "Fantasy" }
+  ],
+  "homepage": "https://film.example/lantern-archive",
+  "id": 90000601,
+  "imdb_id": "tt9000601",
+  "origin_country": ["US"],
+  "original_language": "en",
+  "original_title": "The Lantern Archive",
+  "overview": "A night clerk finds a ledger that lists every lamp in a sleeping town.",
+  "popularity": 12.5,
+  "poster_path": "/detail-poster-90000601.jpg",
+  "production_companies": [
+    { "id": 90000901, "logo_path": null, "name": "Harbor Lamp Pictures", "origin_country": "US" },
+    { "id": 90000902, "logo_path": null, "name": "Second Shift Films", "origin_country": "US" }
+  ],
+  "release_date": "2019-06-14",
+  "revenue": 5000000,
+  "runtime": 112,
+  "status": "Released",
+  "tagline": "Every light is accounted for.",
+  "title": "The Lantern Archive",
+  "video": false,
+  "vote_average": 7.346,
+  "vote_count": 812,
+  "external_ids": {
+    "id": 90000601,
+    "imdb_id": "tt9000601",
+    "wikidata_id": "Q90000601",
+    "facebook_id": null,
+    "instagram_id": null,
+    "twitter_id": null
+  },
+  "release_dates": {
+    "results": [
+      {
+        "iso_3166_1": "GB",
+        "release_dates": [
+          { "certification": "15", "descriptors": [], "iso_639_1": "", "note": "", "release_date": "2019-06-14T00:00:00.000Z", "type": 3 }
+        ]
+      },
+      {
+        "iso_3166_1": "US",
+        "release_dates": [
+          { "certification": "PG-13", "descriptors": [], "iso_639_1": "", "note": "", "release_date": "2019-06-14T00:00:00.000Z", "type": 3 },
+          { "certification": "PG", "descriptors": [], "iso_639_1": "", "note": "Edited for broadcast", "release_date": "2019-09-01T00:00:00.000Z", "type": 4 },
+          { "certification": "", "descriptors": [], "iso_639_1": "", "note": "", "release_date": "2019-09-01T00:00:00.000Z", "type": 5 }
+        ]
+      }
+    ]
+  },
+  "keywords": {
+    "id": 90000601,
+    "keywords": [
+      { "id": 90001001, "name": "night shift" },
+      { "id": 90001002, "name": "small town" },
+      { "id": 90001003, "name": "ledger" }
+    ]
+  },
+  "images": {
+    "backdrops": [
+      { "aspect_ratio": 1.778, "height": 1080, "iso_639_1": "en", "file_path": "/img-backdrop-en-90000601.jpg", "vote_average": 5.4, "vote_count": 3, "width": 1920 },
+      { "aspect_ratio": 1.778, "height": 1080, "iso_639_1": null, "file_path": "/img-backdrop-textless-90000601.jpg", "vote_average": 5.2, "vote_count": 2, "width": 1920 }
+    ],
+    "logos": [
+      { "aspect_ratio": 3.2, "height": 250, "iso_639_1": "fr", "file_path": "/img-logo-fr-90000601.png", "vote_average": 5.8, "vote_count": 2, "width": 800 },
+      { "aspect_ratio": 3.2, "height": 250, "iso_639_1": "en", "file_path": "/img-logo-en-90000601.png", "vote_average": 5.3, "vote_count": 2, "width": 800 }
+    ],
+    "posters": [
+      { "aspect_ratio": 0.667, "height": 3000, "iso_639_1": null, "file_path": "/img-poster-textless-90000601.jpg", "vote_average": 5.9, "vote_count": 4, "width": 2000 },
+      { "aspect_ratio": 0.667, "height": 3000, "iso_639_1": "en", "file_path": "/img-poster-en-90000601.jpg", "vote_average": 5.5, "vote_count": 3, "width": 2000 }
+    ]
+  }
+}

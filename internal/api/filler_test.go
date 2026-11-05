@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -318,19 +319,14 @@ func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*ht
 }
 
 func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, fillerstore.Store, *fakeFiller) {
-	return newFillerServerWithRuntimeConfig(t, imageService, liveConfig, nil, nil)
+	return newFillerServerWithRuntimeConfig(t, imageService, stringSettings(liveConfig), nil)
 }
 
 func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, fillerstore.Store, *fakeFiller) {
-	return newFillerServerWithRuntimeConfig(t, nil, nil, func(key string) time.Duration {
-		if key != "filler.incoming.ready_window" {
-			t.Fatalf("unexpected duration setting %q", key)
-		}
-		return readyWindow
-	}, func() time.Time { return now })
+	return newFillerServerWithRuntimeConfig(t, nil, mapSettings{"filler.incoming.ready_window": readyWindow}, func() time.Time { return now })
 }
 
-func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string, liveConfigDuration func(string) time.Duration, now func() time.Time) (*httptest.Server, fillerstore.Store, *fakeFiller) {
+func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, fillerstore.Store, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -344,13 +340,13 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageServic
 		// with it a test that passes `memberToken` is really testing an anonymous caller — which
 		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
 		// is member-readable and that has to be provable.
-		Auth:               testAuthorizer{},
-		Log:                slog.New(slog.DiscardHandler),
-		Filler:             ff,
-		Images:             imageService,
-		LiveConfig:         liveConfig,
-		LiveConfigDuration: liveConfigDuration,
-		Now:                now,
+		Auth:            testAuthorizer{},
+		Log:             slog.New(slog.DiscardHandler),
+		Filler:          ff,
+		SourceProviders: testSourceProviders(t),
+		Images:          imageService,
+		LiveSettings:    live,
+		Now:             now,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

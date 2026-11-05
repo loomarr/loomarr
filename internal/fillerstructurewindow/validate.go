@@ -10,8 +10,8 @@ import (
 // ValidatePlan reproduces the complete window geometry and content identity rather than accepting
 // a merely plausible list of intervals.
 func ValidatePlan(plan Plan) error {
-	if plan.SchemaVersion != PlanSchemaVersion || plan.ContractVersion != PlanContractVersion ||
-		plan.Profile != CanonicalProfile() || plan.Profile.SHA256 != ProfileSHA256(plan.Profile) ||
+	if _, supported := supportedProfile(plan.Profile); plan.SchemaVersion != PlanSchemaVersion || plan.ContractVersion != PlanContractVersion ||
+		!supported || plan.Profile.SHA256 != ProfileSHA256(plan.Profile) ||
 		plan.Source.DurationMS > plan.Profile.MaximumSourceDurationMS ||
 		len(plan.Windows) == 0 || len(plan.Windows) > plan.Profile.MaximumWindows ||
 		plan.SHA256 == "" || plan.SHA256 != PlanSHA256(plan) {

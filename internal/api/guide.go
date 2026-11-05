@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -165,10 +166,10 @@ const (
 // nonsensical: a zero or negative retention would pin the guide to "now" and leave the grid
 // unable to show the programme currently airing, which needs its real start.
 func (s *Server) guideLookback() time.Duration {
-	if s.liveConfigInt == nil {
+	if s.liveSettings == nil {
 		return guideMaxLookback
 	}
-	if h := s.liveConfigInt("guide.retention_hours"); h > 0 {
+	if h := settings.GuideRetentionHours.Get(s.liveSettings); h > 0 {
 		return time.Duration(h) * time.Hour
 	}
 	return guideMaxLookback
@@ -206,8 +207,8 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 	}
 	out.Body.FromMs = from.UnixMilli()
 	out.Body.ToMs = to.UnixMilli()
-	if s.liveConfig != nil {
-		out.Body.Timezone = strings.TrimSpace(s.liveConfig("guide.timezone"))
+	if s.liveSettings != nil {
+		out.Body.Timezone = strings.TrimSpace(settings.GuideTimezone.Get(s.liveSettings))
 	}
 
 	if s.playoutGuide == nil {

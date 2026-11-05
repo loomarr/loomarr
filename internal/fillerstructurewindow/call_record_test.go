@@ -125,7 +125,7 @@ func TestRecordedAssessmentRejectsTamperedBytesAssessmentAndAccounting(t *testin
 
 func callRecordMediaSetFixture(t *testing.T) MediaSet {
 	t.Helper()
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}

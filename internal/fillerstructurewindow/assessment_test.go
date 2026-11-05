@@ -9,7 +9,7 @@ import (
 )
 
 func TestWindowAssessmentRequiresCompleteSourceRelativeCoverage(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestWindowAssessmentRequiresCompleteSourceRelativeCoverage(t *testing.T) {
 }
 
 func TestWindowAssessmentRetainsOperationalFailureWithoutSemanticClaim(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestWindowAssessmentRetainsOperationalFailureWithoutSemanticClaim(t *testin
 }
 
 func TestWindowAssessmentRejectsNonCanonicalFailure(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestWindowAssessmentRejectsNonCanonicalFailure(t *testing.T) {
 }
 
 func TestWindowAssessmentRejectsDriftAndIncompleteAnswers(t *testing.T) {
-	plan, err := NewPlan(sourceFixture(300_000))
+	plan, err := NewPlan(sourceFixture(300_000), softwareMedia)
 	if err != nil {
 		t.Fatal(err)
 	}

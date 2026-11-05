@@ -49,8 +49,8 @@ describe("FillerOverview", () => {
       "/filler/settings/$section",
     ],
     ["change_storage_limit", "Filler reached its allowance", "Review storage", "/filler/settings/$section"],
-    ["retry_acquisition", "A download needs another try", "Open diagnostics", "/filler/manage"],
-    ["retry_failed_work", "Some filler can be retried", "Open diagnostics", "/filler/manage"],
+    ["retry_acquisition", "A download needs another try", "Open Incoming", "/filler/incoming"],
+    ["retry_failed_work", "Some filler can be retried", "Open Incoming", "/filler/incoming"],
     ["review_incoming", "A few clips need your help", "Review clips", "/filler/incoming"],
     ["add_filler", "Add filler to get started", "Open sources", "/filler/sources"],
     [
@@ -82,12 +82,12 @@ describe("FillerOverview", () => {
   });
 
   it.each(["retry_acquisition", "retry_failed_work"] as const)(
-    "deep-links %s to the diagnostics panel, which opens on that hash",
+    "sends %s to Incoming, where the held work is listed",
     async (nextAction) => {
       show(readiness({ ready: false, nextAction, actionCount: 2 }));
-      expect(await screen.findByRole("link", { name: "Open diagnostics" })).toHaveAttribute(
+      expect(await screen.findByRole("link", { name: "Open Incoming" })).toHaveAttribute(
         "href",
-        "/filler/manage#diagnostics",
+        "/filler/incoming",
       );
     },
   );
@@ -154,13 +154,11 @@ describe("FillerOverview", () => {
     expect(screen.queryByText(/classified safely without a person/i)).not.toBeInTheDocument();
   });
 
-  it("routes operational recovery to diagnostics, never the review queue", async () => {
+  it("routes operational recovery to Incoming's work list, not the review action", async () => {
     show(readiness({ ready: false, nextAction: "retry_failed_work", actionCount: 2 }));
     expect(await screen.findByText("Some filler can be retried")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open diagnostics" })).toHaveAttribute(
-      "href",
-      "/filler/manage#diagnostics",
-    );
+    expect(screen.queryByRole("link", { name: "Review clips" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Incoming" })).toHaveAttribute("href", "/filler/incoming");
   });
 
   it("keeps channel coverage separate from admission health", async () => {

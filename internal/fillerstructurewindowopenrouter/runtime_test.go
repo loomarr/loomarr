@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructureassessment"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
 )
@@ -22,7 +24,7 @@ func TestCertifiedRuntimeRefreshesMetadataAndRequiresReviewedProfiles(t *testing
 	runtime, err := NewCertifiedRuntime(CertifiedRuntimeConfig{
 		Authority: authority, Deployment: deployment, APIKey: "secret",
 		SourceRoot: t.TempDir(), MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
-		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
+		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now }, CutFamily: softwareCuts,
 		FetchSnapshot: func(_ context.Context, config openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
 			fetches++
 			if len(config.Models) != 2 || config.Models[0] != "vendor/model-a" || config.Models[1] != "vendor/model-b" || config.APIKey != "secret" {
@@ -66,7 +68,7 @@ func TestCertifiedRuntimeRejectsOutOfEnvelopeSourceBeforeMetadata(t *testing.T) 
 	runtime, err := NewCertifiedRuntime(CertifiedRuntimeConfig{
 		Authority: authority, Deployment: deployment, APIKey: "secret",
 		SourceRoot: t.TempDir(), MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
-		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
+		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now }, CutFamily: softwareCuts,
 		FetchSnapshot: func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
 			fetched = true
 			return openroutercatalog.OpenRouterSnapshot{}, nil
@@ -83,6 +85,65 @@ func TestCertifiedRuntimeRejectsOutOfEnvelopeSourceBeforeMetadata(t *testing.T) 
 		t.Fatalf("error=%v fetched=%v", err, fetched)
 	}
 }
+
+// #2121: an authority certifies cuts made on one family. A host that cuts on another holds every
+// source before any media is prepared or any provider is asked, and an authority pinning a profile
+// no family produces never builds a runtime.
+func TestCertifiedRuntimeCutsOnlyOnTheCertifiedFamily(t *testing.T) {
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	_, authority, deployment := certifiedRuntimeFixture(t, now)
+	nvenc, _ := fillerstructuremedia.ProfileFor(encode.FamilyNVENC)
+	authority.AssessmentMediaProfileSHA256 = nvenc.SHA256
+	authority.WindowProfileSHA256 = fillerstructurewindow.ProfileFor(nvenc).SHA256
+	authority.SHA256 = fillerstructurewindow.MaterializationAuthoritySHA256(authority)
+	deployment.AuthoritySHA256 = authority.SHA256
+	deployment.SHA256 = DeploymentSHA256(deployment)
+	sourceRoot := t.TempDir()
+	host := encode.FamilySoftware
+	fetched := false
+	config := CertifiedRuntimeConfig{
+		Authority: authority, Deployment: deployment, APIKey: "secret",
+		SourceRoot: sourceRoot, MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
+		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now }, CutFamily: func() encode.Family { return host },
+		FetchSnapshot: func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
+			fetched = true
+			return openroutercatalog.OpenRouterSnapshot{}, nil
+		},
+	}
+	runtime, err := NewCertifiedRuntime(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer := &capturedRuntimePreparer{err: errors.New("media preflight failed")}
+	runtime.preparer = preparer
+	input := filler.StructureAssessmentSource{
+		Source: filler.SplitSourceAsset{
+			Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), ClipHash: strings.Repeat("b", 64),
+			Bytes: 1_000, DurationMs: authority.MaximumSourceDurationMS, Path: "source.mp4",
+		},
+		FullPath: filepath.Join(sourceRoot, "source.mp4"),
+	}
+	if _, err := runtime.Assess(t.Context(), input); err == nil || !strings.Contains(err.Error(), "this host cuts on software") ||
+		preparer.calls != 0 || fetched {
+		t.Fatalf("software host: error=%v preparer calls=%d metadata fetched=%v", err, preparer.calls, fetched)
+	}
+	host = encode.FamilyNVENC
+	if _, err := runtime.Assess(t.Context(), input); err == nil || preparer.calls != 1 || fetched {
+		t.Fatalf("NVENC host: error=%v preparer calls=%d metadata fetched=%v", err, preparer.calls, fetched)
+	}
+
+	unknown := authority
+	unknown.AssessmentMediaProfileSHA256 = strings.Repeat("e", 64)
+	unknown.SHA256 = fillerstructurewindow.MaterializationAuthoritySHA256(unknown)
+	config.Authority = unknown
+	config.Deployment.AuthoritySHA256 = unknown.SHA256
+	config.Deployment.SHA256 = DeploymentSHA256(config.Deployment)
+	if _, err := NewCertifiedRuntime(config); err == nil {
+		t.Fatal("a runtime was built over an authority pinning no known media profile")
+	}
+}
+
+func softwareCuts() encode.Family { return encode.FamilySoftware }
 
 type capturedRuntimePreparer struct {
 	calls    int
@@ -103,7 +164,7 @@ func TestCertifiedRuntimePreflightsMediaBeforeProviderMetadata(t *testing.T) {
 	runtime, err := NewCertifiedRuntime(CertifiedRuntimeConfig{
 		Authority: authority, Deployment: deployment, APIKey: "secret",
 		SourceRoot: sourceRoot, MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
-		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
+		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now }, CutFamily: softwareCuts,
 		FetchSnapshot: func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
 			fetched = true
 			return openroutercatalog.OpenRouterSnapshot{}, nil
@@ -139,7 +200,7 @@ func TestCertifiedRuntimeChecksReviewedMediaEnvelopeBeforeProviderMetadata(t *te
 	runtime, err := NewCertifiedRuntime(CertifiedRuntimeConfig{
 		Authority: authority, Deployment: deployment, APIKey: "secret",
 		SourceRoot: sourceRoot, MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
-		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
+		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now }, CutFamily: softwareCuts,
 		FetchSnapshot: func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
 			fetched = true
 			return openroutercatalog.OpenRouterSnapshot{}, nil
@@ -162,7 +223,7 @@ func certifiedRuntimePreparedFixture(t *testing.T, sourceRoot string, durationMS
 		Bytes: 1_000, DurationMs: durationMS, Path: "source.mp4",
 	}
 	input := filler.StructureAssessmentSource{Source: source, FullPath: filepath.Join(sourceRoot, source.Path)}
-	plan, err := fillerstructurewindow.NewPlan(fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: durationMS})
+	plan, err := fillerstructurewindow.NewPlan(fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: durationMS}, fillerstructuremedia.SoftwareProfile())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +287,7 @@ func certifiedRuntimeFixture(t *testing.T, now time.Time) (openroutercatalog.Ope
 			MaximumInputTokens: 20_000, ReservationNanoUSD: 24_000_000,
 		})
 	}
-	windowProfile := fillerstructurewindow.CanonicalProfile()
+	windowProfile := fillerstructurewindow.ProfileFor(fillerstructuremedia.SoftwareProfile())
 	authority := fillerstructurewindow.MaterializationAuthority{
 		SchemaVersion:             fillerstructurewindow.MaterializationAuthoritySchemaVersion,
 		ContractVersion:           fillerstructurewindow.MaterializationAuthorityContractVersion,

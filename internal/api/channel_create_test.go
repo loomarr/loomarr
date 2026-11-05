@@ -16,7 +16,7 @@ func TestCreateChannelRefusesIntentRef(t *testing.T) {
 	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	if err := createProposalWithJob(st, context.Background(), store.Proposal{
 		ID: "prop-1", JobID: "job-abc", Status: "approved",
-		ProposalJSON: `{"intent":{"description":"late-night sci-fi"},"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"12345"}]}`,
+		Body: wireProposal(t, `{"intent":{"description":"late-night sci-fi"},"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"12345"}]}`),
 	}); err != nil {
 		t.Fatal(err)
 	}

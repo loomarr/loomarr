@@ -16,6 +16,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructureassessment"
+	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
@@ -242,7 +243,7 @@ func assessorMediaFixture(t *testing.T) (fillerstructurewindow.MediaSet, fillers
 		t.Fatal(err)
 	}
 	source := fillerstructure.Source{SHA256: strings.Repeat("1", 64), Bytes: 2_048, DurationMS: 10_000}
-	plan, err := fillerstructurewindow.NewPlan(source)
+	plan, err := fillerstructurewindow.NewPlan(source, fillerstructuremedia.SoftwareProfile())
 	if err != nil {
 		t.Fatal(err)
 	}

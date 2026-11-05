@@ -6,11 +6,11 @@ import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native"
 import { glass, webOnly } from "../glass";
 import type { PlayerTransportProps } from "../player-chrome.type";
 
-// The transport (§9.4, plane 4): glass capsules grouped by job — play · live state · volume, then,
-// pushed right, view options · window. Play/pause is the one primary control, a white disc; every
-// other tool is a quiet glyph (one size, one weight) with a hover well, an amber glyph and dot when
-// active, and on a pointer a tooltip naming its key. Tools a later step brings (skip, Start over,
-// Subtitles, Info) are not drawn until they work.
+// The transport (§9.4, plane 4): glass capsules grouped by job — ⟲ play ⟳ · live state and Start
+// over · volume, then, pushed right, view options · window. Play/pause is the one primary control, a
+// white disc; every other tool is a quiet glyph (one size, one weight) with a hover well, an amber
+// glyph and dot when active, and on a pointer a tooltip naming its key. A tool the caller leaves out
+// (the player cannot seek; Info with no programme; Subtitles until its step) is not drawn.
 
 const Capsule = ({ children, end }: { children: ReactNode; end?: boolean }) => (
   <View
@@ -29,10 +29,31 @@ const Capsule = ({ children, end }: { children: ReactNode; end?: boolean }) => (
   </View>
 );
 
-const Tooltip = ({ density, keyHint, label }: { density: Density; keyHint?: string; label: string }) => (
+// Which way a tooltip hangs: centred over its tool, or held inside the screen at the bar's two ends.
+type TipAlign = "center" | "start" | "end";
+
+const tipAnchor = (align: TipAlign) =>
+  align === "start"
+    ? { left: 0 }
+    : align === "end"
+      ? { right: 0 }
+      : { left: "50%" as const, transform: [{ translateX: "-50%" }] };
+
+const Tooltip = ({
+  align,
+  density,
+  keyHint,
+  label,
+}: {
+  align: TipAlign;
+  density: Density;
+  keyHint?: string;
+  label: string;
+}) => (
   <View
     pointerEvents="none"
     style={{
+      ...tipAnchor(align),
       alignItems: "center",
       backgroundColor: playerChrome.tooltip,
       borderRadius: 6,
@@ -46,7 +67,8 @@ const Tooltip = ({ density, keyHint, label }: { density: Density; keyHint?: stri
       ...webOnly({ boxShadow: `0 0 0 1px ${playerChrome.glassRing}`, whiteSpace: "nowrap" }),
     }}
   >
-    <Text density={density} textRole="guideLabel" tone="primary">
+    {/* One line: the tooltip hangs off a 36 px button, which would otherwise wrap it word by word. */}
+    <Text density={density} numberOfLines={1} textRole="guideLabel" tone="primary">
       {label}
     </Text>
     {keyHint ? (
@@ -68,6 +90,7 @@ interface ToolButtonProps {
   label: string;
   onPress: () => void;
   pointer: boolean;
+  tipAlign?: TipAlign;
 }
 
 const ToolButton = ({
@@ -79,6 +102,7 @@ const ToolButton = ({
   label,
   onPress,
   pointer,
+  tipAlign = "center",
 }: ToolButtonProps) => {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -128,7 +152,9 @@ const ToolButton = ({
           }}
         />
       ) : null}
-      {pointer && (hovered || focused) ? <Tooltip density={density} keyHint={keyHint} label={label} /> : null}
+      {pointer && (hovered || focused) ? (
+        <Tooltip align={tipAlign} density={density} keyHint={keyHint} label={label} />
+      ) : null}
     </Pressable>
   );
 };
@@ -231,12 +257,51 @@ const LiveState = ({
     </View>
   );
 
+// Start over (§9.4): a quiet text tool beside the live state, back to the programme's start.
+const StartOver = ({ density, onPress }: { density: Density; onPress: () => void }) => {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      onPress={onPress}
+      style={{
+        alignItems: "center",
+        backgroundColor: hovered ? playerChrome.glassTop : "transparent",
+        borderRadius: 999,
+        flexDirection: "row",
+        gap: 6,
+        height: density === "touch" ? 40 : 32,
+        paddingHorizontal: 12,
+        ...webOnly({ transition: "background-color 140ms ease" }),
+      }}
+    >
+      <Icon color={playerChrome.text} decorative glyph={icons.startOver} size="compact" />
+      <Text density={density} textRole="guideLabel" tone="primary">
+        Start over
+      </Text>
+    </Pressable>
+  );
+};
+
 const PlayerTransport = (props: PlayerTransportProps) => {
   const { density, pointer, playing } = props;
   const touch = density === "touch";
   return (
     <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
       <Capsule>
+        {props.onSeekBack ? (
+          <ToolButton
+            density={density}
+            icon="seekBack"
+            keyHint="←"
+            label="Back 10 seconds"
+            onPress={props.onSeekBack}
+            pointer={pointer}
+            tipAlign="start"
+          />
+        ) : null}
         <Pressable
           accessibilityLabel={playing ? "Pause" : "Play"}
           accessibilityRole="button"
@@ -260,9 +325,21 @@ const PlayerTransport = (props: PlayerTransportProps) => {
             size="default"
           />
         </Pressable>
+        {props.onSeekForward ? (
+          <ToolButton
+            density={density}
+            disabled={props.live.mode === "live"}
+            icon="seekForward"
+            keyHint="→"
+            label="Forward 10 seconds"
+            onPress={props.onSeekForward}
+            pointer={pointer}
+          />
+        ) : null}
       </Capsule>
       <Capsule>
         <LiveState density={density} live={props.live} onGoLive={props.onGoLive} />
+        {props.onStartOver ? <StartOver density={density} onPress={props.onStartOver} /> : null}
       </Capsule>
       {pointer ? (
         <Capsule end>
@@ -292,6 +369,17 @@ const PlayerTransport = (props: PlayerTransportProps) => {
           onPress={props.onSettings}
           pointer={pointer}
         />
+        {props.onInfo ? (
+          <ToolButton
+            active={props.infoOpen}
+            density={density}
+            icon="info"
+            keyHint="I"
+            label="Info"
+            onPress={props.onInfo}
+            pointer={pointer}
+          />
+        ) : null}
         {props.onChannels ? (
           <ToolButton
             active={props.channelsOpen}
@@ -320,6 +408,7 @@ const PlayerTransport = (props: PlayerTransportProps) => {
           label="Leave Watch"
           onPress={props.onLeave}
           pointer={pointer}
+          tipAlign="end"
         />
       </Capsule>
     </View>

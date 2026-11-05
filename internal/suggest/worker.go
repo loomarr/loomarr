@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -27,15 +28,9 @@ import (
 // can never starve the queue. Proposals are persisted so the approval queue and
 // My proposals survive restarts.
 
-// ProposalStore is the slice of the store the worker/submission path needs.
+// ProposalStore is the slice of the store the worker needs outside the durable workflow: the
+// channel a re-curation job belongs to. Every job lifecycle transition goes through the workflow.
 type ProposalStore interface {
-	CreateJob(ctx context.Context, j store.Job) error
-	GetJob(ctx context.Context, id string) (store.Job, error)
-	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]store.Job, error)
-	FindJobByIntentHash(ctx context.Context, hash string, since time.Time) (store.Job, error)
-	CommitSuggestionSuccess(ctx context.Context, jobID string, expectedAttempt int, p store.Proposal, updatedAt time.Time) error
-	CommitSuggestionFailure(ctx context.Context, jobID string, expectedAttempt int, cause, failureCode, failureTraceJSON string, updatedAt time.Time) error
-	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job store.Job, proposalID string) (store.Proposal, error)
 	GetChannelForJob(ctx context.Context, jobID string) (store.Channel, error)
 }
 
@@ -49,7 +44,6 @@ type Service struct {
 	workers   int
 	timeout   time.Duration // JOB_TIMEOUT: per-job wall-clock bound (§8)
 	cacheTTL  time.Duration
-	newID     func() string
 	now       func() time.Time
 	emit      ProgressEmitter // optional (§8 SSE progress); nil ⇒ no live frames
 	// auto applies the §11 auto-approve grant. nil ⇒ every proposal waits for an admin,
@@ -85,14 +79,6 @@ type ProposalNotifier interface {
 
 func (s *Service) WithProposalNotifier(notifier ProposalNotifier) *Service {
 	s.notify = notifier
-	return s
-}
-
-// WithDurableWorkflow routes worker lifecycle transitions through the deep
-// proposal workflow module. Submission/refine stay on Service until their HTTP
-// contracts move, but workers no longer join or mutate raw lifecycle rows.
-func (s *Service) WithDurableWorkflow(workflow DurableWorkflow) *Service {
-	s.workflow = workflow
 	return s
 }
 
@@ -162,9 +148,10 @@ type Config struct {
 	CacheTTL time.Duration
 }
 
-// NewService builds the suggestion service. newID generates job/proposal ids
-// (uuid-like); now defaults to time.Now.
-func NewService(st ProposalStore, sug *Suggester, cfg Config, newID func() string, now func() time.Time, log *slog.Logger) *Service {
+// NewService builds the suggestion service. The durable workflow owns every job and proposal
+// lifecycle transition (submit, claim, complete, fail), so it is required; now defaults to
+// time.Now.
+func NewService(st ProposalStore, workflow DurableWorkflow, sug *Suggester, cfg Config, now func() time.Time, log *slog.Logger) *Service {
 	if cfg.Workers <= 0 {
 		cfg.Workers = 2
 	}
@@ -178,66 +165,32 @@ func NewService(st ProposalStore, sug *Suggester, cfg Config, newID func() strin
 		now = time.Now
 	}
 	return &Service{
-		store: st, suggester: sug, log: log,
+		store: st, workflow: workflow, suggester: sug, log: log,
 		workers: cfg.Workers, timeout: cfg.Timeout, cacheTTL: cfg.CacheTTL,
-		newID: newID, now: now,
+		now: now,
 	}
 }
 
 // Submit creates a caller-owned suggestion job for an intent (§8). A successful
 // cache hit copies only proposal content into a fresh job/proposal lifecycle; it
 // never reuses another request's id, owner, or approval state. Returns the job id.
-func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (string, error) {
-	if s.workflow != nil {
-		submission, err := s.workflow.Submit(ctx, intent, createdBy, s.now().Add(-s.cacheTTL))
-		if err != nil {
-			return "", err
-		}
-		if submission.CachedProposal != nil {
-			blob, marshalErr := json.Marshal(submission.CachedProposal.Proposal)
-			if marshalErr == nil {
-				s.considerAutomaticApproval(ctx, store.Job{
-					ID: submission.JobID, Kind: jobKindSuggest, CreatedBy: createdBy,
-				}, store.Proposal{
-					ID: submission.CachedProposal.ID, JobID: submission.JobID, Status: "submitted",
-					CreatedBy: createdBy, ProposalJSON: string(blob),
-					CreatedAt: submission.CachedProposal.CreatedAt, UpdatedAt: submission.CachedProposal.CreatedAt,
-				})
-			}
-		}
-		return submission.JobID, nil
-	}
-	hash := IntentHash(intent)
-	blob, err := json.Marshal(intent)
+func (s *Service) Submit(ctx context.Context, intent proposal.Intent, createdBy string) (string, error) {
+	// The workflow serves the cache only for a recent SUCCESSFUL job, so a failed job (no
+	// grounded titles, a timeout) never wedges a re-submit.
+	submission, err := s.workflow.Submit(ctx, intent, createdBy, s.now().Add(-s.cacheTTL))
 	if err != nil {
-		return "", fmt.Errorf("marshal intent: %w", err)
-	}
-	now := s.now()
-	job := store.Job{
-		ID: s.newID(), Kind: jobKindSuggest, Status: "queued",
-		IntentJSON: string(blob), IntentHash: hash, CreatedBy: createdBy,
-		Deadline: now, CreatedAt: now, UpdatedAt: now,
-	}
-	// Cache hit ONLY on a recent SUCCESSFUL job. A failed job — e.g. one that found
-	// no grounded titles (ErrNoGroundedTitles) or hit a timeout — must NOT wedge
-	// re-submits. Even a successful hit gets a fresh lifecycle: the cache saves
-	// inference, not ownership/audit identity.
-	if cached, err := s.store.FindJobByIntentHash(ctx, hash, s.now().Add(-s.cacheTTL)); err == nil && cached.Status == "done" {
-		job.Status = "done"
-		p, cloneErr := s.store.CloneSuggestionSuccess(ctx, cached.ID, job, s.newID())
-		if cloneErr == nil {
-			s.considerAutomaticApproval(ctx, job, p)
-			return job.ID, nil
-		}
-		if !errors.Is(cloneErr, store.ErrNotFound) {
-			return "", cloneErr
-		}
-		job.Status = "queued"
-	}
-	if err := s.store.CreateJob(ctx, job); err != nil {
 		return "", err
 	}
-	return job.ID, nil
+	if submission.CachedProposal != nil {
+		s.settleSubmitted(ctx, store.Job{
+			ID: submission.JobID, Kind: jobKindSuggest, CreatedBy: createdBy,
+		}, store.Proposal{
+			ID: submission.CachedProposal.ID, JobID: submission.JobID, Status: "submitted",
+			CreatedBy: createdBy, Body: submission.CachedProposal.Proposal,
+			CreatedAt: submission.CachedProposal.CreatedAt, UpdatedAt: submission.CachedProposal.CreatedAt,
+		})
+	}
+	return submission.JobID, nil
 }
 
 // Refine submits a NEW job that re-curates an existing channel with a refine-flavored intent
@@ -246,7 +199,7 @@ func (s *Service) Submit(ctx context.Context, intent Intent, createdBy string) (
 // touches the request the channel was made from. Bypasses the intent-hash cache deliberately:
 // a refine always re-generates (the operator asked for a change; a cached identical run would be
 // surprising). Returns the new job id for the caller to poll for the proposal.
-func (s *Service) Refine(ctx context.Context, channelID string, intent Intent, requestedBy string) (string, error) {
+func (s *Service) Refine(ctx context.Context, channelID string, intent proposal.Intent, requestedBy string) (string, error) {
 	return s.submitForChannel(ctx, channelID, intent, jobKindSuggest, requestedBy, "refine")
 }
 
@@ -254,28 +207,16 @@ func (s *Service) Refine(ctx context.Context, channelID string, intent Intent, r
 // approval queue as the requester's own request, and returns its job id. The model never runs, so
 // it works with the LLM off. Afterwards it does what a generated proposal gets: admins are told a
 // request is waiting, and the requester's auto-approve grant, if any, applies within its cap.
-func (s *Service) SubmitBuilt(ctx context.Context, intent Intent, proposal Proposal, createdBy string) (string, error) {
-	if s.workflow == nil {
-		return "", errors.New("submit built proposal: durable workflow not configured")
-	}
-	recorded, err := s.workflow.Record(ctx, intent, proposal, createdBy)
+func (s *Service) SubmitBuilt(ctx context.Context, intent proposal.Intent, built proposal.Proposal, createdBy string) (string, error) {
+	recorded, err := s.workflow.Record(ctx, intent, built, createdBy)
 	if err != nil {
 		return "", err
 	}
-	blob, err := json.Marshal(recorded.Proposal)
-	if err != nil {
-		// Already durable; only the post-commit notice and grant are skipped.
-		s.log.Error("marshal recorded Proposal for notification", "job", recorded.JobID, "err", err)
-		return recorded.JobID, nil
-	}
 	row := store.Proposal{
 		ID: recorded.ID, JobID: recorded.JobID, Status: "submitted", CreatedBy: createdBy,
-		ProposalJSON: string(blob), CreatedAt: recorded.CreatedAt, UpdatedAt: recorded.CreatedAt,
+		Body: recorded.Proposal, CreatedAt: recorded.CreatedAt, UpdatedAt: recorded.CreatedAt,
 	}
-	if s.notify != nil {
-		s.notify.ProposalSubmitted(ctx, row)
-	}
-	s.considerAutomaticApproval(ctx, store.Job{ID: recorded.JobID, Kind: jobKindSuggest, CreatedBy: createdBy, Attempts: 1}, row)
+	s.settleSubmitted(ctx, store.Job{ID: recorded.JobID, Kind: jobKindSuggest, CreatedBy: createdBy, Attempts: 1}, row)
 	return recorded.JobID, nil
 }
 
@@ -284,14 +225,11 @@ func (s *Service) SubmitBuilt(ctx context.Context, intent Intent, proposal Propo
 // scheduled refresh must never fall through a requester's auto-approve grant, and a human refine
 // must never be mistaken for unattended curation merely because its channel is opted in. The job
 // has no requester: it is system work, so it never appears in anyone's request list.
-func (s *Service) Recurate(ctx context.Context, channelID string, intent Intent) (string, error) {
+func (s *Service) Recurate(ctx context.Context, channelID string, intent proposal.Intent) (string, error) {
 	return s.submitForChannel(ctx, channelID, intent, jobKindRecurate, "", "recurate")
 }
 
-func (s *Service) submitForChannel(ctx context.Context, channelID string, intent Intent, kind, createdBy, operation string) (string, error) {
-	if s.workflow == nil {
-		return "", fmt.Errorf("%s: durable workflow not configured", operation)
-	}
+func (s *Service) submitForChannel(ctx context.Context, channelID string, intent proposal.Intent, kind, createdBy, operation string) (string, error) {
 	jobID, err := s.workflow.SubmitForChannel(ctx, channelID, intent, kind, createdBy)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", operation, err)
@@ -328,30 +266,7 @@ func (s *Service) drainOnce(ctx context.Context, sem chan struct{}) {
 	if available <= 0 {
 		return
 	}
-	if s.workflow != nil {
-		s.drainWorkflow(ctx, sem, available)
-		return
-	}
 	// Lease horizon must exceed JOB_TIMEOUT so a running job isn't re-claimed.
-	jobs, err := s.store.ClaimDueJobs(ctx, s.now(), s.timeout+time.Minute, available)
-	if err != nil {
-		s.log.Error("claim due jobs", "err", err)
-		return
-	}
-	for _, job := range jobs {
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
-			return
-		}
-		go func(j store.Job) {
-			defer func() { <-sem }()
-			s.runJob(ctx, j)
-		}(job)
-	}
-}
-
-func (s *Service) drainWorkflow(ctx context.Context, sem chan struct{}, available int) {
 	works, err := s.workflow.Claim(ctx, s.now(), s.timeout+time.Minute, available)
 	if err != nil {
 		s.log.Error("claim Proposal Jobs", "err", err)
@@ -383,31 +298,29 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 		return
 	}
 	started := s.now()
-	proposal, err := s.suggester.Suggest(jobCtx, intent)
+	suggested, err := s.suggester.Suggest(jobCtx, intent)
 	duration := s.now().Sub(started)
 	if err != nil {
 		s.failWorkflow(ctx, work, err, duration, true)
 		return
 	}
-	completed, err := s.workflow.Complete(ctx, work, proposal)
+	completed, err := s.workflow.Complete(ctx, work, suggested)
+	if errors.Is(err, ErrStaleAttempt) {
+		s.log.Info("discarding stale suggestion result", "job", work.JobID, "attempt", work.Attempt, "err", err)
+		return
+	}
 	if err != nil {
 		s.failWorkflow(ctx, work, fmt.Errorf("persist proposal: %w", err), 0, false)
 		return
 	}
 	s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, duration, completed.Proposal, nil)
-	blob, err := json.Marshal(completed.Proposal)
-	if err != nil {
-		// The same value was already encoded by the workflow repository, so this
-		// can only affect the optional post-commit grant, never durability.
-		s.log.Error("marshal committed Proposal for automatic approval", "job", work.JobID, "err", err)
-	} else {
-		s.considerAutomaticApproval(ctx, store.Job{
-			ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
-		}, store.Proposal{
-			ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
-			ProposalJSON: string(blob), CreatedAt: completed.CreatedAt, UpdatedAt: completed.CreatedAt,
-		})
+	row := store.Proposal{
+		ID: completed.ID, JobID: completed.JobID, Status: "submitted", CreatedBy: completed.CreatedBy,
+		Body: completed.Proposal, CreatedAt: completed.CreatedAt, UpdatedAt: completed.CreatedAt,
 	}
+	s.settleSubmitted(ctx, store.Job{
+		ID: work.JobID, Kind: work.Kind, CreatedBy: work.CreatedBy, ChannelID: work.ChannelID, Attempts: work.Attempt,
+	}, row)
 	s.emitPhase(work.JobID, PhaseDone, 0)
 }
 
@@ -420,98 +333,50 @@ func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause err
 	}
 	s.log.Error("suggestion job failed", "job", work.JobID, "attempt", work.Attempt, "err", cause, "cause", unwrapFailure(cause))
 	if measured {
-		s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, measuredDuration, Proposal{}, cause)
+		s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, measuredDuration, proposal.Proposal{}, cause)
 	}
 	s.emitPhase(work.JobID, PhaseFailed, 0)
-}
-
-// runJob executes one suggestion job under JOB_TIMEOUT (§8). A hung LLM hits the
-// deadline and the job fails cleanly; the pool keeps draining others.
-func (s *Service) runJob(ctx context.Context, job store.Job) {
-	jobCtx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-
-	// Thread live progress (§8) into the pipeline: the suggester reports
-	// searching→reasoning→scoring off this context; done/failed are emitted here.
-	jobCtx = WithProgress(jobCtx, func(p Phase, round int) { s.emitPhase(job.ID, p, round) })
-	jobCtx, untrack := s.trackJob(jobCtx, job.ID)
-	defer untrack()
-
-	var intent Intent
-	if err := json.Unmarshal([]byte(job.IntentJSON), &intent); err != nil {
-		s.failJob(ctx, job, fmt.Errorf("bad intent json: %w", err), 0, false)
-		return
-	}
-	intent, err := s.executionIntent(jobCtx, job.Kind, job.ID, intent)
-	if err != nil {
-		s.failJob(ctx, job, err, 0, false)
-		return
-	}
-
-	started := s.now()
-	prop, err := s.suggester.Suggest(jobCtx, intent)
-	duration := s.now().Sub(started)
-	if err != nil {
-		s.failJob(ctx, job, err, duration, true)
-		return
-	}
-	if err := ValidateDecisionTrace(prop.Trace); err != nil {
-		s.failJob(ctx, job, fmt.Errorf("validate proposal trace: %w", err), 0, false)
-		return
-	}
-	propBlob, err := json.Marshal(prop)
-	if err != nil {
-		s.failJob(ctx, job, fmt.Errorf("marshal proposal: %w", err), 0, false)
-		return
-	}
-	// Persist the proposal into the approval queue (submitted). created_by carries
-	// from the job (§8 My proposals). NOTHING auto-executes (§8 human-in-the-loop).
-	now := s.now()
-	p := store.Proposal{
-		ID: s.newID(), JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: string(propBlob), CreatedAt: now, UpdatedAt: now,
-	}
-	if err := s.store.CommitSuggestionSuccess(ctx, job.ID, job.Attempts, p, now); err != nil {
-		if errors.Is(err, store.ErrJobNotRunning) {
-			s.log.Info("discarding stale suggestion result", "job", job.ID, "attempt", job.Attempts, "err", err)
-			return
-		}
-		s.failJob(ctx, job, fmt.Errorf("persist proposal: %w", err), 0, false)
-		return
-	}
-	if s.notify != nil {
-		s.notify.ProposalSubmitted(ctx, p)
-	}
-	s.recordSuggestionQuality(ctx, job.ID, job.Attempts, duration, prop, nil)
-	s.considerAutomaticApproval(ctx, job, p)
-	s.emitPhase(job.ID, PhaseDone, 0)
 }
 
 // executionIntent derives channel feedback scope from durable server-owned work.
 // DiscoveryScopeID is intentionally not serialized, so no caller-controlled Intent
 // can select another channel's feedback at execution time.
-func (s *Service) executionIntent(ctx context.Context, kind, jobID string, intent Intent) (Intent, error) {
+func (s *Service) executionIntent(ctx context.Context, kind, jobID string, intent proposal.Intent) (proposal.Intent, error) {
 	intent.DiscoveryScopeID = ""
 	if kind != jobKindRecurate {
 		return intent, nil
 	}
 	channel, err := s.store.GetChannelForJob(ctx, jobID)
 	if err != nil {
-		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: %w", jobID, err)
+		return proposal.Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: %w", jobID, err)
 	}
 	if strings.TrimSpace(channel.ID) == "" || channel.Status == schedule.StatusDetached {
-		return Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: invalid owner id=%q status=%q",
+		return proposal.Intent{}, fmt.Errorf("resolve recurate channel for Proposal Job %q: invalid owner id=%q status=%q",
 			jobID, channel.ID, channel.Status)
 	}
 	intent.DiscoveryScopeID = channel.ID
 	return intent, nil
 }
 
+// settleSubmitted runs the automatic grants on a freshly committed proposal and tells the
+// approvers a request is waiting only if a person still has to act on it. An auto-approved or
+// auto-curated proposal never sends the waiting notice, so no one is told about a proposal and
+// then told it was approved.
+func (s *Service) settleSubmitted(ctx context.Context, job store.Job, p store.Proposal) {
+	if s.considerAutomaticApproval(ctx, job, p) {
+		return
+	}
+	if s.notify != nil {
+		s.notify.ProposalSubmitted(ctx, p)
+	}
+}
+
 // considerAutomaticApproval applies the two optional grants only after the
 // proposal is durably visible. Generation completion and proposal decision are
 // distinct lifecycles: done means inference produced a persisted proposal;
 // approval may move that proposal from submitted to approved immediately after.
-func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, p store.Proposal) {
+// It reports whether a grant approved the proposal.
+func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, p store.Proposal) (approved bool) {
 	// The auto-approve grant (§8, §11), if the requester holds one and stays within
 	// their cap. Over quota it stays `submitted` for an admin — never denied, because a
 	// cap bounds unattended spending rather than judging the request.
@@ -528,6 +393,7 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 		} else if d.Approved {
 			s.log.Info("auto-approved within quota",
 				"proposal", p.ID, "user", p.CreatedBy, "enqueued", d.Enqueued)
+			approved = true
 		} else {
 			s.log.Debug("not auto-approved", "proposal", p.ID, "reason", d.Reason)
 		}
@@ -544,31 +410,12 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 		} else if d.Approved {
 			s.log.Info("auto-curated within thresholds",
 				"proposal", p.ID, "job", job.ID, "enqueued", d.Enqueued)
+			approved = true
 		} else if d.Reason != "" {
 			s.log.Debug("not auto-curated", "proposal", p.ID, "reason", d.Reason)
 		}
 	}
-}
-
-func (s *Service) failJob(ctx context.Context, job store.Job, cause error, measuredDuration time.Duration, measured bool) {
-	traceJSON, cause := persistedFailure(cause)
-	if err := s.store.CommitSuggestionFailure(
-		ctx, job.ID, job.Attempts, persistedMessage(cause), classifyFailure(cause), traceJSON, s.now(),
-	); err != nil {
-		if errors.Is(err, store.ErrJobNotRunning) {
-			s.log.Info("discarding stale suggestion failure", "job", job.ID, "attempt", job.Attempts,
-				"cause", cause, "err", err)
-		} else {
-			s.log.Error("persist suggestion job failure", "job", job.ID, "attempt", job.Attempts,
-				"cause", cause, "err", err)
-		}
-		return
-	}
-	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause, "cause", unwrapFailure(cause))
-	if measured {
-		s.recordSuggestionQuality(ctx, job.ID, job.Attempts, measuredDuration, Proposal{}, cause)
-	}
-	s.emitPhase(job.ID, PhaseFailed, 0)
+	return approved
 }
 
 func (s *Service) recordSuggestionQuality(
@@ -576,7 +423,7 @@ func (s *Service) recordSuggestionQuality(
 	jobID string,
 	attempt int,
 	duration time.Duration,
-	proposal Proposal,
+	result proposal.Proposal,
 	cause error,
 ) {
 	if s.quality == nil {
@@ -588,7 +435,7 @@ func (s *Service) recordSuggestionQuality(
 	} else if duration > quality.MaxObservationDuration {
 		duration = quality.MaxObservationDuration
 	}
-	trace := proposal.Trace
+	trace := result.Trace
 	var failure *Failure
 	if errors.As(cause, &failure) {
 		trace = failure.Trace
@@ -605,7 +452,7 @@ func (s *Service) recordSuggestionQuality(
 }
 
 func classifySuggestionQuality(
-	trace DecisionTrace,
+	trace proposal.DecisionTrace,
 	duration time.Duration,
 	succeeded bool,
 	failure *Failure,
@@ -685,7 +532,7 @@ func normalizeContextFailure(cause error) error {
 	if !errors.Is(cause, context.DeadlineExceeded) && !errors.Is(cause, context.Canceled) {
 		return cause
 	}
-	trace := DecisionTrace{Version: DecisionTraceVersion}
+	trace := proposal.DecisionTrace{Version: DecisionTraceVersion}
 	var failure *Failure
 	if errors.As(cause, &failure) {
 		trace = failure.Trace.Clone()
@@ -742,7 +589,8 @@ func classifyFailure(cause error) string {
 
 // IntentHash is the cache key: a stable hash of the normalized intent (§8). Field
 // order + case are normalized so semantically-identical intents collide.
-func IntentHash(i Intent) string {
+func IntentHash(request proposal.Intent) string {
+	i := Intent{Intent: request}
 	referenceIdentity, _ := reference.URL(referenceIntentText(i))
 	ceiling, excludeUnrated := intentExplicitAudienceCeiling(i), intentExcludesUnrated(i)
 	audienceConstraint := ""
@@ -791,7 +639,7 @@ func IntentHash(i Intent) string {
 
 // lineupKeys extracts + sorts the current-lineup keys for a stable, order-independent
 // contribution to the intent hash.
-func lineupKeys(ctx []LineupContext) []string {
+func lineupKeys(ctx []proposal.LineupContext) []string {
 	out := make([]string, 0, len(ctx))
 	for _, e := range ctx {
 		if e.Key != "" {

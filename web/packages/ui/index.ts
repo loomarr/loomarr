@@ -137,6 +137,8 @@ export type {
   PlayerBandData,
   PlayerChromeProps,
   PlayerCoverProps,
+  PlayerInfoData,
+  PlayerInfoProps,
   PlayerLiveState,
   PlayerSettingsProps,
   PlayerSheetProps,
@@ -152,6 +154,7 @@ export type {
 export {
   PlayerChrome,
   PlayerCover,
+  PlayerInfo,
   PlayerSettings,
   PlayerSheet,
   playbarFromTimeline,

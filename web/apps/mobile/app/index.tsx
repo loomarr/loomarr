@@ -10,6 +10,7 @@ import type { RequestsController } from "@loomarr/core/requests";
 import { BottomSheet, PHONE_GUTTER } from "@loomarr/design-system";
 import { type HapticFeedback, useHaptic } from "@loomarr/design-system/haptics";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
+import { useCrashReportUpload } from "@loomarr/native-app";
 import {
   createLastChannelStore,
   NativePlayerView,
@@ -39,7 +40,7 @@ import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo, useState } from "react";
 import { AppState, BackHandler, Platform, ScrollView, View } from "react-native";
-import { recordCrashBreadcrumb, useCrashReportUpload } from "../src/crash-reports";
+import { nativeApp } from "../src/native-app";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -188,6 +189,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   // The phone opens on its Guide with no picture, so it tunes only when the viewer picks a channel.
   const client = usePairedClient({
     credential,
+    diagnostics: nativeApp.diagnostics,
     guideWindowMinutes: 120,
     initialTune: "none",
     lastChannel,
@@ -211,7 +213,10 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   const forgetShellPause = useShellPause(controller, active === "watching");
   // Pending crash reports (last launch's included) go to this server once paired.
   useCrashReportUpload(credential, session);
-  useEffect(() => recordCrashBreadcrumb(ClientCrashBreadcrumbCategory.navigation, active), [active]);
+  useEffect(
+    () => nativeApp.crashReports.recordBreadcrumb(ClientCrashBreadcrumbCategory.navigation, active),
+    [active],
+  );
   // Watching a channel from outside it (a Guide pick, a finished request's Open channel).
   const watchChannel = (channelId: string) => {
     haptic.selection();
@@ -327,7 +332,7 @@ const Index = () => {
   }, [haptic, session]);
   useEffect(() => {
     const unsubscribe = session.subscribe(({ status }) =>
-      recordCrashBreadcrumb(ClientCrashBreadcrumbCategory.lifecycle, `pairing ${status}`),
+      nativeApp.crashReports.recordBreadcrumb(ClientCrashBreadcrumbCategory.lifecycle, `pairing ${status}`),
     );
     return () => void unsubscribe();
   }, [session]);

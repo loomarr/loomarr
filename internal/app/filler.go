@@ -17,7 +17,6 @@ import (
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
@@ -727,10 +726,10 @@ type fillerServiceAdapter struct {
 	// sources registers what an operator added, so the Sources tab can show where clips
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
-	sources       fillerSourceRegistry
-	archiveFinder *clipfetch.ArchiveSourceFinder
-	youtubeFinder *clipfetch.YouTubeSourceFinder
-	home          func() filler.Geography
+	sources fillerSourceRegistry
+	// providers suggests and verifies the sources an operator is about to register.
+	providers *sourceprovider.Registry
+	home      func() filler.Geography
 	// acquisitions is the reconnect truth for background downloads. nil is allowed only in
 	// narrow tests; production always supplies the store before any job can be accepted.
 	acquisitions fillerAcquisitionWriter
@@ -756,43 +755,22 @@ type fillerServiceAdapter struct {
 }
 
 func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error) {
-	switch provider {
-	case "archive":
-		finder := a.archiveFinder
-		if finder == nil {
-			finder = clipfetch.NewArchiveSourceFinder()
-		}
-		return finder.Suggest(ctx, query, limit)
-	case "youtube":
-		if a.youtubeFinder == nil {
-			return nil, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
-		}
-		return a.youtubeFinder.Suggest(ctx, query, limit)
-	default:
+	finder, ok := a.providers.Finder(sourceprovider.ID(provider))
+	if !ok {
 		return nil, fmt.Errorf("source suggestions are not implemented for %s", provider)
 	}
+	return finder.Suggest(ctx, query, limit)
 }
 
 func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input string) (sourceprovider.Suggestion, error) {
-	switch provider {
-	case "archive":
-		finder := a.archiveFinder
-		if finder == nil {
-			finder = clipfetch.NewArchiveSourceFinder()
-		}
-		return finder.Resolve(ctx, input)
-	case "youtube":
-		if a.youtubeFinder == nil {
-			return sourceprovider.Suggestion{}, fmt.Errorf("%w: yt-dlp is unavailable", filler.ErrSourceProvider)
-		}
-		return a.youtubeFinder.Resolve(ctx, input)
-	default:
+	finder, ok := a.providers.Finder(sourceprovider.ID(provider))
+	if !ok {
 		return sourceprovider.Suggestion{}, fmt.Errorf("source resolution is not implemented for %s", provider)
 	}
+	return finder.Resolve(ctx, input)
 }
 
 var _ api.FillerRewinder = fillerServiceAdapter{}
-var _ fillerdecision.DiagnosticRecoveryExecutor = fillerServiceAdapter{}
 
 // fillerSourceRegistry is the acquisition-side source slice. Readiness is deliberately absent:
 // this adapter registers and fetches sources but cannot publish a Clip by itself.
@@ -913,33 +891,6 @@ func (a fillerServiceAdapter) RetryFailure(ctx context.Context, hash string) err
 	return a.pipeline.RetryFailure(ctx, hash)
 }
 
-func (a fillerServiceAdapter) DiagnosticRetryStatus(ctx context.Context, hash string) (fillerdecision.DiagnosticRetryStatus, error) {
-	if a.pipeline == nil {
-		return fillerdecision.DiagnosticRetryStatus{}, nil
-	}
-	status, err := a.pipeline.DiagnosticRetryStatus(ctx, hash)
-	return fillerdecision.DiagnosticRetryStatus{Automatic: status.Automatic, RetryAt: status.RetryAt}, err
-}
-
-func (a fillerServiceAdapter) RetryDiagnostic(ctx context.Context, hash string) error {
-	if a.pipeline == nil {
-		return errors.New("filler pipeline is not configured")
-	}
-	status, err := a.pipeline.DiagnosticRetryStatus(ctx, hash)
-	if err != nil {
-		return err
-	}
-	if status.Automatic {
-		return nil
-	}
-	if err := a.pipeline.RetryFailure(ctx, hash); err == nil {
-		return nil
-	} else if !errors.Is(err, filler.ErrPipelineNotRetryable) {
-		return err
-	}
-	return a.pipeline.Rewind(ctx, hash, filler.StageScore, false)
-}
-
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
 	res, err := a.syncer.Sync(ctx)
 	return res.Total, res.Added, res.Updated, res.Pruned, err
@@ -1033,7 +984,7 @@ func (a fillerServiceAdapter) ingest(
 		if kind == "" {
 			// Only the deliberate one-off admin path lacks registered source policy.
 			kind = clipfetch.KindForURL(target.URL)
-		} else if kind != clipfetch.Archive && kind != clipfetch.YouTube {
+		} else if !a.providers.Fetched(kind) {
 			return "", fmt.Errorf("unsupported registered filler source kind %q", target.Kind)
 		}
 		if enabled, known := providerEnabled[string(kind)]; known && !enabled {
@@ -1607,7 +1558,7 @@ func (a fillerServiceAdapter) rememberSources(ctx context.Context, urls []string
 		// proceeds either way, which is the property that matters.
 		// NewFillerSource, not a struct literal: `Enabled` is a bool, so a literal that omits
 		// it registers the source SWITCHED OFF (see the store).
-		_ = a.sources.UpsertFillerSource(ctx, fillerstore.NewFillerSource(id, "archive", u, id, now()))
+		_ = a.sources.UpsertFillerSource(ctx, fillerstore.NewFillerSource(id, string(clipfetch.Archive), u, id, now()))
 	}
 }
 

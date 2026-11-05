@@ -97,13 +97,12 @@ describe("IncomingProcessingDetails", () => {
     ]);
   });
 
-  it("keeps automatic retry visible and links to its existing diagnostic owner", async () => {
+  it("keeps automatic retry visible", async () => {
     render(
       <IncomingProcessingDetails
         processing={processing({
           attempts: 2,
           nextTryAt: new Date(Date.now() + 60_000).toISOString(),
-          diagnosticsHref: "/filler/manage#diagnostics",
           stages: [
             {
               label: "Checking video",
@@ -120,10 +119,7 @@ describe("IncomingProcessingDetails", () => {
     expect(screen.getByText("Trying again")).toBeVisible();
     expect(screen.getByText("This step was tried 2 times.")).toBeVisible();
     expect(screen.getByText("Next try in 1m")).toBeVisible();
-    expect(screen.getByRole("link", { name: "View diagnostics" })).toHaveAttribute(
-      "href",
-      "/filler/manage#diagnostics",
-    );
+    expect(screen.queryByRole("link", { name: "View diagnostics" })).not.toBeInTheDocument();
   });
 
   it("renders a finished Ready history without a progress claim", async () => {

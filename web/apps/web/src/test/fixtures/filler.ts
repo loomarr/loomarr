@@ -1,5 +1,6 @@
 import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { FillerDefectReportDTO } from "@loomarr/api/models/fillerDefectReportDTO";
+import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 
@@ -93,4 +94,73 @@ const fillerSource = (over: Partial<FillerSourceDTO> = {}): FillerSourceDTO => (
   ...over,
 });
 
-export { DEFAULT_KINDS, defectReport, fillerSource, readiness };
+// `fillerProviders` is the registry `GET /v1/filler/providers` answers on a stock install: the two
+// fetched, discoverable services and the two scanned local kinds.
+const fillerProviders: FillerProviderDescriptionDTO[] = [
+  {
+    id: "archive",
+    label: "Archive.org",
+    addressHint: "https://archive.org/details/collection",
+    fetched: true,
+    listable: true,
+    searchable: true,
+    discoverable: true,
+    openSearchable: false,
+    addable: true,
+    blurb: "Public collections of commercials, bumpers, and other broadcast material.",
+    sourceNoun: "Archive.org collection",
+    previewHeading: "Popular videos in this collection",
+    findLabel: "Find an Archive.org collection",
+    findPlaceholder: "Search collections or paste an archive.org URL",
+    findAdd: "Add collection",
+    findNoMatches: "No collections found. Paste the exact URL to check it.",
+    findMinQuery: 2,
+  },
+  {
+    id: "youtube",
+    label: "YouTube",
+    addressHint: "https://www.youtube.com/@channel/videos",
+    fetched: true,
+    listable: true,
+    searchable: false,
+    discoverable: true,
+    openSearchable: false,
+    addable: true,
+    blurb: "Channels and playlists you choose from YouTube.",
+    sourceNoun: "YouTube channel or playlist",
+    previewHeading: "A few videos from this source",
+    findLabel: "Find a YouTube channel or playlist",
+    findPlaceholder: "Search channels or paste a channel or playlist URL",
+    findAdd: "Add source",
+    findNoMatches: "No channels found. Paste a channel or playlist URL to check it.",
+    findMinQuery: 3,
+  },
+  {
+    id: "library",
+    label: "Media library",
+    addressHint: "Commercials — as it appears on your media server",
+    addressLabel: "Library name",
+    sourceNoun: "Media server library",
+    fetched: false,
+    listable: false,
+    searchable: false,
+    discoverable: false,
+    openSearchable: false,
+    addable: true,
+  },
+  {
+    id: "folder",
+    label: "Folder",
+    addressHint: "/data/filler — a full path Loomarr can read",
+    addressLabel: "Folder path",
+    sourceNoun: "Folder on this server",
+    fetched: false,
+    listable: false,
+    searchable: false,
+    discoverable: false,
+    openSearchable: false,
+    addable: true,
+  },
+];
+
+export { DEFAULT_KINDS, defectReport, fillerProviders, fillerSource, readiness };

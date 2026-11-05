@@ -70,7 +70,14 @@ const config: KnipConfig = {
       // Metro bundles web/native-stories (which import @loomarr/fixtures) into the app when
       // STORYBOOK_ENABLED is set, resolving from the app. expo-updates: knip assumes it unless
       // app.json sets updates.enabled=false; the app ships no OTA updates.
-      ignoreDependencies: ["@loomarr/fixtures", "expo-updates", ...nativeFontDependencies],
+      // @loomarr/crash-reports-native: the iOS pod links through the app's dependencies; the
+      // JavaScript side is imported by @loomarr/native-app.
+      ignoreDependencies: [
+        "@loomarr/crash-reports-native",
+        "@loomarr/fixtures",
+        "expo-updates",
+        ...nativeFontDependencies,
+      ],
     },
     "apps/tv": {
       ignoreDependencies: ["@loomarr/fixtures", "expo-updates", ...nativeFontDependencies],
@@ -87,6 +94,9 @@ const config: KnipConfig = {
       ignoreDependencies: ["react-native-web"],
       // vitest.config.ts re-exports vitest.universal.config.ts, which has no `test` block, so
       // knip's Vitest plugin adds no test entries; vitest itself runs its default include.
+      entry: ["tests/**/*.test.{ts,tsx}"],
+    },
+    "packages/native-app": {
       entry: ["tests/**/*.test.{ts,tsx}"],
     },
     "packages/player": {

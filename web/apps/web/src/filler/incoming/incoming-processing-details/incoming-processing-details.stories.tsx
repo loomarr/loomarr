@@ -64,7 +64,6 @@ export const SkippedAndRetrying: Story = {
     frame({
       attempts: 2,
       nextTryAt: new Date(Date.now() + 60_000).toISOString(),
-      diagnosticsHref: "/filler/manage#diagnostics",
       stages: [
         {
           label: "Checking video",

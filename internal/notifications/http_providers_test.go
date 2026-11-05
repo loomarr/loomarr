@@ -275,12 +275,12 @@ func TestHTTPProviderValidationRejectsLookalikeAndIncompleteDestinations(t *test
 	t.Parallel()
 	adapter := httpAdapter(t, notifications.MeansSlack, &providerDoer{})
 	validator := adapter.(notifications.DestinationValidator)
-	if err := validator.ValidateDestination(nil, map[string]string{
+	if err := validator.ValidateDestination(notifications.NewProviderSettings(nil, map[string]string{
 		"webhookUrl": "https://hooks.slack.com.attacker.test/services/T/B/secret",
-	}); err == nil {
+	})); err == nil {
 		t.Fatal("Slack accepted a lookalike webhook host")
 	}
-	if err := validator.ValidateDestination(nil, nil); err == nil {
+	if err := validator.ValidateDestination(notifications.NewProviderSettings(nil, nil)); err == nil {
 		t.Fatal("Slack accepted a missing webhook URL")
 	}
 }
@@ -340,7 +340,7 @@ func TestTelegramRejectsMalformedBotTokenWithoutPanicking(t *testing.T) {
 			doer := &providerDoer{status: http.StatusOK, response: `{"ok":true,"result":{"message_id":1}}`}
 			adapter := httpAdapter(t, notifications.MeansTelegram, doer)
 			credentials := map[string]string{"botToken": token, "chatId": "123"}
-			if err := adapter.(notifications.DestinationValidator).ValidateDestination(nil, credentials); err == nil {
+			if err := adapter.(notifications.DestinationValidator).ValidateDestination(notifications.NewProviderSettings(nil, credentials)); err == nil {
 				t.Fatal("ValidateDestination accepted a malformed bot token")
 			}
 			destination := providerDestination(notifications.MeansTelegram, nil, credentials)

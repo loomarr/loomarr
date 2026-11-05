@@ -14,8 +14,8 @@ One Go-owned **terminal-ready module** makes the production decision after requi
 processing (decision [0030](decisions/0030-readiness-is-evidence-based.md)). It takes the exact
 clip, its durable enrollment authority and the completed conveyor state, and returns Ready, not
 usable, or a real Needs-help task whose answer changes durable state. Retries, provider failures,
-exhausted budgets and missing optional enrichment are operational states in Diagnostics; relabelling
-cannot turn them into chores.
+exhausted budgets and missing optional enrichment are operational states on the clip's Incoming
+processing details; relabelling cannot turn them into chores.
 
 - **One runtime path**, with no `shadow` or `applied` mode. Before any publication write the module
   validates clip identity, requires enrollment authority, derives placement without inventing a
@@ -92,30 +92,23 @@ the affected measurement until it is replayed.
 ## Readiness audit and operator surfaces (V63)
 
 The terminal-ready module appends an immutable effective event (clip, enrollment reference,
-placement, pipeline identity, outcome, time). Human state changes are append-only actions; skipping
-a diagnostic is navigation, not an action. The store contract is the same on SQLite and Postgres:
-events are idempotent by id, event, placement, hold release and settlement share one transaction,
-and reads use keyset pagination on `(created_at, id)` with counts from the row predicates.
+placement, pipeline identity, outcome, time). The store contract is the same on SQLite and
+Postgres: events are idempotent by id, and event, placement, hold release and settlement share one
+transaction.
 
-Four server-owned projections:
+Two server-owned projections answer what needs a person:
 
-- **Overview**: the latest outcome per clip, operational counts and at most one ranked next action.
-  A later Ready clears an older hold from health without erasing it from Activity.
-- **Needs help**: only current exceptional choices, each with one plain question, the decisive
-  evidence and the allowed closed actions. Playback is required before a media-content answer.
-  Queued work, retries, optional classification, provider and budget holds are ineligible, and the
-  browser never invents a task or action.
-- **Activity**: the bounded audit of Ready and not-usable events and real human actions.
-- **Diagnostics**: each clip's latest hold with one server-authored recovery plan: an automatic
-  retry with its time, an allowed manual retry, a configuration destination, or inspection of the
-  held media. No provider text, paths, prompts or evidence locations.
+- **Readiness** (`/v1/filler/readiness`): operational counts and at most one ranked next action.
+  Recoverable work retries on its own; the action points at Incoming, where each row's processing
+  details show the attempt, the next try and the stages that ran.
+- **Needs help** (the Incoming group): only current exceptional choices, each with one plain
+  question, the decisive evidence and the allowed closed actions. Playback is required before a
+  media-content answer. Queued work, retries, optional classification, provider and budget holds
+  are ineligible, and the browser never invents a task or action.
 
-Manual retries use a separate append-only recovery ledger: a caller request id, the authenticated
-actor, and a recheck that the hold is still the latest retryable one. Repeats are no-ops and a
-reused id for another decision conflicts; the hold stays visible until a newer result exists.
-Overview and Activity are member-readable; Needs help, Diagnostics and every action are admin-only
-(403 otherwise). Incoming stays a calm progress summary, never one review form per clip; confidence
-detail and certification comparisons are Advanced or development views.
+Readiness is member-readable and Needs help is admin-only; the browser renders the server's ranking
+and never rebuilds it from counts. Incoming stays a calm progress summary, never one review form per clip; confidence detail
+and certification comparisons are Advanced or development views.
 
 ## What Loomarr learns about a clip
 

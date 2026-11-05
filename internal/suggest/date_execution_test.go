@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -53,7 +54,7 @@ func TestSuggest_ExplicitEpisodeDecadeRejectsNoneThenRecovers(t *testing.T) {
 		testkit.FinalResponse(`{"picks":[{"mediaType":"series","key":"series:tmdb:90003452","name":"Lamplight Lane"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":30,"end":35}],"axes":[{"kind":"series_airing","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
 	)
 
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: description})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +88,7 @@ func TestSuggest_DateWindowUnionRecordsAggregateDispatches(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +121,7 @@ func TestSuggest_DateUnionFirstEmptyLaterNonemptyFinalizesAfterCompleteWindowSet
 			t.Fatalf("finalization started before every union window completed: discoveries=%#v", corpus.Discoveries())
 		}
 	}
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 and 1999 movies"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 and 1999 movies"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,7 @@ func TestSuggest_DateOnlyConstraintsDispatchWithoutOtherDiscoveryQualifiers(t *t
 				testkit.ToolCallResponse("catalog_search", map[string]any{"dateMeaning": tc.meaning}),
 				testkit.FinalResponse(finalWithDateMeaning(t, tc.meaning)),
 			)
-			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
+			proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -178,7 +179,7 @@ func TestSuggest_DateMeaningMismatchNeverDispatchesCatalog(t *testing.T) {
 		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaning1990())),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +199,7 @@ func TestSuggest_NoneDateMeaningWithoutQualifierDoesNotDispatchBeforeValidDateDi
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 action films"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 action films"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +242,7 @@ func TestSuggest_DateUnionProviderErrorDoesNotSurfacePartialCandidates(t *testin
 			}
 		}
 	}
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +284,7 @@ func TestSuggest_DateUnionCreditExhaustionSpansRepairsAndGroundingRetry(t *testi
 	corpus := &catalogfixture.Corpus{DiscoverFunc: func(_ context.Context, _ catalog.DiscoveryQuery, _ int) ([]catalog.Candidate, error) {
 		return nil, catalogfixture.ErrDiscover
 	}}
-	_, err = dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990, 2000, and 2010 movies"})
+	_, err = dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990, 2000, and 2010 movies"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Code != suggest.FailureBudgetExhausted {
 		t.Fatalf("failure = %#v, want budget exhaustion", err)
@@ -313,7 +314,7 @@ func TestSuggest_TwoEmptyDateUnionsStopAfterLogicalRetrievals(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"first"}, "dateMeaning": meaning}),
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"second"}, "dateMeaning": meaning}),
 	)
-	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
+	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.ReasonRetrievalEmpty {
 		t.Fatalf("failure = %#v, want two empty logical retrievals", err)
@@ -335,7 +336,7 @@ func TestSuggest_DateUnionCapacityExhaustionDispatchesNoWindows(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"media_type": "movie", "dateMeaning": meaning}),
 	)
 	corpus := &catalogfixture.Corpus{}
-	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
+	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Code != suggest.FailureBudgetExhausted {
 		t.Fatalf("failure = %#v, want budget exhaustion", err)
@@ -352,7 +353,7 @@ func TestSuggest_InvalidToolDoesNotCommitDateMeaning(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +369,7 @@ func TestSuggest_FinalDateMeaningMismatchRepairsBeforeClarifying(t *testing.T) {
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"ambiguous","anchors":[{"field":"description","start":5,"end":10}],"axes":[]}}`),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":4}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]}}`),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 then 2000 films"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 then 2000 films"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +386,7 @@ func TestSuggest_InitialAmbiguousDateMeaningDoesNotDispatchCatalog(t *testing.T)
 			"kind": "ambiguous", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 5}}, "axes": []any{},
 		},
 	}))
-	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "dated action"})
+	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "dated action"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalDateSemanticsUnclear {
 		t.Fatalf("failure = %#v, want initial date clarification", err)
@@ -406,7 +407,7 @@ func TestSuggest_InitialConflictingDateMeaningDoesNotDispatchCatalog(t *testing.
 			}}},
 		},
 	}))
-	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 action"})
+	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 action"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalConstraintsConflict {
 		t.Fatalf("failure = %#v, want initial date conflict", err)
@@ -422,7 +423,7 @@ func TestSuggest_NoneDateMeaningDropsRawPolicyEra(t *testing.T) {
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaningNone()}),
 		testkit.FinalResponse(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}],"policy":{"era":{"from":1990,"to":1999}},"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "action"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +439,7 @@ func TestSuggest_ExhaustedFinalDateMeaningMismatchIsProviderFailure(t *testing.T
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaning1990()}),
 		testkit.FinalResponse(mismatch), testkit.FinalResponse(mismatch), testkit.FinalResponse(mismatch),
 	)
-	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 then 2000 films"})
+	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 then 2000 films"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Code != "provider_failure" || failure.Trace.Terminal != "malformed_exhausted" {
 		t.Fatalf("failure = %#v, want exhausted provider repair", err)
@@ -462,7 +463,7 @@ func TestSuggest_StrictToolDateMeaningJSONRejectsThenRecovers(t *testing.T) {
 				testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"valid"}, "dateMeaning": valid}),
 				testkit.FinalResponse(finalWithDateMeaning(t, valid)),
 			)
-			if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"}); err != nil {
+			if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"}); err != nil {
 				t.Fatal(err)
 			}
 			if got := corpus.Discoveries(); len(got) != 2 || len(got[0].Query.Genres) != 1 || got[0].Query.Genres[0] != "valid" || len(got[1].Query.Genres) != 1 || got[1].Query.Genres[0] != "valid" {
@@ -489,7 +490,7 @@ func TestSuggest_StrictFinalDateMeaningJSONRejectsBeforeGrounding(t *testing.T) 
 				testkit.FinalResponse(finalWithDateMeaning(t, tc.malformed)),
 				testkit.FinalResponse(finalWithDateMeaning(t, valid)),
 			)
-			if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"}); err != nil {
+			if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"}); err != nil {
 				t.Fatal(err)
 			}
 			if got := corpus.Discoveries(); len(got) != 2 || len(got[0].Query.Genres) != 1 || got[0].Query.Genres[0] != "valid" || len(got[1].Query.Genres) != 1 || got[1].Query.Genres[0] != "valid" {
@@ -506,7 +507,7 @@ func TestSuggest_ExhaustedMalformedFinalDateMeaningDoesNotGroundNames(t *testing
 	malformed := map[string]any{"kind": "constraints", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 4}}, "axes": []any{map[string]any{"kind": "movie_release", "combine": "any", "intervals": []any{map[string]any{"anchor": nil, "start": 1990, "end": 1999}}}}}
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
 	model := testkit.NewLLM(testkit.FinalResponse(finalWithDateMeaning(t, malformed)), testkit.FinalResponse(finalWithDateMeaning(t, malformed)), testkit.FinalResponse(finalWithDateMeaning(t, malformed)))
-	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 films"})
+	_, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 films"})
 	var failure *suggest.Failure
 	if !errors.As(err, &failure) || failure.Code != "provider_failure" || failure.Trace.Terminal != "malformed_exhausted" {
 		t.Fatalf("failure = %#v, want exhausted provider repair", err)
@@ -543,7 +544,7 @@ func TestSuggest_EquivalentCanonicalToolAndFinalDateMeaningsKeepDisjointScope(t 
 		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": toolMeaning}),
 		testkit.FinalResponse(finalWithDateMeaning(t, finalMeaning)),
 	)
-	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "1990 2000 films"})
+	proposal, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "1990 2000 films"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/recurate"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -158,7 +158,7 @@ func TestRunner_NonTMDBLineupSkipsTheWalk(t *testing.T) {
 // ── The unscored-adjacency floor (§8.3) ──────────────────────────────────────────────────
 
 // adjItem is an acquisition candidate that came from the adjacency corpus.
-func adjItem(n int, name string, confidence float64) suggest.ProposalItem {
+func adjItem(n int, name string, confidence float64) proposal.ProposalItem {
 	it := acqItem(n, name, confidence)
 	it.Source = string(catalog.ScopeAdjacent)
 	return it
@@ -173,7 +173,7 @@ func TestCurator_UnscoredAdjacencyPickSurvivesTheBar(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		adjItem(9659, "Rust Road Courier", 0), // model returned no score for a title it was handed
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
@@ -196,7 +196,7 @@ func TestCurator_ScoredAdjacencyPickKeepsTheModelsJudgement(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		adjItem(111, "Weak Fit", 0.20), // the model DID score it, and scored it poorly
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
@@ -217,7 +217,7 @@ func TestCurator_UnscoredLLMPickIsStillDropped(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
-	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
 		acqItem(222, "Unscored LLM Pick", 0), // no Source ⇒ not adjacency
 	})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})

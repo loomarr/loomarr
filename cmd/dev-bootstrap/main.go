@@ -22,7 +22,7 @@ func main() {
 	if err := devbootstrap.ValidateTarget(os.Getenv("LOOMARR_REPO_ROOT"), cfg.DatabaseURL); err != nil {
 		log.Fatalf("dev-bootstrap: %v", err)
 	}
-	if err := ensureDevEncryptionKey(cfg.DatabaseURL); err != nil {
+	if err := ensureDevEncryptionKey(cfg.DataDir); err != nil {
 		log.Fatalf("dev-bootstrap: prepare isolated encryption key: %v", err)
 	}
 	ctx := context.Background()
@@ -47,9 +47,7 @@ func main() {
 // creates in production, but beside the isolated SQLite database before the dev server starts.
 // The worktree runtime exports that file explicitly; no known key or inherited shell secret is
 // needed, and a restart opens the exact same disposable database.
-func ensureDevEncryptionKey(databaseURL string) error {
-	_, err := secretprotection.LoadInstallationKey(secretprotection.InstallationKeyOptions{
-		DataDir: config.DataDirFor(databaseURL),
-	})
+func ensureDevEncryptionKey(dataDir string) error {
+	_, err := secretprotection.LoadInstallationKey(secretprotection.InstallationKeyOptions{DataDir: dataDir})
 	return err
 }

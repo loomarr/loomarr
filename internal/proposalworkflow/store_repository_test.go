@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
@@ -28,7 +28,7 @@ func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 	now := time.Date(2026, time.August, 22, 15, 0, 0, 0, time.UTC)
 	var next atomic.Int64
 	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
-	intent := suggest.Intent{Description: "Saturday morning cartoons"}
+	intent := proposal.Intent{Description: "Saturday morning cartoons"}
 	first, err := workflow.Submit(ctx, intent, "alice", now.Add(-time.Hour))
 	if err != nil || first.JobID == "" || first.CachedProposal != nil {
 		t.Fatalf("first Submit = %+v, %v", first, err)
@@ -37,7 +37,7 @@ func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 	if err != nil || len(work) != 1 {
 		t.Fatalf("Claim = %+v, %v", work, err)
 	}
-	grounded := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
+	grounded := proposal.Proposal{Intent: intent, Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "library")}
 	if _, err := workflow.Complete(ctx, work[0], grounded); err != nil {
@@ -103,12 +103,12 @@ func TestStoreWorkflowRecordsAGroundedProposalAwaitingApproval(t *testing.T) {
 	var next atomic.Int64
 	workflow := New(st, func() string { return "record-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
 
-	intent := suggest.Intent{Description: "Every comedy title in your library that no channel plays yet, on one channel."}
-	proposal := suggest.Proposal{ChannelName: "Comedy Movies", FromIdea: "genre:comedy", Lineup: []suggest.ProposalItem{
+	intent := proposal.Intent{Description: "Every comedy title in your library that no channel plays yet, on one channel."}
+	prop := proposal.Proposal{ChannelName: "Comedy Movies", FromIdea: "genre:comedy", Lineup: []proposal.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Comedy One", Year: 1994, InLibrary: true},
 		{MediaType: provision.Series, TVDBID: 90000002, Name: "Sitcom Two", Year: 1996, InLibrary: true},
 	}}
-	recorded, err := workflow.Record(ctx, intent, proposal, "member-1")
+	recorded, err := workflow.Record(ctx, intent, prop, "member-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,11 +125,11 @@ func TestStoreWorkflowRecordsAGroundedProposalAwaitingApproval(t *testing.T) {
 		t.Fatalf("a recorded Proposal became claimable model work: %+v, %v", work, err)
 	}
 
-	ungrounded := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, Name: "No Identity"}}}
+	ungrounded := proposal.Proposal{Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, Name: "No Identity"}}}
 	if _, err := workflow.Record(ctx, intent, ungrounded, "member-1"); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("ungrounded Record = %v, want ErrInvalidState", err)
 	}
-	if _, err := workflow.Record(ctx, intent, suggest.Proposal{}, "member-1"); !errors.Is(err, ErrInvalidState) {
+	if _, err := workflow.Record(ctx, intent, proposal.Proposal{}, "member-1"); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("empty Record = %v, want ErrInvalidState", err)
 	}
 	queue, err := st.ListProposalsByStatus(ctx, "submitted")
@@ -151,7 +151,7 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 	started := time.Date(2026, time.August, 22, 16, 0, 0, 0, time.UTC)
 	clock := started
 	workflow := New(st, func() string { return "proposal-1" }, func() time.Time { return clock })
-	intent := suggest.Intent{Description: "Saturday morning cartoons"}
+	intent := proposal.Intent{Description: "Saturday morning cartoons"}
 	if err := st.CreateJob(ctx, store.Job{
 		ID: "job-1", Kind: "suggest", Status: "queued", CreatedBy: "member-1",
 		IntentJSON:      `{"description":"Saturday morning cartoons"}`,
@@ -179,16 +179,16 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 		t.Fatalf("recovery claim = (%+v, %v)", second, err)
 	}
 
-	proposal := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
+	prop := proposal.Proposal{Intent: intent, Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "library")}
-	if _, err := workflow.Complete(ctx, first[0], proposal); !errors.Is(err, ErrStaleAttempt) {
+	if _, err := workflow.Complete(ctx, first[0], prop); !errors.Is(err, ErrStaleAttempt) {
 		t.Fatalf("late Attempt completion = %v, want ErrStaleAttempt", err)
 	}
 	if _, err := st.GetProposal(ctx, "proposal-1"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("late Attempt published Proposal: %v", err)
 	}
-	if _, err := workflow.Complete(ctx, second[0], proposal); err != nil {
+	if _, err := workflow.Complete(ctx, second[0], prop); err != nil {
 		t.Fatalf("current Attempt completion: %v", err)
 	}
 
@@ -287,6 +287,52 @@ func TestStoreWorkflowListsCallerJourneysIncludingJobsWithoutProposal(t *testing
 // transaction, so the only way an approved Proposal loses its Channel is a later
 // hard delete (DELETE /v1/channels/{id}?purge=true). One such orphan must not
 // fail the whole list, and the healthy neighbour must still be reported.
+// A Job whose stored Intent cannot be decoded is failed on its own; it never aborts the claim, so
+// the healthy Jobs claimed in the same batch still run instead of sitting leased until expiry.
+func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "poison.db"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, time.November, 3, 9, 0, 0, 0, time.UTC)
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+	for _, job := range []store.Job{
+		{ID: "poison", IntentJSON: "{"},
+		{ID: "good", IntentJSON: `{"description":"Noir"}`},
+	} {
+		job.Kind, job.Status, job.CreatedBy, job.WorkflowVersion = "suggest", "queued", "alice", store.ProposalWorkflowVersion
+		job.Deadline, job.CreatedAt, job.UpdatedAt = now, now, now
+		if err := st.CreateJob(ctx, job); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	works, err := workflow.Claim(ctx, now, time.Minute, 10)
+	if err != nil {
+		t.Fatalf("Claim = %v, want the healthy Job despite the poison one", err)
+	}
+	if len(works) != 1 || works[0].JobID != "good" || works[0].Intent.Description != "Noir" {
+		t.Fatalf("Claim returned %+v, want only the good Job", works)
+	}
+	poison, err := st.GetJob(ctx, "poison")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if poison.Status != "failed" || poison.FailureCode != string(FailureGenerationFailed) ||
+		!strings.Contains(poison.LastError, "Intent") {
+		t.Fatalf("poison Job = status %q code %q last_error %q, want failed with an Intent decode explanation",
+			poison.Status, poison.FailureCode, poison.LastError)
+	}
+	// Failed is terminal: the next claim never hands it out again.
+	if again, err := workflow.Claim(ctx, now.Add(time.Hour), time.Minute, 10); err != nil || len(again) != 1 || again[0].JobID != "good" {
+		t.Fatalf("second Claim = %+v, %v, want the expired good lease only", again, err)
+	}
+}
+
 func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testing.T) {
 	t.Parallel()
 
@@ -311,18 +357,18 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 		if claimed, err := st.ClaimDueJobs(ctx, now, time.Minute, 10); err != nil || len(claimed) == 0 {
 			t.Fatalf("claim %s = %+v, %v", jobID, claimed, err)
 		}
-		proposal := store.Proposal{
+		prop := store.Proposal{
 			ID: "proposal-" + jobID, JobID: jobID, Status: "submitted", CreatedBy: "alice",
-			ProposalJSON: `{"lineup":[{"name":"Noir"}]}`, CreatedAt: now, UpdatedAt: now,
+			Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Noir"}}}, CreatedAt: now, UpdatedAt: now,
 		}
-		if err := st.CommitSuggestionSuccess(ctx, jobID, 1, proposal, now); err != nil {
+		if err := st.CommitSuggestionSuccess(ctx, jobID, 1, prop, now); err != nil {
 			t.Fatal(err)
 		}
-		proposal.Status, proposal.ApprovedBy, proposal.ApprovedAt = "approved", "admin", now
+		prop.Status, prop.ApprovedBy, prop.ApprovedAt = "approved", "admin", now
 		ch := store.Channel{}
 		ch.ID, ch.IntentRef, ch.Name, ch.Number = "ch-"+jobID, jobID, "Channel "+jobID, number
 		ch.Strategy, ch.Status, ch.ReconcileDeadline = schedule.Sequential, schedule.StatusBuilding, now
-		if _, err := st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: proposal, Channel: ch}); err != nil {
+		if _, err := st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: prop, Channel: ch}); err != nil {
 			t.Fatal(err)
 		}
 		created, err := st.GetChannel(ctx, ch.ID)
@@ -371,7 +417,7 @@ func TestStoreWorkflowSubmitForChannelIsFreshAndNeverCached(t *testing.T) {
 	now := time.Date(2026, time.August, 22, 15, 0, 0, 0, time.UTC)
 	var next atomic.Int64
 	workflow := New(st, func() string { return "workflow-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
-	intent := suggest.Intent{Description: "Saturday morning cartoons"}
+	intent := proposal.Intent{Description: "Saturday morning cartoons"}
 	first, err := workflow.Submit(ctx, intent, "alice", now.Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -380,7 +426,7 @@ func TestStoreWorkflowSubmitForChannelIsFreshAndNeverCached(t *testing.T) {
 	if err != nil || len(work) != 1 {
 		t.Fatalf("Claim = %+v, %v", work, err)
 	}
-	grounded := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
+	grounded := proposal.Proposal{Intent: intent, Lineup: []proposal.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "library")}
 	if _, err := workflow.Complete(ctx, work[0], grounded); err != nil {

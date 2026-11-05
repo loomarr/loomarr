@@ -1,0 +1,147 @@
+[
+  {
+    "seriesId": 90000011,
+    "seasonNumber": 1,
+    "relativePath": "Season 01/The Lantern Office - S01E01 - First Light.mkv",
+    "path": "/data/tv/The Lantern Office/Season 01/The Lantern Office - S01E01 - First Light.mkv",
+    "size": 1610612736,
+    "dateAdded": "2024-01-02T03:04:05Z",
+    "releaseGroup": "INVENTED",
+    "languages": [
+      {
+        "name": "English"
+      }
+    ],
+    "quality": {
+      "quality": {
+        "name": "WEBDL-1080p",
+        "source": "web",
+        "resolution": 1080
+      },
+      "revision": {
+        "version": 1,
+        "real": 0,
+        "isRepack": false
+      }
+    },
+    "mediaInfo": {
+      "audioBitrate": 640000,
+      "audioChannels": 5.1,
+      "audioCodec": "EAC3",
+      "audioLanguages": "eng",
+      "audioStreamCount": 1,
+      "videoBitDepth": 10,
+      "videoBitrate": 0,
+      "videoCodec": "x265",
+      "videoFps": 23.976,
+      "videoDynamicRange": "HDR",
+      "videoDynamicRangeType": "HDR10",
+      "resolution": "1920x1080",
+      "runTime": "44:12",
+      "scanType": "Progressive",
+      "subtitles": "eng/spa"
+    },
+    "qualityCutoffNotMet": false,
+    "id": 90000201
+  },
+  {
+    "seriesId": 90000011,
+    "seasonNumber": 1,
+    "relativePath": "Season 01/The Lantern Office - S01E02 - The Tide Ledger.mkv",
+    "path": "/data/tv/The Lantern Office/Season 01/The Lantern Office - S01E02 - The Tide Ledger.mkv",
+    "size": 1503238553,
+    "dateAdded": "2024-01-02T03:04:05Z",
+    "quality": {
+      "quality": {
+        "name": "WEBDL-1080p",
+        "source": "web",
+        "resolution": 1080
+      },
+      "revision": {
+        "version": 1,
+        "real": 0,
+        "isRepack": false
+      }
+    },
+    "mediaInfo": {
+      "audioBitrate": 384000,
+      "audioChannels": 2,
+      "audioCodec": "AAC",
+      "audioLanguages": "eng",
+      "audioStreamCount": 1,
+      "videoBitDepth": 8,
+      "videoBitrate": 0,
+      "videoCodec": "h264",
+      "videoFps": 23.976,
+      "videoDynamicRange": "",
+      "videoDynamicRangeType": "",
+      "resolution": "1920x1080",
+      "runTime": "43:58",
+      "scanType": "Progressive",
+      "subtitles": ""
+    },
+    "qualityCutoffNotMet": false,
+    "id": 90000202
+  },
+  {
+    "seriesId": 90000011,
+    "seasonNumber": 0,
+    "relativePath": "Specials/The Lantern Office - S00E01 - Lamps Before Winter.mkv",
+    "path": "/data/tv/The Lantern Office/Specials/The Lantern Office - S00E01 - Lamps Before Winter.mkv",
+    "size": 1717986918,
+    "dateAdded": "2024-01-02T03:04:05Z",
+    "quality": {
+      "quality": {
+        "name": "WEBDL-1080p",
+        "source": "web",
+        "resolution": 1080
+      },
+      "revision": {
+        "version": 1,
+        "real": 0,
+        "isRepack": false
+      }
+    },
+    "qualityCutoffNotMet": false,
+    "id": 90000203
+  },
+  {
+    "seriesId": 90000012,
+    "seasonNumber": 1,
+    "relativePath": "Season 1/Quillfeather Junction - S01E01 - Pilot Signal.avi",
+    "path": "/data/tv/Quillfeather Junction/Season 1/Quillfeather Junction - S01E01 - Pilot Signal.avi",
+    "size": 367001600,
+    "dateAdded": "2024-01-02T03:04:05Z",
+    "quality": {
+      "quality": {
+        "name": "DVD",
+        "source": "dvd",
+        "resolution": 480
+      },
+      "revision": {
+        "version": 1,
+        "real": 0,
+        "isRepack": false
+      }
+    },
+    "mediaInfo": {
+      "audioBitrate": 192000,
+      "audioChannels": 2,
+      "audioCodec": "MP3",
+      "audioLanguages": "",
+      "audioStreamCount": 1,
+      "videoBitDepth": 8,
+      "videoBitrate": 1200000,
+      "videoCodec": "XviD",
+      "videoFps": 29.97,
+      "videoDynamicRange": "SDR",
+      "videoDynamicRangeType": "",
+      "resolution": "640x480",
+      "runTime": "0:22:31",
+      "scanType": "Interlaced",
+      "subtitles": ""
+    },
+    "qualityCutoffNotMet": true,
+    "id": 90000211
+  }
+]
