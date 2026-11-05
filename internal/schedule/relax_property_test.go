@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // ladderProgress is a monotone-decreasing scalar over the fields the ladder is
@@ -61,7 +62,7 @@ func ladderProgress(rp ResolvedPolicy) int64 {
 // explicit scope (series/seasons) are set to non-zero sentinels so a mutation would be
 // caught by the never-relaxed assertions.
 func randResolvedPolicy(g *rand.Rand) ResolvedPolicy {
-	ceilings := []Rating{"", "TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14", "TV-MA", "PG-13", "R"}
+	ceilings := []rating.Rating{"", "TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14", "TV-MA", "PG-13", "R"}
 	rp := ResolvedPolicy{
 		Ceiling:  ceilings[g.Intn(len(ceilings))],
 		Ordering: OrderSyndication,
@@ -112,7 +113,7 @@ func randResolvedPolicy(g *rand.Rand) ResolvedPolicy {
 
 // snapshotScope deep-copies the never-relaxed fields so later comparison isn't
 // fooled by aliasing (Dates/Seasons are pointers; Series is a slice).
-func snapshotScope(rp ResolvedPolicy) (Rating, []provision.Key, *Range, *DateScope) {
+func snapshotScope(rp ResolvedPolicy) (rating.Rating, []provision.Key, *Range, *DateScope) {
 	var series []provision.Key
 	if rp.Scope.Series != nil {
 		series = append([]provision.Key(nil), rp.Scope.Series...)

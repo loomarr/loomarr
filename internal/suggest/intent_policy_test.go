@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -67,7 +68,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 			intent: Intent{Intent: proposal.Intent{Description: "Saturday morning cartoons for kids"}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
-				safetyCeiling:    schedule.Rating("TV-Y7"),
+				safetyCeiling:    rating.Rating("TV-Y7"),
 				kidsSignal:       true,
 			},
 		},
@@ -76,7 +77,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 			intent: Intent{Intent: proposal.Intent{Description: "90s action rated PG-13", Era: "1990s"}},
 			want: deterministicIntentPolicy{
 				episodeSelection:        schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
-				explicitAudienceCeiling: schedule.Rating("PG-13"),
+				explicitAudienceCeiling: rating.Rating("PG-13"),
 				kidsSignal:              true,
 			},
 		},

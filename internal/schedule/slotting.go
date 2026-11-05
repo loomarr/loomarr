@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // This file is the ChannelPolicy ENFORCEMENT half (programming-design §3–§5): the
@@ -160,10 +161,10 @@ const (
 	verdictUnratedExcluded
 )
 
-func audienceVerdict(raw Rating, ceiling Rating, unrated UnratedPolicy) verdict {
-	r := normalizeRating(string(raw)) // raw may already be normalized (stamped) — idempotent
-	if r.mapped() {
-		if ceiling == "" || r.atOrBelow(ceiling) {
+func audienceVerdict(raw rating.Rating, ceiling rating.Rating, unrated UnratedPolicy) verdict {
+	r := rating.Normalize(string(raw)) // raw may already be normalized (stamped) — idempotent
+	if r.Mapped() {
+		if ceiling == "" || r.AtOrBelow(ceiling) {
 			return verdictKeep
 		}
 		return verdictOverCeiling
@@ -184,7 +185,7 @@ func audienceVerdict(raw Rating, ceiling Rating, unrated UnratedPolicy) verdict 
 // screen dishonest: the operator authorises seven and gets five (#259). But the cure for that
 // must not be a second reading of the ladder — #260 is what a second reading costs, where two
 // places agreed about ratings for months and then quietly didn't. One function, both callers.
-func (a AudiencePolicy) Admits(raw Rating) (bool, string) {
+func (a AudiencePolicy) Admits(raw rating.Rating) (bool, string) {
 	if a.Ceiling == "" && a.Unrated != UnratedExclude {
 		return true, ""
 	}
@@ -221,8 +222,8 @@ func (a AudiencePolicy) Admits(raw Rating) (bool, string) {
 //
 // The asymmetry still holds where it counts: an episode that IS rated is judged on its own
 // rating and can never be lifted by a permissive parent.
-func episodeVerdict(epRating, seriesRating, ceiling Rating, unrated UnratedPolicy) verdict {
-	if epRating.mapped() {
+func episodeVerdict(epRating, seriesRating, ceiling rating.Rating, unrated UnratedPolicy) verdict {
+	if epRating.Mapped() {
 		return audienceVerdict(epRating, ceiling, unrated)
 	}
 	return audienceVerdict(seriesRating, ceiling, unrated)

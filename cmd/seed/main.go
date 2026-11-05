@@ -39,6 +39,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -344,7 +345,7 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 			entries[i].Title = it.Name
 			entries[i].DurationMs = p.durMs
 			entries[i].Year = it.Year
-			entries[i].OfficialRating = schedule.Rating(p.rating)
+			entries[i].OfficialRating = rating.Rating(p.rating)
 		}
 		avail[key] = resolved{libID: it.LibraryItemID, dur: p.durMs, title: it.Name}
 	}

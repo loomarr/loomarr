@@ -8,8 +8,8 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 11 imports — the store, settings and jobs behind the provision backstop, and the outbound HTTP client and metrics every remote service call goes through
-- **channels** · 3 imports — `schedule.NormalizeRating` for one rating vocabulary, and `schedule.ResolvedProgram` for the backstop's view of what a channel will play, until both move to a shared vocabulary
+- **platform** · 13 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
+- **channels** · 1 import — `schedule.ResolvedProgram` for the backstop's view of what a channel will play, until the episode resolver returns a library-owned value
 
 ## Packages
 
@@ -29,11 +29,11 @@ One area of the [package map](../package-map.md#start-here).
   The artwork beside the media as a metadata provider (#2151 decision 19).
 - **`metadataprovider/nfo`** · → `metadataprovider`
   Kodi NFO sidecars as a metadata provider (#2151 decision 2).
-- **`metadataprovider/precedence`** · → `metadataprovider`, `schedule`
+- **`metadataprovider/precedence`** · → `metadataprovider`, `rating`
   Decides which source's value Loomarr uses for each field of a media item (#2151 decision 7, ADR 0046).
 - **`metadataprovider/providertest`** · → `metadataprovider`
   Conformance suite every metadata provider runs.
-- **`metadataprovider/tmdb`** · → `httpx`, `metadataprovider`, `schedule`, `tmdb`
+- **`metadataprovider/tmdb`** · → `httpx`, `metadataprovider`, `rating`, `tmdb`
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.

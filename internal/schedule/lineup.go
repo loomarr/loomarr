@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // DesiredLineup is the ordered set of Slots a channel *should* have right now,
@@ -181,7 +182,7 @@ type ResolvedProgram struct {
 	// this field existed decode as "". That is precisely the case inheritance makes safe — a
 	// fail-closed reading would have emptied every kids channel on deploy until the refresh
 	// sweep repopulated the cache.
-	OfficialRating Rating
+	OfficialRating rating.Rating
 	// CommunityRating, Overview, and Tags are editorial evidence supplied by the
 	// media server. They never override scope or audience safety; an optional
 	// EpisodeSelection consumes them only after those hard filters have passed.
@@ -227,10 +228,10 @@ type LineupEntry struct {
 	// scope, and runtime cap read these off the entry so enforcement stays a pure
 	// entry-set filter with no per-reconcile library I/O. For a series these are the
 	// SERIES' values (v1 series-level ceiling; episodes carry no per-episode rating).
-	OfficialRating Rating   // media-server content rating, normalized at enforcement
-	Genres         []string // for genre scope + corroborating a seasonal mood word (§6)
-	Year           int      // for era scope + seasonal windowing
-	RuntimeSec     int      // for the runtimeMax cap; 0 = unknown (not filtered on runtime)
+	OfficialRating rating.Rating // media-server content rating, normalized at enforcement
+	Genres         []string      // for genre scope + corroborating a seasonal mood word (§6)
+	Year           int           // for era scope + seasonal windowing
+	RuntimeSec     int           // for the runtimeMax cap; 0 = unknown (not filtered on runtime)
 	// CollectionID is the TMDB collection (franchise) a MOVIE belongs to (§5 franchise
 	// ordering): films sharing a CollectionID > 0 are kept together, in release-year order,
 	// as an atomic block. Tri-state so the reconcile heal is a ONE-TIME repair, not a

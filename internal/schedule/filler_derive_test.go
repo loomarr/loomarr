@@ -1,12 +1,16 @@
 package schedule
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/loomarr/loomarr/internal/rating"
+)
 
 func TestDeriveFiller_Audience(t *testing.T) {
-	entry := func(r Rating) LineupEntry { return LineupEntry{OfficialRating: r} }
+	entry := func(r rating.Rating) LineupEntry { return LineupEntry{OfficialRating: r} }
 	for _, tc := range []struct {
 		name    string
-		ceiling Rating
+		ceiling rating.Rating
 		lineup  []LineupEntry
 		want    string
 	}{

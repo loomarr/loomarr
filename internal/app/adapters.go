@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -178,7 +179,7 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 				EpisodeEnd:    e.EpisodeEnd, // §5 multi-part: single-file span end
 				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
 				// so the schedule domain only ever compares ladder values (§4).
-				OfficialRating:  schedule.NormalizeRating(e.OfficialRating),
+				OfficialRating:  rating.Normalize(e.OfficialRating),
 				CommunityRating: e.CommunityRating,
 				Overview:        e.Overview,
 				Tags:            append([]string(nil), e.Tags...),

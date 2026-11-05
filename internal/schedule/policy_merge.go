@@ -3,6 +3,8 @@ package schedule
 import (
 	"reflect"
 	"sort"
+
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // Policy ownership merge (programming-design §2.1 / §8.2). ChannelPolicy mixes three
@@ -174,7 +176,7 @@ func mergeRules(existing, incoming []SchedulingRule) []SchedulingRule {
 // tighterCeiling returns the stricter (lower on the ladder) of two ceilings. "" (no
 // ceiling) is the loosest, so any mapped ceiling wins over it. A merge may TIGHTEN a
 // ceiling but never loosen one (§4).
-func tighterCeiling(a, b Rating) Rating {
+func tighterCeiling(a, b rating.Rating) rating.Rating {
 	ra, aok := a.Rank()
 	rb, bok := b.Rank()
 	switch {
