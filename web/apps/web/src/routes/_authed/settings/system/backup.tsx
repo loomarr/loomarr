@@ -1,4 +1,5 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
@@ -55,7 +56,7 @@ const BackupPage = () => {
         {
           group: "backup",
           title: "Automatic backups",
-          keys: ["backup.schedule", "backup.retain", "backup.dir"],
+          keys: [SettingKey.BackupSchedule, SettingKey.BackupRetain, SettingKey.BackupDir],
         },
       ]}
       footer={

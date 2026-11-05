@@ -1,4 +1,6 @@
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
+import { SettingKind } from "@loomarr/api/models/settingKind";
+import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
 import { FieldHint } from "@loomarr/design-system";
@@ -20,9 +22,9 @@ import type { SettingFieldProps } from "./setting-field.type";
 // options, `doc` is the help text, `provenance: env` LOCKS the field with a "set via
 // environment" chip (env > database > default, visible provenance), and a secret shows
 // its masked tail with replace-only editing (§4 — a stored secret is never echoed).
-const inputTypeFor = (kind: string): string => {
-  if (kind === "int") return "number";
-  if (kind === "url") return "url";
+const inputTypeFor = (kind: SettingKind): string => {
+  if (kind === SettingKind.int) return "number";
+  if (kind === SettingKind.url) return "url";
   return "text";
 };
 
@@ -50,24 +52,9 @@ const durationRaw = (amount: number, unit: DurationUnit): string => {
   return `${Number(seconds.toFixed(3))}s`;
 };
 
-const fillerSchedulePreset = (raw: string): string => {
-  const { amount, unit } = durationParts(raw);
-  const seconds = amount * ({ days: 86400, hours: 3600, minutes: 60, seconds: 1 } as const)[unit];
-  if (seconds === 0) return "never";
-  if (seconds === 6 * 3600) return "6h";
-  if (seconds === 12 * 3600) return "12h";
-  if (seconds === 24 * 3600) return "daily";
-  if (seconds === 7 * 24 * 3600) return "weekly";
-  return "custom";
-};
-
-const fillerScheduleRaw: Record<string, string> = {
-  never: "0s",
-  "6h": "6h",
-  "12h": "12h",
-  daily: "24h",
-  weekly: "168h",
-};
+// The Custom choice offered after the registry's presets. It cannot collide with a preset: preset
+// values are canonical setting values, and no setting accepts this word as one.
+const CUSTOM_PRESET = "custom";
 
 const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
   const bytes = Number(raw);
@@ -110,7 +97,7 @@ const SettingField = ({
   // the key, and the surface must have supplied a handler.
   const canUnlock = onEnvOverride !== undefined && entry.envPinnable === true;
   const invalid = result?.status === SettingResultStatus.invalid;
-  const inlineSwitch = entry.kind === "bool" && entry.presentation === "switch";
+  const inlineSwitch = entry.kind === SettingKind.bool && entry.presentation === SettingPresentation.switch;
   const problem = invalid ? result?.problem : undefined;
   // Compact mode renders none of the explanatory elements, so pointing at one would be a dangling
   // reference. Full fields associate the ordinary help, any unavailable reason, and the server's
@@ -131,8 +118,8 @@ const SettingField = ({
   const secretLocked = entry.secret && entry.set && !replacing;
 
   const control = () => {
-    if (entry.kind === "bool") {
-      if (entry.presentation === "switch") {
+    if (entry.kind === SettingKind.bool) {
+      if (entry.presentation === SettingPresentation.switch) {
         return (
           <Switch
             id={id}
@@ -155,7 +142,7 @@ const SettingField = ({
         />
       );
     }
-    if (entry.kind === "enum") {
+    if (entry.kind === SettingKind.enum) {
       return (
         <Select value={value} disabled={pinned || disabledReason !== undefined} onValueChange={onChange}>
           <SelectTrigger
@@ -179,8 +166,11 @@ const SettingField = ({
         </Select>
       );
     }
-    if (entry.presentation === "filler_download_schedule") {
-      const preset = editingCustomSchedule ? "custom" : fillerSchedulePreset(value);
+    if (entry.presentation === SettingPresentation.filler_download_schedule) {
+      // The registry publishes presets in canonical form, so a resolved value matches by string.
+      const presets = entry.presets ?? [];
+      const matched = presets.find((option) => option.value === value);
+      const preset = editingCustomSchedule || !matched ? CUSTOM_PRESET : matched.value;
       const current = durationParts(value);
       return (
         <div className="flex flex-col gap-2">
@@ -188,12 +178,12 @@ const SettingField = ({
             value={preset}
             disabled={pinned || disabledReason !== undefined}
             onValueChange={(next) => {
-              if (next === "custom") {
+              if (next === CUSTOM_PRESET) {
                 setEditingCustomSchedule(true);
                 return;
               }
               setEditingCustomSchedule(false);
-              onChange(fillerScheduleRaw[next] ?? value);
+              onChange(next);
             }}
           >
             <SelectTrigger
@@ -205,15 +195,15 @@ const SettingField = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="never">Never</SelectItem>
-              <SelectItem value="6h">Every 6 hours</SelectItem>
-              <SelectItem value="12h">Every 12 hours</SelectItem>
-              <SelectItem value="daily">Daily</SelectItem>
-              <SelectItem value="weekly">Weekly</SelectItem>
-              <SelectItem value="custom">Custom</SelectItem>
+              {presets.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+              <SelectItem value={CUSTOM_PRESET}>Custom</SelectItem>
             </SelectContent>
           </Select>
-          {preset === "custom" && (
+          {preset === CUSTOM_PRESET && (
             <div className="flex gap-2">
               <Input
                 type="number"
@@ -246,7 +236,7 @@ const SettingField = ({
         </div>
       );
     }
-    if (entry.kind === "duration") {
+    if (entry.kind === SettingKind.duration) {
       const current = durationParts(value);
       return (
         <div className="flex gap-2">
@@ -281,7 +271,7 @@ const SettingField = ({
         </div>
       );
     }
-    if (entry.presentation === "bytes") {
+    if (entry.presentation === SettingPresentation.bytes) {
       const current = byteParts(value);
       return (
         <WithUnit unit={current.unit}>

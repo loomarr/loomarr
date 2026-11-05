@@ -1,4 +1,5 @@
 import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { createFileRoute } from "@tanstack/react-router";
 import { PlayoutPanel } from "@/components/loomarr/dashboard/playout-panel";
@@ -19,7 +20,7 @@ const PlaybackSettings = () => {
           title: "Playback engine",
           description:
             "Choose who streams channels by default. Loomarr manages internal playback here; Tunarr-backed channels use the transcode profile in Settings → Connections.",
-          keys: ["playout.backend", "server.public_url"],
+          keys: [SettingKey.PlayoutBackend, SettingKey.ServerPublicURL],
         },
         {
           group: "playout",
@@ -27,11 +28,11 @@ const PlaybackSettings = () => {
           description:
             "Defaults for Loomarr's internal playback. Individual channels can still choose their own audio language.",
           keys: [
-            "playout.quality_tier",
-            "playout.audio_language",
-            "playout.tone_curve",
-            "playout.watermark_look",
-            "playout.watermark_opacity_pct",
+            SettingKey.PlayoutQualityTier,
+            SettingKey.PlayoutAudioLanguage,
+            SettingKey.PlayoutToneCurve,
+            SettingKey.PlayoutWatermarkLook,
+            SettingKey.PlayoutWatermarkOpacityPct,
           ],
         },
         {
@@ -39,27 +40,27 @@ const PlaybackSettings = () => {
           title: "Live capacity",
           description:
             "Limit simultaneous internal transcodes. Loomarr selects the best detected encoder automatically; a manual override is available under Advanced.",
-          keys: ["playout.max_channels", "playout.encoder"],
+          keys: [SettingKey.PlayoutMaxChannels, SettingKey.PlayoutEncoder],
         },
         {
           group: "playout",
           title: "TV guide",
           description: "How channel times are displayed and how far back the guide can browse.",
-          keys: ["guide.timezone", "guide.retention_hours"],
+          keys: [SettingKey.GuideTimezone, SettingKey.GuideRetentionHours],
         },
         {
           group: "connections.media_server",
           title: "Direct-play paths",
           description:
             "Advanced path translation for media files mounted at different locations in Loomarr and your media server.",
-          keys: ["library.path_map"],
+          keys: [SettingKey.LibraryPathMap],
         },
         {
           group: "playout",
           title: "Internal playback storage",
           description:
             "Advanced executable and live-segment storage controls. The defaults are right for most installations.",
-          keys: ["playout.ffmpeg_path", "playout.hls_dir"],
+          keys: [SettingKey.PlayoutFFmpegPath, SettingKey.PlayoutHLSDir],
         },
       ]}
     >

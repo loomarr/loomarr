@@ -4,6 +4,7 @@ import {
   getJobsListMockHandler,
   getJobsPauseMockHandler,
   getJobsRunMockHandler,
+  getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -11,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { describe, expect, it, vi } from "vitest";
+import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { TasksPage } from "./tasks-page";
 
@@ -75,12 +77,22 @@ const history: JobHistoryView = {
   ],
 };
 
+// The registry's presets on each job schedule setting, which name a schedule in the task rows.
+const schedulePresets = [
+  { value: "0 */5 * * * *", label: "Every 5 minutes" },
+  { value: "0 */15 * * * *", label: "Every 15 minutes" },
+];
+
 const stubJobs = (list: JobView[] = jobs, jobHistory: JobHistoryView = history) => {
   const runs: string[] = [];
   const pauses: { name: string; paused: boolean }[] = [];
   let listGets = 0;
   let historyGets = 0;
   server.use(
+    getSettingsListMockHandler({
+      features: {},
+      settings: list.map((job) => setting({ key: job.scheduleKey, kind: "cron", presets: schedulePresets })),
+    }),
     getJobsListMockHandler(() => {
       listGets += 1;
       return { jobs: list };

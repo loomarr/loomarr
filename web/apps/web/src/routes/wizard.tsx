@@ -1,6 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
@@ -108,25 +109,24 @@ const WizardScreen = () => {
   // the rail and the resolver disagree.
   const settings = settingsApi.useSettingsList({ query: { enabled: isAuthenticated, retry: false } });
   const entries = unwrap(settings.data, (b) => b.settings) ?? [];
-  const playoutEntry = entries.find((e) => e.key === "playout.backend");
-  const publicURLEntry = entries.find((e) => e.key === "server.public_url");
+  const playoutEntry = entries.find((e) => e.key === SettingKey.PlayoutBackend);
+  const publicURLEntry = entries.find((e) => e.key === SettingKey.ServerPublicURL);
   const locationEntries = entries.filter(
     (entry) =>
-      entry.key === "filler.home_country" ||
-      entry.key === "filler.home_place" ||
-      entry.key === "filler.local_radius_km" ||
-      entry.key === "filler.language",
+      entry.key === SettingKey.FillerHomeCountry ||
+      entry.key === SettingKey.FillerHomePlace ||
+      entry.key === SettingKey.FillerLocalRadiusKm ||
+      entry.key === SettingKey.FillerLanguage,
   );
-  const persistedCountry = locationEntries.find((entry) => entry.key === "filler.home_country")?.value ?? "";
-  const persistedPlace = locationEntries.find((entry) => entry.key === "filler.home_place")?.value ?? "";
-  const persistedRadius =
-    locationEntries.find((entry) => entry.key === "filler.local_radius_km")?.value ?? "";
-  const persistedLanguage = locationEntries.find((entry) => entry.key === "filler.language")?.value ?? "en";
-  const [locationEdits, setLocationEdits] = useState<Record<string, string>>({});
-  const liveCountry = locationEdits["filler.home_country"] ?? persistedCountry;
-  const livePlace = locationEdits["filler.home_place"] ?? persistedPlace;
-  const liveRadius = locationEdits["filler.local_radius_km"] ?? persistedRadius;
-  const liveLanguage = locationEdits["filler.language"] ?? persistedLanguage;
+  const persisted = (key: SettingKey) => locationEntries.find((entry) => entry.key === key)?.value;
+  const persistedCountry = persisted(SettingKey.FillerHomeCountry) ?? "";
+  const [locationEdits, setLocationEdits] = useState<Partial<Record<SettingKey, string>>>({});
+  const liveCountry = locationEdits[SettingKey.FillerHomeCountry] ?? persistedCountry;
+  const livePlace = locationEdits[SettingKey.FillerHomePlace] ?? persisted(SettingKey.FillerHomePlace) ?? "";
+  const liveRadius =
+    locationEdits[SettingKey.FillerLocalRadiusKm] ?? persisted(SettingKey.FillerLocalRadiusKm) ?? "";
+  const liveLanguage =
+    locationEdits[SettingKey.FillerLanguage] ?? persisted(SettingKey.FillerLanguage) ?? "en";
   const locationPatch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
@@ -221,10 +221,10 @@ const WizardScreen = () => {
           <InstallationLocation
             entries={locationEntries}
             values={{
-              "filler.home_country": liveCountry,
-              "filler.home_place": livePlace,
-              "filler.local_radius_km": liveRadius,
-              "filler.language": liveLanguage,
+              [SettingKey.FillerHomeCountry]: liveCountry,
+              [SettingKey.FillerHomePlace]: livePlace,
+              [SettingKey.FillerLocalRadiusKm]: liveRadius,
+              [SettingKey.FillerLanguage]: liveLanguage,
             }}
             onChange={(key, value) => setLocationEdits((previous) => ({ ...previous, [key]: value }))}
             results={unwrap(locationPatch.data, (body) => body.results) ?? undefined}

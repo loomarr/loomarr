@@ -40,7 +40,7 @@ const entries: SettingEntry[] = [
   }),
   entry({ key: "job.workers", value: "2", provenance: "env" }),
   entry({
-    key: "job.reconcile_interval",
+    key: "channel.reconcile_every",
     kind: "duration",
     value: "15m",
     provenance: "default",

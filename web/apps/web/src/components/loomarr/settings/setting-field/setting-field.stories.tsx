@@ -1,5 +1,8 @@
 import type { SettingEntry } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
+import { SettingKey } from "@loomarr/api/models/settingKey";
+import { SettingKind } from "@loomarr/api/models/settingKind";
+import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { TooltipProvider } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
@@ -84,6 +87,31 @@ const Bool: Story = {
   },
 };
 
+// A duration offered through the registry's presets, with Custom after them. The value matches
+// a preset in the canonical form the server publishes, so the picker reads "Every 6 hours".
+const DownloadSchedule: Story = {
+  args: {
+    entry: {
+      ...base,
+      key: SettingKey.FillerFetchEvery,
+      group: "filler",
+      owner: "filler.downloads",
+      kind: SettingKind.duration,
+      presentation: SettingPresentation.filler_download_schedule,
+      label: "Look for new clips",
+      doc: "How often Loomarr checks enabled sources for new clips.",
+      presets: [
+        { value: "0s", label: "Never" },
+        { value: "6h0m0s", label: "Every 6 hours" },
+        { value: "12h0m0s", label: "Every 12 hours" },
+        { value: "24h0m0s", label: "Daily" },
+        { value: "168h0m0s", label: "Weekly" },
+      ],
+    },
+    value: "6h0m0s",
+  },
+};
+
 const Invalid: Story = {
   args: {
     value: "not-a-url",
@@ -92,4 +120,4 @@ const Invalid: Story = {
 };
 
 export default meta;
-export { Bool, Enum, EnvPinned, Invalid, StoredSecret, Url };
+export { Bool, DownloadSchedule, Enum, EnvPinned, Invalid, StoredSecret, Url };
