@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerscreening"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -41,7 +42,7 @@ type splitProposalDocument struct {
 	RoleEvidence       []filler.StructureRoleEvidence    `json:"roleEvidence,omitempty"`
 	// Screenings reads and discards the short-lived V67 pre-child experiment. Screening now binds
 	// rendered child artifacts at terminal admission, never a split proposal.
-	Screenings []filler.SegmentScreeningEvidence `json:"screenings,omitempty"`
+	Screenings []fillerscreening.SegmentScreeningEvidence `json:"screenings,omitempty"`
 }
 
 func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {

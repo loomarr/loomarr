@@ -22,15 +22,20 @@ import Minimize from "lucide-react-native/icons/minimize";
 import Pause from "lucide-react-native/icons/pause";
 import Play from "lucide-react-native/icons/play";
 import Plus from "lucide-react-native/icons/plus";
+import RotateCcw from "lucide-react-native/icons/rotate-ccw";
+import RotateCw from "lucide-react-native/icons/rotate-cw";
 import Search from "lucide-react-native/icons/search";
 import Settings from "lucide-react-native/icons/settings";
 import SkipBack from "lucide-react-native/icons/skip-back";
 import SkipForward from "lucide-react-native/icons/skip-forward";
+import StepBack from "lucide-react-native/icons/step-back";
 import Tv from "lucide-react-native/icons/tv";
 import Users from "lucide-react-native/icons/users";
 import Volume2 from "lucide-react-native/icons/volume-2";
 import VolumeX from "lucide-react-native/icons/volume-x";
 import X from "lucide-react-native/icons/x";
+
+import { withSeconds } from "./seek-glyph";
 
 const icons = {
   // A phone tab header's "this device and who it's signed in as" button (the Device sheet).
@@ -67,8 +72,13 @@ const icons = {
   // Requests on every client (#1816's native mock; the web rail and bar draw the same Inbox).
   requests: Inbox,
   search: Search,
+  // The player's ±10 s (§9.4): the arrow carries a "10" drawn inside it.
+  seekBack: withSeconds(RotateCcw, "10"),
+  seekForward: withSeconds(RotateCw, "10"),
   settings: Settings,
   skipForward: SkipForward,
+  // The player's Start over (§9.4): back to the programme's start.
+  startOver: StepBack,
   success: Check,
   time: Clock3,
   volume: Volume2,

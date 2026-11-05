@@ -81,6 +81,8 @@ interface ChannelWatchProps {
 }
 
 const PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000;
+// The chrome's ⟲/⟳ step, the same as ←/→ (#2088 decision 2).
+const SEEK_STEP_MS = 10_000;
 
 // The one sheet the chrome can have open at a time (§9.1, plane 5).
 type WatchSheet = "channels" | "settings";
@@ -249,6 +251,7 @@ const ChannelWatch = ({
     nowMs: serverNowMs ?? Date.now(),
     playheadMs: viewerTimeMs,
   });
+  const { startOverMs } = chromeData;
 
   // The channel-change sound (#1620), a dial set: a clunk, then static until the new channel's first
   // frame, cut at lock. It starts as the tuned channel changes — the moment the viewer asks, not when
@@ -409,7 +412,12 @@ const ChannelWatch = ({
           onPreviewChange={setPreviewOpen}
           playbar={
             airings.length > 0
-              ? { playheadMs: viewerTimeMs, segments: chromeData.segments, window: chromeData.window }
+              ? {
+                  onSeek: chrome.seekTo,
+                  playheadMs: viewerTimeMs,
+                  segments: chromeData.segments,
+                  window: chromeData.window,
+                }
               : undefined
           }
           sheet={openSheet}
@@ -421,9 +429,12 @@ const ChannelWatch = ({
             muted: chrome.muted,
             onChannels: tuner && drawer ? () => toggleSheet("channels") : undefined,
             onFullscreen: chrome.toggleFullscreen,
-            onGoLive: () => withVideo((video) => player.liveTransport.goLive(video)),
+            onGoLive: chrome.goLive,
             onLeave,
+            onSeekBack: () => chrome.seekBy(-SEEK_STEP_MS),
+            onSeekForward: () => chrome.seekBy(SEEK_STEP_MS),
             onSettings: () => toggleSheet("settings"),
+            onStartOver: startOverMs === undefined ? undefined : () => chrome.seekTo(startOverMs),
             onTogglePlay: chrome.toggle,
             onToggleMute: () => chrome.setMuted(!chrome.muted),
             onVolume: chrome.setVolume,
