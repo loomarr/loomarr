@@ -1,7 +1,4 @@
 import type { CreateLocalUserInputBodyRole } from "@loomarr/api/models/createLocalUserInputBodyRole";
-import { useId, useState } from "react";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -11,7 +8,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { useId, useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -69,7 +69,9 @@ const CreateLocalDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger render={<Button variant="outline" />}>Add local account</DialogTrigger>
+      <DialogTrigger>
+        <Button variant="outline">Add local account</Button>
+      </DialogTrigger>
       <DialogContent portalContainer={portalContainer}>
         <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)}>
           <DialogHeader>
@@ -125,8 +127,10 @@ const CreateLocalDialog = ({
           {error != null && <ErrorState error={error} className="p-4" />}
 
           <DialogFooter>
-            <DialogClose render={<Button type="button" variant="outline" disabled={creating} />}>
-              Cancel
+            <DialogClose>
+              <Button type="button" variant="outline" disabled={creating}>
+                Cancel
+              </Button>
             </DialogClose>
             <Button type="submit" disabled={creating}>
               {creating ? "Creating…" : "Create account"}

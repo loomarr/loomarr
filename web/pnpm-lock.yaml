@@ -517,6 +517,9 @@ importers:
 
   packages/design-system:
     dependencies:
+      '@base-ui/react':
+        specifier: 1.9.0
+        version: 1.9.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tamagui/core':
         specifier: 3.1.4
         version: 3.1.4(react-dom@19.3.0(react@19.3.0))(react-native-gesture-handler@3.2.1(react-native-tvos@0.88.0-0)(react@19.3.0))(react-native-safe-area-context@5.10.1(react-native-tvos@0.88.0-0)(react@19.3.0))(react-native-tvos@0.88.0-0)(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)
@@ -530,6 +533,12 @@ importers:
         specifier: 15.16.0
         version: 15.16.0(react-native-tvos@0.88.0-0)(react@19.3.0)
     devDependencies:
+      '@testing-library/react':
+        specifier: 16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 14.6.8
+        version: 14.6.8(@testing-library/dom@10.4.2)
       '@types/qrcode':
         specifier: 1.5.6
         version: 1.5.6

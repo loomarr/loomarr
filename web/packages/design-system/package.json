@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@tamagui/core": "3.1.4",
     "lucide-react-native": "1.61.0",
     "qrcode": "1.5.4",
@@ -36,6 +37,8 @@
     }
   },
   "devDependencies": {
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
     "@types/qrcode": "1.5.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
