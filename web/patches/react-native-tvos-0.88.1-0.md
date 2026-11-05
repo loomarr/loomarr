@@ -1,4 +1,4 @@
-# React Native TV 0.88.0-0 pinned Apple acquisition correction
+# React Native TV 0.88.1-0 pinned Apple acquisition correction
 
 Tracking: [#1170](https://github.com/loomarr/loomarr/issues/1170).
 

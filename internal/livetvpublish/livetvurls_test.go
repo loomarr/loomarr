@@ -1,10 +1,10 @@
-package setup_test
+package livetvpublish_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 )
 
 // THE GAP THIS CLOSES: the Live TV wiring built Tunarr's URLs unconditionally, while
@@ -13,7 +13,7 @@ import (
 // to play, and a `livetv-reconnect` "fixes" it by re-registering the same wrong URLs.
 // design.md §9.1 item 3 called for this and the code never did it.
 func TestInternalPlayoutURLs_PointsAtLoomarr(t *testing.T) {
-	got := setup.InternalPlayoutURLs("http://loomarr:8080", "tok123")
+	got := livetvpublish.InternalPlayoutURLs("http://loomarr:8080", "tok123")
 
 	if !strings.HasPrefix(got.M3U, "http://loomarr:8080/v1/playout/tuner.m3u") {
 		t.Errorf("M3U = %q, want Loomarr's own tuner endpoint", got.M3U)
@@ -32,11 +32,11 @@ func TestInternalPlayoutURLs_PointsAtLoomarr(t *testing.T) {
 // OWN host, so registering a relative or empty base silently points it at itself — which looks
 // wired and never plays. The caller treats empty as "not wireable".
 func TestInternalPlayoutURLs_NoPublicURLYieldsNothing(t *testing.T) {
-	got := setup.InternalPlayoutURLs("", "tok")
+	got := livetvpublish.InternalPlayoutURLs("", "tok")
 	if got.M3U != "" || got.XMLTV != "" {
 		t.Fatalf("a blank public URL must yield no URLs; got %q / %q", got.M3U, got.XMLTV)
 	}
-	got = setup.InternalPlayoutURLs("   ", "tok")
+	got = livetvpublish.InternalPlayoutURLs("   ", "tok")
 	if got.M3U != "" || got.XMLTV != "" {
 		t.Fatalf("a whitespace public URL must yield no URLs; got %q / %q", got.M3U, got.XMLTV)
 	}
@@ -46,7 +46,7 @@ func TestInternalPlayoutURLs_NoPublicURLYieldsNothing(t *testing.T) {
 // server treats the two as different URLs, which would defeat the idempotent
 // "already registered?" check and re-add a duplicate tuner on every connect.
 func TestInternalPlayoutURLs_TrailingSlashIsNormalised(t *testing.T) {
-	got := setup.InternalPlayoutURLs("http://loomarr:8080/", "tok")
+	got := livetvpublish.InternalPlayoutURLs("http://loomarr:8080/", "tok")
 	if strings.Contains(got.M3U, "//playout") {
 		t.Errorf("double slash in %q", got.M3U)
 	}
