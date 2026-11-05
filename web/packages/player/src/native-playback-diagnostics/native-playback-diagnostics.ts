@@ -1,7 +1,17 @@
-import type { ClientDiagnosticsReporter } from "@loomarr/core/client-diagnostics";
+import type { ClientDiagnosticsIdentity, ClientDiagnosticsReporter } from "@loomarr/core/client-diagnostics";
 import type { PlayerErrorReport, PlayerTransportEvent } from "../player-controller";
 
 type NativeDiagnosticsRecorder = Pick<ClientDiagnosticsReporter, "flush" | "record">;
+
+/** The transport a native client plays through: AVPlayer's own HLS, or Android's Media3. */
+type NativeTransport = "media3" | "native_hls";
+
+/**
+ * expo-video plays through AVPlayer on Apple platforms and through Media3 on Android, so the
+ * platform that reports is the transport that played.
+ */
+const nativeTransportOf = (platform: ClientDiagnosticsIdentity["platform"]): NativeTransport =>
+  platform === "ios" || platform === "apple_tv" ? "native_hls" : "media3";
 
 /**
  * The wire contract carries no error prose, so the native message is reduced to a closed cause
@@ -27,6 +37,7 @@ interface NativePlaybackDiagnostics {
 const createNativePlaybackDiagnostics = (
   reporter: NativeDiagnosticsRecorder,
   playbackSessionId: string,
+  transport: NativeTransport,
 ): NativePlaybackDiagnostics => {
   if (!playbackSessionId || playbackSessionId.length > 128) {
     throw new Error("Native playback session identity must contain 1-128 characters.");
@@ -46,14 +57,14 @@ const createNativePlaybackDiagnostics = (
               playbackSessionId,
               previousChannelId,
               reason: "channel_change",
-              transport: "native_hls",
+              transport,
             }
           : {
               channelId: nextChannelId,
               event: "player.attached",
               playbackSessionId,
               reason: "mount",
-              transport: "native_hls",
+              transport,
             },
       );
       channelId = nextChannelId;
@@ -67,7 +78,7 @@ const createNativePlaybackDiagnostics = (
           event: "player.detached",
           playbackSessionId,
           reason: "unmount",
-          transport: "native_hls",
+          transport,
         });
         void reporter.flush();
       }
@@ -79,7 +90,7 @@ const createNativePlaybackDiagnostics = (
           channelId,
           event: "player.ready",
           playbackSessionId,
-          transport: "native_hls",
+          transport,
         });
       }
     },
@@ -93,7 +104,7 @@ const createNativePlaybackDiagnostics = (
         event: "player.media_error",
         fatal,
         playbackSessionId,
-        transport: "native_hls",
+        transport,
       });
       // Errors are the events an operator is looking for; do not wait for the batch timer.
       if (fatal) void reporter.flush();
@@ -101,5 +112,5 @@ const createNativePlaybackDiagnostics = (
   };
 };
 
-export type { NativeDiagnosticsRecorder, NativePlaybackDiagnostics };
-export { causeOf as nativeErrorCause, createNativePlaybackDiagnostics };
+export type { NativeDiagnosticsRecorder, NativePlaybackDiagnostics, NativeTransport };
+export { causeOf as nativeErrorCause, createNativePlaybackDiagnostics, nativeTransportOf };

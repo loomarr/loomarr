@@ -135,8 +135,13 @@ const chromeArgs = (state: { lagSeconds: number; mode: "behind" | "live" | "paus
   const data = playbarFromTimeline({ airings, channel, live: state, nowMs: NOW, playheadMs });
   return {
     band: data.band,
-    playbar: { playheadMs, segments: data.segments, window: data.window },
-    transport: { ...transport, live: state },
+    playbar: { onSeek: fn(), playheadMs, segments: data.segments, window: data.window },
+    transport: {
+      ...transport,
+      live: state,
+      onStartOver: data.startOverMs === undefined ? undefined : fn(),
+      playing: state.mode !== "paused",
+    },
   };
 };
 
@@ -150,6 +155,8 @@ const transport = {
   onFullscreen: fn(),
   onGoLive: fn(),
   onLeave: fn(),
+  onSeekBack: fn(),
+  onSeekForward: fn(),
   onSettings: fn(),
   onToggleMute: fn(),
   onTogglePlay: fn(),
