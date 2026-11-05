@@ -10,10 +10,15 @@ import "context"
 
 // EnsureEmbySource creates (or returns) the double's media source. On first call it
 // enumerates the media server's libraries (a movie + show + music lib, disabled) the
-// way Tunarr would. Idempotent. Records the access token for assertions.
+// way Tunarr would. Idempotent. Records the access token for assertions; EnsureSourceErr
+// fails the call before Tunarr's copy of the token changes.
 func (m *Tunarr) EnsureEmbySource(_ context.Context, _, _, token, _ string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.MediaSourceEnsures++
+	if m.EnsureSourceErr != nil {
+		return "", m.EnsureSourceErr
+	}
 	m.MediaSourceToken = token
 	if m.sourceID == "" {
 		m.sourceID = "src-1"

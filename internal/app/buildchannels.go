@@ -70,6 +70,7 @@ func buildChannels(
 	var liveTVSvc api.LiveTVService
 	var tunerRescanner api.TunerRescanner
 	var tunarrConnectSvc api.TunarrConnector
+	var mediaSource *livetvpublish.MediaSourceConnector
 	var channelEngine *channels.Engine
 	var liveTVConnector *livetvpublish.LiveTVConnector
 	var backendController *backendtransition.Controller
@@ -195,8 +196,9 @@ func buildChannels(
 		if ov.Programmer != nil {
 			msProg = ov.Programmer
 		}
-		tunarrConnectSvc = livetvpublish.NewMediaSourceConnector(
+		mediaSource = livetvpublish.NewMediaSourceConnector(
 			func() livetvpublish.MediaSourceLibrary { return libraryClient.Snapshot() }, msProg)
+		tunarrConnectSvc = mediaSource
 
 		// Program duration comes from the media server (§9/§10): give the scheduler
 		// a resolver so program slots carry a real runtime before the Tunarr push,
@@ -303,6 +305,12 @@ func buildChannels(
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
 		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
+		}, func(ctx context.Context) error {
+			// Same gate as the auto-wire after a save: no Tunarr configured, nothing to wire.
+			if settings.TunarrURL.Get(set) == "" {
+				return nil
+			}
+			return mediaSource.Converge(ctx)
 		}))
 		log.Info("channel scheduler registered", "tunarr", settings.TunarrURL.Get(set), "sweep_every", chEvery)
 	}

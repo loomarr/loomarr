@@ -3,6 +3,7 @@ package livetvpublish
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/loomarr/loomarr/internal/library"
 )
@@ -35,10 +36,16 @@ type MediaSourceLibrarySource func() MediaSourceLibrary
 
 // MediaSourceConnector wires the media server as *Tunarr's* media source using
 // Loomarr's existing admin token — no separate Emby user login (§6). It backs
-// POST /v1/setup/tunarr-connect and the tunarr_library setup check. Idempotent.
+// POST /v1/setup/tunarr-connect, the auto-wire after a connection save, channel
+// maintenance (Converge) and the tunarr_library setup check. Idempotent.
 type MediaSourceConnector struct {
 	library MediaSourceLibrarySource
 	prog    MediaSourceProgrammer
+
+	mu sync.Mutex
+	// wired is the library connection this process last pushed to Tunarr successfully;
+	// nil before the first success and after any failed Connect.
+	wired *library.ConnectionGeneration
 }
 
 // NewMediaSourceConnector builds a live connector. library starts one immutable
@@ -51,8 +58,35 @@ func NewMediaSourceConnector(library MediaSourceLibrarySource, prog MediaSourceP
 // then enables + scans the movie/show libraries. Returns the source id + the number
 // of movie/show libraries enabled. Idempotent — safe to re-run.
 func (c *MediaSourceConnector) Connect(ctx context.Context) (sourceID string, librariesEnabled int, err error) {
+	return c.connect(ctx, c.library())
+}
+
+// Converge re-runs Connect when this process has not wired the current library
+// connection: after a restart (an environment-pinned token can change with no
+// settings save) or after a failed Connect (Tunarr unreachable when the token was
+// saved). Tunarr redacts the token it stores, so the only staleness signal is what
+// this process last pushed. A connection already wired is skipped, so maintenance
+// does not rewrite Tunarr's source every tick. No media server configured means
+// nothing to wire.
+func (c *MediaSourceConnector) Converge(ctx context.Context) error {
 	operation := c.library()
+	generation, err := operation.Connection().Generation()
+	if err != nil {
+		return nil
+	}
+	c.mu.Lock()
+	current := c.wired != nil && *c.wired == generation
+	c.mu.Unlock()
+	if current {
+		return nil
+	}
+	_, _, err = c.connect(ctx, operation)
+	return err
+}
+
+func (c *MediaSourceConnector) connect(ctx context.Context, operation MediaSourceLibrary) (sourceID string, librariesEnabled int, err error) {
 	connection := operation.Connection()
+	defer func() { c.record(connection, err) }()
 	if connection.BaseURL == "" || connection.Token == "" {
 		return "", 0, fmt.Errorf("media server not configured — set its URL + token first")
 	}
@@ -69,6 +103,19 @@ func (c *MediaSourceConnector) Connect(ctx context.Context) (sourceID string, li
 		return sourceID, librariesEnabled, fmt.Errorf("enable/scan Tunarr libraries: %w", err)
 	}
 	return sourceID, librariesEnabled, nil
+}
+
+// record notes the outcome of one connect: the connection on success, nothing on failure.
+func (c *MediaSourceConnector) record(connection library.Connection, err error) {
+	var wired *library.ConnectionGeneration
+	if err == nil {
+		if generation, genErr := connection.Generation(); genErr == nil {
+			wired = &generation
+		}
+	}
+	c.mu.Lock()
+	c.wired = wired
+	c.mu.Unlock()
 }
 
 // LibrariesReady reports whether Tunarr can already see the library (the
