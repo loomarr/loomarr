@@ -1,5 +1,6 @@
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import * as systemApi from "@loomarr/api/endpoints/system";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -118,7 +119,7 @@ const AiModelSettings = ({
   onModelChange?: () => void;
   visionProvider?: string;
   visionModel?: string;
-  onRoleSettingChange?: (key: string, value: string) => void;
+  onRoleSettingChange?: (key: SettingKey, value: string) => void;
   tmdbConfigured?: boolean;
 }) => {
   const queryClient = useQueryClient();
@@ -404,12 +405,15 @@ const AiModelSettings = ({
             active={activeVision}
             onSelect={(id) => {
               if (id === "inherit") {
-                onRoleSettingChange("filler.vision.provider", "inherit");
-                onRoleSettingChange("filler.vision.model", "");
+                onRoleSettingChange(SettingKey.FillerVisionProvider, "inherit");
+                onRoleSettingChange(SettingKey.FillerVisionModel, "");
               } else {
                 const [kind, ...parts] = id.split(":");
-                onRoleSettingChange("filler.vision.provider", kind === "ollama" ? "ollama" : "inherit");
-                onRoleSettingChange("filler.vision.model", parts.join(":"));
+                onRoleSettingChange(
+                  SettingKey.FillerVisionProvider,
+                  kind === "ollama" ? "ollama" : "inherit",
+                );
+                onRoleSettingChange(SettingKey.FillerVisionModel, parts.join(":"));
               }
             }}
           />

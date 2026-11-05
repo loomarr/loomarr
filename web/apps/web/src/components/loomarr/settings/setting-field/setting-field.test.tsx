@@ -32,6 +32,15 @@ const entry = (over: Partial<SettingEntry> = {}): SettingEntry => ({
   ...over,
 });
 
+// The registry's household schedule, in the canonical form the server publishes it.
+const downloadSchedulePresets = [
+  { value: "0s", label: "Never" },
+  { value: "6h0m0s", label: "Every 6 hours" },
+  { value: "12h0m0s", label: "Every 12 hours" },
+  { value: "24h0m0s", label: "Daily" },
+  { value: "168h0m0s", label: "Weekly" },
+];
+
 describe("SettingField", () => {
   it("labels the field from its key and exposes the doc via a help affordance", () => {
     render(<SettingField entry={entry()} value="" onChange={vi.fn()} />);
@@ -72,8 +81,9 @@ describe("SettingField", () => {
           kind: "duration",
           label: "Look for new clips",
           presentation: "filler_download_schedule",
+          presets: downloadSchedulePresets,
         })}
-        value="6h"
+        value="6h0m0s"
         onChange={onChange}
       />,
     );
@@ -90,7 +100,7 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenLastCalledWith("28800s");
   });
 
-  it("offers the household presets and stores a selected one", async () => {
+  it("offers the registry's presets and stores a selected one", async () => {
     const onChange = vi.fn();
     render(
       <SettingField
@@ -99,6 +109,7 @@ describe("SettingField", () => {
           kind: "duration",
           label: "Look for new clips",
           presentation: "filler_download_schedule",
+          presets: downloadSchedulePresets,
         })}
         value="6h0m0s"
         onChange={onChange}
@@ -106,12 +117,38 @@ describe("SettingField", () => {
     );
 
     await userEvent.click(screen.getByLabelText("Look for new clips"));
-    expect(await screen.findByRole("option", { name: "Never" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Every 12 hours" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Daily" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Weekly" })).toBeInTheDocument();
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      ...downloadSchedulePresets.map((preset) => preset.label),
+      "Custom",
+    ]);
     await userEvent.click(screen.getByRole("option", { name: "Every 12 hours" }));
-    expect(onChange).toHaveBeenLastCalledWith("12h");
+    expect(onChange).toHaveBeenLastCalledWith("12h0m0s");
+  });
+
+  // The list is the registry's, not a copy: a preset the server adds appears with no UI change,
+  // and a value matching none of them reads as Custom.
+  it("shows exactly the presets the entry carries", async () => {
+    render(
+      <SettingField
+        entry={entry({
+          key: "filler.fetch.every",
+          kind: "duration",
+          label: "Look for new clips",
+          presentation: "filler_download_schedule",
+          presets: [{ value: "3h0m0s", label: "Every 3 hours" }],
+        })}
+        value="5h0m0s"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const schedule = screen.getByLabelText("Look for new clips");
+    expect(schedule).toHaveTextContent("Custom");
+    expect(screen.getByLabelText("Custom check interval")).toHaveValue(5);
+    await userEvent.click(schedule);
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Every 3 hours", "Custom"]);
   });
 
   it("shows byte limits as MiB and emits bytes", async () => {
@@ -157,13 +194,13 @@ describe("SettingField", () => {
     const onChange = vi.fn();
     render(
       <SettingField
-        entry={entry({ key: "notifications.email.enabled", kind: "bool", presentation: "switch" })}
+        entry={entry({ key: "filler.research.enabled", kind: "bool", presentation: "switch" })}
         value="false"
         onChange={onChange}
       />,
     );
 
-    const control = screen.getByRole("switch", { name: "Notifications email enabled" });
+    const control = screen.getByRole("switch", { name: "Filler research enabled" });
     expect(control).not.toBeChecked();
     await userEvent.click(control);
     expect(onChange).toHaveBeenCalledWith("true");

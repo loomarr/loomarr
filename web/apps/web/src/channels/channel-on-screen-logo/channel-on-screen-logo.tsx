@@ -4,6 +4,7 @@ import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { PreviewChannelWatermarkHoliday } from "@loomarr/api/models/previewChannelWatermarkHoliday";
 import type { PreviewChannelWatermarkPicture } from "@loomarr/api/models/previewChannelWatermarkPicture";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { WatermarkPolicy } from "@loomarr/api/models/watermarkPolicy";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -31,7 +32,7 @@ const ChannelOnScreenLogo = ({ channel, onOpenProgramming, savePolicy }: Channel
   const fileInput = useRef<HTMLInputElement>(null);
 
   const settings = useSettingsEntries();
-  const setting = (key: string) => settings.find((s) => s.key === key)?.value;
+  const setting = (key: SettingKey) => settings.find((s) => s.key === key)?.value;
 
   // A saved change (a new name, picture or image) changes the PNG at the same query, so the policy
   // itself versions the URL; it also keys the options, whose pictures follow the saved choice.
@@ -101,8 +102,10 @@ const ChannelOnScreenLogo = ({ channel, onOpenProgramming, savePolicy }: Channel
         eraLabel={options?.era || undefined}
         everyHoliday={!policy.seasonal?.holidays?.length}
         defaults={{
-          look: (setting("playout.watermark_look") ?? "text") as NonNullable<OnScreenLogoPolicy["look"]>,
-          opacity: Number(setting("playout.watermark_opacity_pct") ?? 40) / 100,
+          look: (setting(SettingKey.PlayoutWatermarkLook) ?? "text") as NonNullable<
+            OnScreenLogoPolicy["look"]
+          >,
+          opacity: Number(setting(SettingKey.PlayoutWatermarkOpacityPct) ?? 40) / 100,
         }}
         drawable={drawable.data ?? true}
         holidays={options?.holidays ?? []}

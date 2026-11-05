@@ -1,3 +1,4 @@
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { createFileRoute } from "@tanstack/react-router";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -12,10 +13,10 @@ const StorageSettings = () => (
         group: "images",
         title: "Images",
         keys: [
-          "images.dir",
-          "images.remote_fetch_enabled",
-          "images.max_upload_bytes",
-          "images.cache_budget_mb",
+          SettingKey.ImagesDir,
+          SettingKey.ImagesRemoteFetchEnabled,
+          SettingKey.ImagesMaxUploadBytes,
+          SettingKey.ImagesCacheBudgetMb,
         ],
       },
     ]}

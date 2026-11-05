@@ -1,5 +1,6 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { Link } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -111,7 +112,7 @@ const AdvancedSettingsTable = ({
             // verifies capability, persists provider metadata, and hot-swaps the client.
             // A generic text input here would bypass all three and accept Ollama tags
             // for OpenRouter, so keep the key searchable but route edits to its owner.
-            const pickerOwned = entry.key === "llm.model";
+            const pickerOwned = entry.key === SettingKey.LLMModel;
             return (
               <div
                 key={entry.key}
