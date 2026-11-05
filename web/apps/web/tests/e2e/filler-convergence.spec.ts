@@ -329,7 +329,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
   await expect(fillerNav.getByRole("link", { name: "Sources" })).toHaveCount(0);
 
   await page.goto("/filler/manage");
-  await expect(page.getByText("Nothing has happened yet.")).toBeVisible();
+  await expect(page.getByText(/^Product, format, season and audience · /)).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "What this channel can play" })).toBeVisible();
