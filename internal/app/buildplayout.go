@@ -18,13 +18,13 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/mediameasure"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -57,7 +57,7 @@ type playoutDeps struct {
 	events                *events.Bus
 	layout                filler.Layout
 	channels              *channels.Engine
-	liveTVConnector       *setup.LiveTVConnector
+	liveTVConnector       *livetvpublish.LiveTVConnector
 	backendView           backendtransition.CheckpointView
 	resolveDesiredBackend func(context.Context) (string, error)
 	// programmer is the SAME Tunarr adapter instance buildChannels built (not an override-aware
@@ -372,10 +372,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// The durable backend checkpoint is initialized synchronously before any request can
 	// observe its runtime gates. Initialize performs store I/O only; fleet and media-server
 	// work is retried by settings writes and channel maintenance.
-	backendURLs := func(ctx context.Context, target string) (setup.LiveTVURLs, error) {
+	backendURLs := func(ctx context.Context, target string) (tunarr.LiveTVURLs, error) {
 		tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 		if err != nil {
-			return setup.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
+			return tunarr.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
 		}
 		return liveTVURLsFor(deps.programmer, target, settings.ServerPublicURL.Get(set), tok, log), nil
 	}

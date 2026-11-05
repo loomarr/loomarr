@@ -51,7 +51,6 @@ RACE_OFF=(
 	internal/taxonomy
 	internal/provision
 	internal/activity
-	internal/setup
 	cmd/dev-docs
 	cmd/arch-docs
 	docs
