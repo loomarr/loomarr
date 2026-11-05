@@ -73,7 +73,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Decides whether two filler clips are the same advert (#2033).
 - **`defects`** · 7 importers
   Measures and judges real picture and sound defects in a filler clip (#2034).
-- **`demolibrary`**
+- **`demolibrary`** · 1 importer
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
@@ -290,7 +290,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
 - **`sourceprovider/youtube`** · 1 importer · → `clipfetch`, `filler`, `sourceprovider`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
-- **`testkit`** · 1 importer · → `fillerstore`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+- **`testkit`** · 1 importer · → `demolibrary`, `fillerstore`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/libraryfixture`** · → `library`, `provision`, `schedule`
   No-network adapters for library-facing tests.
