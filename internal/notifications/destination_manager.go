@@ -154,7 +154,7 @@ func (m *DestinationManager) Create(
 	if err := destination.Validate(); err != nil {
 		return DestinationSummary{}, err
 	}
-	if err := m.validateEnabled(destination); err != nil {
+	if err := m.validateProvider(destination); err != nil {
 		return DestinationSummary{}, err
 	}
 	if destination.Means == MeansWebPush {
@@ -252,7 +252,7 @@ func (m *DestinationManager) Update(
 	if err := updated.Validate(); err != nil {
 		return DestinationSummary{}, err
 	}
-	if err := m.validateEnabled(updated); err != nil {
+	if err := m.validateProvider(updated); err != nil {
 		return DestinationSummary{}, err
 	}
 	if err := m.repository.SaveNotificationDestination(ctx, updated); err != nil {
@@ -474,10 +474,9 @@ func (m *DestinationManager) Test(
 	return m.tester.PublishDestinationTest(ctx, destination, requestID)
 }
 
-func (m *DestinationManager) validateEnabled(destination Destination) error {
-	if !destination.Enabled {
-		return nil
-	}
+// validateProvider runs the provider's own validation whatever the enabled state, so a saved
+// destination always holds settings its adapter can deliver with once it is enabled.
+func (m *DestinationManager) validateProvider(destination Destination) error {
 	validator := m.validators[destination.Means]
 	if validator == nil {
 		return ErrMeansUnavailable

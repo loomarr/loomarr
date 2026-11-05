@@ -54,7 +54,10 @@ func TestDestinationManagerKeepsCredentialsWriteOnlyAndScopesMemberReads(t *test
 func TestDestinationManagerClassifiesAndRedactsTheUnifiedProviderSettings(t *testing.T) {
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
-	manager := notifications.NewDestinationManager(repository, nil, sequentialDestinationIDs(), func() time.Time { return now })
+	manager := notifications.NewDestinationManager(
+		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansEmail}},
+		sequentialDestinationIDs(), func() time.Time { return now },
+	)
 	admin := notifications.Principal{PersonID: "admin-1", Administrator: true}
 	summary, err := manager.Create(t.Context(), admin, notifications.DestinationCommand{
 		Means: notifications.MeansEmail, Label: "Household SMTP", Scope: notifications.ScopeInstallation,
@@ -98,7 +101,10 @@ func TestDestinationManagerClassifiesAndRedactsTheUnifiedProviderSettings(t *tes
 func TestDestinationManagerRejectsQueryStringsWhenUpdatingOrdinaryProviderURLs(t *testing.T) {
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
-	manager := notifications.NewDestinationManager(repository, nil, sequentialDestinationIDs(), func() time.Time { return now })
+	manager := notifications.NewDestinationManager(
+		repository, []notifications.DestinationValidator{destinationValidator{means: notifications.MeansNtfy}},
+		sequentialDestinationIDs(), func() time.Time { return now },
+	)
 	admin := notifications.Principal{PersonID: "admin-1", Administrator: true}
 	created, err := manager.Create(t.Context(), admin, notifications.DestinationCommand{
 		Means: notifications.MeansNtfy, Label: "Household ntfy", Scope: notifications.ScopeInstallation,
@@ -144,7 +150,7 @@ func TestDestinationManagerRejectsMemberInstallationAndCrossPersonWrites(t *test
 	}
 }
 
-func TestDestinationManagerPreventsEnablingIncompleteOrUnavailableProvider(t *testing.T) {
+func TestDestinationManagerRejectsIncompleteOrUnavailableProviderEvenWhenDisabled(t *testing.T) {
 	repository := testkit.NewNotificationRepository()
 	now := time.Unix(1_900_000_000, 0)
 	manager := notifications.NewDestinationManager(
@@ -162,14 +168,55 @@ func TestDestinationManagerPreventsEnablingIncompleteOrUnavailableProvider(t *te
 		t.Fatal("enabled incomplete provider was accepted")
 	}
 	command.Enabled = false
-	if _, err := manager.Create(t.Context(), admin, command); err != nil {
-		t.Fatalf("disabled draft = %v", err)
+	if _, err := manager.Create(t.Context(), admin, command); err == nil {
+		t.Fatal("disabled incomplete provider was accepted")
 	}
 	command.Means = notifications.MeansDiscord
-	command.Enabled = true
-	if _, err := manager.Create(t.Context(), admin, command); !errors.Is(err, notifications.ErrMeansUnavailable) {
-		t.Fatalf("enabled unavailable provider = %v", err)
+	for _, enabled := range []bool{true, false} {
+		command.Enabled = enabled
+		if _, err := manager.Create(t.Context(), admin, command); !errors.Is(err, notifications.ErrMeansUnavailable) {
+			t.Fatalf("unavailable provider (enabled %v) = %v", enabled, err)
+		}
 	}
+	if len(repository.Destinations) != 0 {
+		t.Fatalf("invalid destinations were saved: %+v", repository.Destinations)
+	}
+}
+
+func TestDestinationManagerRejectsDisablingUpdateThatLeavesInvalidSettings(t *testing.T) {
+	repository := testkit.NewNotificationRepository()
+	now := time.Unix(1_900_000_000, 0)
+	validator := &switchableDestinationValidator{means: notifications.MeansSlack}
+	manager := notifications.NewDestinationManager(
+		repository, []notifications.DestinationValidator{validator},
+		sequentialDestinationIDs(), func() time.Time { return now },
+	)
+	admin := notifications.Principal{PersonID: "admin-1", Administrator: true}
+	created, err := manager.Create(t.Context(), admin, notifications.DestinationCommand{
+		Means: notifications.MeansSlack, Label: "Operations", Scope: notifications.ScopeInstallation,
+		Audience: notifications.RecipientOperators, Topics: []notifications.Topic{notifications.TopicChannelDegraded},
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	validator.err = errors.New("webhook URL required")
+	if _, err := manager.Update(t.Context(), admin, created.ID, notifications.DestinationUpdateCommand{
+		Label: "Operations", Topics: []notifications.Topic{notifications.TopicChannelDegraded}, Enabled: false,
+	}); err == nil {
+		t.Fatal("disabled update with invalid settings was accepted")
+	}
+}
+
+type switchableDestinationValidator struct {
+	means notifications.Means
+	err   error
+}
+
+func (v *switchableDestinationValidator) Means() notifications.Means { return v.means }
+
+func (v *switchableDestinationValidator) ValidateDestination(map[string]string, map[string]string) error {
+	return v.err
 }
 
 func TestDestinationManagerUpdatePreservesWriteOnlyCredentialsAndOwnership(t *testing.T) {
