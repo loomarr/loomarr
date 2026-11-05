@@ -249,15 +249,15 @@
     },
     "src/components/loomarr/people/create-local-dialog/create-local-dialog.tsx": {
       "tailwindClasses": 15,
-      "legacyUi": 5
+      "legacyUi": 4
     },
     "src/components/loomarr/people/import-dialog/import-dialog.tsx": {
-      "tailwindClasses": 134,
-      "legacyUi": 7
+      "tailwindClasses": 119,
+      "legacyUi": 6
     },
     "src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
-      "tailwindClasses": 112,
-      "legacyUi": 7
+      "tailwindClasses": 107,
+      "legacyUi": 6
     },
     "src/components/loomarr/people/invitation-join/invitation-join.tsx": {
       "tailwindClasses": 75,
@@ -417,7 +417,7 @@
       "tailwindClasses": 6
     },
     "src/components/ui/index.ts": {
-      "legacyUi": 23
+      "legacyUi": 22
     },
     "src/components/ui/input/input.tsx": {
       "tailwindClasses": 12
@@ -649,8 +649,8 @@
       "legacyUi": 1
     },
     "src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
-      "tailwindClasses": 20,
-      "legacyUi": 2
+      "tailwindClasses": 15,
+      "legacyUi": 1
     },
     "src/filler/sources-panel/source-location-form/source-location-form.tsx": {
       "tailwindClasses": 11,
@@ -843,7 +843,7 @@
     },
     "src/settings/tasks-page/job-edit-modal/job-edit-modal.tsx": {
       "tailwindClasses": 15,
-      "legacyUi": 4
+      "legacyUi": 3
     },
     "src/settings/tasks-page/tasks-page.tsx": {
       "tailwindClasses": 164,

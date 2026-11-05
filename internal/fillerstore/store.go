@@ -1,7 +1,6 @@
 // Package fillerstore persists the filler pipeline's own state: the remote source registry, the
 // pull approvals and the acquisition runs and artifacts they start, the hosted-inference
-// accounting and the ledgers layered over it (spoken safety, structure assessment, structure
-// windows) (§10).
+// accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 //
 // It extends the core store rather than standing beside it. Its tables live in the same database,
 // it runs on the core's store.Handle, and every transaction it takes begins through
@@ -26,7 +25,6 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerscreening"
-	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -104,10 +102,6 @@ type FillerInferenceStore interface {
 // FillerStructureAssessmentStore owns the structure-specific journal layered over shared filler
 // inference accounting. Duplicate requests remain visible conflicts rather than implicit retries.
 type FillerStructureAssessmentStore interface {
-	ReserveStructureAssessment(context.Context, fillerstructure.AssessmentReservation, InferenceBudget) (fillerstructure.AssessmentReservationState, error)
-	SettleStructureAssessment(context.Context, fillerstructure.AssessmentRecord) error
-	GetStructureAssessmentLedgerEntry(context.Context, string) (fillerstructure.AssessmentLedgerEntry, error)
-	ListOpenStructureAssessmentLedgerEntries(context.Context, int) ([]fillerstructure.AssessmentLedgerEntry, error)
 	ReserveStructureWindowCall(context.Context, fillerstructurewindow.CallReservation, InferenceBudget) (fillerstructurewindow.CallReservationState, error)
 	SettleStructureWindowCall(context.Context, fillerstructurewindow.CallRecord) error
 	GetStructureWindowCallLedgerEntry(context.Context, string) (fillerstructurewindow.CallLedgerEntry, error)

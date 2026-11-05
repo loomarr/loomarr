@@ -2,13 +2,6 @@ import type { CreateInvitationInputBodyKind } from "@loomarr/api/models/createIn
 import type { CreateInvitationInputBodyRole } from "@loomarr/api/models/createInvitationInputBodyRole";
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueInvitationGrantOutputBody";
-import { QrCode } from "@loomarr/design-system/qr-code-web";
-import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
-import { useId, useRef, useState } from "react";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -18,7 +11,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { QrCode } from "@loomarr/design-system/qr-code-web";
+import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -173,14 +173,13 @@ const InvitationDialog = ({
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       {controlledOpen === undefined && (
-        <DialogTrigger render={<Button />}>
-          <UserPlus aria-hidden /> Invite person
+        <DialogTrigger>
+          <Button>
+            <UserPlus aria-hidden /> Invite person
+          </Button>
         </DialogTrigger>
       )}
-      <DialogContent
-        portalContainer={portalContainer}
-        className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-auto"
-      >
+      <DialogContent portalContainer={portalContainer} size="form">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
@@ -308,8 +307,10 @@ const InvitationDialog = ({
 
             {problem != null && <ErrorState error={problem} className="p-4" />}
             <DialogFooter>
-              <DialogClose render={<Button type="button" variant="outline" disabled={busy} />}>
-                Cancel
+              <DialogClose>
+                <Button type="button" variant="outline" disabled={busy}>
+                  Cancel
+                </Button>
               </DialogClose>
               <Button type="submit" disabled={busy}>
                 {busy ? "Creating…" : "Create invitation"}
@@ -327,7 +328,9 @@ const InvitationDialog = ({
               </p>
             </div>
             <DialogFooter>
-              <DialogClose render={<Button type="button" />}>Done</DialogClose>
+              <DialogClose>
+                <Button type="button">Done</Button>
+              </DialogClose>
             </DialogFooter>
           </div>
         ) : grant ? (
@@ -363,7 +366,7 @@ const InvitationDialog = ({
             )}
             {problem != null && <ErrorState error={problem} className="p-4" />}
 
-            <DialogFooter className="flex-wrap justify-between">
+            <DialogFooter spread>
               <Button type="button" variant="destructive" disabled={busy} onClick={() => void revoke()}>
                 <Trash2 aria-hidden /> Revoke invitation
               </Button>

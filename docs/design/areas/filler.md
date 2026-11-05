@@ -31,11 +31,11 @@ One area of the [package map](../package-map.md#start-here).
 - **`fillerscreening`** · 2 importers · → `filler`, `fillerstructureassessment`, `mediatools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
 - **`fillerstore`** · 3 importers · → `filler`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
-  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
+  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`fillerstructure`** · 6 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`fillerstructureassessment`** · 2 importers · → `bgexec`, `filler`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `mediatools`
-  Complete-timeline structure-assessment runtime: the ffmpeg media preparers that render and verify the normalized whole-source and per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
+  Complete-timeline structure-assessment runtime: the ffmpeg media preparer that renders and verifies the normalized per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
 - **`fillerstructuremedia`** · 4 importers · → `encode`, `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`fillerstructurewindow`** · 5 importers · → `fillerstructure`, `fillerstructuremedia`

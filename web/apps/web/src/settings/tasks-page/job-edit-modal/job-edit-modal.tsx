@@ -1,11 +1,6 @@
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { invalidateSettings } from "@loomarr/core/events";
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { toast } from "sonner";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +8,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CRON_PRESETS, CUSTOM_VALUE, isPreset } from "../cron-presets";
