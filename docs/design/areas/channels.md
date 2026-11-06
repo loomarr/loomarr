@@ -19,7 +19,7 @@ One area of the [package map](../package-map.md#start-here).
 - **`binder`** · 2 importers · → `proposal`, `provision`, `rating`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`channeledit`** · 1 importer · → `activity`, `binder`, `provision`, `schedule`, `store`
-  One write path for an operator's channel changes (§7): creating a hand-made or approved-intent channel, and every edit after it — the PATCH form, an icon or watermark upload, a detach.
+  One write path for an operator's channel changes (§7): creating a hand-made channel, and every edit after it — the PATCH form, an icon or watermark upload, a detach.
 - **`channels`** · 3 importers · → `filler`, `jobs`, `playout`, `provision`, `rating`, `schedule`, `settings`, `store`, `tunarr`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`ideas`** · 2 importers · → `holidayvocab`, `provision`

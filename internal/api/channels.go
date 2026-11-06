@@ -265,17 +265,15 @@ func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput)
 
 type createChannelInput struct {
 	Body struct {
-		ID        string `json:"id,omitempty" doc:"Loomarr channel id (stable). Optional — omit and the server assigns one (ch_…); pass one to keep a caller-assigned id." example:"ch_abc123"`
-		Name      string `json:"name" example:"Saturday Morning Cartoons"`
-		Number    int    `json:"number" minimum:"1" example:"42"`
-		Group     string `json:"group,omitempty" example:"Kids"`
-		Logo      string `json:"logo,omitempty"`
-		Strategy  string `json:"strategy" enum:"sequential,shuffle,time_slot"`
-		IntentRef string `json:"intentRef,omitempty"`
+		ID       string `json:"id,omitempty" doc:"Loomarr channel id (stable). Optional — omit and the server assigns one (ch_…); pass one to keep a caller-assigned id." example:"ch_abc123"`
+		Name     string `json:"name" example:"Saturday Morning Cartoons"`
+		Number   int    `json:"number" minimum:"1" example:"42"`
+		Group    string `json:"group,omitempty" example:"Kids"`
+		Logo     string `json:"logo,omitempty"`
+		Strategy string `json:"strategy" enum:"sequential,shuffle,time_slot"`
 		// Series is an optional hand-made single-series channel (§7 "or hand-made"):
 		// the channel plays one show, optionally constrained to a season range (§9
-		// series expansion). The series must already be an `available` title. Use
-		// instead of intentRef; if both are set, intentRef wins.
+		// series expansion). The series must already be an `available` title.
 		Series *struct {
 			Key       string `json:"key" doc:"provisioning key, e.g. series:tvdb:71663" example:"series:tvdb:71663"`
 			Title     string `json:"title,omitempty"`
@@ -292,7 +290,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	}
 	req := channeledit.NewChannel{
 		ID: in.Body.ID, Name: in.Body.Name, Number: in.Body.Number, Group: in.Body.Group, Logo: in.Body.Logo,
-		Strategy: schedule.Strategy(in.Body.Strategy), IntentRef: in.Body.IntentRef,
+		Strategy: schedule.Strategy(in.Body.Strategy),
 	}
 	if in.Body.Series != nil {
 		req.Series = &channeledit.SeriesScope{

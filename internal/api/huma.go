@@ -913,13 +913,9 @@ type ProposalDecisionQuality interface {
 	ProposalDeclined(context.Context, string, time.Time)
 }
 
-// ChannelBinder resolves the legacy explicit POST /v1/channels intent helpers and
-// shares channel-number occupancy with manually typed channel numbers. Approval
-// uses ProposalApprover instead of reaching through this lower-level seam.
+// ChannelBinder shares channel-number occupancy with manually typed channel numbers.
+// Approval uses ProposalApprover instead of reaching through this lower-level seam.
 type ChannelBinder interface {
-	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
-	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
-	RequestFromIntent(ctx context.Context, intentRef string) (intentJSON, requestedBy string, err error)
 	// NumberInUse answers the SAME question the approve path's numbering asks — is this
 	// channel number free in Loomarr's store AND in Tunarr? — so an operator who types a
 	// number gets the same answer the server gives itself when it picks one. Best-effort:

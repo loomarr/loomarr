@@ -467,7 +467,7 @@ func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]
 }
 
 // NewestProposalByStatusForJob returns the most recent proposal for one job in one status —
-// the binder's "which approved proposal does this channel bind to?" query.
+// approval's "which approved proposal does this job's channel bind to?" query.
 //
 // ⚠ NEWEST wins, and that is load-bearing rather than a tiebreak. A job legitimately accrues
 // SEVERAL approved proposals over its life: a refine re-runs the channel's own job, and the
