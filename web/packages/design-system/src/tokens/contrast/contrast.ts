@@ -1,9 +1,9 @@
-// WCAG contrast math over the Test Card palette. The token generator runs this
-// so a palette or tint-alpha edit that breaks an on-tint pairing FAILS the build
-// (frontend-design §2.1 "the badge/tint rule, learned the hard way, twice";
-// §5.3 "contrast enforced twice — here at build, and by axe on the rendered UI").
+// WCAG contrast math over the palette. The web theme generator runs this so a palette or tint-alpha
+// edit that breaks an on-tint pairing FAILS the build (frontend-design §2.1 "the badge/tint rule,
+// learned the hard way, twice"; §5.3 "contrast enforced twice — here at build, and by axe on the
+// rendered UI").
 
-import type { RGB } from "./contrast.type";
+type RGB = { r: number; g: number; b: number };
 
 const hexToRgb = (hex: string): RGB => {
   const h = hex.replace("#", "");
@@ -44,9 +44,9 @@ const contrast = (fg: string, bg: string): number => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-// Composite an accent tint — color-mix(in srgb, accent N%, transparent) — over an
-// opaque surface, yielding the actual pixel color the eye (and axe) sees. This is
-// the background badge text must pass 4.5:1 against.
+// Composite an accent tint — color-mix(in srgb, accent N%, transparent) — over an opaque surface,
+// yielding the actual pixel color the eye (and axe) sees. This is the background badge text must
+// pass 4.5:1 against.
 const compositeTint = (accentHex: string, alphaPct: number, surfaceHex: string): string => {
   const a = alphaPct / 100;
   const fg = hexToRgb(accentHex);
@@ -60,4 +60,4 @@ const compositeTint = (accentHex: string, alphaPct: number, surfaceHex: string):
 
 const AA_SMALL = 4.5; // WCAG AA for small text (11px badges are small text)
 
-export { AA_SMALL, compositeTint, contrast, hexToRgb, rgbToHex };
+export { AA_SMALL, compositeTint, contrast };

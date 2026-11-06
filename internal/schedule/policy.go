@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/langcode"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // ChannelPolicy is the per-channel programming contract (programming-design.md §2):
@@ -303,8 +304,8 @@ func boundedRanges(ranges []Range) bool {
 	return len(ranges) > 0
 }
 
-func fillerAudienceForCeiling(ceiling Rating) string {
-	switch NormalizeRating(string(ceiling)) {
+func fillerAudienceForCeiling(ceiling rating.Rating) string {
+	switch rating.Normalize(string(ceiling)) {
 	case "TV-Y", "TV-Y7":
 		return "kids"
 	case "G", "TV-G", "PG", "TV-PG":
@@ -571,7 +572,7 @@ func (r *Range) Contains(v int) bool {
 // AudiencePolicy is the fail-closed content-rating gate (§4) — the one heuristic
 // where an error is a *harm*, not an aesthetic bug.
 type AudiencePolicy struct {
-	Ceiling Rating        `json:"ceiling,omitempty"` // closed enum ladder; "" = no ceiling (adult/general)
+	Ceiling rating.Rating `json:"ceiling,omitempty"` // closed enum ladder; "" = no ceiling (adult/general)
 	Unrated UnratedPolicy `json:"unrated,omitempty"` // "" resolves by ceiling (kids ⇒ exclude)
 }
 
@@ -719,70 +720,6 @@ func (p HolidayPlacement) valid() bool {
 	return false
 }
 
-// --- audience rating ladder (§4) ------------------------------------------------
-
-// Rating is a content rating from either the TV or film system (§4). Comparison
-// is by ladderRank; an unmappable/empty value is treated as *unrated* (no rank).
-type Rating string
-
-// ladderRank maps both rating systems onto one ordered ladder (§4):
-// TV-Y < TV-Y7 < TV-G/G < TV-PG/PG < TV-14/PG-13 < TV-MA/R/NC-17.
-// A rating absent from this map is unrated (handled fail-closed).
-var ladderRank = map[Rating]int{
-	"TV-Y":  0,
-	"TV-Y7": 1,
-	"TV-G":  2, "G": 2,
-	"TV-PG": 3, "PG": 3,
-	"TV-14": 4, "PG-13": 4,
-	"TV-MA": 5, "R": 5, "NC-17": 5,
-}
-
-// kidsCeilingRank is the highest ladder rank still considered a "kids" ceiling
-// (TV-PG). At or below it, the default unrated policy is exclude (§4).
-const kidsCeilingRank = 3
-
-// KidsCeilingRank exposes the kids-ceiling boundary (TV-PG) so callers can keep an
-// auto-raise from crossing kids→adult — a kids channel must never be forced above
-// TV-PG just because a mis-rated pick slipped in (a TV-MA pick is dropped, not admitted).
-const KidsCeilingRank = kidsCeilingRank
-
-// NormalizeRating maps a raw media-server OfficialRating string into a ladder
-// Rating, for callers stamping the rating onto a lineup entry at create time. An
-// unmappable value normalizes to "" (unrated) — enforcement handles that
-// fail-closed under a kids ceiling.
-func NormalizeRating(raw string) Rating { return normalizeRating(raw) }
-
-// normalizeRating maps a raw media-server OfficialRating string into a ladder
-// Rating. It upper-cases, trims, and normalizes the common Emby/Jellyfin variants
-// ("TV_Y7", "tv-14", "Rated R" → …); anything not on the ladder returns "" (unrated).
-func normalizeRating(raw string) Rating {
-	s := strings.ToUpper(strings.TrimSpace(raw))
-	s = strings.ReplaceAll(s, "_", "-")
-	s = strings.ReplaceAll(s, " ", "")
-	s = strings.TrimPrefix(s, "RATED")
-	if _, ok := ladderRank[Rating(s)]; ok {
-		return Rating(s)
-	}
-	return "" // unmappable → unrated (fail-closed at the enforcement site)
-}
-
-// mapped reports whether r is a known ladder rating (not unrated).
-func (r Rating) mapped() bool { _, ok := ladderRank[r]; return ok }
-
-// Rank returns r's position on the audience ladder (TV-Y=0 … TV-MA/R=5) and whether
-// r is a known ladder rating. Exposed so the suggester can guarantee its audience
-// ceiling admits the titles it actually grounded — a ceiling stricter than a picked
-// title would silently empty the channel at enforcement (programming-design §4).
-func (r Rating) Rank() (int, bool) { n, ok := ladderRank[r]; return n, ok }
-
-// atOrBelow reports whether r is at or below the ceiling on the ladder. Both must
-// be mapped; an unrated item is never "at or below" — it's decided by UnratedPolicy.
-func (r Rating) atOrBelow(ceiling Rating) bool {
-	rr, rok := ladderRank[r]
-	cc, cok := ladderRank[ceiling]
-	return rok && cok && rr <= cc
-}
-
 // --- Duration newtype (JSON as "168h", not nanoseconds) -------------------------
 
 // Duration wraps time.Duration so it (un)marshals as a Go-duration STRING ("168h")
@@ -835,7 +772,7 @@ const (
 // "if unset use default". Produced once per reconcile by ChannelPolicy.Resolved().
 type ResolvedPolicy struct {
 	Scope    ScopePolicy
-	Ceiling  Rating
+	Ceiling  rating.Rating
 	Unrated  UnratedPolicy // resolved to exclude|allow (never "")
 	Sep      ResolvedSeparation
 	Ordering OrderingMode // resolved to a concrete mode (never OrderInherit)
@@ -929,7 +866,7 @@ func resolveUnrated(a AudiencePolicy) UnratedPolicy {
 	if a.Unrated != UnratedDefault {
 		return a.Unrated
 	}
-	if a.Ceiling != "" && ladderRank[a.Ceiling] <= kidsCeilingRank {
+	if rank, _ := a.Ceiling.Rank(); a.Ceiling != "" && rank <= rating.KidsCeilingRank {
 		return UnratedExclude
 	}
 	return UnratedAllow
@@ -984,7 +921,7 @@ func (p ChannelPolicy) Validate() error {
 	if !p.Audience.Unrated.valid() {
 		return fmt.Errorf("channel policy: unknown unrated policy %q", p.Audience.Unrated)
 	}
-	if p.Audience.Ceiling != "" && !p.Audience.Ceiling.mapped() {
+	if p.Audience.Ceiling != "" && !p.Audience.Ceiling.Mapped() {
 		return fmt.Errorf("channel policy: ceiling %q is not on the rating ladder", p.Audience.Ceiling)
 	}
 	if !p.Seasonal.Mode.valid() {

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 func TestLowerWhen(t *testing.T) {
@@ -68,7 +69,7 @@ func TestLowerWhat(t *testing.T) {
 		if !ok || s == nil || len(s.Genres.Include) == 0 {
 			t.Fatalf("kids: scope=%v ok=%v", s, ok)
 		}
-		if ceil != NormalizeRating("TV-Y7") {
+		if ceil != rating.Normalize("TV-Y7") {
 			t.Errorf("kids ceiling = %q, want TV-Y7", ceil)
 		}
 	})

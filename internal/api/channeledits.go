@@ -40,18 +40,10 @@ func channelEditProblem(err error) error {
 		return errConflict("Channel number in use", "Another channel already uses that number. Pick a different one.")
 	case errors.Is(err, channeledit.ErrIDTaken):
 		return errConflict("Channel already exists", "A channel with that id already exists.")
-	case errors.Is(err, channeledit.ErrIntentBound):
-		return errConflict("Channel already exists", "That approved suggestion is already bound to a channel.")
 	case errors.Is(err, channeledit.ErrClaimed):
-		return errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
+		return errConflict("Channel already exists", "That channel number was claimed by another channel. Refresh and try again.")
 	case errors.Is(err, channeledit.ErrInvalidSeries):
 		return errUnprocessable("Invalid series", "For a single-series channel, pick a series (not a movie or episode).")
-	case errors.Is(err, channeledit.ErrLineupUnresolved):
-		return apiErrWithCause(http.StatusUnprocessableEntity, "Couldn't build the lineup",
-			"Loomarr couldn't resolve the lineup for the approved suggestion. Try refining or re-approving it.", err)
-	case errors.Is(err, channeledit.ErrPolicyUnresolved):
-		return apiErrWithCause(http.StatusUnprocessableEntity, "Couldn't apply the policy",
-			"Loomarr couldn't resolve the programming policy for the approved suggestion. Try refining or re-approving it.", err)
 	case errors.Is(err, channeledit.ErrInvalid):
 		return apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
 			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)

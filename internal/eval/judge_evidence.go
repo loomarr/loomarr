@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -180,7 +181,7 @@ func boundJudgeTitles(items []JudgeTitleEvidence, ownership JudgeOwnership) []Ju
 
 func boundJudgePolicy(policy schedule.ProposalPolicy) schedule.ProposalPolicy {
 	policy.Scope = boundJudgeScope(policy.Scope)
-	policy.Audience.Ceiling = schedule.Rating(boundedJudgeText(string(policy.Audience.Ceiling)))
+	policy.Audience.Ceiling = rating.Rating(boundedJudgeText(string(policy.Audience.Ceiling)))
 	policy.Audience.Unrated = schedule.UnratedPolicy(boundedJudgeText(string(policy.Audience.Unrated)))
 	policy.Ordering = schedule.OrderingMode(boundedJudgeText(string(policy.Ordering)))
 	policy.Seasonal.Mode = schedule.SeasonalMode(boundedJudgeText(string(policy.Seasonal.Mode)))

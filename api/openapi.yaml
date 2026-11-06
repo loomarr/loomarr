@@ -2543,8 +2543,6 @@ components:
           examples:
             - ch_abc123
           type: string
-        intentRef:
-          type: string
         logo:
           type: string
         name:

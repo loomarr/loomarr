@@ -463,10 +463,10 @@ const (
 // peak is stable against the cold ramp and is the honest "how fast can this encoder go" signal.
 func lastSpeedObserved(r interface{ Read([]byte) (int, error) }, run *diagnostics.ProcessHandle) float64 {
 	var speed float64
-	var current Progress
+	var current encode.Progress
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		complete := consumeProgressLine(strings.TrimSpace(scanner.Text()), &current)
+		complete := encode.ConsumeProgressLine(strings.TrimSpace(scanner.Text()), &current)
 		if current.Speed > speed {
 			speed = current.Speed
 		}

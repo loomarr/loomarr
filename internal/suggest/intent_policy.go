@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/textmatch"
 )
@@ -42,9 +43,9 @@ func intentRequiresLibraryOnly(intent Intent) bool {
 // value while the public Suggester interface remains unchanged.
 type deterministicIntentPolicy struct {
 	episodeSelection        schedule.EpisodeSelection
-	explicitAudienceCeiling schedule.Rating
+	explicitAudienceCeiling rating.Rating
 	excludeUnrated          bool
-	safetyCeiling           schedule.Rating
+	safetyCeiling           rating.Rating
 	seasonal                schedule.SeasonalPolicy
 	sequential              bool
 	curated                 bool
@@ -180,7 +181,7 @@ func stampEpisodeSelection(items []proposal.ProposalItem, intent proposal.Intent
 	return changed
 }
 
-func stricterCeiling(candidate, maximum schedule.Rating) schedule.Rating {
+func stricterCeiling(candidate, maximum rating.Rating) rating.Rating {
 	if maximum == "" {
 		return candidate
 	}
@@ -247,12 +248,12 @@ func intentExcludesUnrated(intent Intent) bool {
 // intentExplicitAudienceCeiling extracts only ratings the user actually wrote.
 // It deliberately does not infer an adult cap from genre or tone: unqualified
 // channels retain the adult-default behavior, while an explicit limit is exact.
-func intentExplicitAudienceCeiling(intent Intent) schedule.Rating {
+func intentExplicitAudienceCeiling(intent Intent) rating.Rating {
 	hay := normalizedIntentText(intent)
-	var explicit schedule.Rating
+	var explicit rating.Rating
 	for _, pattern := range audienceMaximumPatterns {
 		for _, match := range pattern.FindAllStringSubmatch(hay, -1) {
-			explicit = stricterCeiling(schedule.NormalizeRating(match[1]), explicit)
+			explicit = stricterCeiling(rating.Normalize(match[1]), explicit)
 		}
 	}
 	for _, candidate := range []struct {
@@ -273,7 +274,7 @@ func intentExplicitAudienceCeiling(intent Intent) schedule.Rating {
 	} {
 		for _, cue := range candidate.cues {
 			if containsRatingPhrase(hay, cue) {
-				return stricterCeiling(schedule.NormalizeRating(candidate.rating), explicit)
+				return stricterCeiling(rating.Normalize(candidate.rating), explicit)
 			}
 		}
 	}
@@ -402,7 +403,7 @@ var kidsIntentCues = []string{
 	"g-rated", "pg-rated", "clean ", "safe for",
 }
 
-func intentDeterministicSafetyCeiling(intent Intent) schedule.Rating {
+func intentDeterministicSafetyCeiling(intent Intent) rating.Rating {
 	hay := normalizedIntentText(intent)
 	for _, cue := range []string{
 		"kid-safe", "kid safe", "kids-safe", "kids safe", "child-safe", "child safe",
@@ -410,20 +411,20 @@ func intentDeterministicSafetyCeiling(intent Intent) schedule.Rating {
 		"young children", "preschool", "toddler", "saturday morning",
 	} {
 		if strings.Contains(hay, cue) {
-			return schedule.NormalizeRating("TV-Y7")
+			return rating.Normalize("TV-Y7")
 		}
 	}
 	for _, cue := range []string{
 		"family-friendly", "family friendly", "for the family", "for families", "all ages", "all-ages",
 	} {
 		if strings.Contains(hay, cue) {
-			return schedule.NormalizeRating("TV-PG")
+			return rating.Normalize("TV-PG")
 		}
 	}
 	if strings.Contains(hay, "family") {
 		for _, safetyCue := range []string{"nothing too", "not too", "never gruesome", "safe", "appropriate"} {
 			if strings.Contains(hay, safetyCue) {
-				return schedule.NormalizeRating("TV-PG")
+				return rating.Normalize("TV-PG")
 			}
 		}
 	}

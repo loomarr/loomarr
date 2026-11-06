@@ -47,7 +47,7 @@ Who may use Loomarr and how they are reached: sign-in sessions, invitations, pas
 
 ### [Platform](areas/platform.md)
 
-The ground everything else stands on: the store and its two databases, settings and start-up configuration, background jobs and scheduled clean-up, the activity feed and diagnostics, metrics, the outbound HTTP client, the event bus, disk-space reservations, the language-model and OpenRouter clients, the embedded web app, release tooling, and small shared vocabularies such as holidays, language codes and whole-word text matching.
+The ground everything else stands on: the store and its two databases, settings and start-up configuration, background jobs and scheduled clean-up, the activity feed and diagnostics, metrics, the outbound HTTP client, the event bus, disk-space reservations, the language-model and OpenRouter clients, the embedded web app, release tooling, and small shared vocabularies such as holidays, language codes, the audience rating ladder and whole-word text matching.
 
 ### [Edge](areas/edge.md)
 
@@ -55,7 +55,7 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 ### [Test support](areas/test.md)
 
-Code that exists for tests and never ships in the server: the shared test doubles and fixtures, the invented demo library, the end-to-end integration journeys, and the evaluation harness that runs only under its own build tag.
+Code that exists for tests and never ships in the server: the shared test doubles and fixtures, the store's SQLite and Postgres test databases, the invented demo library, the end-to-end integration journeys, and the evaluation harness that runs only under its own build tag.
 
 ## Two flows, end to end
 
@@ -90,9 +90,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `inventory` | — |
 | `invitation` | `contact` |
 | `jobs` | `store` |
-| `library` | `filler`, `httpx`, `inventory`, `metrics` |
+| `library` | `httpx`, `inventory`, `metrics` |
 | `llm` | `httpx`, `metrics` |
-| `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
+| `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode` |
 | `metadataprovider` | — |
 | `metrics` | `provision` |
 | `notifications` | `httpx` |
@@ -100,13 +100,14 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `proposal` | `provision`, `schedule`, `storagegovernor` |
 | `provision` | — |
 | `quality` | `provision` |
+| `rating` | — |
 | `recovery` | — |
-| `schedule` | `holidayvocab`, `inventory`, `provision` |
+| `schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `settings` | `config`, `library` |
 | `sourceprovider` | — |
 | `storagegovernor` | — |
 | `store` | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
-| `suggest` | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `schedule`, `store` |
+| `suggest` | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `rating`, `schedule`, `store` |
 | `taxonomy` | — |
 
 ## How the area pages are made

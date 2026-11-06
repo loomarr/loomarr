@@ -155,19 +155,20 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
 
 ### 2.5 Token pipeline and migration
 
-For legacy consumers, `web/packages/tokens` holds the TS source of truth and generates three
-artifacts in CI:
-1. `theme.css` — Tailwind v4 `@theme` variables for the web app,
-2. a **Tailwind preset** — consumed by the legacy web implementation during migration,
-3. `tokens.json` — consumed by legacy Web migration tooling.
+`web/packages/design-system/src/tokens` is the one palette and token source for every app and
+package. Its semantic themes and the brand contract name every color; the web's Tailwind theme
+(`src/tokens/web-theme.ts`, entry point `@loomarr/design-system/web-theme`) derives its raw palette,
+type scale, space, radius and motion from them, so a hex lives in one place.
 
-CI fails if generated artifacts drift from source (`make fe-tokens` regenerates; diff must be empty). This is the same committed-artifact discipline as `api/openapi.yaml`.
+`make fe-tokens` renders that theme to `web/packages/design-system/generated/theme.css` (Tailwind v4
+`@theme` variables, imported by the web app as `@loomarr/design-system/theme.css`). CI fails if the
+committed file drifts from the tokens (`make fe-tokens-verify`; diff must be empty). This is the same
+committed-artifact discipline as `api/openapi.yaml`. The contrast tests in
+`packages/design-system/tests/web-theme.test.ts` gate every on-tint pairing.
 
-The target source is `packages/design-system`'s Tamagui configuration and semantic token interface.
-During migration it generates the legacy CSS, JSON, and Kotlin artifacts so there is still one source
-per value. A token does not graduate into the target interface merely because it exists here: the
-visual review classifies it as keep, redesign, adapt, or retire. Tailwind and Kotlin output are
-adapters while legacy consumers remain and disappear with those consumers.
+A token does not graduate into the semantic interface merely because the web theme has it: the
+visual review classifies it as keep, redesign, adapt, or retire. The Tailwind output is an adapter
+that disappears with the legacy Web consumers.
 
 ---
 
@@ -212,7 +213,6 @@ web/
   packages/ui/             # shared product and viewer modules
   packages/ui-tv/          # D-pad focus, overscan, remote, and TV guide adapters
   packages/player/         # shared playback state interface + platform adapters
-  packages/tokens/         # TRANSITIONAL generated adapters for legacy consumers
   apps/web/                # Vite delivery adapter; embedded in the Go binary
   apps/mobile/             # Expo Router; iOS and Android touch clients
   apps/tv/                 # Expo + react-native-tvos; Android TV and Apple TV clients
@@ -300,8 +300,8 @@ evidence.**
 Coverage says every component *has* a story. It says nothing about whether a person can **find** one — and past ~30 components a flat alphabetical list stops being a gallery and becomes a lookup table you have to already know the answer to.
 
 - **Stories are grouped by what a component is for**, not by where its file sits: `Design/*` (the system itself — palette, tokens, type, spacing), `Primitives/*` (Layer 1), then Layer 2 split by domain (`Channels/*`, `Guide/*`, `Filler/*`, `Setup/*`, `Shell/*`, `Feedback/*`). The folder layout stays flat and co-located; only the story `title` carries the grouping, so nothing moves on disk.
-- **The design system documents itself in the workshop.** `Design/Palette` renders every accent with its hex, its tint ramp, and its **measured** contrast ratios — read from the generated token artifacts, never retyped, so the page cannot drift from what the build enforces (§2.5). `Design/Tokens` lists the full set; `Design/Typography` and `Design/Spacing` show the scales. The rules in §2 stop being prose only a maintainer has read and become the first thing anyone opening Storybook sees.
-- **The `Design/*` pages are ordinary CSF stories, not MDX.** MDX would need `@storybook/addon-docs` (a new dependency, §14) to render prose that sits *beside* the values; a story renders the values themselves — it type-checks against `tokens.json`, gets a visual baseline like every other story, and cannot drift from the generated artifacts. Explanation rides along as rendered copy in the page. Executable documentation over described documentation, and no new dependency to justify.
+- **The design system documents itself in the workshop.** `Design/Palette` renders every accent with its hex, its tint ramp, and its **measured** contrast ratios — read from the design-system web theme tokens, never retyped, so the page cannot drift from what the build enforces (§2.5). `Design/Tokens` lists the full set; `Design/Typography` and `Design/Spacing` show the scales. The rules in §2 stop being prose only a maintainer has read and become the first thing anyone opening Storybook sees.
+- **The `Design/*` pages are ordinary CSF stories, not MDX.** MDX would need `@storybook/addon-docs` (a new dependency, §14) to render prose that sits *beside* the values; a story renders the values themselves — it type-checks against the web theme tokens, gets a visual baseline like every other story, and cannot drift from the generated stylesheet. Explanation rides along as rendered copy in the page. Executable documentation over described documentation, and no new dependency to justify.
 
 ### 5.1c Layer 2 must not re-implement Layer 1
 

@@ -18,7 +18,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/encode"
-	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // Derivative transcoding (§10 V66) — source masters feed separately identified evidence and
@@ -213,10 +212,8 @@ func transcodeOnce(ctx context.Context, req TranscodeRequest, tmp string, gpuDec
 	progressDone := make(chan struct{})
 	go func() {
 		defer close(progressDone)
-		// ⚠ The SHARED parser (`playout.ReadProgress`), not a second copy. `out_time_ms` reports
-		// microseconds despite its name, and that is exactly the kind of fact that gets fixed in
-		// one copy and not the other.
-		playout.ReadProgress(progress, func(sample playout.Progress) {
+		// The shared parser, not a second copy: see encode.ReadProgress.
+		encode.ReadProgress(progress, func(sample encode.Progress) {
 			if run != nil {
 				run.ObserveProgress(diagnostics.ProcessProgress{Frame: sample.Frame, Speed: sample.Speed, OutTimeMS: sample.OutTimeMS})
 			}

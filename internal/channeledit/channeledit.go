@@ -1,5 +1,5 @@
 // Package channeledit is the one write path for an operator's channel changes (§7): creating a
-// hand-made or approved-intent channel, and every edit after it — the PATCH form, an icon or
+// hand-made channel, and every edit after it — the PATCH form, an icon or
 // watermark upload, a detach. Each change is a function over the channel; the service wraps it in
 // the rules every edit must share, so a route cannot forget one: the `building` tuner-list
 // freshness signal, the due-now reconcile deadline, the UpdatedAt stamp, validation, the
@@ -30,30 +30,21 @@ var (
 	ErrStale       = errors.New("channel changed since it was read")
 	ErrNumberInUse = errors.New("channel number in use")
 	ErrIDTaken     = errors.New("channel id already exists")
-	ErrIntentBound = errors.New("approved suggestion already bound to a channel")
-	// ErrClaimed is a number or intent another writer took between the check and the save.
-	ErrClaimed          = errors.New("channel number or approved suggestion claimed by another channel")
-	ErrInvalid          = errors.New("invalid channel")
-	ErrInvalidSeries    = errors.New("single-series channel needs a series key")
-	ErrLineupUnresolved = errors.New("approved suggestion's lineup could not be resolved")
-	ErrPolicyUnresolved = errors.New("approved suggestion's policy could not be resolved")
+	// ErrClaimed is a number another writer took between the check and the save.
+	ErrClaimed       = errors.New("channel number claimed by another channel")
+	ErrInvalid       = errors.New("invalid channel")
+	ErrInvalidSeries = errors.New("single-series channel needs a series key")
 )
 
 // Store is the channel persistence the service writes through.
 type Store interface {
 	GetChannel(ctx context.Context, id string) (store.Channel, error)
-	GetChannelByIntentRef(ctx context.Context, intentRef string) (store.Channel, error)
 	GetChannelByNumber(ctx context.Context, number int) (store.Channel, error)
 	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
 }
 
-// Binder is the approval path's answers, shared so explicit create and approval agree.
+// Binder is the approval path's number answer, shared so explicit create and approval agree.
 type Binder interface {
-	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
-	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
-	// RequestFromIntent answers what the approved suggestion asked for and who asked, which the
-	// channel then owns.
-	RequestFromIntent(ctx context.Context, intentRef string) (intentJSON, requestedBy string, err error)
 	// NumberInUse asks Loomarr's store AND Tunarr (design §2: a number must be free in Tunarr too).
 	NumberInUse(ctx context.Context, number int) (bool, error)
 }
@@ -91,8 +82,7 @@ type NewChannel struct {
 	ID, Name, Group, Logo string
 	Number                int
 	Strategy              schedule.Strategy
-	IntentRef             string
-	// Series makes a hand-made single-series channel; ignored when IntentRef is set.
+	// Series makes a hand-made single-series channel; without it the lineup starts empty.
 	Series *SeriesScope
 }
 
@@ -107,38 +97,12 @@ type SeriesScope struct {
 func (s *Service) Create(ctx context.Context, in NewChannel) (store.Channel, error) {
 	ch := store.Channel{
 		ID: in.ID, Name: in.Name, Number: in.Number, Group: in.Group, Logo: in.Logo,
-		Strategy: in.Strategy, IntentRef: in.IntentRef, Status: schedule.StatusBuilding,
+		Strategy: in.Strategy, Status: schedule.StatusBuilding,
 	}
 	if ch.ID == "" {
 		ch.ID = binder.NewChannelID()
 	}
-	// A non-empty intent has exactly one local channel. Approval enforces this at the database
-	// boundary; surface it here as a refusal instead of a unique-index failure.
-	if ch.IntentRef != "" {
-		if _, err := s.Store.GetChannelByIntentRef(ctx, ch.IntentRef); err == nil {
-			return store.Channel{}, ErrIntentBound
-		} else if !errors.Is(err, store.ErrNotFound) {
-			return store.Channel{}, err
-		}
-	}
-	// Bind the approved proposal's lineup and grounded policy (§7/§9, programming-design §8) so
-	// enforcement applies from the first reconcile. No intent ⇒ empty lineup, built-in defaults.
-	if ch.IntentRef != "" && s.Binder != nil {
-		lineup, err := s.Binder.LineupFromIntent(ctx, ch.IntentRef)
-		if err != nil {
-			return store.Channel{}, fmt.Errorf("%w: %w", ErrLineupUnresolved, err)
-		}
-		policy, err := s.Binder.PolicyFromIntent(ctx, ch.IntentRef)
-		if err != nil {
-			return store.Channel{}, fmt.Errorf("%w: %w", ErrPolicyUnresolved, err)
-		}
-		ch.Lineup, ch.Policy = lineup, policy
-		ch.IntentJSON, ch.RequestedBy, err = s.Binder.RequestFromIntent(ctx, ch.IntentRef)
-		if err != nil {
-			return store.Channel{}, fmt.Errorf("%w: %w", ErrPolicyUnresolved, err)
-		}
-	}
-	if ch.IntentRef == "" && in.Series != nil {
+	if in.Series != nil {
 		if !in.Series.Key.IsSeries() {
 			return store.Channel{}, ErrInvalidSeries
 		}

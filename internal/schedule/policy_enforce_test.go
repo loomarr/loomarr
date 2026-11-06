@@ -6,15 +6,16 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // ratedEntry builds a movie lineup entry with policy-enforcement metadata stamped.
-func ratedEntry(key, title, rating string, year int, genres ...string) schedule.LineupEntry {
+func ratedEntry(key, title, official string, year int, genres ...string) schedule.LineupEntry {
 	return schedule.LineupEntry{
 		Key:            provision.Key(key),
 		Title:          title,
-		OfficialRating: schedule.NormalizeRating(rating),
+		OfficialRating: rating.Normalize(official),
 		Year:           year,
 		Genres:         genres,
 	}

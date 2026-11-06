@@ -39,12 +39,11 @@ var areas = []area{
 			"metadataprovider/tmdb",
 		},
 		MayImport: map[string]string{
-			"platform": "the store, settings and jobs behind the provision backstop, and the outbound HTTP " +
-				"client and metrics every remote service call goes through",
-			"channels": "`schedule.NormalizeRating` for one rating vocabulary, and `schedule.ResolvedProgram` " +
-				"for the backstop's view of what a channel will play, until both move to a shared vocabulary",
-			"filler": "`filler.Kind`, to classify media-server extras as trailers or bumpers, until the kind " +
-				"vocabulary leaves the filler engine",
+			"platform": "the store, settings and jobs behind the provision backstop, the outbound HTTP " +
+				"client and metrics every remote service call goes through, and the audience rating ladder " +
+				"the metadata providers fold certifications onto",
+			"channels": "`schedule.ResolvedProgram` for the backstop's view of what a channel will play, " +
+				"until the episode resolver returns a library-owned value",
 		},
 	},
 	{
@@ -63,8 +62,6 @@ var areas = []area{
 				"their schedules, the outbound HTTP client for fetched artwork, and start-up configuration",
 			"library": "the `inventory` stream, keyframe and break values that header reads and measurements " +
 				"fill in",
-			"playout": "`playout.ReadProgress` and `playout.DefaultProfile`, until ffmpeg progress parsing " +
-				"and the encode profile live in media, where both belong",
 		},
 	},
 	{
@@ -80,7 +77,7 @@ var areas = []area{
 		MayImport: map[string]string{
 			"platform": "the store every channel write goes through, the jobs and settings behind " +
 				"reconcile and re-curation, the activity feed, the language model for recommendations, and " +
-				"the holiday and language vocabularies",
+				"the holiday, language and audience-rating vocabularies",
 			"library": "the titles a channel plays: `provision` keys and states, `inventory` break " +
 				"analysis, and `catalog` candidates for re-curation",
 			"proposals": "binding an approved proposal into a channel, and re-curating a self-updating " +
@@ -104,7 +101,8 @@ var areas = []area{
 		},
 		MayImport: map[string]string{
 			"platform": "the store, the language model, the holiday vocabulary and whole-word matching the " +
-				"suggester checks titles with, and the storage governor's size confidence",
+				"suggester checks titles with, the audience rating ladder its ceilings are drawn from, and " +
+				"the storage governor's size confidence",
 			"library": "grounding each suggested title in the real library, catalog, TMDB and collections, " +
 				"and the `provision` records for titles the household lacks",
 			"channels": "the `schedule` values a proposal describes, and the reconcile engine the outlook " +
@@ -179,13 +177,14 @@ var areas = []area{
 			"start-up configuration, background jobs and scheduled clean-up, the activity feed and " +
 			"diagnostics, metrics, the outbound HTTP client, the event bus, disk-space reservations, the " +
 			"language-model and OpenRouter clients, the embedded web app, release tooling, and small " +
-			"shared vocabularies such as holidays, language codes and whole-word text matching.",
+			"shared vocabularies such as holidays, language codes, the audience rating ladder and " +
+			"whole-word text matching.",
 		Packages: []string{
-			"store", "store/storedb", "store/storetest", "store/catalogstore", "store/identitystore",
+			"store", "store/storedb", "store/catalogstore", "store/identitystore",
 			"settings", "config", "jobs", "housekeeping", "activity", "diagnostics", "metrics", "httpx",
 			"events", "storagegovernor", "logchange", "releasenotes", "releaseverify", "buildinfo", "web",
 			"devbootstrap", "llm", "openroutercatalog", "openroutermedia", "holidayvocab", "langcode",
-			"textmatch",
+			"rating", "textmatch",
 		},
 		MayImport: map[string]string{
 			"library": "the store persists inventory, provision and episode-evidence values, and settings " +
@@ -198,7 +197,6 @@ var areas = []area{
 			"people": "the identity store persists accounts, invitations, recovery, contacts, notifications " +
 				"and wrapped keys; housekeeping applies each one's retention; dev bootstrap provisions the " +
 				"dev admin",
-			"test": "`store/storetest` starts the Postgres test image, until that helper moves into test support",
 		},
 	},
 	{
@@ -213,14 +211,15 @@ var areas = []area{
 		Name:  "test",
 		Title: "Test support",
 		Description: "Code that exists for tests and never ships in the server: the shared test doubles " +
-			"and fixtures, the invented demo library, the end-to-end integration journeys, and the " +
-			"evaluation harness that runs only under its own build tag.",
+			"and fixtures, the store's SQLite and Postgres test databases, the invented demo library, the " +
+			"end-to-end integration journeys, and the evaluation harness that runs only under its own " +
+			"build tag.",
 		Packages: []string{
 			"testkit", "testkit/execfixture", "testkit/httpfixture", "testkit/operationfixture",
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
-			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "demolibrary", "integration",
-			"eval",
+			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "store/storetest",
+			"demolibrary", "integration", "eval",
 		},
 		ImportsAnyArea: true,
 	},

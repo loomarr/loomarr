@@ -8,8 +8,8 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
+- **platform** · 9 imports — the store, the language model, the holiday vocabulary and whole-word matching the suggester checks titles with, the audience rating ladder its ceilings are drawn from, and the storage governor's size confidence
 - **library** · 8 imports — grounding each suggested title in the real library, catalog, TMDB and collections, and the `provision` records for titles the household lacks
-- **platform** · 8 imports — the store, the language model, the holiday vocabulary and whole-word matching the suggester checks titles with, and the storage governor's size confidence
 - **channels** · 5 imports — the `schedule` values a proposal describes, and the reconcile engine the outlook runs to preview a proposal before approval
 
 ## Packages
@@ -26,5 +26,5 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 - **`reference`** · 4 importers
   Resolves bounded, read-only evidence from public web pages supplied in channel Intents.
-- **`suggest`** · 7 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `proposal`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+- **`suggest`** · 7 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `proposal`, `provision`, `quality`, `rating`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).

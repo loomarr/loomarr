@@ -26,7 +26,7 @@ import (
 	"time"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // ErrCountryUnsupported refuses a certification country with no rating ladder (decision 21).
@@ -327,12 +327,12 @@ func (r *Resolver) strictest(records []mp.Record) (Picked[Certification], bool) 
 		if country != "" && country != r.country {
 			continue
 		}
-		rating := schedule.NormalizeRating(rec.Certification.Rating)
-		rank, ok := rating.Rank()
+		normalized := rating.Normalize(rec.Certification.Rating)
+		rank, ok := normalized.Rank()
 		if !ok || rank <= bestRank {
 			continue
 		}
-		best = Picked[Certification]{Value: Certification{Rating: string(rating)}, From: rec.Source}
+		best = Picked[Certification]{Value: Certification{Rating: string(normalized)}, From: rec.Source}
 		bestRank, found = rank, true
 	}
 	return best, found

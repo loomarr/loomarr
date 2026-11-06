@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
@@ -204,7 +205,7 @@ func materializeSchedule(c Case, proposal proposal.Proposal, titles map[provisio
 			Key: key, Title: item.Name, DurationMs: fixture.DurationMs,
 			SeasonMin: item.SeasonMin, SeasonMax: item.SeasonMax,
 			EpisodeSelection: item.EpisodeSelection,
-			OfficialRating:   schedule.NormalizeRating(item.OfficialRating),
+			OfficialRating:   rating.Normalize(item.OfficialRating),
 			Genres:           item.Genres, Year: item.Year, CollectionID: fixture.CollectionID,
 		})
 	}

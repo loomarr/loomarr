@@ -10,7 +10,6 @@ const sourceRoots = [
   "../packages/core/src/",
   "../packages/fixtures/src/",
   "../packages/player/src/",
-  "../packages/tokens/src/",
   "../packages/ui/src/",
 ].map((path) => fileURLToPath(new URL(path, import.meta.url)));
 
