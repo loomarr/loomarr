@@ -1,11 +1,11 @@
-import tokenArtifact from "@loomarr/tokens/tokens.json";
+import { webTokenSet } from "@loomarr/design-system/web-theme";
 
-// Tokens — the complete generated set, as data (§2.5, §5.1a).
+// Tokens — the complete web token set, as data (§2.5, §5.1a).
 //
 // The Palette/Typography/Spacing pages EXPLAIN the system; this one is the reference you scan
-// when you need the exact name of a thing. It reads `tokens.json` — the artifact the Tailwind
-// preset and theme.css are generated from — so a token that exists at build time appears here
-// and one that does not, cannot.
+// when you need the exact name of a thing. It reads `webTokenSet()` — the data theme.css is
+// generated from — so a token that exists at build time appears here and one that does not,
+// cannot.
 //
 // Deliberately dumb: no curation, no grouping by meaning, no commentary. The moment this page
 // starts choosing what to show, it stops being a reliable index of what exists.
@@ -51,7 +51,7 @@ const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
 );
 
 const Tokens = () => {
-  const groups = Object.entries(tokenArtifact) as [string, TokenGroup][];
+  const groups = Object.entries(webTokenSet()) as [string, TokenGroup][];
   const total = groups.reduce((n, [, g]) => n + asRows(g).length, 0);
 
   return (
@@ -59,11 +59,9 @@ const Tokens = () => {
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Tokens</h1>
         <p className="text-muted-foreground max-w-2xl text-sm">
-          {`All ${total} generated tokens, read from the same `}
-          <code className="font-mono text-xs">tokens.json</code>
-          {" the Tailwind preset and "}
+          {`All ${total} generated tokens, read from the same data `}
           <code className="font-mono text-xs">theme.css</code>
-          {" are built from. If it is not on this page, it does not exist at build time."}
+          {" is built from. If it is not on this page, it does not exist at build time."}
         </p>
       </header>
       {groups.map(([name, group]) => (

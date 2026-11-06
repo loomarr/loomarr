@@ -1,7 +1,7 @@
 // Package encode is the hardware-encode vocabulary every ffmpeg caller shares (#2121): which video
 // encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU
-// decodes, the device and decode arguments that must precede `-i`, and each family's encoder flags
-// and rate control.
+// decodes, the device and decode arguments that must precede `-i`, each family's encoder flags
+// and rate control, and the parser for ffmpeg's `-progress` stream.
 //
 // It was carved out of internal/playout so the filler pipeline can encode on the same GPU path as
 // the live channels without importing the streaming engine. What stayed behind is what is specific

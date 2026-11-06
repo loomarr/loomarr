@@ -9,7 +9,7 @@
   },
   "packageManager": "pnpm@11.13.1",
   "scripts": {
-    "tokens": "pnpm --filter @loomarr/tokens generate",
+    "tokens": "pnpm --filter @loomarr/design-system generate",
     "api": "pnpm --filter @loomarr/api generate",
     "routes": "pnpm --filter @loomarr/web generate:routes",
     "codegen": "pnpm tokens && pnpm api && pnpm routes",

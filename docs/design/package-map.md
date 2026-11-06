@@ -55,7 +55,7 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 ### [Test support](areas/test.md)
 
-Code that exists for tests and never ships in the server: the shared test doubles and fixtures, the invented demo library, the end-to-end integration journeys, and the evaluation harness that runs only under its own build tag.
+Code that exists for tests and never ships in the server: the shared test doubles and fixtures, the store's SQLite and Postgres test databases, the invented demo library, the end-to-end integration journeys, and the evaluation harness that runs only under its own build tag.
 
 ## Two flows, end to end
 
@@ -90,9 +90,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `inventory` | — |
 | `invitation` | `contact` |
 | `jobs` | `store` |
-| `library` | `filler`, `httpx`, `inventory`, `metrics` |
+| `library` | `httpx`, `inventory`, `metrics` |
 | `llm` | `httpx`, `metrics` |
-| `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `playout` |
+| `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode` |
 | `metadataprovider` | — |
 | `metrics` | `provision` |
 | `notifications` | `httpx` |

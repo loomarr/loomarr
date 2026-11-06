@@ -14,7 +14,6 @@ One area of the [package map](../package-map.md#start-here).
 - **media** · 5 imports — the store persists creative fingerprints and defect verdicts, and metrics count image generation
 - **channels** · 2 imports — the store persists the `schedule` channel, lineup and slot values
 - **proposals** · 2 imports — the store persists proposals and suggestion-quality runs
-- **test** · 1 import — `store/storetest` starts the Postgres test image, until that helper moves into test support
 
 ## Packages
 
@@ -66,8 +65,6 @@ One area of the [package map](../package-map.md#start-here).
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`store/storedb`** · 4 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
-- **`store/storetest`** · → `testkit/postgresimage`
-  Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
 - **`textmatch`** · 2 importers
   Owns deterministic, Unicode-aware whole-word phrase matching.
 - **`web`** · 1 importer

@@ -236,6 +236,15 @@ classify() {
       # directly. Their output is therefore part of the committed visual contract.
       select_gate visual
       select_gate android
+      case "$path" in
+        web/packages/design-system/src/tokens/*|web/packages/design-system/web-theme.ts|web/packages/design-system/generated/*|web/packages/design-system/scripts/*)
+          # The web theme tokens generate the production stylesheet (generated/theme.css) that the web
+          # build, its token drift check and the real tuner SPA build consume.
+          select_gate web
+          select_gate image
+          select_gate tuner
+          ;;
+      esac
       ;;
     web/packages/fixtures/src/testcard/*)
       # Test-card filler/guide data is imported only by browser stories and tests. It
@@ -372,14 +381,8 @@ classify() {
           ;;
       esac
       case "$path" in
-        web/packages/tokens/*|web/apps/web/public/*|web/apps/web/tests/visual/*|*.stories.ts|*.stories.tsx|*.snap|*.css)
+        web/apps/web/public/*|web/apps/web/tests/visual/*|*.stories.ts|*.stories.tsx|*.snap|*.css)
           select_gate visual
-          ;;
-      esac
-      case "$path" in
-        web/packages/tokens/*)
-          # Tokens feed the production stylesheet consumed by the real tuner SPA build.
-          select_gate tuner
           ;;
       esac
       case "$path" in

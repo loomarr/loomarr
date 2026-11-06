@@ -1068,7 +1068,7 @@ func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log
 	if progress != nil {
 		_ = progressW.Close() // the child holds its own copy
 		pid := cmd.Process.Pid
-		go ReadProgress(progress, func(p Progress) {
+		go encode.ReadProgress(progress, func(p encode.Progress) {
 			if cut.stop.Load() {
 				return
 			}

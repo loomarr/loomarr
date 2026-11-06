@@ -45,7 +45,7 @@ const EXEMPT_DIRS = new Set(["test", "routes", "generated", "node_modules", "dis
 const ROOT_FILES = new Set(["main.tsx", "routeTree.gen.ts"]);
 
 // An executable entry point is not a module: it runs on import, so a barrel re-exporting
-// it would fire its side effects (packages/tokens' generator writes files). Rather than
+// it would fire its side effects (a generator script writes files). Rather than
 // keep a hand-maintained exception list — the mistake this whole test exists to fix —
 // entry points are DISCOVERED from the package's own scripts.
 const entryPoints = (pkgRoot: string): Set<string> => {

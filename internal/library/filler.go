@@ -4,11 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"path"
-	"strconv"
 	"strings"
-
-	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // Live TV filler catalog read (§10): loomarr syncs its clip catalog FROM the
@@ -17,15 +13,13 @@ import (
 // downloads anything. This reuses the same /Items surface as Lookup/Search (§6),
 // scoped to the filler library via ParentId.
 
-// FillerClip is a raw clip as read from the media server's filler library. The
-// sync (§10) maps these into store clips; era/audience/category start from the
-// filename convention and are refined by AI tagging.
+// FillerClip is a raw clip as read from the media server's filler library: what the server
+// says, nothing inferred. The filler sync copies the file into the watch folder, and the filler
+// intake decides what kind of clip it is.
 type FillerClip struct {
 	LibraryItemID string
 	Name          string
 	DurationMs    int64
-	Kind          filler.Kind // inferred from filename/folder convention (initial tag)
-	Era           int         // year parsed from the filename, 0 if none (initial tag)
 	// Path is the file's location AS THE MEDIA SERVER SEES IT (§10 V38c).
 	//
 	// ⚠ **It is only useful when Loomarr and the media server share storage** — the common
@@ -182,32 +176,10 @@ func (c *Client) ListFillerClips(ctx context.Context, fillerLibraryID string) ([
 			LibraryItemID: it.ID,
 			Name:          it.Name,
 			DurationMs:    it.RunTimeTicks / ticksPerMs,
-			Kind:          kindFromName(it.Name, it.Path),
-			Era:           eraFromName(it.Name),
 			Path:          it.Path,
 		})
 	}
 	return clips, nil
-}
-
-// kindFromName infers a clip Kind from filename/folder convention (§10 — the
-// cheapest tagging tier). It's a starting point; AI tagging (§10) refines
-// era/audience/category. Falls back to commercial (the common case) so unknown
-// clips are still placeable as ads, never programs.
-func kindFromName(name, filePath string) filler.Kind {
-	hay := strings.ToLower(name + " " + path.Dir(filePath))
-	switch {
-	case strings.Contains(hay, "bumper"):
-		return filler.Bumper
-	case strings.Contains(hay, "station") || strings.Contains(hay, "ident"):
-		return filler.StationID
-	case strings.Contains(hay, "psa"):
-		return filler.PSA
-	case strings.Contains(hay, "trailer"):
-		return filler.Trailer
-	default:
-		return filler.Commercial
-	}
 }
 
 // Client satisfies the filler-list read capability.
@@ -217,15 +189,4 @@ var _ FillerLister = (*Client)(nil)
 // the sync can be tested with a fake.
 type FillerLister interface {
 	ListFillerClips(ctx context.Context, fillerLibraryID string) ([]FillerClip, error)
-}
-
-// eraFromName is a best-effort year extractor from a filename ("clip_1994_ad.mp4"
-// → 1994), used as an initial era tag before AI refinement. Returns 0 if none.
-func eraFromName(name string) int {
-	for i := 0; i+4 <= len(name); i++ {
-		if y, err := strconv.Atoi(name[i : i+4]); err == nil && y >= 1930 && y <= 2035 {
-			return y
-		}
-	}
-	return 0
 }
