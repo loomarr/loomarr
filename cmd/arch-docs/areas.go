@@ -42,8 +42,9 @@ var areas = []area{
 			"platform": "the store, settings and jobs behind the provision backstop, the outbound HTTP " +
 				"client and metrics every remote service call goes through, and the audience rating ladder " +
 				"the metadata providers fold certifications onto",
-			"channels": "`schedule.ResolvedProgram` for the backstop's view of what a channel will play, " +
-				"until the episode resolver returns a library-owned value",
+			"channels": "the backstop's episode refresh re-reads each scheduled show into the scheduler's " +
+				"episode cache, whose entries are `schedule.ResolvedProgram`; the job moves into channels " +
+				"with the Wave 6.4 directory moves",
 		},
 	},
 	{
