@@ -4,7 +4,7 @@ import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
-import { pluralize } from "@loomarr/core/format";
+import { goDurationMinutes, pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -39,19 +39,6 @@ type DurationChoiceFieldProps = {
   defaultValue: string | undefined;
   disabled: boolean;
   onChange: (next: string | undefined) => void;
-};
-
-// Go writes durations with every unit ("4h0m0s", "1h30m0s"); the field also accepts the short
-// forms it sends itself ("2m", "4h"). Returns total minutes.
-const durationMinutes = (value: string | undefined): number | undefined => {
-  const text = value?.trim() ?? "";
-  if (!/^(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h))+$/.test(text)) return undefined;
-  const perMinute: Record<string, number> = { ms: 1 / 60_000, s: 1 / 60, m: 1, h: 60 };
-  let minutes = 0;
-  for (const [, amount, unit] of text.matchAll(/([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)/g)) {
-    minutes += Number(amount) * (perMinute[unit ?? "m"] ?? 1);
-  }
-  return minutes;
 };
 
 type DurationChoice = {
@@ -104,7 +91,7 @@ const DurationChoiceField = ({
 }: DurationChoiceFieldProps & { choice: DurationChoice }) => {
   const { unit, min } = choice;
   const inUnit = (duration: string | undefined) => {
-    const minutes = durationMinutes(duration);
+    const minutes = goDurationMinutes(duration);
     return minutes === undefined ? undefined : minutes / unit.minutes;
   };
   const mode = value === undefined ? "default" : "custom";
@@ -112,7 +99,7 @@ const DurationChoiceField = ({
   const [customValue, setCustomValue] = useState(String(inUnit(value) ?? defaultAmount));
 
   useEffect(() => {
-    const minutes = durationMinutes(value);
+    const minutes = goDurationMinutes(value);
     if (minutes !== undefined) setCustomValue(String(minutes / unit.minutes));
   }, [value, unit.minutes]);
 
