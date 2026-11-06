@@ -29,7 +29,7 @@ func (t *metadataDestinationTester) PublishDestinationTest(
 	return notifications.DestinationTestResult{IntentID: "test-intent", Created: true}, nil
 }
 
-func TestProtectedDestinationRepositoryNeverGivesPlaintextCredentialsToStorage(t *testing.T) {
+func TestProtectedRepositoryNeverGivesPlaintextCredentialsToStorage(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "notifications.db"), true)
@@ -43,7 +43,7 @@ func TestProtectedDestinationRepositoryNeverGivesPlaintextCredentialsToStorage(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, manager)
+	repository := notifications.NewProtectedRepository(st, manager)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	destination := notifications.Destination{
 		ID: "slack-main", Means: notifications.MeansSlack, Label: "Main Slack",
@@ -100,7 +100,7 @@ func TestProtectedDestinationRepositoryNeverGivesPlaintextCredentialsToStorage(t
 	}
 }
 
-func TestProtectedDestinationRepositoryRegistersEveryLiveCredentialWithSystemicRedaction(t *testing.T) {
+func TestProtectedRepositoryRegistersEveryLiveCredentialWithSystemicRedaction(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "notifications.db"), true)
@@ -122,13 +122,13 @@ func TestProtectedDestinationRepositoryRegistersEveryLiveCredentialWithSystemicR
 		Credentials: map[string]string{"webhookUrl": "https://hooks.slack.test/startup-canary"},
 		CreatedAt:   now, UpdatedAt: now,
 	}
-	if err := notifications.NewProtectedDestinationRepository(st, protection).
+	if err := notifications.NewProtectedRepository(st, protection).
 		SaveNotificationDestination(ctx, destination); err != nil {
 		t.Fatal(err)
 	}
 
 	redactor := settings.NewRedactor()
-	repository := notifications.NewProtectedDestinationRepository(st, protection).WithCredentialRedactor(redactor)
+	repository := notifications.NewProtectedRepository(st, protection).WithCredentialRedactor(redactor)
 	if err := repository.SeedCredentialRedaction(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestProtectedDestinationRepositoryRegistersEveryLiveCredentialWithSystemicR
 	// Resolution is the final plaintext boundary before delivery. Registering there as well keeps
 	// another process safe when it observes a provider change written by a different replica.
 	replicaRedactor := settings.NewRedactor()
-	replicaRepository := notifications.NewProtectedDestinationRepository(st, protection).
+	replicaRepository := notifications.NewProtectedRepository(st, protection).
 		WithCredentialRedactor(replicaRedactor)
 	if _, err := replicaRepository.ResolveNotificationDestination(ctx, destination.ID); err != nil {
 		t.Fatal(err)
@@ -175,7 +175,7 @@ func TestProtectedDestinationRepositoryRegistersEveryLiveCredentialWithSystemicR
 	}
 }
 
-func TestProtectedDestinationRepositoryBindsCredentialsToDestinationIdentity(t *testing.T) {
+func TestProtectedRepositoryBindsCredentialsToDestinationIdentity(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "notifications.db"), true)
@@ -189,7 +189,7 @@ func TestProtectedDestinationRepositoryBindsCredentialsToDestinationIdentity(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, manager)
+	repository := notifications.NewProtectedRepository(st, manager)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	destination := notifications.Destination{
 		ID: "discord-one", Means: notifications.MeansDiscord, Label: "Discord",
@@ -214,7 +214,7 @@ func TestProtectedDestinationRepositoryBindsCredentialsToDestinationIdentity(t *
 	}
 }
 
-func TestProtectedDestinationRepositoryListsMetadataWithoutOpeningCredentials(t *testing.T) {
+func TestProtectedRepositoryListsMetadataWithoutOpeningCredentials(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "notifications.db"), true)
@@ -228,7 +228,7 @@ func TestProtectedDestinationRepositoryListsMetadataWithoutOpeningCredentials(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, manager)
+	repository := notifications.NewProtectedRepository(st, manager)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	destination := notifications.Destination{
 		ID: "webhook-main", Means: notifications.MeansWebhook, Label: "Main webhook",

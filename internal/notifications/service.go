@@ -13,20 +13,6 @@ var (
 	ErrConflict = errors.New("notifications: conflict")
 )
 
-type Repository interface {
-	ResolveNotificationDestination(context.Context, string) (Destination, error)
-	CreateNotificationIntent(context.Context, Intent, []Attempt) (Intent, bool, error)
-	GetNotificationIntent(context.Context, string) (Intent, error)
-	ListNotificationIntentsByReference(context.Context, ReferenceKind, string) ([]Intent, error)
-	ListNotificationAttempts(context.Context, string) ([]Attempt, error)
-	ClaimDueNotificationAttempt(context.Context, string, time.Time, time.Duration) (Attempt, error)
-	CompleteNotificationAttempt(context.Context, Completion) error
-}
-
-type DestinationRetirer interface {
-	RetireNotificationDestination(context.Context, string) error
-}
-
 // LatestDelivery returns the newest explicit delivery request and its newest attempt. Invitation
 // lifecycle remains owned by invitation; this read model describes only the effort to convey it.
 func (s *Service) LatestDelivery(
@@ -287,10 +273,8 @@ func (s *Service) RunOne(ctx context.Context, owner string) (bool, error) {
 		return true, err
 	}
 	if attempt.Means == MeansWebPush && result.OutcomeCode == OutcomeDestinationUnavailable {
-		if retirer, ok := s.repository.(DestinationRetirer); ok {
-			if err := retirer.RetireNotificationDestination(ctx, destinationID); err != nil && !errors.Is(err, ErrNotFound) {
-				return true, fmt.Errorf("retire unavailable Web Push destination: %w", err)
-			}
+		if err := s.repository.RetireNotificationDestination(ctx, destinationID); err != nil && !errors.Is(err, ErrNotFound) {
+			return true, fmt.Errorf("retire unavailable Web Push destination: %w", err)
 		}
 	}
 	return true, nil

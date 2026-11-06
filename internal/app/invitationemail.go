@@ -368,7 +368,7 @@ type accountDeliveryBuild struct {
 
 func buildAccountDelivery(
 	st store.Store,
-	destinations notifications.DestinationRepository,
+	repository notifications.Repository,
 	providerAdapters []notifications.Adapter,
 	set resolved,
 	invitationService *invitation.Service,
@@ -386,12 +386,11 @@ func buildAccountDelivery(
 	}
 	adapter := notifications.NewEmailAdapter(materializer, notifications.NewSMTPSender(15*time.Second))
 	adapters := append([]notifications.Adapter{adapter}, providerAdapters...)
-	repository := notificationServiceRepository{Store: st, destinations: destinations}
 	service := notifications.NewService(repository, combinedNotificationRouter{
 		account: invitationEmailRouter{
-			invitations: invitationService, recovery: recoveryService, destinations: destinations,
+			invitations: invitationService, recovery: recoveryService, destinations: repository,
 		},
-		product: notifications.NewDestinationRouter(destinations, currentNotificationEligibility{users: st}),
+		product: notifications.NewDestinationRouter(repository, currentNotificationEligibility{users: st}),
 	}, adapters, newID, time.Now)
 	if registry != nil {
 		registry.Add(notificationDeliveryJob(service))
@@ -420,20 +419,4 @@ func productNotificationLink(origin string, intent notifications.Intent) string 
 	default:
 		return origin
 	}
-}
-
-type notificationServiceRepository struct {
-	store.Store
-	destinations notifications.DestinationRepository
-}
-
-func (r notificationServiceRepository) ResolveNotificationDestination(
-	ctx context.Context,
-	id string,
-) (notifications.Destination, error) {
-	return r.destinations.ResolveNotificationDestination(ctx, id)
-}
-
-func (r notificationServiceRepository) RetireNotificationDestination(ctx context.Context, id string) error {
-	return r.destinations.RetireNotificationDestination(ctx, id)
 }
