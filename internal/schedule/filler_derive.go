@@ -1,5 +1,7 @@
 package schedule
 
+import "github.com/loomarr/loomarr/internal/rating"
+
 // DerivedFiller is the filler context a channel implies through its programming, for the
 // fields its operator left unset (§10). It is computed live, never persisted: a stored copy
 // would go stale the moment the lineup changes, and would be indistinguishable from an
@@ -24,9 +26,9 @@ func DeriveFiller(policy ChannelPolicy, lineup []LineupEntry) DerivedFiller {
 	if policy.Audience.Ceiling != "" {
 		out.Audience = fillerAudienceForCeiling(policy.Audience.Ceiling)
 	} else {
-		top, found := -1, Rating("")
+		top, found := -1, rating.Rating("")
 		for _, e := range lineup {
-			r := NormalizeRating(string(e.OfficialRating))
+			r := rating.Normalize(string(e.OfficialRating))
 			if rank, ok := r.Rank(); ok && rank > top {
 				top, found = rank, r
 			}

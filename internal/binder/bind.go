@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -264,7 +265,7 @@ func lineupEntries(p proposal.Proposal, now time.Time) ([]schedule.LineupEntry, 
 				// (programming-design §4): the full ProposalItem is in hand here and
 				// currently the only place it is, so the audience/era/genre filters
 				// enforce off the entry without a per-reconcile library hit.
-				OfficialRating: schedule.NormalizeRating(it.OfficialRating),
+				OfficialRating: rating.Normalize(it.OfficialRating),
 				Genres:         it.Genres,
 				Year:           it.Year,
 				// Airing season window (§8): a series pick the suggester scoped to an

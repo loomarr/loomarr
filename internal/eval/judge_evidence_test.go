@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -27,7 +28,7 @@ func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 			Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1980, To: 1999})},
 			Audience: schedule.AudiencePolicy{
-				Ceiling: schedule.Rating("TV-14"), Unrated: schedule.UnratedExclude,
+				Ceiling: rating.Rating("TV-14"), Unrated: schedule.UnratedExclude,
 			},
 			Ordering: schedule.OrderSyndication,
 			Seasonal: schedule.SeasonalPolicy{

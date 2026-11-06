@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -416,7 +417,7 @@ func TestGroundPolicy_ExplicitUnratedExclusionSurvivesModel(t *testing.T) {
 func TestGroundPolicy_AudienceMaximumBoundaries(t *testing.T) {
 	for _, tc := range []struct {
 		description string
-		ceiling     schedule.Rating
+		ceiling     rating.Rating
 	}{
 		{"Movies capped at PG-13", "PG-13"}, {"Movies capped at R", "R"},
 		{"Movies capped at R, with a PG maximum", "PG"},

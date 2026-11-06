@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // FuzzDurationJSON asserts the Duration newtype round-trips through JSON
@@ -76,46 +78,12 @@ func FuzzDurationUnmarshalNeverPanics(f *testing.F) {
 	})
 }
 
-// onLadder reports whether r is one of the concrete ladder ratings.
-func onLadder(r Rating) bool {
-	_, ok := ladderRank[r]
-	return ok
-}
-
-// FuzzNormalizeRating asserts two invariants of normalizeRating over arbitrary
-// raw strings:
-//   - idempotence: normalize(normalize(x)) == normalize(x). Once folded onto the
-//     ladder (or to unrated ""), re-folding is a no-op.
-//   - totality: the result is always either "" (unrated) or an on-ladder rating —
-//     never some half-normalized off-ladder string.
-func FuzzNormalizeRating(f *testing.F) {
-	for _, s := range []string{
-		"TV-Y7", "tv-y7", "TV_Y7", "Rated R", " pg-13 ", "NR", "Unknown",
-		"", "   ", "rated tv-ma", "PG", "g", "TV-MA", "NC-17", "RATEDR",
-		"____", "TV Y7", "nc_17", "\x00", "🎬", "tv-14 ",
-	} {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, raw string) {
-		once := normalizeRating(raw)
-		// Totality: on-ladder or the unrated sentinel.
-		if once != "" && !onLadder(once) {
-			t.Fatalf("normalizeRating(%q) = %q, which is neither \"\" nor on the ladder", raw, once)
-		}
-		// Idempotence.
-		twice := normalizeRating(string(once))
-		if twice != once {
-			t.Fatalf("normalizeRating not idempotent: normalize(%q)=%q, normalize(%q)=%q", raw, once, once, twice)
-		}
-	})
-}
-
 // allStrategies is the closed set of channel strategies Resolved() inherits from.
 var allStrategies = []Strategy{Sequential, Shuffle, TimeSlot}
 
 // ladderRatings is every concrete ceiling on the rating ladder, used to drive the
 // property loop across kids and non-kids ceilings.
-var ladderRatings = []Rating{
+var ladderRatings = []rating.Rating{
 	"TV-Y", "TV-Y7", "TV-G", "G", "TV-PG", "PG", "TV-14", "PG-13", "TV-MA", "R", "NC-17",
 }
 
@@ -128,7 +96,7 @@ func randomPolicy(r *rand.Rand) ChannelPolicy {
 	unrateds := []UnratedPolicy{UnratedDefault, UnratedExclude, UnratedAllow}
 
 	// Ceiling: sometimes none, otherwise a random ladder rating.
-	var ceiling Rating
+	var ceiling rating.Rating
 	if r.Intn(4) != 0 {
 		ceiling = ladderRatings[r.Intn(len(ladderRatings))]
 	}
@@ -228,8 +196,8 @@ func TestResolved_IsTotal(t *testing.T) {
 		// Only exercise the DEFAULT case; an explicit unrated policy always wins
 		// and is asserted separately below.
 		if p.Audience.Unrated == UnratedDefault {
-			rank, hasCeiling := ladderRank[p.Audience.Ceiling]
-			kidsCeiling := hasCeiling && res.Ceiling != "" && rank <= kidsCeilingRank
+			rank, hasCeiling := p.Audience.Ceiling.Rank()
+			kidsCeiling := hasCeiling && res.Ceiling != "" && rank <= rating.KidsCeilingRank
 			if kidsCeiling {
 				if res.Unrated != UnratedExclude {
 					t.Fatalf("iter %d: unrated under kids ceiling %q (rank %d) = %q, want exclude", i, p.Audience.Ceiling, rank, res.Unrated)
@@ -258,9 +226,9 @@ func TestResolved_IsTotal(t *testing.T) {
 // or below the kids ceiling rank resolves to exclude, and every one above it (plus
 // no ceiling) resolves to allow — under any strategy and single/mixed shape.
 func TestResolved_UnratedExcludesUnderEveryKidsCeiling(t *testing.T) {
-	for _, ceiling := range append([]Rating{""}, ladderRatings...) {
-		rank, hasCeiling := ladderRank[ceiling]
-		wantExclude := hasCeiling && ceiling != "" && rank <= kidsCeilingRank
+	for _, ceiling := range append([]rating.Rating{""}, ladderRatings...) {
+		rank, hasCeiling := ceiling.Rank()
+		wantExclude := hasCeiling && ceiling != "" && rank <= rating.KidsCeilingRank
 		for _, strategy := range allStrategies {
 			for _, single := range []bool{false, true} {
 				p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: ceiling}}}

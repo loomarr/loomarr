@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // Scale benchmarks for ComputeDesiredAt — the function that dominates GET /v1/guide.
@@ -57,7 +58,7 @@ func movieLineup(n int) []LineupEntry {
 			Key:            provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_001_000+i)),
 			Title:          fmt.Sprintf("Film %d", i),
 			DurationMs:     5_400_000,
-			OfficialRating: Rating("PG-13"),
+			OfficialRating: rating.Rating("PG-13"),
 			Genres:         []string{"Action", "Adventure"},
 			Year:           1980 + (i % 20),
 			RuntimeSec:     5400,
@@ -104,7 +105,7 @@ func BenchmarkComputeDesiredAt_SeriesExpansion(b *testing.B) {
 	for _, eps := range []int{50, 200, 800} {
 		entries := []LineupEntry{{
 			Key: provision.Key("series:tvdb:90071663"), Title: "Bench Series",
-			OfficialRating: Rating("TV-PG"), Genres: []string{"Animation"}, Year: 1991,
+			OfficialRating: rating.Rating("TV-PG"), Genres: []string{"Animation"}, Year: 1991,
 		}}
 		ch := benchChannel("ch-series")
 		av := benchAvail{episodesPerSeries: eps}
@@ -136,7 +137,7 @@ func BenchmarkComputeDesiredAt_200Channels(b *testing.B) {
 		if i%4 == 0 {
 			specs = append(specs, chSpec{
 				ch:      benchChannel(fmt.Sprintf("ch-%d", i)),
-				entries: []LineupEntry{{Key: provision.Key("series:tvdb:90071663"), Title: "Series", OfficialRating: Rating("TV-PG")}},
+				entries: []LineupEntry{{Key: provision.Key("series:tvdb:90071663"), Title: "Series", OfficialRating: rating.Rating("TV-PG")}},
 				av:      benchAvail{episodesPerSeries: 200},
 			})
 			continue

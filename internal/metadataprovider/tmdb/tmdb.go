@@ -26,7 +26,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/httpx"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/rating"
 	tmdbclient "github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -563,7 +563,7 @@ func strictest(values []string) *mp.Certification {
 	best, bestRank := "", -1
 	for _, v := range values {
 		v = strings.TrimSpace(v)
-		if rank, ok := schedule.NormalizeRating(v).Rank(); ok && rank > bestRank {
+		if rank, ok := rating.Normalize(v).Rank(); ok && rank > bestRank {
 			best, bestRank = v, rank
 		}
 	}

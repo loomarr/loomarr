@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // The Duration newtype must (un)marshal as a Go-duration STRING ("168h"), not a
@@ -78,7 +80,7 @@ func TestResolved_SingleSeriesRelaxesSeriesSeparation(t *testing.T) {
 // Unrated policy fails CLOSED under a kids ceiling and open otherwise (§4).
 func TestResolved_UnratedDefaultsByCeiling(t *testing.T) {
 	cases := []struct {
-		ceiling Rating
+		ceiling rating.Rating
 		want    UnratedPolicy
 	}{
 		{"TV-Y", UnratedExclude},
@@ -98,45 +100,6 @@ func TestResolved_UnratedDefaultsByCeiling(t *testing.T) {
 	p := ChannelPolicy{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Ceiling: "TV-Y7", Unrated: UnratedAllow}}}
 	if got := p.Resolved(Sequential, false).Unrated; got != UnratedAllow {
 		t.Errorf("explicit allow under a kids ceiling = %q, want allow", got)
-	}
-}
-
-// The rating ladder orders TV and film systems together; unmappable → unrated.
-func TestRatingLadder(t *testing.T) {
-	if !Rating("TV-Y7").atOrBelow("TV-14") {
-		t.Error("TV-Y7 should be at or below TV-14")
-	}
-	if Rating("TV-MA").atOrBelow("TV-Y7") {
-		t.Error("TV-MA must NOT be at or below TV-Y7")
-	}
-	if !Rating("PG").atOrBelow("PG-13") {
-		t.Error("PG (film) should be at or below PG-13 (film) on the shared ladder")
-	}
-	// Cross-system: G (film) and TV-G share a rank.
-	if !Rating("G").atOrBelow("TV-G") || !Rating("TV-G").atOrBelow("G") {
-		t.Error("G and TV-G should share a ladder rank")
-	}
-	// An unmapped rating is never "at or below" anything — it's unrated, decided by policy.
-	if Rating("XYZ").atOrBelow("TV-MA") {
-		t.Error("an unmapped rating must not compare as at-or-below")
-	}
-}
-
-// normalizeRating folds the common media-server string variants onto the ladder.
-func TestNormalizeRating(t *testing.T) {
-	cases := map[string]Rating{
-		"TV-Y7":   "TV-Y7",
-		"tv-y7":   "TV-Y7",
-		"TV_Y7":   "TV-Y7",
-		"Rated R": "R",
-		" pg-13 ": "PG-13",
-		"NR":      "", // not rated → unrated
-		"Unknown": "",
-	}
-	for raw, want := range cases {
-		if got := normalizeRating(raw); got != want {
-			t.Errorf("normalizeRating(%q) = %q, want %q", raw, got, want)
-		}
 	}
 }
 
@@ -259,7 +222,7 @@ func TestSeedFillerSelectionDerivesOnlyGroundedChannelFacts(t *testing.T) {
 
 	for _, tc := range []struct {
 		name     string
-		ceiling  Rating
+		ceiling  rating.Rating
 		audience string
 	}{
 		{name: "young children", ceiling: "TV-Y", audience: "kids"},

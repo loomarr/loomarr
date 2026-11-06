@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -271,14 +272,14 @@ func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []proposal.
 	sift := func(items []proposal.ProposalItem) []proposal.ProposalItem {
 		kept := make([]proposal.ProposalItem, 0, len(items))
 		for _, it := range items {
-			rating := schedule.NormalizeRating(it.OfficialRating)
-			if rating == "" && (refuseUnrated || a.Unrated == schedule.UnratedExclude) {
+			normalized := rating.Normalize(it.OfficialRating)
+			if normalized == "" && (refuseUnrated || a.Unrated == schedule.UnratedExclude) {
 				refused = append(refused, proposal.RefusedPick{Item: it, Reason: "over_ceiling"})
 				continue
 			}
 			// Outside an explicit child-safety request, only a KNOWN rating can produce a
 			// certain refusal; the reconcile heal can still fill an ordinary metadata gap.
-			if ok, reason := a.Admits(rating); !ok && reason == "over_ceiling" {
+			if ok, reason := a.Admits(normalized); !ok && reason == "over_ceiling" {
 				refused = append(refused, proposal.RefusedPick{Item: it, Reason: reason})
 				continue
 			}
@@ -311,7 +312,7 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []proposal.ProposalItem,
 	// because a small model reflexively caps action/genre channels ("might be violent → TV-14")
 	// and that must not silently strip the R-rated content the channel is about. The prompt says
 	// "adult/no mention → omit," but the model isn't trusted to obey it — this is the enforcement.
-	if c := schedule.NormalizeRating(raw.Audience.Ceiling); c != "" && (intentPolicy.kidsSignal || intentPolicy.explicitAudienceCeiling != "") {
+	if c := rating.Normalize(raw.Audience.Ceiling); c != "" && (intentPolicy.kidsSignal || intentPolicy.explicitAudienceCeiling != "") {
 		p.Audience.Ceiling = stricterCeiling(c, requestedCeiling)
 	} else if requestedCeiling != "" {
 		// Explicit child safety is deterministic and cannot disappear because the model
@@ -418,7 +419,7 @@ func knownHolidayIDs(raw []string, holidays holidayvocab.Vocabulary) []string {
 	return out
 }
 
-func groundRules(raw []pickRule, lineup []proposal.ProposalItem, channelCeiling schedule.Rating, holidays holidayvocab.Vocabulary) []schedule.SchedulingRule {
+func groundRules(raw []pickRule, lineup []proposal.ProposalItem, channelCeiling rating.Rating, holidays holidayvocab.Vocabulary) []schedule.SchedulingRule {
 	if len(raw) == 0 {
 		return nil
 	}

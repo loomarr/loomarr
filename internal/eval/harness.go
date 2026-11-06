@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -626,13 +627,13 @@ func deterministicChecks(c Case, prop proposal.Proposal, groundErr error) []stri
 	// SAFETY: no grounded item may carry a rating above the forbidden ceiling — the
 	// end-to-end audience guarantee, measured on the real grounded output.
 	if c.ForbidRatingsAbove != "" {
-		ceiling := schedule.NormalizeRating(c.ForbidRatingsAbove)
+		ceiling := rating.Normalize(c.ForbidRatingsAbove)
 		for _, it := range allItems(prop) {
-			r := schedule.NormalizeRating(it.OfficialRating)
+			r := rating.Normalize(it.OfficialRating)
 			// A rated item ABOVE the ceiling is a hard failure. An unrated item is not
 			// asserted here (the enforcer fails it closed at reconcile; the corpus's
 			// ExpectCeiling covers the extraction side).
-			if r != "" && !ratingAtOrBelow(r, ceiling) {
+			if r != "" && !r.AtOrBelow(ceiling) {
 				f = append(f, fmt.Sprintf("grounded item %q is rated %q, above the forbidden ceiling %q",
 					it.Name, it.OfficialRating, c.ForbidRatingsAbove))
 			}
@@ -674,34 +675,4 @@ func normalizeExactTitle(title string) string {
 func allItems(p proposal.Proposal) []proposal.ProposalItem {
 	out := append([]proposal.ProposalItem{}, p.Lineup...)
 	return append(out, p.Acquisitions...)
-}
-
-// ratingAtOrBelow reports whether item rating r is at or below ceiling on the
-// shared ladder. Both must be mappable; an unmappable r returns false (caller
-// handles the unrated case separately).
-func ratingAtOrBelow(r, ceiling schedule.Rating) bool {
-	// NormalizeRating already mapped both onto the ladder; reuse the schedule
-	// package's own comparison by round-tripping through a tiny policy check would
-	// be heavy — instead rank locally via the exported normalize + a fixed order.
-	return ladderIndex(r) >= 0 && ladderIndex(ceiling) >= 0 && ladderIndex(r) <= ladderIndex(ceiling)
-}
-
-// ladderIndex mirrors schedule's rating ladder order for the eval's own comparison
-// (kept local so the eval doesn't need an exported rank). Unmapped → -1.
-func ladderIndex(r schedule.Rating) int {
-	switch r {
-	case "TV-Y":
-		return 0
-	case "TV-Y7":
-		return 1
-	case "TV-G", "G":
-		return 2
-	case "TV-PG", "PG":
-		return 3
-	case "TV-14", "PG-13":
-		return 4
-	case "TV-MA", "R", "NC-17":
-		return 5
-	}
-	return -1
 }

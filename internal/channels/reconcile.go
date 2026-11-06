@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -562,7 +563,7 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 					e.log.Warn("heal rating (entry stays unrated this pass)", "key", en.Key, "err", err)
 				}
 			} else if ok {
-				en.OfficialRating = schedule.NormalizeRating(raw)
+				en.OfficialRating = rating.Normalize(raw)
 			}
 		}
 		// Stamp media-server collection membership (§2.2) so scope.collections enforces with
