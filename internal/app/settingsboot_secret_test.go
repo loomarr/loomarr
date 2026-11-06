@@ -197,7 +197,7 @@ func TestEncryptionServiceRotatesAndReencryptsStoredSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	destinations := notifications.NewProtectedDestinationRepository(st, protection)
+	destinations := notifications.NewProtectedRepository(st, protection)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	if err := destinations.SaveNotificationDestination(context.Background(), notifications.Destination{
 		ID: "slack-rotation", Means: notifications.MeansSlack, Label: "Slack",

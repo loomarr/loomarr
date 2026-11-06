@@ -49,27 +49,6 @@ type DestinationValidator interface {
 	ValidateDestination(ProviderSettings) error
 }
 
-type DestinationRepository interface {
-	SaveNotificationDestination(context.Context, Destination) error
-	ResolveNotificationDestination(context.Context, string) (Destination, error)
-	OpenNotificationDestinationForUpdate(context.Context, string) (Destination, error)
-	GetNotificationDestinationMetadata(context.Context, string) (DestinationMetadata, error)
-	ListNotificationDestinationMetadata(context.Context) ([]DestinationMetadata, error)
-	ListNotificationDestinationHealth(context.Context) (map[string]DestinationHealth, error)
-	DeleteNotificationDestination(context.Context, string) error
-	RetireNotificationDestination(context.Context, string) error
-}
-
-// DestinationRecordRepository is the storage port below credential protection. Implementations
-// must never receive or return plaintext provider credentials.
-type DestinationRecordRepository interface {
-	SaveNotificationDestinationRecord(context.Context, DestinationRecord) error
-	GetNotificationDestinationRecord(context.Context, string) (DestinationRecord, error)
-	ListNotificationDestinationRecords(context.Context) ([]DestinationRecord, error)
-	ListNotificationDestinationHealth(context.Context) (map[string]DestinationHealth, error)
-	DeleteNotificationDestination(context.Context, string) error
-}
-
 type DestinationTestResult struct {
 	IntentID string
 	Created  bool
@@ -84,7 +63,7 @@ type DestinationTester interface {
 }
 
 type DestinationManager struct {
-	repository DestinationRepository
+	repository Repository
 	validators map[Means]DestinationValidator
 	newID      func() string
 	now        func() time.Time
@@ -99,7 +78,7 @@ func (m *DestinationManager) WithTester(tester DestinationTester) *DestinationMa
 }
 
 func NewDestinationManager(
-	repository DestinationRepository,
+	repository Repository,
 	validators []DestinationValidator,
 	newID func() string,
 	now func() time.Time,

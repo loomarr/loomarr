@@ -100,7 +100,7 @@ func buildOperations(
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
-	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection).
+	destinationRepository := notifications.NewProtectedRepository(st, protection).
 		WithCredentialRedactor(secretRedactor)
 	if destinationRepository != nil {
 		if err := destinationRepository.SeedCredentialRedaction(rootCtx); err != nil {
@@ -175,7 +175,7 @@ func buildOperations(
 func migrateLegacySMTPProvider(
 	ctx context.Context,
 	st store.Store,
-	repository notifications.DestinationRepository,
+	repository notifications.Repository,
 	set resolved,
 ) error {
 	if st == nil || repository == nil || set.svc == nil {
@@ -222,7 +222,7 @@ func migrateLegacySMTPProvider(
 }
 
 func buildNotificationDestinations(
-	repository notifications.DestinationRepository,
+	repository notifications.Repository,
 	validators []notifications.DestinationValidator,
 	tester notifications.DestinationTester,
 ) api.NotificationDestinationService {

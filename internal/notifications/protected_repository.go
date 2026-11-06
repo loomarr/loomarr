@@ -11,10 +11,11 @@ import (
 	"github.com/loomarr/loomarr/internal/secretprotection"
 )
 
-// ProtectedDestinationRepository is the sole plaintext credential boundary between notification
-// logic and durable storage. Its lower port accepts only authenticated encryption envelopes.
-type ProtectedDestinationRepository struct {
-	records    DestinationRecordRepository
+// ProtectedRepository implements Repository and is the sole plaintext credential boundary
+// between notification logic and durable storage. Its lower port accepts only authenticated
+// encryption envelopes; intents and attempts carry no credentials and pass straight through.
+type ProtectedRepository struct {
+	records    RecordRepository
 	protection *secretprotection.Manager
 	redactor   CredentialRedactor
 }
@@ -28,7 +29,7 @@ type CredentialRedactor interface {
 
 const notificationCredentialRedactionSource = "notification-destination:"
 
-func (r *ProtectedDestinationRepository) ListNotificationDestinationMetadata(
+func (r *ProtectedRepository) ListNotificationDestinationMetadata(
 	ctx context.Context,
 ) ([]DestinationMetadata, error) {
 	if r == nil || r.records == nil {
@@ -48,20 +49,20 @@ func (r *ProtectedDestinationRepository) ListNotificationDestinationMetadata(
 	return metadata, nil
 }
 
-func NewProtectedDestinationRepository(
-	records DestinationRecordRepository,
+func NewProtectedRepository(
+	records RecordRepository,
 	protection *secretprotection.Manager,
-) *ProtectedDestinationRepository {
+) *ProtectedRepository {
 	if records == nil || protection == nil {
 		return nil
 	}
-	return &ProtectedDestinationRepository{records: records, protection: protection}
+	return &ProtectedRepository{records: records, protection: protection}
 }
 
 // WithCredentialRedactor registers the systemic sink that must observe every plaintext value.
-func (r *ProtectedDestinationRepository) WithCredentialRedactor(
+func (r *ProtectedRepository) WithCredentialRedactor(
 	redactor CredentialRedactor,
-) *ProtectedDestinationRepository {
+) *ProtectedRepository {
 	if r != nil {
 		r.redactor = redactor
 	}
@@ -70,7 +71,7 @@ func (r *ProtectedDestinationRepository) WithCredentialRedactor(
 
 // SeedCredentialRedaction opens every stored credential envelope during startup so the systemic
 // logger is safe before provider delivery begins. Normal metadata reads remain credential-free.
-func (r *ProtectedDestinationRepository) SeedCredentialRedaction(ctx context.Context) error {
+func (r *ProtectedRepository) SeedCredentialRedaction(ctx context.Context) error {
 	if r == nil || r.records == nil || r.protection == nil {
 		return errors.New("notification destination credential protection is unavailable")
 	}
@@ -92,7 +93,7 @@ func (r *ProtectedDestinationRepository) SeedCredentialRedaction(ctx context.Con
 	return nil
 }
 
-func (r *ProtectedDestinationRepository) SaveNotificationDestination(
+func (r *ProtectedRepository) SaveNotificationDestination(
 	ctx context.Context,
 	destination Destination,
 ) error {
@@ -126,7 +127,7 @@ func (r *ProtectedDestinationRepository) SaveNotificationDestination(
 }
 
 // ResolveNotificationDestination opens the complete destination for a claimed delivery attempt.
-func (r *ProtectedDestinationRepository) ResolveNotificationDestination(
+func (r *ProtectedRepository) ResolveNotificationDestination(
 	ctx context.Context,
 	id string,
 ) (Destination, error) {
@@ -142,14 +143,14 @@ func (r *ProtectedDestinationRepository) ResolveNotificationDestination(
 
 // OpenNotificationDestinationForUpdate is the explicit management-mutation boundary. Updating a
 // partial settings object must merge it with the existing sealed credential object before resealing.
-func (r *ProtectedDestinationRepository) OpenNotificationDestinationForUpdate(
+func (r *ProtectedRepository) OpenNotificationDestinationForUpdate(
 	ctx context.Context,
 	id string,
 ) (Destination, error) {
 	return r.ResolveNotificationDestination(ctx, id)
 }
 
-func (r *ProtectedDestinationRepository) GetNotificationDestinationMetadata(
+func (r *ProtectedRepository) GetNotificationDestinationMetadata(
 	ctx context.Context,
 	id string,
 ) (DestinationMetadata, error) {
@@ -166,13 +167,13 @@ func (r *ProtectedDestinationRepository) GetNotificationDestinationMetadata(
 	return destinationMetadataFromRecord(record), nil
 }
 
-func (r *ProtectedDestinationRepository) ListNotificationDestinationHealth(
+func (r *ProtectedRepository) ListNotificationDestinationHealth(
 	ctx context.Context,
 ) (map[string]DestinationHealth, error) {
 	return r.records.ListNotificationDestinationHealth(ctx)
 }
 
-func (r *ProtectedDestinationRepository) DeleteNotificationDestination(ctx context.Context, id string) error {
+func (r *ProtectedRepository) DeleteNotificationDestination(ctx context.Context, id string) error {
 	if err := r.records.DeleteNotificationDestination(ctx, id); err != nil {
 		return err
 	}
@@ -182,7 +183,7 @@ func (r *ProtectedDestinationRepository) DeleteNotificationDestination(ctx conte
 	return nil
 }
 
-func (r *ProtectedDestinationRepository) RetireNotificationDestination(ctx context.Context, id string) error {
+func (r *ProtectedRepository) RetireNotificationDestination(ctx context.Context, id string) error {
 	if r == nil || r.records == nil {
 		return errors.New("notification destination repository is unavailable")
 	}
@@ -201,9 +202,50 @@ func (r *ProtectedDestinationRepository) RetireNotificationDestination(ctx conte
 	return r.records.SaveNotificationDestinationRecord(ctx, record)
 }
 
+var _ Repository = (*ProtectedRepository)(nil)
+
+// Intents and attempts reference destinations by ID and redacted label only, so they pass through
+// to storage without touching credential protection.
+func (r *ProtectedRepository) CreateNotificationIntent(
+	ctx context.Context,
+	intent Intent,
+	attempts []Attempt,
+) (Intent, bool, error) {
+	return r.records.CreateNotificationIntent(ctx, intent, attempts)
+}
+
+func (r *ProtectedRepository) GetNotificationIntent(ctx context.Context, id string) (Intent, error) {
+	return r.records.GetNotificationIntent(ctx, id)
+}
+
+func (r *ProtectedRepository) ListNotificationIntentsByReference(
+	ctx context.Context,
+	kind ReferenceKind,
+	id string,
+) ([]Intent, error) {
+	return r.records.ListNotificationIntentsByReference(ctx, kind, id)
+}
+
+func (r *ProtectedRepository) ListNotificationAttempts(ctx context.Context, intentID string) ([]Attempt, error) {
+	return r.records.ListNotificationAttempts(ctx, intentID)
+}
+
+func (r *ProtectedRepository) ClaimDueNotificationAttempt(
+	ctx context.Context,
+	owner string,
+	now time.Time,
+	lease time.Duration,
+) (Attempt, error) {
+	return r.records.ClaimDueNotificationAttempt(ctx, owner, now, lease)
+}
+
+func (r *ProtectedRepository) CompleteNotificationAttempt(ctx context.Context, completion Completion) error {
+	return r.records.CompleteNotificationAttempt(ctx, completion)
+}
+
 // ReencryptAll reseals each credential object with the active data key after rotation. Older keys
 // remain readable, so an interrupted pass is safe to retry and never requires plaintext storage.
-func (r *ProtectedDestinationRepository) ReencryptAll(ctx context.Context) error {
+func (r *ProtectedRepository) ReencryptAll(ctx context.Context) error {
 	if r == nil || r.records == nil || r.protection == nil {
 		return errors.New("notification destination credential protection is unavailable")
 	}
@@ -231,7 +273,7 @@ func (r *ProtectedDestinationRepository) ReencryptAll(ctx context.Context) error
 	return nil
 }
 
-func (r *ProtectedDestinationRepository) open(
+func (r *ProtectedRepository) open(
 	ctx context.Context,
 	record DestinationRecord,
 	refreshOnUnknownKey bool,
@@ -265,7 +307,7 @@ func (r *ProtectedDestinationRepository) open(
 	return destination, nil
 }
 
-func (r *ProtectedDestinationRepository) registerCredentials(destination Destination) {
+func (r *ProtectedRepository) registerCredentials(destination Destination) {
 	if r == nil || r.redactor == nil {
 		return
 	}

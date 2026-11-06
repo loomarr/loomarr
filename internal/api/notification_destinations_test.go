@@ -64,7 +64,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	repository := notifications.NewProtectedRepository(st, protection)
 	manager := notifications.NewDestinationManager(
 		repository, []notifications.DestinationValidator{acceptingDestinationValidator{means: notifications.MeansSlack}},
 		func() string { return "destination-1" }, func() time.Time { return now },
@@ -192,7 +192,7 @@ func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	repository := notifications.NewProtectedRepository(st, protection)
 	nextID := 0
 	manager := notifications.NewDestinationManager(repository, []notifications.DestinationValidator{
 		acceptingDestinationValidator{means: notifications.MeansWebPush},

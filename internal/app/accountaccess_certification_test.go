@@ -60,7 +60,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 	notificationService := notifications.NewService(repository, invitationEmailRouter{
 		invitations:  invitationService,
 		recovery:     recoveryService,
-		destinations: repository.destinations,
+		destinations: repository,
 	}, []notifications.Adapter{adapter}, func() string {
 		sequence++
 		return fmt.Sprintf("certification-notification-%d", sequence)
