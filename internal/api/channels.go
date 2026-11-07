@@ -9,13 +9,13 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/channeledit"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/channels/edit"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
@@ -288,12 +288,12 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	req := channeledit.NewChannel{
+	req := edit.NewChannel{
 		ID: in.Body.ID, Name: in.Body.Name, Number: in.Body.Number, Group: in.Body.Group, Logo: in.Body.Logo,
 		Strategy: schedule.Strategy(in.Body.Strategy),
 	}
 	if in.Body.Series != nil {
-		req.Series = &channeledit.SeriesScope{
+		req.Series = &edit.SeriesScope{
 			Key: provision.Key(in.Body.Series.Key), Title: in.Body.Series.Title,
 			SeasonMin: in.Body.Series.SeasonMin, SeasonMax: in.Body.Series.SeasonMax,
 		}
@@ -491,10 +491,10 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 
 // lineupContext turns a channel's stored lineup entries into the lightweight
 // name/year/key context the refiner reasons about.
-func lineupContext(entries []schedule.LineupEntry) []proposal.LineupContext {
-	out := make([]proposal.LineupContext, 0, len(entries))
+func lineupContext(entries []schedule.LineupEntry) []proposals.LineupContext {
+	out := make([]proposals.LineupContext, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, proposal.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
+		out = append(out, proposals.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
 	}
 	return out
 }

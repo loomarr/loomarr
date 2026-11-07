@@ -11,21 +11,21 @@ import (
 	"errors"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/people/contact"
 	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
@@ -199,7 +199,7 @@ type SeriesEpisodeStore interface {
 
 // ProposalRepository is the one persistence surface for proposals and the suggestion jobs that
 // produce them (§8): the job queue, the proposals it yields, and the approval decisions on them.
-// A proposal's body is the typed proposal.Proposal; the repository is the only place its JSON is
+// A proposal's body is the typed proposals.Proposal; the repository is the only place its JSON is
 // encoded or decoded.
 type ProposalRepository interface {
 	CreateJob(ctx context.Context, j Job) error
@@ -757,7 +757,7 @@ type InventoryStore interface {
 // interfaces above, which is what the composition root and the conformance suite
 // hold. Callers that need one domain should depend on that domain's interface
 // instead: the narrow role interfaces domain packages already declare for
-// themselves (binder.Store, filler.Store, jobs.ScheduleStore, …) are the
+// themselves (approval.Store, filler.Store, jobs.ScheduleStore, …) are the
 // pattern, and these groups exist so a consumer has something to name without
 // re-declaring one.
 //
@@ -792,6 +792,9 @@ type Store interface {
 	InventoryStore
 	LibraryRootStore
 	LibraryFileStore
+	LibraryItemStore
+	LibraryCatalogStore
+	LibraryNeedsStore
 
 	// Close releases the underlying database handle.
 	Close() error

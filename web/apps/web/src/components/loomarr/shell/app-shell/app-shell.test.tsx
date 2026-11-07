@@ -91,10 +91,11 @@ describe("AppShell", () => {
   });
 
   // The v2 mock's `navDefs`, with #1659's rename: Home · Guide · Requests · Filler · People ·
-  // Settings · Help. Counted, not just spot-checked, because the count IS the claim — `Channels` and
-  // `Suggest` folding into `/guide` is what took this from nine to seven, and a regression
-  // would most likely show up as an extra entry rather than a wrong one.
-  it("gives an admin exactly the mock's seven", async () => {
+  // Settings · Help, plus the Library after Guide (#2151, design/library). Counted, not just
+  // spot-checked, because the count IS the claim — `Channels` and `Suggest` folding into `/guide`
+  // took this from nine to seven before the Library made it eight, and a regression would most
+  // likely show up as an extra entry rather than a wrong one.
+  it("gives an admin exactly the mock's eight", async () => {
     renderShell(true);
     // Awaited: the RouterHarness resolves before Links render, so reading the DOM
     // synchronously finds an empty nav.
@@ -106,7 +107,7 @@ describe("AppShell", () => {
       // name ("OPOperator") and would silently stop matching if either changed.
       .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
       .map((a) => a.textContent?.trim());
-    expect(labels).toEqual(["Home", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
+    expect(labels).toEqual(["Home", "Guide", "Library", "Requests", "Filler", "People", "Settings", "Help"]);
   });
 
   // The palette opens on ⌘K or Ctrl K everywhere; the hint names the one this keyboard has.
@@ -205,7 +206,17 @@ describe("AppShell", () => {
         .getAllByRole("link")
         .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
         .map((a) => a.textContent?.trim());
-      expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
+      expect(labels).toEqual([
+        "Home",
+        "Watch",
+        "Guide",
+        "Library",
+        "Requests",
+        "Filler",
+        "People",
+        "Settings",
+        "Help",
+      ]);
       expect(screen.getByRole("link", { name: "Watch" })).toHaveAttribute("href", "/watch/ch-7");
     });
 

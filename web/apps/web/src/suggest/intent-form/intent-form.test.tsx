@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { IntentForm } from "./intent-form";
 
@@ -13,25 +13,37 @@ import { IntentForm } from "./intent-form";
 const openConstraints = () => fireEvent.click(screen.getByRole("button", { name: /add details/i }));
 
 describe("IntentForm", () => {
-  it("submits a description on its own", () => {
+  it("submits a description on its own", async () => {
     const onSubmit = vi.fn();
     render(<IntentForm onSubmit={onSubmit} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "90s action movies" } });
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ description: "90s action movies" }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ description: "90s action movies" })),
+    );
   });
 
-  it("explains a blank or invalid description without submitting a job", () => {
+  it("explains a blank or invalid description without submitting a job", async () => {
     const onSubmit = vi.fn();
     render(<IntentForm onSubmit={onSubmit} />);
 
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Describe the channel you want");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Describe the channel you want");
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("restores every failed-request constraint for an authorized edit", () => {
+  it("takes the explanation away once the description changes", async () => {
+    render(<IntentForm onSubmit={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
+    await screen.findByRole("alert");
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "90s action movies" } });
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("restores every failed-request constraint for an authorized edit", async () => {
     const onSubmit = vi.fn();
     render(
       <IntentForm
@@ -51,19 +63,21 @@ describe("IntentForm", () => {
     openConstraints();
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        era: "1990s",
-        tone: "high-energy",
-        runtimeTargetMin: 180,
-        maxAcquisitions: 10,
-        mustInclude: ["The Velvet Cartographer"],
-        mustExclude: ["Clowns"],
-      }),
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          era: "1990s",
+          tone: "high-energy",
+          runtimeTargetMin: 180,
+          maxAcquisitions: 10,
+          mustInclude: ["The Velvet Cartographer"],
+          mustExclude: ["Clowns"],
+        }),
+      ),
     );
   });
 
-  it("carries mustInclude and mustExclude to the server", () => {
+  it("carries mustInclude and mustExclude to the server", async () => {
     const onSubmit = vi.fn();
     render(<IntentForm onSubmit={onSubmit} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "90s action movies" } });
@@ -74,15 +88,17 @@ describe("IntentForm", () => {
     fireEvent.change(screen.getByLabelText(/must exclude/i), { target: { value: "Pelican Point Motel" } });
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mustInclude: ["The Seventh Satellite Choir", "The Velvet Cartographer"],
-        mustExclude: ["Pelican Point Motel"],
-      }),
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mustInclude: ["The Seventh Satellite Choir", "The Velvet Cartographer"],
+          mustExclude: ["Pelican Point Motel"],
+        }),
+      ),
     );
   });
 
-  it("omits the term lists entirely when left blank", () => {
+  it("omits the term lists entirely when left blank", async () => {
     // Absence, not []. An empty array is a claim ("nothing is required"); omitting the
     // field is the truth ("the user didn't say"), and omitempty drops it on the wire.
     const onSubmit = vi.fn();
@@ -94,12 +110,14 @@ describe("IntentForm", () => {
     // Asserted via objectContaining rather than indexing mock.calls: under
     // noUncheckedIndexedAccess `calls[0]` is possibly-undefined, and this says the
     // same thing without a non-null assertion.
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ mustInclude: undefined, mustExclude: undefined }),
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ mustInclude: undefined, mustExclude: undefined }),
+      ),
     );
   });
 
-  it("ignores stray separators rather than sending empty terms", () => {
+  it("ignores stray separators rather than sending empty terms", async () => {
     const onSubmit = vi.fn();
     render(<IntentForm onSubmit={onSubmit} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "90s action movies" } });
@@ -109,12 +127,14 @@ describe("IntentForm", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ mustInclude: ["The Velvet Cartographer", "Marigold Protocol"] }),
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ mustInclude: ["The Velvet Cartographer", "Marigold Protocol"] }),
+      ),
     );
   });
 
-  it("still carries the four original constraints", () => {
+  it("still carries the four original constraints", async () => {
     // Guard against the new fields displacing what already worked.
     const onSubmit = vi.fn();
     render(<IntentForm onSubmit={onSubmit} />);
@@ -126,13 +146,15 @@ describe("IntentForm", () => {
     fireEvent.change(screen.getByLabelText(/maximum new titles/i), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        era: "1990s",
-        tone: "high-energy",
-        runtimeTargetMin: 180,
-        maxAcquisitions: 10,
-      }),
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          era: "1990s",
+          tone: "high-energy",
+          runtimeTargetMin: 180,
+          maxAcquisitions: 10,
+        }),
+      ),
     );
   });
 });

@@ -7,13 +7,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/mediaheader"
+	"github.com/loomarr/loomarr/internal/media/header"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
@@ -31,13 +32,33 @@ func (c *countingInventory) ApplySnapshot(ctx context.Context, s inventory.Snaps
 	return c.Service.ApplySnapshot(ctx, s)
 }
 
-// fakeLister is an arr's whole library.
+// fakeLister is an arr's whole library. It counts listings and single-item reads; fetchErr fails
+// the reads.
 type fakeLister struct {
-	records []mp.Record
-	err     error
+	records  []mp.Record
+	err      error
+	fetchErr error
+	lists    int
+	fetches  int
 }
 
-func (l *fakeLister) List(context.Context) ([]mp.Record, error) { return l.records, l.err }
+func (l *fakeLister) List(context.Context) ([]mp.Record, error) {
+	l.lists++
+	return l.records, l.err
+}
+
+func (l *fakeLister) Fetch(_ context.Context, ref mp.Ref) (mp.Record, error) {
+	l.fetches++
+	if l.fetchErr != nil {
+		return mp.Record{}, l.fetchErr
+	}
+	for _, rec := range l.records {
+		if rec.Kind == ref.Kind && slices.Contains(rec.IDs, ref.ID) {
+			return rec, nil
+		}
+	}
+	return mp.Record{}, mp.ErrNotFound
+}
 
 type harness struct {
 	t      *testing.T
@@ -66,9 +87,9 @@ func newHarness(t *testing.T, managers ...Manager) *harness {
 		Store: h.st, Inventory: h.inv, Disk: fakeDisk{readable: map[string]bool{h.root: true}},
 		Managers: func() []Manager { return managers },
 		NFO:      nfo.New(), Resolver: resolver,
-		Header: func(_ context.Context, path string) (mediaheader.Header, error) {
+		Header: func(_ context.Context, path string) (header.Header, error) {
 			h.reads.Add(1)
-			return mediaheader.Header{Container: "matroska,webm", DurationMillis: 1_320_000, Streams: []inventory.Stream{
+			return header.Header{Container: "matroska,webm", DurationMillis: 1_320_000, Streams: []inventory.Stream{
 				{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: 1920, Height: 1080},
 				{Index: 1, Kind: inventory.StreamAudio, Codec: "aac", Channels: 2, Language: "eng"},
 			}}, nil
@@ -185,6 +206,53 @@ func TestImportWritesOnceAndSkipsUnchanged(t *testing.T) {
 	}
 }
 
+// Library → Items lists the movie and the series a pass wrote, with the series counting its
+// episodes and an extra counting toward nothing; once headers are read nothing is getting ready.
+func TestImportListsMoviesAndSeries(t *testing.T) {
+	h := newHarness(t)
+	h.file("Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001).mkv", 10)
+	h.file("Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001)-trailer.mkv", 4)
+	h.file("Bravo Show {tvdb-90081189}/Season 01/Bravo Show S01E02.mkv", 12)
+	h.file("Bravo Show {tvdb-90081189}/Season 01/Bravo Show S01E03.mkv", 12)
+	h.run()
+
+	page, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("items = %+v, want the movie and the series", page.Items)
+	}
+	movie := h.item(fileOrigin(h.root, "Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001).mkv"))
+	series := h.item(seriesOrigin(h.root, "Bravo Show {tvdb-90081189}"))
+	got := map[string]store.LibraryItemSummary{}
+	for _, it := range page.Items {
+		got[it.ID] = it
+	}
+	if m := got[string(movie.ID)]; m.Kind != "movie" || m.Name == "" || m.Files != 1 || m.Pending != 0 {
+		t.Errorf("movie row = %+v", m)
+	}
+	if s := got[string(series.ID)]; s.Kind != "series" || s.Name != "Bravo Show" || s.Files != 2 || s.Pending != 0 {
+		t.Errorf("series row = %+v", s)
+	}
+
+	// A row written before items were listed has no item: the next pass writes it again.
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range rows {
+		rows[i].ItemID, rows[i].SeriesID = "", ""
+	}
+	if err := h.st.SaveLibraryFiles(context.Background(), rows); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	if again, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{}); err != nil || again.Total != 2 {
+		t.Fatalf("after relinking = %+v, %v", again, err)
+	}
+}
+
 // A changed NFO rewrites the item without reading the header again; its ids join the item.
 func TestImportSidecarChangeRewritesIdentityOnly(t *testing.T) {
 	h := newHarness(t)
@@ -231,11 +299,22 @@ func TestImportArrIdentityThroughPathMap(t *testing.T) {
 		IDs:         []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000612"}},
 		Files:       []mp.FileRef{{Path: "/movies/Delta (1999)/Delta.mkv"}},
 		Descriptive: &mp.Descriptive{Title: "Delta", Year: 1999},
+		Page:        "http://radarr.invalid/movie/90000612",
 	}}
 	h.run()
 	origin := fileOrigin(h.root, "Delta (1999)/Delta.mkv")
-	if item := h.item(origin); !hasID(item.ExternalIDs, "tmdb", "90000612") {
+	item := h.item(origin)
+	if !hasID(item.ExternalIDs, "tmdb", "90000612") {
 		t.Fatalf("arr identity = %+v", item.ExternalIDs)
+	}
+	// Radarr decides what it is, and "Wrong title?" opens its page there.
+	listed, err := h.st.LibraryItem(ctx, string(item.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := store.LibraryMatch{Basis: "manager", App: "radarr", Page: "http://radarr.invalid/movie/90000612"}
+	if listed.Match != want {
+		t.Fatalf("match = %+v, want %+v", listed.Match, want)
 	}
 
 	radarr.err = errors.New("radarr is down")
@@ -307,19 +386,36 @@ func TestImportRemovalGuard(t *testing.T) {
 // An unreadable root is an incomplete scan: nothing under it is marked missing.
 func TestImportUnreadableRootMarksNothing(t *testing.T) {
 	h := newHarness(t)
+	var heard []bool
+	h.im.RootReadability = func(_ context.Context, root string, readable bool) {
+		if root != h.root {
+			t.Errorf("heard about %s", root)
+		}
+		heard = append(heard, readable)
+	}
 	h.file("Echo/Echo.mkv", 10)
 	h.run()
+	disk := h.im.Disk
 	h.im.Disk = fakeDisk{}
 	if err := os.Remove(filepath.Join(h.root, "Echo", "Echo.mkv")); err != nil {
 		t.Fatal(err)
 	}
 	h.run()
+	h.run() // still offline: heard once, not per pass
 	origin := fileOrigin(h.root, "Echo/Echo.mkv")
 	if o := h.origin(h.item(origin), origin); !o.MissingAt.IsZero() {
 		t.Error("unreadable root marked a file missing")
 	}
 	if r := h.im.Progress().Roots; r[0].State != RootUnreadable {
 		t.Errorf("state = %s", r[0].State)
+	}
+	if roots, _ := h.st.LibraryRoots(context.Background()); roots.Roots[0].Readable {
+		t.Error("the status strip still reads the offline root as readable")
+	}
+	h.im.Disk = disk
+	h.run()
+	if !slices.Equal(heard, []bool{false, true}) {
+		t.Errorf("heard %v, want offline then back", heard)
 	}
 }
 
@@ -407,6 +503,21 @@ func TestImportArrOutageDefersWritesAndRemovals(t *testing.T) {
 	}
 }
 
+// An arr with no connection is not a manager: its silence holds nothing back.
+func TestImportUnconfiguredArrIsNoOutage(t *testing.T) {
+	sonarr := &fakeLister{err: fmt.Errorf("sonarr: %w", mp.ErrNotConfigured)}
+	h := newHarness(t, Manager{Authority: "sonarr", Lister: sonarr})
+	h.file("Foxtrot (2011)/Foxtrot.mkv", 10)
+	h.run()
+	foxtrot := fileOrigin(h.root, "Foxtrot (2011)/Foxtrot.mkv")
+	if _, ok, err := h.inv.Item(context.Background(), inventory.ItemRef{Origin: &foxtrot}); err != nil || !ok {
+		t.Fatalf("the file waited on an arr with no connection: ok=%v err=%v", ok, err)
+	}
+	if h.im.Progress().ArrIncomplete {
+		t.Error("an arr with no connection reads as incomplete")
+	}
+}
+
 // A file first written with no ids follows them to the item they name once an arr gives them,
 // rather than becoming an identity conflict for good.
 func TestImportOriginFollowsLaterIDs(t *testing.T) {
@@ -474,8 +585,8 @@ func TestImportShareFaultKeepsHeaderPending(t *testing.T) {
 	h := newHarness(t)
 	h.file("Romeo/Romeo.mkv", 10)
 	read := h.im.Header
-	h.im.Header = func(context.Context, string) (mediaheader.Header, error) {
-		return mediaheader.Header{}, &fs.PathError{Op: "read", Path: "Romeo.mkv", Err: syscall.EIO}
+	h.im.Header = func(context.Context, string) (header.Header, error) {
+		return header.Header{}, &fs.PathError{Op: "read", Path: "Romeo.mkv", Err: syscall.EIO}
 	}
 	h.run()
 	rows, err := h.st.LibraryFiles(context.Background(), h.root)

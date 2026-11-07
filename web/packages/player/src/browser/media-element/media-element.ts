@@ -64,16 +64,17 @@ const containsMediaTime = (ranges: TimeRanges, point: number): boolean => {
   return false;
 };
 
-// Resolves once the frame after this one has painted. A hidden or throttled document can stop
-// delivering animation frames altogether, so a short timer guarantees the wait ends.
+// Resolves once the frame after this one has painted, in a task of its own so animation-frame
+// callbacks queued for that frame run first. A slow device can take tens of milliseconds a frame,
+// so the timer that ends the wait is only for a hidden document, which stops delivering frames.
 const afterNextPaint = () =>
   new Promise<void>((resolve) => {
-    const fallback = setTimeout(resolve, 50);
+    const fallback = setTimeout(resolve, 500);
     if (typeof requestAnimationFrame !== "function") return;
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         clearTimeout(fallback);
-        resolve();
+        setTimeout(resolve, 0);
       }),
     );
   });

@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // Exposure is one clip's watched-airing history across the household, as one break sees it (§10

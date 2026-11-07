@@ -10,9 +10,12 @@ import CircleUserRound from "lucide-react-native/icons/circle-user-round";
 import Clapperboard from "lucide-react-native/icons/clapperboard";
 import Clock3 from "lucide-react-native/icons/clock-3";
 import Ellipsis from "lucide-react-native/icons/ellipsis";
+import Eye from "lucide-react-native/icons/eye";
+import EyeOff from "lucide-react-native/icons/eye-off";
 import House from "lucide-react-native/icons/house";
 import Inbox from "lucide-react-native/icons/inbox";
 import Info from "lucide-react-native/icons/info";
+import Library from "lucide-react-native/icons/library";
 import List from "lucide-react-native/icons/list";
 import ListChecks from "lucide-react-native/icons/list-checks";
 import LoaderCircle from "lucide-react-native/icons/loader-circle";
@@ -45,6 +48,8 @@ const icons = {
   channelUp: ChevronUp,
   channels: Tv,
   close: X,
+  // A password Field's show and hide button.
+  conceal: EyeOff,
   // The trailing mark of a phone list row that opens or connects to something.
   disclosure: ChevronRight,
   // Web's phone-width bottom bar (#1785, #1659 Shell nav) — the admin/member destinations
@@ -57,6 +62,8 @@ const icons = {
   help: ListChecks,
   home: House,
   info: Info,
+  // Web's Library destination (#2151), drawn as the sidebar draws it.
+  library: Library,
   // The player's Channels sheet (§9.4): a list of channels, where `channels` is the TV destination.
   list: List,
   loading: LoaderCircle,
@@ -71,6 +78,7 @@ const icons = {
   previous: SkipBack,
   // Requests on every client (#1816's native mock; the web rail and bar draw the same Inbox).
   requests: Inbox,
+  reveal: Eye,
   search: Search,
   // The player's ±10 s (§9.4): the arrow carries a "10" drawn inside it.
   seekBack: withSeconds(RotateCcw, "10"),

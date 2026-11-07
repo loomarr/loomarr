@@ -22,11 +22,14 @@ const (
 	kindExtra   inventory.ItemKind = "extra"
 )
 
+// authorityPrefix starts every scan root's authority.
+const authorityPrefix = "scan:"
+
 // Authority is the inventory authority of one scan root: every file under it is an origin of that
 // authority, so a walk of the root marks exactly its own files unseen.
 func Authority(root string) inventory.AuthorityID {
 	digest := sha256.Sum256([]byte(root))
-	return inventory.AuthorityID("scan:" + hex.EncodeToString(digest[:12]))
+	return inventory.AuthorityID(authorityPrefix + hex.EncodeToString(digest[:12]))
 }
 
 // fileOrigin is a media file's origin: its path within its root.
@@ -45,19 +48,38 @@ func seriesOrigin(root, dir string) inventory.OriginKey {
 // revision is a file's inventory revision: its stat. A new size or mtime is new bytes.
 func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.ModifiedNs) }
 
+// writeVersion changes when what a write produces from the same inputs changes, so every file is
+// written once more with the new shape; its header is kept, so none is opened again.
+//
+//	2: titles name the catalog row their details come from (library_items.catalog).
+//	3: titles note their scan origin and whether anything grounds them (Needs you).
+//	4: titles note what said which title they are, and its page (Wrong title?).
+//	5: each origin notes where its shown details came from (Technical details).
+//	6: a file's origin notes whether its arr lists it (the copy that plays).
+const writeVersion = 6
+
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
 func identityDigest(file File, m managed, embedded mp.Record, parent []inventory.ExternalID) string {
 	payload, _ := json.Marshal(struct {
+		Version  int
 		Records  []mp.Record
 		Series   *mp.Record
 		Embedded mp.Record
 		Sidecars map[string]Stat
 		Parent   []inventory.ExternalID
 		Extra    bool
-	}{m.records, m.series, embedded, file.Sidecars, parent, file.Extra})
+	}{writeVersion, m.records, m.series, embedded, file.Sidecars, parent, file.Extra})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
+}
+
+func pickedIDs(picked []precedence.Picked[mp.ExternalID]) []mp.ExternalID {
+	out := make([]mp.ExternalID, 0, len(picked))
+	for _, p := range picked {
+		out = append(out, p.Value)
+	}
+	return out
 }
 
 func externalIDs(picked []precedence.Picked[mp.ExternalID]) []inventory.ExternalID {
@@ -66,6 +88,41 @@ func externalIDs(picked []precedence.Picked[mp.ExternalID]) []inventory.External
 		out = append(out, inventory.ExternalID{Namespace: string(p.Value.Namespace), Value: p.Value.Value})
 	}
 	return out
+}
+
+// DetailsFrom names the provider each detail a title page shows came from, for Technical details'
+// "Where details come from" (#2151 step 10d). "" is no provider: the detail is unknown, or the
+// scanner made it up from the path.
+type DetailsFrom struct {
+	Name        mp.ID `json:"name,omitempty"`
+	Description mp.ID `json:"description,omitempty"`
+	Rating      mp.ID `json:"rating,omitempty"`
+}
+
+// originExtension is what the scanner keeps in an origin's Observation.Extension.
+type originExtension struct {
+	From DetailsFrom `json:"from"`
+	// Managed is true for a file its arr lists: the arr's current file, the one that plays when a
+	// title has several (decision 37).
+	Managed bool `json:"managed,omitempty"`
+}
+
+// originExtensionOf is r's provenance, and whether an arr lists the file, as an origin's
+// Observation.Extension.
+func originExtensionOf(r precedence.Resolved, managed bool) json.RawMessage {
+	raw, _ := json.Marshal(originExtension{From: DetailsFrom{
+		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
+	}, Managed: managed})
+	return raw
+}
+
+// readOriginExtension reads originExtensionOf back; an origin written before it says nothing.
+func readOriginExtension(raw json.RawMessage) originExtension {
+	var ext originExtension
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &ext)
+	}
+	return ext
 }
 
 // itemFacts projects resolved values into the inventory's item facts, with coverage for each

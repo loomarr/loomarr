@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )

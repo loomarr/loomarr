@@ -77,6 +77,13 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
           value="http://loomarr.local"
         />
         <Field density={density} disabled label="Managed server" value="https://living-room.local" />
+        <Field
+          density={density}
+          label="Password"
+          onChangeText={() => undefined}
+          secureTextEntry
+          value="correct horse"
+        />
       </Surface>
 
       <Surface gap="control" padding="section">

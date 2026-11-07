@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -1125,7 +1125,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		} else if statErr != nil {
 			return nil, fmt.Errorf("split confirm: inspect segment %d: %w", i, statErr)
 		} else {
-			equal, compareErr := exactFileBytesEqual(splitCtx, tmp, dst, mediatools.ConditioningMaxSnapshotBytes)
+			equal, compareErr := exactFileBytesEqual(splitCtx, tmp, dst, tools.ConditioningMaxSnapshotBytes)
 			if compareErr != nil || !equal {
 				return nil, fmt.Errorf("split confirm: existing segment %d bytes do not match identity", i)
 			}

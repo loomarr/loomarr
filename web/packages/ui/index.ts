@@ -56,12 +56,38 @@ export type {
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
 export type {
   LibraryAuthority,
+  LibraryFilter,
   LibraryFolder,
   LibraryHealth,
+  LibraryHeldRemoval,
+  LibraryHook,
+  LibraryKind,
+  LibraryNeed,
+  LibraryNeedCandidate,
+  LibraryNeedSearch,
+  LibraryNeedsAnswers,
+  LibraryNeedsCardsProps,
+  LibraryNeedsStripProps,
   LibraryPathMapping,
+  LibraryScan,
   LibrarySettingsProps,
+  LibraryShelfProps,
+  LibraryShelfStatus,
+  LibraryShelfTitle,
+  LibraryTitleDetail,
+  LibraryTitleEpisode,
+  LibraryTitleFile,
+  LibraryTitleMatch,
+  LibraryTitleProps,
+  LibraryTitleSeason,
 } from "./src/library";
-export { LibrarySettings } from "./src/library";
+export {
+  LibraryNeedsCards,
+  LibraryNeedsStrip,
+  LibrarySettings,
+  LibraryShelf,
+  LibraryTitle,
+} from "./src/library";
 export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,

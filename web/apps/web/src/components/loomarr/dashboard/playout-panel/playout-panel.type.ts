@@ -7,7 +7,6 @@ interface PlayoutPanelProps {
   loading?: boolean;
   // The dashboard keeps the concise default; Settings names the card as live, read-only state.
   title?: string;
-  className?: string;
 }
 
 export type { PlayoutPanelProps };

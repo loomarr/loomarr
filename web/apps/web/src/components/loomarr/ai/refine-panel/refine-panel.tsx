@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import { suggestionFailureCopy } from "@/suggest/suggestion-failure-copy";
 import { useChannelRefine } from "@/suggest/use-channel-refine";
@@ -31,11 +32,20 @@ const RefinePanel = ({
   className,
 }: RefinePanelProps) => {
   const [state, setState] = useState<PanelState>("idle");
-  const [change, setChange] = useState("");
   const headingId = useId();
 
   const refine = useChannelRefine();
   const elapsed = useElapsed(refine.isRunning);
+
+  const form = useAppForm({
+    defaultValues: { change: "" },
+    onSubmit: ({ value }) => {
+      const text = value.change.trim();
+      if (!text) return;
+      setState("running");
+      refine.start(channelId, text);
+    },
+  });
 
   useEffect(() => {
     // A refused request (422 no stored intent, 409 already running) never starts a job, so
@@ -53,7 +63,7 @@ const RefinePanel = ({
 
   const close = () => {
     setState("idle");
-    setChange("");
+    form.reset();
     refine.reset();
   };
 
@@ -67,13 +77,6 @@ const RefinePanel = ({
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't apply that change"),
     },
   });
-
-  const submit = () => {
-    const text = change.trim();
-    if (!text) return;
-    setState("running");
-    refine.start(channelId, text);
-  };
 
   const landed = state === "landed" ? refine.proposal : undefined;
   // Show the generation-failed notice on the form whenever the last run ended in `failed`
@@ -124,19 +127,25 @@ const RefinePanel = ({
             className="flex gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              submit();
+              void form.handleSubmit();
             }}
           >
-            <Input
-              value={change}
-              onChange={(e) => setChange(e.target.value)}
-              placeholder="e.g. More 90s sci-fi, fewer movies after midnight"
-              aria-label={`What to change on ${channelName}`}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={change.trim().length === 0}>
-              Suggest changes
-            </Button>
+            <form.Field name="change">
+              {(field) => (
+                <>
+                  <Input
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="e.g. More 90s sci-fi, fewer movies after midnight"
+                    aria-label={`What to change on ${channelName}`}
+                    className="flex-1"
+                  />
+                  <Button type="submit" disabled={field.state.value.trim().length === 0}>
+                    Suggest changes
+                  </Button>
+                </>
+              )}
+            </form.Field>
           </form>
           {refine.error != null && <ErrorState error={refine.error} />}
         </div>

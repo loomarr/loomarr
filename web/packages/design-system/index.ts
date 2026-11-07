@@ -14,7 +14,7 @@ export {
   brandLaunchMotion,
   resolveBrandLaunchMinHeight,
 } from "./src/brand";
-export { Card, CardContent, CardFooter, CardHeader, CardTitle } from "./src/card";
+export { Card } from "./src/card";
 export type {
   DialogActionProps,
   DialogContentProps,

@@ -86,7 +86,7 @@ func TestProductionPackagesDoNotImportAPI(t *testing.T) {
 // Production packages must not import the HTTP FRAMEWORK either, which is the same rule one level
 // down. The same exhaustive source-derived package set keeps the two gates aligned.
 //
-// ⚠ **The gate above bans `internal/api` and that was not enough.** `internal/schedule` — 4,000-odd
+// ⚠ **The gate above bans `internal/api` and that was not enough.** `internal/channels/schedule` — 4,000-odd
 // lines of I/O-free scheduling logic, the purest package in the tree — imported `huma/v2` to
 // describe one field's JSON encoding (`func (Duration) Schema(huma.Registry) *huma.Schema`). It
 // passed every gate: it does not import `internal/api`, so the dependency-direction test was
@@ -311,7 +311,7 @@ func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
 // frame analysis independently; this gate is specifically the Image service boundary.
 func TestImageServiceDoesNotImportGoPixelCode(t *testing.T) {
 	pkgs := loomarrPackages(t)
-	imageService := modulePath + "/internal/images"
+	imageService := modulePath + "/internal/media/images"
 	pkg, ok := pkgs[imageService]
 	if !ok {
 		t.Fatalf("%s is not in the import graph", imageService)

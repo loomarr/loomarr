@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The VISION stage (§10 V51b) — the expensive last tier, unchanged from V44 except for what drives
@@ -132,7 +132,7 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	// signal at all, never a fact.
 	suggestedEra := 0
 	if v.Era == 0 {
-		suggestedEra = mediatools.SuggestedEraFrom(mediatools.AnalyzeFrames(frames))
+		suggestedEra = tools.SuggestedEraFrom(tools.AnalyzeFrames(frames))
 	}
 
 	reportProgress(ctx, StageVision, 100)

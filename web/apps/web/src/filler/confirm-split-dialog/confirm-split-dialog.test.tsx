@@ -1,7 +1,8 @@
 import type { ClipDTO } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ConfirmSplitDialog } from "./confirm-split-dialog";
 
 // The confirmation "Split into clips" never had (§10 V54 A8).
@@ -27,8 +28,8 @@ const clip = (over: Partial<ClipDTO> = {}): ClipDTO =>
 
 describe("ConfirmSplitDialog", () => {
   it("renders nothing without a clip", () => {
-    const { container } = render(<ConfirmSplitDialog onConfirm={vi.fn()} onClose={vi.fn()} />);
-    expect(container).toBeEmptyDOMElement();
+    render(<ConfirmSplitDialog onConfirm={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   // ⚠ The real cost is TIME and GPU contention, and it is the only reason to hesitate. An

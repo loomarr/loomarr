@@ -5,15 +5,15 @@ import type { IncomingHelpGroupDTO } from "@loomarr/api/models/incomingHelpGroup
 import type { IncomingStatusDTO } from "@loomarr/api/models/incomingStatusDTO";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Image } from "@/components/ui/image";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
@@ -63,9 +63,7 @@ const StatusRows = ({
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
         <span className="sr-only">View details for</span>{" "}
         <span className="bg-muted h-12 w-16 shrink-0 overflow-hidden rounded">
-          {row.thumbImage ? (
-            <Image image={row.thumbImage} alt="" sizes="64px" className="size-full object-cover" />
-          ) : null}
+          {row.thumbImage ? <ServedImage image={row.thumbImage} alt="" sizes="64px" /> : null}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium break-words">{row.name}</span>
@@ -183,7 +181,7 @@ const Incoming = () => {
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
   if (!view) {
     return (
-      <Card aria-live="polite" className="text-muted-foreground p-6 text-sm">
+      <Card aria-live="polite" className="text-muted-foreground text-sm" padding={24}>
         Checking what’s on the way…
       </Card>
     );
@@ -270,7 +268,7 @@ const Incoming = () => {
             </p>
           </div>
           {helpTask ? (
-            <Card className="space-y-4 p-4">
+            <Card gap={16} padding={16}>
               <div className="text-muted-foreground flex items-center justify-between gap-3 text-xs">
                 <span>
                   {helpIndex + 1} of {view.needsHelp.total}

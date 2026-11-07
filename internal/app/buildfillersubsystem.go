@@ -13,8 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -27,12 +26,13 @@ import (
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -182,7 +182,7 @@ func buildFillerSubsystem(
 	defectFloor := defectfloor.NewDefectFloor(
 		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
-			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
+			return tools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
 		},
 		func(ctx context.Context, file string, durationMs int64) (creative.Fingerprint, error) {
 			return defectTools.Fingerprint(ctx, file, 0, durationMs)

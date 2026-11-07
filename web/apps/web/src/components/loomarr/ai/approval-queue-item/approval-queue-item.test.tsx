@@ -1,7 +1,8 @@
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ApprovalQueueItem } from "./approval-queue-item";
 
 describe("ApprovalQueueItem", () => {

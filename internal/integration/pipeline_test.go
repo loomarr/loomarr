@@ -27,19 +27,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/proposal"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
@@ -104,7 +104,7 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 
 	// The REAL worker service that runs jobs → persists proposals.
 	ids := newIDGen()
-	svc := suggest.NewService(st, proposalworkflow.New(st, ids, clock), suggester,
+	svc := suggest.NewService(st, workflow.New(st, ids, clock), suggester,
 		suggest.Config{Workers: 1, Timeout: 30 * time.Second}, clock, testkit.Logger())
 
 	// Real availability (over the store's title records) WITH a real duration
@@ -122,9 +122,9 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	go svc.Run(ctx)
 
 	log := slog.New(slog.DiscardHandler)
-	chBinder := binder.New(st, engine, nil, log)
+	chBinder := approval.New(st, engine, nil, log)
 	approver := suggest.NewApprover(st, chBinder, clock)
-	// engine (*channels.Engine) satisfies binder.Reconciler directly, so the shared
+	// engine (*channels.Engine) satisfies approval.Reconciler directly, so the shared
 	// binder here reconciles through the SAME real engine the rig otherwise wires —
 	// no drift between what the API's approve/create paths and the binder see.
 	h := api.Router(log, api.Options{
@@ -179,7 +179,7 @@ func (r *rig) getJSON(t *testing.T, path string, v any) {
 // appears (the worker ran) or the deadline passes. Returns the proposal id + the
 // decoded proposal. A worker failure (no proposal) fails the test with the job's
 // last error, so a broken suggester surfaces clearly rather than as a timeout.
-func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposal.Proposal) {
+func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposals.Proposal) {
 	t.Helper()
 	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
@@ -193,7 +193,7 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposal.Propos
 		r.getJSON(t, "/v1/proposals?status=submitted", &list)
 		for _, p := range list.Proposals {
 			if p.JobID == jobID {
-				var prop proposal.Proposal
+				var prop proposals.Proposal
 				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
 					t.Fatalf("decode proposal body: %v", err)
 				}
@@ -208,7 +208,7 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposal.Propos
 		t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
 	}
 	t.Fatalf("proposal never appeared for job %s (job lookup failed: %v)", jobID, err)
-	return "", proposal.Proposal{}
+	return "", proposals.Proposal{}
 }
 
 // seedFillerClips lands a catalog of matched commercials + bumpers as a Tunarr sync

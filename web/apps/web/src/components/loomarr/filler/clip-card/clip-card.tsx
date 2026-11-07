@@ -1,12 +1,12 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { Play, Scissors } from "lucide-react";
 import { useState } from "react";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
@@ -84,7 +84,7 @@ const ClipFrame = ({
 }: {
   // ⚠ `thumbImage` is REQUIRED here even though it is optional on ClipDTO. The frame exists only
   // when there is artwork to put in it, and stating that in the type is what lets this component
-  // hand the record straight to <Image> — the caller's `clip.thumbImage &&` guard is then the one
+  // hand the record straight to <ServedImage> — the caller's `clip.thumbImage &&` guard is then the one
   // place the absence is handled, rather than a narrowing TypeScript cannot carry across the
   // component boundary and a redundant re-check in here.
   clip: ClipDTO & { thumbImage: NonNullable<ClipDTO["thumbImage"]> };
@@ -141,14 +141,9 @@ const ClipFrame = ({
           would have a screen reader announce the same clip twice. The frame is decoration for a
           label that is already present.
 
-          No `priority`: a catalog is hundreds of cards, and <Image> defaults to lazy + async,
-          which is exactly right below the fold. */}
-      <Image
-        image={clip.thumbImage}
-        alt=""
-        sizes="(max-width: 640px) 45vw, 220px"
-        className="size-full object-cover"
-      />
+          No `priority`: a catalog is hundreds of cards, and <ServedImage> defaults to lazy +
+          async, which is exactly right below the fold. */}
+      <ServedImage image={clip.thumbImage} alt="" sizes="(max-width: 640px) 45vw, 220px" />
       {/* The animation, stacked ON the still rather than replacing its src. Swapping the src
           would blank the box for as long as the webp took to arrive — a flash of empty card on
           every hover — and would lose the still if the preview 404'd. Layering means the still is
@@ -162,13 +157,14 @@ const ClipFrame = ({
         //
         // The animation is ONE rendition and skips the ladder (§22 `animated`), so `sizes` is
         // nominal here — it is the still beneath that does the responsive work.
-        <Image
-          image={clip.hoverImage}
-          alt=""
-          sizes="(max-width: 640px) 45vw, 220px"
-          className="absolute inset-0 size-full object-cover"
-          fallback={null}
-        />
+        <span className="absolute inset-0">
+          <ServedImage
+            image={clip.hoverImage}
+            alt=""
+            sizes="(max-width: 640px) 45vw, 220px"
+            fallback={null}
+          />
+        </span>
       )}
 
       {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
@@ -253,7 +249,6 @@ const ClipCard = ({
   selected,
   onToggleSelect,
   compact,
-  className,
 }: ClipCardProps) => {
   // Ready is the default and wears no chip (#1817, decided on #1908): a healthy library of a
   // thousand clips shouldn't carry a thousand amber badges. Only a clip that is NOT ready names
@@ -265,13 +260,10 @@ const ClipCard = ({
   const needsDetailsChip = !exception && clip.needsDetails ? <NeedsDetailsChip /> : null;
   return (
     <Card
-      className={cn(
-        "flex flex-col",
-        compact ? "gap-1.5 p-2" : "gap-2.5 p-3",
-        // Selection is neutral (#1909): amber is for focus and the primary action.
-        selected && "ring-foreground ring-1",
-        className,
-      )}
+      // Selection is neutral (#1909): amber is for focus and the primary action.
+      className={cn(selected && "ring-foreground ring-1")}
+      gap={compact ? 6 : 10}
+      padding={compact ? 8 : 12}
     >
       {clip.thumbImage ? (
         <ClipFrame

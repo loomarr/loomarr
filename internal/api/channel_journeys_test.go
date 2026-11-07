@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/channeljourney"
 	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
@@ -65,7 +65,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	log := testkit.Logger()
-	b := binder.New(st, nil, nil, log)
+	b := approval.New(st, nil, nil, log)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
 		Approver: suggest.NewApprover(st, b, channeljourney.Clock),
@@ -141,7 +141,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			now := channeljourney.Clock()
 			st := testkit.MigratedSQLiteStore(t)
 			log := testkit.Logger()
-			b := binder.New(st, nil, nil, log)
+			b := approval.New(st, nil, nil, log)
 			srv := httptest.NewServer(api.Router(log, api.Options{
 				Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
 				Approver: suggest.NewApprover(st, b, func() time.Time { return now }),
@@ -152,7 +152,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			pick := fixture.Proposal.Lineup[0]
 			pick.InLibrary, pick.LibraryItemID = false, ""
 			fixture.Proposal.Lineup = nil
-			fixture.Proposal.Acquisitions = []proposal.ProposalItem{pick}
+			fixture.Proposal.Acquisitions = []proposals.ProposalItem{pick}
 			if err := createProposalWithJob(st, ctx, store.Proposal{ID: "sparse", JobID: "sparse-job", Status: "submitted", Body: fixture.Proposal}); err != nil {
 				t.Fatal(err)
 			}

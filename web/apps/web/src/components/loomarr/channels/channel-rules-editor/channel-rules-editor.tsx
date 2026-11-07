@@ -39,7 +39,7 @@ import {
 // ChannelRulesEditor — the "Programming rules" authoring surface (programming-design
 // §6.5/§6.6/§8.1): an ordered list of (WHEN, WHAT, HOW) rule chips. Authoring is
 // TOKEN-BASED, never raw predicates — the editor composes from the SAME closed
-// vocabulary the LLM uses (presets.ts, mirroring internal/schedule/presets.go), so a
+// vocabulary the LLM uses (presets.ts, mirroring internal/channels/schedule/presets.go), so a
 // hand-authored rule and an LLM-authored one lower to byte-identical SchedulingRule
 // fields. The backend re-validates on save regardless (unknown tokens dropped, window
 // clamped, audience stricter-only) — this table is a UX convenience, not the source of

@@ -3,7 +3,7 @@ package channels
 import (
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // capCommercialBreaks makes an internal-playout break no longer than the real media

@@ -1,7 +1,7 @@
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 import { howShortLabels, whatStaticOptions, whenShortLabels } from "../presets";
 
-// computeLabel — the FE mirror of SchedulingRule.Describe() (internal/schedule/rule.go).
+// computeLabel — the FE mirror of SchedulingRule.Describe() (internal/channels/schedule/rule.go).
 // The Go side synthesizes a label from When/How only when Label is empty; this FE version
 // additionally weaves in the WHAT token's label (except "all") so the editor's row caption
 // names all three pickers, joined with " · " to read as a compact caption. Presentation

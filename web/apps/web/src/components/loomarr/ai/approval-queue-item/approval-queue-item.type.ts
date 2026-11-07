@@ -55,7 +55,8 @@ interface ApprovalQueueItemProps {
   // A failed approve/deny for THIS row (#1430) — rendered on the card itself rather than in a
   // banner elsewhere on the queue, so the error sits next to the decision that produced it.
   error?: unknown;
-  className?: string;
+  // A row in a group, divided by the group's own rules (mock #1876): no card chrome of its own.
+  flat?: boolean;
 }
 
 export type { ApprovalQueueItemProps, ApprovalStatus };

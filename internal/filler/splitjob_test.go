@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -2023,11 +2023,11 @@ func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	parentHash = bindCompilationIdentity(t, st, parentHash, parent)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	mediaTools := &fakeTools{chapters: []filler.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "First reviewed child"},
 		{StartMs: 30_000, EndMs: 60_000, Title: "Second reviewed child"},
 	}}
-	sp := newSplitter(st, tools, nil, drop)
+	sp := newSplitter(st, mediaTools, nil, drop)
 	proposal, err := sp.Propose(context.Background(), parentHash)
 	if err != nil {
 		t.Fatal(err)
@@ -2057,7 +2057,7 @@ func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 	// A directory at the final sidecar name is an unrecoverable metadata publication failure.
 	// Confirm must roll back the first prepared sidecar when the later child fails, before either
 	// media name reaches the scan tree.
-	if err := os.Mkdir(mediatools.SidecarPathFor(children[1]), 0o700); err != nil {
+	if err := os.Mkdir(tools.SidecarPathFor(children[1]), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2068,7 +2068,7 @@ func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 		if _, err := os.Stat(child); !os.IsNotExist(err) {
 			t.Fatalf("child %d media became scan-visible without a complete batch: %v", i, err)
 		}
-		if _, err := os.Stat(mediatools.SidecarPathFor(child)); i == 0 && !os.IsNotExist(err) {
+		if _, err := os.Stat(tools.SidecarPathFor(child)); i == 0 && !os.IsNotExist(err) {
 			t.Fatalf("first child sidecar survived later sidecar failure: %v", err)
 		}
 		if _, found, err := st.GetClip(context.Background(), childHashes[i]); err != nil || found {
@@ -2938,7 +2938,7 @@ func TestConfirm_CancellationAfterFinalExactComparisonPublishesAndWritesNothing(
 	if _, err := os.Stat(child); !os.IsNotExist(err) {
 		t.Fatalf("child media published after cancellation: %v", err)
 	}
-	if _, err := os.Stat(mediatools.SidecarPathFor(child)); !os.IsNotExist(err) {
+	if _, err := os.Stat(tools.SidecarPathFor(child)); !os.IsNotExist(err) {
 		t.Fatalf("child sidecar published after cancellation: %v", err)
 	}
 }

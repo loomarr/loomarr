@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/quality"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 // supplies the real grounded Suggester, while hermetic tests supply a scripted
 // adapter. Everything after the Proposal remains deterministic Loomarr code.
 type Generator interface {
-	Suggest(context.Context, proposal.Intent) (proposal.Proposal, error)
+	Suggest(context.Context, proposals.Intent) (proposals.Proposal, error)
 }
 
 // RunnerConfig identifies one reproducible evaluation profile. Credentials and
@@ -360,7 +360,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 			}
 			runUsage := newResourceAccumulator()
 			boundaryBudget := false
-			var prop proposal.Proposal
+			var prop proposals.Proposal
 			var err error
 			var materializedPrograms []MaterializedProgram
 			if r.observer != nil {
@@ -713,7 +713,7 @@ func assessCertification(results []Result, thresholds CertificationThresholds, m
 	return assessment
 }
 
-func proposalQualityMatches(c Case, proposal proposal.Proposal, err error) bool {
+func proposalQualityMatches(c Case, proposal proposals.Proposal, err error) bool {
 	if c.ExpectedProposalTerminal != "" {
 		if !typedDateAbstention(proposal, err) || typedFailureTerminal(err) != c.ExpectedProposalTerminal {
 			return false
@@ -760,7 +760,7 @@ func typedFailureTerminal(err error) string {
 	return failure.Trace.Terminal
 }
 
-func typedDateAbstention(proposal proposal.Proposal, err error) bool {
+func typedDateAbstention(proposal proposals.Proposal, err error) bool {
 	return len(allItems(proposal)) == 0 && typedFailureTerminal(err) != ""
 }
 

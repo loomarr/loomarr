@@ -28,13 +28,46 @@ interface LibraryPathMapping {
   byHand: boolean;
 }
 
+/** What the scanner is doing now. */
+interface LibraryScan {
+  /** False when reading media folders is turned off. */
+  enabled: boolean;
+  /** walking lists folders; reading reads new files' details. */
+  stage: "idle" | "walking" | "reading";
+  headersDone: number;
+  headersTotal: number;
+  /** Reading waits while someone is watching. */
+  paused: boolean;
+}
+
+/** Removals a scan found in one folder and is holding for the maintainer. */
+interface LibraryHeldRemoval {
+  path: string;
+  movies: number;
+  episodes: number;
+  other: number;
+}
+
+/** Whether an arr tells Loomarr about new downloads. */
+interface LibraryHook {
+  app: "sonarr" | "radarr";
+  state: "registered" | "not_configured" | "no_address" | "failed";
+}
+
 interface LibrarySettingsProps {
   health: LibraryHealth;
   folders: readonly LibraryFolder[];
   pathMap: readonly LibraryPathMapping[];
+  scan: LibraryScan;
+  held: readonly LibraryHeldRemoval[];
+  hooks: readonly LibraryHook[];
   /** A check of every folder is running. */
   checking: boolean;
   onCheckAgain: () => void;
+  /** Scans every folder again; a held removal is looked at afresh. */
+  onRescan: () => void;
+  /** The maintainer says the held files are gone. */
+  onConfirmRemoval: (path: string) => void;
   onUseFolder: (path: string, inUse: boolean) => void;
   /** Resolves to a sentence saying why the folder was refused, or undefined when it was added. */
   onAddFolder: (path: string) => Promise<string | undefined>;
@@ -44,4 +77,13 @@ interface LibrarySettingsProps {
   now?: number;
 }
 
-export type { LibraryAuthority, LibraryFolder, LibraryHealth, LibraryPathMapping, LibrarySettingsProps };
+export type {
+  LibraryAuthority,
+  LibraryFolder,
+  LibraryHealth,
+  LibraryHeldRemoval,
+  LibraryHook,
+  LibraryPathMapping,
+  LibraryScan,
+  LibrarySettingsProps,
+};

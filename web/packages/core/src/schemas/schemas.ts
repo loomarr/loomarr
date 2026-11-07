@@ -34,6 +34,7 @@ import {
   redeemPasswordRecoveryBodyPasswordMin,
   requestPasswordRecoveryBodyUsernameMax,
 } from "@loomarr/api/zod/auth";
+import { AddFillerSourceBody, setFillerSourceEnabledBodyGeographyCountryMax } from "@loomarr/api/zod/filler";
 import {
   CreateInvitationBody,
   createInvitationBodyContactEmailMax,
@@ -276,14 +277,28 @@ const notificationProviderFormSchema = (
   });
 };
 
+// A source typed by its address. A blank one never reaches the server; the submit button says so
+// by staying disabled, so there is no message.
+const addFillerSourceSchema = AddFillerSourceBody.pick({ kind: true, uri: true }).extend({
+  uri: z.string().trim().min(1),
+});
+
+// A source's own area. An empty one isn't saved here: "Use my location" clears it, and the save
+// button is disabled until a country is chosen.
+const fillerSourceCountrySchema = z.object({
+  country: z.string().trim().min(1).max(setFillerSourceEnabledBodyGeographyCountryMax),
+});
+
 export type { NotificationProviderRequiredField };
 export {
+  addFillerSourceSchema,
   bootstrapSchema,
   changePasswordSchema,
   contactAddressSchema,
   createInvitationSchema,
   createLocalUserSchema,
   devicePairApproveSchema,
+  fillerSourceCountrySchema,
   intentSchema,
   loginSchema,
   notificationProviderFormSchema,

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // Resolve is the profile at the rung the ResourceBudget admitted; the rung choice itself is

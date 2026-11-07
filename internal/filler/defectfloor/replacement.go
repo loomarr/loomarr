@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // CheckReplacement measures and judges the staged bytes that would replace an airing clip's file,

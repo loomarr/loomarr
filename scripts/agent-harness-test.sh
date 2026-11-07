@@ -307,9 +307,9 @@ git -C "$TMP" restore fixture
 step 'dependency-aware focused verification'
 git -C "$TMP" add -A
 git -C "$TMP" commit -qm 'focused verification fixture'
-mkdir -p "$TMP/internal/suggest"
-printf 'package suggest\n' > "$TMP/internal/suggest/probe.go"
-git -C "$TMP" add internal/suggest/probe.go
+mkdir -p "$TMP/internal/proposals/suggest"
+printf 'package suggest\n' > "$TMP/internal/proposals/suggest/probe.go"
+git -C "$TMP" add internal/proposals/suggest/probe.go
 verify_log="$TMP-wt/verify-runs"
 real_go="$(command -v go)"
 verify_bin="$TMP-wt/verify-bin"
@@ -321,11 +321,11 @@ printf '%s\n' '#!/usr/bin/env sh' 'echo "make $*" >> "$VERIFY_LOG"' > "$verify_b
 chmod +x "$verify_bin/go" "$verify_bin/make"
 staged_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
 	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
-printf '%s\n' "$staged_output" | grep -q 'internal/suggest/probe.go'
+printf '%s\n' "$staged_output" | grep -q 'internal/proposals/suggest/probe.go'
 printf '%s\n' "$staged_output" | grep -q 'affected Go packages:'
 git -C "$TMP" reset --hard -q HEAD
-mkdir -p "$TMP/internal/suggest"
-printf 'package suggest\n' > "$TMP/internal/suggest/probe.go"
+mkdir -p "$TMP/internal/proposals/suggest"
+printf 'package suggest\n' > "$TMP/internal/proposals/suggest/probe.go"
 : > "$verify_log"
 verify_output="$(PATH="$verify_bin:$PATH" REAL_GO="$real_go" VERIFY_LOG="$verify_log" \
 	BASE=HEAD LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" verify)"
@@ -335,8 +335,8 @@ printf '%s\n' "$verify_output" | grep -q 'protected gates: contracts,postgres,im
 printf '%s\n' "$verify_output" | grep -q 'affected Go packages:'
 printf '%s\n' "$verify_output" | grep -q 'completed local gates: go'
 grep -q 'make -C .* fmt tags-verify' "$verify_log"
-grep -q 'make -C .* lint PKG=.*internal/app.*internal/suggest' "$verify_log"
-grep -q 'go test -race .*internal/app.*internal/suggest' "$verify_log"
+grep -q 'make -C .* lint PKG=.*internal/app.*internal/proposals/suggest' "$verify_log"
+grep -q 'go test -race .*internal/app.*internal/proposals/suggest' "$verify_log"
 worker_line="$(grep -n 'make -C .* rust-test-worker' "$verify_log" | head -1 | cut -d: -f1)"
 eval_line="$(grep -n 'make -C .* eval-contract' "$verify_log" | head -1 | cut -d: -f1)"
 lint_line="$(grep -n 'make -C .* lint PKG=' "$verify_log" | head -1 | cut -d: -f1)"

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 

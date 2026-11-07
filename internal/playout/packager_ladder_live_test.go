@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // ladderSource airs one long 4K HDR title from a fixed wall-clock start.

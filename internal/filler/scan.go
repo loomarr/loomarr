@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/filler/clips"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -217,7 +217,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 				} else {
 					lineageInvalid = tags.Conditioning == nil || tags.MediaQuality == nil ||
 						validateConditioningPair(*tags.Conditioning, tags.ConditioningLineage.ChildHash, id) != nil ||
-						mediatools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
+						tools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
 						!reflect.DeepEqual(*tags.MediaQuality, tags.Conditioning.AfterRewrite.Quality)
 				}
 			}
@@ -363,7 +363,7 @@ func FFprobeNextTo(ffmpegPath string) Prober {
 // ffprobe directly, which is why the derivation is exported rather than buried
 // in the prober above.
 func FFprobePathNextTo(ffmpegPath string) string {
-	return mediatools.FFprobePathNextTo(ffmpegPath)
+	return tools.FFprobePathNextTo(ffmpegPath)
 }
 
 func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // decodeLuma decodes frame n of an H.264 elementary stream to its CODED 8-bit luma: the Y plane of

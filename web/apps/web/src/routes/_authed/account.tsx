@@ -4,19 +4,15 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
-import { FieldHint } from "@loomarr/design-system";
-import { useForm } from "@tanstack/react-form";
+import { Card, FieldHint } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
-import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Your account (§11). The self-service half of local account management: change your
@@ -68,7 +64,7 @@ const AccountScreen = () => {
 
   // Checked here as well as server-side: a mismatch is the user's typo, and making
   // them wait for a round-trip to learn it is worse than saying so immediately.
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { current: "", next: "", confirm: "" },
     validators: { onSubmit: changePasswordSchema },
     onSubmit: ({ value }) => {
@@ -95,7 +91,7 @@ const AccountScreen = () => {
       />
 
       <div className="max-w-form mx-auto flex w-full flex-1 flex-col gap-4 overflow-auto p-6">
-        <Card className="flex items-center gap-3 p-5">
+        <Card alignItems="center" flexDirection="row" gap={12} padding={20}>
           <div className="bg-muted flex size-10 items-center justify-center rounded-full font-medium">
             {(user?.name ?? "?").slice(0, 2).toUpperCase()}
           </div>
@@ -110,7 +106,7 @@ const AccountScreen = () => {
           </div>
         </Card>
 
-        <Card className="flex flex-col gap-3 p-5">
+        <Card gap={12} padding={20}>
           <h2 className="font-medium">Password</h2>
           {isLocal ? (
             <form
@@ -126,23 +122,9 @@ const AccountScreen = () => {
               </p>
               <div className="flex flex-col gap-2">
                 {PASSWORD_FIELDS.map(({ name, label, autoComplete }) => (
-                  <form.Field key={name} name={name}>
-                    {(field) => (
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor={`acct-${name}`}>{label}</Label>
-                        <Input
-                          id={`acct-${name}`}
-                          name={field.name}
-                          type="password"
-                          autoComplete={autoComplete}
-                          value={field.state.value}
-                          aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                        />
-                        <FieldError errors={field.state.meta.errors} />
-                      </div>
-                    )}
-                  </form.Field>
+                  <form.AppField key={name} name={name}>
+                    {(field) => <field.TextField autoComplete={autoComplete} label={label} type="password" />}
+                  </form.AppField>
                 ))}
               </div>
               {serverError && (
@@ -175,7 +157,7 @@ const AccountScreen = () => {
             per-session city is dropped (geo-IP; the map's call on #1659). A session the API hasn't
             labelled yet keeps today's "Signed in …" title. */}
         {/* shrink-0: in the scrolling column, an overflow-hidden card would shrink and clip its rows (#1785). */}
-        <Card className="flex shrink-0 flex-col overflow-hidden">
+        <Card flexShrink={0} overflow="hidden">
           <h2 className="border-border border-b px-4 py-3.5 text-sm font-semibold">Where you're signed in</h2>
           {sessions.isLoading && <p className="text-muted-foreground px-4 py-3 text-sm">Loading sessions…</p>}
           {!sessions.isLoading && sessionRows.length === 0 && (

@@ -2,14 +2,14 @@ import type { Proposal } from "@loomarr/api/models/proposal";
 
 // Which channel approving a request will touch, said before anyone confirms (#1817, #1876).
 //
-// ⚠ Approval binds a channel BY JOB (internal/binder planChannel → channelByIntent): the first
+// ⚠ Approval binds a channel BY JOB (internal/channels/approval planChannel → channelForJob): the first
 // approval for a job creates a channel, and approving a later revision of the same job replaces
 // that channel's lineup. So "Becomes a new channel" is only true when no channel's intentRef is
 // the proposal's job id — the summary has to check, not assume.
 
 const CHANNEL_NAME_MAX = 60;
 
-// Mirror of the server's truncateLabel (internal/binder/binder.go): cut at `max`, back up to the
+// Mirror of the server's truncateLabel (internal/channels/approval/bind.go): cut at `max`, back up to the
 // last space when that keeps more than half, trim trailing punctuation, add an ellipsis. The
 // server counts bytes and this counts code points; they agree for every name that fits, and for
 // ASCII names that do not.

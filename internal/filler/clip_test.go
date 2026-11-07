@@ -3,8 +3,8 @@ package filler_test
 import (
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // FILLER-NEVER-A-PROGRAM (§10/§19). This is a structural guarantee, and this test

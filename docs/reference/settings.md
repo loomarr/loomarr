@@ -19,6 +19,7 @@ To replace the installation key, supply the new current key and provide the old 
 | `library.url` (`LIBRARY_URL`) | Connections | url | — | Media server base URL, e.g. http://emby:8096. |
 | `library.token` (`LIBRARY_TOKEN`) | Connections | secret | (secret) | An API key from your media server. Lets Loomarr read your library and set up the TV guide. |
 | `library.path_map` (`LIBRARY_PATH_MAP`) | Playback | string | — | Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as "/data=>/mnt/media". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead. _(advanced)_ |
+| `library.scanner.enabled` (`LIBRARY_SCANNER_ENABLED`) | Connections | bool | `true` | Whether Loomarr reads your media folders itself to learn what each file is. Turn this off to stop it reading them; what it already learned is kept. _(advanced)_ |
 
 ## Connections — Requester
 

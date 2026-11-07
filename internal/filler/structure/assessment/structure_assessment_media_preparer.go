@@ -9,10 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 const structureAssessmentToolOutputMaximumBytes = 256 << 10
@@ -25,7 +25,7 @@ type FFmpegStructureAssessmentMediaPreparer struct {
 	ffmpegPath string
 	profile    cut.Profile
 	probe      filler.Prober
-	identify   func(context.Context, string) (mediatools.MediaToolIdentity, error)
+	identify   func(context.Context, string) (tools.MediaToolIdentity, error)
 	run        func(context.Context, string, []string) error
 	decode     func(context.Context, string, string) error
 	snapshot   func(context.Context, string, string) error
@@ -44,7 +44,7 @@ func NewFFmpegStructureAssessmentMediaPreparer(sourceRoot, mediaRoot, ffmpegPath
 	}
 	return &FFmpegStructureAssessmentMediaPreparer{
 		sourceRoot: sourceRoot, mediaRoot: mediaRoot, ffmpegPath: ffmpegPath, profile: profile, probe: filler.FFprobeNextTo(ffmpegPath),
-		identify: mediatools.IdentifyFFmpeg, run: runStructureAssessmentFFmpeg,
+		identify: tools.IdentifyFFmpeg, run: runStructureAssessmentFFmpeg,
 		decode:   runStructureAssessmentDecode,
 		snapshot: filler.SnapshotOwnedFile,
 	}, nil
@@ -102,7 +102,7 @@ func runStructureAssessmentFFmpeg(ctx context.Context, executable string, argume
 }
 
 func runStructureAssessmentDecode(ctx context.Context, ffmpegPath, path string) error {
-	return runStructureAssessmentFFmpeg(ctx, mediatools.FFmpegOr(ffmpegPath), []string{
+	return runStructureAssessmentFFmpeg(ctx, tools.FFmpegOr(ffmpegPath), []string{
 		"-nostdin", "-hide_banner", "-v", "error", "-i", path,
 		"-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-",
 	})

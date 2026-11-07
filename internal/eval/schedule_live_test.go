@@ -12,21 +12,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 type intentRecordingGenerator struct {
-	proposal proposal.Proposal
-	intents  []proposal.Intent
+	proposal proposals.Proposal
+	intents  []proposals.Intent
 }
 
-func (g *intentRecordingGenerator) Suggest(_ context.Context, intent proposal.Intent) (proposal.Proposal, error) {
+func (g *intentRecordingGenerator) Suggest(_ context.Context, intent proposals.Intent) (proposals.Proposal, error) {
 	g.intents = append(g.intents, intent)
 	return g.proposal, nil
 }
@@ -70,20 +70,20 @@ func TestRunnerSendsCanonicalLiveSeriesIntentThroughGenerationAndSchedule(t *tes
 	for _, tc := range []struct {
 		name        string
 		description string
-		proposal    proposal.Proposal
+		proposal    proposals.Proposal
 	}{
 		{
 			name: "schedule_classic_simpsons_highlights", description: "Classic Simpsons reruns from the golden era, curated for variety",
-			proposal: proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication}}, Lineup: []proposal.ProposalItem{{
+			proposal: proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: schedule.OrderSyndication}}, Lineup: []proposals.ProposalItem{{
 				MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
 				LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 			}}},
 		},
 		{
 			name: "schedule_owned_simpsons_christmas", description: "Christmas episodes of The Simpsons already in my library",
-			proposal: proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+			proposal: proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 				Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-			}}, Lineup: []proposal.ProposalItem{{
+			}}, Lineup: []proposals.ProposalItem{{
 				MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
 				LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
 			}}},
@@ -131,7 +131,7 @@ func TestRunnerCertifiesCuratedEpisodesAndAtomicMovieSequence(t *testing.T) {
 	series := provision.Key("series:tmdb:456")
 	movieA := provision.Key("movie:tmdb:1")
 	movieB := provision.Key("movie:tmdb:2")
-	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{
+	proposal := proposals.Proposal{Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}},
 		{MediaType: provision.Movie, TMDBID: 1, Name: "First", Year: 1981},
 		{MediaType: provision.Movie, TMDBID: 2, Name: "Second", Year: 1984},
@@ -161,9 +161,9 @@ func TestRunnerCertifiesCuratedEpisodesAndAtomicMovieSequence(t *testing.T) {
 
 func TestRunnerRejectsForbiddenEmittedEpisode(t *testing.T) {
 	c := scheduleCorpusCase(t, "schedule_classic_simpsons_highlights")
-	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+	proposal := proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Ordering: schedule.OrderSyndication,
-	}}, Lineup: []proposal.ProposalItem{{
+	}}, Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
 		LibraryItemID:    "show-simpsons",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
@@ -197,7 +197,7 @@ func TestRunnerRejectsForbiddenEmittedEpisode(t *testing.T) {
 
 func TestRunnerRejectsWrongRequiredSequence(t *testing.T) {
 	c := scheduleCorpusCase(t, "schedule_movie_franchise_release_order")
-	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{
+	proposal := proposals.Proposal{Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 89, Name: "Indiana Jones and the Last Crusade", Year: 1989, InLibrary: true, LibraryItemID: "last-crusade"},
 		{MediaType: provision.Movie, TMDBID: 87, Name: "Indiana Jones and the Temple of Doom", Year: 1984, InLibrary: true, LibraryItemID: "temple"},
 		{MediaType: provision.Movie, TMDBID: 85, Name: "Raiders of the Lost Ark", Year: 1981, InLibrary: true, LibraryItemID: "raiders"},
@@ -216,7 +216,7 @@ func TestRunnerRejectsWrongRequiredSequence(t *testing.T) {
 
 func TestRunnerEmitsReversedInterleavedFranchiseAtomicallyInReleaseOrder(t *testing.T) {
 	c := scheduleCorpusCase(t, "schedule_movie_franchise_release_order")
-	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{
+	proposal := proposals.Proposal{Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 89, Name: "Indiana Jones and the Last Crusade", Year: 1989, InLibrary: true, LibraryItemID: "last-crusade"},
 		{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999, InLibrary: true, LibraryItemID: "matrix"},
 		{MediaType: provision.Movie, TMDBID: 87, Name: "Indiana Jones and the Temple of Doom", Year: 1984, InLibrary: true, LibraryItemID: "temple"},
@@ -240,9 +240,9 @@ func TestRunnerEmitsReversedInterleavedFranchiseAtomicallyInReleaseOrder(t *test
 
 func TestRunnerMaterializesOwnedHolidayEpisodesOnly(t *testing.T) {
 	c := scheduleCorpusCase(t, "schedule_owned_simpsons_christmas")
-	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+	proposal := proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-	}}, Lineup: []proposal.ProposalItem{{
+	}}, Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
 		LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{
 			Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"},
@@ -260,9 +260,9 @@ func TestRunnerMaterializesOwnedHolidayEpisodesOnly(t *testing.T) {
 
 func TestRunnerRejectsWrongHolidayEpisodeOutcome(t *testing.T) {
 	c := scheduleCorpusCase(t, "schedule_owned_simpsons_christmas")
-	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+	proposal := proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-	}}, Lineup: []proposal.ProposalItem{{
+	}}, Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
 		LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{
 			Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"},
@@ -290,9 +290,9 @@ func TestRunnerRejectsWrongHolidayEpisodeOutcome(t *testing.T) {
 }
 
 func TestRunnerChecksExactTitlesAgainstMaterializedScheduleEvidence(t *testing.T) {
-	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+	proposal := proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-	}}, Lineup: []proposal.ProposalItem{{
+	}}, Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons",
 		EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
 	}}}
@@ -345,9 +345,9 @@ func TestRunnerLiveScheduleMaterializerUsesLibraryAndTMDBTestServers(t *testing.
 	tmdbServer.SetCollectionID(87, 84)
 	tmdbServer.SetCollectionID(89, 84)
 
-	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+	proposal := proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-	}}, Lineup: []proposal.ProposalItem{
+	}}, Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 89, Name: "Indiana Jones and the Last Crusade", Year: 1989, InLibrary: true, LibraryItemID: "movie-crusade"},
 		{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true, LibraryItemID: "show-simpsons",
 			EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
@@ -496,9 +496,9 @@ func TestRunnerChecksVerifiedLiveHolidayOutcome(t *testing.T) {
 		}
 		return nil
 	})
-	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+	proposal := proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
-	}}, Lineup: []proposal.ProposalItem{{
+	}}, Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
 		LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{
 			Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"},
@@ -528,9 +528,9 @@ func TestRunnerDoesNotRecomputePinnedScheduleOracle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("independent pinned oracle should pass evidence validation: %v", err)
 	}
-	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+	proposal := proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Ordering: schedule.OrderSyndication,
-	}}, Lineup: []proposal.ProposalItem{{
+	}}, Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
 		LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 	}}}
@@ -551,9 +551,9 @@ func TestRunnerRejectsUndeclaredLiveScheduleLineupKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proposal := proposal.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+	proposal := proposals.Proposal{Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 		Ordering: schedule.OrderSyndication,
-	}}, Lineup: []proposal.ProposalItem{
+	}}, Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true,
 			LibraryItemID: "show-simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights}},
 		{MediaType: provision.Movie, TMDBID: 85, Name: "Raiders of the Lost Ark", Year: 1981,

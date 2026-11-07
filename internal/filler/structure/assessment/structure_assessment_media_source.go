@@ -10,14 +10,14 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 type preparedStructureAssessmentSource struct {
 	SnapshotPath string
 	Identity     StructureAssessmentMediaSourceIdentity
 	Profile      cut.Profile
-	Tool         mediatools.MediaToolIdentity
+	Tool         tools.MediaToolIdentity
 }
 
 // prepareSource snapshots and verifies the complete source once before any assessment derivative

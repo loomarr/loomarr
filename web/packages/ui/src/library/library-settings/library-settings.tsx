@@ -1,11 +1,24 @@
 import { formatAgo } from "@loomarr/core/format";
-import { Action, Disclosure, Field, Icon, icons, StatusDot, Surface, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Disclosure,
+  Field,
+  Icon,
+  icons,
+  ProgressTrack,
+  StatusDot,
+  Surface,
+  Text,
+} from "@loomarr/design-system";
 import { type ComponentProps, type ReactNode, useState } from "react";
 
+import { folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
   LibraryAuthority,
   LibraryFolder,
+  LibraryHook,
   LibraryPathMapping,
+  LibraryScan,
   LibrarySettingsProps,
 } from "./library-settings.type";
 
@@ -26,15 +39,6 @@ const AUTHORITY_NAMES: Record<LibraryAuthority, string> = {
   jellyfin: "Jellyfin",
   radarr: "Radarr",
   sonarr: "Sonarr",
-};
-
-const joinNames = (names: readonly string[]) =>
-  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-
-// "/media/tv" → "TV", "/media/movies" → "Movies", anything else → its last folder name.
-const folderName = (path: string) => {
-  const last = path.split("/").filter(Boolean).pop() ?? path;
-  return last.length <= 2 ? last.toUpperCase() : last.charAt(0).toUpperCase() + last.slice(1);
 };
 
 const foundThrough = (folder: LibraryFolder) => {
@@ -99,24 +103,132 @@ const CheckAgain = ({ checking, onPress }: { checking: boolean; onPress: () => v
   </Action>
 );
 
+// The one line at the top of the status while nothing needs the maintainer.
+const Headline = ({ scan }: { scan: LibraryScan }) => {
+  const { percent, reading, text: headline, tone } = scanHeadline(scan);
+  return (
+    <>
+      <Line gap="control">
+        <StatusDot label={headline} tone={tone} />
+        <Text textRole="headline">{headline}</Text>
+      </Line>
+      {reading ? (
+        <Stack gap="control">
+          {/* Adding media is preparation (`tune`); paused drops to the neutral fill. */}
+          <ProgressTrack
+            height={6}
+            label={`Adding your media, ${percent} percent`}
+            percent={percent}
+            tone={scan.paused ? "elapsed" : "tune"}
+          />
+          <Text textRole="body" tone="secondary">
+            {scan.paused
+              ? "Picks up again when everyone's done watching."
+              : "Titles appear as they're ready."}
+          </Text>
+        </Stack>
+      ) : null}
+    </>
+  );
+};
+
+const HOOK_NAMES: Record<LibraryHook["app"], string> = { sonarr: "Sonarr", radarr: "Radarr" };
+
+// What keeps the library current: the folder watch, and each connected arr's webhook.
+const KeepingUp = ({
+  offline,
+  hooks,
+}: {
+  offline: readonly LibraryFolder[];
+  hooks: readonly LibraryHook[];
+}) => {
+  const signals = [
+    {
+      key: "watch",
+      label: "Loomarr notices new and deleted files on its own",
+      waitingFor: offline.length > 0 ? joinNames(offline.map((f) => folderName(f.path))) : "",
+    },
+    ...hooks
+      .filter((hook) => hook.state !== "not_configured")
+      .map((hook) => ({
+        key: hook.app,
+        label: `${HOOK_NAMES[hook.app]} tells Loomarr about new downloads`,
+        waitingFor:
+          hook.state === "registered"
+            ? ""
+            : hook.state === "no_address"
+              ? "Loomarr's address"
+              : HOOK_NAMES[hook.app],
+      })),
+  ];
+  return (
+    <Stack gap="control">
+      <Text textRole="label" tone="secondary">
+        Keeping up to date
+      </Text>
+      <Stack gap="inline">
+        {signals.map((signal) => (
+          <Line alignItems="flex-start" flexWrap="nowrap" gap="inline" key={signal.key}>
+            {signal.waitingFor ? (
+              <StatusDot label="Waiting" size="compact" tone="warn" />
+            ) : (
+              <Icon decorative glyph={icons.success} size="compact" tone="success" />
+            )}
+            <Text textRole="body">
+              {signal.waitingFor ? `${signal.label} — waiting for ${signal.waitingFor}` : signal.label}
+            </Text>
+          </Line>
+        ))}
+      </Stack>
+    </Stack>
+  );
+};
+
 const LibraryStatus = ({
   health,
   folders,
+  scan,
+  held,
+  hooks,
   checking,
   onCheckAgain,
-}: Pick<LibrarySettingsProps, "health" | "folders" | "checking" | "onCheckAgain">) => {
+  onRescan,
+  onConfirmRemoval,
+}: Pick<
+  LibrarySettingsProps,
+  | "health"
+  | "folders"
+  | "scan"
+  | "held"
+  | "hooks"
+  | "checking"
+  | "onCheckAgain"
+  | "onRescan"
+  | "onConfirmRemoval"
+>) => {
   const inUse = folders.filter((f) => f.inUse);
   const offline = inUse.filter((f) => !f.readable);
   return (
     <Surface aria-label="Library status" gap="section" padding="section" role="region">
-      {health === "ok" ? (
-        <Line gap="control">
-          <StatusDot label="Up to date" tone="ok" />
-          <Text textRole="headline">
-            {inUse.length === 1 ? "Using 1 media folder" : `Using ${inUse.length} media folders`}
-          </Text>
-        </Line>
-      ) : null}
+      {health === "ok" && held.length === 0 ? <Headline scan={scan} /> : null}
+      {held.map((removal) => (
+        <Callout
+          actions={
+            <>
+              <Action onPress={onRescan} tone="primary">
+                Check again
+              </Action>
+              <Action onPress={() => onConfirmRemoval(removal.path)} tone="danger">
+                They're gone, remove them
+              </Action>
+            </>
+          }
+          key={removal.path}
+          title={heldTitle(removal)}
+        >
+          We haven't removed anything — if a drive is unplugged, plug it back in.
+        </Callout>
+      ))}
       {health === "folder_offline"
         ? offline.map((folder) => (
             <Callout
@@ -135,6 +247,7 @@ const LibraryStatus = ({
             : "Loomarr didn't find any folders yet. Add the folder that holds your shows and movies."}
         </Callout>
       ) : null}
+      {health === "needs_folders" ? null : <KeepingUp hooks={hooks} offline={offline} />}
     </Surface>
   );
 };
@@ -354,8 +467,13 @@ const LibrarySettings = ({
   health,
   folders,
   pathMap,
+  scan,
+  held,
+  hooks,
   checking,
   onCheckAgain,
+  onRescan,
+  onConfirmRemoval,
   onUseFolder,
   onAddFolder,
   onMapFolder,
@@ -363,7 +481,17 @@ const LibrarySettings = ({
 }: LibrarySettingsProps) => (
   <Stack alignSelf="center" gap="screen" maxWidth={880} width="100%">
     <Section title="Status">
-      <LibraryStatus checking={checking} folders={folders} health={health} onCheckAgain={onCheckAgain} />
+      <LibraryStatus
+        checking={checking}
+        folders={folders}
+        health={health}
+        held={held}
+        hooks={hooks}
+        onCheckAgain={onCheckAgain}
+        onConfirmRemoval={onConfirmRemoval}
+        onRescan={onRescan}
+        scan={scan}
+      />
     </Section>
     <Section description={foldersDescription(pathMap)} title="Media folders">
       <Stack gap="control">

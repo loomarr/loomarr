@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 func TestPlannerToolDiagnosticRequiresExplicitEndpointAndModel(t *testing.T) {

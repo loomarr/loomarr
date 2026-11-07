@@ -56,7 +56,7 @@ func TestVerifyAndroidReleaseWorkflow(t *testing.T) {
 	}
 }
 
-func TestCIAndroidGradleCachePolicy(t *testing.T) {
+func TestCIAndroidCachePolicy(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("locate test source")
@@ -82,36 +82,28 @@ func TestCIAndroidGradleCachePolicy(t *testing.T) {
 		"path: ${{ runner.temp }}/loomarr-android-ccache",
 		"key: android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}",
 		"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-",
-		"- name: Save ccache for later pull-request revisions",
-		"if: github.event_name == 'pull_request'",
-		"key: ${{ steps.ccache-cache.outputs.cache-primary-key }}",
 		"- name: Package the verified merge-queue compiler cache",
 		"./scripts/android-ccache-promotion.sh pack",
 		"- name: Transfer the verified cache for trusted main publication",
 		"name: loomarr-android-ccache-${{ github.sha }}-${{ github.run_id }}",
 		"retention-days: 1",
-		"id: gradle-cache",
-		"path: |\n            ~/.gradle/caches\n            ~/.gradle/wrapper",
-		"key: android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}",
-		"restore-keys: android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-",
-		"- name: Record Gradle cache provenance",
-		"gradle-cache-primary-key=android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}",
-		"gradle-cache-hit=${{ steps.gradle-cache.outputs.cache-hit == 'true' }}",
-		"gradle-cache-source-sha=${GITHUB_SHA}",
 	} {
 		if !strings.Contains(workflow, want) {
-			t.Errorf("ci-android Gradle cache policy missing %q", want)
+			t.Errorf("ci-android cache policy missing %q", want)
 		}
 	}
+	// Android runs only where no save can reach a later run, so the ccache promotion to main is
+	// the one cache path left.
 	for _, forbidden := range []string{
 		".cxx",
 		"android/",
 		"*.aab",
 		"keystore",
-		"steps.gradle-cache.outputs.cache-matched-key",
+		"actions/cache/save@",
+		"~/.gradle",
 	} {
 		if strings.Contains(workflow, forbidden) {
-			t.Errorf("ci-android Gradle cache policy claims unavailable %q output", forbidden)
+			t.Errorf("ci-android cache policy contains forbidden %q", forbidden)
 		}
 	}
 }
@@ -130,26 +122,19 @@ func TestCIExpoAndroidMobileCachePolicy(t *testing.T) {
 
 	for _, want := range []string{
 		"web/scripts/install-android-ccache.sh",
-		"key: android-mobile-ccache-v1-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/mobile/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}",
 		"CCACHE_DIR: ${{ runner.temp }}/loomarr-android-ccache",
 		"CCACHE_BASEDIR: ${{ github.workspace }}",
 		"CCACHE_SLOPPINESS: \"\"",
 		"LOOMARR_ANDROID_CCACHE_LAUNCHER: ${{ steps.ccache.outputs.launcher }}",
 		"LOOMARR_ANDROID_GRADLE_WORKERS: \"2\"",
 		"LOOMARR_ANDROID_MEMORY_MAX: 12G",
-		"key: android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-\n",
-		"if: github.event_name == 'pull_request'\n        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n        with:\n          path: ${{ runner.temp }}/loomarr-android-ccache\n",
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Errorf("ci-expo-android-mobile cache policy missing %q", want)
 		}
 	}
-	// The TV Gradle generation is borrowed read-only; mobile owns no Gradle entry and saves only its
-	// small compiler cache, from pull requests.
-	if got := strings.Count(workflow, "actions/cache/save@"); got != 1 {
-		t.Errorf("ci-expo-android-mobile saves %d caches, want only its ccache", got)
-	}
-	for _, forbidden := range []string{"actions/cache@", "android-mobile-react-native", ".cxx", "android/app/build\n"} {
+	// Mobile runs only where no save can reach a later run, so it has no cache of its own.
+	for _, forbidden := range []string{"actions/cache", "android-mobile-react-native", ".cxx", "android/app/build\n"} {
 		if strings.Contains(workflow, forbidden) {
 			t.Errorf("ci-expo-android-mobile cache policy contains forbidden %q", forbidden)
 		}

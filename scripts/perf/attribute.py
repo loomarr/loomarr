@@ -25,24 +25,25 @@ import sys
 
 MOD = "github.com/loomarr/loomarr/"
 
-# internal/<pkg> → subsystem. Anything unlisted reports as its own package name, so a new package
-# shows up rather than vanishing into "other".
+# internal/<pkg>, or internal/<area>/<pkg> for a package nested in an area, → subsystem. Anything
+# unlisted reports as its own package name, so a new package shows up rather than vanishing into
+# "other".
 PKG = {}
 for sub, pkgs in {
     "API": "api httpx auth web setup invitation contact secretprotection",
-    "scheduler/guide": "schedule binder programmer channels plannerreference channelmaint",
-    "jobs runtime": "jobs bgexec",
+    "scheduler/guide": "channels/schedule channels/approval channels/edit programmer channels channelmaint",
+    "jobs runtime": "jobs media/bgexec",
     "filler": "filler filleradmission fillerscreening fillercorpus fillerenrichment fillereval "
               "fillerresearch fillerstructure fillerstructuremedia fillerstructurewindow "
-              "fillerstructurewindowopenrouter clipfetch mediameasure media mediatools episodeevidence",
-    "curation": "suggest recommend proposaloutlook proposalworkflow recurate ideas taxonomy holidayvocab textmatch "
-                "moviecollections tmdb catalog reference quality",
+              "fillerstructurewindowopenrouter clipfetch media/measure media media/tools episodeevidence",
+    "curation": "proposals channels/recommend channels/recurate channels/ideas taxonomy holidayvocab textmatch "
+                "moviecollections tmdb catalog",
     "library sync": "library inventory requester provision provisionbackstop",
-    "images": "images",
+    "images": "media/images",
     "database": "store fillerstore",
-    "playout": "playout watermark viewing playoutbench",
+    "playout": "playout watermark channels/viewing playoutbench",
     "platform": "settings config notifications diagnostics recovery retention storagegovernor events activity app "
-                "landiscovery installationlocation logchange releasenotes buildinfo backendtransition proctree",
+                "landiscovery installationlocation logchange releasenotes buildinfo backendtransition media/proctree",
     "llm": "llm openroutercatalog openroutermedia eval",
     "metrics scrape": "metrics",
 }.items():
@@ -77,7 +78,9 @@ def subsystem_of(fn):
     if fn.startswith(GC):
         return "GC"
     if fn.startswith(MOD + "internal/"):
-        pkg = fn[len(MOD + "internal/") :].split(".")[0].split("/")[0]
+        path = fn[len(MOD + "internal/") :].split(".")[0].split("/")
+        # A package nested in an area is listed by its two-level name; the rest by the top one.
+        pkg = "/".join(path[:2]) if "/".join(path[:2]) in PKG else path[0]
         return PKG.get(pkg, "pkg:" + pkg)
     if fn.startswith(MOD + "cmd/"):
         return "platform"

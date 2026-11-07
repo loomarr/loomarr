@@ -23,37 +23,16 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  type ApplicationFilters,
+  type EventOrder,
+  type EventRange,
+  type EventSource,
+  eventSources,
+  sourceNames,
+} from "../application-filters";
 import { DiagnosticsPager } from "../diagnostics-pager";
 import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
-
-type EventRange = "all" | "1h" | "6h" | "24h";
-type EventLevel = "all" | "debug" | "info" | "warn" | "error";
-type EventSource = "all" | EventView["source"];
-type EventOrder = "newest" | "oldest";
-
-type ApplicationFilters = {
-  range: EventRange;
-  order: EventOrder;
-  level: EventLevel;
-  source: EventSource;
-  subsystem: string;
-  text: string;
-  requestId?: string;
-  playbackSessionId?: string;
-  channelId?: string;
-  scheduleBlockId?: string;
-  jobId?: string;
-  processRunId?: string;
-};
-
-const DEFAULT_APPLICATION_FILTERS: ApplicationFilters = {
-  range: "all",
-  order: "newest",
-  level: "all",
-  source: "all",
-  subsystem: "",
-  text: "",
-};
 
 const RANGE_MS: Record<Exclude<EventRange, "all">, number> = {
   "1h": 3_600_000,
@@ -96,17 +75,6 @@ const levelLabel = (level: EventView["level"]) => {
   if (level === "warn") return "Warning";
   return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
 };
-
-// Typed by the generated source enum, so a runtime the server starts recording cannot lack a name.
-const sourceNames: Record<EventView["source"], string> = {
-  android: "Android phone",
-  android_tv: "Android TV",
-  apple_tv: "Apple TV",
-  ios: "iPhone",
-  server: "Loomarr",
-  web: "Web player",
-};
-const eventSources = Object.keys(sourceNames) as EventView["source"][];
 
 const sourceLabel = (source: EventView["source"]) => sourceNames[source];
 
@@ -715,5 +683,4 @@ const ApplicationDiagnostics = ({
   );
 };
 
-export type { ApplicationFilters, EventLevel, EventOrder, EventRange, EventSource };
-export { ApplicationDiagnostics, DEFAULT_APPLICATION_FILTERS, eventSources };
+export { ApplicationDiagnostics };

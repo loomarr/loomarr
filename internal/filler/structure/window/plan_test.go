@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 func TestNewPlanPartitionsPrimaryCoverageAndExpandsContext(t *testing.T) {

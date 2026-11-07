@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/recommend"
+	"github.com/loomarr/loomarr/internal/channels/recommend"
 )
 
 // recommend-cert runs the explicit, bounded, non-CI channel recommendation certification suite and

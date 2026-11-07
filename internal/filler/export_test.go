@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/defects"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // CertifiedShadowFixture exposes the certified two-segment proposal and its policies to the

@@ -10,11 +10,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/binder"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // seedLibraryChannels makes one channel per real library title, for live checks on an isolated
@@ -31,7 +31,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 	if err != nil {
 		return fmt.Errorf("read picks: %w", err)
 	}
-	var picks []proposal.ProposalItem
+	var picks []proposals.ProposalItem
 	if err := json.Unmarshal(raw, &picks); err != nil {
 		return fmt.Errorf("parse picks: %w", err)
 	}
@@ -39,7 +39,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 	if err != nil {
 		return err
 	}
-	approver := suggest.NewApprover(st, binder.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
+	approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 	// One minter per kind for the run, prefixed by the run's start so a later run never reuses an id.
 	run := time.Now().Unix()
 	jobIDs, propIDs := newID(fmt.Sprintf("job_lib%d", run)), newID(fmt.Sprintf("prop_lib%d", run))
@@ -48,7 +48,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 			return fmt.Errorf("pick %q is not an in-library search result", pick.Name)
 		}
 		now := time.Now()
-		intent := proposal.Intent{Description: pick.Name}
+		intent := proposals.Intent{Description: pick.Name}
 		intentJSON, err := json.Marshal(intent)
 		if err != nil {
 			return err
@@ -66,7 +66,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 			CreatedAt: now, UpdatedAt: now,
 		}, store.Proposal{
 			ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
-			Body: proposal.Proposal{Intent: intent, Lineup: []proposal.ProposalItem{pick}}, CreatedAt: now, UpdatedAt: now,
+			Body: proposals.Proposal{Intent: intent, Lineup: []proposals.ProposalItem{pick}}, CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("create suggestion result: %w", err)
 		}

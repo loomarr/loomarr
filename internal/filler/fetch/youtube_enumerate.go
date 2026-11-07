@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/loomarr/loomarr/internal/bgexec"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
 )
 
 // EnumeratedItem is one video listed from an operator-authorized YouTube target.

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 // TestEvalCorpus runs the whole intent corpus through the REAL suggester against

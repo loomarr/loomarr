@@ -11,6 +11,7 @@ cross-harness contract and points here for detail.
 | --- | --- |
 | [Setup](setup.md) | Toolchain versions, getting a clean clone green |
 | [Dev loop](dev-loop.md) | Running both halves with live reload |
+| [Environments](environments.md) | Where to try a change, what each place proves, and the demo site |
 | [Dev watchers](dev-watchers.md) | Watching the machine, your PRs and agent lanes; retiring worktrees cleanly |
 | [Testing](testing.md) | The test layers and which are gates |
 | [Playout bench](playout-bench.md) | The cross-hardware playout measurement, its thresholds and CI jobs |
@@ -59,8 +60,8 @@ internal/api/       inbound HTTP — ServeMux + Huma v2
 internal/store/     one interface, SQLite and Postgres behind it
 internal/settings/  the typed registry: env > database > default
 internal/playout/   the streaming engine
-internal/suggest/   intent → grounded proposal
-internal/schedule/  the scheduler domain
+internal/proposals/suggest/ intent → grounded proposal
+internal/channels/schedule/ the scheduler domain
 internal/filler/    clip catalog and pod assembly
 internal/testkit/   shared doubles and pinned fixtures
 

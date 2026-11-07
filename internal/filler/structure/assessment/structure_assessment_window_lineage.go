@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 const (
@@ -32,7 +32,7 @@ type StructureAssessmentWindowLineage struct {
 	Source          StructureAssessmentMediaSourceIdentity `json:"source"`
 	Window          window.Window                          `json:"window"`
 	Profile         cut.Profile                            `json:"profile"`
-	Tool            mediatools.MediaToolIdentity           `json:"tool"`
+	Tool            tools.MediaToolIdentity                `json:"tool"`
 	Media           StructureAssessmentMediaDerivative     `json:"media"`
 	SHA256          string                                 `json:"sha256"`
 }
@@ -44,7 +44,7 @@ type structureAssessmentWindowOperation struct {
 	Source          StructureAssessmentMediaSourceIdentity `json:"source"`
 	Window          window.Window                          `json:"window"`
 	ProfileSHA256   string                                 `json:"profileSha256"`
-	Tool            mediatools.MediaToolIdentity           `json:"tool"`
+	Tool            tools.MediaToolIdentity                `json:"tool"`
 }
 
 type structureAssessmentWindowIndex struct {
@@ -54,7 +54,7 @@ type structureAssessmentWindowIndex struct {
 	LineageSHA256   string `json:"lineageSha256"`
 }
 
-func structureAssessmentWindowOperationSHA256(plan window.Plan, source StructureAssessmentMediaSourceIdentity, window window.Window, profile cut.Profile, tool mediatools.MediaToolIdentity) string {
+func structureAssessmentWindowOperationSHA256(plan window.Plan, source StructureAssessmentMediaSourceIdentity, window window.Window, profile cut.Profile, tool tools.MediaToolIdentity) string {
 	operation := structureAssessmentWindowOperation{
 		SchemaVersion:   structureAssessmentWindowLineageSchemaVersion,
 		ContractVersion: structureAssessmentWindowLineageContractVersion,

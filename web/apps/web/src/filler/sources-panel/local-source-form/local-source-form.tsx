@@ -1,6 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import { addFillerSourceSchema } from "@loomarr/core/schemas";
+import { useForm, useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 // ⚠ No `Card` and no `Label`. The local add flow lives directly inside Your files, and its fields
@@ -24,19 +25,26 @@ import { useFillerProviders } from "../../use-filler-providers";
 const LocalSourceForm = () => {
   const queryClient = useQueryClient();
   const { typed } = useFillerProviders();
-  const [chosen, setChosen] = useState<string>();
-  const [uri, setURI] = useState("");
   const addSource = fillerApi.useAddFillerSource({
     mutation: {
       onSuccess: () => {
-        setURI("");
+        form.setFieldValue("uri", "");
         toast.success("Source added", { description: "Loomarr will check it on its download schedule." });
         void queryClient.invalidateQueries({ queryKey: fillerApi.getListFillerSourcesQueryKey() });
       },
     },
   });
   // Until the first kind is chosen the form offers the registry's first.
-  const provider = typed.find((candidate) => candidate.id === chosen) ?? typed[0];
+  const providerFor = (kind: string) => typed.find((candidate) => candidate.id === kind) ?? typed[0];
+  const form = useForm({
+    defaultValues: { kind: "", uri: "" },
+    validators: { onSubmit: addFillerSourceSchema },
+    onSubmit: ({ value }) => {
+      const kind = providerFor(value.kind)?.id;
+      if (kind) addSource.mutate({ data: { kind, uri: value.uri.trim() } });
+    },
+  });
+  const provider = providerFor(useStore(form.store, (state) => state.values.kind));
   if (!provider) return null;
 
   return (
@@ -44,35 +52,49 @@ const LocalSourceForm = () => {
       <p className="text-sm font-medium">Add a folder or library</p>
       <form
         className="flex flex-wrap items-center gap-2"
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          if (!uri.trim()) return;
-          addSource.mutate({ data: { kind: provider.id, uri: uri.trim() } });
+          void form.handleSubmit();
         }}
       >
-        <Select value={provider.id} onValueChange={setChosen}>
-          <SelectTrigger id="new-source-kind" className="w-45" aria-label="Kind of source to add">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {typed.map((candidate) => (
-              <SelectItem key={candidate.id} value={candidate.id}>
-                {candidate.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          id="new-source-uri"
-          className="min-w-64 flex-1 font-mono"
-          value={uri}
-          placeholder={provider.addressHint}
-          aria-label={provider.addressLabel}
-          onChange={(event) => setURI(event.target.value)}
-        />
-        <Button type="submit" variant="outline" disabled={addSource.isPending || !uri.trim()}>
-          {addSource.isPending ? "Adding…" : "+ Add source"}
-        </Button>
+        <form.Field name="kind">
+          {(field) => (
+            <Select value={provider.id} onValueChange={(kind) => field.handleChange(kind)}>
+              <SelectTrigger id="new-source-kind" className="w-45" aria-label="Kind of source to add">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {typed.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {candidate.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </form.Field>
+        <form.Field name="uri">
+          {(field) => (
+            <Input
+              id="new-source-uri"
+              className="min-w-64 flex-1 font-mono"
+              name={field.name}
+              value={field.state.value}
+              placeholder={provider.addressHint}
+              aria-label={provider.addressLabel}
+              onBlur={field.handleBlur}
+              onChange={(event) => field.handleChange(event.target.value)}
+            />
+          )}
+        </form.Field>
+        <form.Subscribe selector={(state) => state.values.uri}>
+          {(uri) => (
+            <Button type="submit" variant="outline" disabled={addSource.isPending || !uri.trim()}>
+              {addSource.isPending ? "Adding…" : "+ Add source"}
+            </Button>
+          )}
+        </form.Subscribe>
       </form>
       {addSource.error != null && <ErrorState error={addSource.error} />}
       <Caption>Uses your location. Every clip is checked before it can play.</Caption>

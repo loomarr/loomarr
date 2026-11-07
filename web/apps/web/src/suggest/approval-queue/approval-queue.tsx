@@ -32,10 +32,6 @@ import { LiveProposalOutlook } from "../live-proposal-outlook";
 // Approving is the ONLY path from a proposal to /v1/titles, so this list is the audit
 // surface for "what is about to spend real resources".
 
-// Inside a group the rows are flat, divided by the group's own rules (mock #1876), so the row
-// components drop their card chrome rather than nesting a card in a card.
-const FLAT_ROW = "border-0 bg-transparent p-0";
-
 const requestTitle = (p: ProposalDTO) => p.proposal.intent?.description ?? "Suggested lineup";
 
 // What approving one request will do, from the server's own data (#1817): the counts from the
@@ -304,7 +300,7 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
             excluded: isEdited(p.id),
             content: (
               <ApprovalQueueItem
-                className={FLAT_ROW}
+                flat
                 title={requestTitle(p)}
                 requestedBy={p.createdByName}
                 summary={p.proposal.rationale}
@@ -389,7 +385,7 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
             excluded: editedPulls.has(pull.id),
             content: (
               <PullCard
-                className={FLAT_ROW}
+                flat
                 pull={pull}
                 deciding={
                   decidingPulls.has(pull.id) ||

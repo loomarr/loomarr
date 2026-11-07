@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/loomarr/loomarr/internal/recommend"
+	"github.com/loomarr/loomarr/internal/channels/recommend"
 )
 
 // recommend-compare compares two or more channel recommendation scorecards without inference.

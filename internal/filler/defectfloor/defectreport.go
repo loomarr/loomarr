@@ -8,8 +8,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // The household defect report (#2034 step 4c): what the floor would retire on this install, and

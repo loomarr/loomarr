@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
 )
 
 const youtubeSourceFinderTimeout = 8 * time.Second

@@ -3,7 +3,7 @@ import { getGetProposalJobMockHandler, getReviseProposalJobMockHandler } from "@
 import { provisionKey } from "@loomarr/core/provision";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { LoomarrEventsProvider } from "@/events";
 import { FakeEventSource } from "@/test/fake-event-source";
@@ -73,7 +73,9 @@ const manualJourney = (): ProposalJourneyDTO => ({
 });
 
 const useResumeHarness = () => {
-  const run = useSuggestionRun();
+  // The Guide keeps the Job in its URL; plain state stands in for it here.
+  const [jobId, setJobId] = useState<string>();
+  const run = useSuggestionRun({ jobId, onJob: setJobId });
   const [edit, , optionalSuggestions] = useProposalReviewEdit(run.jobId, run.proposal);
   const resume = useAiResume(run, edit, optionalSuggestions);
   return { run, edit, optionalSuggestions, ...resume };
