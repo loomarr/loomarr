@@ -33,7 +33,29 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 	if err != nil {
 		return "", err
 	}
-	if len(grounded) > 1 || (exact && len(grounded) == 1 && !grounded[itemID]) {
+	var orphan inventory.ItemID
+	if exact && len(grounded) == 1 && !grounded[itemID] {
+		// The origin's ids now name another item. An origin that is its item's only origin follows
+		// them, when that item is of the same kind: it was written before its ids were known.
+		var target inventory.ItemID
+		for id := range grounded {
+			target = id
+		}
+		follows, err := s.inventoryOriginCanFollow(ctx, tx, itemID, target, clean.Kind)
+		if err != nil {
+			return "", err
+		}
+		if !follows {
+			return "", inventory.ErrIdentityConflict
+		}
+		orphan, itemID = itemID, target
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE inventory_sources SET item_id = ? WHERE id IN
+			(SELECT source_id FROM inventory_source_origins WHERE authority_id = ? AND external_item_id = ?)`),
+			string(itemID), string(clean.Origin.Authority), clean.Origin.ExternalItemID); err != nil {
+			return "", fmt.Errorf("move inventory sources: %w", err)
+		}
+	}
+	if len(grounded) > 1 {
 		return "", inventory.ErrIdentityConflict
 	}
 	if !exact {
@@ -91,10 +113,39 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 			return "", fmt.Errorf("mark empty inventory sources: %w", err)
 		}
 	}
+	if orphan != "" {
+		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM inventory_items WHERE id = ?
+			AND NOT EXISTS (SELECT 1 FROM inventory_item_origins WHERE item_id = ?)
+			AND NOT EXISTS (SELECT 1 FROM inventory_sources WHERE item_id = ?)`),
+			string(orphan), string(orphan), string(orphan)); err != nil {
+			return "", fmt.Errorf("delete followed inventory item: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return "", fmt.Errorf("commit inventory snapshot: %w", err)
 	}
 	return itemID, nil
+}
+
+// inventoryOriginCanFollow reports whether item has no origin but this one and target is of the
+// same kind, so the origin may move to target.
+func (s *sqlStore) inventoryOriginCanFollow(
+	ctx context.Context, tx *sql.Tx, item, target inventory.ItemID, kind inventory.ItemKind,
+) (bool, error) {
+	var origins int
+	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM inventory_item_origins WHERE item_id = ?`),
+		string(item)).Scan(&origins); err != nil {
+		return false, fmt.Errorf("count inventory item origins: %w", err)
+	}
+	if origins != 1 {
+		return false, nil
+	}
+	var targetKind string
+	if err := tx.QueryRowContext(ctx, s.ph(`SELECT kind FROM inventory_items WHERE id = ?`),
+		string(target)).Scan(&targetKind); err != nil {
+		return false, fmt.Errorf("read inventory item kind: %w", err)
+	}
+	return inventory.ItemKind(targetKind) == kind, nil
 }
 
 func (s *sqlStore) applyInventorySource(

@@ -336,7 +336,7 @@ func TestHelp_ServesDiagramAsSandboxedImage(t *testing.T) {
 		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
 	}
 	csp := resp.Header.Get("Content-Security-Policy")
-	for _, want := range []string{"default-src 'none'", "sandbox"} {
+	for _, want := range []string{"default-src 'none'", "sandbox", "frame-ancestors 'self'"} {
 		if !strings.Contains(csp, want) {
 			t.Errorf("Content-Security-Policy = %q, want it to contain %q", csp, want)
 		}

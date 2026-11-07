@@ -21,5 +21,8 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 		if got := resp.Header.Get("Referrer-Policy"); got != "same-origin" {
 			t.Errorf("%s: Referrer-Policy = %q, want same-origin", path, got)
 		}
+		if got := resp.Header.Get("Content-Security-Policy"); got != "frame-ancestors 'self'" {
+			t.Errorf("%s: Content-Security-Policy = %q, want frame-ancestors 'self'", path, got)
+		}
 	}
 }

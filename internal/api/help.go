@@ -118,7 +118,7 @@ func serveDiagram(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "image/svg+xml")
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox")
+		"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox; "+frameAncestors)
 	// The bytes change only with the binary, and Help is behind a sign-in.
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   channelNumber,
+  formatAgo,
   formatClipDuration,
   formatCompactCount,
   formatDuration,
@@ -98,6 +99,15 @@ describe("formatters", () => {
     expect(formatRelative("2026-07-17T11:57:00Z", now)).toBe("3m ago");
     expect(formatRelative("2026-07-17T10:00:00Z", now)).toBe("2h ago");
     expect(formatRelative("2026-07-12T12:00:00Z", now)).toBe("5d ago");
+  });
+
+  it("formats relative time in whole words for household copy", () => {
+    const now = new Date("2026-07-17T12:00:00Z").getTime();
+    expect(formatAgo("2026-07-17T11:59:30Z", now)).toBe("just now");
+    expect(formatAgo("2026-07-17T11:59:00Z", now)).toBe("1 minute ago");
+    expect(formatAgo("2026-07-17T11:48:00Z", now)).toBe("12 minutes ago");
+    expect(formatAgo("2026-07-17T11:00:00Z", now)).toBe("1 hour ago");
+    expect(formatAgo("2026-07-12T12:00:00Z", now)).toBe("5 days ago");
   });
 
   it("humanizes settings keys, upper-casing acronyms", () => {
