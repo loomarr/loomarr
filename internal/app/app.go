@@ -232,6 +232,11 @@ func buildHandler(
 		liveSettings:      operations.liveSettings,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,
+		library: buildLibrary(st, foundation.set, libraryBuild{
+			lib: libraryClient, budget: channelsBuilt.resourceBudget,
+			ffmpegPath: settings.PlayoutFFmpegPath.Get(foundation.set), processes: foundation.processDiagnostics,
+			log: log, owner: owner,
+		}),
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only
 	// through this process's writes and needs no polling reads. Postgres permits

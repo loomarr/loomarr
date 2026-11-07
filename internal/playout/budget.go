@@ -590,6 +590,14 @@ func (b *ResourceBudget) PlaybackNeedsHeadroom() bool {
 	return b.transcodingLocked()
 }
 
+// Sessions is how many playout sessions hold a lease, copies included. It reads only the ledger,
+// so a caller may ask before every unit of background work.
+func (b *ResourceBudget) Sessions() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.useLocked(nil).Sessions
+}
+
 // PlaybackBusy is filler.PlaybackHeadroom (#1514): background media work waits while a live
 // transcode holds a lease. A copy holds no encoder and costs almost no CPU, so it does not count.
 func (b *ResourceBudget) PlaybackBusy() (bool, string) {

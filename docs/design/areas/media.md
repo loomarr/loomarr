@@ -29,7 +29,7 @@ One area of the [package map](../package-map.md#start-here).
   One rule for correcting a filler clip's level (#2032).
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
-- **`mediaheader`** · 2 importers · → `inventory`
+- **`mediaheader`** · 3 importers · → `inventory`
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediaheader`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
