@@ -2,14 +2,10 @@ import type { PairingCredential } from "@loomarr/core/pairing";
 import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
 import { useSyncExternalStore } from "react";
 import { Image, type ImageProps } from "react-native";
+import { createLiveClock, type LivePosition } from "../live-clock";
 import { nativeErrorCause } from "../native-playback-diagnostics";
 import { createPlaybackMarks, type PlaybackMarks } from "../playback-marks";
-import type {
-  LivePlaybackMode,
-  LivePlaybackState,
-  PlayerTransport,
-  PlayerTransportEvent,
-} from "../player-controller";
+import type { LivePlaybackState, PlayerTransport, PlayerTransportEvent } from "../player-controller";
 import type { PlayerSource } from "../player-source";
 import { GENERIC_START_FAILURE } from "../start-failure";
 
@@ -50,13 +46,6 @@ const pairedNativeImageSource = (
   }
 };
 
-const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
-/**
- * A stall that leaves a live viewer further behind than this rejoins the live edge: AVPlayer resumes
- * where it froze, and a viewer who didn't pause shouldn't be left watching the past.
- */
-const STALL_REJOIN_LAG_SECONDS = 30;
-
 /** Matches the HTTP status ExoPlayer embeds in its own error prose (e.g. "Response code: 502"). */
 const NATIVE_5XX_STATUS = /\b5\d{2}\b/;
 
@@ -91,43 +80,23 @@ const createNativePlayerTransport = (
   // A stall is buffering after the attempt's first frame while the viewer has not paused.
   let framedAttemptId: number | undefined;
   let stalledSinceMs: number | undefined;
-  // Set when a stall that began at the live edge ends; the next known position decides the rejoin.
-  let rejoinAfterStall = false;
-  let stallBeganLive = false;
-  let liveMode: LivePlaybackMode = "live";
-  let noticeRevision = 0;
-  let serverClockOffsetMs: number | undefined;
-  let viewerTimeMs = Date.now();
-
-  const liveNow = () => Date.now() + (serverClockOffsetMs ?? 0);
+  const clock = createLiveClock();
 
   const emit = (event: PlayerTransportEvent) => {
     if (disposed) return;
     for (const listener of listeners) listener(event);
   };
 
-  const liveState = (
+  /** What the native player says about the displayed frame; Expo omits both for a stream without programme-date-time. */
+  const positionOf = (
     currentLiveTimestamp: number | null = player?.currentLiveTimestamp ?? null,
     currentOffsetFromLive: number | null = player?.currentOffsetFromLive ?? null,
-  ): LivePlaybackState => {
-    const now = liveNow();
-    if (currentLiveTimestamp !== null && Number.isFinite(currentLiveTimestamp)) {
-      viewerTimeMs = currentLiveTimestamp;
-    } else if (currentOffsetFromLive !== null && Number.isFinite(currentOffsetFromLive)) {
-      viewerTimeMs = now - Math.max(0, currentOffsetFromLive) * 1_000;
-    } else if (liveMode === "live") {
-      // Expo may omit both values for a live HLS stream without EXT-X-PROGRAM-DATE-TIME.
-      // The viewer is still at the live edge, so keeping the tune-time fallback would freeze
-      // programme identity and progress across every later schedule boundary.
-      viewerTimeMs = now;
-    }
-    return {
-      lagSeconds: liveMode === "live" ? 0 : Math.max(0, Math.round((now - viewerTimeMs) / 1_000)),
-      mode: liveMode,
-      noticeRevision,
-      viewerTimeMs,
-    };
-  };
+  ): LivePosition => ({ offsetFromLiveSeconds: currentOffsetFromLive, programTimeMs: currentLiveTimestamp });
+
+  const liveState = (
+    currentLiveTimestamp?: number | null,
+    currentOffsetFromLive?: number | null,
+  ): LivePlaybackState => clock.state(positionOf(currentLiveTimestamp, currentOffsetFromLive));
 
   const emitLiveState = (currentLiveTimestamp?: number | null, currentOffsetFromLive?: number | null) => {
     if (activeAttemptId === undefined) return;
@@ -142,7 +111,7 @@ const createNativePlayerTransport = (
     if (stalledSinceMs !== undefined && activeAttemptId !== undefined) {
       marks.stallEnd(activeAttemptId, marks.now() - stalledSinceMs, why);
     }
-    rejoinAfterStall = why === "resumed" && stalledSinceMs !== undefined && stallBeganLive;
+    clock.endStall(why);
     stalledSinceMs = undefined;
   };
 
@@ -153,18 +122,7 @@ const createNativePlayerTransport = (
     } else if (Number.isFinite(current.duration) && current.duration > 0) {
       current.currentTime = current.duration;
     }
-    liveMode = "live";
-    viewerTimeMs = liveNow();
-  };
-
-  /** Seconds the displayed frame trails the Channel wall clock, or undefined while the player can't say. */
-  const lagBehindLive = (currentLiveTimestamp: number | null, currentOffsetFromLive: number | null) => {
-    if (currentLiveTimestamp !== null && Number.isFinite(currentLiveTimestamp)) {
-      return (liveNow() - currentLiveTimestamp) / 1_000;
-    }
-    if (currentOffsetFromLive !== null && Number.isFinite(currentOffsetFromLive))
-      return currentOffsetFromLive;
-    return undefined;
+    clock.goLive();
   };
 
   /** After a stall the viewer didn't cause, returns to the live edge once the player reports a position. */
@@ -172,15 +130,8 @@ const createNativePlayerTransport = (
     currentLiveTimestamp: number | null,
     currentOffsetFromLive: number | null,
   ) => {
-    if (!rejoinAfterStall || !player) return;
-    if (liveMode !== "live") {
-      rejoinAfterStall = false;
-      return;
-    }
-    const lag = lagBehindLive(currentLiveTimestamp, currentOffsetFromLive);
-    if (lag === undefined) return;
-    rejoinAfterStall = false;
-    if (lag > STALL_REJOIN_LAG_SECONDS) seekToLiveEdge(player);
+    if (!player) return;
+    if (clock.shouldRejoin(positionOf(currentLiveTimestamp, currentOffsetFromLive))) seekToLiveEdge(player);
   };
 
   const attachPlayer = (next: VideoPlayer) => {
@@ -206,10 +157,13 @@ const createNativePlayerTransport = (
         marks.error(attemptId, nativeErrorCause(fallbackMessage));
         emit({ attemptId, error: message, type: "error" });
       } else if (status === "loading") {
-        if (framedAttemptId === activeAttemptId && stalledSinceMs === undefined && liveMode !== "paused") {
+        if (
+          framedAttemptId === activeAttemptId &&
+          stalledSinceMs === undefined &&
+          clock.mode() !== "paused"
+        ) {
           stalledSinceMs = marks.now();
-          stallBeganLive = liveMode === "live";
-          rejoinAfterStall = false;
+          clock.beginStall();
           marks.stallStart(activeAttemptId);
           emit({ attemptId: activeAttemptId, type: "stalled" });
         }
@@ -288,28 +242,18 @@ const createNativePlayerTransport = (
     },
     pause: () => {
       if (!player) return;
-      const timestamp = player.currentLiveTimestamp;
-      const offset = player.currentOffsetFromLive;
-      if (timestamp !== null && Number.isFinite(timestamp)) {
-        viewerTimeMs = timestamp;
-      } else if (offset !== null && Number.isFinite(offset)) {
-        viewerTimeMs = liveNow() - Math.max(0, offset) * 1_000;
-      }
-      liveMode = "paused";
+      clock.pause(positionOf());
       player.pause();
       if (activeAttemptId !== undefined) emit({ attemptId: activeAttemptId, type: "paused" });
       emitLiveState();
     },
     play: () => {
       if (!player) return;
-      if (liveMode === "paused") {
-        const lagSeconds = Math.max(0, Math.round((liveNow() - viewerTimeMs) / 1_000));
-        if (lagSeconds >= LIVE_DVR_HORIZON_SECONDS) {
-          noticeRevision += 1;
+      if (clock.mode() === "paused") {
+        if (clock.resume() === "expired") {
           seekToLiveEdge(player);
           emitLiveState(null, 0);
         } else {
-          liveMode = "behind";
           emitLiveState();
         }
       }
@@ -322,13 +266,7 @@ const createNativePlayerTransport = (
         if (!current) throw new Error("Native player is unavailable.");
         endStall("retuned");
         activeAttemptId = context.attemptId;
-        liveMode = "live";
-        noticeRevision = 0;
-        serverClockOffsetMs =
-          source.serverTimeMs !== undefined && Number.isFinite(source.serverTimeMs)
-            ? source.serverTimeMs - Date.now()
-            : undefined;
-        viewerTimeMs = liveNow();
+        clock.begin(source.serverTimeMs);
         await current.replaceAsync({
           contentType: "hls",
           headers: source.headers ? { ...source.headers } : undefined,
@@ -352,9 +290,7 @@ const createNativePlayerTransport = (
       if (disposed || player) return;
       if (!recreatePlayer) throw new Error("Native player cannot resume without a player factory.");
       attachPlayer(recreatePlayer());
-      liveMode = "live";
-      noticeRevision = 0;
-      viewerTimeMs = Date.now();
+      clock.begin();
       for (const listener of playerListeners) listener();
     },
     subscribe: (listener) => {

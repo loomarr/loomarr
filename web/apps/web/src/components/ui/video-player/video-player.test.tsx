@@ -122,7 +122,7 @@ describe("VideoPlayer", () => {
   });
 
   // The live window (#2088 decision 2): ←/→ step 10 s from the frame on screen, L goes live.
-  it("moves a live channel through its window from the keys, on the player's own element", () => {
+  it("moves a live channel through its window from the keys, through its live transport", () => {
     const transport = (mode: "behind" | "live") => ({
       state: { mode, lagSeconds: mode === "live" ? 0 : 40, viewerTimeMs: 1_000_000, noticeRevision: 0 },
       play: vi.fn(),
@@ -138,7 +138,7 @@ describe("VideoPlayer", () => {
     const frame = video.parentElement as HTMLElement;
 
     fireEvent.keyDown(frame, { key: "ArrowLeft" });
-    expect(atLive.seek).toHaveBeenCalledExactlyOnceWith(video, 990_000);
+    expect(atLive.seek).toHaveBeenCalledExactlyOnceWith(990_000);
     // Forward from live has nowhere to go.
     fireEvent.keyDown(frame, { key: "ArrowRight" });
     expect(atLive.seek).toHaveBeenCalledOnce();
@@ -146,9 +146,9 @@ describe("VideoPlayer", () => {
     const behind = transport("behind");
     rerender(<VideoPlayer attach={() => () => undefined} live liveTransport={behind} />);
     fireEvent.keyDown(frame, { key: "ArrowRight" });
-    expect(behind.seek).toHaveBeenCalledExactlyOnceWith(video, 1_010_000);
+    expect(behind.seek).toHaveBeenCalledExactlyOnceWith(1_010_000);
     fireEvent.keyDown(frame, { key: "l" });
-    expect(behind.goLive).toHaveBeenCalledExactlyOnceWith(video);
+    expect(behind.goLive).toHaveBeenCalledExactlyOnceWith();
   });
 
   // The live chrome's controls are RN-web Pressables, which render `div[role=button]`.
@@ -177,31 +177,18 @@ describe("VideoPlayer", () => {
     expect(onChannelStep).not.toHaveBeenCalled();
   });
 
-  it("waits for replacement loadeddata before observing the frame that clears a held poster", () => {
-    const requestFrame = vi.fn(() => 1);
-    Object.defineProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback", {
-      configurable: true,
-      value: requestFrame,
-    });
-    const firstAttach = vi.fn(() => () => undefined);
-    const replacementAttach = vi.fn(() => () => undefined);
-    const { container, rerender } = render(<VideoPlayer attach={firstAttach} live />);
+  it("binds an attached transport to its own element once, and releases it on unmount", () => {
+    const release = vi.fn();
+    const attach = vi.fn(() => release);
+    const { container, rerender, unmount } = render(<VideoPlayer attach={attach} live />);
     const video = container.querySelector("video") as HTMLVideoElement;
 
-    expect(requestFrame).not.toHaveBeenCalled();
-    video.poster = "data:image/png;base64,held";
-    fireEvent.loadedData(video);
-    expect(video).not.toHaveAttribute("poster");
-    expect(requestFrame).not.toHaveBeenCalled();
+    rerender(<VideoPlayer attach={attach} live overlay={<p>tuning</p>} />);
+    expect(attach).toHaveBeenCalledExactlyOnceWith(video);
+    expect(release).not.toHaveBeenCalled();
 
-    rerender(<VideoPlayer attach={replacementAttach} live />);
-    video.poster = "data:image/png;base64,held";
-    expect(video).toHaveAttribute("poster");
-    fireEvent.loadedData(video);
-    expect(video).not.toHaveAttribute("poster");
-    expect(requestFrame).not.toHaveBeenCalled();
-
-    delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).requestVideoFrameCallback;
+    unmount();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("draws a live player's controls from the caller's chrome, handing it the player's own state", () => {

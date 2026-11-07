@@ -28,7 +28,16 @@ type PlayerTransportEvent =
   | { attemptId: number; type: "playing" }
   /** Playback stopped to wait for data the viewer didn't pause for; the next `playing` ends it. */
   | { attemptId: number; type: "stalled" }
-  | { attemptId: number; error: string; type: "error" };
+  | {
+      attemptId: number;
+      error: string;
+      /**
+       * Present when the server refused the stream's start and `error` is its reason (the HTTP
+       * status): final at once, since retrying only waits out the server's start deadline again.
+       */
+      startStatus?: number;
+      type: "error";
+    };
 
 interface PlayerTransport {
   dispose: () => void;
@@ -36,6 +45,11 @@ interface PlayerTransport {
   pause: () => void;
   play: () => Promise<void> | void;
   replace: (source: PlayerSource, context: { attemptId: number; signal: AbortSignal }) => Promise<void>;
+  /**
+   * Moves to a wall-clock instant inside the live window; a target at the live edge goes live.
+   * Absent on a transport that cannot seek within the window.
+   */
+  seek?: (wallClockMs: number) => Promise<void> | void;
   subscribe: (listener: (event: PlayerTransportEvent) => void) => () => void;
 }
 
@@ -105,6 +119,8 @@ interface PlayerController {
   previous: () => Promise<void>;
   reconcile: (channels: readonly PlayerChannel[]) => Promise<void>;
   retry: () => Promise<void>;
+  /** Moves the tuned channel to a wall-clock instant inside its window (the transport's `seek`). */
+  seek: (wallClockMs: number) => Promise<void>;
   step: (direction: TuneDirection) => Promise<void>;
   subscribe: (listener: (snapshot: PlayerSnapshot) => void) => () => void;
   tuneChannel: (channelId: string) => Promise<void>;

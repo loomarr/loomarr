@@ -139,12 +139,6 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    // The shared browser-player adapter loads hls.js dynamically from its owning package. Alias the
-    // transport explicitly so production-wrapper tests exercise the public adapter with a bounded
-    // MediaSource controller even when pnpm resolves the dependency from that package.
-    alias: {
-      "hls.js": fileURLToPath(new URL("./src/test/hls.mock.ts", import.meta.url)),
-    },
     // The Guide renders ui/guide, whose design-system icons come from lucide-react-native. Left
     // external, Node requires its `react-native` directly and meets the Flow source; inlined, the
     // react-native-web alias above applies, as in vitest.universal.config.ts.

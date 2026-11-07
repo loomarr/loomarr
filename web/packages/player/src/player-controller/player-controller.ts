@@ -2,6 +2,7 @@ import { createNeighbourWarmer } from "../neighbour-warmer";
 import type { PlayerChannel } from "../player-source";
 import { StartFailure } from "../start-failure";
 import type {
+  LivePlaybackState,
   PlayerController,
   PlayerControllerOptions,
   PlayerSnapshot,
@@ -18,6 +19,12 @@ const STALL_NOTICE_MS = 3_000;
 /** A stall this long without progress fails with the manual Retry (the server is unreachable). */
 const STALL_FAIL_MS = 20_000;
 const STALL_FAILURE = "Lost the connection to the server.";
+
+const sameLivePlayback = (left: LivePlaybackState | undefined, right: LivePlaybackState) =>
+  left?.lagSeconds === right.lagSeconds &&
+  left.mode === right.mode &&
+  left.noticeRevision === right.noticeRevision &&
+  left.viewerTimeMs === right.viewerTimeMs;
 
 const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
   [...channels]
@@ -285,6 +292,7 @@ const createPlayerController = ({
   const unsubscribeTransport = transport.subscribe((event) => {
     if (!isCurrentAttempt(event.attemptId) || event.attemptId !== snapshot.attemptId) return;
     if (event.type === "live-state") {
+      if (sameLivePlayback(snapshot.livePlayback, event.state)) return;
       publish({ ...snapshot, livePlayback: event.state });
       return;
     }
@@ -296,7 +304,12 @@ const createPlayerController = ({
     if (event.type === "error") {
       // A retry is already scheduled for this failure; a second error from the same dead player
       // must not spend budget or report twice.
-      if (!retryTimer) recordFailure(event.error);
+      if (!retryTimer) {
+        recordFailure(
+          event.error,
+          event.startStatus === undefined ? undefined : new StartFailure(event.error, event.startStatus),
+        );
+      }
       return;
     }
     if (event.type === "paused") {
@@ -399,6 +412,10 @@ const createPlayerController = ({
     },
     retry: async () => {
       if (snapshot.channel) await tune(snapshot.channel, "retry", true);
+    },
+    seek: async (wallClockMs) => {
+      if (disposed || !snapshot.channel) return;
+      await transport.seek?.(wallClockMs);
     },
     step: async (direction) => {
       const channel = findAdjacent(direction);

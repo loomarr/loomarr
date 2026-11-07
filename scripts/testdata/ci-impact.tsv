@@ -64,7 +64,7 @@ visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,tuner,im
 visual-baseline	web/apps/web/tests/visual/gallery.spec.ts-snapshots/ai-approvalhistoryrow--approved-desktop-linux.png	web,visual,image
 e2e-baseline	web/apps/web/tests/e2e/wizard.spec.ts-snapshots/step-1-bootstrap-desktop-linux.png	web,e2e,image
 wizard-e2e	web/apps/web/src/wizard/steps/steps.ts	web,visual,e2e,tuner,image
-tuner-web	web/apps/web/src/channels/use-hls-player/use-hls-player.ts	web,visual,tuner,image
+tuner-web	web/apps/web/src/channels/use-watch-player/use-watch-player.ts	web,visual,tuner,image
 web-build-config	web/apps/web/vite.config.ts	web,visual,e2e,tuner,image
 web-tooling	web/apps/web/package.json	web,visual,e2e,tuner,image
 workspace-tooling	web/package.json	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android

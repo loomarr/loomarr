@@ -114,10 +114,18 @@ Pause is shared time-shift, not a private playback stack (decision
 - Pausing freezes the viewer's broadcast position; resume continues from it while it stays inside
   the fifteen-minute `DVRHorizon`. The player shows how far it trails live and one **Go Live**
   action. An expired position returns to the live edge and says so. Tuning always joins live.
-- The Web adapter records the media time and the viewer's wall-clock time, pauses the one element
-  without stopping the shared session, and resumes by seeking when the position is still seekable.
-  hls.js back-buffer and latency correction are set beyond the horizon. A tune's replacement
-  callbacks never resume a deliberately paused viewer.
+- One live clock (`@loomarr/player`, pure: no React, no DOM) holds the viewer's position for every
+  client. It measures wall time against the server's clock at mint time, not the device's, so a wrong
+  device clock shifts neither programme identity nor the lag. A pause **stays paused** however long
+  the viewer waits: nothing returns it to live on its own, and expiry is decided at resume and
+  announced once. A stall the viewer didn't cause that leaves a live viewer more than thirty seconds
+  behind rejoins the live edge once the player reports where it is; a viewer who paused or went back
+  stays where they chose.
+- The Web adapter is the browser `PlayerTransport` under the same player controller the native
+  clients use, so tuning, surfing, warming and automatic retries are the controller's. It pauses the
+  one element without stopping the shared session, records the media time, and resumes by seeking
+  when the position is still seekable. hls.js back-buffer and latency correction are set beyond the
+  horizon. A tune's replacement callbacks never resume a deliberately paused viewer.
 - Programme time and the mini-guide follow the viewer's clock, derived from
   `EXT-X-PROGRAM-DATE-TIME` for the frame on screen (hls.js `playingDate`, native HLS timeline, or
   Media3's Window clock minus `currentLiveOffset`).

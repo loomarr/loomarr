@@ -18,7 +18,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
-import { useHlsPlayer } from "@/channels/use-hls-player";
 import { useNumberEntry } from "@/channels/use-number-entry";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/ui/video-player";
@@ -28,17 +27,17 @@ import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { type SwitchSound, startChannelSwitchSound } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
-import type { TuneAttempt } from "../tuner-timing";
-import type { TuneDirection } from "../use-channel-tuner";
 import { useSwitchSoundPreference } from "../use-switch-sound-preference";
+import type { WatchPlayer } from "../use-watch-player";
 
 // ChannelWatch — the full-bleed `/watch/$id` player: play a channel live in the browser (§9, #2088).
 //
-// The player itself is the shared VideoPlayer primitive in `live` mode with hls.js bound through its
-// `attach` seam (useHlsPlayer). Its controls are the §9 player chrome from `@loomarr/ui`
-// (PlayerChrome: the lower third, the preview playbar and the transport), drawn through VideoPlayer's
-// `renderChrome` so they share its auto-hide and go fullscreen with it. This component owns what the
-// chrome is fed: the channel's timeline, the tuner, the one right-hand sheet, and the ✕ that leaves.
+// The player itself is the shared VideoPlayer primitive in `live` mode with the shared player
+// controller's browser transport bound through its `attach` seam (useWatchPlayer, owned by the route).
+// Its controls are the §9 player chrome from `@loomarr/ui` (PlayerChrome: the lower third, the preview
+// playbar and the transport), drawn through VideoPlayer's `renderChrome` so they share its auto-hide
+// and go fullscreen with it. This component owns what the chrome is fed: the channel's timeline, the
+// one right-hand sheet, and the ✕ that leaves.
 //
 // ⚠ Settings only SHOWS the channel's default audio language. An admin sets it on the channel's info
 // page (#2088); the per-viewer choice between renditions comes with the alternate-audio step.
@@ -48,17 +47,8 @@ interface ChannelWatchProps {
   isAdmin: boolean;
   /** Leave the player (its ✕): back where the viewer came from. */
   onLeave: () => void;
-  tuner?: {
-    canSurf: boolean;
-    requestedChannel?: ChannelDTO;
-    currentTitle?: string;
-    attempt?: TuneAttempt;
-    acknowledging?: boolean;
-    ready: (channelId: string) => void;
-    step: (direction: TuneDirection) => void;
-    tune: (channelId: string) => void;
-    retry: () => void;
-  };
+  /** The player and its tuner: what plays, what the viewer asked of it, and its controls. */
+  player: WatchPlayer;
   // The channels drawer's data (#1659 W1): every channel read from the guide, and the viewer's own
   // favourites and recent channels. Also the list a typed number is looked up in.
   drawer?: {
@@ -117,7 +107,7 @@ const ChannelWatch = ({
   channel,
   isAdmin,
   onLeave,
-  tuner,
+  player,
   drawer,
   onTuneSettled,
   phone,
@@ -129,14 +119,8 @@ const ChannelWatch = ({
   // A finger gets the chrome's touch form: larger targets, no hover card, no tooltips (§9.5).
   const touch = useCoarsePointer();
   const density = touch ? "touch" : "pointer";
-  const tunerReady = tuner?.ready;
-  // The tuner warms this Channel's neighbours once its own manifest has arrived, not before: the
-  // warm requests would otherwise share the browser's per-host connections with the target's
-  // manifest and first segments (#1484). It is still well ahead of the first frame.
-  const onManifest = useCallback(() => tunerReady?.(channel.id), [channel.id, tunerReady]);
-  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest);
   // The player's own <video>, caught at the attach seam, so the channel-change sound can follow the
-  // player's volume and mute, and Go live can act on it, without VideoPlayer knowing about either.
+  // player's volume and mute without VideoPlayer knowing about it.
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerAttach = player.attach;
   const attach = useCallback(
@@ -252,7 +236,8 @@ const ChannelWatch = ({
     value: option.value,
   }));
 
-  const osdChannel = tuner?.requestedChannel ?? channel;
+  // The channel on the OSD is the one asked for, from the moment the controller starts its tune.
+  const osdChannel = channel;
   const tuning = player.status === "loading";
   const channelLabel = `CH ${osdChannel.number} · ${osdChannel.name}`;
 
@@ -349,9 +334,7 @@ const ChannelWatch = ({
   }, [sheet, viewerPaused, closeSheet]);
   // A preview card is open on the playbar: the controls stay shown under it.
   const [previewOpen, setPreviewOpen] = useState(false);
-  const tunerTune = tuner?.tune;
-  const directTune = useCallback((channelId: string) => tunerTune?.(channelId), [tunerTune]);
-  const entry = useNumberEntry({ channels: drawer?.channels ?? [], onTune: directTune });
+  const entry = useNumberEntry({ channels: drawer?.channels ?? [], onTune: player.tune });
   const onShortcut = (key: string): boolean => {
     if (key === "Escape" && sheet) {
       closeSheet();
@@ -361,7 +344,7 @@ const ChannelWatch = ({
       toggleSheet("info");
       return true;
     }
-    if (!tuner || !drawer) return false;
+    if (!drawer) return false;
     if (entry.press(key)) return true;
     if (key === "Enter") return entry.commit();
     if (key === "g" || key === "G") {
@@ -389,12 +372,6 @@ const ChannelWatch = ({
       </div>
     </div>
   ) : undefined;
-
-  // Go live acts on the player's own <video> through the live transport, as the play toggle does.
-  const withVideo = (act: (video: HTMLVideoElement) => unknown) => {
-    const video = videoRef.current;
-    if (video) void act(video);
-  };
 
   // The open sheet, over the dimmed picture. Channels is still the console drawer (#1659 W1) until it
   // is rebuilt on the sheet.
@@ -424,7 +401,7 @@ const ChannelWatch = ({
       >
         <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />
       </PlayerSheet>
-    ) : sheet === "channels" && tuner && drawer ? (
+    ) : sheet === "channels" && drawer ? (
       <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
         <ChannelDrawer
           channels={drawer.channels}
@@ -432,7 +409,7 @@ const ChannelWatch = ({
           favourites={drawer.favourites}
           recent={drawer.recent}
           nowPercent={drawer.nowPercent}
-          onTune={tuner.tune}
+          onTune={player.tune}
           onFavourite={drawer.onFavourite}
           onClose={closeSheet}
         />
@@ -449,7 +426,7 @@ const ChannelWatch = ({
           density={density}
           kind="error"
           onLeave={onLeave}
-          onRetry={tuner?.retry}
+          onRetry={player.retry}
           title="The stream stopped."
         />
       </ThemeScope>
@@ -479,13 +456,13 @@ const ChannelWatch = ({
           }
           sheet={openSheet}
           transport={{
-            channelsOpen: tuner && drawer ? sheet === "channels" : undefined,
+            channelsOpen: drawer ? sheet === "channels" : undefined,
             density,
             fullscreen: chrome.fullscreen,
             infoOpen: sheet === "info",
             live: player.liveTransport.state,
             muted: chrome.muted,
-            onChannels: tuner && drawer ? () => toggleSheet("channels") : undefined,
+            onChannels: drawer ? () => toggleSheet("channels") : undefined,
             onFullscreen: chrome.toggleFullscreen,
             onGoLive: chrome.goLive,
             onInfo: info ? () => toggleSheet("info") : undefined,
@@ -535,7 +512,7 @@ const ChannelWatch = ({
       }
       onShortcut={onShortcut}
       attach={attach}
-      onChannelStep={tuner?.step}
+      onChannelStep={player.step}
       // Wider than a portrait phone, the picture fills the window (letterboxed by the <video>); a
       // portrait phone keeps its 16:9 picture over the panel.
       className={cn("bg-black", !onPhone && "aspect-auto h-full")}
@@ -546,7 +523,7 @@ const ChannelWatch = ({
   // screens and the iPhone's does (#1816). Without it a phone had no way to fill Favorites.
   const isFavourite = drawer?.favourites.includes(osdChannel.id) ?? false;
   const phonePanel =
-    onPhone && phone && tuner ? (
+    onPhone && phone ? (
       <WatchingPanel
         density="touch"
         channel={{ name: osdChannel.name, number: String(osdChannel.number) }}
@@ -554,18 +531,18 @@ const ChannelWatch = ({
         clockLabel={phone.clockLabel}
         live={player.liveTransport.state}
         canPrevious={phone.previousId !== undefined}
-        canSurf={tuner.canSurf}
-        onPrevious={() => phone.previousId && tuner.tune(phone.previousId)}
-        onChannelDown={() => tuner.step(-1)}
-        onChannelUp={() => tuner.step(1)}
-        onPause={() => withVideo((video) => player.liveTransport.pause(video))}
-        onPlay={() => withVideo((video) => player.liveTransport.play(video))}
-        onGoLive={() => withVideo((video) => player.liveTransport.goLive(video))}
+        canSurf={player.canSurf}
+        onPrevious={() => phone.previousId && player.tune(phone.previousId)}
+        onChannelDown={() => player.step(-1)}
+        onChannelUp={() => player.step(1)}
+        onPause={() => player.liveTransport.pause()}
+        onPlay={() => void player.liveTransport.play()}
+        onGoLive={() => void player.liveTransport.goLive()}
         onLeave={onLeave}
         favourites={phone.favourites}
         isFavourite={isFavourite}
         onToggleFavourite={drawer ? () => drawer.onFavourite(osdChannel.id, !isFavourite) : undefined}
-        onTune={tuner.tune}
+        onTune={player.tune}
       />
     ) : undefined;
 
@@ -598,12 +575,12 @@ const ChannelWatch = ({
         {onPhone && errorCover}
         {/* While the wash is up, its centred channel line is the visible readout, so the OSD card
             would only repeat it; it stays as the screen-reader announcement. */}
-        {(tuning || tuner?.acknowledging) && tuner && (
+        {tuning && (
           <TunerOSD
             number={osdChannel.number}
             name={osdChannel.name}
-            currentTitle={tuner.currentTitle}
-            className={tuning ? "sr-only" : "absolute top-4 left-4 z-[2]"}
+            currentTitle={player.currentTitle}
+            className="sr-only"
           />
         )}
       </div>

@@ -15,12 +15,16 @@ import { TooltipProvider } from "@/components/ui";
 import type { LivePlaybackState } from "@/components/ui/video-player";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
-import { ChannelWatch } from "./channel-watch";
+import type { WatchPlayer } from "../use-watch-player";
+import { type ChannelWatchProps, ChannelWatch as WatchSurface } from "./channel-watch";
 
+// The player the route hands in (useWatchPlayer), as a test double: what it reports is set per test.
 const hls = vi.hoisted(() => ({
-  status: "playing",
-  onManifest: undefined as (() => void) | undefined,
+  status: "playing" as "loading" | "playing" | "error",
   attach: vi.fn(() => () => undefined),
+  retry: vi.fn(),
+  step: vi.fn(),
+  tune: vi.fn(),
   liveTransport: {
     state: {
       mode: "live",
@@ -36,17 +40,26 @@ const hls = vi.hoisted(() => ({
 }));
 const diagnosticsRecord = vi.hoisted(() => vi.fn());
 
-vi.mock("../use-hls-player", () => ({
-  useHlsPlayer: (_channelId: string, _attempt?: unknown, onManifest?: () => void) => {
-    hls.onManifest = onManifest;
-    return {
-      status: hls.status,
-      playbackSessionId: "playback_1",
-      attach: hls.attach,
-      liveTransport: hls.liveTransport,
-    };
-  },
-}));
+const watchPlayer = (overrides: Partial<WatchPlayer> = {}): WatchPlayer => ({
+  attach: hls.attach,
+  canSurf: true,
+  liveTransport: hls.liveTransport,
+  playbackSessionId: "playback_1",
+  retry: hls.retry,
+  status: hls.status,
+  step: hls.step,
+  tune: hls.tune,
+  ...overrides,
+});
+
+// Reads the double when it renders, so a rerender sees what the test has changed since.
+const ChannelWatch = ({
+  player,
+  ...props
+}: Omit<ChannelWatchProps, "player"> & { player?: Partial<WatchPlayer> }) => (
+  <WatchSurface {...props} player={watchPlayer(player)} />
+);
+
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: diagnosticsRecord } }));
 const staticLock = vi.hoisted(() => vi.fn());
 const switchSound = vi.hoisted(() =>
@@ -190,28 +203,15 @@ describe("ChannelWatch pickers", () => {
     expect(wasProbed()).toBe(false);
   });
 
-  it("steps channels from the arrow keys through the tuner, once its manifest has warmed the neighbours", async () => {
+  it("steps channels from the arrow keys through the player", async () => {
     stubTracks();
-    const step = vi.fn();
-    const ready = vi.fn();
-    render(
-      <ChannelWatch
-        channel={live}
-        isAdmin
-        onLeave={vi.fn()}
-        tuner={{ canSurf: true, ready, step, tune: vi.fn(), retry: vi.fn() }}
-      />,
-      { wrapper: makeWrapper() },
-    );
+    hls.step.mockClear();
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await startWatching();
-    // A playing player alone is not the signal: neighbours warm when the target's manifest arrives.
-    expect(ready).not.toHaveBeenCalled();
-    act(() => hls.onManifest?.());
-    expect(ready).toHaveBeenCalledWith("ch-1");
 
     // The live player takes focus on mount, so the arrows reach it without a click.
     await userEvent.keyboard("{ArrowUp}{ArrowDown}");
-    expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+    expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
   });
 
   // Seeking the window (#2088 decision 2). The timeline's clock is the server's: live is 1_060_000.
@@ -238,7 +238,7 @@ describe("ChannelWatch pickers", () => {
 
       await userEvent.click(await screen.findByRole("button", { name: "Back 10 seconds" }));
       await userEvent.click(screen.getByRole("button", { name: "Forward 10 seconds" }));
-      expect(hls.liveTransport.seek.mock.calls.map(([, at]) => at)).toEqual([990_000, 1_010_000]);
+      expect(hls.liveTransport.seek.mock.calls.map(([at]) => at)).toEqual([990_000, 1_010_000]);
     });
 
     it("offers no forward from live", async () => {
@@ -256,7 +256,7 @@ describe("ChannelWatch pickers", () => {
       render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
       await userEvent.click(await screen.findByRole("button", { name: "Start over" }));
-      expect(hls.liveTransport.seek).toHaveBeenCalledWith(expect.any(HTMLVideoElement), 500_000);
+      expect(hls.liveTransport.seek).toHaveBeenCalledWith(500_000);
     });
 
     it("has no Start over for a programme that began before the window", async () => {
@@ -277,7 +277,7 @@ describe("ChannelWatch pickers", () => {
 
     expect(await screen.findByText("23s behind")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Go live" }));
-    expect(hls.liveTransport.goLive).toHaveBeenCalledWith(expect.any(HTMLVideoElement));
+    expect(hls.liveTransport.goLive).toHaveBeenCalledOnce();
   });
 
   it("keeps programme context on the viewer's paused broadcast time", async () => {
@@ -508,15 +508,9 @@ describe("ChannelWatch — full-bleed route", () => {
     hls.status = "error";
     const retry = vi.fn();
     const onLeave = vi.fn();
-    render(
-      <ChannelWatch
-        channel={live}
-        isAdmin
-        onLeave={onLeave}
-        tuner={{ canSurf: true, ready: vi.fn(), step: vi.fn(), tune: vi.fn(), retry }}
-      />,
-      { wrapper: makeWrapper() },
-    );
+    render(<ChannelWatch channel={live} isAdmin onLeave={onLeave} player={{ retry }} />, {
+      wrapper: makeWrapper(),
+    });
 
     const cover = await screen.findByRole("alert");
     expect(cover).toHaveTextContent("The stream stopped.");
@@ -534,14 +528,6 @@ describe("ChannelWatch — full-bleed route", () => {
 // the previous channel's held frame. A cold start has nothing to drain.
 describe("ChannelWatch switch readout", () => {
   const next = channel({ id: "ch-2", name: "Saturday Cartoons", number: 12, status: "live" });
-  const tunerFor = (requestedChannel?: typeof next) => ({
-    canSurf: true,
-    requestedChannel,
-    ready: vi.fn(),
-    step: vi.fn(),
-    tune: vi.fn(),
-    retry: vi.fn(),
-  });
   // Every VISIBLE place the channel is named: not the decorative readout, not the SR-only OSD, not
   // the chrome while it is hidden under the wash.
   const visibleNames = (name: string) =>
@@ -552,17 +538,12 @@ describe("ChannelWatch switch readout", () => {
       .filter((el) => !el.closest("[aria-hidden='true']") && !el.closest("[role='status']"));
   const switchTo = async (target: typeof next) => {
     hls.status = "playing";
-    const view = render(
-      <ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />,
-      {
-        wrapper: makeWrapper(),
-      },
-    );
+    const view = render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
     await screen.findByRole("button", { name: "Settings" });
     hls.status = "loading";
-    view.rerender(
-      <ChannelWatch channel={target} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor(target)} />,
-    );
+    view.rerender(<ChannelWatch channel={target} isAdmin={false} onLeave={vi.fn()} />);
     await waitFor(() => expect(wash()).not.toBeNull());
     return view;
   };
@@ -579,7 +560,7 @@ describe("ChannelWatch switch readout", () => {
     expect(visibleNames("Saturday Cartoons")).toEqual([]);
 
     hls.status = "playing";
-    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />);
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
     await waitFor(() => expect(visibleNames("Saturday Cartoons")).toHaveLength(1));
   });
 
@@ -596,7 +577,7 @@ describe("ChannelWatch switch readout", () => {
     expect(staticLock).not.toHaveBeenCalled();
 
     hls.status = "playing";
-    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />);
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
     await waitFor(() => expect(staticLock).toHaveBeenCalledTimes(1));
     expect(video.muted).toBe(false);
   });
@@ -610,7 +591,7 @@ describe("ChannelWatch switch readout", () => {
 
   it("stays silent on a cold start", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
     await tuningIn();
@@ -619,7 +600,7 @@ describe("ChannelWatch switch readout", () => {
 
   it("lets any viewer turn the sound off from Settings, and remembers it", async () => {
     hls.status = "playing";
-    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} tuner={tunerFor()} />, {
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
     const settings = await openSettings();
@@ -638,21 +619,20 @@ describe("ChannelWatch switch readout", () => {
 
   it("drains the held frame when switching from a channel that played", async () => {
     hls.status = "playing";
-    const { rerender } = render(
-      <ChannelWatch channel={live} isAdmin onLeave={vi.fn()} tuner={tunerFor()} />,
-      { wrapper: makeWrapper() },
-    );
+    const { rerender } = render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
     await screen.findByRole("button", { name: "Settings" });
 
     hls.status = "loading";
-    rerender(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />);
+    rerender(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />);
 
     await waitFor(() => expect(wash()).toHaveAttribute("data-wash", "draining"));
   });
 
   it("does not drain on a cold start, where no frame is held", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
@@ -662,7 +642,7 @@ describe("ChannelWatch switch readout", () => {
 
   it("names the channel in the readout and keeps the OSD for screen readers only", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
@@ -686,7 +666,7 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
         channel={live}
         isAdmin={false}
         onLeave={vi.fn()}
-        tuner={{ canSurf: true, ready: vi.fn(), step: vi.fn(), tune, retry: vi.fn() }}
+        player={{ tune }}
         drawer={{ channels: rows, favourites: ["ch-2"], recent: [], nowPercent: 17, onFavourite }}
         onTuneSettled={onTuneSettled}
       />,
@@ -771,7 +751,7 @@ describe("ChannelWatch at phone width", () => {
         channel={live}
         isAdmin={false}
         onLeave={vi.fn()}
-        tuner={{ canSurf: true, ready: vi.fn(), step, tune, retry: vi.fn() }}
+        player={{ step, tune }}
         drawer={{ channels: [], favourites, recent: [], nowPercent: 0, onFavourite }}
         phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}
       />,
@@ -810,6 +790,6 @@ describe("ChannelWatch at phone width", () => {
     await userEvent.click(screen.getByRole("button", { name: "Pause" }));
     expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
     expect(tune).toHaveBeenCalledWith("ch-9");
-    expect(hls.liveTransport.pause).toHaveBeenCalledWith(expect.any(HTMLVideoElement));
+    expect(hls.liveTransport.pause).toHaveBeenCalledOnce();
   });
 });
