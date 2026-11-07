@@ -28,7 +28,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 
 		"ci-clients.yml":             {jobs: map[string]int{"run": 9}},
 		"ci-docs.yml":                {jobs: map[string]int{"run": 7}},
-		"ci-frontend.yml":            {jobs: map[string]int{"run": 9}},
+		"ci-frontend.yml":            {jobs: map[string]int{"run": 10}},
 		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 10}},
 		"ci-go.yml":                  {jobs: map[string]int{"run": 14}},
 		"ci-go-cache-warm.yml":       {jobs: map[string]int{"run": 6, "contracts": 6}},
