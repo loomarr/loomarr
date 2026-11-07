@@ -79,9 +79,9 @@ on the server, and the address keeps working when the server is rebuilt.
 
 The `demo` admin password is in this repository, so it can't be left working on a public site. Before
 the tunnel starts, `scripts/demo-site.sh` creates a `guest` member account with the password
-`loomarr-guest`, replaces the admin password with a random one it doesn't keep, and checks the old
-one is refused. If any step fails, the tunnel doesn't start. Nobody can sign in as an admin afterwards:
-to change the site, rebuild it.
+`loomarr-guest`, replaces the admin password with `STAGING_DEMO_ADMIN_PASSWORD`, and checks the old
+one is refused. If any step fails, the tunnel doesn't start. Sign in as `demo` with that password to
+manage the site.
 
 Visitors share `guest`, so a Cloudflare rule blocks `/v1/auth/password` to stop anyone changing its
 password. Keep that rule. The site plays two channels at once, so a third visitor is refused until
@@ -94,6 +94,7 @@ one stops.
 | `VULTR_API_KEY` | A repository secret: a key for the cloud account, allowing all IPs because GitHub's runners change address |
 | `STAGING_TS_AUTHKEY` | A repository secret: a reusable, ephemeral, pre-approved tailnet key with a tag. Sign it first if the tailnet uses Tailnet Lock |
 | `STAGING_CF_TUNNEL_TOKEN` | A repository secret: the token for a Cloudflare Tunnel that routes the public address to `http://loomarr:8080` |
+| `STAGING_DEMO_ADMIN_PASSWORD` | A repository secret: the public site's admin password, 16 or more letters, digits or `._~-` |
 | `ghcr.io/loomarr/loomarr-staging` | Set this package public after its first build, so the server can pull it |
 
 The tag stops the server's login expiring, which would take a long-running site offline. Treat the

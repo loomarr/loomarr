@@ -1,6 +1,6 @@
 # The staging server's first boot. scripts/staging.sh prepends the #! line and these variables:
 # STAGING_NAME, VERSION, STAGING_IMAGE, STAGING_COMMIT, STAGING_DATABASE, STAGING_PUBLIC_URL,
-# TS_AUTHKEY, CF_TUNNEL_TOKEN.
+# TS_AUTHKEY, CF_TUNNEL_TOKEN, DEMO_ADMIN_PASSWORD.
 #
 # Nothing listens on the public address: the firewall closes it first, and the demo site binds
 # only to the tailnet address. A public site is reached through an outbound tunnel instead.
@@ -61,7 +61,7 @@ export DEMO_SITE_DATABASE="$STAGING_DATABASE"
 export DEMO_SITE_URL="http://$STAGING_NAME:8080"
 if [ -n "$STAGING_PUBLIC_URL" ]; then
 	export DEMO_SITE_PUBLIC=1 DEMO_SITE_URL="$STAGING_PUBLIC_URL"
-	# By name, like the tailnet key, so tracing this cannot write the token to the log.
-	export CF_TUNNEL_TOKEN
+	# By name, like the tailnet key, so tracing this cannot write them to the log.
+	export CF_TUNNEL_TOKEN DEMO_ADMIN_PASSWORD
 fi
 "$SOURCE/scripts/demo-site.sh" up
