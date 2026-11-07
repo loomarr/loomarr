@@ -17,6 +17,10 @@ allowBuilds:
   # unanswered: pnpm treats an unresolved entry as an install ERROR, not a warning, and
   # `pnpm codegen` runs a dep check — so an undecided build script fails codegen outright.
   msw: false
+  # @swc/core's postinstall only checks that its native binding loaded, and downloads a WASM
+  # fallback if not. pnpm installs the platform binding as an optional dependency, so there is
+  # nothing for it to do; denied for the same reason as msw.
+  "@swc/core": false
 
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18
