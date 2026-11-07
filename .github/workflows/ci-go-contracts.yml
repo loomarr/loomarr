@@ -15,7 +15,9 @@ jobs:
     name: Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     # Two runners for wall clock: this job sets PR time for Go changes. Shard 1 owns the compile-heavy
-    # analysis, shard 2 the repository contracts, and every check runs in exactly one of them.
+    # analysis, shard 2 the repository contracts, and every check runs in exactly one of them. The
+    # OpenAPI, retired-identifier, and observability checks (about 50s) sit on shard 1 to even them:
+    # with all of them on shard 2 it took 3m10s against shard 1's 1m38s.
     strategy:
       fail-fast: false # one shard's failures must not hide the other's
       matrix:
@@ -59,7 +61,7 @@ jobs:
         if: matrix.shard == 2
         run: make go-shard-verify SHARDS=2
       - name: OpenAPI spec is committed and current
-        if: matrix.shard == 2
+        if: matrix.shard == 1
         run: make openapi-verify
       - name: Config docs are committed and current
         if: matrix.shard == 2
@@ -71,11 +73,11 @@ jobs:
         if: matrix.shard == 2
         run: make dev-docs-verify
       - name: Retired identifiers are gone from prose
-        if: matrix.shard == 2
+        if: matrix.shard == 1
         run: make retired-verify
       - name: Workflows are valid
         if: matrix.shard == 2
         run: make ci-lint
       - name: Observability artifacts are provisionable
-        if: matrix.shard == 2
+        if: matrix.shard == 1
         run: make observability-verify
