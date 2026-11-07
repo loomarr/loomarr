@@ -1,8 +1,9 @@
 import type { CoverageDTO } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { CoverageMeter } from "./coverage-meter";
 

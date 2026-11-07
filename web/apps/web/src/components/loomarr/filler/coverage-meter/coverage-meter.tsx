@@ -1,8 +1,8 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
+import { StatusDot, type StatusTone } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { Caption } from "@/components/ui/caption";
-import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import type { CoverageMeterProps } from "./coverage-meter.type";
 
@@ -110,7 +110,9 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   return (
     <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
       <div className="flex items-start gap-2">
-        <StatusDot tone={level.tone} label="" className="mt-1.5" />
+        <span style={{ display: "flex", flexShrink: 0, marginTop: 6 }}>
+          <StatusDot tone={level.tone} label="" />
+        </span>
         <div className="min-w-0">
           <p className="text-sm font-medium">{level.label}</p>
           <p className="text-muted-foreground mt-0.5 text-xs">{level.hint}</p>

@@ -7,13 +7,14 @@ import {
   getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { describe, expect, it, vi } from "vitest";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { TasksPage } from "./tasks-page";
 
 const makeWrapper = () => {

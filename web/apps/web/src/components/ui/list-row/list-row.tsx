@@ -1,6 +1,6 @@
+import { StatusDot } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { Progress } from "../progress";
-import { StatusDot } from "../status-dot";
 import type { ListGroupProps, ListRowProps } from "./list-row.type";
 
 // ListGroup + ListRow — the bordered list of state rows (#1659 web mock: On the way, Your

@@ -1,5 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { Button } from "../button";
 import { ListGroup, ListRow } from "./list-row";
 

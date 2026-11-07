@@ -5,12 +5,13 @@ import {
   getMeMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { defectReport, readiness } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerManage } from "./filler-manage";
 

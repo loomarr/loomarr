@@ -1,5 +1,5 @@
+import type { StatusTone } from "@loomarr/design-system";
 import type { ReactNode } from "react";
-import type { StatusTone } from "../status-dot";
 
 interface ListRowProgress {
   // 0–100. Omitted ⇒ indeterminate (queued, waiting for a slot).

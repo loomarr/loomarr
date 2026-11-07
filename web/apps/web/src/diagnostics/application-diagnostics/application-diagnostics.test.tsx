@@ -3,12 +3,13 @@ import {
   getListDiagnosticEventsMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { DEFAULT_APPLICATION_FILTERS } from "../application-filters";
 import { ApplicationDiagnostics } from "./application-diagnostics";
 
