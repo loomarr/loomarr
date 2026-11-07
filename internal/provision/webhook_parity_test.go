@@ -10,11 +10,11 @@ import (
 
 // TestWebhookKeyParity is the §21 phase-2 gate test: a key derived from a Title
 // must equal the key derived from the identity a real webhook carries. Uses the
-// pinned Phase-0 Radarr import fixture (remoteMovie.tmdbId). That capture is
-// recorded evidence of a real Radarr, so the request side keeps its real id and title.
+// pinned Phase-0 Radarr import fixture (remoteMovie.tmdbId). The capture keeps a real
+// Radarr's shape; its title, ids and paths are invented, like every fixture.
 func TestWebhookKeyParity(t *testing.T) {
 	// The request side: a Title we would have created for this movie.
-	titleKey, err := provision.Title{MediaType: provision.Movie, TMDBID: 1111867, Name: "In Flames"}.Key()
+	titleKey, err := provision.Title{MediaType: provision.Movie, TMDBID: 91111867, Name: "Ashgrove Anomaly"}.Key()
 	if err != nil {
 		t.Fatal(err)
 	}

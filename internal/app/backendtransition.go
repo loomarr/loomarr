@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/backendtransition"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/livetvpublish"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )

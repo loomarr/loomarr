@@ -69,7 +69,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 
 		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", runsOn: "ubuntu-latest"},
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
-		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
+		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4}}},
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts", runsOn: "ubuntu-latest"},
 		{workflow: "ci-go-cache-warm.yml", job: "run"}:       {name: "Warm Go build cache (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 30, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2", "postgres"}}},
 		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: goWorkflowSelfHostedRunsOn, timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2"}}},
@@ -92,7 +92,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci.yml", job: "ci-policy"}:                         {name: "CI policy — workflow, harness, and docs contracts", runsOn: "ubuntu-latest", needs: "changes"},
 		{workflow: "ci.yml", job: "changes"}:                           {name: "What changed", runsOn: "ubuntu-latest"},
 		{workflow: "ci.yml", job: "ci-ok"}: {
-			name: "CI", runsOn: "ubuntu-latest",
+			name: "${{ github.event_name == 'merge_group' && 'CI assurance' || 'CI' }}", runsOn: "ubuntu-latest",
 			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android", "playout-bench"},
 		},
 		{workflow: "image-benchmark.yml", job: "benchmark"}: {
@@ -115,6 +115,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "release.yml", job: "publish"}:                {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
 		{workflow: "curated-sources.yml", job: "check"}:          {name: "Check the curated sources", runsOn: "ubuntu-24.04", timeoutMinutes: 15},
 		{workflow: "deadcode.yml", job: "report"}:                {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
+		{workflow: "merge-gate.yml", job: "run"}:                 {name: "CI", runsOn: "ubuntu-latest", timeoutMinutes: 10},
 		{workflow: "go-maintenance.yml", job: "vulnerabilities"}: {name: "Reachable known vulnerabilities", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh"}:     {name: "Refresh the FFmpeg pin", runsOn: "ubuntu-24.04", timeoutMinutes: 120},
 		{workflow: "rust-maintenance.yml", job: "supply-chain"}:  {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},

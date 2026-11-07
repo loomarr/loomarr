@@ -109,7 +109,7 @@ type HolidayLook struct {
 	Palette Palette
 }
 
-// HolidayLooks is keyed by the schedule calendar's holiday ids (internal/schedule, seasonal.go).
+// HolidayLooks is keyed by the schedule calendar's holiday ids (internal/channels/schedule, seasonal.go).
 var HolidayLooks = map[string]HolidayLook{
 	"halloween":    {Amber, Palette{Amber, Pink, Green}},
 	"thanksgiving": {Amber, Palette{Amber, Red, Yellow}},

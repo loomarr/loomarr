@@ -3,7 +3,7 @@ import type { DateScope } from "@loomarr/api/models/dateScope";
 import { eraOf } from "@/lib/era-dates";
 
 // The Programming tab's defaultable fields (#1817 item 4). Each one is either a channel override
-// or the sentinel `schedule.ChannelPolicy` reads as "inherit" (internal/schedule/policy.go). Most
+// or the sentinel `schedule.ChannelPolicy` reads as "inherit" (internal/channels/schedule/policy.go). Most
 // of those inherited values are Loomarr's built-ins, not a household setting, which is why the
 // summary says so rather than pointing at Settings.
 //

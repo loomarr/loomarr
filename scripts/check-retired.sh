@@ -424,11 +424,11 @@ RETIRED=(
   'cmd/query-mood-review|the mood-review runner is gone; the frozen mood-review artifacts are verified by internal/eval'
   'RunMoodReview|the mood-review runner is gone; CompileMoodReviewAuthority verifies the frozen submissions'
   # #2147 — POST /v1/channels makes hand-made channels only. Binding a channel to an approved
-  # proposal is approval's write (binder.Plan), never a second route with its own copy of the rules.
-  'LineupFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
-  'PolicyFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
-  'RequestFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
-  'ApprovedProposalForJob|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  # proposal is approval's write (channels/approval), never a second route with its own copy of the rules.
+  'LineupFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'PolicyFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'RequestFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'ApprovedProposalForJob|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
   # #2147: the whole-video structure assessment (one call over the complete source) was superseded
   # by the structure-window pipeline, which plans, assesses and stitches windows. Its record,
   # reservation ledger, operation publication, v9 prompt and ledger table are gone; the window

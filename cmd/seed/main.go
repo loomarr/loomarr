@@ -31,7 +31,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -41,7 +42,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/rating"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
@@ -253,7 +253,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	}
 	// nil edit: seed approves the proposal as generated. It goes through the real gate rather
 	// than writing `available` rows directly — AGENTS.md's do-not list names that explicitly.
-	channelPlanner := binder.New(st, nil, nil, slog.New(slog.DiscardHandler))
+	channelPlanner := approval.New(st, nil, nil, slog.New(slog.DiscardHandler))
 	approver := suggest.NewApprover(st, channelPlanner, time.Now)
 	approved, err := approver.Approve(ctx, stored, nil, adminID)
 	if err != nil {

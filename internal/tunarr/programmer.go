@@ -10,7 +10,7 @@ package tunarr
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // ChannelSpec is the desired Tunarr channel definition the scheduler wants to

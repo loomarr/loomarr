@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/channeljourney"
@@ -65,7 +65,7 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (store.Channe
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	log := testkit.Logger()
-	b := binder.New(st, nil, nil, log)
+	b := approval.New(st, nil, nil, log)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
 		Approver: suggest.NewApprover(st, b, channeljourney.Clock),
@@ -141,7 +141,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			now := channeljourney.Clock()
 			st := testkit.MigratedSQLiteStore(t)
 			log := testkit.Logger()
-			b := binder.New(st, nil, nil, log)
+			b := approval.New(st, nil, nil, log)
 			srv := httptest.NewServer(api.Router(log, api.Options{
 				Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
 				Approver: suggest.NewApprover(st, b, func() time.Time { return now }),

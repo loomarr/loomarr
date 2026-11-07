@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/viewing"
 )
 
 // The viewer tag: who a signed play URL was minted for, so household viewing (#1662) can say who

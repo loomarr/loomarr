@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
@@ -30,7 +30,7 @@ func TestDemoSeedChannelsAreIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		approver := suggest.NewApprover(st, binder.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
+		approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 		ids := map[int]string{}
 		for _, c := range demolibrary.Channels {
 			id, err := ensureChannel(ctx, st, approver, admin.ID, c)

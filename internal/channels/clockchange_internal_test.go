@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // A holiday turns at the channel's local midnight. In a :30 zone that is not an hour top of the

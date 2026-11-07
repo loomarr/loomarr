@@ -253,8 +253,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
 			"make fe-codegen": exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
 			"web/scripts/install-android-ccache.sh \"${RUNNER_TEMP}/loomarr-android-ccache-tool\"": exactWorkflowStep(7, "Install pinned ccache", workflowStepAuthority{allowsAcquisition: true}),
-			"echo \"gradle-cache-primary-key=android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}\"\necho \"gradle-cache-hit=${{ steps.gradle-cache.outputs.cache-hit == 'true' }}\"\necho \"gradle-cache-source-sha=${GITHUB_SHA}\"\n": exactWorkflowStep(10, "Record Gradle cache provenance", workflowStepAuthority{}),
-			"make android-profile": exactWorkflowStep(11, "Build and profile the verified four-ABI bundle", workflowStepAuthority{
+			"make android-profile": exactWorkflowStep(9, "Build and profile the verified four-ABI bundle", workflowStepAuthority{
 				targets: []string{"android-profile", "android"},
 				environment: map[string]string{
 					"ANDROID_CI_OUTPUT_DIR":           "${{ github.workspace }}/.artifacts/android-ci",
@@ -266,7 +265,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"LOOMARR_ANDROID_GRADLE_WORKERS":  "2",
 				},
 			}),
-			"./scripts/android-ccache-promotion.sh pack \"$RUNNER_TEMP/loomarr-android-ccache\" \"$RUNNER_TEMP/loomarr-android-ccache-transfer\" \"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}\"": exactWorkflowStep(14, "Package the verified merge-queue compiler cache", workflowStepAuthority{
+			"./scripts/android-ccache-promotion.sh pack \"$RUNNER_TEMP/loomarr-android-ccache\" \"$RUNNER_TEMP/loomarr-android-ccache-transfer\" \"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}\"": exactWorkflowStep(10, "Package the verified merge-queue compiler cache", workflowStepAuthority{
 				condition: "github.event_name == 'merge_group'",
 			}),
 		}),
@@ -303,7 +302,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-expo-android-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
 			"web/scripts/install-android-ccache.sh \"${RUNNER_TEMP}/loomarr-android-ccache-tool\"": exactWorkflowStep(6, "Install pinned ccache", workflowStepAuthority{allowsAcquisition: true}),
-			"make client-android-debug CLIENT_APP=mobile": exactWorkflowStep(9, "Generate and build the standalone mobile APK", workflowStepAuthority{
+			"make client-android-debug CLIENT_APP=mobile": exactWorkflowStep(7, "Generate and build the standalone mobile APK", workflowStepAuthority{
 				targets: []string{"client-android-debug"},
 				environment: map[string]string{
 					"CCACHE_DIR":                      "${{ runner.temp }}/loomarr-android-ccache",
@@ -352,7 +351,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-tokens-verify": exactWorkflowStep(6, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 1"}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify eval-contract": exactWorkflowStep(5, "Static analysis and repository contracts", workflowStepAuthority{targets: []string{"fmt", "shellcheck", "privacy-verify", "vet", "tags-verify", "vet-tags", "lint", "agent-harness-test", "compose-verify", "release-verify", "go-race-verify", "eval-contract"}}),
+			"make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify eval-contract": exactWorkflowStep(5, "Static analysis and repository contracts", workflowStepAuthority{targets: []string{"fmt", "shellcheck", "privacy-verify", "vet", "tags-verify", "vet-tags", "lint", "agent-harness-test", "compose-verify", "release-verify", "go-race-verify", "eval-contract"}, environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
 			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}}),
 			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}}),
 			"make config-docs-verify":       exactWorkflowStep(8, "Config docs are committed and current", workflowStepAuthority{targets: []string{"config-docs-verify"}}),
@@ -417,11 +416,17 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 				"ci-ok": {
 					condition:   "always()",
-					permissions: map[string]string{"actions": "read", "contents": "read"},
+					permissions: map[string]string{"actions": "read", "contents": "read", "issues": "write"},
 					steps:       map[string]workflowStepAuthority{},
 				},
 			},
 		},
+		"merge-gate.yml": standardRunWorkflow(map[string]workflowStepAuthority{
+			"make vet": exactWorkflowStep(4, "The merged tree compiles, tests included", workflowStepAuthority{
+				targets:   []string{"vet"},
+				condition: "steps.go.outputs.changed == 'true'",
+			}),
+		}),
 		"image-benchmark.yml": {
 			permissions: standardWorkflowPermissions(),
 			jobs: map[string]workflowJobAuthority{

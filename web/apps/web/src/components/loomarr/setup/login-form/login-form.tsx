@@ -1,11 +1,8 @@
 import { loginSchema } from "@loomarr/core/schemas";
-import { useForm } from "@tanstack/react-form";
 import { FlaskConical, KeyRound, Loader2, LogIn } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import type { LoginFormProps } from "./login-form.type";
 
@@ -46,7 +43,7 @@ const LoginForm = ({
   ssoError,
   className,
 }: LoginFormProps) => {
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { username: "", password: "" },
     validators: { onSubmit: loginSchema },
     onSubmit: ({ value }) => onSubmit(value),
@@ -63,40 +60,20 @@ const LoginForm = ({
     >
       {error != null && <ErrorState error={error} />}
 
-      <form.Field name="username">
-        {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="login-username">Username</Label>
-            <Input
-              id="login-username"
-              name={field.name}
-              autoComplete="username"
-              value={field.state.value}
-              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
-        )}
-      </form.Field>
+      <form.AppField name="username">
+        {(field) => <field.TextField autoComplete="username" id="login-username" label="Username" />}
+      </form.AppField>
 
-      <form.Field name="password">
+      <form.AppField name="password">
         {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="login-password">Password</Label>
-            <Input
-              id="login-password"
-              name={field.name}
-              type="password"
-              autoComplete="current-password"
-              value={field.state.value}
-              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
+          <field.TextField
+            autoComplete="current-password"
+            id="login-password"
+            label="Password"
+            type="password"
+          />
         )}
-      </form.Field>
+      </form.AppField>
 
       <a
         className="text-signal -mt-3 self-end text-sm underline-offset-4 hover:underline"

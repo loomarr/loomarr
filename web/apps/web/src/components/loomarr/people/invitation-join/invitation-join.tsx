@@ -1,12 +1,9 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { useForm } from "@tanstack/react-form";
 import { CalendarClock, Loader2, LogIn, ShieldCheck, UserRound } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
 
 const InvitationJoin = ({
@@ -18,7 +15,7 @@ const InvitationJoin = ({
 }: InvitationJoinProps) => {
   const library = preview?.credentialPath === "library_password";
   const schema = redeemInvitationSchema(library);
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { username: "", password: "", confirm: "" },
     validators: { onSubmit: schema },
     onSubmit: ({ value }) => {
@@ -102,60 +99,33 @@ const InvitationJoin = ({
       {error ? <ErrorState error={error} /> : null}
 
       {library ? (
-        <form.Field name="username">
-          {(field) => (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="join-username">Library username</Label>
-              <Input
-                id="join-username"
-                name={field.name}
-                autoComplete="username"
-                value={field.state.value}
-                aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                onChange={(event) => field.handleChange(event.target.value)}
-              />
-              <FieldError errors={field.state.meta.errors} />
-            </div>
-          )}
-        </form.Field>
+        <form.AppField name="username">
+          {(field) => <field.TextField autoComplete="username" id="join-username" label="Library username" />}
+        </form.AppField>
       ) : null}
 
-      <form.Field name="password">
+      <form.AppField name="password">
         {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="join-password">{library ? "Library password" : "Create password"}</Label>
-            <Input
-              id="join-password"
-              name={field.name}
-              type="password"
-              autoComplete={library ? "current-password" : "new-password"}
-              value={field.state.value}
-              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-              onChange={(event) => field.handleChange(event.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
+          <field.TextField
+            autoComplete={library ? "current-password" : "new-password"}
+            id="join-password"
+            label={library ? "Library password" : "Create password"}
+            type="password"
+          />
         )}
-      </form.Field>
+      </form.AppField>
 
       {!library ? (
-        <form.Field name="confirm">
+        <form.AppField name="confirm">
           {(field) => (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="join-confirm-password">Confirm password</Label>
-              <Input
-                id="join-confirm-password"
-                name={field.name}
-                type="password"
-                autoComplete="new-password"
-                value={field.state.value}
-                aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                onChange={(event) => field.handleChange(event.target.value)}
-              />
-              <FieldError errors={field.state.meta.errors} />
-            </div>
+            <field.TextField
+              autoComplete="new-password"
+              id="join-confirm-password"
+              label="Confirm password"
+              type="password"
+            />
           )}
-        </form.Field>
+        </form.AppField>
       ) : null}
 
       <Button type="submit" disabled={isRedeeming}>

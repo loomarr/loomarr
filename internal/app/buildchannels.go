@@ -11,8 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/backendtransition"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -24,7 +25,6 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
@@ -49,7 +49,7 @@ type channelBuild struct {
 	playoutGuide           api.PlayoutGuide
 	playoutResolver        *playoutResolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
-	channelNumbers         binder.NumberSource
+	channelNumbers         approval.NumberSource
 }
 
 func buildChannels(
@@ -143,7 +143,7 @@ func buildChannels(
 	// Which channel numbers Tunarr already uses (§9 V54). Function scope for the same reason as
 	// `residentVRAM` above: it is SET where the programmer is built, and READ far below where the
 	// binder is assembled. Nil until assigned, which numbering treats as "Loomarr's store only".
-	var chanNumbers binder.NumberSource
+	var chanNumbers approval.NumberSource
 	if st != nil {
 		lib := libraryClient
 		prog := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)

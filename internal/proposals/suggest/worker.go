@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -85,7 +85,7 @@ func (s *Service) WithProposalNotifier(notifier ProposalNotifier) *Service {
 // ChannelAutoCurator applies the §8.2 channel-scoped auto-curate grant: it decides whether a
 // re-curation proposal may auto-approve because its CHANNEL opted in (AutoCurate), bounded by
 // the quality bar + title cap — never a user quota. The suggest package declares the interface
-// (dependency inversion); internal/recurate implements it, wired at the composition root, so
+// (dependency inversion); internal/channels/recurate implements it, wired at the composition root, so
 // suggest never imports recurate. Returns the same Decision shape the per-user grant does.
 type ChannelAutoCurator interface {
 	Consider(ctx context.Context, p store.Proposal) (Decision, error)

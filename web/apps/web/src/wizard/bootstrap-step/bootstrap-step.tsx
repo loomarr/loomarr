@@ -2,16 +2,13 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { ApiError } from "@loomarr/api/mutator";
 import { bootstrapSchema } from "@loomarr/core/schemas";
-import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import type { BootstrapStepProps } from "./bootstrap-step.type";
 
 // Wizard step 1 — create the owning admin (§11, §13). Unauthenticated *because* it is
@@ -46,7 +43,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
     },
   });
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { username: "", password: "", confirm: "" },
     validators: { onSubmit: bootstrapSchema },
     onSubmit: ({ value }) => {
@@ -109,55 +106,31 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
     >
       {blockingError != null && <ErrorState error={blockingError} />}
 
-      <form.Field name="username">
-        {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bootstrap-username">Username</Label>
-            <Input
-              id="bootstrap-username"
-              name={field.name}
-              autoComplete="username"
-              value={field.state.value}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
-        )}
-      </form.Field>
+      <form.AppField name="username">
+        {(field) => <field.TextField autoComplete="username" id="bootstrap-username" label="Username" />}
+      </form.AppField>
 
-      <form.Field name="password">
+      <form.AppField name="password">
         {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bootstrap-password">Password</Label>
-            <Input
-              id="bootstrap-password"
-              name={field.name}
-              type="password"
-              autoComplete="new-password"
-              value={field.state.value}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
+          <field.TextField
+            autoComplete="new-password"
+            id="bootstrap-password"
+            label="Password"
+            type="password"
+          />
         )}
-      </form.Field>
+      </form.AppField>
 
-      <form.Field name="confirm">
+      <form.AppField name="confirm">
         {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bootstrap-confirm">Confirm password</Label>
-            <Input
-              id="bootstrap-confirm"
-              name={field.name}
-              type="password"
-              autoComplete="new-password"
-              value={field.state.value}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
+          <field.TextField
+            autoComplete="new-password"
+            id="bootstrap-confirm"
+            label="Confirm password"
+            type="password"
+          />
         )}
-      </form.Field>
+      </form.AppField>
 
       <Button type="submit" disabled={busy} className="w-fit">
         {busy && <Loader2 className="animate-spin" aria-hidden />}

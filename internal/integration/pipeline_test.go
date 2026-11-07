@@ -27,9 +27,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
@@ -37,7 +38,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -122,9 +122,9 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	go svc.Run(ctx)
 
 	log := slog.New(slog.DiscardHandler)
-	chBinder := binder.New(st, engine, nil, log)
+	chBinder := approval.New(st, engine, nil, log)
 	approver := suggest.NewApprover(st, chBinder, clock)
-	// engine (*channels.Engine) satisfies binder.Reconciler directly, so the shared
+	// engine (*channels.Engine) satisfies approval.Reconciler directly, so the shared
 	// binder here reconciles through the SAME real engine the rig otherwise wires —
 	// no drift between what the API's approve/create paths and the binder see.
 	h := api.Router(log, api.Options{

@@ -9,11 +9,11 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/channeledit"
+	"github.com/loomarr/loomarr/internal/channels/edit"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -288,12 +288,12 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	req := channeledit.NewChannel{
+	req := edit.NewChannel{
 		ID: in.Body.ID, Name: in.Body.Name, Number: in.Body.Number, Group: in.Body.Group, Logo: in.Body.Logo,
 		Strategy: schedule.Strategy(in.Body.Strategy),
 	}
 	if in.Body.Series != nil {
-		req.Series = &channeledit.SeriesScope{
+		req.Series = &edit.SeriesScope{
 			Key: provision.Key(in.Body.Series.Key), Title: in.Body.Series.Title,
 			SeasonMin: in.Body.Series.SeasonMin, SeasonMax: in.Body.Series.SeasonMax,
 		}

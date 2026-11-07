@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // "What is airing right now?" — the question the block supervisor asks at each finite EOF (§9.1).

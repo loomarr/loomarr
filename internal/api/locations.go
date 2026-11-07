@@ -9,9 +9,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/location"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 const dbIPAttribution = "https://db-ip.com"

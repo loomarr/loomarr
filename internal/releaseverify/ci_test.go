@@ -152,7 +152,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       - run: make playout-bench
   android:
     needs: changes
-    if: needs.changes.outputs.impact_android == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_android == 'true'
   tuner:
     needs: changes
     if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'
@@ -168,7 +168,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       - run: make client-apple-simulator CLIENT_APP=tv
   expo-android-mobile:
     needs: changes
-    if: needs.changes.outputs.impact_expo_android_mobile == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_expo_android_mobile == 'true'
     steps:
       - run: make client-android-debug CLIENT_APP=mobile
 `

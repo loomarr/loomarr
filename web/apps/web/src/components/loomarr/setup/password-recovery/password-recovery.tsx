@@ -1,11 +1,8 @@
 import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
-import { useForm } from "@tanstack/react-form";
 import { CheckCircle2, KeyRound, Loader2, Mail } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
 
 const SignInLink = () => (
@@ -20,7 +17,7 @@ const PasswordRecoveryRequest = ({
   error,
   onSubmit,
 }: PasswordRecoveryRequestProps) => {
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { username: "" },
     validators: { onSubmit: passwordRecoveryRequestSchema },
     onSubmit: ({ value }) => onSubmit(passwordRecoveryRequestSchema.parse(value).username),
@@ -61,22 +58,9 @@ const PasswordRecoveryRequest = ({
 
       {error ? <ErrorState error={error} /> : null}
 
-      <form.Field name="username">
-        {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="recovery-username">Username</Label>
-            <Input
-              id="recovery-username"
-              name={field.name}
-              autoComplete="username"
-              value={field.state.value}
-              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-              onChange={(event) => field.handleChange(event.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
-        )}
-      </form.Field>
+      <form.AppField name="username">
+        {(field) => <field.TextField autoComplete="username" id="recovery-username" label="Username" />}
+      </form.AppField>
 
       <Button type="submit" disabled={isPending}>
         {isPending ? <Loader2 className="animate-spin" aria-hidden /> : <Mail aria-hidden />}
@@ -102,7 +86,7 @@ const PasswordRecoveryReset = ({
   error,
   onRedeem,
 }: PasswordRecoveryResetProps) => {
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { password: "", confirm: "" },
     validators: { onSubmit: passwordRecoveryResetSchema },
     onSubmit: ({ value }) => onRedeem(value.password),
@@ -164,40 +148,26 @@ const PasswordRecoveryReset = ({
 
       {error ? <ErrorState error={error} /> : null}
 
-      <form.Field name="password">
+      <form.AppField name="password">
         {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="recovery-password">New password</Label>
-            <Input
-              id="recovery-password"
-              name={field.name}
-              type="password"
-              autoComplete="new-password"
-              value={field.state.value}
-              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-              onChange={(event) => field.handleChange(event.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
+          <field.TextField
+            autoComplete="new-password"
+            id="recovery-password"
+            label="New password"
+            type="password"
+          />
         )}
-      </form.Field>
-      <form.Field name="confirm">
+      </form.AppField>
+      <form.AppField name="confirm">
         {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="recovery-confirm">Confirm new password</Label>
-            <Input
-              id="recovery-confirm"
-              name={field.name}
-              type="password"
-              autoComplete="new-password"
-              value={field.state.value}
-              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-              onChange={(event) => field.handleChange(event.target.value)}
-            />
-            <FieldError errors={field.state.meta.errors} />
-          </div>
+          <field.TextField
+            autoComplete="new-password"
+            id="recovery-confirm"
+            label="Confirm new password"
+            type="password"
+          />
         )}
-      </form.Field>
+      </form.AppField>
 
       <Button type="submit" disabled={isRedeeming}>
         {isRedeeming ? <Loader2 className="animate-spin" aria-hidden /> : <KeyRound aria-hidden />}
