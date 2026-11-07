@@ -35,8 +35,9 @@ test("missing TMDB keeps connected AI truthful and preserves the channel draft t
   await expect(page.getByRole("button", { name: /^TMDB/ })).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Your channel draft is saved")).toBeVisible();
 
+  // Arriving at the Guide reopens the kept draft, which is the describe form in the URL.
   await page.getByRole("link", { name: "Return to channel" }).click();
-  await expect(page).toHaveURL(/\/guide$/);
+  await expect(page).toHaveURL(/\/guide\?new=/);
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue(
     "Saturday morning cartoons",
   );
@@ -168,9 +169,12 @@ test("discarding clears a deep-linked Journey so a reload is genuinely fresh", a
   await expect(page.getByText("The Velvet Cartographer")).toBeVisible();
   await page.getByRole("button", { name: "Discard" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
-  await expect(page).toHaveURL(/\/guide$/);
+  await expect(page).toHaveURL(/\/guide\?new=/);
 
+  // The URL holds the fresh form, so a reload keeps it; arriving anew must not resume the Job.
   await page.reload();
+  await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
+  await page.goto("/guide");
   await page.getByRole("button", { name: "Add a channel" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
   expect(mock.state.channelCreationRequests).toEqual([]);
