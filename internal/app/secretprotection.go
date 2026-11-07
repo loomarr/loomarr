@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-func buildSecretProtection(ctx context.Context, st store.Store, dataDir string) (*secretprotection.Manager, error) {
+func buildSecretProtection(ctx context.Context, st store.Store, dataDir string, log *slog.Logger) (*secretprotection.Manager, error) {
 	if dataDir == "" {
 		if path := store.SQLitePath(st); path != "" {
 			dataDir = filepath.Dir(path)
@@ -24,6 +25,12 @@ func buildSecretProtection(ctx context.Context, st store.Store, dataDir string) 
 	loaded, err := secretprotection.LoadInstallationKey(secretprotection.InstallationKeyOptions{DataDir: dataDir})
 	if err != nil {
 		return nil, fmt.Errorf("initialize database secret protection: %w", err)
+	}
+	if keyBesideDatabase(loaded.Path, store.SQLitePath(st)) && log != nil {
+		log.Warn("the encryption key is stored beside the database it protects: a copy of this folder "+
+			"(a volume backup, rsync, a sync tool) carries both, and the saved credentials with them. "+
+			"Keep the key in a separate place and point LOOMARR_ENCRYPTION_KEY_FILE at it.",
+			"key", loaded.Path, "database", store.SQLitePath(st))
 	}
 	previous, replacing, err := secretprotection.LoadPreviousInstallationKey(nil)
 	if err != nil {
@@ -48,6 +55,16 @@ func buildSecretProtection(ctx context.Context, st store.Store, dataDir string) 
 		return nil, fmt.Errorf("initialize database secret protection: %w", err)
 	}
 	return manager, nil
+}
+
+// keyBesideDatabase reports whether the installation key file sits in the SQLite database's own
+// directory, where any copy of that folder carries the key and the ciphertext it protects together.
+// A key from the environment (no path) or a Postgres store (no file) is never beside it.
+func keyBesideDatabase(keyPath, databasePath string) bool {
+	if keyPath == "" || databasePath == "" {
+		return false
+	}
+	return filepath.Dir(filepath.Clean(keyPath)) == filepath.Dir(filepath.Clean(databasePath))
 }
 
 func protectedSetting(reg *settings.Registry, key string) bool {

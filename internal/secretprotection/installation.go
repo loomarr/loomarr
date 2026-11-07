@@ -63,6 +63,8 @@ func LoadPreviousInstallationKey(lookup func(string) (string, bool)) (Installati
 type LoadedInstallationKey struct {
 	Key    InstallationKey
 	Source InstallationKeySource
+	// Path is the key file read or written; empty when the key came from the environment.
+	Path string
 }
 
 // LoadInstallationKey resolves environment, explicit file, or the generated
@@ -87,7 +89,7 @@ func LoadInstallationKey(options InstallationKeyOptions) (LoadedInstallationKey,
 	}
 	if hasFileEnv {
 		key, err := readInstallationKeyFile(fileEnv)
-		return LoadedInstallationKey{Key: key, Source: InstallationKeyFile}, err
+		return LoadedInstallationKey{Key: key, Source: InstallationKeyFile, Path: fileEnv}, err
 	}
 	if options.DataDir == "" {
 		return LoadedInstallationKey{}, errors.New("secret protection: no data directory for generated installation key")
@@ -95,7 +97,7 @@ func LoadInstallationKey(options InstallationKeyOptions) (LoadedInstallationKey,
 	path := filepath.Join(options.DataDir, installationKeyName)
 	key, err := readInstallationKeyFile(path)
 	if err == nil {
-		return LoadedInstallationKey{Key: key, Source: InstallationKeyFile}, nil
+		return LoadedInstallationKey{Key: key, Source: InstallationKeyFile, Path: path}, nil
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
 		return LoadedInstallationKey{}, err
@@ -113,9 +115,9 @@ func LoadInstallationKey(options InstallationKeyOptions) (LoadedInstallationKey,
 	}
 	if !created {
 		key, err = readInstallationKeyFile(path)
-		return LoadedInstallationKey{Key: key, Source: InstallationKeyFile}, err
+		return LoadedInstallationKey{Key: key, Source: InstallationKeyFile, Path: path}, err
 	}
-	return LoadedInstallationKey{Key: generated, Source: InstallationKeyGenerated}, nil
+	return LoadedInstallationKey{Key: generated, Source: InstallationKeyGenerated, Path: path}, nil
 }
 
 func nonemptyEnv(lookup func(string) (string, bool), name string) (string, bool) {
