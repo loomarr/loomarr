@@ -14,12 +14,13 @@ jobs:
   run:
     name: Shared clients — ${{ matrix.lane }}
     runs-on: ubuntu-latest
-    # One job took 4m38s and set the pace of every web PR. Each lane takes about half of that. The
-    # lanes key their caches apart because only one Metro cache would survive a shared key.
+    # One job took 4m38s and set the pace of every web PR. The checks and each app's bundles run on
+    # their own runners. The lanes key their caches apart because only one Metro cache would
+    # survive a shared key.
     strategy:
-      fail-fast: false # one lane's failures must not hide the other's
+      fail-fast: false # one lane's failures must not hide the others'
       matrix:
-        lane: [checks, bundles]
+        lane: [checks, mobile, tv]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -53,12 +54,12 @@ jobs:
           TMPDIR: ${{ runner.temp }}
           TURBO_TELEMETRY_DISABLED: "1"
         run: make clients-checks
-      - name: Bundle the mobile and TV clients
-        if: matrix.lane == 'bundles'
+      - name: Bundle the client
+        if: matrix.lane != 'checks'
         env:
           TMPDIR: ${{ runner.temp }}
           TURBO_TELEMETRY_DISABLED: "1"
-        run: make clients-bundles
+        run: make clients-bundles CLIENTS_APP=${{ matrix.lane }}
       # ⚠ Never from the merge queue (#1679): a queue batch's unique ref makes the save unreadable.
       - name: Save Metro and Turbo work (not from the merge queue)
         if: github.event_name != 'merge_group' && steps.clients-cache.outputs.cache-hit != 'true'

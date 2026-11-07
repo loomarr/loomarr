@@ -343,9 +343,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"TURBO_TELEMETRY_DISABLED": "1",
 				},
 			}),
-			"make clients-bundles": exactWorkflowStep(7, "Bundle the mobile and TV clients", workflowStepAuthority{
+			"make clients-bundles CLIENTS_APP=${{ matrix.lane }}": exactWorkflowStep(7, "Bundle the client", workflowStepAuthority{
 				targets:   []string{"clients-bundles"},
-				condition: "matrix.lane == 'bundles'",
+				condition: "matrix.lane != 'checks'",
 				environment: map[string]string{
 					"TMPDIR":                   "${{ runner.temp }}",
 					"TURBO_TELEMETRY_DISABLED": "1",
@@ -355,9 +355,10 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{}),
 		"ci-frontend.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make fe-unit FE_SHARD=${{ matrix.shard }}/4": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard != 5"}),
-			"make fe-checks":        exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-checks"}, condition: "matrix.shard == 5"}),
-			"make fe-tokens-verify": exactWorkflowStep(7, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 5"}),
+			"make fe-unit FE_SHARD=${{ matrix.shard }}/6": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard <= 6"}),
+			"make fe-checks":        exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-checks"}, condition: "matrix.shard == 7"}),
+			"make fe-tokens-verify": exactWorkflowStep(7, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 7"}),
+			"make fe-packages":      exactWorkflowStep(8, "", workflowStepAuthority{targets: []string{"fe-packages"}, condition: "matrix.shard == 8"}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
