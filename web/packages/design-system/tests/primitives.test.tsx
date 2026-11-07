@@ -104,6 +104,34 @@ describe("Badge", () => {
     expect(markup).not.toMatch(/border-?[wW]idth:1px/);
   });
 
+  // A block-level flex box here would stretch the tag across any block parent and pin it to the top
+  // of an `items-center` row; a colour on the label alone would miss the icon and hover classes.
+  it("sits inline on web and hands its colour down from the wrapper", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Badge icon={<svg aria-hidden="true" />} shape="square" tone="override">
+          Set
+        </Badge>
+      </LoomarrProvider>,
+    );
+    expect(markup).toMatch(/<span class="is_View[^>]*style="color:var\(--contentPrimary\)"><svg/);
+    expect(markup).toContain("display:inline-flex");
+    expect(markup).not.toContain("<div");
+  });
+
+  it("lowers the accent tint on request", () => {
+    const tinted = (tintOpacity?: number) =>
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <Badge shape="square" tintOpacity={tintOpacity} tone="onair">
+            Admin
+          </Badge>
+        </LoomarrProvider>,
+      );
+    expect(tinted()).toContain(",0.15)");
+    expect(tinted(0.12)).toContain(",0.12)");
+  });
+
   it("keeps the existing pill shape as the default", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
