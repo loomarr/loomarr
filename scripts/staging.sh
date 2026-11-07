@@ -71,10 +71,16 @@ destroy() {
 
 up() {
 	local hours="${STAGING_HOURS:-4}" version="${VERSION:-}" image="${STAGING_IMAGE:-}" commit="${STAGING_COMMIT:-}"
-	local database="${STAGING_DATABASE:-sqlite}"
+	local database="${STAGING_DATABASE:-sqlite}" public_url="${STAGING_PUBLIC_URL:-}" tunnel_token=''
 	[ -n "${VULTR_API_KEY:-}" ] || die 'VULTR_API_KEY is not set'
 	[ -n "${TS_AUTHKEY:-}" ] || die 'TS_AUTHKEY is not set'
 	[[ "$database" =~ ^(sqlite|postgres)$ ]] || die 'STAGING_DATABASE must be sqlite or postgres'
+	if [ -n "$public_url" ]; then
+		[[ "$public_url" =~ ^https://[a-z0-9.-]+$ ]] || die "invalid STAGING_PUBLIC_URL: $public_url"
+		[ -n "${CF_TUNNEL_TOKEN:-}" ] || die 'a public site needs CF_TUNNEL_TOKEN'
+		# Only a public server gets this: a staging run has no use for it.
+		tunnel_token="$CF_TUNNEL_TOKEN"
+	fi
 	if [ "$hours" != keep ]; then
 		[[ "$hours" =~ ^[0-9]+$ ]] && [ "$hours" -ge 1 ] && [ "$hours" -le "$MAX_HOURS" ] ||
 			die "STAGING_HOURS must be 1 to $MAX_HOURS, or keep"
@@ -101,8 +107,9 @@ up() {
 	fi
 	{
 		printf '#!/bin/bash\n'
-		printf 'STAGING_NAME=%q\nVERSION=%q\nSTAGING_IMAGE=%q\nSTAGING_COMMIT=%q\nSTAGING_DATABASE=%q\nTS_AUTHKEY=%q\n' \
-			"$name" "$version" "$image" "$commit" "$database" "$TS_AUTHKEY"
+		printf 'STAGING_NAME=%q\nVERSION=%q\nSTAGING_IMAGE=%q\nSTAGING_COMMIT=%q\nSTAGING_DATABASE=%q\n' \
+			"$name" "$version" "$image" "$commit" "$database"
+		printf 'STAGING_PUBLIC_URL=%q\nTS_AUTHKEY=%q\nCF_TUNNEL_TOKEN=%q\n' "$public_url" "$TS_AUTHKEY" "$tunnel_token"
 		cat "$ROOT/docker/staging-boot.sh.tmpl"
 	} >"$TMP/boot"
 	# Through a file, because the boot script holds the tailnet key and argv is visible.

@@ -10,6 +10,10 @@
 #
 # DEMO_SITE_DATABASE=postgres runs it on Postgres instead of SQLite.
 #
+# DEMO_SITE_PUBLIC=1 with CF_TUNNEL_TOKEN puts it on the internet through a Cloudflare Tunnel. The
+# demo admin's password is in this repository, so visitors get a member account instead, and the
+# tunnel starts only once that password no longer works.
+#
 # A seeder newer than the server would migrate the store past what the server can open, which is
 # why a release builds the tool from its own tag and never from this checkout.
 
@@ -34,12 +38,73 @@ sqlite | postgres) ;;
 	;;
 esac
 
+PUBLIC="${DEMO_SITE_PUBLIC:-0}"
+ADMIN_LOGIN='{"username":"demo","password":"loomarr-demo"}'
+GUEST_USER=guest
+GUEST_PASSWORD=loomarr-guest
+
 compose() {
 	local files=(-f "$ROOT/docker/compose.demo.yaml")
 	if [ "$DATABASE" = postgres ]; then
 		files+=(-f "$ROOT/docker/compose.demo.postgres.yaml")
 	fi
+	if [ "$PUBLIC" = 1 ]; then
+		files+=(-f "$ROOT/docker/compose.demo.public.yaml")
+	fi
 	docker compose "${files[@]}" "$@"
+}
+
+# admin_login prints the status of signing in with the public admin password, keeping the session
+# in the cookie jar named by $1.
+admin_login() {
+	curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -c "$1" -H 'Content-Type: application/json' \
+		-d "$ADMIN_LOGIN" "$BASE/v1/auth/login"
+}
+
+# lock_down leaves visitors a member account and retires the public admin password. Nobody needs
+# the new one: this site is rebuilt, never administered, so it is thrown away.
+lock_down() {
+	local BASE="http://${DEMO_SITE_BIND:-127.0.0.1}:$DEMO_SITE_PORT" jar status secret
+	jar="$(mktemp)"
+	# shellcheck disable=SC2064 # the path is fixed now, and a local is gone by the time this runs
+	trap "rm -f '$jar'" RETURN
+	status="$(admin_login "$jar")"
+	if [ "$status" = 401 ]; then
+		echo 'demo-site: the public admin password is already retired'
+		return
+	fi
+	[ "$status" = 200 ] || {
+		echo "demo-site: sign-in returned $status, so the site stays private" >&2
+		exit 1
+	}
+
+	status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -b "$jar" -H 'X-Loomarr-Csrf: 1' -H 'Content-Type: application/json' \
+		-d "{\"username\":\"$GUEST_USER\",\"password\":\"$GUEST_PASSWORD\",\"role\":\"member\"}" "$BASE/v1/users")"
+	case "$status" in
+	2?? | 409) ;;
+	*)
+		echo "demo-site: creating the visitor account returned $status, so the site stays private" >&2
+		exit 1
+		;;
+	esac
+
+	secret="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+	status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -b "$jar" -H 'X-Loomarr-Csrf: 1' -H 'Content-Type: application/json' \
+		-d "{\"current\":\"loomarr-demo\",\"next\":\"$secret\"}" "$BASE/v1/auth/password")"
+	case "$status" in
+	2??) ;;
+	*)
+		echo "demo-site: changing the admin password returned $status, so the site stays private" >&2
+		exit 1
+		;;
+	esac
+
+	# Proof, not a status code: the tunnel opens only if the public password is really refused.
+	status="$(admin_login "$jar")"
+	[ "$status" = 401 ] || {
+		echo "demo-site: the public admin password still returns $status, so the site stays private" >&2
+		exit 1
+	}
 }
 
 # release_source exports the tagged tree with this checkout's demo Dockerfile, which an older tag
@@ -59,6 +124,10 @@ release_source() {
 }
 
 up() {
+	if [ "$PUBLIC" = 1 ] && [ -z "${CF_TUNNEL_TOKEN:-}" ]; then
+		echo 'demo-site: DEMO_SITE_PUBLIC=1 needs CF_TUNNEL_TOKEN' >&2
+		exit 2
+	fi
 	if [ -n "${VERSION:-}" ] && [ -n "$LOOMARR_IMAGE" ]; then
 		echo 'demo-site: set VERSION or LOOMARR_IMAGE, not both' >&2
 		exit 2
@@ -74,21 +143,34 @@ up() {
 
 	compose up -d --build
 
-	local seed status waited=0
+	# On SQLite the seeder and the server write to one file from two processes, so a seed can lose
+	# the lock. It is safe to rerun, and a released seeder can't be changed, so try again here.
+	local seed status attempt waited=0
 	seed="$(compose ps -a -q demo-seed)"
-	while [ "$(docker inspect -f '{{.State.Status}}' "$seed")" != exited ]; do
-		if [ "$waited" -ge "$SEED_TIMEOUT_SECONDS" ]; then
-			echo "demo-site: the seeder did not finish in ${SEED_TIMEOUT_SECONDS}s" >&2
-			exit 1
-		fi
-		sleep 5
-		waited=$((waited + 5))
+	for attempt in 1 2 3; do
+		while [ "$(docker inspect -f '{{.State.Status}}' "$seed")" != exited ]; do
+			if [ "$waited" -ge "$SEED_TIMEOUT_SECONDS" ]; then
+				echo "demo-site: the seeder did not finish in ${SEED_TIMEOUT_SECONDS}s" >&2
+				exit 1
+			fi
+			sleep 5
+			waited=$((waited + 5))
+		done
+		status="$(docker inspect -f '{{.State.ExitCode}}' "$seed")"
+		if [ "$status" = 0 ] || [ "$attempt" = 3 ]; then break; fi
+		echo "demo-site: the seeder failed with status $status, trying again" >&2
+		compose start demo-seed
 	done
-	status="$(docker inspect -f '{{.State.ExitCode}}' "$seed")"
 	if [ "$status" != 0 ]; then
 		compose logs --tail 40 demo-seed >&2
 		echo "demo-site: the seeder failed with status $status" >&2
 		exit 1
+	fi
+	if [ "$PUBLIC" = 1 ]; then
+		lock_down
+		compose --profile public up -d cloudflared
+		printf 'demo site ready: %s\nsign in as %s / %s\n' "$DEMO_SITE_URL" "$GUEST_USER" "$GUEST_PASSWORD"
+		return
 	fi
 	printf 'demo site ready: %s\nsign in as demo / loomarr-demo\n' "$DEMO_SITE_URL"
 }
@@ -97,8 +179,8 @@ case "${1:-}" in
 up) up ;;
 down)
 	# Compose reads the whole file even to tear down, and teardown needs no image. Always include
-	# the Postgres layer, or a run started on it would leave its container and volume behind.
-	DATABASE=postgres LOOMARR_IMAGE="${LOOMARR_IMAGE:-unused}" compose down -v
+	# the optional layers, or a run started on them would leave containers and a volume behind.
+	DATABASE=postgres PUBLIC=1 LOOMARR_IMAGE="${LOOMARR_IMAGE:-unused}" compose --profile public down -v
 	;;
 *)
 	echo 'usage: demo-site.sh up|down' >&2

@@ -1,8 +1,9 @@
 # The staging server's first boot. scripts/staging.sh prepends the #! line and these variables:
-# STAGING_NAME, VERSION, STAGING_IMAGE, STAGING_COMMIT, STAGING_DATABASE, TS_AUTHKEY.
+# STAGING_NAME, VERSION, STAGING_IMAGE, STAGING_COMMIT, STAGING_DATABASE, STAGING_PUBLIC_URL,
+# TS_AUTHKEY, CF_TUNNEL_TOKEN.
 #
 # Nothing listens on the public address: the firewall closes it first, and the demo site binds
-# only to the tailnet address, because its sign-in is public.
+# only to the tailnet address. A public site is reached through an outbound tunnel instead.
 
 set -euxo pipefail
 exec >>/var/log/loomarr-staging.log 2>&1
@@ -22,7 +23,7 @@ ufw allow in on tailscale0
 ufw --force enable
 
 apt-get update
-apt-get install -y docker.io docker-compose-v2 git
+apt-get install -y curl docker.io docker-compose-v2 git
 
 # The key reaches Docker by name, so tracing this command cannot write it to the log.
 export TS_AUTHKEY
@@ -58,4 +59,9 @@ fi
 export DEMO_SITE_PROJECT=staging DEMO_SITE_BIND="$address" DEMO_SITE_PORT=8080 DEMO_SITE_CPUS=3
 export DEMO_SITE_DATABASE="$STAGING_DATABASE"
 export DEMO_SITE_URL="http://$STAGING_NAME:8080"
+if [ -n "$STAGING_PUBLIC_URL" ]; then
+	export DEMO_SITE_PUBLIC=1 DEMO_SITE_URL="$STAGING_PUBLIC_URL"
+	# By name, like the tailnet key, so tracing this cannot write the token to the log.
+	export CF_TUNNEL_TOKEN
+fi
 "$SOURCE/scripts/demo-site.sh" up

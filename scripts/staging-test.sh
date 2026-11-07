@@ -126,6 +126,14 @@ VERSION=0.2.0-beta.9-rc.11 "$ROOT/scripts/staging.sh" up >/dev/null
 [[ "$(jq -r .user_data "$WORK/body.json" | base64 -d)" == *0.2.0-beta.9-rc.11* ]] || fail 'the boot script does not name the release'
 [[ "$(jq -r .user_data "$WORK/body.json" | base64 -d)" == *STAGING_DATABASE=sqlite* ]] || fail 'the boot script does not default to SQLite'
 
+# A private server never receives the tunnel token, which only a public one has any use for.
+reset '{"instances":[]}'
+VERSION=1.0.0 CF_TUNNEL_TOKEN=test-tunnel-token "$ROOT/scripts/staging.sh" up >/dev/null
+if jq -r .user_data "$WORK/body.json" | base64 -d | grep -q test-tunnel-token; then fail 'a private server received the tunnel token'; fi
+reset '{"instances":[]}'
+VERSION=1.0.0 STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=test-tunnel-token "$ROOT/scripts/staging.sh" up >/dev/null
+jq -r .user_data "$WORK/body.json" | base64 -d | grep -q test-tunnel-token || fail 'a public server got no tunnel token'
+
 # The database choice reaches the server.
 reset '{"instances":[]}'
 VERSION=1.0.0 STAGING_DATABASE=postgres "$ROOT/scripts/staging.sh" up >/dev/null
@@ -145,6 +153,8 @@ expect_refused 'a short commit' STAGING_IMAGE="$IMAGE" STAGING_COMMIT=0123456
 expect_refused 'a version with shell syntax' 'VERSION=1.0.0;reboot'
 expect_refused 'no tailnet key' VERSION=1.0.0 TS_AUTHKEY=
 expect_refused 'an unknown database' VERSION=1.0.0 STAGING_DATABASE=mysql
+expect_refused 'a public site with no tunnel' VERSION=1.0.0 STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=
+expect_refused 'a public address that is not https' VERSION=1.0.0 STAGING_PUBLIC_URL=http://demo.example.test CF_TUNNEL_TOKEN=tunnel
 
 # A failed boot powers the server off, and the sweep clears it even if it was kept.
 reset '{"instances":[{"id":"dead","label":"loomarr-staging-z","tags":["loomarr-staging","keep"],"power_status":"stopped"}]}'
