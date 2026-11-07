@@ -13,14 +13,12 @@ import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import { useCrashReportUpload } from "@loomarr/native-app";
 import {
   createLastChannelStore,
-  NativePlayerView,
   type PairedClient,
-  PairedNativeImage,
   usePairedAccount,
   usePairedClient,
   usePairedRequests,
-  useShellPause,
-} from "@loomarr/player/native";
+} from "@loomarr/paired-client";
+import { NativePlayerView, PairedNativeImage, useShellPause } from "@loomarr/player/native";
 import type { ApprovalBrowser, ClientDestination } from "@loomarr/ui";
 import {
   ClientShell,

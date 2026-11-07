@@ -24,7 +24,7 @@ const LAYERS = [
   ["api", "design-system"],
   ["core"],
   ["player", "crash-reports-native", "lan-discovery-native", "fixtures"],
-  ["ui", "native-app"],
+  ["ui", "native-app", "paired-client"],
   ["ui-tv"],
 ];
 
