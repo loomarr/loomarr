@@ -637,10 +637,10 @@ func NewArchiveDownloader() *ArchiveDownloader {
 // Download fetches an Archive.org source into dropDir (§10).
 func (d *ArchiveDownloader) Download(ctx context.Context, src Source, dropDir string) (DownloadResult, error) {
 	guard := newWriteGuard(src.storageLease, src.writeCeilingBytes)
-	fetched, skipped, outputs, err := d.client.walk(
-		withAcquisition(ctx, src.ID, src.AcquisitionID, src.PublicationDir, guard),
-		src.URL, dropDir,
-	)
+	acquisition := archiveAcquisition{
+		sourceID: src.ID, acquisitionID: src.AcquisitionID, publicationDir: src.PublicationDir, guard: guard,
+	}
+	fetched, skipped, outputs, err := d.client.walk(ctx, acquisition, src.URL, dropDir)
 	if guardErr := guard.Finish(ctx); guardErr != nil {
 		err = errors.Join(err, guardErr)
 	}

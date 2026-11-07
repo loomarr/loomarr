@@ -100,7 +100,7 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 	fs := newMemSink()
 	c := newTestClient(t, fs)
 
-	fetched, skipped, _, err := c.walk(context.Background(), "https://archive.org/details/test-ad", "/drop")
+	fetched, skipped, _, err := c.walk(context.Background(), archiveAcquisition{}, "https://archive.org/details/test-ad", "/drop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,9 +155,9 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 func TestArchive_DownloadCarriesAcquisitionProvenance(t *testing.T) {
 	fs := newMemSink()
 	c := newTestClient(t, fs)
-	ctx := withAcquisition(context.Background(), "archive:classic", "acq-17", "", nil)
+	acquisition := archiveAcquisition{sourceID: "archive:classic", acquisitionID: "acq-17"}
 
-	if _, _, _, err := c.walk(ctx, "test-ad", "/drop"); err != nil {
+	if _, _, _, err := c.walk(context.Background(), acquisition, "test-ad", "/drop"); err != nil {
 		t.Fatal(err)
 	}
 	for path, raw := range fs.files {
@@ -177,13 +177,29 @@ func TestArchive_DownloadCarriesAcquisitionProvenance(t *testing.T) {
 	t.Fatal("no info-JSON sidecar written")
 }
 
+// The sidecar counts against the same guard as the media it describes: an acquisition whose
+// ceiling the sidecar would cross keeps the media and names the sidecar for repair.
+func TestArchive_SidecarCountsAgainstTheAcquisitionGuard(t *testing.T) {
+	fs := newMemSink()
+	c := newTestClient(t, fs)
+	acquisition := archiveAcquisition{guard: newWriteGuard(nil, 1)}
+
+	fetched, _, outputs, err := c.walk(context.Background(), acquisition, "test-ad", "/drop")
+	if !errors.Is(err, ErrWriteCeilingExceeded) {
+		t.Fatalf("walk err = %v, want the write ceiling", err)
+	}
+	if fetched != 1 || len(outputs) != 1 || outputs[0].SidecarPath != "" || outputs[0].Repair == "" {
+		t.Fatalf("walk = fetched %d outputs %+v, want the media kept and the sidecar named for repair", fetched, outputs)
+	}
+}
+
 func TestArchive_SkipsIfPresent(t *testing.T) {
 	fs := newMemSink()
 	c := newTestClient(t, fs)
 	// First fetch.
-	_, _, _, _ = c.walk(context.Background(), "test-ad", "/drop")
+	_, _, _, _ = c.walk(context.Background(), archiveAcquisition{}, "test-ad", "/drop")
 	// Second walk: the media file exists → skipped, not re-downloaded.
-	fetched, skipped, _, err := c.walk(context.Background(), "test-ad", "/drop")
+	fetched, skipped, _, err := c.walk(context.Background(), archiveAcquisition{}, "test-ad", "/drop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +211,7 @@ func TestArchive_SkipsIfPresent(t *testing.T) {
 func TestArchive_WalksCollection(t *testing.T) {
 	fs := newMemSink()
 	c := newTestClient(t, fs)
-	fetched, _, _, err := c.walk(context.Background(), "https://archive.org/details/test-collection", "/drop")
+	fetched, _, _, err := c.walk(context.Background(), archiveAcquisition{}, "https://archive.org/details/test-collection", "/drop")
 	if err != nil {
 		t.Fatal(err)
 	}
