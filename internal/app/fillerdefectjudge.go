@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 	"github.com/loomarr/loomarr/internal/settings"
 )

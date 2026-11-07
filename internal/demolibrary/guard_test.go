@@ -85,7 +85,7 @@ var realTitles = []string{
 	// The eval and filler-research tests (slice 16). "Saw" is left out: it would match ordinary
 	// prose.
 	"Pulp Fiction", "Buddy Foster",
-	// The remaining small groups: notifications, llm, watermark, tunarr, mediatools, the ui and ui-tv
+	// The remaining small groups: notifications, llm, watermark, tunarr, media/tools, the ui and ui-tv
 	// tests and the activity feed (slice 17). "A Christmas Carol" is left out: "Christmas carol"
 	// would match ordinary prose.
 	"Rice Krispies", "Fallout Boy", "Nickelodeon", "NBC",
@@ -285,7 +285,7 @@ var migratedGo = []string{
 	"internal/eval/release_latency_test.go",
 	"internal/eval/runner_accounting_test.go",
 	// The remaining small groups and the archived filler research tooling (slice 17).
-	"internal/auth/", "internal/contact/", "internal/llm/", "internal/mediatools/", "internal/notifications/",
+	"internal/auth/", "internal/contact/", "internal/llm/", "internal/media/tools/", "internal/notifications/",
 	"internal/proposaloutlook/", "internal/quality/", "internal/releaseverify/", "internal/tunarr/",
 	"internal/watermark/", "research/",
 	"internal/suggest/season_window_test.go",

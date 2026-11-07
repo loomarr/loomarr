@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // The channel watermark ("bug"), #1512 phase 1d.

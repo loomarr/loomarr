@@ -73,15 +73,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Depends on |
 | --- | --- |
-| `bgexec` | — |
 | `catalog` | `library`, `provision` |
 | `config` | — |
 | `contact` | — |
-| `creative` | — |
-| `defects` | — |
 | `diagnostics` | `storagegovernor` |
-| `encode` | `config` |
-| `filler` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `mediatools`, `schedule`, `storagegovernor` |
+| `filler` | `diagnostics`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `schedule`, `storagegovernor` |
 | `filler/source` | — |
 | `filler/station` | — |
 | `filler/structure` | — |
@@ -94,11 +90,15 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `jobs` | `store` |
 | `library` | `httpx`, `inventory`, `metrics` |
 | `llm` | `httpx`, `metrics` |
-| `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode` |
+| `media/bgexec` | — |
+| `media/creative` | — |
+| `media/defects` | — |
+| `media/encode` | `config` |
+| `media/tools` | `diagnostics`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode` |
 | `metadataprovider` | — |
 | `metrics` | `provision` |
 | `notifications` | `httpx` |
-| `playout` | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
+| `playout` | `config`, `diagnostics`, `media/encode`, `provision`, `schedule` |
 | `proposal` | `provision`, `schedule`, `storagegovernor` |
 | `provision` | — |
 | `quality` | `provision` |
@@ -107,7 +107,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `settings` | `config`, `library` |
 | `storagegovernor` | — |
-| `store` | `contact`, `creative`, `defects`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule` |
+| `store` | `contact`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `invitation`, `media/creative`, `media/defects`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule` |
 | `suggest` | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `rating`, `schedule`, `store` |
 
 ## How the area pages are made

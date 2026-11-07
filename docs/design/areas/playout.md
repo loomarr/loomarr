@@ -21,11 +21,11 @@ One area of the [package map](../package-map.md#start-here).
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`livetvpublish`** · 1 importer · → `library`, `tunarr`
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
-- **`playout`** · 5 importers · → `config`, `diagnostics`, `encode`, `loudness`, `media`, `playout/packager`, `proctree`, `provision`, `schedule`
+- **`playout`** · 5 importers · → `config`, `diagnostics`, `media`, `media/encode`, `media/loudness`, `media/proctree`, `playout/packager`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`playout/packager`** · 2 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
-- **`playoutbench`** · → `encode`, `playout`, `playout/packager`
+- **`playoutbench`** · → `media/encode`, `playout`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`tunarr`** · 4 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).

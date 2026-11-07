@@ -21,7 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"

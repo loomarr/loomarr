@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/defects"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 type defectReportMemStore struct {

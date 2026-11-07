@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // ErrNoDefectJudge means no vision model is configured to rule on borderline clips. They fail with

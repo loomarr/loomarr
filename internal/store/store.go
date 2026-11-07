@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/contact"
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/station"
@@ -21,6 +19,8 @@ import (
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"

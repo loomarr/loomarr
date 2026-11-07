@@ -31,7 +31,7 @@ Three repository findings take priority over model shopping:
 - [`stage_vision.go`](../internal/filler/stage_vision.go) sends only three images and skips
   vision whenever `Tagged()` is already true. A plausible but wrong text classification therefore
   never gets visual corroboration.
-- [`mediatools.go`](../internal/mediatools/mediatools.go) scales those frames to the 320 px
+- [`mediatools.go`](../internal/media/tools/mediatools.go) scales those frames to the 320 px
   preview width, contradicting Loomarr's own measured design finding that near-full-resolution input
   mattered more than model choice for OCR ([design §10](../docs/design.md)).
 - [`openai.go`](../internal/llm/openai.go) retains only aggregate prompt/completion token

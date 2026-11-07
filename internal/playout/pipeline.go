@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // The transcode pipeline builder (#1512 phase 1a).
@@ -33,7 +33,7 @@ import (
 // per stream and 21x, against ~0.16 cores and 11x for the old CPU-filter chain.
 //
 // The host vocabulary (encode.HostProfile, encode.Family, HostFor) and each family's encoder flags
-// (encode.VideoArgs) live in internal/encode, shared with the filler pipeline (#2121). The graphs
+// (encode.VideoArgs) live in internal/media/encode, shared with the filler pipeline (#2121). The graphs
 // below are playout's own: every one fits the item to the channel's uniform output.
 
 // OutputProfile is the channel's uniform output (maintainer decisions, #1512).

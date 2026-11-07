@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // phase is a stretch of a scripted encoder: ffmpeg's realtime speed and the cores it burns.

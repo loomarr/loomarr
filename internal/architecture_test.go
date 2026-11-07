@@ -311,7 +311,7 @@ func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
 // frame analysis independently; this gate is specifically the Image service boundary.
 func TestImageServiceDoesNotImportGoPixelCode(t *testing.T) {
 	pkgs := loomarrPackages(t)
-	imageService := modulePath + "/internal/images"
+	imageService := modulePath + "/internal/media/images"
 	pkg, ok := pkgs[imageService]
 	if !ok {
 		t.Fatalf("%s is not in the import graph", imageService)

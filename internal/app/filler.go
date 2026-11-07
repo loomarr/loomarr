@@ -12,8 +12,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
@@ -23,7 +21,9 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
@@ -1608,24 +1608,24 @@ func orNone(path string) string {
 	return path
 }
 
-// hostedSTTAdapter maps the OpenAI-compatible transcription wire into mediatools' timed segment
+// hostedSTTAdapter maps the OpenAI-compatible transcription wire into media/tools' timed segment
 // seam, including the service's detected language.
 type hostedSTTAdapter struct{ oa *llm.OpenAI }
 
-func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) (mediatools.AudioTranscription, error) {
+func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) (tools.AudioTranscription, error) {
 	result, err := a.oa.TranscribeAudio(ctx, llm.TranscriptionRequest{
 		Model: model, Audio: audio, Format: format, Language: language,
 	})
 	if err != nil {
-		return mediatools.AudioTranscription{}, err
+		return tools.AudioTranscription{}, err
 	}
-	out := make([]mediatools.TranscriptSegment, 0, len(result.Segments))
+	out := make([]tools.TranscriptSegment, 0, len(result.Segments))
 	for _, seg := range result.Segments {
-		out = append(out, mediatools.TranscriptSegment{
+		out = append(out, tools.TranscriptSegment{
 			StartMs: seg.StartMs, EndMs: seg.EndMs, Text: seg.Text,
 		})
 	}
-	return mediatools.AudioTranscription{Language: result.Language, Segments: out}, nil
+	return tools.AudioTranscription{Language: result.Language, Segments: out}, nil
 }
 
 // fillerDefectStoreAdapter bridges the store to the defect floor (#2034) and its enforcement

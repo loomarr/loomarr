@@ -1,6 +1,6 @@
 # Images
 
-Formerly `design.md` §22. `internal/images` is one service that owns ingest, storage, derivatives
+Formerly `design.md` §22. `internal/media/images` is one service that owns ingest, storage, derivatives
 and serving for every image Loomarr shows: uploaded channel icons, clip stills and hover loops, and
 TMDB artwork (decision [0020](decisions/0020-one-image-service.md)). Every image path uses it and
 none bypasses it.

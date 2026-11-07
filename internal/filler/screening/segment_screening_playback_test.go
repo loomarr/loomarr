@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 func TestPlaybackIntegrityEvaluatorVerifiesRenderedChildAndReplaysSettledResult(t *testing.T) {
@@ -195,8 +195,8 @@ func validPlaybackIntegrityQuality() filler.MediaQuality {
 
 func playbackIntegrityQuality(black, silence, freeze []filler.Interval) filler.MediaQuality {
 	return filler.MediaQuality{
-		EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-		Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+		EvidenceVersion: tools.MediaQualityEvidenceV1,
+		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
 		Black:           black,
 		Silence:         silence,

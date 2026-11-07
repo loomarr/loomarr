@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler/structure"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 const (

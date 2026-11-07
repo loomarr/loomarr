@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // testBug is the approved default look at 1080p: 6% of the frame height (65 px, rounded to even),

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/creative"
+	"github.com/loomarr/loomarr/internal/media/creative"
 )
 
 // ListClipFingerprints reads one algorithm's cache in a single query. Identity compares the whole
