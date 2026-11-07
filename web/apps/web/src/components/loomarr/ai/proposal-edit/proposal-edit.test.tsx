@@ -1,12 +1,13 @@
 import type { ProposalItem } from "@loomarr/api";
 import { getResolveMovieCollectionsMockHandler, getSearchMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { server } from "@/test/msw/server";
+import { render as rtlRender } from "@/test/render";
 import { ProposalEdit } from "./proposal-edit";
 
 const makeWrapper = () => {

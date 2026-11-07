@@ -1,8 +1,9 @@
 import { ExcludedItemDTOReason } from "@loomarr/api";
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ChannelCyclePreview } from "./channel-cycle-preview";
 
 // ChannelCyclePreview drives channelsApi.usePreviewChannelCycle directly (no fetch layer

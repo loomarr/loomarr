@@ -1,9 +1,10 @@
 import { ApiError } from "@loomarr/api";
 import type { ImportCandidate } from "@loomarr/api/models/importCandidate";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ImportDialog } from "./import-dialog";
 
 const candidates: ImportCandidate[] = [

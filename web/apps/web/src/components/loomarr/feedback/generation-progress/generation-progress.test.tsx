@@ -1,7 +1,8 @@
 import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
 import { progressLine } from "@loomarr/core/requests";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { GenerationProgress } from "./generation-progress";
 
 const NOW = new Date("2026-09-25T12:00:12Z");
@@ -53,7 +54,9 @@ describe("GenerationProgress", () => {
 
   it("leaves a terminal failure to the recovery surface", () => {
     const { container } = render(<GenerationProgress phase="failed" error="Generation failed" />);
-    expect(container).toBeEmptyDOMElement();
+    // The theme provider's wrapper spans stay; the component itself renders nothing.
+    expect(container.textContent).toBe("");
+    expect(container.querySelector(".animate-spin")).toBeNull();
   });
 
   const stages: [ProposalJourneyProgressDTO["stage"], string[], string][] = [

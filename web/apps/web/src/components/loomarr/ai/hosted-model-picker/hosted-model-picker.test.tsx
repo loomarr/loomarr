@@ -1,7 +1,8 @@
 import type { HostedProviderView } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { HostedModelPicker } from "./hosted-model-picker";
 
 const provider = (over: Partial<HostedProviderView>): HostedProviderView => ({

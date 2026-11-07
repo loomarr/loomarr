@@ -1,6 +1,7 @@
 import type { ProposalDTO } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { ApprovalHistoryRow } from "./approval-history-row";
 
 const base = (over: Partial<ProposalDTO> = {}): ProposalDTO =>
