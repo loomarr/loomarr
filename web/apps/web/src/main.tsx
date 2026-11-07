@@ -4,6 +4,8 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
+import { RouteError } from "@/components/loomarr/feedback/route-error";
+import { RoutePending } from "@/components/loomarr/feedback/route-pending";
 import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
 import { routeTree } from "@/routeTree.gen";
 // Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
@@ -39,6 +41,8 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: "intent",
   defaultPreloadStaleTime: 15_000,
+  defaultErrorComponent: RouteError,
+  defaultPendingComponent: RoutePending,
 });
 
 declare module "@tanstack/react-router" {
