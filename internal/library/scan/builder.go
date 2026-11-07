@@ -197,8 +197,9 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			records = append(records, rec)
 		}
 	}
-	if file.hasArt() {
-		if rec, ok := b.sidecar(ctx, b.im.Art, id.kind, file.Path); ok {
+	if names := file.art(); b.im.Art != nil && len(names) > 0 {
+		// The walk has just listed the folder: its artwork files are the file's sidecars.
+		if rec, err := localart.Beside(id.kind, file.Path, names, file.Sole); err == nil {
 			records = append(records, rec)
 		}
 	}
@@ -249,7 +250,11 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 		}
 		if s.dir != "" {
 			dir := filepath.Join(b.root, filepath.FromSlash(s.dir))
-			for _, p := range []mp.Provider{b.im.NFO, b.im.Art} {
+			providers := []mp.Provider{b.im.NFO}
+			if b.im.Art != nil {
+				providers = append(providers, b.im.Art)
+			}
+			for _, p := range providers {
 				if rec, ok := b.sidecar(ctx, p, mp.KindSeries, dir); ok {
 					records = append(records, rec)
 				}

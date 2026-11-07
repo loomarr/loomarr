@@ -97,9 +97,13 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		return libraryServices{roots: &scan.Library{Roots: roots, ItemStore: st, Inventory: inv}}
 	}
 	conns := set.arrConns()
+	sonarr, radarr := arr.NewSonarr(conns.Sonarr, nil), arr.NewRadarr(conns.Radarr, nil)
+	address := func(conn func() (string, string)) func() string {
+		return func() string { u, _ := conn(); return u }
+	}
 	managers := []scan.Manager{
-		{Authority: "sonarr", Lister: arr.NewSonarr(conns.Sonarr, nil)},
-		{Authority: "radarr", Lister: arr.NewRadarr(conns.Radarr, nil)},
+		{Authority: "sonarr", Lister: sonarr, Fetcher: sonarr, Address: address(conns.Sonarr)},
+		{Authority: "radarr", Lister: radarr, Fetcher: radarr, Address: address(conns.Radarr)},
 	}
 	im := &scan.Importer{
 		Store:     st,

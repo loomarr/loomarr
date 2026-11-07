@@ -69,6 +69,16 @@ func TestParse(t *testing.T) {
 			}
 		})
 	}
+	// The item an event is about rides along, so the scanner reads just that one again.
+	show, err := arrhook.Parse([]byte(`{"eventType":"Download","series":{"path":"/tv/Lima","tvdbId":90081201},
+		"episodeFile":{"path":"/tv/Lima/Season 01/Lima S01E02.mkv"}}`))
+	if err != nil || show.SeriesTVDB != 90081201 || show.MovieTMDB != 0 {
+		t.Errorf("series event = %+v, %v", show, err)
+	}
+	film, err := arrhook.Parse([]byte(`{"eventType":"MovieDelete","movie":{"folderPath":"/movies/Oscar","tmdbId":90000801}}`))
+	if err != nil || film.MovieTMDB != 90000801 || film.SeriesTVDB != 0 {
+		t.Errorf("movie event = %+v, %v", film, err)
+	}
 	for _, bad := range []string{`not json`, `{"series":{}}`} {
 		if _, err := arrhook.Parse([]byte(bad)); err == nil {
 			t.Errorf("Parse(%q) = nil error", bad)

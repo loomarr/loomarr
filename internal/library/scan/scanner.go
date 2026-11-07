@@ -16,25 +16,34 @@ import (
 const (
 	// ReconcileInterval is how often a full pass runs with no other reason to.
 	ReconcileInterval = time.Hour
-	// FolderDebounce is how long folder changes must be quiet before their folders are passed
-	// over. A file being copied in keeps them busy, so a pass never reads half a file.
+	// FolderDebounce is how long one folder's changes must be quiet before it is passed over. A
+	// file being copied in keeps its folder busy, so a pass rarely reads half a file; other
+	// folders are not held back by it.
 	FolderDebounce = 5 * time.Second
+	// FolderMaxWait is the longest a folder's changes wait while it stays busy. A pass that reads
+	// a file still being copied in sees it change again when the copy ends, and passes again.
+	FolderMaxWait = 2 * time.Minute
 )
 
 // Scanner runs the importer: once at start, then every interval, and whenever asked. A request
-// while a pass runs queues exactly one more pass. Folders a change signal names (the watcher, an
-// arr's webhook) are passed over on their own once changes stop for Debounce.
+// while a pass runs queues exactly one more pass. Each folder a change signal names (the watcher,
+// an arr's webhook) is passed over on its own once its changes stop for Debounce, or have waited
+// MaxWait.
 type Scanner struct {
 	Importer *Importer
 	Interval time.Duration
-	// Debounce is zero for FolderDebounce.
+	// Debounce is zero for FolderDebounce, MaxWait zero for FolderMaxWait.
 	Debounce time.Duration
+	MaxWait  time.Duration
 	trigger  chan struct{}
 
 	mu      sync.Mutex
-	folders map[string]map[string]bool // root → changed folders
+	folders map[string]map[string]folderWait // root → changed folders
 	changed chan struct{}
 }
+
+// folderWait is when a folder's waiting changes began, and its latest.
+type folderWait struct{ first, last time.Time }
 
 // NewScanner returns a scanner running im every interval (ReconcileInterval when zero).
 func NewScanner(im *Importer, interval time.Duration) *Scanner {
@@ -43,22 +52,28 @@ func NewScanner(im *Importer, interval time.Duration) *Scanner {
 	}
 	return &Scanner{
 		Importer: im, Interval: interval, trigger: make(chan struct{}, 1),
-		folders: map[string]map[string]bool{}, changed: make(chan struct{}, 1),
+		folders: map[string]map[string]folderWait{}, changed: make(chan struct{}, 1),
 	}
 }
 
-// PassFolders asks for a pass over dirs, under root, once folder changes have been quiet for the
-// debounce. It never blocks.
+// PassFolders asks for a pass over dirs, under root, once each has been quiet for the debounce. It
+// never blocks.
 func (s *Scanner) PassFolders(root string, dirs ...string) {
 	if len(dirs) == 0 {
 		return
 	}
+	now := time.Now()
 	s.mu.Lock()
 	if s.folders[root] == nil {
-		s.folders[root] = map[string]bool{}
+		s.folders[root] = map[string]folderWait{}
 	}
 	for _, dir := range dirs {
-		s.folders[root][dir] = true
+		w := s.folders[root][dir]
+		if w.first.IsZero() {
+			w.first = now
+		}
+		w.last = now
+		s.folders[root][dir] = w
 	}
 	s.mu.Unlock()
 	select {
@@ -94,31 +109,61 @@ func (s *Scanner) ArrChanged(ctx context.Context, authority string, folders []st
 	return queued, nil
 }
 
-// passFolders passes over the changed folders each time they go quiet, until ctx ends.
+// passFolders passes over each changed folder once it is due, until ctx ends.
 func (s *Scanner) passFolders(ctx context.Context) {
-	debounce := orDuration(s.Debounce, FolderDebounce)
-	quiet := time.NewTimer(debounce)
-	quiet.Stop()
+	var wake <-chan time.Time
 	for {
 		select {
 		case <-ctx.Done():
-			quiet.Stop()
 			return
 		case <-s.changed:
-			quiet.Reset(debounce)
-		case <-quiet.C:
-			s.mu.Lock()
-			folders := s.folders
-			s.folders = map[string]map[string]bool{}
-			s.mu.Unlock()
-			for _, root := range slices.Sorted(maps.Keys(folders)) {
-				dirs := slices.Sorted(maps.Keys(folders[root]))
-				if err := s.Importer.RunFolders(ctx, root, dirs); err != nil && ctx.Err() == nil {
-					s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
-				}
+		case <-wake:
+		}
+		due, next := s.dueFolders(time.Now())
+		for _, root := range slices.Sorted(maps.Keys(due)) {
+			if err := s.Importer.RunFolders(ctx, root, due[root]); err != nil && ctx.Err() == nil {
+				s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
 			}
 		}
+		wake = nil
+		if next > 0 {
+			wake = time.After(next)
+		}
 	}
+}
+
+// dueFolders takes the folders due at now, by root, sorted: quiet for the debounce, or waiting
+// MaxWait. It returns how long until the next of the rest is due, 0 when none waits.
+func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration) {
+	debounce := orDuration(s.Debounce, FolderDebounce)
+	maxWait := orDuration(s.MaxWait, FolderMaxWait)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	due := map[string][]string{}
+	var next time.Duration
+	for root, dirs := range s.folders {
+		for dir, w := range dirs {
+			at := w.last.Add(debounce)
+			if limit := w.first.Add(maxWait); limit.Before(at) {
+				at = limit
+			}
+			if wait := at.Sub(now); wait > 0 {
+				if next == 0 || wait < next {
+					next = wait
+				}
+				continue
+			}
+			due[root] = append(due[root], dir)
+			delete(dirs, dir)
+		}
+		if len(dirs) == 0 {
+			delete(s.folders, root)
+		}
+	}
+	for root := range due {
+		slices.Sort(due[root])
+	}
+	return due, next
 }
 
 // Trigger asks for a pass soon. It never blocks.

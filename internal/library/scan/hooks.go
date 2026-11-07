@@ -5,10 +5,12 @@ import (
 	"crypto/subtle"
 	"errors"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/arrhook"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 )
 
 // HookState is where one arr's webhook stands.
@@ -155,8 +157,24 @@ func (h *ArrHooks) Receive(ctx context.Context, app string, body []byte) error {
 	s.LastEvent, s.LastEventAt = ev.Type, h.now()
 	h.status[app] = s
 	h.mu.Unlock()
+	if len(ev.Folders) > 0 {
+		h.Scanner.Importer.ArrChanged(arrItemOf(app, ev))
+	}
 	_, err = h.Scanner.ArrChanged(ctx, app, ev.Folders)
 	return err
+}
+
+// arrItemOf is the item an event is about, nil when it names none.
+func arrItemOf(app string, ev arrhook.Event) *ArrItem {
+	switch {
+	case ev.SeriesTVDB > 0:
+		return &ArrItem{Authority: app, Ref: mp.Ref{Kind: mp.KindSeries,
+			ID: mp.ExternalID{Namespace: mp.NamespaceTVDB, Value: strconv.Itoa(ev.SeriesTVDB)}}}
+	case ev.MovieTMDB > 0:
+		return &ArrItem{Authority: app, Ref: mp.Ref{Kind: mp.KindMovie,
+			ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(ev.MovieTMDB)}}}
+	}
+	return nil
 }
 
 // Statuses is every arr's webhook, sorted by app.

@@ -9,6 +9,30 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
+// Each folder waits on its own: a quiet one is due while a busy one keeps waiting, and the busy one
+// is due anyway once it has waited MaxWait.
+func TestDueFoldersWaitEachOnTheirOwn(t *testing.T) {
+	sc := NewScanner(&Importer{}, time.Hour)
+	sc.Debounce, sc.MaxWait = 5*time.Second, time.Minute
+	t0 := time.UnixMilli(1_790_000_000_000)
+	sc.folders = map[string]map[string]folderWait{
+		"/media": {
+			"/media/Quiet": {first: t0, last: t0},
+			// Changing every second, the latest just now.
+			"/media/Busy": {first: t0, last: t0.Add(10 * time.Second)},
+		},
+	}
+	due, next := sc.dueFolders(t0.Add(10 * time.Second))
+	if len(due["/media"]) != 1 || due["/media"][0] != "/media/Quiet" || next != 5*time.Second {
+		t.Fatalf("due = %v, next %v; want the quiet folder, the busy one in 5s", due, next)
+	}
+	sc.folders["/media"]["/media/Busy"] = folderWait{first: t0, last: t0.Add(59 * time.Second)}
+	due, next = sc.dueFolders(t0.Add(time.Minute))
+	if len(due["/media"]) != 1 || due["/media"][0] != "/media/Busy" || next != 0 || len(sc.folders) != 0 {
+		t.Fatalf("due = %v, next %v, left %v; want the busy folder at its max wait", due, next, sc.folders)
+	}
+}
+
 // An arr's event names folders in the arr's own paths; each is mapped to its folder here and passed
 // over on its own, and a folder outside every root is left to the hourly walk.
 func TestScannerArrChangedPassesTheMappedFolder(t *testing.T) {

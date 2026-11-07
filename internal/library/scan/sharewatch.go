@@ -144,7 +144,7 @@ func changedDirs(root string, names []string) []string {
 	var dirs []string
 	for _, name := range names {
 		full := filepath.Join(root, filepath.FromSlash(name))
-		if !under(full, []string{root}) {
+		if !under(full, []string{root}) || ignoredChange(full) {
 			continue
 		}
 		dir := filepath.Dir(full)
