@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
 // NotificationRepository is the shared in-memory delivery-work double. It models only the

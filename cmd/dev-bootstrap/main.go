@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/devbootstrap"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 )
 
 func main() {
