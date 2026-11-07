@@ -21,13 +21,13 @@ jobs:
     # vitest is the most parallelism-hungry stage in the chain, and a 4-core runner is roughly
     # a sixth of the dev box it was measured on, so it degrades far more than the rest.
     #
-    # Everything except the unit tests re-runs in both shards. That is the same trade as the Go
+    # Everything except the unit tests re-runs in every shard. That is the same trade as the Go
     # job: parallel, so it costs no wall clock, and it keeps CI running the same `make fe` a
     # developer runs rather than a bespoke decomposition of it.
     strategy:
       fail-fast: false # one shard's failures must not hide the others'
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
