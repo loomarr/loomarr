@@ -201,6 +201,10 @@ type Library struct {
 	// ItemStore and Inventory read what the scanner wrote, for Library → Items.
 	ItemStore store.LibraryItemStore
 	Inventory inventory.Service
+	// NeedStore keeps Needs you; Search finds titles to answer it with (nil: no catalog).
+	NeedStore store.LibraryNeedsStore
+	Search    Searcher
+	Now       func() time.Time
 }
 
 // Progress is the scanner's current state; the zero Progress when no scanner runs.

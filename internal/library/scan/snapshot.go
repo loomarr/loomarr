@@ -52,7 +52,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 // written once more with the new shape; its header is kept, so none is opened again.
 //
 //	2: titles name the catalog row their details come from (library_items.catalog).
-const writeVersion = 2
+//	3: titles note their scan origin and whether anything grounds them (Needs you).
+const writeVersion = 3
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.

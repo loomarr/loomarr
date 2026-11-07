@@ -81,6 +81,17 @@ func (f *fakeImageService) Ingest(_ context.Context, r io.Reader, req images.Ing
 	return img, nil
 }
 
+// Adopt hands back the record keyed by the source URL, as one the fetch job has fetched; an
+// unknown URL is pending, with no bytes.
+func (f *fakeImageService) Adopt(_ context.Context, srcURL string, _ images.IngestRequest) (images.Image, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if img, ok := f.records[srcURL]; ok {
+		return img, nil
+	}
+	return images.Image{SourceURL: srcURL, Origin: images.OriginRemote}, nil
+}
+
 func (f *fakeImageService) Get(_ context.Context, hash string) (images.Image, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

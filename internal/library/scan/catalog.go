@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/loomarr/loomarr/internal/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -13,6 +14,31 @@ import (
 type CatalogStore interface {
 	WantLibraryCatalog(ctx context.Context, keys []store.LibraryCatalogKey) error
 	LibraryCatalogRecord(ctx context.Context, key store.LibraryCatalogKey) (string, bool, error)
+}
+
+// AnswerStore is the maintainer's Needs you answers the walk reads (#2151 step 11).
+type AnswerStore interface {
+	LibraryAnswerFor(ctx context.Context, origin store.LibraryOrigin) (store.LibraryAnswer, bool, error)
+}
+
+// linkRecord is the maintainer's link for a movie or series nothing else grounded, as a record:
+// the TMDB title they said it is. None, an ignore, or an answer that cannot be read says nothing.
+func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin inventory.OriginKey) (mp.Record, bool) {
+	if im.Answers == nil || (kind != mp.KindMovie && kind != mp.KindSeries) {
+		return mp.Record{}, false
+	}
+	answer, ok, err := im.Answers.LibraryAnswerFor(ctx, libraryOrigin(origin))
+	if err != nil {
+		im.log().Warn("library scan: answer not read", "err", err)
+		return mp.Record{}, false
+	}
+	if !ok || answer.TMDBID == "" || answer.Kind != string(kind) {
+		return mp.Record{}, false
+	}
+	return mp.Record{
+		Source: mp.Source{Basis: mp.BasisLink}, Kind: kind,
+		IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: answer.TMDBID}},
+	}, true
 }
 
 // catalogKey is the catalog row a movie's or series' details come from: its TMDB id, the one

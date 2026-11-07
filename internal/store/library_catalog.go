@@ -193,35 +193,6 @@ func (s *sqlStore) RewriteLibraryCatalogFiles(ctx context.Context, key LibraryCa
 	if catalog == "" {
 		return nil, nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("rewrite library catalog files: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 	const titles = `(SELECT id FROM library_items WHERE catalog = ?)`
-	rows, err := tx.QueryContext(ctx, s.ph(`SELECT root, path FROM library_files
-		WHERE missing_at = 0 AND (item_id IN `+titles+` OR series_id IN `+titles+`) ORDER BY path`), catalog, catalog)
-	if err != nil {
-		return nil, fmt.Errorf("rewrite library catalog files: %w", err)
-	}
-	var out []LibraryFilePath
-	for rows.Next() {
-		var f LibraryFilePath
-		if err := rows.Scan(&f.Root, &f.Path); err != nil {
-			_ = rows.Close()
-			return nil, fmt.Errorf("rewrite library catalog files: %w", err)
-		}
-		out = append(out, f)
-	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return nil, fmt.Errorf("rewrite library catalog files: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_files SET identity = ''
-		WHERE missing_at = 0 AND (item_id IN `+titles+` OR series_id IN `+titles+`)`), catalog, catalog); err != nil {
-		return nil, fmt.Errorf("rewrite library catalog files: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("rewrite library catalog files: %w", err)
-	}
-	return out, nil
+	return s.rewriteFiles(ctx, `item_id IN `+titles+` OR series_id IN `+titles, catalog, catalog)
 }

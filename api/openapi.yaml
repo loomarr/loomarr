@@ -6478,6 +6478,42 @@ components:
       required:
         - label
       type: object
+    LibraryCandidateDTO:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+            - movie
+            - series
+          type: string
+        lengthMatches:
+          description: "Movies only: its runtime and the file's length agree"
+          type: boolean
+        name:
+          type: string
+        nameMatches:
+          type: boolean
+        overview:
+          type: string
+        poster:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Absent when it has none, or while it is still being fetched
+        tmdbId:
+          type: string
+        year:
+          description: Absent when unknown
+          format: int64
+          type: integer
+        yearMatches:
+          type: boolean
+      required:
+        - kind
+        - tmdbId
+        - name
+        - nameMatches
+        - yearMatches
+        - lengthMatches
+      type: object
     LibraryCollection:
       additionalProperties: false
       properties:
@@ -6678,6 +6714,29 @@ components:
         - size
         - ready
       type: object
+    LibraryNeedDTO:
+      additionalProperties: false
+      properties:
+        candidates:
+          description: Best first; empty when a search found nothing
+          items:
+            $ref: "#/components/schemas/LibraryCandidateDTO"
+          type: array
+        files:
+          items:
+            $ref: "#/components/schemas/LibraryItemFileDTO"
+          type: array
+        item:
+          $ref: "#/components/schemas/LibraryItemDTO"
+        searched:
+          description: False until TMDB has been searched for it
+          type: boolean
+      required:
+        - item
+        - searched
+        - candidates
+        - files
+      type: object
     LibraryPathMappingDTO:
       additionalProperties: false
       properties:
@@ -6799,6 +6858,28 @@ components:
         - paused
         - arrIncomplete
       type: object
+    LibrarySearchHitDTO:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+            - movie
+            - series
+          type: string
+        name:
+          type: string
+        overview:
+          type: string
+        tmdbId:
+          type: string
+        year:
+          format: int64
+          type: integer
+      required:
+        - kind
+        - tmdbId
+        - name
+      type: object
     LibrarySeasonDTO:
       additionalProperties: false
       properties:
@@ -6876,6 +6957,10 @@ components:
           description: Folders in use
           format: int64
           type: integer
+        needsYou:
+          description: Titles Loomarr can't tell what they are
+          format: int64
+          type: integer
         offline:
           description: Folders in use that didn't open at their last check
           format: int64
@@ -6899,6 +6984,7 @@ components:
         - files
         - headersPending
         - problems
+        - needsYou
         - held
         - hooks
       type: object
@@ -6959,6 +7045,25 @@ components:
       required:
         - key
         - name
+      type: object
+    LinkLibraryItemInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LinkLibraryItemInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        tmdbId:
+          description: The TMDB title it is
+          maxLength: 20
+          minLength: 1
+          pattern: ^[0-9]+$
+          type: string
+      required:
+        - tmdbId
       type: object
     ListActivityOutputBody:
       additionalProperties: false
@@ -7109,6 +7214,23 @@ components:
       required:
         - items
         - total
+      type: object
+    ListLibraryNeedsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListLibraryNeedsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        needs:
+          items:
+            $ref: "#/components/schemas/LibraryNeedDTO"
+          type: array
+      required:
+        - needs
       type: object
     ListOutputBody:
       additionalProperties: false
@@ -10180,6 +10302,23 @@ components:
         - mediaType
         - name
         - inLibrary
+      type: object
+    SearchLibraryTitlesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SearchLibraryTitlesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        results:
+          items:
+            $ref: "#/components/schemas/LibrarySearchHitDTO"
+          type: array
+      required:
+        - results
       type: object
     SearchOutputBody:
       additionalProperties: false
@@ -17486,6 +17625,101 @@ paths:
       summary: One title
       tags:
         - library
+  /v1/library/items/{id}/answer:
+    delete:
+      description: Undoes a link or an ignore. A title nothing else identifies needs you again.
+      operationId: unanswerLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Take back an answer
+      tags:
+        - library
+  /v1/library/items/{id}/ignore:
+    post:
+      description: "Says a title isn't one: it leaves the library and Needs you."
+      operationId: ignoreLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ignore a title
+      tags:
+        - library
+  /v1/library/items/{id}/link:
+    post:
+      description: Links a title to a TMDB title. Its files are read again with it.
+      operationId: linkLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkLibraryItemInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Say which title this is
+      tags:
+        - library
+  /v1/library/needs:
+    get:
+      description: Titles Loomarr can't tell what they are, each with the best guesses a search found, best first.
+      operationId: listLibraryNeeds
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLibraryNeedsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Titles that need you
+      tags:
+        - library
   /v1/library/path-map:
     put:
       description: Points one folder, as the media server, Sonarr or Radarr names it, at a folder on this machine. An empty localPath hands the row back to discovery.
@@ -17647,6 +17881,47 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Check the media folders again
+      tags:
+        - library
+  /v1/library/search:
+    get:
+      description: For picking a different title. 503 when TMDB isn't set up.
+      operationId: searchLibraryTitles
+      parameters:
+        - description: The title's name
+          explode: false
+          in: query
+          name: q
+          required: true
+          schema:
+            description: The title's name
+            maxLength: 200
+            minLength: 1
+            type: string
+        - description: Only movies or only series; both when absent
+          explode: false
+          in: query
+          name: kind
+          schema:
+            description: Only movies or only series; both when absent
+            enum:
+              - movie
+              - series
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchLibraryTitlesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Search TMDB for a title
       tags:
         - library
   /v1/library/status:
