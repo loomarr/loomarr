@@ -70,7 +70,7 @@ func (s *service) ResolveSource(ctx context.Context, request SourceRequest) (Res
 			}
 			return ResolvedSource{
 				ID: source.ID, ItemID: item.ID, Kind: source.Kind, Revision: source.Revision,
-				Locator: origin.Locator, Observation: observation, Measurement: measurement,
+				Locator: origin.Locator, Observation: observation,
 			}, true, nil
 		}
 	}
