@@ -12,8 +12,6 @@ import { needsBootstrap } from "@/auth/setup-state-query";
 import { useAuth } from "@/auth/use-auth";
 import { watchChannelId } from "@/channels/watch-channel-id";
 import { AppShell } from "@/components/loomarr/shell/app-shell";
-import { RestartOverlay } from "@/components/loomarr/shell/restart-overlay";
-import { RestartWatchProvider, useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { HealthNotice } from "@/diagnostics";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { LoomarrEventsProvider } from "@/events/events-provider";
@@ -29,21 +27,12 @@ import { useNeedsYouCount } from "@/queue/use-requests";
 // frames out to screens that need the payload itself, like the Suggest workspace's live
 // phases. Identity comes from useAuth (real name, admin-only nav), and logout clears the
 // query cache and drops back to /login.
-// The shell split in two so the overlay can read the restart state the provider holds —
-// a provider cannot consume its own context.
-const AuthedLayout = () => (
-  <RestartWatchProvider>
-    <AuthedFrame />
-  </RestartWatchProvider>
-);
-
-const AuthedFrame = () => {
+const AuthedLayout = () => {
   const [commandOpen, setCommandOpen] = useState(false);
   useCommandShortcut(setCommandOpen);
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const restartWatch = useRestartWatchContext();
   const fullBleed = useMatch({ from: "/_authed/watch/$id", shouldThrow: false }) !== undefined;
   // The Requests nav badge: what is waiting on this viewer (approvals for an admin, failed
   // requests for anyone) — the same number as the Needs you tab.
@@ -101,14 +90,6 @@ const AuthedFrame = () => {
         </AppShell>
       )}
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
-      {/* ⚠ App-wide, not per page. The restart control lives on the Dashboard, but the
-          operator can navigate away the instant they click it — and every page is equally
-          dead while the server rebuilds. */}
-      <RestartOverlay
-        restarting={restartWatch.restarting}
-        justCameBack={restartWatch.justCameBack}
-        failed={restartWatch.failed}
-      />
     </LoomarrEventsProvider>
   );
 };
