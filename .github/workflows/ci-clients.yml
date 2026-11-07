@@ -14,13 +14,14 @@ jobs:
   run:
     name: Shared clients — ${{ matrix.lane }}
     runs-on: ubuntu-latest
-    # One job took 4m38s and set the pace of every web PR. The checks and each app's bundles run on
-    # their own runners. The lanes key their caches apart because only one Metro cache would
-    # survive a shared key.
+    # One job took 4m38s and set the pace of every web PR. The static checks, each app's tests, and
+    # each app's bundles run on their own runners: a change to a shared package reruns its tests
+    # and its dependents' (2m21s for both apps on one runner). The lanes key their caches apart
+    # because only one Metro or Turbo cache would survive a shared key.
     strategy:
       fail-fast: false # one lane's failures must not hide the others'
       matrix:
-        lane: [checks, mobile, tv]
+        lane: [checks, mobile-tests, tv-tests, mobile, tv]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -54,8 +55,14 @@ jobs:
           TMPDIR: ${{ runner.temp }}
           TURBO_TELEMETRY_DISABLED: "1"
         run: make clients-checks
+      - name: Typecheck and test the client
+        if: endsWith(matrix.lane, '-tests')
+        env:
+          TMPDIR: ${{ runner.temp }}
+          TURBO_TELEMETRY_DISABLED: "1"
+        run: make clients-tests CLIENTS_APP=${{ matrix.lane == 'tv-tests' && 'tv' || 'mobile' }}
       - name: Bundle the client
-        if: matrix.lane != 'checks'
+        if: matrix.lane == 'mobile' || matrix.lane == 'tv'
         env:
           TMPDIR: ${{ runner.temp }}
           TURBO_TELEMETRY_DISABLED: "1"
