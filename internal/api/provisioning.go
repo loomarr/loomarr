@@ -26,7 +26,7 @@ func (s *Server) registerProvisioning(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "setup-state", Method: http.MethodGet, Path: "/v1/setup/state",
-		Summary: "Whether the install has an owning admin", Description: "Unauthenticated. Reports only whether bootstrap has happened, so the frontend can route a first-run visitor to the wizard instead of a login they cannot pass (§7/§13). Exposes nothing that POST /v1/setup/bootstrap doesn't already reveal by answering 409-vs-created.",
+		Summary: "Whether the install has an owning admin", Description: "Unauthenticated. Reports whether bootstrap has happened, so the frontend can route a first-run visitor to the wizard instead of a login they cannot pass (§7/§13), and which sign-in options the login screen may offer. On a demo site it also returns the demo account's username and password, which are public on purpose (#2268); every other install reports demo disabled with no account.",
 		Tags: []string{"setup"},
 	}, RolePublic), s.setupState)
 
@@ -88,8 +88,24 @@ type setupStateOutput struct {
 		// appears only when the route it points at actually exists — the same posture as
 		// devLogin above. Reporting it leaks nothing an unauthenticated caller could not
 		// learn by following the redirect.
-		SSO bool `json:"sso" doc:"Whether single sign-on is configured, so the login screen may offer it (§11, V8)."`
+		SSO  bool      `json:"sso" doc:"Whether single sign-on is configured, so the login screen may offer it (§11, V8)."`
+		Demo SetupDemo `json:"demo" doc:"Demo mode (#2268): whether this server is a demo site, and the account it offers visitors."`
 	}
+}
+
+// DemoAccount is the demo site's public sign-in (#2268). The zero value means the server is not
+// a demo site.
+type DemoAccount struct {
+	Username string
+	Password string
+}
+
+// SetupDemo is demo mode as the login screen and app shell see it. Always present on the wire,
+// with empty strings when the server is not a demo site.
+type SetupDemo struct {
+	Enabled  bool   `json:"enabled" doc:"Whether this server is a demo site, so the app shows the demo tour."`
+	Username string `json:"username" doc:"The account the sign-in screen offers visitors. Empty unless enabled."`
+	Password string `json:"password" doc:"That account's password, public on purpose. Empty unless enabled."`
 }
 
 // setupState answers the one question a first-run visitor's browser must be able to
@@ -106,6 +122,9 @@ func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput
 	// Mirrors exactly what registerAuth mounted, so the login screen can never offer a
 	// dev-login link that 404s (§11).
 	out.Body.DevLogin = s.devLogin
+	if s.demo.Username != "" {
+		out.Body.Demo = SetupDemo{Enabled: true, Username: s.demo.Username, Password: s.demo.Password}
+	}
 	if s.provision == nil {
 		out.Body.Bootstrapped = true
 		return out, nil

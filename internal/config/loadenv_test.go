@@ -192,3 +192,30 @@ func TestTunerPublishingDisabledFlag(t *testing.T) {
 		t.Fatalf("unset flag = %v, %v; want false", c.TunerPublishingDisabled(), err)
 	}
 }
+
+// Demo mode needs the whole account: half of one would offer visitors a sign-in that cannot work.
+func TestLoadEnvDemoAccount(t *testing.T) {
+	c, err := LoadEnv(map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DemoMode() {
+		t.Error("demo mode is on with no demo account")
+	}
+	c, err = LoadEnv(map[string]string{"LOOMARR_DEMO_USERNAME": " guest ", "LOOMARR_DEMO_PASSWORD": "loomarr-guest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.DemoMode() || c.DemoUsername != "guest" || c.DemoPassword != "loomarr-guest" {
+		t.Errorf("demo account = %q/%q, mode %v", c.DemoUsername, c.DemoPassword, c.DemoMode())
+	}
+	for _, half := range []map[string]string{
+		{"LOOMARR_DEMO_USERNAME": "guest"},
+		{"LOOMARR_DEMO_PASSWORD": "loomarr-guest"},
+		{"LOOMARR_DEMO_USERNAME": "guest", "LOOMARR_DEMO_PASSWORD": "  "},
+	} {
+		if _, err := LoadEnv(half); err == nil || !strings.Contains(err.Error(), "LOOMARR_DEMO_USERNAME") {
+			t.Errorf("LoadEnv(%v) error = %v, want the pair refused", half, err)
+		}
+	}
+}

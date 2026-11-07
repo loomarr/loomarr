@@ -111,6 +111,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		DevLogin:             ov.DevLogin,
 		Pprof:                ov.Pprof,
 		MetricsToken:         ov.MetricsToken,
+		Demo:                 api.DemoAccount{Username: ov.DemoUsername, Password: ov.DemoPassword},
 		Channels:             channelSvc,
 		LiveTV:               liveTVSvc,
 		TunerRescanner:       tunerRescanner,

@@ -7,6 +7,7 @@ import {
   getPreviewPasswordRecoveryMockHandler,
   getRedeemPasswordRecoveryMockHandler,
   getRequestPasswordRecoveryMockHandler,
+  getSetupStateMockHandler,
 } from "@loomarr/api/msw";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -218,6 +219,35 @@ describe("app router auth", () => {
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+  });
+
+  // A demo site (#2268) names its visitor account, so one press signs in with what the SERVER
+  // sent, and the signed-in shell then shows the tour.
+  it("signs a visitor into a demo site with the account the server offers", async () => {
+    const { logins } = stubAuth(false, MEMBER);
+    server.use(
+      getSetupStateMockHandler({
+        bootstrapped: true,
+        devLogin: false,
+        sso: false,
+        demo: { enabled: true, username: "guest", password: "loomarr-guest" },
+      }),
+    );
+    renderApp("/login");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Sign in as guest" }));
+
+    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(logins).toEqual([{ username: "guest", password: "loomarr-guest" }]);
+    expect(await screen.findByRole("region", { name: "Demo tour" })).toBeInTheDocument();
+  });
+
+  it("offers no demo sign-in on an ordinary install", async () => {
+    stubAuth(false);
+    renderApp("/login");
+
+    expect(await screen.findByLabelText("Username")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Loomarr demo" })).not.toBeInTheDocument();
   });
 
   it("automatically uses the server-gated dev login", async () => {

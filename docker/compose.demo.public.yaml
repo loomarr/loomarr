@@ -10,6 +10,10 @@ services:
       # Behind the tunnel every visitor arrives from one address, so sign-in throttling would treat
       # them as one person, and cookies would miss the Secure flag.
       TRUST_PROXY: "true"
+      # Visitors get the member account scripts/demo-site.sh creates, never the admin, whose
+      # password it retires before the tunnel opens.
+      LOOMARR_DEMO_USERNAME: guest
+      LOOMARR_DEMO_PASSWORD: loomarr-guest
 
   cloudflared:
     image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba

@@ -13,6 +13,7 @@ import { needsBootstrap } from "@/auth/setup-state-query";
 import { useAuth } from "@/auth/use-auth";
 import { watchChannelId } from "@/channels/watch-channel-id";
 import { AppShell } from "@/components/loomarr/shell/app-shell";
+import { DemoTour, useDemoTour } from "@/demo/demo-tour";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { HealthNotice } from "@/diagnostics/startup-notice";
 import { LoomarrEventsProvider } from "@/events/events-provider";
@@ -51,6 +52,9 @@ const AuthedLayout = () => {
     query: { enabled: channelList.length > 0, staleTime: 30_000 },
   });
   const watchId = watchChannelId(channelList, unwrap(viewing.data)?.continueWatching);
+  // The demo tour (#2268) counts visits on every page here, the full-bleed player included, but
+  // its banner lives in the shell.
+  const demoTour = useDemoTour();
   // One shell-lifetime query supplies every authenticated route. About uses the same generated
   // query key, so opening it reads this cached server truth rather than inventing a second source.
   // Failure is deliberately quiet: version visibility must never hold the application shell.
@@ -91,6 +95,7 @@ const AuthedLayout = () => {
           onLogout={() => logout.mutate()}
           watchChannelId={watchId}
         >
+          <DemoTour tour={demoTour} channelId={watchId} />
           <Outlet />
         </AppShell>
       )}

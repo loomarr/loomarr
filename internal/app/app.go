@@ -54,6 +54,9 @@ type Overrides struct {
 	// MetricsToken is the Prometheus scrape bearer for /metrics (§7). run() sets it from
 	// LOOMARR_METRICS_TOKEN[_FILE]; empty ⇒ the endpoint refuses (fail closed).
 	MetricsToken string
+	// DemoUsername and DemoPassword are the demo site's public sign-in (#2268). run() sets them
+	// from LOOMARR_DEMO_USERNAME/_PASSWORD; empty ⇒ not a demo site.
+	DemoUsername, DemoPassword string
 	// Restart asks the process to rebuild itself in place (§9.2). nil ⇒ the restart
 	// routes report 501 rather than pretending: an embedded or test-built handler has no
 	// loop behind it, and a button that silently does nothing is worse than an absent one.

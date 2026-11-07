@@ -1,3 +1,4 @@
+import { DemoSignIn } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { LoginForm } from "../login-form";
 import { LoginShell } from "./login-shell";
@@ -24,5 +25,18 @@ type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
 
+// A demo site (#2268): the server names a visitor account, so the card above the form signs in
+// with it in one press. The form stays for the maintainer's own account.
+const DemoSite: Story = {
+  args: {
+    children: (
+      <>
+        <DemoSignIn onSignIn={noop} username="guest" />
+        <LoginForm onSubmit={noop} />
+      </>
+    ),
+  },
+};
+
 export default meta;
-export { Default };
+export { Default, DemoSite };

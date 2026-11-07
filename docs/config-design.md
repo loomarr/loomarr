@@ -655,6 +655,10 @@ and stay here.
   they are read at boot and never registry keys an admin session could flip at runtime. Boot warns
   while dev login or pprof is on. An unset metrics token refuses `/v1/metrics` (fail closed), and
   the metrics credential is deliberately separate from `API_TOKEN`.
+- **Demo mode is bootstrap-tier too.** `LOOMARR_DEMO_USERNAME` and `LOOMARR_DEMO_PASSWORD` (both or
+  neither; boot refuses one alone) make the server a demo site: the unauthenticated
+  `GET /v1/setup/state` returns that account so the sign-in screen can offer it, and the app shows
+  the demo tour. The password is public by design, so only the demo site sets them.
 - **`LLM_*` environment values are initial defaults** when no in-app selection exists; an in-app
   provider selection (`llm.provider`, `llm.url`, `llm.model`, `llm.api_key.<provider>`) overrides
   them and hot-swaps the running suggester.

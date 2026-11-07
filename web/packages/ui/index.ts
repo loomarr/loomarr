@@ -17,6 +17,10 @@ export { ClientNavigation, clientBackDestination, clientDestinationLabel } from 
 export { ClientPlatformProof } from "./src/client-platform-proof";
 export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
+export type { DemoBannerNext, DemoBannerProps } from "./src/demo-banner";
+export { DemoBanner } from "./src/demo-banner";
+export type { DemoSignInProps } from "./src/demo-sign-in";
+export { DemoSignIn } from "./src/demo-sign-in";
 export type { DeviceDisconnectActionProps } from "./src/device-disconnect";
 export { DeviceDisconnectAction } from "./src/device-disconnect";
 export type { DeviceSheetAccount, DeviceSheetProps } from "./src/device-sheet";

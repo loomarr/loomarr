@@ -112,6 +112,24 @@ if printf '%s\n' "$demo_public" | jq -e '.services.cloudflared' >/dev/null; then
 	exit 1
 fi
 
+# Demo mode (#2268) offers an account by name on the sign-in screen. It must be one that exists: the
+# seeder's admin on a private site, and on a public one the visitor account demo-site.sh creates.
+offered() {
+	printf '%s\n' "$1" | jq -r '.services.loomarr.environment | "\(.LOOMARR_DEMO_USERNAME)/\(.LOOMARR_DEMO_PASSWORD)"'
+}
+seeded="$(sed -n 's/^\tdemoAdminUser *= *"\(.*\)"$/\1/p' "$ROOT/cmd/demo-library/seed.go")/$(
+	sed -n 's/^\tdemoAdminPassword *= *"\(.*\)"$/\1/p' "$ROOT/cmd/demo-library/seed.go"
+)"
+guest="$(sed -n 's/^GUEST_USER=//p' "$ROOT/scripts/demo-site.sh")/$(sed -n 's/^GUEST_PASSWORD=//p' "$ROOT/scripts/demo-site.sh")"
+if [ "$(offered "$demo")" != "$seeded" ]; then
+	echo "compose-verify: the demo site offers $(offered "$demo"), but the seeder creates $seeded" >&2
+	exit 1
+fi
+if [ "$(offered "$demo_public")" != "$guest" ]; then
+	echo "compose-verify: the public demo site offers $(offered "$demo_public"), but demo-site.sh creates $guest" >&2
+	exit 1
+fi
+
 # make db-view serves a database copy with no sign-in, so it must publish only on loopback.
 db_view="$(DB_VIEW_RUN_DIR=/run DB_VIEW_ADMIN_PASSWORD=x DB_VIEW_PG_PASSWORD=x DB_VIEW_SQLITE_FILE=/db \
 	docker compose -f "$ROOT/docker/compose.db-view.yaml" --profile postgres config --format json)" || {

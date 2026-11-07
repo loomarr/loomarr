@@ -76,6 +76,26 @@ type Config struct {
 	// unauthenticated-by-nature surface, and a registry key is editable by any admin session.
 	// It is deliberately NOT the API_TOKEN, so a scraper credential cannot act as an admin.
 	MetricsToken string `env:"LOOMARR_METRICS_TOKEN"`
+
+	// DemoUsername and DemoPassword turn on demo mode (#2268): the sign-in screen offers this
+	// account to anyone, and the signed-in app shows the demo tour. Both deliberately public, so
+	// only the demo site sets them, and only for an account it created with that password. Set
+	// both or neither; Load refuses one alone.
+	DemoUsername string `env:"LOOMARR_DEMO_USERNAME"`
+	DemoPassword string `env:"LOOMARR_DEMO_PASSWORD"`
+}
+
+// DemoMode reports whether this server is a demo site (#2268).
+func (c *Config) DemoMode() bool { return c.DemoUsername != "" }
+
+// validateDemo refuses half a demo account: a sign-in button with no password would offer
+// visitors a login that cannot succeed.
+func validateDemo(c *Config) error {
+	c.DemoUsername, c.DemoPassword = strings.TrimSpace(c.DemoUsername), strings.TrimSpace(c.DemoPassword)
+	if (c.DemoUsername == "") != (c.DemoPassword == "") {
+		return fmt.Errorf("LOOMARR_DEMO_USERNAME and LOOMARR_DEMO_PASSWORD must be set together")
+	}
+	return nil
 }
 
 // Load reads the bootstrap configuration, resolving `env > file > default`
@@ -125,6 +145,9 @@ func LoadEnv(environ map[string]string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	if err := resolveMetricsTokenFile(&c, environ); err != nil {
+		return nil, err
+	}
+	if err := validateDemo(&c); err != nil {
 		return nil, err
 	}
 	c.bootstrapDir = fileDir
