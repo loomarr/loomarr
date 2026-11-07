@@ -1,1 +1,1 @@
-export { useLibraryNeeds } from "./use-library-needs";
+export { searchLibraryTitles, useLibraryNeeds } from "./use-library-needs";

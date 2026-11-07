@@ -18,7 +18,8 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 	origin := func(key string) LibraryOrigin { return LibraryOrigin{Authority: "library:/media", Key: key} }
 
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
-		{ID: "m1", Kind: "movie", Name: "Grounded Film", Origin: origin("/media/a/a.mkv"), Grounded: true},
+		{ID: "m1", Kind: "movie", Name: "Grounded Film", Origin: origin("/media/a/a.mkv"),
+			Match: LibraryMatch{Basis: "manager", App: "radarr", Page: "http://radarr.invalid/movie/grounded-film"}},
 		{ID: "m2", Kind: "movie", Name: "Mystery Film", Origin: origin("/media/b/b.mkv")},
 		{ID: "s1", Kind: "series", Name: "Mystery Show", Origin: origin("/media/show")},
 		{ID: "m3", Kind: "movie", Name: "Gone Film", Origin: origin("/media/c/c.mkv")},
@@ -50,6 +51,14 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 	}
 	if needs[1].Files != 2 || needs[1].Origin != origin("/media/show") || needs[1].Searched != "" {
 		t.Fatalf("series need = %+v", needs[1])
+	}
+	// What said which title it is reads back with the title, for "Wrong title?".
+	grounded, err := st.LibraryItem(ctx, "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (LibraryMatch{Basis: "manager", App: "radarr", Page: "http://radarr.invalid/movie/grounded-film"}); grounded.Match != want {
+		t.Fatalf("match = %+v, want %+v", grounded.Match, want)
 	}
 
 	first := []LibraryCandidate{{Kind: "movie", TMDBID: "90000201", Name: "Mystery", Year: 2001, NameMatch: true}}

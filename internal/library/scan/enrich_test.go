@@ -123,3 +123,68 @@ func TestEnricherWritesTheCatalogsDetails(t *testing.T) {
 		t.Fatalf("after the hold the title was not fetched: %v, %v", catalog.fetched[before:], err)
 	}
 }
+
+// Update details fetches the title's record at once, not on the refresh, and the title takes the
+// new details. A catalog that fails says so; one with no key still writes the title again.
+func TestUpdateDetailsFetchesTheTitleNow(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	h.file("Golf (2013) {tmdb-90000201}/Golf (2013) {tmdb-90000201}.mkv", 10)
+	h.run()
+	record := func(title string) mp.Record {
+		return mp.Record{
+			Source: mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB},
+			Kind:   mp.KindMovie, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000201"}},
+			Descriptive: &mp.Descriptive{Title: title, Year: 2013},
+		}
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{"90000201": record("Golf Course")}}
+	rewrite := func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: rewrite}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	title := func() store.LibraryItemSummary {
+		t.Helper()
+		page, err := h.st.ListLibraryItems(ctx, store.LibraryItemQuery{})
+		if err != nil || len(page.Items) != 1 {
+			t.Fatalf("items = %+v, %v", page.Items, err)
+		}
+		return page.Items[0]
+	}
+	golf := title()
+	if golf.Name != "Golf Course" || DecidedBy(golf.Match) != DecidedByFile {
+		t.Fatalf("title = %+v, want the catalog's name, decided by the id in its file name", golf)
+	}
+
+	scanner := NewScanner(h.im, 0)
+	lib := &Library{ItemStore: h.st, NeedStore: h.st, Enricher: e, Scanner: scanner}
+	catalog.records["90000201"] = record("Golf Course Redux")
+	fetched := len(catalog.fetched)
+	if err := lib.UpdateDetails(ctx, golf.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.fetched) != fetched+1 {
+		t.Fatalf("fetched %v, want the title fetched now", catalog.fetched[fetched:])
+	}
+	if got := title().Name; got != "Golf Course Redux" {
+		t.Fatalf("after Update details the title is %q", got)
+	}
+
+	catalog.err = errors.New("tmdb: 503")
+	if err := lib.UpdateDetails(ctx, golf.ID); !errors.Is(err, ErrCatalogUnreachable) {
+		t.Fatalf("a failing catalog = %v, want ErrCatalogUnreachable", err)
+	}
+	catalog.err = tmdb.ErrAPIKeyRequired
+	if err := lib.UpdateDetails(ctx, golf.ID); err != nil {
+		t.Fatalf("no TMDB key = %v, want the title written again from its files", err)
+	}
+	if err := lib.UpdateDetails(ctx, "90000999"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("an unknown title = %v, want not found", err)
+	}
+}

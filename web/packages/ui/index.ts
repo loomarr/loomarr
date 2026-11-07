@@ -77,6 +77,7 @@ export type {
   LibraryTitleDetail,
   LibraryTitleEpisode,
   LibraryTitleFile,
+  LibraryTitleMatch,
   LibraryTitleProps,
   LibraryTitleSeason,
 } from "./src/library";

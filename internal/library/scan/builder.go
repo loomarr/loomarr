@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -29,6 +30,10 @@ type builder struct {
 	movies map[string][]inventory.ExternalID
 	// items is each movie and series the pass wrote, for Library → Items.
 	items []store.LibraryItem
+	// matches is what said which title each origin the pass resolved is. Header reads resolve
+	// concurrently, so it is guarded.
+	matchMu sync.Mutex
+	matches map[inventory.OriginKey]store.LibraryMatch
 }
 
 type seriesSeen struct {
@@ -47,28 +52,42 @@ func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snap
 	for _, x := range snapshot.ExternalIDs {
 		ids = append(ids, mp.ExternalID{Namespace: mp.Namespace(x.Namespace), Value: x.Value})
 	}
+	b.matchMu.Lock()
+	m := b.matches[snapshot.Origin]
+	b.matchMu.Unlock()
 	b.items = append(b.items, store.LibraryItem{
 		ID: id, Kind: string(snapshot.Kind), Name: facts.Name,
 		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
-		Catalog:  catalogKey(mp.Kind(snapshot.Kind), ids),
-		Origin:   libraryOrigin(snapshot.Origin),
-		Grounded: grounded(ids),
+		Catalog: catalogKey(mp.Kind(snapshot.Kind), ids),
+		Origin:  libraryOrigin(snapshot.Origin),
+		Match:   m,
 	})
 	b.poster(ctx, id, facts.Artwork)
 }
 
-// grounded is true when ids say which title it is: a catalog's id for it. A collection's id alone
-// does not.
-func grounded(ids []mp.ExternalID) bool {
-	for _, id := range ids {
-		switch id.Namespace {
+// match is what said which title resolved is: the source of its highest-ranked catalog id (a
+// collection's id alone says nothing), with that source's page for it. Identity is picked in rank
+// order, so the first such id is the deciding one.
+func match(resolved precedence.Resolved, records []mp.Record) store.LibraryMatch {
+	for _, id := range resolved.IDs {
+		switch id.Value.Namespace {
 		case mp.NamespaceTMDB, mp.NamespaceTVDB, mp.NamespaceIMDB:
-			if id.Value != "" {
-				return true
+		default:
+			continue
+		}
+		if id.Value.Value == "" {
+			continue
+		}
+		m := store.LibraryMatch{Basis: string(id.From.Basis), App: string(id.From.Provider)}
+		for _, rec := range records {
+			if rec.Source == id.From && rec.Page != "" {
+				m.Page = rec.Page
+				break
 			}
 		}
+		return m
 	}
-	return false
+	return store.LibraryMatch{}
 }
 
 func libraryOrigin(o inventory.OriginKey) store.LibraryOrigin {
@@ -109,6 +128,7 @@ func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 	return &builder{
 		im: im, root: root, idx: idx, seen: map[inventory.OriginKey]bool{},
 		series: map[string]*seriesSeen{}, movies: map[string][]inventory.ExternalID{},
+		matches: map[inventory.OriginKey]store.LibraryMatch{},
 	}
 }
 
@@ -256,6 +276,12 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
 	}
 	resolved := b.im.Resolver.Resolve(in)
+	// The catalog record below adds details, never identity: what decides is known now.
+	if in.Kind == mp.KindMovie || in.Kind == mp.KindSeries {
+		b.matchMu.Lock()
+		b.matches[origin] = match(resolved, in.Records)
+		b.matchMu.Unlock()
+	}
 	rec, ok := b.im.catalogRecord(ctx, catalogKey(in.Kind, pickedIDs(resolved.IDs)))
 	if !ok {
 		return resolved

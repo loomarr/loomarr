@@ -58,7 +58,7 @@ func (r *Radarr) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	}
 	for _, movie := range found {
 		if movie.TMDBID == tmdb {
-			return movieRecord(movie, country), nil
+			return movieRecord(movie, country, ep.base), nil
 		}
 	}
 	return mp.Record{}, fmt.Errorf("radarr: movie tmdb %d: %w", tmdb, mp.ErrNotFound)
@@ -80,7 +80,7 @@ func (r *Radarr) List(ctx context.Context) ([]mp.Record, error) {
 	}
 	out := make([]mp.Record, 0, len(all))
 	for _, movie := range all {
-		out = append(out, movieRecord(movie, country))
+		out = append(out, movieRecord(movie, country, ep.base))
 	}
 	return out, nil
 }
@@ -100,10 +100,11 @@ func (r *Radarr) certificationCountry(ctx context.Context, ep endpoint) (string,
 	return strings.ToUpper(strings.TrimSpace(cfg.CertificationCountry)), nil
 }
 
-func movieRecord(m radarrMovie, country string) mp.Record {
+func movieRecord(m radarrMovie, country, base string) mp.Record {
 	rec := mp.Record{
 		Source: radarrSource,
 		Kind:   mp.KindMovie,
+		Page:   page(base, "movie", m.TitleSlug),
 		IDs: ids(intID(mp.NamespaceTMDB, m.TMDBID),
 			mp.ExternalID{Namespace: mp.NamespaceIMDB, Value: strings.TrimSpace(m.IMDBID)}),
 		Descriptive: &mp.Descriptive{
@@ -155,6 +156,7 @@ type radarrMovie struct {
 	Runtime         int              `json:"runtime"`
 	IMDBID          string           `json:"imdbId"`
 	TMDBID          int              `json:"tmdbId"`
+	TitleSlug       string           `json:"titleSlug"`
 	Certification   string           `json:"certification"`
 	Genres          []string         `json:"genres"`
 	MovieFile       *radarrMovieFile `json:"movieFile"`

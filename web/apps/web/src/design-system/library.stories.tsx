@@ -160,10 +160,21 @@ const NothingNeedsYou: Story = {
   },
 };
 
+// A title's page acts through these; in a story every action goes through.
+const titleActions = {
+  onBack: () => {},
+  onUpdateDetails: answered,
+  onCheckFiles: answered,
+  onSearch: search,
+  onLink: answered,
+  onForget: answered,
+};
+
 const Movie: Story = {
   render: () => (
     <LibraryTitle
-      onBack={() => {}}
+      {...titleActions}
+      onOpenApp={() => {}}
       title={{
         kind: "movie",
         name: "Paper Kites",
@@ -176,6 +187,7 @@ const Movie: Story = {
         runtimeMillis: 5_880_000,
         files: [{ path: "/media/movies/Paper Kites (1996)/Paper Kites (1996).mkv", size: 8_100_000_000 }],
         seasons: [],
+        match: { by: "app", app: "Radarr" },
       }}
     />
   ),
@@ -184,7 +196,7 @@ const Movie: Story = {
 const Series: Story = {
   render: () => (
     <LibraryTitle
-      onBack={() => {}}
+      {...titleActions}
       title={{
         kind: "series",
         name: "Harbour Lights",
@@ -203,6 +215,7 @@ const Series: Story = {
             ready: true,
           })),
         })),
+        match: { by: "you" },
       }}
     />
   ),

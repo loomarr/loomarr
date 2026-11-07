@@ -251,6 +251,16 @@ func date(s string) string {
 	return s[:10]
 }
 
+// page is a title's page in the app's own web UI: /series/<slug> in Sonarr, /movie/<slug> in
+// Radarr. None without a slug.
+func page(base, kind, slug string) string {
+	slug = strings.TrimSpace(slug)
+	if base == "" || slug == "" {
+		return ""
+	}
+	return base + "/" + kind + "/" + url.PathEscape(slug)
+}
+
 func ids(pairs ...mp.ExternalID) []mp.ExternalID {
 	var out []mp.ExternalID
 	for _, id := range pairs {

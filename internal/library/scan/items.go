@@ -3,10 +3,12 @@ package scan
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/inventory"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -65,6 +67,76 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 	}
 	detail.Seasons, err = l.seasons(ctx, files)
 	return detail, err
+}
+
+// Decider is what decides which title an item is, as "Wrong title?" needs it (decision 26).
+type Decider string
+
+const (
+	// DecidedByApp is the arr that manages it: the title changes there.
+	DecidedByApp Decider = "app"
+	// DecidedByFile is the file itself: an id in its name, or an NFO beside it.
+	DecidedByFile Decider = "file"
+	// DecidedByYou is the maintainer's answer.
+	DecidedByYou Decider = "you"
+	// DecidedByNothing is nothing yet: the title needs the maintainer.
+	DecidedByNothing Decider = "none"
+)
+
+// DecidedBy is what decides which title m says an item is.
+func DecidedBy(m store.LibraryMatch) Decider {
+	switch mp.Basis(m.Basis) {
+	case mp.BasisManager:
+		return DecidedByApp
+	case mp.BasisEmbeddedID, mp.BasisSidecar:
+		return DecidedByFile
+	case mp.BasisLink:
+		return DecidedByYou
+	default:
+		return DecidedByNothing
+	}
+}
+
+// UpdateDetails is "Update details" (decision 20): the title's catalog record is fetched now, and
+// its files are written again, so what its arr and its sidecars say now is read too. A title with
+// no catalog record, or a catalog with no key, is written again from what the files and arrs say.
+func (l *Library) UpdateDetails(ctx context.Context, id string) error {
+	item, err := l.ItemStore.LibraryItem(ctx, id)
+	if err != nil {
+		return err
+	}
+	if item.Catalog.String() != "" && l.Enricher != nil {
+		if err := l.Enricher.Update(ctx, item.Catalog); err != nil && !errors.Is(err, ErrNoCatalog) {
+			return err
+		}
+	}
+	files, err := l.NeedStore.RewriteLibraryItemFiles(ctx, id)
+	if err != nil {
+		return err
+	}
+	l.pass(files)
+	return nil
+}
+
+// CheckFiles is "Check files again": the title's files are opened and their headers read again,
+// for a file that was replaced in place or failed to read.
+func (l *Library) CheckFiles(ctx context.Context, id string) error {
+	if _, err := l.ItemStore.LibraryItem(ctx, id); err != nil {
+		return err
+	}
+	files, err := l.ItemStore.RecheckLibraryItemFiles(ctx, id)
+	if err != nil {
+		return err
+	}
+	l.pass(files)
+	return nil
+}
+
+// pass asks the scanner for a pass over the folders holding files.
+func (l *Library) pass(files []store.LibraryFilePath) {
+	if l.Scanner != nil {
+		rewriteFolders(files, l.Scanner.PassFolders)
+	}
 }
 
 // seasons groups a series' episode files by the episode item each was written as.

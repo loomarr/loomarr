@@ -153,9 +153,7 @@ func (l *Library) rewrite(ctx context.Context, itemID string, origin store.Libra
 		}
 		files = append(files, found...)
 	}
-	if l.Scanner != nil {
-		rewriteFolders(files, l.Scanner.PassFolders)
-	}
+	l.pass(files)
 	return nil
 }
 

@@ -155,6 +155,79 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 	}
 }
 
+// A title's page says what decides which title it is, for "Wrong title?"; Check files again puts
+// its files' headers back to read, and Update details writes it again without a catalog.
+func TestLibraryItemMatchAndActions(t *testing.T) {
+	h := newLibraryHarness(t)
+	ctx := context.Background()
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
+		{ID: "90000001", Kind: "series", Name: "Alpha Show",
+			Match: store.LibraryMatch{Basis: "manager", App: "sonarr", Page: "http://sonarr.invalid/series/alpha-show"}},
+		{ID: "90000002", Kind: "movie", Name: "Bravo Movie", Match: store.LibraryMatch{Basis: "sidecar", App: "nfo"}},
+		{ID: "90000003", Kind: "movie", Name: "Charlie Movie"},
+	}, at); err != nil {
+		t.Fatal(err)
+	}
+	file := func(path, item, series string) store.LibraryFile {
+		return store.LibraryFile{Path: path, Root: "/media", Size: 7, ModifiedNs: 1, Kind: "movie", Identity: "digest",
+			Header: store.LibraryHeaderFailed, SeenAt: at, ItemID: item, SeriesID: series}
+	}
+	if err := h.Store.SaveLibraryFiles(ctx, []store.LibraryFile{
+		file("/media/alpha/e1.mkv", "90000011", "90000001"),
+		file("/media/bravo.mkv", "90000002", ""),
+		file("/media/charlie.mkv", "90000003", ""),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	type match struct {
+		By   string `json:"by"`
+		App  string `json:"app"`
+		Page string `json:"page"`
+	}
+	for id, want := range map[string]match{
+		"90000001": {By: "app", App: "sonarr", Page: "http://sonarr.invalid/series/alpha-show"},
+		"90000002": {By: "file"},
+		"90000003": {By: "none"},
+	} {
+		var page struct {
+			Match match `json:"match"`
+		}
+		decode(t, h.Do(http.MethodGet, "/v1/library/items/"+id, adminToken, ""), &page)
+		if page.Match != want {
+			t.Errorf("%s match = %+v, want %+v", id, page.Match, want)
+		}
+	}
+
+	if resp := h.Do(http.MethodPost, "/v1/library/items/90000001/check", adminToken, ""); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("check = %d", resp.StatusCode)
+	}
+	files, err := h.Store.LibraryItemFiles(ctx, "90000001")
+	if err != nil || len(files) != 1 || files[0].Header != store.LibraryHeaderPending {
+		t.Fatalf("checked files = %+v, %v; want the episode's header back to read", files, err)
+	}
+	if files, _ := h.Store.LibraryItemFiles(ctx, "90000002"); files[0].Header != store.LibraryHeaderFailed {
+		t.Errorf("another title's file was checked too: %+v", files)
+	}
+
+	if resp := h.Do(http.MethodPost, "/v1/library/items/90000002/refresh", adminToken, ""); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("update details = %d", resp.StatusCode)
+	}
+	if files, _ := h.Store.LibraryItemFiles(ctx, "90000002"); files[0].Identity != "" {
+		t.Errorf("updated title's file = %+v, want it written again", files[0])
+	}
+
+	for _, action := range []string{"check", "refresh"} {
+		if resp := h.Do(http.MethodPost, "/v1/library/items/90000099/"+action, adminToken, ""); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s of an unknown title = %d, want 404", action, resp.StatusCode)
+		}
+		if resp := h.Do(http.MethodPost, "/v1/library/items/90000001/"+action, memberToken, ""); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s by a member = %d, want 403", action, resp.StatusCode)
+		}
+	}
+}
+
 func decode(t *testing.T, resp *http.Response, into any) {
 	t.Helper()
 	defer func() { _ = resp.Body.Close() }()

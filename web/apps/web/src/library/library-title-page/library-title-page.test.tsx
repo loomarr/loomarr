@@ -20,6 +20,7 @@ const echo = {
   genres: ["Drama"],
   files: [{ path: "/media/movies/Echo/Echo.mkv", size: 1_000_000, ready: true }],
   seasons: [],
+  match: { by: "file" as const },
 };
 
 const renderPage = () => {

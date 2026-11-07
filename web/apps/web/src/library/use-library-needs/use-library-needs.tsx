@@ -38,6 +38,22 @@ const needOf = (n: LibraryNeedDTO): LibraryNeed => {
   };
 };
 
+// A search for a title by name, for "Pick a different title" and "Wrong title?".
+const searchLibraryTitles: LibraryNeedSearch = async (query, kind) => {
+  const body = unwrap(await libraryApi.searchLibraryTitles({ q: query, kind }));
+  if (!body) throw new Error("Couldn't search");
+  return body.results.map((r) => ({
+    tmdbId: r.tmdbId,
+    kind: r.kind,
+    name: r.name,
+    year: r.year,
+    overview: r.overview,
+    nameMatches: false,
+    yearMatches: false,
+    lengthMatches: false,
+  }));
+};
+
 const useLibraryNeeds = () => {
   const queryClient = useQueryClient();
   const list = libraryApi.useListLibraryNeeds();
@@ -68,30 +84,14 @@ const useLibraryNeeds = () => {
     },
   };
 
-  const onSearch: LibraryNeedSearch = useCallback(async (query, kind) => {
-    const res = await libraryApi.searchLibraryTitles({ q: query, kind });
-    const body = unwrap(res);
-    if (!body) throw new Error("Couldn't search");
-    return body.results.map((r) => ({
-      tmdbId: r.tmdbId,
-      kind: r.kind,
-      name: r.name,
-      year: r.year,
-      overview: r.overview,
-      nameMatches: false,
-      yearMatches: false,
-      lengthMatches: false,
-    }));
-  }, []);
-
   return {
     needs,
     loaded: list.data !== undefined,
     error: list.error,
     refetch: list.refetch,
     answers,
-    onSearch,
+    onSearch: searchLibraryTitles,
   };
 };
 
-export { useLibraryNeeds };
+export { searchLibraryTitles, useLibraryNeeds };

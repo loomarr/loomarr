@@ -30,6 +30,67 @@ func (s *Server) registerLibraryItems(api huma.API) {
 		Description: "A movie with its files, or a series with its episodes by season. 404 when no file of it is present.",
 		Tags:        []string{"library"},
 	}, RoleAdmin), s.getLibraryItem)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "updateLibraryItemDetails", Method: http.MethodPost, Path: "/v1/library/items/{id}/refresh",
+		Summary:     "Update a title's details",
+		Description: "Fetches the title's details from TMDB now, and reads what its app and its files say again. 503 when TMDB can't be reached.",
+		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, RoleAdmin), s.updateLibraryItemDetails)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "checkLibraryItemFiles", Method: http.MethodPost, Path: "/v1/library/items/{id}/check",
+		Summary:     "Check a title's files again",
+		Description: "Opens the title's files and reads their details again, such as after a file was replaced.",
+		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, RoleAdmin), s.checkLibraryItemFiles)
+}
+
+func (s *Server) updateLibraryItemDetails(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	err = svc.UpdateDetails(ctx, in.ID)
+	switch {
+	case err == nil:
+		return nil, nil
+	case errors.Is(err, store.ErrNotFound):
+		return nil, apiErr(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
+	case errors.Is(err, scan.ErrCatalogUnreachable):
+		return nil, apiErr(http.StatusServiceUnavailable, "Couldn't reach TMDB", "Try again in a moment.")
+	default:
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't update this title", "Try again in a moment.", err)
+	}
+}
+
+func (s *Server) checkLibraryItemFiles(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	err = svc.CheckFiles(ctx, in.ID)
+	switch {
+	case err == nil:
+		return nil, nil
+	case errors.Is(err, store.ErrNotFound):
+		return nil, apiErr(http.StatusNotFound, "Not in the library", "No file of this title is in your media folders.")
+	default:
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't check this title's files", "Try again in a moment.", err)
+	}
+}
+
+// libraryMatchDTO says what decides which title an item is, for "Wrong title?" (decision 26).
+type libraryMatchDTO struct {
+	By   string `json:"by" enum:"app,file,you,none" doc:"What says which title this is: the app that manages it, the file itself (an id in its name, or an NFO beside it), your answer, or nothing yet"`
+	App  string `json:"app,omitempty" enum:"sonarr,radarr" doc:"The app, when by is app"`
+	Page string `json:"page,omitempty" format:"uri" doc:"The title's page in that app, when by is app and it has one"`
+}
+
+func libraryMatchOf(m store.LibraryMatch) libraryMatchDTO {
+	by := scan.DecidedBy(m)
+	if by == scan.DecidedByApp {
+		return libraryMatchDTO{By: string(by), App: m.App, Page: m.Page}
+	}
+	return libraryMatchDTO{By: string(by)}
 }
 
 type libraryItemDTO struct {
@@ -138,6 +199,7 @@ type libraryItemDetailDTO struct {
 	RuntimeMillis int64                `json:"runtimeMillis,omitempty"`
 	Files         []libraryItemFileDTO `json:"files" doc:"A movie's files; empty for a series"`
 	Seasons       []librarySeasonDTO   `json:"seasons" doc:"A series' episodes by season; empty for a movie"`
+	Match         libraryMatchDTO      `json:"match"`
 }
 
 type getLibraryItemInput struct {
@@ -171,6 +233,7 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*ImageDTO) librar
 		RuntimeMillis: d.Facts.RuntimeMillis,
 		Files:         make([]libraryItemFileDTO, 0, len(d.Files)),
 		Seasons:       make([]librarySeasonDTO, 0, len(d.Seasons)),
+		Match:         libraryMatchOf(d.Match),
 	}
 	if out.Genres == nil {
 		out.Genres = []string{}

@@ -80,11 +80,13 @@ func (s *sqlStore) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 	out := []LibraryNeed{}
 	for rows.Next() {
 		var n LibraryNeed
-		if err := rows.Scan(&n.ID, &n.Kind, &n.Name, &n.SortName, &n.Year, &n.Poster, &n.Files, &n.Pending,
-			&n.Origin.Authority, &n.Origin.Key, &n.Searched); err != nil {
+		var catalog string
+		if err := rows.Scan(&n.ID, &n.Kind, &n.Name, &n.SortName, &n.Year, &catalog, &n.Match.Basis, &n.Match.App,
+			&n.Match.Page, &n.Poster, &n.Files, &n.Pending, &n.Origin.Authority, &n.Origin.Key, &n.Searched); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("library needs: %w", err)
 		}
+		n.Catalog, _ = ParseLibraryCatalogKey(catalog)
 		out = append(out, n)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
@@ -203,6 +205,12 @@ func (s *sqlStore) RewriteLibraryItemFiles(ctx context.Context, itemID string) (
 
 // rewriteFiles forgets the identity digest of the present files matching where, and lists them.
 func (s *sqlStore) rewriteFiles(ctx context.Context, where string, args ...any) ([]LibraryFilePath, error) {
+	return s.resetFiles(ctx, `identity = ''`, where, args...)
+}
+
+// resetFiles applies set to the present files matching where, and lists them, so a pass over
+// their folders takes them up again.
+func (s *sqlStore) resetFiles(ctx context.Context, set, where string, args ...any) ([]LibraryFilePath, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("rewrite library files: %w", err)
@@ -225,7 +233,7 @@ func (s *sqlStore) rewriteFiles(ctx context.Context, where string, args ...any) 
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, fmt.Errorf("rewrite library files: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_files SET identity = ''
+	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_files SET `+set+`
 		WHERE missing_at = 0 AND (`+where+`)`), args...); err != nil {
 		return nil, fmt.Errorf("rewrite library files: %w", err)
 	}
