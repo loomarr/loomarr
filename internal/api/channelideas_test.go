@@ -17,13 +17,13 @@ import (
 	"github.com/loomarr/loomarr/internal/ideas"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/proposal"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -116,12 +116,12 @@ func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time,
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		var next atomic.Int64
 		newID := func() string { return fmt.Sprintf("idea-req-%d", next.Add(1)) }
-		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })
-		service := suggest.NewService(defaults.Store, workflow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log).
+		flow := workflow.New(defaults.Store, newID, func() time.Time { return now })
+		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log).
 			WithProposalNotifier(notify)
 		return api.Router(defaults.Log, api.Options{
 			Suggest:          service,
-			ProposalWorkflow: workflow,
+			ProposalWorkflow: flow,
 			Store:            defaults.Store,
 			Auth:             api.NewSessionAuthorizer(mgr, "break-glass-token"),
 			Log:              defaults.Log,
@@ -351,7 +351,7 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 // Approver (with an ordered resolver double for Library presence) — the manual builder's
 // grounding guarantee is the thing under test, so a fake approver would test nothing.
 func newManualChannelHarness(
-	t *testing.T, now time.Time, resolver *testkit.ApprovalAdditionResolver[proposal.ProposalItem],
+	t *testing.T, now time.Time, resolver *testkit.ApprovalAdditionResolver[proposals.ProposalItem],
 ) *apiHarness {
 	t.Helper()
 	ms := testkit.NewMediaServer(t)
@@ -367,8 +367,8 @@ func newManualChannelHarness(
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		var next atomic.Int64
 		newID := func() string { return fmt.Sprintf("manual-%d", next.Add(1)) }
-		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })
-		service := suggest.NewService(defaults.Store, workflow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log)
+		flow := workflow.New(defaults.Store, newID, func() time.Time { return now })
+		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log)
 		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
 		approver := suggest.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
 			WithApprovalAdditionResolver(resolver)
@@ -376,7 +376,7 @@ func newManualChannelHarness(
 			Suggest:          service,
 			Approver:         approver,
 			Binder:           chBinder,
-			ProposalWorkflow: workflow,
+			ProposalWorkflow: flow,
 			Store:            defaults.Store,
 			Auth:             api.NewSessionAuthorizer(mgr, "break-glass-token"),
 			Log:              defaults.Log,
@@ -424,9 +424,9 @@ func submitManualChannel(
 func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.May, 1, 12, 0, 0, 0, time.UTC)
-	resolver := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
-		{Item: proposal.ProposalItem{MediaType: "movie", TMDBID: 90000001, Name: "Owned Already", LibraryItemID: "lib-1"}, Owned: true},
-		{Item: proposal.ProposalItem{MediaType: "movie", TMDBID: 90000002, Name: "Not Actually Owned"}, Owned: false},
+	resolver := &testkit.ApprovalAdditionResolver[proposals.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposals.ProposalItem]{
+		{Item: proposals.ProposalItem{MediaType: "movie", TMDBID: 90000001, Name: "Owned Already", LibraryItemID: "lib-1"}, Owned: true},
+		{Item: proposals.ProposalItem{MediaType: "movie", TMDBID: 90000002, Name: "Not Actually Owned"}, Owned: false},
 	}}
 	h := newManualChannelHarness(t, now, resolver)
 	kid := login(t, h.Server, "kid", "pw")
@@ -468,8 +468,8 @@ func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
 func TestSubmitManualChannelIsOpenToAdminAndMember(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	resolver := &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposal.ProposalItem]{
-		{Item: proposal.ProposalItem{MediaType: "movie", TMDBID: 90000009, Name: "A Title", LibraryItemID: "lib-9"}, Owned: true},
+	resolver := &testkit.ApprovalAdditionResolver[proposals.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[proposals.ProposalItem]{
+		{Item: proposals.ProposalItem{MediaType: "movie", TMDBID: 90000009, Name: "A Title", LibraryItemID: "lib-9"}, Owned: true},
 	}}
 	h := newManualChannelHarness(t, now, resolver)
 	boss := login(t, h.Server, "boss", "pw")
@@ -485,7 +485,7 @@ func TestSubmitManualChannelIsOpenToAdminAndMember(t *testing.T) {
 // is always disabled until at least one title is picked, but the API enforces it too.
 func TestSubmitManualChannelRejectsEmptyInput(t *testing.T) {
 	t.Parallel()
-	h := newManualChannelHarness(t, time.Now(), &testkit.ApprovalAdditionResolver[proposal.ProposalItem]{})
+	h := newManualChannelHarness(t, time.Now(), &testkit.ApprovalAdditionResolver[proposals.ProposalItem]{})
 	kid := login(t, h.Server, "kid", "pw")
 	if code, _, title := submitManualChannel(t, h.Server, map[string]any{
 		"name":   "",

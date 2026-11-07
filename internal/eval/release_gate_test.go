@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -60,15 +60,15 @@ func TestReleaseGateEpochContractRevisionPreservesCasesAndGates(t *testing.T) {
 	}
 }
 
-func proposalWithKeys(t *testing.T, values ...string) proposal.Proposal {
+func proposalWithKeys(t *testing.T, values ...string) proposals.Proposal {
 	t.Helper()
-	prop := proposal.Proposal{}
+	prop := proposals.Proposal{}
 	for _, value := range values {
 		mediaType, provider, id, ok := provision.ParseKey(provision.Key(value))
 		if !ok || provider != "tmdb" {
 			t.Fatalf("test key %q is not a TMDB key", value)
 		}
-		prop.Lineup = append(prop.Lineup, proposal.ProposalItem{MediaType: mediaType, TMDBID: id, Name: value})
+		prop.Lineup = append(prop.Lineup, proposals.ProposalItem{MediaType: mediaType, TMDBID: id, Name: value})
 	}
 	return prop
 }

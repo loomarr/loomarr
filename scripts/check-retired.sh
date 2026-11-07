@@ -512,7 +512,7 @@ done
 # Raw model-tool/prompt schema properties are retired. Persisted/operator era
 # fields remain valid elsewhere, so keep this check limited to these two schema
 # surfaces. Map reads used to reject the property do not restore the schema.
-for path in internal/suggest/tools.go internal/suggest/prompt.go; do
+for path in internal/proposals/suggest/tools.go internal/proposals/suggest/prompt.go; do
   hits="$(grep -nF '"era":' "$path" 2>/dev/null || true)"
   if [[ -n "$hits" ]]; then
     fail=1
@@ -523,7 +523,7 @@ done
 [[ "$fail" -ne 0 ]] && exit 1
 # Separate provider IDs are retired only at the model-selection interface.
 # Public Proposal and Catalog DTOs retain their existing external-ID fields.
-for path in internal/suggest/parse.go internal/suggest/prompt.go; do
+for path in internal/proposals/suggest/parse.go internal/proposals/suggest/prompt.go; do
   for id in 'json:"tmdbId' 'json:"tvdbId' '"tmdbId":' '"tvdbId":'; do
     hits="$(grep -nF "$id" "$path" 2>/dev/null || true)"
     if [[ -n "$hits" ]]; then

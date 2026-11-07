@@ -13,12 +13,12 @@ internal/schedule	151
 internal/media/images	149
 internal/releaseverify	124
 cmd/image-cert	117
-internal/suggest	100
+internal/proposals/suggest	100
 internal/people/auth	65
 internal/filler	65
 cmd/seed	49
 internal/people/secretprotection	46
-internal/proposalworkflow	45
+internal/proposals/workflow	45
 internal/filler/records	36
 internal/playout	33
 internal/channels	31
@@ -33,7 +33,7 @@ internal/backendtransition	15
 internal/recurate	14
 internal/jobs	14
 internal/media/tools	12
-internal/proposaloutlook	11
+internal/proposals/outlook	11
 internal/playout/packager	10
 internal/inventory	9
 internal/media/measure	8

@@ -8,20 +8,20 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/binder"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // proposalFor builds an approved candidate for jobID carrying intent, made by createdBy.
-func proposalFor(t *testing.T, id, jobID, createdBy string, intent proposal.Intent) store.Proposal {
+func proposalFor(t *testing.T, id, jobID, createdBy string, intent proposals.Intent) store.Proposal {
 	t.Helper()
 	return store.Proposal{
 		ID: id, JobID: jobID, Status: "approved", CreatedBy: createdBy, ApprovedBy: "admin",
-		Body: proposal.Proposal{
+		Body: proposals.Proposal{
 			Intent: intent,
-			Lineup: []proposal.ProposalItem{inLib(1, "Exact")},
+			Lineup: []proposals.ProposalItem{inLib(1, "Exact")},
 		}, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 }
@@ -32,10 +32,10 @@ func TestPlan_NewChannelOwnsItsIntentAndRequester(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	putAvailable(t, st, 1, "Exact")
-	p := proposalFor(t, "p-new", "job-new", "u-member", proposal.Intent{
+	p := proposalFor(t, "p-new", "job-new", "u-member", proposals.Intent{
 		Description: "90s action", Era: "1990s", MustExclude: []string{"Slow Burn"},
 		ChannelName: "Fixed Name", RefineText: "one-run note",
-		CurrentLineup: []proposal.LineupContext{{Key: "movie:tmdb:90000001"}},
+		CurrentLineup: []proposals.LineupContext{{Key: "movie:tmdb:90000001"}},
 	})
 	if err := st.CreateJob(context.Background(), store.Job{ID: "job-new", Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestPlan_NewChannelOwnsItsIntentAndRequester(t *testing.T) {
 	if ch.RequestedBy != "u-member" {
 		t.Errorf("RequestedBy = %q, want the requester u-member", ch.RequestedBy)
 	}
-	var owned proposal.Intent
+	var owned proposals.Intent
 	if err := json.Unmarshal([]byte(ch.IntentJSON), &owned); err != nil {
 		t.Fatalf("channel intent %q: %v", ch.IntentJSON, err)
 	}
@@ -83,7 +83,7 @@ func TestPlan_JobNamingAChannelPatchesItWithoutMovingTheRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := proposalFor(t, "p-refine", "job-refine", "u-admin", proposal.Intent{
+	p := proposalFor(t, "p-refine", "job-refine", "u-admin", proposals.Intent{
 		Description: "90s action", RefineText: "more heists",
 	})
 	ch, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(ctx, p)
@@ -115,7 +115,7 @@ func TestPlan_JobNamingARemovedChannelFails(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	p := proposalFor(t, "p-orphan", "job-orphan", "", proposal.Intent{Description: "90s action"})
+	p := proposalFor(t, "p-orphan", "job-orphan", "", proposals.Intent{Description: "90s action"})
 
 	_, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(ctx, p)
 	if !errors.Is(err, store.ErrJobChannelGone) {
@@ -130,7 +130,7 @@ func TestPlan_RefusesToCreateAChannelForAProposalWithNoJob(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	putAvailable(t, st, 1, "Exact")
-	p := proposalFor(t, "p-nojob", "job-missing", "u-member", proposal.Intent{Description: "90s action"})
+	p := proposalFor(t, "p-nojob", "job-missing", "u-member", proposals.Intent{Description: "90s action"})
 
 	ch, err := binder.New(st, nil, nil, testkit.Logger()).PlanApprovedChannel(context.Background(), p)
 	if err == nil {

@@ -135,7 +135,7 @@ glossary. `scripts/check-retired.sh` now guards the old path.
 persisted `kind` is `"suggest"` (renaming it is a data migration, and the job is not the
 proposal), and the SSE frame `"suggestion"` reports that job's PHASE — its Go→TS handler pairing
 has no drift guard, so churning it is real risk for no glossary gain. The banned noun is the name
-for the artifact; `internal/suggest` remains the package that produces one.
+for the artifact; `internal/proposals/suggest` remains the package that produces one.
 
 **Grounding**:
 The rule that the model may only pick from candidates a Catalog operation actually returned this

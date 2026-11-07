@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -71,7 +71,7 @@ func TestProductNotificationJourneyRoutesOnlyConfiguredAudiencesWithStableDedupl
 	}
 	proposal := store.Proposal{
 		ID: "proposal-1", CreatedBy: "requester-1",
-		Body: proposal.Proposal{ChannelName: "Saturday Cartoons"},
+		Body: proposals.Proposal{ChannelName: "Saturday Cartoons"},
 	}
 
 	coordinator.ProposalSubmitted(t.Context(), proposal)
@@ -124,7 +124,7 @@ func TestProductNotificationJourneyRoutesOnlyConfiguredAudiencesWithStableDedupl
 }
 
 func TestProposalSubjectTruncatesLongUnicodeWithoutBreakingUTF8(t *testing.T) {
-	row := store.Proposal{Body: proposal.Proposal{Intent: proposal.Intent{Description: strings.Repeat("é", 150)}}}
+	row := store.Proposal{Body: proposals.Proposal{Intent: proposals.Intent{Description: strings.Repeat("é", 150)}}}
 	subject := proposalSubject(row)
 	if len(subject) > 200 || subject == "Channel proposal" {
 		t.Fatalf("unicode subject = %q (%d bytes)", subject, len(subject))

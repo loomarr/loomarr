@@ -24,8 +24,8 @@ import (
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
@@ -199,7 +199,7 @@ type SeriesEpisodeStore interface {
 
 // ProposalRepository is the one persistence surface for proposals and the suggestion jobs that
 // produce them (§8): the job queue, the proposals it yields, and the approval decisions on them.
-// A proposal's body is the typed proposal.Proposal; the repository is the only place its JSON is
+// A proposal's body is the typed proposals.Proposal; the repository is the only place its JSON is
 // encoded or decoded.
 type ProposalRepository interface {
 	CreateJob(ctx context.Context, j Job) error

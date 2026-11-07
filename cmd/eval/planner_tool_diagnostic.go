@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 // planner-tool-diagnostic is the explicit, non-CI planner tool-finalization diagnostic. It performs

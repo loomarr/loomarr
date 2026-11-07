@@ -12,7 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 // CallBudget is the deterministic worst-case inference envelope reported before
