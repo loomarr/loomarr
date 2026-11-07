@@ -2,6 +2,7 @@ export * from "./collapsible-section";
 export * from "./empty-state";
 export * from "./error-details";
 export * from "./error-state";
+export * from "./field-error";
 export * from "./field-help";
 export * from "./generation-progress";
 export * from "./placeholder";

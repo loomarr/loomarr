@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { bootstrapSchema, intentSchema, loginSchema, notificationProviderFormSchema } from "./schemas";
+import {
+  bootstrapSchema,
+  changePasswordSchema,
+  contactAddressSchema,
+  createLocalUserSchema,
+  intentSchema,
+  loginSchema,
+  notificationProviderFormSchema,
+  passwordRecoveryRequestSchema,
+  passwordRecoveryResetSchema,
+  redeemInvitationSchema,
+  resetUserPasswordSchema,
+} from "./schemas";
 
 describe("intentSchema", () => {
   it("requires a description of at least 3 chars", () => {
@@ -26,6 +38,74 @@ describe("loginSchema", () => {
   it("requires both fields", () => {
     expect(loginSchema.safeParse({ username: "", password: "x" }).success).toBe(false);
     expect(loginSchema.safeParse({ username: "matt", password: "x" }).success).toBe(true);
+  });
+});
+
+const messages = (result: {
+  success: boolean;
+  error?: { issues: { message: string; path: PropertyKey[] }[] };
+}) => result.error?.issues.map((issue) => [issue.path.join("."), issue.message]) ?? [];
+
+describe("password forms", () => {
+  it("asks for the current password, the minimum, and a matching confirmation", () => {
+    expect(messages(changePasswordSchema.safeParse({ current: "", next: "short", confirm: "x" }))).toEqual([
+      ["current", "Enter your current password."],
+      ["next", "Use at least 8 characters."],
+      ["confirm", "New passwords don't match."],
+    ]);
+    expect(
+      messages(changePasswordSchema.safeParse({ current: "old", next: "longenough", confirm: "other" })),
+    ).toEqual([["confirm", "New passwords don't match."]]);
+  });
+
+  it("trims a new local account's username and takes the wire's roles", () => {
+    expect(createLocalUserSchema.parse({ username: " ana ", password: "longenough", role: "admin" })).toEqual(
+      {
+        username: "ana",
+        password: "longenough",
+        role: "admin",
+      },
+    );
+    expect(
+      messages(createLocalUserSchema.safeParse({ username: " ", password: "longenough", role: "member" })),
+    ).toEqual([["username", "Pick a username."]]);
+    expect(
+      createLocalUserSchema.safeParse({ username: "ana", password: "longenough", role: "owner" }).success,
+    ).toBe(false);
+  });
+
+  it("checks a Library invitation's username and a local invitation's confirmation", () => {
+    const blank = { username: "", password: "longenough", confirm: "" };
+    expect(messages(redeemInvitationSchema(true).safeParse(blank))).toEqual([
+      ["username", "Enter the username for the invited Library account."],
+    ]);
+    expect(messages(redeemInvitationSchema(false).safeParse(blank))).toEqual([
+      ["confirm", "Passwords need to match."],
+    ]);
+    expect(redeemInvitationSchema(false).safeParse({ ...blank, confirm: "longenough" }).success).toBe(true);
+  });
+
+  it("validates both recovery steps", () => {
+    expect(messages(passwordRecoveryRequestSchema.safeParse({ username: "  " }))).toEqual([
+      ["username", "Enter your username."],
+    ]);
+    expect(
+      messages(passwordRecoveryResetSchema.safeParse({ password: "longenough", confirm: "nope" })),
+    ).toEqual([["confirm", "Passwords need to match."]]);
+    expect(messages(resetUserPasswordSchema.safeParse({ next: "short" }))).toEqual([
+      ["next", "Use at least 8 characters."],
+    ]);
+  });
+
+  it("accepts any complete-looking contact email and trims it", () => {
+    expect(contactAddressSchema.parse({ email: " ana@example.test " })).toEqual({
+      email: "ana@example.test",
+    });
+    for (const email of ["ana", "@example.test", "ana@"]) {
+      expect(messages(contactAddressSchema.safeParse({ email }))).toEqual([
+        ["email", "Enter one complete email address."],
+      ]);
+    }
   });
 });
 
