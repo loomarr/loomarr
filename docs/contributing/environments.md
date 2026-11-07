@@ -68,6 +68,11 @@ key can reach everything in the account. Keep both checks in `scripts/staging.sh
 
 | Setting | What it needs |
 | --- | --- |
-| `VULTR_API_KEY` | A repository secret: a key for the cloud account |
-| `STAGING_TS_AUTHKEY` | A repository secret: a reusable, ephemeral, pre-approved tailnet key |
+| `VULTR_API_KEY` | A repository secret: a key for the cloud account, allowing all IPs because GitHub's runners change address |
+| `STAGING_TS_AUTHKEY` | A repository secret: a reusable, ephemeral, pre-approved tailnet key with a tag. Sign it first if the tailnet uses Tailnet Lock |
 | `ghcr.io/loomarr/loomarr-staging` | Set this package public after its first build, so the server can pull it |
+
+The tag stops the server's login expiring, which would take a long-running site offline. Treat the
+server as untrusted: let your devices reach its web port, and give the tag no access to anything else
+on the tailnet. The key lasts 90 days at most. A running server is unaffected when it expires, but
+the next `up` fails until you replace it.
