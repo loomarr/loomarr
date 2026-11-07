@@ -256,7 +256,7 @@ const TasksPage = () => {
                                   aria-controls={`task-${job.name}`}
                                   onClick={() => toggleJob(job.name)}
                                 >
-                                  <span className="flex shrink-0" title={dot.label}>
+                                  <span style={{ display: "flex", flexShrink: 0 }} title={dot.label}>
                                     <StatusDot tone={dot.tone} label={job.paused ? "" : dot.label} />
                                   </span>
                                   <span className="font-medium">{job.title}</span>

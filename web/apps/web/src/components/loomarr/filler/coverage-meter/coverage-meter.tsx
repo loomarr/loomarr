@@ -110,7 +110,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   return (
     <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
       <div className="flex items-start gap-2">
-        <span className="mt-1.5 flex shrink-0">
+        <span style={{ display: "flex", flexShrink: 0, marginTop: 6 }}>
           <StatusDot tone={level.tone} label="" />
         </span>
         <div className="min-w-0">
