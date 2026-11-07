@@ -35,7 +35,8 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       # Newest go-contracts cache by prefix: its key carries a week and a linter version this gate
-      # does not depend on, and Go's own caches ignore whatever is stale.
+      # does not depend on, and Go's own caches ignore whatever is stale. The path list must match
+      # ci-go-contracts.yml exactly, lint cache included: GitHub versions a cache by its paths.
       - name: Restore Go caches
         if: steps.go.outputs.changed == 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -43,6 +44,7 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
+            ~/.cache/golangci-lint
           key: go-contracts-${{ runner.os }}-
           restore-keys: |
             go-contracts-${{ runner.os }}-
