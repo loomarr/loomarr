@@ -201,7 +201,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// endpoint make" without serialising traffic and diffing a global counter by hand.
 	// It must be outside because it routes a request copy carrying that counter; the Recorder and
 	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
-	return withRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux))))
+	return withSecurityHeaders(withRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux)))))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

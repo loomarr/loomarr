@@ -152,9 +152,6 @@ func (s *Server) serveImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", rend.ContentType)
-	// nosniff so a browser cannot reinterpret the bytes as HTML/script regardless of the declared
-	// type — defence in depth even though the input allowlist is raster-only.
-	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// ⚠ Immutable is HONEST here, unlike on a mutable path: the URL contains the content hash, so
 	// different bytes are a different URL by construction. A strong ETag equal to the hash costs
 	// nothing (we already have it) and is the correct validator for the cold-cache case.
