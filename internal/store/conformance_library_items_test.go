@@ -132,3 +132,62 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("series after a removal = %+v, %v; want one file", one, err)
 	}
 }
+
+// A file whose header couldn't be read counts as unplayable toward its item and its series, and
+// the problems list keeps just the titles that need a look: one with an unplayable file, or a movie
+// with more than one file. A skipped file (a disc image) is neither.
+func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+		{ID: "broken", Kind: "movie", Name: "Broken Film"},
+		{ID: "twice", Kind: "movie", Name: "Twice Film"},
+		{ID: "fine", Kind: "movie", Name: "Fine Film"},
+		{ID: "show", Kind: "series", Name: "A Show"},
+		{ID: "shows", Kind: "series", Name: "Fine Show"},
+	}, at); err != nil {
+		t.Fatal(err)
+	}
+	file := func(path, item, series, header string) LibraryFile {
+		return LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header,
+			SeenAt: at, ItemID: item, SeriesID: series}
+	}
+	disc := file("/media/fine/disc.iso", "fine", "", LibraryHeaderFailed)
+	disc.Problem = "disc_image"
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{
+		file("/media/broken.mkv", "broken", "", LibraryHeaderFailed),
+		file("/media/twice/a.mkv", "twice", "", LibraryHeaderRead),
+		file("/media/twice/b.mkv", "twice", "", LibraryHeaderRead),
+		file("/media/fine/fine.mkv", "fine", "", LibraryHeaderRead),
+		disc,
+		file("/media/show/e1.mkv", "e1", "show", LibraryHeaderRead),
+		file("/media/show/e2.mkv", "e2", "show", LibraryHeaderFailed),
+		file("/media/shows/e1.mkv", "f1", "shows", LibraryHeaderRead),
+		file("/media/shows/e2.mkv", "f2", "shows", LibraryHeaderRead),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if one, err := st.LibraryItem(ctx, "show"); err != nil || one.Unplayable != 1 || one.Files != 2 || one.Pending != 0 {
+		t.Fatalf("show = %+v, %v; want one of two episodes unplayable", one, err)
+	}
+	page, err := st.ListLibraryItems(ctx, LibraryItemQuery{Problems: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, it := range page.Items {
+		got = append(got, it.ID)
+	}
+	// Sorted by name: A Show, Broken Film, Twice Film.
+	if page.Total != 3 || len(got) != 3 || got[0] != "show" || got[1] != "broken" || got[2] != "twice" {
+		t.Fatalf("problems = %v (total %d), want show, broken and twice", got, page.Total)
+	}
+	if page.Items[1].Unplayable != 1 || page.Items[2].Unplayable != 0 || page.Items[2].Files != 2 {
+		t.Errorf("problem counts = %+v", page.Items)
+	}
+	if all, err := st.ListLibraryItems(ctx, LibraryItemQuery{}); err != nil || all.Total != 5 {
+		t.Errorf("every title = %d, %v; want five", all.Total, err)
+	}
+}

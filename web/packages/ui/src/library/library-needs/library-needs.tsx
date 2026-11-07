@@ -1,3 +1,4 @@
+import { formatBytes } from "@loomarr/core/format";
 import {
   Action,
   Disclosure,
@@ -18,6 +19,7 @@ import type {
   LibraryNeedSearch,
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
+  LibraryProblem,
 } from "./library-needs.type";
 
 // NEEDS YOU (#2151 decision 27, design/library variant D): the titles Loomarr can't tell what they
@@ -38,6 +40,54 @@ const reasonFor = (c: LibraryNeedCandidate): string => {
   if (c.nameMatches && c.yearMatches) return "The name and year match.";
   return "It looks close, but we can't be sure.";
 };
+
+// A title that needs a look, as Needs you words it (decision 24, the mock's word sheet): the strip's
+// line, the card's headline and its one reason. A title with both kinds of problem is two entries;
+// See why opens its page.
+interface ProblemEntry {
+  key: string;
+  id: string;
+  name: string;
+  poster?: ReactNode;
+  line: string;
+  headline: string;
+  reason: string;
+}
+
+const problemEntries = (problems: readonly LibraryProblem[]): ProblemEntry[] =>
+  problems.flatMap((p) => {
+    const out: ProblemEntry[] = [];
+    const base = { id: p.id, name: p.name, poster: p.poster };
+    if (p.unplayable > 0) {
+      const movie = p.kind === "movie";
+      const one = movie || p.unplayable === 1;
+      const episodes = p.unplayable === 1 ? "1 episode" : `${p.unplayable} episodes`;
+      out.push({
+        ...base,
+        key: `${p.id}:unplayable`,
+        line: movie ? `${p.name} — can't be played` : `${p.name} — ${episodes} can't be played`,
+        headline: movie
+          ? `${p.name} can't be played`
+          : p.unplayable === 1
+            ? `${p.name} has an episode that can't be played`
+            : `${p.name} has ${episodes} that can't be played`,
+        reason: one
+          ? "The file may be damaged. Loomarr skips it until it's fixed."
+          : "The files may be damaged. Loomarr skips them until they're fixed.",
+      });
+    }
+    if (p.extraBytes > 0) {
+      const size = formatBytes(p.extraBytes);
+      out.push({
+        ...base,
+        key: `${p.id}:extra`,
+        line: `${p.name} — an extra copy is taking ${size}`,
+        headline: `${p.name} has an extra copy`,
+        reason: `The extra copy is taking ${size} and never plays. Removing it gets the space back.`,
+      });
+    }
+    return out;
+  });
 
 // What a need is called where it is named: its best guess, else its first file.
 const needName = (need: LibraryNeed) => need.best?.name ?? fileName(need.files[0] ?? "");
@@ -152,34 +202,62 @@ const StripRow = ({
   return answered ? <LockIn onDone={onDone}>{row}</LockIn> : row;
 };
 
-const LibraryNeedsStrip = ({ needs, onLink, onOpenNeeds }: LibraryNeedsStripProps) => {
+const ProblemRow = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle: (id: string) => void }) => (
+  <Line columnGap="control" flexWrap="wrap" paddingVertical="control" rowGap="inline">
+    <Line flexBasis={240} flexGrow={1} flexWrap="nowrap" minWidth={0}>
+      <Thumb art={entry.poster} name={entry.name} width={36} />
+      <Stack flexShrink={1} minWidth={0}>
+        <Text textRole="body">{entry.line}</Text>
+      </Stack>
+    </Line>
+    <Action onPress={() => onOpenTitle(entry.id)} variant="secondary">
+      See why
+    </Action>
+  </Line>
+);
+
+const LibraryNeedsStrip = ({ needs, problems, onLink, onOpenNeeds, onOpenTitle }: LibraryNeedsStripProps) => {
   const { list: open, phases, answer, done } = useAnswers(needs);
   const [all, setAll] = useState(false);
-  if (open.length === 0) return null;
-  const shown = all ? open : open.slice(0, STRIP_FIRST);
-  const waiting = open.filter((n) => !phases[n.id]).length;
+  const entries = problemEntries(problems);
+  // The titles to answer first, then the ones that need a look, as the mock lists them.
+  const rows: { key: string; row: ReactNode }[] = [
+    ...open.map((need) => ({
+      key: need.id,
+      row: (
+        <StripRow
+          answered={phases[need.id] !== undefined}
+          need={need}
+          onDone={() => done(need.id)}
+          onOpenNeeds={onOpenNeeds}
+          onYes={() => {
+            if (need.best) answer(need.id, "added", onLink(need.id, need.best.tmdbId));
+          }}
+        />
+      ),
+    })),
+    ...entries.map((entry) => ({
+      key: entry.key,
+      row: <ProblemRow entry={entry} onOpenTitle={onOpenTitle} />,
+    })),
+  ];
+  if (rows.length === 0) return null;
+  const shown = all ? rows : rows.slice(0, STRIP_FIRST);
+  const waiting = open.filter((n) => !phases[n.id]).length + entries.length;
   return (
     <Surface aria-label="Needs you" borderColor="stateWarning" gap="inline" padding="control" role="region">
       <Text textRole="headline">{`Needs you (${waiting})`}</Text>
       <Stack>
-        {shown.map((need, i) => (
-          <Stack borderColor="borderDecorative" borderTopWidth={i === 0 ? 0 : 1} key={need.id}>
-            <StripRow
-              answered={phases[need.id] !== undefined}
-              need={need}
-              onDone={() => done(need.id)}
-              onOpenNeeds={onOpenNeeds}
-              onYes={() => {
-                if (need.best) answer(need.id, "added", onLink(need.id, need.best.tmdbId));
-              }}
-            />
+        {shown.map(({ key, row }, i) => (
+          <Stack borderColor="borderDecorative" borderTopWidth={i === 0 ? 0 : 1} key={key}>
+            {row}
           </Stack>
         ))}
       </Stack>
-      {open.length > STRIP_FIRST && !all ? (
+      {rows.length > STRIP_FIRST && !all ? (
         <Line>
           <Action onPress={() => setAll(true)} variant="ghost">
-            {`Show ${open.length - STRIP_FIRST} more`}
+            {`Show ${rows.length - STRIP_FIRST} more`}
           </Action>
         </Line>
       ) : null}
@@ -291,12 +369,46 @@ const NeedCard = ({
   return phase ? <LockIn onDone={onDone}>{card}</LockIn> : card;
 };
 
-const LibraryNeedsCards = ({ needs, onLink, onIgnore, onSearch }: LibraryNeedsCardsProps) => {
+// A title that needs a look: the headline, its one reason, and See why, which opens its page.
+const ProblemCard = ({ entry, onOpenTitle }: { entry: ProblemEntry; onOpenTitle: (id: string) => void }) => {
+  const wide = useWindowWidth() >= 640;
+  return (
+    <Surface gap="control" padding="section">
+      <Line alignItems="flex-start" columnGap="section" flexWrap={wide ? "nowrap" : "wrap"} rowGap="control">
+        <Stack flexShrink={0} width={wide ? 144 : 112}>
+          <LibraryPoster art={entry.poster} big name={entry.name} />
+        </Stack>
+        <Stack flexBasis={240} flexGrow={1} gap="control" minWidth={0}>
+          <Text textRole="title">{entry.headline}</Text>
+          <Text textRole="body" tone="secondary">
+            {entry.reason}
+          </Text>
+          <Line>
+            <Action onPress={() => onOpenTitle(entry.id)} variant="secondary">
+              See why
+            </Action>
+          </Line>
+        </Stack>
+      </Line>
+    </Surface>
+  );
+};
+
+const LibraryNeedsCards = ({
+  needs,
+  problems,
+  onLink,
+  onIgnore,
+  onSearch,
+  onOpenTitle,
+}: LibraryNeedsCardsProps) => {
   const { list: open, phases, answer, done } = useAnswers(needs);
+  const entries = problemEntries(problems);
+  const waiting = open.filter((n) => !phases[n.id]).length + entries.length;
   return (
     <Surface aria-label="Needs you" backgroundColor="transparent" borderWidth={0} gap="control" role="region">
-      <Text as="h2" textRole="headline">{`Needs you (${open.filter((n) => !phases[n.id]).length})`}</Text>
-      {open.length === 0 ? (
+      <Text as="h2" textRole="headline">{`Needs you (${waiting})`}</Text>
+      {open.length + entries.length === 0 ? (
         <Text textRole="body" tone="secondary">
           Nothing needs you.
         </Text>
@@ -315,6 +427,9 @@ const LibraryNeedsCards = ({ needs, onLink, onIgnore, onSearch }: LibraryNeedsCa
           phase={phases[need.id]}
           primary={i === 0}
         />
+      ))}
+      {entries.map((entry) => (
+        <ProblemCard entry={entry} key={entry.key} onOpenTitle={onOpenTitle} />
       ))}
     </Surface>
   );

@@ -43,6 +43,8 @@ func TestLibraryNeedsYou(t *testing.T) {
 		files = append(files, store.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
 			Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: id})
 	}
+	// Arr Film's file doesn't parse: it needs a look.
+	files[2].Header = store.LibraryHeaderFailed
 	if err := h.Store.SaveLibraryFiles(ctx, files); err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +77,14 @@ func TestLibraryNeedsYou(t *testing.T) {
 				Path string `json:"path"`
 			} `json:"files"`
 		} `json:"needs"`
+		Problems []struct {
+			Item struct {
+				ID          string `json:"id"`
+				Unplayable  int    `json:"unplayable"`
+				ExtraCopies int    `json:"extraCopies"`
+			} `json:"item"`
+			ExtraBytes int64 `json:"extraBytes"`
+		} `json:"problems"`
 	}
 	var got needs
 	decode(t, h.Do(http.MethodGet, "/v1/library/needs", adminToken, ""), &got)
@@ -87,12 +97,16 @@ func TestLibraryNeedsYou(t *testing.T) {
 		best.Poster == nil || other.Poster != nil {
 		t.Fatalf("candidates = %+v, want the fetched poster only", got.Needs[0].Candidates)
 	}
+	if len(got.Problems) != 1 || got.Problems[0].Item.ID != "90000003" || got.Problems[0].Item.Unplayable != 1 ||
+		got.Problems[0].Item.ExtraCopies != 0 || got.Problems[0].ExtraBytes != 0 {
+		t.Fatalf("problems = %+v, want Arr Film with one file that can't be played", got.Problems)
+	}
 	var status struct {
 		NeedsYou int `json:"needsYou"`
 	}
 	decode(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), &status)
-	if status.NeedsYou != 1 {
-		t.Fatalf("status needsYou = %d", status.NeedsYou)
+	if status.NeedsYou != 2 {
+		t.Fatalf("status needsYou = %d, want the title to answer and the one that needs a look", status.NeedsYou)
 	}
 
 	for _, tc := range []struct {

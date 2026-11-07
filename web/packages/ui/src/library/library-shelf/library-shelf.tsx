@@ -103,7 +103,13 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
   const [focused, setFocused] = useState(false);
   return (
     <Pressable
-      accessibilityLabel={title.ready ? title.name : `${title.name}, getting ready`}
+      accessibilityLabel={
+        !title.ready
+          ? `${title.name}, getting ready`
+          : title.attention
+            ? `${title.name}, needs a look`
+            : title.name
+      }
       accessibilityRole="button"
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
@@ -123,6 +129,20 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
                 <Badge tone="neutral">Getting ready</Badge>
               </Stack>
             )}
+            {title.ready && title.attention ? (
+              // A dot, not a badge: a three-across phone grid has no room for a word on the poster.
+              <Surface
+                backgroundColor="surfaceCanvas"
+                borderRadius="round"
+                borderWidth={0}
+                padding={6}
+                position="absolute"
+                right={8}
+                top={8}
+              >
+                <StatusDot label="Needs a look" tone="warn" />
+              </Surface>
+            ) : null}
           </LibraryPoster>
         </Surface>
         <Stack gap={2} minHeight={56} minWidth={0}>

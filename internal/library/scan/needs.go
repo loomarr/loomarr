@@ -50,10 +50,15 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	return out, nil
 }
 
-// NeedCount is how many titles need the maintainer: the Needs you heading and the nav badge.
+// NeedCount is everything Needs you holds, the titles to answer and the titles that need a look:
+// the Needs you heading and the nav badge are one number.
 func (l *Library) NeedCount(ctx context.Context) (int, error) {
 	needs, err := l.NeedStore.LibraryNeeds(ctx)
-	return len(needs), err
+	if err != nil {
+		return 0, err
+	}
+	problems, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{Problems: true})
+	return len(needs) + problems.Total, err
 }
 
 // Link answers a title: it is the TMDB title tmdbID. Its files are written again with the link.

@@ -2,6 +2,7 @@ import {
   type LibraryNeed,
   LibraryNeedsCards,
   LibraryNeedsStrip,
+  type LibraryProblem,
   LibraryShelf,
   type LibraryShelfProps,
   type LibraryShelfTitle,
@@ -18,7 +19,7 @@ const TITLES: LibraryShelfTitle[] = [
   { id: "90000801", kind: "series", name: "Harbour Lights", year: 1999, ready: true, poster: art("#3b4a63") },
   { id: "90000802", kind: "movie", name: "Paper Kites", year: 1996, ready: true, poster: art("#6b3a2e") },
   { id: "90000803", kind: "movie", name: "The Long Way to the Coast", year: 2004, ready: false },
-  { id: "90000804", kind: "series", name: "Night Ferry", year: 2011, ready: true },
+  { id: "90000804", kind: "series", name: "Night Ferry", year: 2011, ready: true, attention: true },
   { id: "90000805", kind: "series", name: "Saturday Club", year: 1987, ready: false },
   { id: "90000806", kind: "movie", name: "Quiet Orchard", year: 2019, ready: true, poster: art("#2f5a46") },
   { id: "90000807", kind: "movie", name: "Lantern Season", ready: true },
@@ -139,24 +140,65 @@ const NEEDS: LibraryNeed[] = [
   },
 ];
 
+// Titles that need a look: episodes that can't be played, and a movie's extra copy.
+const PROBLEMS: LibraryProblem[] = [
+  { id: "90000804", kind: "series", name: "Night Ferry", unplayable: 2, extraBytes: 0 },
+  {
+    id: "90000806",
+    kind: "movie",
+    name: "Quiet Orchard",
+    poster: art("#2f5a46"),
+    unplayable: 0,
+    extraBytes: 4_300_000_000,
+  },
+];
+
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
 const NeedsStrip: Story = {
-  args: { needs: <LibraryNeedsStrip needs={NEEDS} onLink={answered} onOpenNeeds={() => {}} /> },
+  args: {
+    needs: (
+      <LibraryNeedsStrip
+        needs={NEEDS}
+        onLink={answered}
+        onOpenNeeds={() => {}}
+        onOpenTitle={() => {}}
+        problems={PROBLEMS}
+      />
+    ),
+  },
 };
 
 const NeedsCards: Story = {
   args: {
     showTitles: false,
-    needs: <LibraryNeedsCards needs={NEEDS} onIgnore={answered} onLink={answered} onSearch={search} />,
+    needs: (
+      <LibraryNeedsCards
+        needs={NEEDS}
+        onIgnore={answered}
+        onLink={answered}
+        onOpenTitle={() => {}}
+        onSearch={search}
+        problems={PROBLEMS}
+      />
+    ),
   },
 };
 
 const NothingNeedsYou: Story = {
   args: {
     showTitles: false,
-    needs: <LibraryNeedsCards needs={[]} onIgnore={answered} onLink={answered} onSearch={search} />,
+    needs: (
+      <LibraryNeedsCards
+        needs={[]}
+        onIgnore={answered}
+        onLink={answered}
+        onOpenTitle={() => {}}
+        onSearch={search}
+        problems={[]}
+      />
+    ),
   },
 };
 
@@ -206,6 +248,7 @@ const Movie: Story = {
             extra: true,
           },
         ],
+        unplayable: 0,
         seasons: [],
         match: { by: "app", app: "Radarr" },
         detailsFrom: { description: "TMDB", rating: "TMDB" },
@@ -227,6 +270,7 @@ const Series: Story = {
         genres: ["Drama", "Political"],
         rating: "TV-14",
         files: [],
+        unplayable: 2,
         seasons: [1, 2, 3, 4].map((number) => ({
           number,
           episodes: Array.from({ length: 22 }, (_, i) => ({

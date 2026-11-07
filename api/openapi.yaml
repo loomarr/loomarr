@@ -6654,6 +6654,10 @@ components:
     LibraryItemDTO:
       additionalProperties: false
       properties:
+        extraCopies:
+          description: A movie's files beyond the one that plays
+          format: int64
+          type: integer
         files:
           description: Present files; a series counts its episodes' files
           format: int64
@@ -6673,6 +6677,10 @@ components:
         ready:
           description: False while some of its files' details aren't read yet
           type: boolean
+        unplayable:
+          description: "Files that can't be played: their details couldn't be read"
+          format: int64
+          type: integer
         year:
           description: Absent when unknown
           format: int64
@@ -6683,6 +6691,8 @@ components:
         - name
         - files
         - ready
+        - unplayable
+        - extraCopies
       type: object
     LibraryItemDetailDTO:
       additionalProperties: false
@@ -6875,6 +6885,19 @@ components:
         - width
         - height
         - hdr
+      type: object
+    LibraryProblemDTO:
+      additionalProperties: false
+      properties:
+        extraBytes:
+          description: What a movie's extra copies take, in bytes; 0 for none
+          format: int64
+          type: integer
+        item:
+          $ref: "#/components/schemas/LibraryItemDTO"
+      required:
+        - item
+        - extraBytes
       type: object
     LibraryRootDTO:
       additionalProperties: false
@@ -7072,7 +7095,7 @@ components:
           format: int64
           type: integer
         needsYou:
-          description: Titles Loomarr can't tell what they are
+          description: "Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"
           format: int64
           type: integer
         offline:
@@ -7350,8 +7373,14 @@ components:
           items:
             $ref: "#/components/schemas/LibraryNeedDTO"
           type: array
+        problems:
+          description: Titles that need a look, by name
+          items:
+            $ref: "#/components/schemas/LibraryProblemDTO"
+          type: array
       required:
         - needs
+        - problems
       type: object
     ListOutputBody:
       additionalProperties: false

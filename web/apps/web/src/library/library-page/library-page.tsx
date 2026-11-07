@@ -34,6 +34,7 @@ const titleOf = (item: LibraryItemDTO): LibraryShelfTitle => ({
   name: item.name,
   year: item.year,
   ready: item.ready,
+  attention: item.unplayable > 0 || item.extraCopies > 0,
   poster: item.poster ? <ServedImage alt="" image={item.poster} sizes={POSTER_SIZES} /> : undefined,
 });
 
@@ -138,14 +139,23 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
   const offline = (unwrap(roots.data)?.roots ?? []).filter((f) => f.inUse && !f.readable).map((f) => f.path);
 
   const openNeeds = () => void navigate({ to: "/library/needs" });
+  const openTitle = (id: string) => void navigate({ to: "/library/$id", params: { id } });
   const needsSlot = titlesView ? (
-    <LibraryNeedsStrip needs={needs.needs} onLink={needs.answers.onLink} onOpenNeeds={openNeeds} />
+    <LibraryNeedsStrip
+      needs={needs.needs}
+      onLink={needs.answers.onLink}
+      onOpenNeeds={openNeeds}
+      onOpenTitle={openTitle}
+      problems={needs.problems}
+    />
   ) : needs.loaded ? (
     <LibraryNeedsCards
       needs={needs.needs}
       onIgnore={needs.answers.onIgnore}
       onLink={needs.answers.onLink}
+      onOpenTitle={openTitle}
       onSearch={needs.onSearch}
+      problems={needs.problems}
     />
   ) : null;
 
@@ -169,7 +179,7 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
           })
         }
         onOpenSettings={() => void navigate({ to: "/settings/library" })}
-        onOpenTitle={(id) => void navigate({ to: "/library/$id", params: { id } })}
+        onOpenTitle={openTitle}
         onRescan={() => rescan.mutate()}
         onSearchChange={setTyped}
         search={typed}

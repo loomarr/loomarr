@@ -15,7 +15,16 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 const echo = {
-  item: { id: "90000003", kind: "movie" as const, name: "Echo", year: 1999, files: 1, ready: true },
+  item: {
+    id: "90000003",
+    kind: "movie" as const,
+    name: "Echo",
+    year: 1999,
+    files: 1,
+    ready: true,
+    unplayable: 0,
+    extraCopies: 0,
+  },
   overview: "A story.",
   genres: ["Drama"],
   files: [{ path: "/media/movies/Echo/Echo.mkv", size: 1_000_000, ready: true, subtitles: [], extra: false }],

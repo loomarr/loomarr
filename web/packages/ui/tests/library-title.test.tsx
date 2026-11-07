@@ -40,6 +40,7 @@ const MOVIE: LibraryTitleDetail = {
       extra: false,
     },
   ],
+  unplayable: 0,
   seasons: [],
   match: { by: "app", app: "Radarr" },
   detailsFrom: { description: "TMDB", rating: "TMDB" },
@@ -51,6 +52,7 @@ const SERIES: LibraryTitleDetail = {
   year: 1999,
   genres: [],
   files: [],
+  unplayable: 0,
   seasons: [
     {
       number: 0,
@@ -160,6 +162,26 @@ describe("LibraryTitle", () => {
     act(() => button("Technical details").click());
     expect(host.textContent).toContain("Extra copy");
     cleanup();
+  });
+
+  it("says when files can't be played, checks them again, and says when it couldn't", async () => {
+    const fine = render(MOVIE);
+    expect(fine.host.textContent).not.toContain("can't be played");
+    fine.cleanup();
+
+    const movie = render({ ...MOVIE, unplayable: 1 });
+    expect(movie.host.textContent).toContain("This movie can't be played — the file may be damaged");
+    await act(async () => movie.button("Check again").click());
+    expect(movie.props.onCheckFiles).toHaveBeenCalled();
+    expect(movie.host.textContent).toContain("Checked just now");
+    movie.cleanup();
+
+    const onCheckFiles = vi.fn(() => Promise.reject(new Error("offline")));
+    const series = render({ ...SERIES, unplayable: 2 }, { onCheckFiles });
+    expect(series.host.textContent).toContain("2 episodes can't be played — the files may be damaged");
+    await act(async () => series.button("Check again").click());
+    expect(series.host.textContent).toContain("Couldn't check the files just now. Try again in a moment.");
+    series.cleanup();
   });
 
   it("goes back to the Library", () => {

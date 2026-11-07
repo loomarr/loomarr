@@ -30,6 +30,20 @@ interface LibraryNeed {
   others: readonly LibraryNeedCandidate[];
 }
 
+/** A title that needs a look (decision 24): files that can't be played, or extra copies. */
+interface LibraryProblem {
+  /** The library title's id: See why opens its page. */
+  id: string;
+  kind: LibraryKind;
+  name: string;
+  /** Its artwork, drawn by the app; absent draws the name on the placeholder. */
+  poster?: ReactNode;
+  /** Its files that can't be played. */
+  unplayable: number;
+  /** What its extra copies take, in bytes; 0 for none. */
+  extraBytes: number;
+}
+
 /** What a search for a title found: guesses without their posters. */
 type LibraryNeedSearch = (query: string, kind: LibraryKind) => Promise<readonly LibraryNeedCandidate[]>;
 
@@ -42,13 +56,19 @@ interface LibraryNeedsAnswers {
 
 interface LibraryNeedsStripProps extends Pick<LibraryNeedsAnswers, "onLink"> {
   needs: readonly LibraryNeed[];
+  problems: readonly LibraryProblem[];
   /** Opens Needs you, where a different title can be picked. */
   onOpenNeeds: () => void;
+  /** See why: opens a title's page. */
+  onOpenTitle: (id: string) => void;
 }
 
 interface LibraryNeedsCardsProps extends LibraryNeedsAnswers {
   needs: readonly LibraryNeed[];
+  problems: readonly LibraryProblem[];
   onSearch: LibraryNeedSearch;
+  /** See why: opens a title's page. */
+  onOpenTitle: (id: string) => void;
 }
 
 export type {
@@ -58,4 +78,5 @@ export type {
   LibraryNeedsAnswers,
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
+  LibraryProblem,
 };
