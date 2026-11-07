@@ -249,7 +249,9 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make fe` |  | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery <br>*runs:* `fe-checks` `fe-unit` |
 | `make fe-checks` | ✅ | everything in fe except the web unit tests: biome, knip, typecheck, package tests, SPA, storybook <br>*runs:* `fe-codegen` |
 | `make fe-unit` | ✅ | web unit tests after codegen (FE_SHARD=n/m runs one shard) <br>*runs:* `fe-codegen` |
-| `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `brand-assets-verify` `knip` |
+| `make clients` |  | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `clients-checks` `clients-bundles` |
+| `make clients-checks` | ✅ | everything in clients except the mobile and TV bundles <br>*runs:* `brand-assets-verify` `knip` |
+| `make clients-bundles` | ✅ | bundle the mobile and TV clients for Android, iOS, and their TV platforms <br>*runs:* `fe-codegen` |
 | `make client-android-debug` | ✅ | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload` |  | build and inspect a signed permanent-identity Shield APK (SHIELD_VERSION=x.y.z) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload-test` |  | build with an ephemeral key, then clean-install and launch on the TV emulator <br>*runs:* `fe-api-codegen` |
@@ -285,7 +287,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet` · `vuln`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

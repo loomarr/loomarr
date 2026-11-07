@@ -334,10 +334,18 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			},
 		},
 		"ci-clients.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make fe-codegen": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
-			"make clients": exactWorkflowStep(6, "Verify the affected client graph", workflowStepAuthority{
-				targets: []string{"clients"},
+			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+			"make clients-checks": exactWorkflowStep(6, "Verify the affected client graph", workflowStepAuthority{
+				targets:   []string{"clients-checks"},
+				condition: "matrix.lane == 'checks'",
+				environment: map[string]string{
+					"TMPDIR":                   "${{ runner.temp }}",
+					"TURBO_TELEMETRY_DISABLED": "1",
+				},
+			}),
+			"make clients-bundles": exactWorkflowStep(7, "Bundle the mobile and TV clients", workflowStepAuthority{
+				targets:   []string{"clients-bundles"},
+				condition: "matrix.lane == 'bundles'",
 				environment: map[string]string{
 					"TMPDIR":                   "${{ runner.temp }}",
 					"TURBO_TELEMETRY_DISABLED": "1",

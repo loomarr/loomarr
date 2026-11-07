@@ -67,7 +67,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci-apple-cache-validation.yml", job: "producer"}: {name: "Apple compilation cache — produce on Xcode 27", runsOn: "xcode-27", timeoutMinutes: 75},
 		{workflow: "ci-apple-cache-validation.yml", job: "consumer"}: {name: "Apple compilation cache — consume on distinct Xcode 27 runner", runsOn: "xcode-27", needsList: []string{"producer"}, timeoutMinutes: 75},
 
-		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", runsOn: "ubuntu-latest"},
+		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — ${{ matrix.lane }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{lanes: []string{"checks", "bundles"}}},
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
 		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — ${{ matrix.shard == 5 && 'biome + typecheck + packages + build' || format('web unit ({0}/4)', matrix.shard) }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5}}},
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
