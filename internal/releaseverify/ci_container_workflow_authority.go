@@ -253,8 +253,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
 			"make fe-codegen": exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
 			"web/scripts/install-android-ccache.sh \"${RUNNER_TEMP}/loomarr-android-ccache-tool\"": exactWorkflowStep(7, "Install pinned ccache", workflowStepAuthority{allowsAcquisition: true}),
-			"echo \"gradle-cache-primary-key=android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}\"\necho \"gradle-cache-hit=${{ steps.gradle-cache.outputs.cache-hit == 'true' }}\"\necho \"gradle-cache-source-sha=${GITHUB_SHA}\"\n": exactWorkflowStep(10, "Record Gradle cache provenance", workflowStepAuthority{}),
-			"make android-profile": exactWorkflowStep(11, "Build and profile the verified four-ABI bundle", workflowStepAuthority{
+			"make android-profile": exactWorkflowStep(9, "Build and profile the verified four-ABI bundle", workflowStepAuthority{
 				targets: []string{"android-profile", "android"},
 				environment: map[string]string{
 					"ANDROID_CI_OUTPUT_DIR":           "${{ github.workspace }}/.artifacts/android-ci",
@@ -266,7 +265,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"LOOMARR_ANDROID_GRADLE_WORKERS":  "2",
 				},
 			}),
-			"./scripts/android-ccache-promotion.sh pack \"$RUNNER_TEMP/loomarr-android-ccache\" \"$RUNNER_TEMP/loomarr-android-ccache-transfer\" \"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}\"": exactWorkflowStep(14, "Package the verified merge-queue compiler cache", workflowStepAuthority{
+			"./scripts/android-ccache-promotion.sh pack \"$RUNNER_TEMP/loomarr-android-ccache\" \"$RUNNER_TEMP/loomarr-android-ccache-transfer\" \"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}\"": exactWorkflowStep(10, "Package the verified merge-queue compiler cache", workflowStepAuthority{
 				condition: "github.event_name == 'merge_group'",
 			}),
 		}),
@@ -303,7 +302,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-expo-android-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
 			"web/scripts/install-android-ccache.sh \"${RUNNER_TEMP}/loomarr-android-ccache-tool\"": exactWorkflowStep(6, "Install pinned ccache", workflowStepAuthority{allowsAcquisition: true}),
-			"make client-android-debug CLIENT_APP=mobile": exactWorkflowStep(9, "Generate and build the standalone mobile APK", workflowStepAuthority{
+			"make client-android-debug CLIENT_APP=mobile": exactWorkflowStep(7, "Generate and build the standalone mobile APK", workflowStepAuthority{
 				targets: []string{"client-android-debug"},
 				environment: map[string]string{
 					"CCACHE_DIR":                      "${{ runner.temp }}/loomarr-android-ccache",

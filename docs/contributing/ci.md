@@ -13,9 +13,10 @@ every top-level result, including jobs that correctly skipped.
 ## Fast PR feedback, authoritative queued integration
 
 Ordinary pull-request pushes run the always-on policy bootstrap plus affected repository-contract, static-analysis,
-compile/type, unit, documentation, shared-client, and Android feedback and return the required `CI`
+compile/type, unit, documentation, and shared-client feedback and return the required `CI`
 result quickly. They do not run race-policy shards, Postgres conformance, Playwright, release-image
-builds, runtime image certification, Apple mobile, Apple TV, the tuner matrix, or the macOS harness.
+builds, runtime image certification, Apple mobile, Apple TV, Android TV, Expo Android mobile, the
+tuner matrix, or the macOS harness.
 The required `main` merge queue then builds at most eight cumulative candidates concurrently against
 the current base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
 the merged tree compiles, so it merges in minutes. Beside it, the `merge_group` run of `ci.yml` is the
@@ -446,15 +447,11 @@ Metro worker, a 1280 MB Gradle heap, and a 4 GB memory scope. The CI mobile job 
 the environment, the same way the TV producer does: two Gradle workers (the wrapper's ceiling), four
 native jobs for the single-ABI app CMake build, four Metro workers, a 3 GB heap, and a 12 GB scope on
 the 16 GB runner. It reuses the TV producer's pinned ccache, the same wrapper validation
-(`web/scripts/android-ccache-env.sh`), and the same generated-Ninja launcher proof. Its own
-`android-mobile-ccache-v1-` entry is saved from pull requests only. Mobile builds a debug variant, so
-TV's release objects never hit for it. For Gradle it reads the newest Android TV generation its ref
-can see and never saves one: the two apps share the pinned React Native TV, Gradle distribution,
-dependencies, and included plugin builds, and a second ~1.3 GB entry per revision would evict the
-warm Go caches.
+(`web/scripts/android-ccache-env.sh`), and the same generated-Ninja launcher proof. It restores no
+cache: it builds a debug variant, so TV's release objects never hit for it.
 
-The permanent-identity Android TV producer keeps its exact-SHA Gradle cache and also restores a
-separate 2 GiB ccache directory across source identities. The workflow installs the exact §14 pin,
+The permanent-identity Android TV producer restores a 2 GiB ccache directory across source
+identities and keeps no Gradle cache. The workflow installs the exact §14 pin,
 while the build wrapper rejects a relative/wrong-version launcher, a foreign base directory, or any
 sloppiness setting. Ccache uses compiler-content identity and checkout-relative paths; the key may
 restore prior compiler objects, but it never includes generated `android/` or `.cxx` trees, bundles,
@@ -474,8 +471,8 @@ it instead hands its bounded ccache tree to `android-ccache-promotion.yml` throu
 artifact. The queue-produced `push` to the exact same main commit is the trusted publisher: it proves
 the source CI run, Android job, artifact name, commit/run/workflow manifest, and cache-tree digest,
 then saves that generation in the default-branch cache scope without running another product build.
-It deletes the transfer and all superseded Android generations. PR revisions may save caches only in
-their own disposable scope; queue jobs restore but never spend time saving an unreachable cache.
+It deletes the transfer and all superseded Android generations. Android jobs do not run on pull
+requests, and queue jobs restore but never spend time saving an unreachable cache.
 
 ## Per-run measurements
 
