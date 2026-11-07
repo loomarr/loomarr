@@ -233,11 +233,15 @@ describe("OnScreenLogoSection", () => {
   it("marks a channel override with a neutral badge: a foreground label and a hairline", () => {
     const { container, unmount } = render({ policy: { corner: "bottom-left" } });
     const badge = Array.from(container.querySelectorAll('[data-testid="logo-field-corner"] *')).find(
-      (n) => n.textContent === "Channel override" && html(n).startsWith("<div"),
+      // On web the square badge is an inline `span` that hugs its label.
+      (n) => n.textContent === "Channel override" && html(n).startsWith("<span"),
     );
     if (!badge) throw new Error("missing override badge");
     expect(styles(badge)).toMatch(/(?<![-\w])border(?:-top)?-color:var\(--borderControl\)/);
-    expect(styles(badge)).toMatch(/(?<![-\w])color:var\(--contentPrimary\)/);
+    // The label colour sits inline on the wrapper, so an icon's `currentColor` inherits it.
+    expect(`${styles(badge)};${badge.getAttribute("style")}`).toMatch(
+      /(?<![-\w])color:\s*var\(--contentPrimary\)/,
+    );
     expect(`${html(badge)}${styles(badge)}`).not.toMatch(/actionPrim|rgba\(255,\s*176,\s*32/);
     unmount();
   });
