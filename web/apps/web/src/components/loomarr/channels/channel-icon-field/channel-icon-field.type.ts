@@ -7,7 +7,7 @@ interface ChannelIconFieldProps {
   // muted placeholder instead of a broken `<img>`.
   logo?: string;
   // The image record when `logo` is served by this instance's image service
-  // (`ChannelDTO.logoImage`, §22). Present ⇒ the preview renders through the `<Image>`
+  // (`ChannelDTO.logoImage`, §22). Present ⇒ the preview renders through the `<ServedImage>`
   // primitive and gets srcset, a ThumbHash and a designed failure state.
   //
   // ⚠ Absent is NOT an error state — an operator may paste any URL as a channel icon, and

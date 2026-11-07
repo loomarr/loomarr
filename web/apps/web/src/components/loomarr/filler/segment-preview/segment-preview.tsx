@@ -1,7 +1,7 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { formatMmSs } from "@loomarr/core/format";
 import { useRef, useState } from "react";
-import { Image } from "@/components/ui/image";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { cn } from "@/lib/utils";
 import type { SegmentPreviewProps } from "./segment-preview.type";
@@ -127,7 +127,7 @@ const SegmentPreview = ({
           Preview segment
         </span>
         {artwork ? (
-          <Image image={artwork} alt="" sizes="112px" className="size-full object-cover" />
+          <ServedImage image={artwork} alt="" sizes="112px" />
         ) : (
           <span id={unavailableId} className="text-muted-foreground px-2 text-center text-[10px]">
             Preview unavailable

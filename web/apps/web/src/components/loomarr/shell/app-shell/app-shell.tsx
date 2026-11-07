@@ -5,6 +5,7 @@ import {
   Clapperboard,
   House,
   Inbox,
+  Library as LibraryIcon,
   ListChecks,
   LogOut,
   PlayCircle,
@@ -61,6 +62,8 @@ const ADMIN_NAV: NavItem[] = [
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: CalendarClock },
+  // The titles Loomarr found in its media folders (#2151 decision 22, design/library).
+  { to: "/library", label: "Library", icon: LibraryIcon },
   { to: "/requests", label: "Requests", icon: Inbox },
   { to: "/filler", label: "Filler", icon: Clapperboard },
   { to: "/people", label: "People", icon: Users },

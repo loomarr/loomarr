@@ -269,6 +269,19 @@ step 5). Nothing reads the scanner's origins until the cutover.
   so adding or changing one rewrites the title; a folder's own art (`poster.jpg`) counts only for
   the folder's one video. A poster that fails to import leaves the title as it was, and the next
   write tries again.
+- **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
+  is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
+  line from `GET /v1/library/status`: caught up, adding with a bar, paused, a held removal or an
+  offline folder with Check again, or dead air before any folder is chosen. Below it are All ·
+  Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by window width. The filter and
+  search live in the URL (`?kind=&q=`); the grid loads 60 titles at a time as it scrolls, and
+  while the scanner is busy the status and the loaded titles refetch every 5 s, so "Getting
+  ready" clears on its own (decision 35, until a `library` SSE frame exists). A title's page
+  (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
+  overview, each season's episodes in a disclosure (specials last), and a movie's files behind
+  Technical details. Still to come: Needs you and Wrong title? (step 11), Collections (step 12);
+  Update details, Check files again, On these channels, and the rest of Technical details (where
+  the details came from, picture, sound, subtitles), which need endpoints of their own.
 
 ## Cached series episodes
 

@@ -11,6 +11,7 @@ type PhoneDestinationKey =
   | "guide"
   | "help"
   | "home"
+  | "library"
   | "notifications"
   | "people"
   | "requests"
@@ -30,7 +31,8 @@ type PhoneDestination = {
 } & ({ params?: never; to: NavTo } | { params: { id: string }; to: "/watch/$id" });
 
 const PRIMARY_ORDER: readonly PhoneDestinationKey[] = ["home", "watch", "guide", "requests"];
-const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["filler", "people", "settings", "help"];
+// In the sidebar's order: Library sits after Guide and before Requests, so it leads the overflow.
+const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["library", "filler", "people", "settings", "help"];
 const MEMBER_OVERFLOW: readonly PhoneDestinationKey[] = ["notifications", "help"];
 
 const destinationFor = (
@@ -49,6 +51,8 @@ const destinationFor = (
       return { icon: "guide", key, label: "Guide", to: "/guide" };
     case "requests":
       return { icon: "requests", key, label: "Requests", to: "/requests" };
+    case "library":
+      return { icon: "library", key, label: "Library", to: "/library" };
     case "filler":
       return { icon: "filler", key, label: "Filler", to: "/filler" };
     case "people":
@@ -80,7 +84,7 @@ const phoneBarPrimary = (
     return destination ? [withBadge(destination, badges)] : [];
   });
 
-/** Everything else: admin's Filler/People/Settings/Help, member's Notifications/Help. */
+/** Everything else: admin's Library/Filler/People/Settings/Help, member's Notifications/Help. */
 const phoneBarOverflow = (isAdmin: boolean, badges?: Partial<Record<NavTo, number>>): PhoneDestination[] =>
   (isAdmin ? ADMIN_OVERFLOW : MEMBER_OVERFLOW).flatMap((key) => {
     const destination = destinationFor(key, undefined);

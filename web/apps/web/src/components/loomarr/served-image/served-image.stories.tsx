@@ -1,7 +1,7 @@
 import type { ImageDTO } from "@loomarr/api";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
-import { Image } from "./image";
+import { ServedImage } from "./served-image";
 
 // THE image primitive (§22, V52). Every surface that shows something the image service stores
 // goes through this; none hand-writes an `<img>` against `/v1/images`.
@@ -50,11 +50,11 @@ const poster = (over: Partial<ImageDTO> = {}): ImageDTO => ({
 });
 
 const meta = {
-  title: "UI/Image",
-  component: Image,
+  title: "Media/Served Image",
+  component: ServedImage,
   decorators: [widthFrame(340)],
   args: { alt: "Channel poster", sizes: "320px" },
-} satisfies Meta<typeof Image>;
+} satisfies Meta<typeof ServedImage>;
 
 type Story = StoryObj<typeof meta>;
 
@@ -103,7 +103,20 @@ const BrokenWithDesignedFallback: Story = {
   args: {
     image: poster({ src: "/does-not-exist.jpg", srcSetWebp: "", srcSetAvif: "" }),
     fallback: (
-      <div className="bg-tune/20 text-tune flex aspect-[2/3] w-full items-center justify-center rounded-md text-2xl font-semibold">
+      <div
+        style={{
+          alignItems: "center",
+          aspectRatio: "2 / 3",
+          background: "color-mix(in srgb, var(--color-tune) 20%, transparent)",
+          borderRadius: 6,
+          color: "var(--color-tune)",
+          display: "flex",
+          fontSize: 24,
+          fontWeight: 600,
+          justifyContent: "center",
+          width: "100%",
+        }}
+      >
         AH
       </div>
     ),

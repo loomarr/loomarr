@@ -12,10 +12,10 @@ import {
 } from "@loomarr/design-system";
 import { type ComponentProps, type ReactNode, useState } from "react";
 
+import { folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
   LibraryAuthority,
   LibraryFolder,
-  LibraryHeldRemoval,
   LibraryHook,
   LibraryPathMapping,
   LibraryScan,
@@ -39,15 +39,6 @@ const AUTHORITY_NAMES: Record<LibraryAuthority, string> = {
   jellyfin: "Jellyfin",
   radarr: "Radarr",
   sonarr: "Sonarr",
-};
-
-const joinNames = (names: readonly string[]) =>
-  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-
-// "/media/tv" → "TV", "/media/movies" → "Movies", anything else → its last folder name.
-const folderName = (path: string) => {
-  const last = path.split("/").filter(Boolean).pop() ?? path;
-  return last.length <= 2 ? last.toUpperCase() : last.charAt(0).toUpperCase() + last.slice(1);
 };
 
 const foundThrough = (folder: LibraryFolder) => {
@@ -112,38 +103,16 @@ const CheckAgain = ({ checking, onPress }: { checking: boolean; onPress: () => v
   </Action>
 );
 
-const count = (n: number, one: string, many: string) =>
-  `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-
-// "2,406 movies seem to be gone from your Movies folder".
-const heldTitle = (held: LibraryHeldRemoval) => {
-  const parts = [
-    held.movies ? count(held.movies, "movie", "movies") : "",
-    held.episodes ? count(held.episodes, "episode", "episodes") : "",
-    held.other ? count(held.other, "other file", "other files") : "",
-  ].filter(Boolean);
-  const one = held.movies + held.episodes + held.other === 1;
-  return `${joinNames(parts)} ${one ? "seems" : "seem"} to be gone from your ${folderName(held.path)} folder`;
-};
-
 // The one line at the top of the status while nothing needs the maintainer.
 const Headline = ({ scan }: { scan: LibraryScan }) => {
-  const reading = scan.stage === "reading" && scan.headersTotal > 0;
-  const percent = reading ? Math.round((scan.headersDone / scan.headersTotal) * 100) : 0;
-  const [tone, headline]: [ComponentProps<typeof StatusDot>["tone"], string] = !scan.enabled
-    ? ["off", "Reading your media folders is turned off"]
-    : reading && scan.paused
-      ? ["pending", "Paused while someone is watching"]
-      : reading
-        ? ["progress", "Adding your media"]
-        : ["ok", "All caught up — every title's ready to air"];
+  const { percent, reading, text: headline, tone } = scanHeadline(scan);
   return (
     <>
       <Line gap="control">
         <StatusDot label={headline} tone={tone} />
         <Text textRole="headline">{headline}</Text>
       </Line>
-      {scan.enabled && reading ? (
+      {reading ? (
         <Stack gap="control">
           {/* Adding media is preparation (`tune`); paused drops to the neutral fill. */}
           <ProgressTrack

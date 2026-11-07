@@ -3,8 +3,8 @@ import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ImageOff, Loader2, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
-import { Image } from "@/components/ui/image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -129,7 +129,7 @@ const ChannelIconField = ({
           {/*
             Three states, and the middle one is the interesting one.
 
-            `logoImage` present ⇒ the bytes are ours (§22), so the <Image> primitive applies:
+            `logoImage` present ⇒ the bytes are ours (§22), so the <ServedImage> primitive applies:
             srcset at the icon ladder, a ThumbHash while it loads, and — the reason this matters
             here specifically — a DESIGNED failure state. §22 names this field's glyph as that
             state, because an upload is the one origin that cannot be re-fetched if /data/images
@@ -140,11 +140,10 @@ const ChannelIconField = ({
             does not own and knows no dimensions for.
           */}
           {logoImage ? (
-            <Image
+            <ServedImage
               image={logoImage}
               alt="Channel icon"
               sizes="48px"
-              className="size-full object-cover"
               fallback={<ImageOff className="text-static-500 size-6" aria-hidden />}
             />
           ) : logo ? (
@@ -241,11 +240,10 @@ const ChannelIconField = ({
                           assertion that would render nothing if the record went missing.
                         */}
                         {s.image ? (
-                          <Image
+                          <ServedImage
                             image={s.image}
                             alt={s.title}
                             sizes="(min-width: 640px) 6rem, 4rem"
-                            className="size-full object-cover"
                             fallback={<ImageOff className="text-static-500 size-4" aria-hidden />}
                           />
                         ) : (
