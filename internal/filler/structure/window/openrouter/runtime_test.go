@@ -14,7 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/media/encode"
-	"github.com/loomarr/loomarr/internal/openroutercatalog"
+	"github.com/loomarr/loomarr/internal/platform/openroutercatalog"
 )
 
 func TestCertifiedRuntimeRefreshesMetadataAndRequiresReviewedProfiles(t *testing.T) {

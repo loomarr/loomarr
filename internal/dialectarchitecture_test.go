@@ -21,7 +21,7 @@ var dialectNames = map[string]bool{
 // (SupportsReplicas, CanMigrateToPostgres) for the behaviour, so a dialect difference has one
 // owner (docs/design/decisions/0001-postgres-and-sqlite.md).
 var dialectExceptions = map[string]string{
-	modulePath + "/internal/jobs": "selects River's driver per backend: the pgx driver and the SQLite driver " +
+	modulePath + "/internal/platform/jobs": "selects River's driver per backend: the pgx driver and the SQLite driver " +
 		"are different Go packages, so the choice cannot be a SQL helper",
 	modulePath + "/internal/store": "is the SQL adapter that implements both backends: constructors, " +
 		"placeholders, goose dialect, pg_notify invalidations, SQLite-only backup and the SQLite-to-Postgres move",

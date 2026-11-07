@@ -8,10 +8,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/loomarr/loomarr/internal/config"
-	"github.com/loomarr/loomarr/internal/devbootstrap"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/platform/config"
+	"github.com/loomarr/loomarr/internal/platform/devbootstrap"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 )
 
 // Seasonality (programming-design §6): holiday-aware programming. Detection is

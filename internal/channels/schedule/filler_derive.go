@@ -1,6 +1,6 @@
 package schedule
 
-import "github.com/loomarr/loomarr/internal/rating"
+import "github.com/loomarr/loomarr/internal/platform/rating"
 
 // DerivedFiller is the filler context a channel implies through its programming, for the
 // fields its operator left unset (§10). It is computed live, never persisted: a stored copy

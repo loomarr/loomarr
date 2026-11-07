@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/openroutermedia"
+	"github.com/loomarr/loomarr/internal/platform/openroutermedia"
 )
 
 func (a *Assessor) recordAssessment(set window.MediaSet, ordinal int, assessedAt time.Time, reservation window.CallReservationState, result openroutermedia.Result, callErr error) (window.RecordedAssessment, error) {

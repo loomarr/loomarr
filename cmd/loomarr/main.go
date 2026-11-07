@@ -20,10 +20,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/app"
-	"github.com/loomarr/loomarr/internal/buildinfo"
-	"github.com/loomarr/loomarr/internal/config"
-	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/platform/buildinfo"
+	"github.com/loomarr/loomarr/internal/platform/config"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout/landiscovery"
 	"github.com/loomarr/loomarr/internal/store"
 )

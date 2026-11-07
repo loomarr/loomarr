@@ -162,7 +162,7 @@ const contentType = (path: string): string =>
 const startTunerServer = () => {
   const activeManifestDelays = new Map<string, number>();
   const now = Date.now();
-  const staticRoot = resolve(process.cwd(), "../../../internal/web/dist");
+  const staticRoot = resolve(process.cwd(), "../../../internal/platform/web/dist");
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", TUNER_ORIGIN);

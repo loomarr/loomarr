@@ -58,14 +58,14 @@ cmd/seed/         populates a dev store
 internal/app/       wires every subsystem from an open store
 internal/api/       inbound HTTP — ServeMux + Huma v2
 internal/store/     one interface, SQLite and Postgres behind it
-internal/settings/  the typed registry: env > database > default
+internal/platform/settings/ the typed registry: env > database > default
 internal/playout/   the streaming engine
 internal/proposals/suggest/ intent → grounded proposal
 internal/channels/schedule/ the scheduler domain
 internal/filler/    clip catalog and pod assembly
 internal/testkit/   shared doubles and pinned fixtures
 
-web/apps/web/       the SPA, built into internal/web/dist and embedded
+web/apps/web/       the SPA, built into internal/platform/web/dist and embedded
 web/packages/       tokens · api (orval) · core · fixtures
 docs-site/          the docs site — renders docs/ in place
 ```

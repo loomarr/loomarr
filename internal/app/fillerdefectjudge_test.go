@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // Each hosted look is reserved at the per-look ceiling under the daily one and settled at its cost.

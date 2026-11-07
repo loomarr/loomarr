@@ -6,7 +6,7 @@ import (
 	"context"
 	"math"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 type OllamaResourceProbe struct{ client *llm.Ollama }

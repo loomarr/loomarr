@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // assistantToolCallMsg builds the assistant message that carries the model's

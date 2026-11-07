@@ -9,8 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
-	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // The vision rung (§10 V44's job, V51b's stage) — the expensive LAST tier. Its risk is the same as

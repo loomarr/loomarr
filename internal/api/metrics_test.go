@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/platform/metrics"
 )
 
 // scrapeToken is the configured Prometheus scrape credential in these tests.

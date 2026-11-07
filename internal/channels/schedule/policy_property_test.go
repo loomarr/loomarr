@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/rating"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 )
 
 // FuzzDurationJSON asserts the Duration newtype round-trips through JSON

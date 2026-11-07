@@ -5,9 +5,9 @@ import (
 	"errors"
 
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // channelMaintenanceJob composes the prerequisites for a current channel guide. Episode

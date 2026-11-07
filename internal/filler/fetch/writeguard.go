@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 const writeGuardRevalidateStep = 8 << 20

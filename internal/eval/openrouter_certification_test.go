@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/openroutercatalog"
+	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"

@@ -204,7 +204,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make config-docs` |  | generate docs/reference/settings.md from the settings registry |
-| `make settings-keys` |  | regenerate internal/settings/keys_gen.go (typed setting handles) from the registry |
+| `make settings-keys` |  | regenerate internal/platform/settings/keys_gen.go (typed setting handles) from the registry |
 | `make config-docs-verify` | ✅ | regenerated config docs must match committed (CI red on drift) <br>*runs:* `config-docs` |
 
 ## Architecture map (docs/design/package-map.md)

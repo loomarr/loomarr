@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // Transcript rescue (§10 V34): an over-long segment means boundaries the A/V

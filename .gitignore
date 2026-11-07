@@ -58,9 +58,9 @@ web/apps/web/dist/
 /web/packages/api/zod-*.ts
 
 # The embedded SPA build output — `make fe` fills this; only .gitkeep is tracked
-# so `//go:embed all:dist` compiles on a Go-only checkout (internal/web/embed.go).
-/internal/web/dist/*
-!/internal/web/dist/.gitkeep
+# so `//go:embed all:dist` compiles on a Go-only checkout (internal/platform/web/embed.go).
+/internal/platform/web/dist/*
+!/internal/platform/web/dist/.gitkeep
 
 # Air (dev live-reload) build output — the compiled dev binary, never committed.
 /tmp/

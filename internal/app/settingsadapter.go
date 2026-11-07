@@ -13,19 +13,19 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/requester"
-	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // settingsAdapter maps the settings subsystem (settings.Service + settings.Secrets
 // + the store) to api.SettingsService, converting settings.* → api.* so the API
-// package needn't import internal/settings (config-design §8; matches the
+// package needn't import internal/platform/settings (config-design §8; matches the
 // searchAdapter/suggestAdapter house pattern). Secrets are masked by the service
 // before they reach here — a value never crosses this boundary except a freshly
 // regenerated DISPLAYABLE one (§4).

@@ -18,7 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure/assessment"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/openroutermedia"
+	"github.com/loomarr/loomarr/internal/platform/openroutermedia"
 )
 
 type capturedLedger struct {

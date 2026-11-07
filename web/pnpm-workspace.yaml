@@ -144,7 +144,7 @@ overrides:
   # affects >=4.0.0 <5.0.9, patched in 5.0.9 (was 5.0.8). Arrives via minimatch from
   # BOTH build-time chains — orval's codegen (@ibm-cloud/openapi-ruleset) and
   # @storybook/react-vite's glob — so like the three above it is absent from the shipped
-  # SPA; verified by grepping internal/web/dist/assets for it. Scoped to the 5.x line
+  # SPA; verified by grepping internal/platform/web/dist/assets for it. Scoped to the 5.x line
   # because that is what minimatch@10 asks for (`^5.0.5`).
   #
   "brace-expansion@>=5.0.0 <5.0.9": "5.0.9"

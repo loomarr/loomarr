@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
+	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 

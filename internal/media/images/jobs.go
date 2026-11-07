@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/loomarr/loomarr/internal/jobs"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // The image service's scheduled jobs (§22, §18.1).
@@ -15,7 +15,7 @@ import (
 // imports `store`) is an import cycle. Nothing imports this package, so the normal convention —
 // a subsystem declares its own jobs, as channels, auth, provisionbackstop and recurate all do — applies.
 //
-// Every ScheduleKey below is declared in internal/settings. ⚠ That coupling is not optional: the
+// Every ScheduleKey below is declared in internal/platform/settings. ⚠ That coupling is not optional: the
 // settings service PANICS at startup on Resolve of an undeclared key, so a job registered without
 // its row takes the whole install down rather than degrading. The four keys landed in phase 3a
 // precisely so this file could not be the thing that broke boot.

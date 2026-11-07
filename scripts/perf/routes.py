@@ -3,7 +3,7 @@
 
 scripts/latency-sweep.sh covers a fixed route list with an API token; this sweeps the screens'
 own routes with a session cookie (what the web client sends), and reads the per-request outbound
-fan-out (loomarr_http_outbound_fanout, internal/metrics/fanout.go) as the delta of the histogram's
+fan-out (loomarr_http_outbound_fanout, internal/platform/metrics/fanout.go) as the delta of the histogram's
 sum/count over the sweep. The first request per route is reported separately (cold caches), then
 p50/p95/p99 over the rest.
 

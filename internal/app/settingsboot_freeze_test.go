@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 func TestResolvedFreezeKeepsAppliedValuesAcrossLiveWrites(t *testing.T) {

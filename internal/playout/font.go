@@ -4,7 +4,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/platform/config"
 )
 
 // Font discovery for the test/offline card's `drawtext` filter.

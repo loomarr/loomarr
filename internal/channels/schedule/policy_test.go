@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/rating"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 )
 
 // The Duration newtype must (un)marshal as a Go-duration STRING ("168h"), not a

@@ -19,9 +19,9 @@ One area of the [package map](../package-map.md#start-here).
   Owns person contact-address identity and normalization (§11).
 - **`people/invitation`** · 7 importers · → `people/contact`
   Owns administrator admission decisions and their bearer grants (§11).
-- **`people/notifications`** · 6 importers · → `httpx`, `people/secretprotection`
+- **`people/notifications`** · 6 importers · → `people/secretprotection`, `platform/httpx`
   Owns channel-neutral notification intents and delivery work (§11).
 - **`people/recovery`** · 6 importers
   Owns local-password recovery records and their bearer grants (§11).
-- **`people/secretprotection`** · 3 importers · → `config`
+- **`people/secretprotection`** · 3 importers · → `platform/config`
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.

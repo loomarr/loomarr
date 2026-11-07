@@ -11,8 +11,8 @@ package proposals
 
 import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // EditorialRole records the grounded origin of a selected pick in one proposal run.

@@ -3,9 +3,9 @@ package app
 import (
 	"sort"
 
-	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/config"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // restartAdapter is the composition root's bridge between the API's RestartService and

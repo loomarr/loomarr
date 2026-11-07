@@ -30,23 +30,24 @@ MOD = "github.com/loomarr/loomarr/"
 # "other".
 PKG = {}
 for sub, pkgs in {
-    "API": "api httpx auth web setup invitation contact secretprotection",
+    "API": "api platform/httpx auth platform/web setup invitation contact secretprotection",
     "scheduler/guide": "channels/schedule channels/approval channels/edit programmer channels channelmaint",
-    "jobs runtime": "jobs media/bgexec",
+    "jobs runtime": "platform/jobs media/bgexec",
     "filler": "filler filleradmission fillerscreening fillercorpus fillerenrichment fillereval "
               "fillerresearch fillerstructure fillerstructuremedia fillerstructurewindow "
               "fillerstructurewindowopenrouter clipfetch media/measure media media/tools episodeevidence",
-    "curation": "proposals channels/recommend channels/recurate channels/ideas taxonomy holidayvocab textmatch "
+    "curation": "proposals channels/recommend channels/recurate channels/ideas taxonomy platform/holidayvocab platform/textmatch "
                 "moviecollections tmdb catalog",
     "library sync": "library inventory requester provision provisionbackstop",
     "images": "media/images",
     "database": "store fillerstore",
     "playout": "playout playout/watermark channels/viewing playout/bench",
-    "platform": "settings config notifications diagnostics recovery retention storagegovernor events activity app "
-                "playout/landiscovery installationlocation logchange releasenotes buildinfo playout/backendtransition "
-                "media/proctree",
-    "llm": "llm openroutercatalog openroutermedia eval",
-    "metrics scrape": "metrics",
+    "platform": "platform/settings platform/config notifications platform/diagnostics recovery retention "
+                "platform/storagegovernor platform/events platform/activity app playout/landiscovery "
+                "installationlocation platform/logchange platform/releasenotes platform/buildinfo "
+                "playout/backendtransition media/proctree platform",
+    "llm": "platform/llm platform/openroutercatalog platform/openroutermedia eval",
+    "metrics scrape": "platform/metrics",
 }.items():
     for p in pkgs.split():
         PKG[p] = sub
@@ -69,7 +70,7 @@ GC = ("runtime.gcBgMarkWorker", "runtime.bgsweep", "runtime.bgscavenge", "runtim
 ENTRY = [
     ("net/http.(*conn).serve", "HTTP request"),
     ("github.com/riverqueue/river", "River job"),
-    (MOD + "internal/jobs", "cron job"),
+    (MOD + "internal/platform/jobs", "cron job"),
     (MOD + "internal/playout", "playout loop"),
     ("main.main", "startup (retained since boot)"),
 ]

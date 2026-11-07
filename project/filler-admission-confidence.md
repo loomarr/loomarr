@@ -34,10 +34,10 @@ Three repository findings take priority over model shopping:
 - [`mediatools.go`](../internal/media/tools/mediatools.go) scales those frames to the 320 px
   preview width, contradicting Loomarr's own measured design finding that near-full-resolution input
   mattered more than model choice for OCR ([design §10](../docs/design.md)).
-- [`openai.go`](../internal/llm/openai.go) retains only aggregate prompt/completion token
+- [`openai.go`](../internal/platform/llm/openai.go) retains only aggregate prompt/completion token
   counts. It does not retain per-clip model, provider, modality, or OpenRouter-reported cost, so the
   proposed cost-versus-accuracy decision cannot currently be audited.
-- [`hosted.go`](../internal/llm/hosted.go) has no quality tiers for GPT-5 or Gemini 3.x, so its
+- [`hosted.go`](../internal/platform/llm/hosted.go) has no quality tiers for GPT-5 or Gemini 3.x, so its
   global recommendation order can rank an older tiered family above a better live filler candidate.
   Filler text also reuses the lineup `llm.model`, while only vision has a separate role setting.
 
@@ -157,8 +157,8 @@ Vertex does not accept video URLs and requires base64
 compatibility.
 
 The existing hosted projection reads `architecture.input_modalities`, but exposes only image
-`Vision` and `Transcription` capabilities ([`hosted.go`](../internal/llm/hosted.go)). The
-existing provider seam is `AskAboutImages` only ([`vision.go`](../internal/llm/vision.go)).
+`Vision` and `Transcription` capabilities ([`hosted.go`](../internal/platform/llm/hosted.go)). The
+existing provider seam is `AskAboutImages` only ([`vision.go`](../internal/platform/llm/vision.go)).
 Direct video needs a narrow video/evidence capability and an explicit provider-compatibility
 projection; it should not overload the generic text provider or pretend image vision implies video.
 
@@ -308,7 +308,7 @@ its own installation budget because provider controls may differ by account type
 requests can overshoot some aggregate budgets.
 
 The existing `LLMTokens` Prometheus counter deliberately supports external price derivation because
-rates drift ([`recorder.go`](../internal/metrics/recorder.go)). Preserve that metric, but add
+rates drift ([`recorder.go`](../internal/platform/metrics/recorder.go)). Preserve that metric, but add
 a durable per-evaluation usage record with:
 
 - clip/evidence evaluation ID and rung;

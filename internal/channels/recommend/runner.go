@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 const (

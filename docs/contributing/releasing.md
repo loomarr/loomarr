@@ -75,7 +75,7 @@ runs `scripts/check-release-docs-gate.sh` right after it renders the notes and b
 the GitHub Release. It fails that workflow — publishing no Release — when the rendered notes
 contain a New Features, Improvements, Bug Fixes, or Security Fixes entry and the tag range
 touched nothing under `docs/`, `docs-site/`, or `README.md`. It reuses the same seven-category
-classification the release notes already show (`internal/releasenotes`) rather than a second
+classification the release notes already show (`internal/platform/releasenotes`) rather than a second
 taxonomy, and it is unconditional like every other step in that workflow: fixing the docs, or
 the PR classification that misled it, is the only way past it. A release that only ships
 Documentation, Dependencies, or Maintenance changes is not held to a docs change it has no
@@ -186,7 +186,7 @@ the release identity from `web/scripts/apple-testflight-config.cjs`.
 The environment has no required reviewer (a maintainer decision): the reviewed, merge-queue-tested
 merge is the review. `release-verify` pins the triggers, inputs, both jobs, the matrix, the
 environment, and every script step's command, environment, and condition
-(`internal/releaseverify/apple_testflight_workflow.go`).
+(`internal/platform/releaseverify/apple_testflight_workflow.go`).
 
 ### One-time Apple setup
 
@@ -379,7 +379,7 @@ parts over GitHub's 2 GiB asset limit, and checks every published asset's digest
 - `project/evidence/source-distribution-<date>.json` and `project/evidence/ffmpeg-pin-<date>.md`;
 - the `ffmpeg-pin` block in `THIRD_PARTY_NOTICES.md`.
 
-`internal/releaseverify` fails unless the pinned build's source release is recorded with both
+`internal/platform/releaseverify` fails unless the pinned build's source release is recorded with both
 binaries, the source, the recipe and the cache.
 
 The `ffmpeg-pin-refresh.yml` workflow runs it every Monday and on dispatch (`dry_run` stages only).

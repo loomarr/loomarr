@@ -17,57 +17,57 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`activity`** · 4 importers · → `store`
+- **`platform/activity`** · 4 importers · → `store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
-- **`buildinfo`** · 3 importers
+- **`platform/buildinfo`** · 3 importers
   Carries the version stamped into the binary at build time.
-- **`config`** · 5 importers
+- **`platform/config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`devbootstrap`** · → `people/auth`, `settings`
+- **`platform/devbootstrap`** · → `people/auth`, `platform/settings`
   Prepares an isolated agent worktree for UI development.
-- **`diagnostics`** · 7 importers · → `storagegovernor`
+- **`platform/diagnostics`** · 7 importers · → `platform/storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
-- **`events`** · 2 importers
+- **`platform/events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`holidayvocab`** · 8 importers · → `textmatch`
+- **`platform/holidayvocab`** · 8 importers · → `platform/textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
-- **`housekeeping`** · 1 importer · → `diagnostics`, `jobs`, `people/invitation`, `people/notifications`, `people/recovery`, `settings`
+- **`platform/housekeeping`** · 1 importer · → `people/invitation`, `people/notifications`, `people/recovery`, `platform/diagnostics`, `platform/jobs`, `platform/settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
-- **`httpx`** · 13 importers · → `metrics`
+- **`platform/httpx`** · 13 importers · → `platform/metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
-- **`jobs`** · 6 importers · → `store`
+- **`platform/jobs`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
-- **`langcode`** · 2 importers
+- **`platform/langcode`** · 2 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
-- **`llm`** · 9 importers · → `httpx`, `metrics`
+- **`platform/llm`** · 9 importers · → `platform/httpx`, `platform/metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
-- **`logchange`** · 2 importers
+- **`platform/logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
-- **`metrics`** · 8 importers · → `media/images/rustgen`, `provision`
+- **`platform/metrics`** · 8 importers · → `media/images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
+- **`platform/openroutercatalog`** · 2 importers · → `platform/httpx`, `platform/openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
-- **`openroutermedia`** · 3 importers
+- **`platform/openroutermedia`** · 3 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
-- **`rating`** · 8 importers
+- **`platform/rating`** · 8 importers
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
-- **`releasenotes`**
+- **`platform/releasenotes`**
   Categorizes GitHub-generated release notes without allowing a language model to invent release content.
-- **`releaseverify`**
+- **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`settings`** · 8 importers · → `config`, `library`
+- **`platform/settings`** · 8 importers · → `library`, `platform/config`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
-- **`storagegovernor`** · 6 importers
+- **`platform/storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`store`** · 17 importers · → `channels/schedule`, `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `people/secretprotection`, `proposals`, `proposals/quality`, `provision`, `store/catalogstore`, `store/identitystore`, `store/storedb`
+- **`platform/textmatch`** · 2 importers
+  Owns deterministic, Unicode-aware whole-word phrase matching.
+- **`platform/web`** · 1 importer
+  Embeds the built SPA and serves it same-origin at / (main doc §12).
+- **`store`** · 17 importers · → `channels/schedule`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision`, `store/catalogstore`, `store/identitystore`, `store/storedb`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
-- **`store/catalogstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `media/creative`, `media/defects`, `store/storedb`
+- **`store/catalogstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
 - **`store/identitystore`** · 4 importers · → `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`store/storedb`** · 4 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.
-- **`textmatch`** · 2 importers
-  Owns deterministic, Unicode-aware whole-word phrase matching.
-- **`web`** · 1 importer
-  Embeds the built SPA and serves it same-origin at / (main doc §12).

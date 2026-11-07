@@ -95,14 +95,14 @@ Subsystem names map many-to-many onto packages, and four packages share two verb
 
 | Looking for… | It is in | Not in |
 | --- | --- | --- |
-| Channel identity, `DesiredLineup`, `ChannelPolicy`, ordering and seasonal math (pure, no I/O) | `internal/channels/schedule` | `internal/jobs` |
-| The job runner: named jobs, intervals, leases, "Run now" (nothing to do with TV) | `internal/jobs` | `internal/channels/schedule` |
+| Channel identity, `DesiredLineup`, `ChannelPolicy`, ordering and seasonal math (pure, no I/O) | `internal/channels/schedule` | `internal/platform/jobs` |
+| The job runner: named jobs, intervals, leases, "Run now" (nothing to do with TV) | `internal/platform/jobs` | `internal/channels/schedule` |
 | Materializing a channel and converging its Tunarr projection; the per-channel mutex | `internal/channels` | `internal/provisionbackstop` |
 | The provisioning backstop: claim due titles, retry `wanted`, poll the library, enforce deadlines | `internal/provisionbackstop` | `internal/channels` |
 | Turning an approved Proposal into a channel, preserving operator edits (`approval.Bind` is the pure core; the `Binder` shell reads the store and logs) | `internal/channels/approval` | `internal/channels` |
 | Re-evaluating a channel's intent through the approval gate | `internal/channels/recurate` | `internal/proposals/suggest` |
 | Title/Key identity and the acquisition state machine (pure) | `internal/provision` | `internal/provisionbackstop` |
-| Live TV publication (the owned tuner + guide pair) and Tunarr media-source wiring | `internal/playout/livetvpublish` | `internal/config`, `internal/app` |
+| Live TV publication (the owned tuner + guide pair) and Tunarr media-source wiring | `internal/playout/livetvpublish` | `internal/platform/config`, `internal/app` |
 | Federated search over library, TMDB and clips | `internal/catalog` | — |
 
 `internal/playout/tunarr` is the Tunarr port and is unrelated to

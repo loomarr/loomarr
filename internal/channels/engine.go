@@ -118,7 +118,7 @@ type Engine struct {
 	// channel, so the Channels/detail pages update live without a manual refresh
 	// (§9 self-maintaining; the "no rebuild button" model). Optional: nil ⇒ no emit
 	// (unit tests, no-events path). A local interface so this package needn't import
-	// internal/events — same accept-interfaces style as GuidePoker/RatingResolver.
+	// internal/platform/events — same accept-interfaces style as GuidePoker/RatingResolver.
 	notify ChannelNotifier
 	// scheduleInvalidator cuts over process-local internal playout after a newly
 	// committed Desired cycle differs from the one an active encoder may be using.
@@ -303,7 +303,7 @@ func (e *Engine) WithPods(p PodFiller) *Engine {
 }
 
 // ChannelNotifier publishes a UI-facing "channel changed" signal (an SSE `channel`
-// frame). A local interface so the channels package needn't import internal/events;
+// frame). A local interface so the channels package needn't import internal/platform/events;
 // the composition root adapts the event bus. The status pair lets downstream product
 // notifications distinguish a real transition from an ordinary reconciliation while
 // UI subscribers still receive every committed change.
@@ -332,7 +332,7 @@ func (e *Engine) WithNotifier(n ChannelNotifier) *Engine {
 }
 
 // ActivityRecorder is the durable operator-facing feed (§12). A local interface so this package
-// needn't import internal/activity — the same accept-interfaces style as ChannelNotifier above.
+// needn't import internal/platform/activity — the same accept-interfaces style as ChannelNotifier above.
 type ActivityRecorder interface {
 	Warn(ctx context.Context, kind, subjectID, text string)
 }

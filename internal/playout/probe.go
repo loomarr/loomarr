@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 )
 
 // Shared source observations use one stream/packet model (§9.1).

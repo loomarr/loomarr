@@ -12,7 +12,7 @@ target/
 web/packages/api/generated/
 web/packages/design-system/generated/
 web/apps/web/src/routeTree.gen.ts
-internal/web/dist/
+internal/platform/web/dist/
 
 # Browser and Storybook output is evidence, not source architecture.
 web/apps/web/storybook-static/

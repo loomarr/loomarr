@@ -28,7 +28,7 @@ spec change in the same PR.
 | --- | --- | --- |
 | `web/packages/api/generated/` | `api/openapi.yaml` via orval | `make fe-codegen` |
 | `web/apps/web/src/routeTree.gen.ts` | TanStack Router file routes | `make fe-codegen` |
-| `internal/web/dist/` | Vite | `make fe` / `make fe-build` |
+| `internal/platform/web/dist/` | Vite | `make fe` / `make fe-build` |
 | `web/apps/web/storybook-static/` | Storybook | `make storybook-build` |
 
 The orval client is gitignored because the spec is the source of truth — there's nothing for it
@@ -56,6 +56,6 @@ regenerating, where a hand-written path would silently stop matching and its tes
 
 ## `.gitkeep`
 
-`internal/web/dist/.gitkeep` is the one tracked file there. `//go:embed all:dist` won't compile
+`internal/platform/web/dist/.gitkeep` is the one tracked file there. `//go:embed all:dist` won't compile
 without the directory, and Vite's `emptyOutDir` deletes it, so a build plugin rewrites it. Don't
 tidy it away.

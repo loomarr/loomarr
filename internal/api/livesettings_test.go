@@ -1,6 +1,6 @@
 package api_test
 
-import "github.com/loomarr/loomarr/internal/settings"
+import "github.com/loomarr/loomarr/internal/platform/settings"
 
 // mapSettings is a settings.Reader answering from a fixed map; a key it does not hold is
 // unanswered (nil), so a handle reads that setting's declared default.

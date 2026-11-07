@@ -17,12 +17,12 @@ import (
 // refused 100.64.0.0/10, so a member-supplied URL could make the server fetch a tailnet host.
 //
 // The net.IP / netip.Addr range predicates are how a new copy starts, so calling one outside
-// internal/httpx fails here. The guard reads production source with go/parser over
+// internal/platform/httpx fails here. The guard reads production source with go/parser over
 // loomarrPackages (never `go list`, which the test cache cannot track — see importgraph_test.go).
 // It is syntactic: it cannot see receiver types, so a method of the same name on another type is
 // also flagged and belongs in the allowlist with the reason.
 
-const publicAddressHome = "internal/httpx/"
+const publicAddressHome = "internal/platform/httpx/"
 
 var addressRangePredicates = map[string]bool{
 	"IsPrivate": true, "IsLoopback": true, "IsLinkLocalUnicast": true, "IsLinkLocalMulticast": true,
@@ -32,9 +32,9 @@ var addressRangePredicates = map[string]bool{
 // addressPredicateAllowlist maps a repo-relative file to why its address-range checks are not an
 // "is this safe to fetch?" decision. Anything that is an SSRF gate uses httpx instead.
 var addressPredicateAllowlist = map[string]string{
-	"internal/llm/openai.go": "classifies an operator-configured base URL as self-hosted (an ALLOW rule that " +
+	"internal/platform/llm/openai.go": "classifies an operator-configured base URL as self-hosted (an ALLOW rule that " +
 		"decides which request fields to send), including CGNAT on purpose; it gates no fetch",
-	"internal/openroutercatalog/openrouter.go": "permits a plain-HTTP base URL only for loopback; it gates no fetch to a stranger-supplied host",
+	"internal/platform/openroutercatalog/openrouter.go": "permits a plain-HTTP base URL only for loopback; it gates no fetch to a stranger-supplied host",
 	"internal/filler/location/index.go": "geo-IP data-range guard that skips lookup of addresses with no country; " +
 		"not an SSRF gate (follow-up: adopt httpx.IsPublicIP so the two cannot drift)",
 }
@@ -62,7 +62,7 @@ func addressPredicateCalls(t *testing.T, filename string, src any) []string {
 	return found
 }
 
-// productionAddressPredicateUses maps each repo-relative production file outside internal/httpx
+// productionAddressPredicateUses maps each repo-relative production file outside internal/platform/httpx
 // to its address-range predicate calls.
 func productionAddressPredicateUses(t *testing.T, pkgs map[string]*build.Package) map[string][]string {
 	t.Helper()

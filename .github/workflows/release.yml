@@ -2,7 +2,7 @@
 # (amd64 + arm64), with SBOM + build provenance + keyless cosign signatures. The Dockerfile
 # FE stage embeds the SPA, so the published image is UI-complete (design §16).
 #
-# TWO jobs, deliberately, and locked by internal/releaseverify:
+# TWO jobs, deliberately, and locked by internal/platform/releaseverify:
 #   build   — matrix over NATIVE per-arch runners; each leg pushes ONE arch BY DIGEST only (no
 #             public tag, no signing). Native `ubuntu-24.04` / `ubuntu-24.04-arm` runners replace
 #             QEMU emulation, which spent ~30 min compiling the Rust worker for arm64 under emulation.

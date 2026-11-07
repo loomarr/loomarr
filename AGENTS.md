@@ -210,7 +210,7 @@ Air run at pinned versions from the harness.
 
 - `api/openapi.yaml` → `make openapi`; verify with `make openapi-verify`
 - `docs/reference/settings.md` → `make config-docs`
-- `internal/settings/keys_gen.go` → `make settings-keys` after adding, renaming or retyping a setting
+- `internal/platform/settings/keys_gen.go` → `make settings-keys` after adding, renaming or retyping a setting
 - `docs/reference/make.md` → `make dev-docs`
 - `docs/design/package-map.md` and `docs/design/areas/` → `make arch-docs`
 - `web/packages/design-system/generated/` → `make fe-tokens`

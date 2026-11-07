@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
-const dist = fileURLToPath(new URL("../internal/web/dist/", import.meta.url));
+const dist = fileURLToPath(new URL("../internal/platform/web/dist/", import.meta.url));
 const assets = new URL("assets/", `file://${dist}`);
 // ⚠ RAW bytes, and this budget governs LAZY chunks — the one that guards load time is
 // maxInitialBytes below, which only counts what index.html actually pulls in up front.

@@ -260,7 +260,7 @@ fi
 
 # Reuse the running server ONLY if it is actually running the current code.
 #
-# The SPA is embedded in the binary at compile time (internal/web/dist), so a running
+# The SPA is embedded in the binary at compile time (internal/platform/web/dist), so a running
 # instance serves whatever frontend existed when it was built. "Already up, skip the
 # start" therefore meant FE changes silently never reached the browser: a Settings panel
 # added minutes earlier was simply absent, and the spec failed as though the feature were

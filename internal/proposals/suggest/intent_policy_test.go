@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/rating"
 )
 
 func TestDeriveIntentPolicy(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
+	"github.com/loomarr/loomarr/internal/platform/metrics"
 )
 
 // now is the clock for stamping a new channel's loop anchor (StartTime). A package var so

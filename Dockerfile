@@ -4,7 +4,7 @@
 # Stages: fe (SPA) → build (Go) + image-worker (Rust) → runtime (one Debian image).
 
 # ---- frontend ----
-# Build the Vite/React SPA so the Go stage can embed it (internal/web/embed.go's
+# Build the Vite/React SPA so the Go stage can embed it (internal/platform/web/embed.go's
 # `//go:embed all:dist`). WITHOUT this stage the image embeds only the .gitkeep
 # placeholder and serves a "not built" notice — the UI would be missing. Runs on
 # the BUILD platform (native), never emulated: the output is portable static assets.
@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     cd web && pnpm install --frozen-lockfile \
     && pnpm codegen \
     && pnpm --filter @loomarr/web build
-# vite outDir is ../../../internal/web/dist ⇒ /src/internal/web/dist
+# vite outDir is ../../../internal/platform/web/dist ⇒ /src/internal/platform/web/dist
 
 # ---- node-runtime ----
 # The Node binary yt-dlp uses as its JavaScript runtime (YouTube player challenges). It is the SAME
@@ -49,7 +49,7 @@ RUN go mod download
 COPY . .
 # Overlay the built SPA over the committed .gitkeep placeholder so `go build`'s
 # embed bakes the real UI into the binary.
-COPY --from=fe /src/internal/web/dist ./internal/web/dist
+COPY --from=fe /src/internal/platform/web/dist ./internal/platform/web/dist
 # Stamped so the running instance can say what it is (§13 Help/About, §16 upgrades).
 # Unset ARGs are fine: buildinfo falls back to Go's embedded VCS stamps, then to "dev".
 ARG VERSION=""
@@ -58,9 +58,9 @@ ARG BUILT_AT=""
 # Static, stripped, reproducible-ish.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w \
-      -X github.com/loomarr/loomarr/internal/buildinfo.version=${VERSION} \
-      -X github.com/loomarr/loomarr/internal/buildinfo.commit=${COMMIT} \
-      -X github.com/loomarr/loomarr/internal/buildinfo.builtAt=${BUILT_AT}" \
+      -X github.com/loomarr/loomarr/internal/platform/buildinfo.version=${VERSION} \
+      -X github.com/loomarr/loomarr/internal/platform/buildinfo.commit=${COMMIT} \
+      -X github.com/loomarr/loomarr/internal/platform/buildinfo.builtAt=${BUILT_AT}" \
     -o /out/loomarr ./cmd/loomarr
 
 # Required image renderer (§14, §22). Build natively for each Buildx target so the bundled

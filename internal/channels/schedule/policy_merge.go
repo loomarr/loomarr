@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/loomarr/loomarr/internal/rating"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 )
 
 // Policy ownership merge (programming-design §2.1 / §8.2). ChannelPolicy mixes three

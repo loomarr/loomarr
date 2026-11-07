@@ -8,7 +8,7 @@ import (
 	"reflect"
 
 	"github.com/loomarr/loomarr/internal/media/tools"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // conditioningJob is a conditioned split child's transcode once its lineage, parent and

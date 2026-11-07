@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 func TestToAPIEntry_ExposesOwnerAndApplyTiming(t *testing.T) {

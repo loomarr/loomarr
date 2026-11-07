@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // judge scores a proposal's SUBJECTIVE quality (0..1) against a case's rubric using

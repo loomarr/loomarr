@@ -7,11 +7,11 @@ import (
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/rating"
+	"github.com/loomarr/loomarr/internal/platform/textmatch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/rating"
-	"github.com/loomarr/loomarr/internal/textmatch"
 )
 
 var libraryOnlyPatterns = []*regexp.Regexp{

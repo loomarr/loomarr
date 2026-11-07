@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/platform/config"
 )
 
 const (

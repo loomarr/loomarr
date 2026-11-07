@@ -9,8 +9,8 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/logchange"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/logchange"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // The ingest pipeline (§10 V51b): one ordered, per-clip run replacing seven independent cron

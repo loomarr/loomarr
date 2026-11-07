@@ -41,7 +41,7 @@ The full Apache-2.0 license text also rides in the release SBOM.
 
 ## Frontend dependencies (bundled into the embedded SPA)
 
-The web UI is built with Vite and **embedded into the Go binary** (`internal/web/embed.go`
+The web UI is built with Vite and **embedded into the Go binary** (`internal/platform/web/embed.go`
 `//go:embed all:dist`), so its RUNTIME dependencies ship inside the published image. Only the
 production (non-`devDependencies`) tree is bundled; build/test tooling (Vite, Biome, Playwright,
 Storybook, vitest) is not shipped and is out of scope here.
@@ -254,7 +254,7 @@ source/binary identity verification and the dated CI run that exercised `make te
 notice/SBOM checks on both architectures. This closure is scoped to the pins verified there: a future
 FFmpeg or yt-dlp pin bump must repeat that evidence collection before this file may again describe the
 sourced/verified state as current, and the fail-closed `make test-ffmpeg` plus notice/SBOM checks in
-`internal/releaseverify` keep enforcing shipped-binary identity on every release-candidate run
+`internal/platform/releaseverify` keep enforcing shipped-binary identity on every release-candidate run
 regardless of this record. Outside that scope, neither this file nor the BuildKit SBOM should be read
 as a claim of qualified legal clearance.
 

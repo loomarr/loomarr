@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -589,7 +589,7 @@ func TestRunnerKeepsSelfHostedCustomCallsExplicitlyNonBilled(t *testing.T) {
 // The household's actual configuration (#1852 checkpoint 2): LLM_PROVIDER=openai
 // pointed at a private/Tailscale endpoint. attribution.RequestedProvider is
 // "openai", but the endpoint itself is operator-run — SelfHosted (set from
-// (*OpenAI).selfHosted(), internal/llm/openai.go) must be what the ledger keys
+// (*OpenAI).selfHosted(), internal/platform/llm/openai.go) must be what the ledger keys
 // on, not the "openai" provider string, or every real household call latches
 // budget_exhausted.
 func TestRunnerKeepsSelfHostedOpenAIProviderCallsExplicitlyNonBilled(t *testing.T) {

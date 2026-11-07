@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 const OpenRouterCertificationBaseURL = "https://openrouter.ai/api/v1"

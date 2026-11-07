@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/platform/jobs"
 )
 
 // The filler jobs that do real media or file I/O MUST declare a Timeout — it is both their

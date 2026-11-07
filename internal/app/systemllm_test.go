@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )

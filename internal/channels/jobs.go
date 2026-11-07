@@ -3,8 +3,8 @@ package channels
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/jobs"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // Job returns the channel sweep as a scheduler job (§9, §18.1) — the periodic reconcile

@@ -11,10 +11,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media/defects"
-	"github.com/loomarr/loomarr/internal/openroutermedia"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/openroutermedia"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // defectJudgeRole names the judge's rows in the filler inference ledger (#551).

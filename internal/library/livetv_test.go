@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 

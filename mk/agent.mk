@@ -80,7 +80,7 @@ release-verify: ## verify release, CI acquisition, Android, and publication poli
 	@./web/scripts/build-apple-testflight.test.sh
 	@./web/scripts/check-ios-pods-binaries.test.sh
 	@./web/scripts/build-shield-play.test.sh
-	@$(GO) test ./internal/releaseverify
+	@$(GO) test ./internal/platform/releaseverify
 	@$(GO) run ./cmd/releaseverify -root .
 
 release-notes-preview: ## generate validated release notes (TAG required; optional PREVIOUS_TAG and OUTPUT)

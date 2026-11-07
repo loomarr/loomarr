@@ -6,8 +6,8 @@ import (
 	"maps"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // DesiredLineup is the ordered set of Slots a channel *should* have right now,

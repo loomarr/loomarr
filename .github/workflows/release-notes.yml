@@ -1,7 +1,7 @@
 # Publish a GitHub Release with notes when a version tag is pushed.
 #
 # DELIBERATELY SEPARATE from release.yml. That workflow is locked to ONE hardened job — build,
-# sign (keyless cosign), and promote the image — and `internal/releaseverify` REJECTS any second
+# sign (keyless cosign), and promote the image — and `internal/platform/releaseverify` REJECTS any second
 # job or extra step in it, because every addition is attack surface on the signing identity
 # (`packages: write` + `id-token: write`). Release-notes creation needs none of that power, only
 # `contents: write`, so it lives here in its own workflow with the minimum permission. The two run

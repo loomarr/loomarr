@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 )

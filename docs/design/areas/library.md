@@ -20,9 +20,9 @@ One area of the [package map](../package-map.md#start-here).
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`inventory`** · 7 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
-- **`library`** · 12 importers · → `episodeevidence`, `httpx`, `inventory`, `metrics`
+- **`library`** · 12 importers · → `episodeevidence`, `inventory`, `platform/httpx`, `platform/metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`library/arrhook`** · 2 importers · → `httpx`
+- **`library/arrhook`** · 2 importers · → `platform/httpx`
   Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
 - **`library/scan`** · 2 importers · → `inventory`, `library`, `library/arrhook`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `store`, `tmdb`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
@@ -34,19 +34,19 @@ One area of the [package map](../package-map.md#start-here).
   The artwork beside the media as a metadata provider (#2151 decision 19).
 - **`metadataprovider/nfo`** · 1 importer · → `metadataprovider`
   Kodi NFO sidecars as a metadata provider (#2151 decision 2).
-- **`metadataprovider/precedence`** · 2 importers · → `metadataprovider`, `rating`
+- **`metadataprovider/precedence`** · 2 importers · → `metadataprovider`, `platform/rating`
   Decides which source's value Loomarr uses for each field of a media item (#2151 decision 7, ADR 0046).
 - **`metadataprovider/providertest`** · → `metadataprovider`
   Conformance suite every metadata provider runs.
-- **`metadataprovider/tmdb`** · 1 importer · → `httpx`, `metadataprovider`, `rating`, `tmdb`
+- **`metadataprovider/tmdb`** · 1 importer · → `metadataprovider`, `platform/httpx`, `platform/rating`, `tmdb`
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
 - **`provision`** · 25 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`provisionbackstop`** · 1 importer · → `activity`, `channels/schedule`, `jobs`, `library`, `provision`, `requester`, `settings`, `store`
+- **`provisionbackstop`** · 1 importer · → `channels/schedule`, `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `provision`, `requester`, `store`
   Provisioning backstop (design §4, §7, §18).
-- **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
+- **`requester`** · 2 importers · → `platform/httpx`, `platform/metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
-- **`tmdb`** · 5 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
+- **`tmdb`** · 5 importers · → `catalog`, `moviecollections`, `platform/httpx`, `platform/metrics`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.

@@ -3,8 +3,8 @@ package provisionbackstop
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/jobs"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // Each service declares its OWN scheduler job (§18.1).

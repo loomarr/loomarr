@@ -9,7 +9,7 @@
 # A span resolves when its path exists from the repo root, from the doc's own directory, or from
 # docs/ (docs/design.md writes `design/overview.md` for docs/design/overview.md). Spans that are
 # patterns (`*`, `{}`, `<...>`, `$VAR`), gitignored build output (`storybook-static`) and Go
-# symbols (`internal/metrics.Recorder`, checked as the package directory) are not paths to
+# symbols (`internal/platform/metrics.Recorder`, checked as the package directory) are not paths to
 # check. A `:12` or `:12-34` line suffix and a `#fragment` are stripped first.
 #
 # History is out of scope: PROGRESS.md, project/ and design/ record what paths WERE. A live doc
@@ -43,7 +43,7 @@ resolves() {
   # Build output. The trailing-slash form matches directory-only patterns (`storybook-static/`).
   git check-ignore -q "$path" 2>/dev/null && return 0
   git check-ignore -q "$path/" 2>/dev/null && return 0
-  # A Go symbol: `internal/metrics.Recorder`, `internal/api.Server.Handler()`.
+  # A Go symbol: `internal/platform/metrics.Recorder`, `internal/api.Server.Handler()`.
   if [[ "$path" =~ ^(.*/[A-Za-z0-9_-]+)\.[A-Z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)?(\(\))?$ ]]; then
     [[ -d "${BASH_REMATCH[1]}" ]] && return 0
   fi

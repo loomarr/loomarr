@@ -1,0 +1,179 @@
+package releaseverify
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func TestVerifyAndroidReleaseWorkflow(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test source")
+	}
+	workflowPath := filepath.Join(filepath.Dir(source), "..", "..", "..", ".github", "workflows", "android-beta.yml")
+	data, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := string(data)
+	tests := []struct {
+		name    string
+		mutate  func(string) string
+		wantErr bool
+	}{
+		{name: "protected signed testing release", mutate: func(value string) string { return value }},
+		{name: "cannot run on pull requests", mutate: replaceOnce("workflow_dispatch:", "pull_request:", t), wantErr: true},
+		{name: "cannot expose production", mutate: replaceOnce("          ANDROID_RELEASE_TRACK: internal", "          ANDROID_RELEASE_TRACK: production", t), wantErr: true},
+		{name: "publication requires an explicit choice", mutate: replaceOnce("        default: false", "        default: true", t), wantErr: true},
+		{name: "protected environment is fixed", mutate: replaceOnce("    environment: android-beta", "    environment: unprotected", t), wantErr: true},
+		{name: "non-main dispatch is rejected", mutate: replaceOnce("    if: github.ref == 'refs/heads/main'", "    if: github.ref != 'refs/heads/main'", t), wantErr: true},
+		{name: "workflow permissions stay read only", mutate: replaceOnce("  contents: read", "  contents: write", t), wantErr: true},
+		{name: "artifact validation cannot be removed", mutate: replaceOnce(`        run: ./scripts/download-android-ci-artifact.sh "${{ inputs.ci_run_id }}" .artifacts/android-ci`, "        run: true", t), wantErr: true},
+		{name: "sign-only handoff cannot be replaced", mutate: replaceOnce("          ./scripts/sign-android-ci-artifact.sh \"$unsigned\" \"$manifest\" \"$ANDROID_RELEASE_OUTPUT_DIR\"", "          ./gradlew bundleRelease", t), wantErr: true},
+		{name: "publisher cannot be bypassed", mutate: replaceOnce("            ./scripts/publish-android-beta.sh \"$aab\" \"$manifest\"", "            curl https://example.invalid/publish", t), wantErr: true},
+		{name: "publisher cannot run unconditionally", mutate: replaceOnce("        if: inputs.publish_to_play", "        if: always()", t), wantErr: true},
+		{name: "credential cleanup cannot be conditional", mutate: replaceOnce("        if: always()", "        if: success()", t), wantErr: true},
+		{name: "mutable actions are rejected", mutate: replaceOnce("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "actions/checkout@v7", t), wantErr: true},
+		{name: "second job is rejected", mutate: replaceOnce("jobs:\n", "jobs:\n  bypass:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo bypass\n", t), wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "android-beta.yml")
+			if err := os.WriteFile(path, []byte(tc.mutate(good)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			err := VerifyAndroidReleaseWorkflow(path)
+			if tc.wantErr && err == nil {
+				t.Fatal("VerifyAndroidReleaseWorkflow accepted an unsafe workflow")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("VerifyAndroidReleaseWorkflow: %v", err)
+			}
+		})
+	}
+}
+
+func TestCIAndroidCachePolicy(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test source")
+	}
+	workflowPath := filepath.Join(filepath.Dir(source), "..", "..", "..", ".github", "workflows", "ci-android.yml")
+	data, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(data)
+
+	for _, want := range []string{
+		"- name: Install pinned ccache",
+		"web/scripts/install-android-ccache.sh",
+		"- name: Restore ccache compiler results",
+		"uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+		"CCACHE_DIR: ${{ runner.temp }}/loomarr-android-ccache",
+		"LOOMARR_ANDROID_CCACHE_LAUNCHER: ${{ steps.ccache.outputs.launcher }}",
+		"CCACHE_BASEDIR: ${{ github.workspace }}",
+		"CCACHE_MAXSIZE: 2G",
+		"CCACHE_SLOPPINESS: ",
+		"LOOMARR_ANDROID_GRADLE_WORKERS: \"2\"",
+		"path: ${{ runner.temp }}/loomarr-android-ccache",
+		"key: android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}",
+		"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-",
+		"- name: Package the verified merge-queue compiler cache",
+		"./scripts/android-ccache-promotion.sh pack",
+		"- name: Transfer the verified cache for trusted main publication",
+		"name: loomarr-android-ccache-${{ github.sha }}-${{ github.run_id }}",
+		"retention-days: 1",
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Errorf("ci-android cache policy missing %q", want)
+		}
+	}
+	// Android runs only where no save can reach a later run, so the ccache promotion to main is
+	// the one cache path left.
+	for _, forbidden := range []string{
+		".cxx",
+		"android/",
+		"*.aab",
+		"keystore",
+		"actions/cache/save@",
+		"~/.gradle",
+	} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("ci-android cache policy contains forbidden %q", forbidden)
+		}
+	}
+}
+
+func TestCIExpoAndroidMobileCachePolicy(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test source")
+	}
+	workflowPath := filepath.Join(filepath.Dir(source), "..", "..", "..", ".github", "workflows", "ci-expo-android-mobile.yml")
+	data, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(data)
+
+	for _, want := range []string{
+		"web/scripts/install-android-ccache.sh",
+		"CCACHE_DIR: ${{ runner.temp }}/loomarr-android-ccache",
+		"CCACHE_BASEDIR: ${{ github.workspace }}",
+		"CCACHE_SLOPPINESS: \"\"",
+		"LOOMARR_ANDROID_CCACHE_LAUNCHER: ${{ steps.ccache.outputs.launcher }}",
+		"LOOMARR_ANDROID_GRADLE_WORKERS: \"2\"",
+		"LOOMARR_ANDROID_MEMORY_MAX: 12G",
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Errorf("ci-expo-android-mobile cache policy missing %q", want)
+		}
+	}
+	// Mobile runs only where no save can reach a later run, so it has no cache of its own.
+	for _, forbidden := range []string{"actions/cache", "android-mobile-react-native", ".cxx", "android/app/build\n"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("ci-expo-android-mobile cache policy contains forbidden %q", forbidden)
+		}
+	}
+}
+
+func TestAndroidSetupRequestsOnlySupportedPackages(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test source")
+	}
+	workflowsDir := filepath.Join(filepath.Dir(source), "..", "..", "..", ".github", "workflows")
+	for _, workflow := range []struct {
+		name string
+		job  string
+	}{
+		{name: "android-beta.yml", job: "release"},
+		{name: "ci-android.yml", job: "run"},
+		{name: "ci-expo-android-mobile.yml", job: "run"},
+	} {
+		t.Run(workflow.name, func(t *testing.T) {
+			document := readWorkflowFixture(t, filepath.Join(workflowsDir, workflow.name))
+			job := mappingValueMust(t, mappingValueMust(t, document, "jobs"), workflow.job)
+			steps := mappingValueMust(t, job, "steps")
+			setup := steps.Content[workflowUsesStepIndex(t, steps.Content, "android-actions/setup-android")]
+			with := mappingValueMust(t, setup, "with")
+			if got := yamlScalar(t, with, "packages"); got != "platform-tools" {
+				t.Fatalf("setup-android packages = %q, want only supported platform-tools", got)
+			}
+		})
+	}
+}
+
+func replaceOnce(oldValue, newValue string, t *testing.T) func(string) string {
+	t.Helper()
+	return func(value string) string {
+		if strings.Count(value, oldValue) != 1 {
+			t.Fatalf("fixture contains %d instances of %q, want 1", strings.Count(value, oldValue), oldValue)
+		}
+		return strings.Replace(value, oldValue, newValue, 1)
+	}
+}

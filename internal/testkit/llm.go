@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // LLM is the shared llm.Provider test double (AGENTS.md: one mock per service).

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // This file is the ChannelPolicy ENFORCEMENT half (programming-design §3–§5): the

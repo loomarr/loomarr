@@ -7,7 +7,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/sse"
 
-	"github.com/loomarr/loomarr/internal/events"
+	"github.com/loomarr/loomarr/internal/platform/events"
 )
 
 // EventSource is the subscribe surface the SSE stream needs (implemented by

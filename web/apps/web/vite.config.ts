@@ -8,7 +8,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 // The SPA is embedded in the Go binary and served same-origin at / (main doc §12).
-// Build output lands in internal/web/dist, which internal/web/embed.go embeds.
+// Build output lands in internal/platform/web/dist, which internal/platform/web/embed.go embeds.
 // In dev, Vite proxies the API surface to the Go server on :8080 so the app runs
 // against the real backend with cookie auth intact.
 const BACKEND_PORT = process.env.LOOMARR_DEV_PORT ?? "8080";
@@ -42,7 +42,7 @@ const proxied = [
   "/metrics",
 ];
 
-// internal/web/embed.go declares `//go:embed all:dist`, which does not compile unless the
+// internal/platform/web/embed.go declares `//go:embed all:dist`, which does not compile unless the
 // directory exists — so .gitkeep is the one committed file in there (.gitignore un-ignores
 // exactly that path). But `emptyOutDir: true` deletes it on every build, and a routine
 // `git add -A` then stages the deletion. That has now broken the clean-clone build twice.
@@ -53,7 +53,7 @@ const keepEmbedDir = (): Plugin => ({
   name: "loomarr-keep-embed-dir",
   apply: "build",
   closeBundle() {
-    const dir = fileURLToPath(new URL("../../../internal/web/dist", import.meta.url));
+    const dir = fileURLToPath(new URL("../../../internal/platform/web/dist", import.meta.url));
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, ".gitkeep"), "");
   },
@@ -131,7 +131,7 @@ export default defineConfig({
     ),
   },
   build: {
-    outDir: fileURLToPath(new URL("../../../internal/web/dist", import.meta.url)),
+    outDir: fileURLToPath(new URL("../../../internal/platform/web/dist", import.meta.url)),
     // Wipes the directory each build, which is what deletes .gitkeep — see keepEmbedDir.
     emptyOutDir: true,
   },

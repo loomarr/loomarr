@@ -2,7 +2,7 @@
 
 package eval
 
-import "github.com/loomarr/loomarr/internal/llm"
+import "github.com/loomarr/loomarr/internal/platform/llm"
 
 const (
 	InferenceMaxIdentityRunes     = 256

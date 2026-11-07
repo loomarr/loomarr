@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/logchange"
+	"github.com/loomarr/loomarr/internal/platform/logchange"
 )
 
 // The artwork-adoption job (§22, V52 phase 6): pull already-rendered files on disk into the image

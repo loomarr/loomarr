@@ -13,8 +13,8 @@
 **/node_modules
 web/.pnpm-store
 
-# Generated / build outputs (the fe stage rebuilds the SPA into internal/web/dist)
-internal/web/dist
+# Generated / build outputs (the fe stage rebuilds the SPA into internal/platform/web/dist)
+internal/platform/web/dist
 web/apps/web/dist
 web/apps/web/storybook-static
 **/*.tsbuildinfo

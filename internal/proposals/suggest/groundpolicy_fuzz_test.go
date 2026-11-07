@@ -4,14 +4,14 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // onLadderCeilings are the canonical rating strings rating.Normalize maps to itself
 // (already upper-cased, no separators/variants). groundPolicy may only ever produce
 // a ceiling from this closed set or "" — a hallucinated rating is dropped. Kept in
-// sync with the ladder in internal/rating. If the ladder grows, this must too.
+// sync with the ladder in internal/platform/rating. If the ladder grows, this must too.
 var onLadderCeilings = map[rating.Rating]bool{
 	"TV-Y": true, "TV-Y7": true,
 	"TV-G": true, "G": true,

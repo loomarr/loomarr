@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 const (
