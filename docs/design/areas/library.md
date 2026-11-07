@@ -9,7 +9,7 @@ One area of the [package map](../package-map.md#start-here).
 ## Imports from other areas
 
 - **platform** · 14 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
-- **media** · 1 import — 
+- **media** · 1 import — the scanner reads each media file's header to learn its length, streams and embedded ids
 - **channels** · 1 import — the backstop's episode refresh re-reads each scheduled show into the scheduler's episode cache, whose entries are `schedule.ResolvedProgram`; the job moves into channels with the Wave 6.4 directory moves
 
 ## Packages

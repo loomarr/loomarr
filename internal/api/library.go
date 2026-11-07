@@ -67,7 +67,7 @@ func (s *Server) registerLibrary(api huma.API) {
 	}, RoleAdmin), s.setLibraryPathMapping)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "libraryStatus", Method: http.MethodGet, Path: "/v1/library/status",
-		Summary:     "Library status",
+		Summary: "Library status",
 		Description: "The status strip: whether any folder is in use, whether every folder in use opened at its last check, " +
 			"what the scanner is doing, and any removal waiting for the maintainer.",
 		Tags: []string{"library"},
