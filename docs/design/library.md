@@ -211,8 +211,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is under them, under the same removal guard, and still counts every file outside them as
   present. A folder deleted whole is a change to the one above it.
   - `scan.Watcher` watches each in-use root on a local filesystem with inotify. A kernel queue
-    overflow asks for a full pass. inotify sees only changes made through this machine, so a CIFS,
-    NFS or FUSE root is not watched.
+    overflow asks for a full pass. inotify sees only changes made through this machine, so an NFS
+    or FUSE root is not watched.
+  - **SMB change notifications.** A root on a CIFS mount is watched through the server instead:
+    one `CIFS_IOC_NOTIFY_INFO` call per root, over the whole tree, reporting names added, removed,
+    renamed and written by any client. Each name's folder is passed; a report with no names (the
+    server's batch overflowed) passes the whole root. A server or kernel without notifications is
+    logged once and left to the hourly walk; any other failure retries after a minute and passes
+    the whole root. The call cannot be interrupted, so after shutdown the one in flight ends with
+    the share's next change.
   - **Arr webhooks** (`internal/library/arrhook`, `scan.ArrHooks`). At start and hourly, Loomarr
     keeps one webhook connection named "Loomarr" in each connected Sonarr and Radarr, posting
     the file events (download, upgrade, rename, file and series/movie delete) to
@@ -222,8 +229,6 @@ step 5). Nothing reads the scanner's origins until the cutover.
     (`secret.arr_webhook`, never shown) sent as the basic-auth password. `GET /v1/library/status`
     lists each arr's state (registered, not connected, no address, failed) and its last event,
     and `POST /v1/library/hooks/{app}/test` registers again and asks the arr to send its test.
-  - SMB change notifications for CIFS roots are not built yet; until then the arrs' webhooks and
-    the hourly walk cover a network share.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook

@@ -17,14 +17,25 @@ import (
 // watchResync is how often the watched roots are compared with the in-use ones.
 const watchResync = time.Minute
 
-// Watcher hands the scanner the folders a change names (Scanner.PassFolders), for each in-use root
-// on a local filesystem. inotify sees only changes made through this machine's kernel, so a
-// network share (CIFS, NFS, FUSE) is left to the hourly walk and the arrs' webhooks. A kernel
-// queue overflow asks for a full pass instead.
+// Watcher hands the scanner the folders a change names (Scanner.PassFolders), for each in-use root:
+// through inotify on a local filesystem, and through the server's change notifications on an SMB
+// share, which report changes any client makes. inotify sees only this machine's own changes, so
+// another network or userspace filesystem (NFS, FUSE) is left to the hourly walk and the arrs'
+// webhooks. A kernel queue overflow asks for a full pass instead.
 type Watcher struct {
 	Scanner *Scanner
-	// Resync is zero for its default.
-	Resync time.Duration
+	// Resync and ShareRetry are zero for their defaults.
+	Resync     time.Duration
+	ShareRetry time.Duration
+}
+
+// watchedRoots is the in-use roots by how their changes are heard.
+type watchedRoots struct {
+	local, shares []string
+}
+
+func (r watchedRoots) equal(o watchedRoots) bool {
+	return slices.Equal(r.local, o.local) && slices.Equal(r.shares, o.shares)
 }
 
 // Run watches until ctx ends.
@@ -48,31 +59,45 @@ func (w *Watcher) Run(ctx context.Context) {
 	}
 }
 
-// roots is the walked roots on a local filesystem, sorted.
-func (w *Watcher) roots(ctx context.Context) ([]string, error) {
+// roots is the walked roots Loomarr can watch, sorted.
+func (w *Watcher) roots(ctx context.Context) (watchedRoots, error) {
 	all, err := w.Scanner.Importer.Store.LibraryRoots(ctx)
 	if err != nil {
-		return nil, err
+		return watchedRoots{}, err
 	}
-	var out []string
+	var out watchedRoots
 	for root := range scannedRoots(all.Roots) {
-		if localFilesystem(root) {
-			out = append(out, root)
+		switch {
+		case localFilesystem(root):
+			out.local = append(out.local, root)
+		case cifsFilesystem(root):
+			out.shares = append(out.shares, root)
 		}
 	}
-	slices.Sort(out)
+	slices.Sort(out.local)
+	slices.Sort(out.shares)
 	return out, nil
 }
 
 // watch watches roots until the in-use set changes (nil) or watching fails.
-func (w *Watcher) watch(ctx context.Context, roots []string) error {
+func (w *Watcher) watch(ctx context.Context, watched watchedRoots) error {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = fsw.Close() }()
+	roots := watched.local
 	for _, root := range roots {
 		w.addTree(fsw, root, root)
+	}
+
+	shareCtx, stopShares := context.WithCancel(ctx)
+	defer stopShares()
+	shareChanges := make(chan shareChange)
+	for _, root := range watched.shares {
+		go watchShare(shareCtx, root, orDuration(w.ShareRetry, shareRetry), shareChanges, func(err error, permanent bool) {
+			w.shareFailed(root, err, permanent)
+		})
 	}
 
 	resync := time.NewTicker(orDuration(w.Resync, watchResync))
@@ -81,6 +106,8 @@ func (w *Watcher) watch(ctx context.Context, roots []string) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case change := <-shareChanges:
+			w.Scanner.PassFolders(change.root, change.dirs...)
 		case ev, ok := <-fsw.Events:
 			if !ok {
 				return errors.New("library scan: the watch closed")
@@ -108,11 +135,24 @@ func (w *Watcher) watch(ctx context.Context, roots []string) error {
 			return err
 		case <-resync.C:
 			now, err := w.roots(ctx)
-			if err != nil || !slices.Equal(now, roots) {
+			if err != nil || !now.equal(watched) {
 				return err
 			}
 		}
 	}
+}
+
+// shareFailed logs a share whose watch stopped. One that cannot report changes is left to the
+// hourly walk; any other failure may have missed changes, so the whole root is passed once the
+// watch is back.
+func (w *Watcher) shareFailed(root string, err error, permanent bool) {
+	if permanent {
+		w.log().Warn("library scan: this share can't report changes; they wait for the hourly walk",
+			"root", root, "err", err)
+		return
+	}
+	w.log().Warn("library scan: watching this share stopped; trying again shortly", "root", root, "err", err)
+	w.Scanner.PassFolders(root, root)
 }
 
 // addTree watches dir and every folder under it a walk would enter. A folder the kernel will not
