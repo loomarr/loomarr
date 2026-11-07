@@ -1,9 +1,5 @@
 import type { BundlePreview } from "@loomarr/api/models/bundlePreview";
 import type { BundleSelection } from "@loomarr/api/models/bundleSelection";
-import { Download, LoaderCircle, Settings2, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { Download, LoaderCircle, Settings2, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -171,10 +171,12 @@ const SupportBundle = ({
         }
       }}
     >
-      <DialogTrigger render={<Button variant="outline" />}>
-        <Download aria-hidden /> Download troubleshooting report
+      <DialogTrigger>
+        <Button variant="outline">
+          <Download aria-hidden /> Download troubleshooting report
+        </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+      <DialogContent size="form">
         <DialogHeader>
           <DialogTitle>Download troubleshooting report</DialogTitle>
           <DialogDescription>
@@ -339,7 +341,7 @@ const SupportBundle = ({
           </p>
         )}
 
-        <DialogFooter className="flex-col-reverse sm:flex-row">
+        <DialogFooter>
           <Button
             onClick={() => void download()}
             disabled={!preview || busy !== undefined || (!events && !processes && !processOutput)}
