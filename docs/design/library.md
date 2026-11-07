@@ -203,6 +203,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   setting. A root inside another in-use root is walked as part of it. Walks skip `trickplay/`,
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+- **Change signals.** `scan.Watcher` watches each in-use root on a local filesystem with inotify
+  and, once a root has been quiet for 5 s, passes over only the folders a change named
+  (`Importer.RunFolders`): it writes and removes what is under them, under the same removal guard,
+  and still counts every file outside them as present. A folder deleted whole is a change to the
+  one above it. A kernel queue overflow asks for a full pass. inotify sees only changes made
+  through this machine, so a CIFS, NFS or FUSE root is not watched; SMB change notifications and
+  the arrs' webhooks cover those (#2151 step 6), with the hourly walk as the safety net.
 
 ## Cached series episodes
 
