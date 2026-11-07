@@ -47,7 +47,7 @@ const ApprovalBulkGroup = ({
       >
         <Surface
           alignItems="center"
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
           flexDirection="row"
           gap={8}
@@ -69,7 +69,7 @@ const ApprovalBulkGroup = ({
             {requestedBy}
           </Text>
         ) : null}
-        <Surface backgroundColor="$transparent" borderWidth={0} flexGrow={1} />
+        <Surface backgroundColor="transparent" borderWidth={0} flexGrow={1} />
         <Text textRole="metadata" tone="secondary">
           {selectedCount > 0 ? `${selectedCount} selected` : "None selected"}
         </Text>
@@ -90,19 +90,19 @@ const ApprovalBulkGroup = ({
           {selectedCount > 0 ? `Approve ${selectedCount}` : "Approve"}
         </Action>
       </Surface>
-      <Surface backgroundColor="$transparent" borderRadius={0} borderWidth={0} role="list">
+      <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} role="list">
         {rows.map((row, index) => (
           <Surface
             alignItems="flex-start"
-            backgroundColor="$transparent"
+            backgroundColor="transparent"
             borderRadius={0}
             borderWidth={0}
             borderTopWidth={index === 0 ? 0 : 1}
             flexDirection="row"
             gap={10}
-            key={row.id}
             paddingHorizontal={14}
             paddingVertical={12}
+            key={row.id}
             role="listitem"
           >
             {/* An excluded row has no checkbox at all rather than a disabled one: its own Approve is
@@ -116,7 +116,7 @@ const ApprovalBulkGroup = ({
                 onCheckedChange={(on) => toggle(row.id, on)}
               />
             )}
-            <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={6} minWidth={0}>
+            <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={6} minWidth={0}>
               {row.content}
               {row.excluded ? (
                 <Text textRole="caption" tone="warning">

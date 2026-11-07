@@ -7,21 +7,23 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindowopenrouter"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/structure/window"
+	"github.com/loomarr/loomarr/internal/filler/structure/window/openrouter"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 type productionStructureWindowLedger struct {
-	store  fillerstore.FillerStructureAssessmentStore
-	budget fillerstore.InferenceBudget
+	store  records.FillerStructureAssessmentStore
+	budget records.InferenceBudget
 }
 
-func (l productionStructureWindowLedger) Reserve(ctx context.Context, reservation fillerstructurewindow.CallReservation) (fillerstructurewindow.CallReservationState, error) {
+func (l productionStructureWindowLedger) Reserve(ctx context.Context, reservation window.CallReservation) (window.CallReservationState, error) {
 	return l.store.ReserveStructureWindowCall(ctx, reservation, l.budget)
 }
 
-func (l productionStructureWindowLedger) Settle(ctx context.Context, record fillerstructurewindow.CallRecord) error {
+func (l productionStructureWindowLedger) Settle(ctx context.Context, record window.CallRecord) error {
 	return l.store.SettleStructureWindowCall(ctx, record)
 }
 
@@ -54,9 +56,9 @@ func (l *liveStructureRuntime) Current() filler.StructureRuntime {
 	return l.current
 }
 
-func buildCertifiedWindowStructureRuntime(st fillerstore.Store, set resolved, layout filler.Layout,
-	authority *fillerstructurewindow.MaterializationAuthority,
-	deployment *fillerstructurewindowopenrouter.Deployment,
+func buildCertifiedWindowStructureRuntime(st records.Store, set resolved, layout filler.Layout,
+	authority *window.MaterializationAuthority,
+	deployment *openrouter.Deployment, cutFamily func() encode.Family,
 ) (filler.CompleteTimelineStructureDecisioner, error) {
 	if authority == nil || deployment == nil {
 		return nil, nil
@@ -69,18 +71,18 @@ func buildCertifiedWindowStructureRuntime(st fillerstore.Store, set resolved, la
 		return nil, errors.New("certified long-reel runtime requires the OpenRouter provider secret")
 	}
 	root := filepath.Join(layout.ClipDir(), ".loomarr", "structure-window")
-	return fillerstructurewindowopenrouter.NewCertifiedRuntime(fillerstructurewindowopenrouter.CertifiedRuntimeConfig{
+	return openrouter.NewCertifiedRuntime(openrouter.CertifiedRuntimeConfig{
 		Authority: *authority, Deployment: *deployment, APIKey: apiKey,
 		SourceRoot: layout.ClipDir(), MediaRoot: filepath.Join(root, "media"), EvidenceRoot: filepath.Join(root, "evidence"),
-		FFmpegPath: resolveTool(set.str("playout.ffmpeg_path"), "ffmpeg"),
-		Ledger: productionStructureWindowLedger{store: st, budget: fillerstore.InferenceBudget{
+		FFmpegPath: resolveTool(settings.PlayoutFFmpegPath.Get(set), "ffmpeg"), CutFamily: cutFamily,
+		Ledger: productionStructureWindowLedger{store: st, budget: records.InferenceBudget{
 			PerClipNanoUSD: deployment.PerSourceBudgetNanoUSD, PerDayNanoUSD: deployment.PerDayBudgetNanoUSD,
 		}},
 	})
 }
 
 func openRouterStructureAPIKey(set resolved) string {
-	if value, err := set.svc.LoadRaw(setLLMAPIKey + ".openrouter"); err == nil && value != "" {
+	if value, err := set.svc.LoadRaw(settings.LLMAPIKey.Key() + ".openrouter"); err == nil && value != "" {
 		return value
 	}
 	selection := resolveSelection(set)

@@ -1,4 +1,4 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { LoginShellProps } from "./login-shell.type";
@@ -11,7 +11,7 @@ import type { LoginShellProps } from "./login-shell.type";
 const LoginShell = ({ children, className }: LoginShellProps) => (
   <main
     className={cn(
-      "relative flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6",
+      "bg-background relative flex min-h-screen flex-col items-center justify-center gap-8 p-6",
       className,
     )}
   >
@@ -19,8 +19,8 @@ const LoginShell = ({ children, className }: LoginShellProps) => (
         a position:absolute layer paints OVER position:static content regardless of DOM order. */}
     <TvStatic className="z-0" />
     <BrandLockup variant="hero" className="relative z-10" />
-    <Card className="relative z-10 w-full max-w-sm">
-      <CardContent className="p-8">{children}</CardContent>
+    <Card maxWidth={384} padding={32} position="relative" width="100%" zIndex={10}>
+      {children}
     </Card>
   </main>
 );

@@ -157,12 +157,12 @@ const SearchCommand = ({
   return (
     <div
       className={cn(
-        "flex w-full flex-col overflow-hidden rounded-lg border border-border bg-popover shadow-lg",
+        "border-border bg-popover flex w-full flex-col overflow-hidden rounded-lg border shadow-lg",
         className,
       )}
     >
-      <div className="flex items-center gap-2 border-border border-b px-3">
-        <Search className="size-4 shrink-0 text-static-400" aria-hidden />
+      <div className="border-border flex items-center gap-2 border-b px-3">
+        <Search className="text-static-400 size-4 shrink-0" aria-hidden />
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
@@ -176,9 +176,9 @@ const SearchCommand = ({
           aria-controls={flat.length > 0 ? listboxId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={flat.length > 0 ? optionId(active) : undefined}
-          className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          className="placeholder:text-muted-foreground h-11 w-full bg-transparent text-sm outline-none"
         />
-        <kbd className="shrink-0 rounded border border-border bg-static-800 px-1.5 py-0.5 font-mono text-2xs text-static-400">
+        <kbd className="border-border bg-static-800 text-2xs text-static-400 shrink-0 rounded border px-1.5 py-0.5 font-mono">
           ESC
         </kbd>
       </div>
@@ -194,7 +194,7 @@ const SearchCommand = ({
         className="max-h-80 overflow-y-auto p-1.5"
       >
         {empty && (
-          <p className="px-3 py-6 text-center text-muted-foreground text-sm">
+          <p className="text-muted-foreground px-3 py-6 text-center text-sm">
             {query ? `No matches for “${query}”.` : "Type to search your library, TMDB, and channels."}
           </p>
         )}
@@ -235,7 +235,7 @@ const SearchCommand = ({
                 >
                   <span className="min-w-0 truncate">{item.name}</span>
                   <span className="flex shrink-0 items-center gap-2">
-                    {item.meta && <span className="font-mono text-static-400 text-xs">{item.meta}</span>}
+                    {item.meta && <span className="text-static-400 font-mono text-xs">{item.meta}</span>}
                     {item.inLibrary && <Badge variant="lock">In library</Badge>}
                   </span>
                 </button>

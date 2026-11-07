@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 const (
@@ -52,7 +54,8 @@ func (r *broadcastRegistration) serve(name, id string, publicURL func() string) 
 		if err != nil {
 			return
 		}
-		if n != len(BroadcastRequest) || string(buf[:n]) != BroadcastRequest || publicURL == nil {
+		if n != len(BroadcastRequest) || string(buf[:n]) != BroadcastRequest || publicURL == nil ||
+			!onLocalNetwork(sender) {
 			continue
 		}
 		public := strings.TrimRight(strings.TrimSpace(publicURL()), "/")
@@ -66,6 +69,14 @@ func (r *broadcastRegistration) serve(name, id string, publicURL func() string) 
 		}
 		_, _ = r.conn.WriteTo(payload, sender)
 	}
+}
+
+// onLocalNetwork reports whether a discovery request came from a device that could be on the
+// household's network. The responder answers only those: a request from a public address is a
+// stranger probing an exposed port, and the answer would hand them the server's address.
+func onLocalNetwork(sender net.Addr) bool {
+	udp, ok := sender.(*net.UDPAddr)
+	return ok && !httpx.IsPublicIP(udp.IP)
 }
 
 func (r *broadcastRegistration) Shutdown() {

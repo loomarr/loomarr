@@ -1,7 +1,9 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
@@ -107,25 +109,28 @@ const WizardScreen = () => {
   // the rail and the resolver disagree.
   const settings = settingsApi.useSettingsList({ query: { enabled: isAuthenticated, retry: false } });
   const entries = unwrap(settings.data, (b) => b.settings) ?? [];
-  const playoutEntry = entries.find((e) => e.key === "playout.backend");
-  const publicURLEntry = entries.find((e) => e.key === "server.public_url");
+  const playoutEntry = entries.find((e) => e.key === SettingKey.PlayoutBackend);
+  const publicURLEntry = entries.find((e) => e.key === SettingKey.ServerPublicURL);
   const locationEntries = entries.filter(
     (entry) =>
-      entry.key === "filler.home_country" ||
-      entry.key === "filler.home_market" ||
-      entry.key === "filler.language",
+      entry.key === SettingKey.FillerHomeCountry ||
+      entry.key === SettingKey.FillerHomePlace ||
+      entry.key === SettingKey.FillerLocalRadiusKm ||
+      entry.key === SettingKey.FillerLanguage,
   );
-  const persistedCountry = locationEntries.find((entry) => entry.key === "filler.home_country")?.value ?? "";
-  const persistedMarket = locationEntries.find((entry) => entry.key === "filler.home_market")?.value ?? "";
-  const persistedLanguage = locationEntries.find((entry) => entry.key === "filler.language")?.value ?? "en";
-  const [locationEdits, setLocationEdits] = useState<Record<string, string>>({});
-  const liveCountry = locationEdits["filler.home_country"] ?? persistedCountry;
-  const liveMarket = locationEdits["filler.home_market"] ?? persistedMarket;
-  const liveLanguage = locationEdits["filler.language"] ?? persistedLanguage;
+  const persisted = (key: SettingKey) => locationEntries.find((entry) => entry.key === key)?.value;
+  const persistedCountry = persisted(SettingKey.FillerHomeCountry) ?? "";
+  const [locationEdits, setLocationEdits] = useState<Partial<Record<SettingKey, string>>>({});
+  const liveCountry = locationEdits[SettingKey.FillerHomeCountry] ?? persistedCountry;
+  const livePlace = locationEdits[SettingKey.FillerHomePlace] ?? persisted(SettingKey.FillerHomePlace) ?? "";
+  const liveRadius =
+    locationEdits[SettingKey.FillerLocalRadiusKm] ?? persisted(SettingKey.FillerLocalRadiusKm) ?? "";
+  const liveLanguage =
+    locationEdits[SettingKey.FillerLanguage] ?? persisted(SettingKey.FillerLanguage) ?? "en";
   const locationPatch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+        await invalidateSettings(queryClient);
       },
     },
   });
@@ -166,8 +171,8 @@ const WizardScreen = () => {
   // and then yank the operator forward — hold the paint instead of flashing.
   if (authLoading || (isAuthenticated && (status.isLoading || settings.isLoading))) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background" aria-busy="true">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Checking your setup" />
+      <main className="bg-background flex min-h-screen items-center justify-center" aria-busy="true">
+        <Loader2 className="text-muted-foreground size-6 animate-spin" aria-label="Checking your setup" />
       </main>
     );
   }
@@ -178,7 +183,7 @@ const WizardScreen = () => {
   // retry local to this idempotent read instead.
   if (isAuthenticated && settings.error) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+      <main className="bg-background flex min-h-screen items-center justify-center p-6">
         <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />
       </main>
     );
@@ -216,9 +221,10 @@ const WizardScreen = () => {
           <InstallationLocation
             entries={locationEntries}
             values={{
-              "filler.home_country": liveCountry,
-              "filler.home_market": liveMarket,
-              "filler.language": liveLanguage,
+              [SettingKey.FillerHomeCountry]: liveCountry,
+              [SettingKey.FillerHomePlace]: livePlace,
+              [SettingKey.FillerLocalRadiusKm]: liveRadius,
+              [SettingKey.FillerLanguage]: liveLanguage,
             }}
             onChange={(key, value) => setLocationEdits((previous) => ({ ...previous, [key]: value }))}
             results={unwrap(locationPatch.data, (body) => body.results) ?? undefined}

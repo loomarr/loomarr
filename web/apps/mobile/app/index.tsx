@@ -1,3 +1,4 @@
+import { ClientCrashBreadcrumbCategory } from "@loomarr/api/models/clientCrashBreadcrumbCategory";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createPairingCredentialStore,
@@ -9,16 +10,15 @@ import type { RequestsController } from "@loomarr/core/requests";
 import { BottomSheet, PHONE_GUTTER } from "@loomarr/design-system";
 import { type HapticFeedback, useHaptic } from "@loomarr/design-system/haptics";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
+import { useCrashReportUpload } from "@loomarr/native-app";
 import {
   createLastChannelStore,
-  NativePlayerView,
   type PairedClient,
-  PairedNativeImage,
   usePairedAccount,
   usePairedClient,
   usePairedRequests,
-  useShellPause,
-} from "@loomarr/player/native";
+} from "@loomarr/paired-client";
+import { NativePlayerView, PairedNativeImage, useShellPause } from "@loomarr/player/native";
 import type { ApprovalBrowser, ClientDestination } from "@loomarr/ui";
 import {
   ClientShell,
@@ -38,6 +38,7 @@ import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo, useState } from "react";
 import { AppState, BackHandler, Platform, ScrollView, View } from "react-native";
+import { nativeApp } from "../src/native-app";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -53,8 +54,10 @@ const lastChannel = createLastChannelStore({
 
 // The phone approves itself on the server's `/pair` page, in a browser sheet over the app (an
 // SFSafariViewController, or a Custom Tab on Android); the pairing shell dismisses it once paired.
+// ⚠ Android has no dismissBrowser: Expo returns undefined there, not a promise, and the `.catch` on
+// it threw as every Android phone finished pairing. The viewer leaves the Custom Tab themselves.
 const approvalBrowser: ApprovalBrowser = {
-  close: () => void WebBrowser.dismissBrowser().catch(() => undefined),
+  close: () => void Promise.resolve(WebBrowser.dismissBrowser()).catch(() => undefined),
   name: Platform.OS === "ios" ? "Safari" : "your browser",
   open: (url) => {
     void WebBrowser.openBrowserAsync(url, {
@@ -184,6 +187,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   // The phone opens on its Guide with no picture, so it tunes only when the viewer picks a channel.
   const client = usePairedClient({
     credential,
+    diagnostics: nativeApp.diagnostics,
     guideWindowMinutes: 120,
     initialTune: "none",
     lastChannel,
@@ -205,6 +209,12 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
   // pause when the viewer leaves Watching, and resume what the shell paused, at live, when they come back.
   const forgetShellPause = useShellPause(controller, active === "watching");
+  // Pending crash reports (last launch's included) go to this server once paired.
+  useCrashReportUpload(credential, session);
+  useEffect(
+    () => nativeApp.crashReports.recordBreadcrumb(ClientCrashBreadcrumbCategory.navigation, active),
+    [active],
+  );
   // Watching a channel from outside it (a Guide pick, a finished request's Open channel).
   const watchChannel = (channelId: string) => {
     haptic.selection();
@@ -318,6 +328,12 @@ const Index = () => {
     });
     return () => void unsubscribe();
   }, [haptic, session]);
+  useEffect(() => {
+    const unsubscribe = session.subscribe(({ status }) =>
+      nativeApp.crashReports.recordBreadcrumb(ClientCrashBreadcrumbCategory.lifecycle, `pairing ${status}`),
+    );
+    return () => void unsubscribe();
+  }, [session]);
   return (
     <>
       <PairingShell

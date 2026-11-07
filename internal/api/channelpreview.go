@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -31,7 +31,7 @@ type PodEntryDTO struct {
 	Path            string `json:"path,omitempty" doc:"The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card and always on member-readable routes (#1980); clients address real clips by hash."`
 	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card and on installs without Tunarr; clients address real clips by hash."`
 	Name            string `json:"name" doc:"The clip's display name. On member-readable routes (the Guide, a channel's pods) it is viewer copy, and empty when the catalogue name came from the filename, however it reads (#1980, #1988). Clients then show the break's own label. The admin draft preview keeps the filename."`
-	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial"`
+	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	DurationMs      int64  `json:"durationMs"`
 	IsFallbackCard  bool   `json:"isFallbackCard" doc:"The embedded default bumper card — the bottom of the fallback ladder"`
 	// Era and Quality are DISPLAY context for the guide's pod hover card (§12): they explain
@@ -51,6 +51,10 @@ type PodEntryDTO struct {
 	// makes a vision-grounded brand/era AUDITABLE — the frame text the tag was read from — so the
 	// card can show the evidence, not just the conclusion. Empty when no vision pass ran or it read nothing.
 	VisibleText string `json:"visibleText,omitempty" doc:"On-screen text a vision pass read off the frame (V44); empty when none"`
+	// ThumbImage is filled only by the Watch timeline (#2088): the preview playbar draws one tick
+	// per spot and lists each with its still. The Guide's pods leave it absent — its airing
+	// already carries one hover image, and a still per entry would swell its payload.
+	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"The clip's still as an image-service record; absent when the clip has none (or for the fallback card)"`
 }
 
 type previewPodsInput struct {
@@ -64,8 +68,8 @@ type PodPoolDTO struct {
 	TotalMs int64         `json:"totalMs"`
 	// MatchLevel is how far down the §10 fallback ladder assembly had to go. This
 	// is the answer to "why are my commercials wrong": exact means era+audience
-	// matched, and bumper_card means nothing matched and the channel is running on
-	// the embedded card alone.
+	// matched, and bumper_card means no ad matched and the pod is the channel's station
+	// material, else the embedded card alone.
 	// Enumerated so orval generates a union the FE can switch on exhaustively. Left
 	// as a bare string, the frontend would hand-mirror these values — and the one
 	// that already did drifted out of sync with the ladder's real levels.
@@ -128,7 +132,7 @@ type CoverageRungDTO struct {
 // order the predicates run in would decide which setting gets the blame. Counted in isolation,
 // `audience: 0` beside `era: 214` names the culprit.
 type CoverageCriterionDTO struct {
-	Criterion string `json:"criterion" enum:"geography,era,audience,category,kind,duration,quality" doc:"The channel setting this count is about"`
+	Criterion string `json:"criterion" enum:"geography,language,era,audience,category,kind,duration,quality" doc:"The channel setting this count is about"`
 	Clips     int    `json:"clips" doc:"Break-body commercials passing THIS setting alone, ignoring the others"`
 }
 
@@ -141,16 +145,21 @@ type CoverageDTO struct {
 	Rungs []CoverageRungDTO `json:"rungs" doc:"Ladder rungs, TIGHTEST FIRST. Always all of them; a rung at 0 means nothing in the catalog reaches it."`
 	// Criteria is the per-setting breakdown — which single setting is emptying the ladder (V51f).
 	Criteria []CoverageCriterionDTO `json:"criteria" doc:"Per-setting counts, each measured independently, so a zero identifies the setting to change."`
-	Level    string                 `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card."`
+	Level    string                 `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means no ad matches and breaks run on station material, else the embedded card."`
 	Total    int                    `json:"total" doc:"Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times."`
 	// Geography is the location boundary those clips were limited to, so the page can name it.
 	Geography CoverageGeographyDTO `json:"geography" doc:"The location every counted clip must be from: the channel's own, else the installation's. An empty country means no location limit."`
+	// Language is the commercial language those clips were limited to (#2030 decision 14).
+	Language             string `json:"language" doc:"The language every counted clip speaks, or wordless: the channel's own commercial language, else the household's. Empty means no language limit."`
+	UndeterminedLanguage int    `json:"undeterminedLanguage" doc:"Commercials whose language could not be determined. They count only on a channel whose commercial language is the household default."`
+	// DefaultKinds lets the page show what "no kinds chosen" airs without its own copy of the rule.
+	DefaultKinds []string `json:"defaultKinds" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news" doc:"The clip kinds a channel that chose none airs: every kind except political and news, which a channel opts into (#2037). A station's own news within the channel's radius airs wherever station idents do."`
 }
 
 // CoverageGeographyDTO is the resolved hard location boundary a coverage answer applied.
 type CoverageGeographyDTO struct {
 	Country string `json:"country" doc:"ISO 3166-1 alpha-2 country code, or empty for no location limit"`
-	Market  string `json:"market" doc:"Local market inside that country, or empty for the whole country"`
+	Place   string `json:"place" doc:"Location index id of the place whose nearby stations count as local, or empty for national filler only"`
 }
 
 type channelCoverageOutput struct {
@@ -207,8 +216,11 @@ func coverageDTO(report filler.CoverageReport) CoverageDTO {
 		Level:    string(report.Level),
 		Total:    report.Total,
 		Geography: CoverageGeographyDTO{
-			Country: report.Geography.Country, Market: report.Geography.Market,
+			Country: report.Geography.Country, Place: report.Geography.Place,
 		},
+		Language:             report.Language,
+		UndeterminedLanguage: report.UndeterminedLanguage,
+		DefaultKinds:         filler.DefaultKinds(),
 	}
 }
 

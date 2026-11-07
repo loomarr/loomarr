@@ -17,18 +17,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/packager"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type realReviewedSplitTools struct {
 	splitFakeTools
-	ffmpeg *mediatools.FFmpegTools
+	ffmpeg *tools.FFmpegTools
 }
 
 func (t realReviewedSplitTools) Cut(ctx context.Context, in string, start, end int64, out string) error {
@@ -51,7 +52,7 @@ type conditionedJourney struct {
 	ffmpeg      string
 	ffprobe     string
 	fixtures    testkit.FillerConditioningFixtures
-	conditioned store.Clip
+	conditioned catalogstore.Clip
 	mezzanine   string
 	tags        filler.SidecarTags
 }
@@ -72,7 +73,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	t.Cleanup(cancel)
 	dir := t.TempDir()
 	fixtures := testkit.FillerConditioningMedia(t, dir)
-	tools := mediatools.NewFFmpegTools(ffmpeg, ffprobe, "", "", "")
+	mediaTools := tools.NewFFmpegTools(ffmpeg, ffprobe, "", "", "")
 
 	parentHash, err := filler.ClipID(fixtures.Compilation)
 	if err != nil {
@@ -85,7 +86,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, store.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Kind: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Kind: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.HoldClips(ctx, []string{parentRel}, time.Now().UTC()); err != nil {
@@ -95,7 +96,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 		t.Fatal(err)
 	}
 	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, realReviewedSplitTools{
-		splitFakeTools: splitFakeTools{}, ffmpeg: tools,
+		splitFakeTools: splitFakeTools{}, ffmpeg: mediaTools,
 	}, nil, dir, func() time.Duration { return 0 }, func() string { return "real-ffmpeg-proposal" }, time.Now, nil)
 	proposal, err := splitter.Propose(ctx, parentHash)
 	if err != nil {
@@ -115,9 +116,9 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	childHash := childHashes[0]
 	reviewedStart, reviewedEnd := reviewed[0].StartMs, reviewed[0].EndMs
 	stage := filler.NewTranscodeStage(fillerPipelineClipAdapter{st}, probe, dir,
-		mediatools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, time.Now).
-		WithConditioning(func(ctx context.Context, req mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
-			measurement, err := tools.MeasureConditioning(ctx, req)
+		tools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, time.Now).
+		WithConditioning(func(ctx context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
+			measurement, err := mediaTools.MeasureConditioning(ctx, req)
 			t.Logf("conditioning %s: %+v err=%v", filepath.Base(req.Path), measurement, err)
 			return measurement, err
 		})
@@ -144,11 +145,11 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if !productive {
 		t.Fatalf("pipeline passes were not productive: %+v", passes)
 	}
-	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	clips, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var conditioned store.Clip
+	var conditioned catalogstore.Clip
 	for _, candidate := range clips {
 		if candidate.ParentHash == parentHash && candidate.Hash != childHash {
 			conditioned = candidate
@@ -180,15 +181,14 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 		tags.ConditioningLineage.IntendedEndMs != reviewedEnd ||
 		len(tags.Conditioning.BeforeRewrite.Cuts) != 1 ||
 		tags.Conditioning.BeforeRewrite.Quality.DurationMs != tags.Conditioning.BeforeRewrite.ContainerDurationMs ||
-		tags.Conditioning.BeforeRewrite.Cuts[0].Intended != (mediatools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
-		tags.Conditioning.AfterRewrite.Cuts[0].Intended != (mediatools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
-		tags.NormalizedLUFS != -23 ||
+		tags.Conditioning.BeforeRewrite.Cuts[0].Intended != (tools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
+		tags.Conditioning.AfterRewrite.Cuts[0].Intended != (tools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
 		!tags.Conditioning.BeforeRewrite.Loudness.Available ||
 		!tags.Conditioning.AfterRewrite.Loudness.Available ||
-		math.Abs(tags.Conditioning.BeforeRewrite.Loudness.IntegratedLUFS-tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS) < 0.5 ||
-		math.Abs(tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS-(-23)) > 1.0 ||
-		tags.Conditioning.BeforeRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
-		tags.Conditioning.AfterRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
+		// #2032: the file is never levelled on disk, so the rewrite keeps the source's loudness.
+		math.Abs(tags.Conditioning.BeforeRewrite.Loudness.IntegratedLUFS-tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS) > 1.0 ||
+		tags.Conditioning.BeforeRewrite.Loudness.TruePeak.State != tools.TruePeakFinite ||
+		tags.Conditioning.AfterRewrite.Loudness.TruePeak.State != tools.TruePeakFinite ||
 		len(tags.Conditioning.AfterRewrite.Streams) != 2 ||
 		tags.Conditioning.AfterRewrite.Streams[0].Cadence == nil ||
 		len(tags.Conditioning.AfterRewrite.Cuts) != 1 ||
@@ -219,16 +219,18 @@ func TestFillerConditioningJourneyFFmpeg_ChildEndingInBlackAndSilencePublishes(t
 		t.Fatalf("mezzanine container start = %+v, want the measured priming offset", after.ContainerStart)
 	}
 	// The stream-copy cut overshoots into the next segment by a packet, so each tail ends where its
-	// own stream ends on the container timeline: the audio decodes past the container end and is
-	// bounded by it, the video ends earlier.
-	video := after.Streams[0]
-	videoEnd := video.Start.Milliseconds + video.Duration.Milliseconds - after.ContainerStart.Milliseconds
+	// own stream ends on the container timeline, bounded by the container end. Which stream runs
+	// longer depends on the encode; un-levelled audio (#2032) no longer outlasts the video.
+	streamEnd := func(s tools.ConditioningStream) int64 {
+		return min(s.Start.Milliseconds+s.Duration.Milliseconds-after.ContainerStart.Milliseconds,
+			after.ContainerDurationMs)
+	}
 	for name, want := range map[string]struct {
-		spans []mediatools.Interval
+		spans []tools.Interval
 		end   int64
 	}{
-		"black":   {after.Quality.Black, videoEnd},
-		"silence": {after.Quality.Silence, after.ContainerDurationMs},
+		"black":   {after.Quality.Black, streamEnd(after.Streams[0])},
+		"silence": {after.Quality.Silence, streamEnd(after.Streams[1])},
 	} {
 		if len(want.spans) == 0 {
 			t.Fatalf("%s evidence = %+v, want the transition tail", name, after.Quality)
@@ -272,7 +274,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	// the production pipeline (Build, FragmentArgs) and the packager joins them into one fMP4
 	// timeline. After them the schedule has a card, whose slate this fixture cannot load, so the
 	// packager stops there with everything aired on disk.
-	host := playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{})
+	host := encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{})
 	out := playout.OutputProfile{Width: 320, Height: 180, FPS: 30, Quality: 23, TargetKbps: 600, MaxKbps: 900, GOPSeconds: 1, AudioKbps: 128}
 	formatOf := playout.FFprobeFormatNextTo(ffmpeg)
 	airDir := t.TempDir()

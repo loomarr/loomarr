@@ -27,16 +27,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
@@ -49,7 +52,7 @@ const adminToken = "admin-integration-token"
 type clipCatalog struct{ st store.Store }
 
 func (a clipCatalog) AllClips(ctx context.Context) ([]filler.Clip, error) {
-	clips, err := a.st.ListClips(ctx, store.ClipFilter{})
+	clips, err := a.st.ListClips(ctx, catalogstore.ClipFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +84,7 @@ type rig struct {
 
 func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	t.Helper()
-	st, err := fillerstore.Open(context.Background(), "sqlite://"+t.TempDir()+"/integration.db", true)
+	st, err := records.Open(context.Background(), "sqlite://"+t.TempDir()+"/integration.db", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +104,8 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 
 	// The REAL worker service that runs jobs → persists proposals.
 	ids := newIDGen()
-	svc := suggest.NewService(st, suggester, suggest.Config{Workers: 1, Timeout: 30 * time.Second}, ids, clock, testkit.Logger())
+	svc := suggest.NewService(st, workflow.New(st, ids, clock), suggester,
+		suggest.Config{Workers: 1, Timeout: 30 * time.Second}, clock, testkit.Logger())
 
 	// Real availability (over the store's title records) WITH a real duration
 	// resolver, so program slots carry runtime and the break interleave fires.
@@ -118,9 +122,9 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	go svc.Run(ctx)
 
 	log := slog.New(slog.DiscardHandler)
-	chBinder := binder.New(st, engine, nil, log)
+	chBinder := approval.New(st, engine, nil, log)
 	approver := suggest.NewApprover(st, chBinder, clock)
-	// engine (*channels.Engine) satisfies binder.Reconciler directly, so the shared
+	// engine (*channels.Engine) satisfies approval.Reconciler directly, so the shared
 	// binder here reconciles through the SAME real engine the rig otherwise wires —
 	// no drift between what the API's approve/create paths and the binder see.
 	h := api.Router(log, api.Options{
@@ -175,9 +179,9 @@ func (r *rig) getJSON(t *testing.T, path string, v any) {
 // appears (the worker ran) or the deadline passes. Returns the proposal id + the
 // decoded proposal. A worker failure (no proposal) fails the test with the job's
 // last error, so a broken suggester surfaces clearly rather than as a timeout.
-func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposal) {
+func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposals.Proposal) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
 		var list struct {
 			Proposals []struct {
@@ -189,7 +193,7 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposa
 		r.getJSON(t, "/v1/proposals?status=submitted", &list)
 		for _, p := range list.Proposals {
 			if p.JobID == jobID {
-				var prop suggest.Proposal
+				var prop proposals.Proposal
 				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
 					t.Fatalf("decode proposal body: %v", err)
 				}
@@ -204,7 +208,7 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, suggest.Proposa
 		t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
 	}
 	t.Fatalf("proposal never appeared for job %s (job lookup failed: %v)", jobID, err)
-	return "", suggest.Proposal{}
+	return "", proposals.Proposal{}
 }
 
 // seedFillerClips lands a catalog of matched commercials + bumpers as a Tunarr sync
@@ -220,7 +224,7 @@ func seedFillerClips(t *testing.T, st store.Store) {
 		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
 	}
 	for _, c := range clips {
-		if err := st.UpsertClip(context.Background(), store.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {
+		if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {
 			t.Fatal(err)
 		}
 	}

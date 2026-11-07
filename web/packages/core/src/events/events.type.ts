@@ -24,6 +24,7 @@
 import type { ActivityEvent } from "@loomarr/api/models/activityEvent";
 import type { ChannelEvent } from "@loomarr/api/models/channelEvent";
 import type { DatabaseEvent } from "@loomarr/api/models/databaseEvent";
+import type { Events200Item } from "@loomarr/api/models/events200Item";
 import type { FillerClipEvent } from "@loomarr/api/models/fillerClipEvent";
 import type { FillerIngestEvent } from "@loomarr/api/models/fillerIngestEvent";
 import type { FillerSplitEvent } from "@loomarr/api/models/fillerSplitEvent";
@@ -41,20 +42,27 @@ import type { TitleEvent } from "@loomarr/api/models/titleEvent";
 type LlmPullEvent = LLMPullEvent;
 type SuggestionPhase = SuggestionEventPhase;
 
-interface EventHandlers {
-  onTitle?: (e: TitleEvent) => void;
-  onChannel?: (e: ChannelEvent) => void;
-  onSuggestion?: (e: SuggestionEvent) => void;
-  onLlmPull?: (e: LlmPullEvent) => void;
-  onFillerIngest?: (e: FillerIngestEvent) => void;
-  onFillerSplit?: (e: FillerSplitEvent) => void;
-  onFillerClip?: (e: FillerClipEvent) => void;
-  onJob?: (e: JobEvent) => void;
-  onPlayout?: (e: PlayoutEvent) => void;
-  onDatabase?: (e: DatabaseEvent) => void;
-  onActivity?: (e: ActivityEvent) => void;
-  onHealth?: (e: HealthEvent) => void;
-}
+// The frame vocabulary is the generated `GET /v1/events` item union, so a frame added to the spec
+// is a new member of every type below and a compile error wherever a per-frame table lacks it.
+/** The SSE event names the spec declares: "title", "channel", "filler_clip", … */
+type EventType = Events200Item["event"];
+
+/** Each event name's payload type. */
+type EventPayloads = { [E in Events200Item as E["event"]]: E["data"] };
+
+type Pascal<S extends string> = S extends `${infer Head}_${infer Rest}`
+  ? `${Capitalize<Head>}${Pascal<Rest>}`
+  : Capitalize<S>;
+
+/** The handler name a frame type maps to: "filler_clip" is "onFillerClip". */
+type EventHandlerName<T extends EventType> = `on${Pascal<T>}`;
+
+// Every key is optional because a consumer subscribes to the frames it cares about. The key set is
+// derived from the spec, so no hand-written list of handler names exists to fall out of step.
+type EventHandlers = { [T in EventType as EventHandlerName<T>]?: (e: EventPayloads[T]) => void };
+
+/** The one dispatcher the stream calls for every frame, whatever its type. */
+type FrameHandler = <T extends EventType>(type: T, payload: EventPayloads[T]) => void;
 
 interface EventStreamMessage {
   data: string;
@@ -71,13 +79,17 @@ export type {
   ActivityEvent,
   ChannelEvent,
   DatabaseEvent,
+  EventHandlerName,
   EventHandlers,
+  EventPayloads,
   EventStreamFactory,
   EventStreamMessage,
   EventStreamPort,
+  EventType,
   FillerClipEvent,
   FillerIngestEvent,
   FillerSplitEvent,
+  FrameHandler,
   HealthEvent,
   JobEvent,
   LlmPullEvent,

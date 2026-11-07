@@ -45,7 +45,7 @@ for source in "$source_dir"/*.d2; do
 		echo "diagrams: generated SVG has no automatic dark theme: $relative_output" >&2
 		exit 1
 	fi
-	if ! grep -q 'data-d2-version="v0.7.1"' "$root/$relative_output"; then
+	if ! grep -q 'data-d2-version="v0.9.0"' "$root/$relative_output"; then
 		echo "diagrams: generated SVG came from an unexpected D2 version: $relative_output" >&2
 		exit 1
 	fi

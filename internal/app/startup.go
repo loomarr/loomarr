@@ -12,7 +12,8 @@ import (
 	"github.com/adhocore/gronx"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -30,7 +31,7 @@ type startupIntegration struct {
 // exactly one fix, so it names the setting to change.
 func unavailableDetail(set resolved, key string) string {
 	if key == diagnostics.StartupCheckPublicURL {
-		return publicURLFailureDetail(set.str("server.public_url"))
+		return publicURLFailureDetail(settings.ServerPublicURL.Get(set))
 	}
 	return "configured but unavailable"
 }
@@ -50,7 +51,7 @@ func publicURLFailureDetail(raw string) string {
 // unauthenticated liveness route there, the same path a media server or Tunarr would dial.
 func publicURLProbe(set resolved, client *http.Client) func(context.Context) (bool, string) {
 	return func(ctx context.Context) (bool, string) {
-		base := strings.TrimRight(strings.TrimSpace(set.str("server.public_url")), "/")
+		base := strings.TrimRight(strings.TrimSpace(settings.ServerPublicURL.Get(set)), "/")
 		if base == "" {
 			return false, "set the public address"
 		}
@@ -69,19 +70,19 @@ func publicURLProbe(set resolved, client *http.Client) func(context.Context) (bo
 
 func startupIntegrations(set resolved) []startupIntegration {
 	return []startupIntegration{
-		{diagnostics.StartupCheckPublicURL, strings.TrimSpace(set.str("server.public_url")) != "",
+		{diagnostics.StartupCheckPublicURL, strings.TrimSpace(settings.ServerPublicURL.Get(set)) != "",
 			"/settings/system/playback"},
 		{diagnostics.StartupCheckMediaServer,
-			set.str("library.flavor") != "" || set.str("library.url") != "" || set.str("library.token") != "",
+			settings.LibraryFlavor.Get(set) != "" || settings.LibraryURL.Get(set) != "" || settings.LibraryToken.Get(set) != "",
 			"/settings/connections"},
-		{diagnostics.StartupCheckTunarr, set.str("tunarr.url") != "", "/settings/connections"},
+		{diagnostics.StartupCheckTunarr, settings.TunarrURL.Get(set) != "", "/settings/connections"},
 		{diagnostics.StartupCheckRequester,
-			set.str("seerr.url") != "" || set.str("sonarr.url") != "" || set.str("radarr.url") != "",
+			settings.SeerrURL.Get(set) != "" || settings.SonarrURL.Get(set) != "" || settings.RadarrURL.Get(set) != "",
 			"/settings/connections"},
 		{diagnostics.StartupCheckLLM,
-			set.str("llm.url") != "" || set.str("llm.model") != "" || set.str("llm.api_key") != "",
+			settings.LLMURL.Get(set) != "" || settings.LLMModel.Get(set) != "" || settings.LLMAPIKey.Get(set) != "",
 			"/settings/ai"},
-		{diagnostics.StartupCheckTMDB, set.str("tmdb.api_key") != "", "/settings/connections"},
+		{diagnostics.StartupCheckTMDB, settings.TMDBAPIKey.Get(set) != "", "/settings/connections"},
 	}
 }
 
@@ -182,7 +183,7 @@ func (r *currentHealthRunner) Run(parent context.Context) error {
 			return err == nil || errors.Is(err, store.ErrNotFound)
 		},
 	}}
-	freshFor := currentHealthFreshness(r.set.str("job.system_health.schedule"), time.Now())
+	freshFor := currentHealthFreshness(settings.JobSystemHealthSchedule.Get(r.set), time.Now())
 	for _, integration := range startupIntegrations(r.set) {
 		probeFn := r.probes[integration.key]
 		checks = append(checks, probe{
@@ -262,11 +263,11 @@ func (r *currentHealthRunner) Refresh(ctx context.Context) (diagnostics.HealthRe
 	return r.health.Health(), err
 }
 
-func (r *currentHealthRunner) Job() scheduler.Job {
-	return scheduler.Job{
-		Name: "system-health", Group: scheduler.GroupSystem, Title: "Check app health",
+func (r *currentHealthRunner) Job() jobs.Job {
+	return jobs.Job{
+		Name: "system-health", Group: jobs.GroupSystem, Title: "Check app health",
 		Description: "Checks Loomarr's database and configured connections and refreshes Current Health.",
-		DefaultCron: systemHealthDefaultCron, ScheduleKey: "job.system_health.schedule",
+		DefaultCron: systemHealthDefaultCron, ScheduleKey: settings.JobSystemHealthSchedule.Key(),
 		Timeout: 10 * time.Second, Run: r.Run,
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 )
 
+var vocab = holidayvocab.Default()
+
 func TestDefinitionsPinBuiltInIdentityAndAliasCoverage(t *testing.T) {
 	want := []holidayvocab.Definition{
 		{ID: "halloween", Label: "Halloween"},
@@ -15,12 +17,21 @@ func TestDefinitionsPinBuiltInIdentityAndAliasCoverage(t *testing.T) {
 		{ID: "christmas", Label: "Christmas"},
 		{ID: "newyear", Label: "New Year"},
 		{ID: "valentines", Label: "Valentine's Day"},
+		{ID: "easter", Label: "Easter"},
+		{ID: "mothers-day", Label: "Mother's Day"},
+		{ID: "fathers-day", Label: "Father's Day"},
+		{ID: "st-patricks", Label: "St Patrick's Day"},
+		{ID: "independence-day", Label: "Independence Day"},
+		{ID: "canada-day", Label: "Canada Day"},
+		{ID: "bonfire-night", Label: "Bonfire Night"},
+		{ID: "memorial-day", Label: "Memorial Day"},
+		{ID: "back-to-school", Label: "Back to school"},
 	}
-	if got := holidayvocab.Definitions(); !reflect.DeepEqual(got, want) {
+	if got := vocab.Definitions(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("built-in holiday vocabulary = %+v, want %+v", got, want)
 	}
 	for _, definition := range want {
-		named := holidayvocab.Judge(definition.ID, holidayvocab.Evidence{Title: definition.Label + " special"})
+		named := vocab.Judge(definition.ID, holidayvocab.Evidence{Title: definition.Label + " special"})
 		if named.Verdict != holidayvocab.VerdictAbout {
 			t.Fatalf("a title naming %q judged %+v, want about", definition.Label, named)
 		}
@@ -63,7 +74,7 @@ func TestJudgeHalloweenFloor(t *testing.T) {
 		{"whole words only",
 			holidayvocab.Evidence{Title: "The Ghostwriter", Genres: []string{"Horror"}}, holidayvocab.VerdictNot, ""},
 	} {
-		got := holidayvocab.Judge("halloween", tt.ev)
+		got := vocab.Judge("halloween", tt.ev)
 		if got.Verdict != tt.want || got.Reason != tt.reason {
 			t.Errorf("%s: Judge(%+v) = %+v, want %s (%q)", tt.name, tt.ev, got, tt.want, tt.reason)
 		}
@@ -71,7 +82,7 @@ func TestJudgeHalloweenFloor(t *testing.T) {
 			t.Errorf("%s: Fits() = %v for verdict %s", tt.name, got.Fits(), got.Verdict)
 		}
 	}
-	if got := holidayvocab.Judge("arbor-day", holidayvocab.Evidence{Title: "Arbor Day"}); got.Verdict != holidayvocab.VerdictNot {
+	if got := vocab.Judge("arbor-day", holidayvocab.Evidence{Title: "Arbor Day"}); got.Verdict != holidayvocab.VerdictNot {
 		t.Errorf("unknown holiday judged %+v, want not", got)
 	}
 }
@@ -118,13 +129,13 @@ func TestJudgeHalloweenEpisodes(t *testing.T) {
 			episode("Grandpa's Attic", "Lisa is sure a ghost lives upstairs.", day(1993, time.November, 8)),
 			holidayvocab.VerdictNot, ""},
 	} {
-		got := holidayvocab.Judge("halloween", tt.ev)
+		got := vocab.Judge("halloween", tt.ev)
 		if got.Verdict != tt.want || got.Reason != tt.reason {
 			t.Errorf("%s: Judge(%+v) = %+v, want %s (%q)", tt.name, tt.ev, got, tt.want, tt.reason)
 		}
 	}
 	// A film title is not an episode title: the same words with no genre stay out.
-	if got := holidayvocab.Judge("halloween", holidayvocab.Evidence{Title: "Treetop of Terror"}); got.Verdict != holidayvocab.VerdictNot {
+	if got := vocab.Judge("halloween", holidayvocab.Evidence{Title: "Treetop of Terror"}); got.Verdict != holidayvocab.VerdictNot {
 		t.Errorf("film titled with a mood word and no genre judged %+v, want not", got)
 	}
 }
@@ -143,7 +154,7 @@ func TestJudgeEpisodeAirWindows(t *testing.T) {
 		{"halloween", "a spooky night", day(2010, time.October, 14), holidayvocab.VerdictNot},
 		{"halloween", "a spooky night", day(2010, time.November, 7), holidayvocab.VerdictAbout},
 	} {
-		got := holidayvocab.Judge(tt.id, holidayvocab.Evidence{Title: "Episode", Text: []string{tt.text}, Episode: true, AirDate: tt.aired})
+		got := vocab.Judge(tt.id, holidayvocab.Evidence{Title: "Episode", Text: []string{tt.text}, Episode: true, AirDate: tt.aired})
 		if got.Verdict != tt.want {
 			t.Errorf("Judge(%s, %q aired %s) = %+v, want %s", tt.id, tt.text, tt.aired.Format(time.DateOnly), got, tt.want)
 		}
@@ -162,7 +173,7 @@ func TestJudgeIgnoresNameLookAlikes(t *testing.T) {
 		{"newyear", "Bill Nye Explains Rockets", holidayvocab.VerdictNot},
 		{"newyear", "The NYE Party", holidayvocab.VerdictAbout},
 	} {
-		if got := holidayvocab.Judge(tt.id, holidayvocab.Evidence{Title: tt.title}); got.Verdict != tt.want {
+		if got := vocab.Judge(tt.id, holidayvocab.Evidence{Title: tt.title}); got.Verdict != tt.want {
 			t.Errorf("Judge(%s, %q) = %+v, want %s", tt.id, tt.title, got, tt.want)
 		}
 	}
@@ -176,7 +187,7 @@ func TestIntentAliasesCoverSchedulerKnownSantaAndNYE(t *testing.T) {
 		{text: "Santa specials", want: "christmas"},
 		{text: "An NYE marathon", want: "newyear"},
 	} {
-		got := holidayvocab.MatchIntent(tt.text)
+		got := vocab.MatchIntent(tt.text)
 		if len(got) != 1 || got[0] != tt.want {
 			t.Fatalf("MatchIntent(%q) = %v, want [%s]", tt.text, got, tt.want)
 		}
@@ -197,7 +208,7 @@ func TestChristmasEvidenceIgnoresOnlyPetNameOccurrences(t *testing.T) {
 		{"The family meets Santa", true},
 		{"Ｓａｎｔａ’s Little Helper runs away", false},
 	} {
-		got := holidayvocab.Judge("christmas", holidayvocab.Evidence{Text: []string{tt.text}})
+		got := vocab.Judge("christmas", holidayvocab.Evidence{Text: []string{tt.text}})
 		if got.Fits() != tt.want {
 			t.Errorf("Judge(christmas, %q) = %+v, want fits=%v", tt.text, got, tt.want)
 		}

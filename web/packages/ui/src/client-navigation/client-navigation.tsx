@@ -56,12 +56,12 @@ const ClientNavigation = ({
   return (
     <Surface
       aria-label="Primary navigation"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       flexDirection="row"
-      gap={density === "tv" ? "$section" : "$control"}
-      role="navigation"
+      gap={density === "tv" ? "section" : "control"}
       width="100%"
+      role="navigation"
     >
       {shown.map((destination) => {
         const selected = active === destination.value;

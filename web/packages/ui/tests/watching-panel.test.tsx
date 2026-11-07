@@ -150,7 +150,7 @@ describe("WatchingPanel", () => {
     act(() => button("Channel −").click());
     act(() => button("Pause").click());
     act(() => button("Channel +").click());
-    act(() => button(/^Watch 21 Nature Documentaries$/).click());
+    act(() => button(/^21\s*Nature Documentaries/).click());
     expect(panelProps.onPrevious).toHaveBeenCalledOnce();
     expect(panelProps.onChannelDown).toHaveBeenCalledOnce();
     expect(panelProps.onPause).toHaveBeenCalledOnce();

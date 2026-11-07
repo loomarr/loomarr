@@ -1,3 +1,4 @@
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { createFileRoute } from "@tanstack/react-router";
 import { AiModelSettings } from "@/settings/ai-model-settings";
 import { SettingsPage } from "@/settings/settings-page";
@@ -6,7 +7,7 @@ import { SuggestionDraftReturn } from "@/suggest/suggestion-draft-return";
 
 const AiSettings = () => {
   const entries = useSettingsEntries();
-  const tmdbConfigured = entries.find((entry) => entry.key === "tmdb.api_key")?.set ?? false;
+  const tmdbConfigured = entries.find((entry) => entry.key === SettingKey.TMDBAPIKey)?.set ?? false;
 
   return (
     <SettingsPage
@@ -21,16 +22,15 @@ const AiSettings = () => {
           check: "llm",
           checkLabel: "Check AI setup",
           dirtyCheckLabel: "Save & check AI setup",
-          keys: ["llm.provider", "llm.url", "llm.api_key", "llm.keep_alive"],
+          keys: [SettingKey.LLMProvider, SettingKey.LLMURL, SettingKey.LLMAPIKey, SettingKey.LLMKeepAlive],
           // Provider and model are one setup decision. Keeping the picker inside this
           // connection block avoids a second, disconnected-looking policy panel below it.
           footer: ({ liveValue, setEdit }) => (
             <AiModelSettings
-              provider={liveValue("llm.provider")}
-              baseUrl={liveValue("llm.url")}
-              onBaseUrlChange={(value) => setEdit("llm.url", value)}
-              visionProvider={liveValue("filler.vision.provider")}
-              visionModel={liveValue("filler.vision.model")}
+              provider={liveValue(SettingKey.LLMProvider)}
+              baseUrl={liveValue(SettingKey.LLMURL)}
+              visionProvider={liveValue(SettingKey.FillerVisionProvider)}
+              visionModel={liveValue(SettingKey.FillerVisionModel)}
               onRoleSettingChange={setEdit}
               tmdbConfigured={tmdbConfigured}
             />
@@ -41,13 +41,17 @@ const AiSettings = () => {
           title: "Speech recognition",
           description:
             "Choose how Loomarr understands spoken language and fills in missing clip details. The built-in option needs no setup.",
-          keys: ["asr.provider", "asr.url", "asr.api_key", "asr.model"],
+          keys: [SettingKey.ASRProvider, SettingKey.ASRURL, SettingKey.ASRAPIKey, SettingKey.ASRModel],
         },
         {
           group: "ai",
           title: "AI behavior",
           description: "Limit suggestion work and control how aggressively self-updating channels change.",
-          keys: ["suggest.max_acquisitions", "recurate.min_score_pct", "recurate.max_titles"],
+          keys: [
+            SettingKey.SuggestMaxAcquisitions,
+            SettingKey.RecurateMinScorePct,
+            SettingKey.RecurateMaxTitles,
+          ],
         },
       ]}
     >

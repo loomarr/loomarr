@@ -21,17 +21,17 @@ type Story = StoryObj<typeof meta>;
 // accessibility tree.
 const RowWithItsOwnControls: Story = {
   render: () => (
-    <Disclosure className="rounded-lg border border-border">
+    <Disclosure className="border-border rounded-lg border">
       <div className="flex items-center gap-3 px-4 py-3">
         <Disclosure.Trigger label="Show Archive.org collections" />
-        <span className="min-w-0 flex-1 truncate font-medium text-sm">Archive.org</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">Archive.org</span>
         <span className="text-static-400 text-xs">3 collections · 214 clips</span>
         <Switch aria-label="Enable Archive.org" defaultChecked />
         <Button size="sm" variant="ghost">
           Scan
         </Button>
       </div>
-      <Disclosure.Panel className="border-border border-t px-4 py-3 text-muted-foreground text-sm">
+      <Disclosure.Panel className="border-border text-muted-foreground border-t px-4 py-3 text-sm">
         Three collection rows would sit here, each with its own leaf controls.
       </Disclosure.Panel>
     </Disclosure>
@@ -44,12 +44,12 @@ const SeveralOpenAtOnce: Story = {
   render: () => (
     <div className="flex flex-col gap-2">
       {["Fizzbolt 1985", "Gloopers 1984", "Crunchlings 1991"].map((name) => (
-        <Disclosure key={name} defaultOpen className="rounded-lg border border-border">
+        <Disclosure key={name} defaultOpen className="border-border rounded-lg border">
           <div className="flex items-center gap-3 px-4 py-3">
             <Disclosure.Trigger label={`Show what happened to ${name}`} />
-            <span className="min-w-0 flex-1 truncate font-medium text-sm">{name}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
           </div>
-          <Disclosure.Panel className="border-border border-t px-4 py-3 text-muted-foreground text-sm">
+          <Disclosure.Panel className="border-border text-muted-foreground border-t px-4 py-3 text-sm">
             The stage-by-stage detail for {name}.
           </Disclosure.Panel>
         </Disclosure>

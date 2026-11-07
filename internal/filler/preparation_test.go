@@ -17,11 +17,11 @@ func TestProjectPreparationProgress(t *testing.T) {
 			PreparationAttempt: 1, Disposition: DispositionRunning, Stage: StageTranscode,
 			Status: StatusRunning, Progress: 50,
 			Stages: []StageRecord{{Stage: StageProbe, Status: StatusDone}},
-		}, want: 18},
+		}, want: 16}, // (100 + 50) / 9 rungs
 		{name: "skips count once and duplicates do not", row: ClipPipeline{
 			PreparationAttempt: 1,
 			Stages:             []StageRecord{{Stage: StageProbe, Status: StatusDone}, {Stage: StageProbe, Status: StatusDone}, {Stage: StageTranscode, Status: StatusSkipped}},
-		}, want: 25},
+		}, want: 22}, // 200 / 9 rungs
 		{name: "persisted maximum prevents regression", row: ClipPipeline{
 			PreparationAttempt: 1, PreparationProgress: 61,
 			Stages: []StageRecord{{Stage: StageProbe, Status: StatusDone}},
@@ -50,8 +50,9 @@ func TestEstimatePreparationReady(t *testing.T) {
 		readyPreparationSample(now.Add(-3*time.Hour), 29_000, 30*time.Second),
 	}
 	estimate, ok := EstimatePreparationReady(current, history, nil, now)
-	if !ok || estimate.Lower != 65*time.Second || estimate.Upper != 195*time.Second {
-		t.Fatalf("estimate = %+v, ok=%t; want 65s–195s", estimate, ok)
+	// Half of transcode plus the seven rungs after it: 7.5 rungs at 10s and at 30s.
+	if !ok || estimate.Lower != 75*time.Second || estimate.Upper != 225*time.Second {
+		t.Fatalf("estimate = %+v, ok=%t; want 75s–225s", estimate, ok)
 	}
 
 	withQueue, ok := EstimatePreparationReady(current, history, []PreparationWork{{
@@ -59,8 +60,9 @@ func TestEstimatePreparationReady(t *testing.T) {
 		Pipeline: ClipPipeline{Stage: StageProbe, Status: StatusQueued, Disposition: DispositionRunning,
 			PreparationAttempt: 1, PreparationProgress: 0, PreparationStartedAt: now, UpdatedAt: now},
 	}}, now)
-	if !ok || withQueue.Lower != 145*time.Second || withQueue.Upper != 435*time.Second {
-		t.Fatalf("queue estimate = %+v, ok=%t; want 145s–435s", withQueue, ok)
+	// Plus all nine rungs of the clip queued ahead.
+	if !ok || withQueue.Lower != 165*time.Second || withQueue.Upper != 495*time.Second {
+		t.Fatalf("queue estimate = %+v, ok=%t; want 165s–495s", withQueue, ok)
 	}
 
 	for _, tc := range []struct {

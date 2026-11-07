@@ -56,9 +56,9 @@ const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
         {cards.map(({ key, channel, programme, airing, viewer, you }) => (
           <Link
             key={key}
-            to="/channels/$id/watch"
+            to="/watch/$id"
             params={{ id: channel.source.channelId }}
-            className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="focus-visible:ring-ring block rounded-lg focus-visible:ring-2 focus-visible:outline-none"
           >
             <ProgrammeCard
               layout="overlay"

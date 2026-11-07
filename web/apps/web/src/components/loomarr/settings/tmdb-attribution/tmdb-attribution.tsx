@@ -34,7 +34,7 @@ const TmdbAttribution = ({ logo, className }: TmdbAttributionProps) => (
     // which it is rather than hearing it run on from the last field.
     aria-label="TMDB attribution"
     className={cn(
-      "mt-6 flex items-start gap-3 rounded-md border border-border bg-static-900/40 px-4 py-3",
+      "border-border bg-static-900/40 mt-6 flex items-start gap-3 rounded-md border px-4 py-3",
       className,
     )}
   >

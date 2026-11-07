@@ -32,6 +32,9 @@ const SEGMENT_FILL: Record<PodEntryDTO["kind"], string> = {
   trailer: "bg-signal-tint-30",
   psa: "bg-signal-tint-30",
   interstitial: "bg-static-700",
+  // A political ad is an ad, and news is an interstitial (#2037): each reads as its family.
+  political: "bg-suggest-tint-30",
+  news: "bg-static-700",
 };
 
 const SEGMENT_ABBR: Record<PodEntryDTO["kind"], string> = {
@@ -41,6 +44,8 @@ const SEGMENT_ABBR: Record<PodEntryDTO["kind"], string> = {
   trailer: "TRL",
   psa: "PSA",
   interstitial: "INT",
+  political: "POL",
+  news: "NEWS",
 };
 
 // The full word behind each abbreviation, for the legend. The segments stay abbreviated
@@ -54,6 +59,8 @@ const SEGMENT_WORD: Record<PodEntryDTO["kind"], string> = {
   trailer: "trailer",
   psa: "PSA",
   interstitial: "interstitial",
+  political: "political ad",
+  news: "news",
 };
 
 const PodTimeline = ({
@@ -75,7 +82,7 @@ const PodTimeline = ({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-static-400 text-xs uppercase tracking-wide">
+        <span className="text-static-400 font-mono text-xs tracking-wide uppercase">
           {`Pod · ${formatClipDuration(total)}`}
         </span>
         {era ? <Badge variant="neutral">{`${era}s`}</Badge> : null}
@@ -84,7 +91,7 @@ const PodTimeline = ({
       </div>
 
       <ul
-        className="flex h-9 w-full overflow-hidden rounded-md border border-border"
+        className="border-border flex h-9 w-full overflow-hidden rounded-md border"
         aria-label="Pod segments"
       >
         {entries.map((entry, i) => (
@@ -98,13 +105,13 @@ const PodTimeline = ({
             key={`${entry.hash ?? entry.path ?? "card"}-${i}`}
             title={`${clipName(entry)} · ${formatClipDuration(entry.durationMs)}`}
             style={{ flexBasis: `${(entry.durationMs / total) * 100}%` }}
-            className={cn("min-w-0 border-border border-r last:border-r-0", SEGMENT_FILL[entry.kind])}
+            className={cn("border-border min-w-0 border-r last:border-r-0", SEGMENT_FILL[entry.kind])}
           >
             {onPreview && entry.hash && !entry.isFallbackCard ? (
               <button
                 type="button"
                 aria-label={`Preview ${clipName(entry)}`}
-                className="flex h-full w-full min-w-0 cursor-pointer items-center justify-center px-1 outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                className="focus-visible:ring-ring flex h-full w-full min-w-0 cursor-pointer items-center justify-center px-1 outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-inset"
                 onClick={() => onPreview(entry)}
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>

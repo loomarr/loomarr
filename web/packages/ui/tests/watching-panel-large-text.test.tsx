@@ -10,6 +10,7 @@ vi.mock("react-native", async (importOriginal) => {
 });
 
 import { WatchingPanel, type WatchingPanelProps } from "../index";
+import { declarationsOf, tagBefore } from "./support/atomic-css";
 
 const CONTROLS = ["Previous", "Channel −", "Pause", "Channel +"];
 
@@ -41,13 +42,12 @@ const markupAt = (fontScale: number, overrides: Partial<WatchingPanelProps> = {}
 
 // The class list of the element whose text is exactly `text`. A one-line (`numberOfLines={1}`) text
 // carries the ellipsis class; a wrapping one doesn't.
-const classOf = (html: string, text: string) => {
-  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = html.match(new RegExp(`<[a-z]+ [^>]*class="([^"]*)"[^>]*>${escaped}</`));
-  if (!match?.[1]) throw new Error(`no element reads "${text}"`);
-  return match[1];
+const stylesOf = (html: string, text: string) => {
+  const tag = tagBefore(html, `${text}</`);
+  if (!tag) throw new Error(`no element reads "${text}"`);
+  return declarationsOf(html, tag);
 };
-const clips = (html: string, text: string) => classOf(html, text).includes("_textOverflow-ellipsis");
+const clips = (html: string, text: string) => stylesOf(html, text).includes("text-overflow:ellipsis");
 
 describe("WatchingPanel at an accessibility text size", () => {
   beforeEach(() => {

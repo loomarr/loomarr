@@ -76,7 +76,7 @@ const SurfJourney = ({
         borderRadius={0}
         borderWidth={0}
         flex={1}
-        gap="$control"
+        gap="control"
         justifyContent="center"
         level="canvas"
       >

@@ -25,17 +25,17 @@ const StatePanel = ({ action, description, density = "pointer", icon, kind, titl
       aria-busy={loading || undefined}
       aria-live={kind === "error" ? "assertive" : "polite"}
       alignItems="center"
-      gap="$control"
+      gap="control"
       justifyContent="center"
-      level="raised"
       minHeight={density === "tv" ? 320 : 220}
-      padding={density === "tv" ? 48 : "$section"}
-      role={kind === "error" ? "alert" : "status"}
+      padding={density === "tv" ? 48 : "section"}
       width="100%"
+      level="raised"
+      role={kind === "error" ? "alert" : "status"}
     >
       {icon ??
         (loading ? (
-          <Surface alignItems="center" backgroundColor="$transparent" borderWidth={0}>
+          <Surface alignItems="center" backgroundColor="transparent" borderWidth={0}>
             <ActivityIndicator accessibilityLabel={title} size={density === "tv" ? "tv" : "control"} />
           </Surface>
         ) : (
@@ -48,9 +48,9 @@ const StatePanel = ({ action, description, density = "pointer", icon, kind, titl
         ))}
       <Surface
         alignItems="center"
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
-        gap="$inline"
+        gap="inline"
         maxWidth={density === "tv" ? 880 : 560}
       >
         <Text density={density} textAlign="center" textRole="title">

@@ -1,19 +1,23 @@
+import { ClipDTOKind } from "@loomarr/api/models/clipDTOKind";
+import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
+import { isTaxonomyAxis, type TaxonomyAxis } from "../taxonomy-axes";
+
 type FillerSearch = {
   q?: string;
   kind?: string;
   audience?: string;
   taxon?: string;
   unclassified?: boolean;
-  withoutAxis?: "product" | "format" | "seasonal" | "audience-cue" | "presentation";
+  withoutAxis?: TaxonomyAxis;
   untagged?: boolean;
   view?: string;
   page?: number;
   parent?: string;
 };
 
-const KINDS = ["unclassified", "commercial", "bumper", "station_id", "psa", "trailer", "interstitial"];
-const AUDIENCES = ["kids", "family", "general", "late_night"];
-const TAXONOMY_AXES = ["product", "format", "seasonal", "audience-cue", "presentation"] as const;
+// The generated enums, so a new kind (#2037) or audience is a valid link without a second list here.
+const KINDS: string[] = Object.values(ClipDTOKind);
+const AUDIENCES: string[] = Object.values(ListFillerAudience);
 
 const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch => {
   const q = typeof search.q === "string" && search.q ? search.q : undefined;
@@ -22,9 +26,7 @@ const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch =>
   const taxon =
     typeof search.taxon === "string" && /^[a-z0-9_-]{1,64}$/.test(search.taxon) ? search.taxon : undefined;
   const unclassified = search.unclassified === true || search.unclassified === "true" ? true : undefined;
-  const withoutAxis = TAXONOMY_AXES.includes(search.withoutAxis as (typeof TAXONOMY_AXES)[number])
-    ? (search.withoutAxis as (typeof TAXONOMY_AXES)[number])
-    : undefined;
+  const withoutAxis = isTaxonomyAxis(search.withoutAxis) ? search.withoutAxis : undefined;
   const untagged = search.untagged === true || search.untagged === "true" ? true : undefined;
   const view = search.view === "list" ? "list" : undefined;
   const rawPage = Number(search.page);

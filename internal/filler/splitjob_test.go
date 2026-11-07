@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,12 +16,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -43,17 +45,17 @@ type fakeTools struct {
 	silences      []filler.Interval
 	transcripts   map[string][]filler.TranscriptSegment // "start:end" → utterances
 	transcribeErr error
-	grayFrames    map[string][][]byte // "path|start|end" → frames
-	keyframes     map[string][][]byte // basename → JPEG frames (V44 vision/heuristic input)
+	spans         map[string]creative.Fingerprint // "path|start|end" → creative
+	keyframes     map[string][][]byte             // basename → JPEG frames (V44 vision/heuristic input)
 
 	chapterCalls     int
 	blackSilenceCall int
 	boundarySpans    [][2]int64
 	boundaryFn       func(context.Context, int64, int64) ([]filler.Interval, error)
 	cutCalls         []string
-	grayCalls        []string
+	fingerprintCalls []string
 	keyframeSpans    [][2]int64
-	grayHook         func(string, int64, int64)
+	fingerprintHook  func(string, int64, int64)
 	cutFn            func(string, int64, int64, string) error
 }
 
@@ -116,17 +118,31 @@ func (f *fakeTools) Transcribe(_ context.Context, _ string, start, end int64) ([
 	return f.transcripts[fmt.Sprintf("%d:%d", start, end)], nil
 }
 
-func (f *fakeTools) GrayFrames(_ context.Context, path string, start, end int64) ([][]byte, error) {
+func (f *fakeTools) Fingerprint(_ context.Context, path string, start, end int64) (creative.Fingerprint, error) {
 	// The splitter passes drop-dir-joined paths; tests key on the basename.
-	if f.grayHook != nil {
-		f.grayHook(filepath.Base(path), start, end)
+	if f.fingerprintHook != nil {
+		f.fingerprintHook(filepath.Base(path), start, end)
 	}
-	f.grayCalls = append(f.grayCalls, key3(filepath.Base(path), start, end))
-	frames, ok := f.grayFrames[key3(filepath.Base(path), start, end)]
+	f.fingerprintCalls = append(f.fingerprintCalls, key3(filepath.Base(path), start, end))
+	fp, ok := f.spans[key3(filepath.Base(path), start, end)]
 	if !ok {
-		return nil, fmt.Errorf("no frames for %s", key3(path, start, end))
+		return creative.Fingerprint{}, fmt.Errorf("no fingerprint for %s", key3(path, start, end))
 	}
-	return frames, nil
+	return fp, nil
+}
+
+// spot is a 30 s advert's creative: one distinct picture per 2.5 s shot. The same seed is the same
+// advert, so two spans given one seed are copies and spans given different seeds are strangers.
+func spot(seed uint64) creative.Fingerprint {
+	r := rand.New(rand.NewPCG(seed, 2033))
+	var video []uint64
+	for range 12 {
+		shot := r.Uint64() | 1<<63 | 0xff // never near-solid
+		for range 10 {
+			video = append(video, shot)
+		}
+	}
+	return creative.Fingerprint{DurationMs: 30_000, Video: video}
 }
 
 func (f *fakeTools) KeyframesIn(ctx context.Context, path string, start, end int64, n int) ([][]byte, error) {
@@ -172,7 +188,7 @@ type splitMemStore struct {
 	clips        map[string]filler.StoreClip
 	proposals    map[string]filler.SplitProposal
 	claims       map[string]string
-	fingerprints map[string][]uint64
+	fingerprints map[string]creative.Fingerprint
 	// roundTripProposals makes the fake cross the same JSON durability boundary as the SQL store.
 	// It is opt-in because most splitter tests exercise domain behavior, while checkpoint tests
 	// specifically need private in-memory fields to disappear between passes like they do live.
@@ -348,7 +364,7 @@ func (s *failingSplitStore) CompleteSplitConfirmation(ctx context.Context, compl
 func newSplitMemStore() *splitMemStore {
 	return &splitMemStore{
 		clips: map[string]filler.StoreClip{}, proposals: map[string]filler.SplitProposal{},
-		claims: map[string]string{}, fingerprints: map[string][]uint64{}, pipelines: map[string]filler.ClipPipeline{},
+		claims: map[string]string{}, fingerprints: map[string]creative.Fingerprint{}, pipelines: map[string]filler.ClipPipeline{},
 	}
 }
 
@@ -370,25 +386,25 @@ func (m *splitMemStore) ListClips(context.Context) ([]filler.StoreClip, error) {
 	}
 	return out, nil
 }
-func (m *splitMemStore) ListClipFingerprints(_ context.Context, algorithm string) (map[string][]uint64, error) {
+func (m *splitMemStore) ListClipFingerprints(_ context.Context, algorithm string) (map[string]creative.Fingerprint, error) {
 	if m.fingerprintReadErr != nil {
 		return nil, m.fingerprintReadErr
 	}
-	out := make(map[string][]uint64)
-	for key, frames := range m.fingerprints {
+	out := make(map[string]creative.Fingerprint)
+	for key, fp := range m.fingerprints {
 		parts := strings.SplitN(key, "|", 2)
 		if len(parts) == 2 && parts[1] == algorithm {
-			out[parts[0]] = append([]uint64(nil), frames...)
+			out[parts[0]] = fp
 		}
 	}
 	return out, nil
 }
-func (m *splitMemStore) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error {
+func (m *splitMemStore) UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error {
 	m.fingerprintWriteCtxErr = ctx.Err()
 	if m.fingerprintWriteErr != nil {
 		return m.fingerprintWriteErr
 	}
-	m.fingerprints[clipHash+"|"+algorithm] = append([]uint64(nil), frames...)
+	m.fingerprints[clipHash+"|"+algorithm] = fp
 	return nil
 }
 func (m *splitMemStore) UpsertClip(_ context.Context, c filler.StoreClip) error {
@@ -1029,7 +1045,7 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	}}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 
@@ -1070,6 +1086,57 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	}
 }
 
+// #2030 decision 13: a compilation keeps every segment in a language some channel airs, and the
+// proposal records the whole set it was checked against.
+func TestPropose_KeepsEveryLanguageAChannelAirs(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/three-languages.mp4", 60_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "English advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Spanish advert"},
+		{StartMs: 40_000, EndMs: 60_000, Title: "French advert"},
+	}}
+	detector := &spanLanguageDetector{answers: map[[2]int64]string{
+		{0, 20_000}: "en", {20_000, 40_000}: "es", {40_000, 60_000}: "fr",
+	}}
+	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func(context.Context) (string, error) { return "spa, EN", nil },
+		Budget:   func() int { return 10 },
+	})
+
+	proposal, err := sp.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proposal.LanguagePreference != "en,es" {
+		t.Errorf("language preference = %q, want the normalized set en,es", proposal.LanguagePreference)
+	}
+	if len(proposal.Segments) != 2 || len(proposal.LanguageExclusions) != 1 ||
+		proposal.LanguageExclusions[0].DetectedLanguage != "fr" {
+		t.Fatalf("segments %+v exclusions %+v, want English and Spanish kept and French excluded",
+			proposal.Segments, proposal.LanguageExclusions)
+	}
+}
+
+// ⚠ The wanted set is read from the channels; a failed read must not be taken as "no language", or
+// the proposal would skip the check and present every segment as reviewable under no policy.
+func TestPropose_AFailedChannelReadFailsThePass(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/unread.mp4", 40_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "One"}, {StartMs: 20_000, EndMs: 40_000, Title: "Two"},
+	}}
+	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: &spanLanguageDetector{answers: map[[2]int64]string{}},
+		Want:     func(context.Context) (string, error) { return "", errors.New("db down") },
+		Budget:   func() int { return 10 },
+	})
+	if proposal, err := sp.Propose(context.Background(), hash); err == nil {
+		t.Fatalf("proposal %+v made without the wanted languages; want the read failure surfaced", proposal)
+	}
+}
+
 func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/uncertain-language.mp4", 40_000)
@@ -1083,7 +1150,7 @@ func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 	}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 
@@ -1118,7 +1185,7 @@ func TestPropose_UnavailableLanguageBackendLeavesCandidatesReviewable(t *testing
 	detector := &spanLanguageDetector{unavailable: "the language model is not installed"}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 
@@ -1158,7 +1225,7 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 1 },
 	})
 	stage := filler.NewSplitStage(splitter, st)
@@ -1217,7 +1284,7 @@ func TestSplitStage_ResolvesAnEntirelyMismatchedCompilationWithoutAskingForRevie
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 	stage := filler.NewSplitStage(splitter, st)
@@ -1425,21 +1492,13 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	existing.DurationMs = 30_000
 	st.clips[existing.Hash] = existing
 
-	dupFrame := make([]byte, 72)
-	for i := range dupFrame {
-		dupFrame[i] = byte(i) // a deterministic non-flat pattern
-	}
-	compFrame := make([]byte, 72)
-	for i := range compFrame {
-		compFrame[i] = byte(255 - i) // a DIFFERENT pattern — matches only the compilation
-	}
 	tools := &fakeTools{
 		blacks: []filler.Interval{{StartMs: 29800, EndMs: 30200}},
-		grayFrames: map[string][][]byte{
-			key3("1987.mp4", 0, 30000):        {dupFrame},
-			key3("1987.mp4", 30000, 60_000):   {compFrame}, // matches ONLY the compilation
-			key3("1987.mp4", 0, 60_000):       {compFrame}, // the compilation, hashed whole
-			key3("burgerbarn.mp4", 0, 30_000): {dupFrame},
+		spans: map[string]creative.Fingerprint{
+			key3("1987.mp4", 0, 30000):        spot(1),
+			key3("1987.mp4", 30000, 60_000):   spot(2), // matches ONLY the compilation
+			key3("1987.mp4", 0, 60_000):       spot(2), // the compilation, fingerprinted whole
+			key3("burgerbarn.mp4", 0, 30_000): spot(1),
 		},
 	}
 	sp := newSplitter(st, tools, nil, t.TempDir())
@@ -1468,16 +1527,12 @@ func TestPropose_CatalogFingerprintCacheSurvivesSplitterRestart(t *testing.T) {
 	existing.DurationMs = 30_000
 	st.clips[existing.Hash] = existing
 
-	pattern := make([]byte, 72)
-	for i := range pattern {
-		pattern[i] = byte(i)
-	}
 	tools := &fakeTools{
 		chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
-		grayFrames: map[string][][]byte{
-			key3("catalog-ad.mp4", 0, 30_000): {pattern},
-			key3("first.mp4", 0, 30_000):      {pattern},
-			key3("second.mp4", 0, 30_000):     {pattern},
+		spans: map[string]creative.Fingerprint{
+			key3("catalog-ad.mp4", 0, 30_000): spot(1),
+			key3("first.mp4", 0, 30_000):      spot(1),
+			key3("second.mp4", 0, 30_000):     spot(1),
 		},
 	}
 
@@ -1498,13 +1553,13 @@ func TestPropose_CatalogFingerprintCacheSurvivesSplitterRestart(t *testing.T) {
 
 	catalogCall := key3("catalog-ad.mp4", 0, 30_000)
 	calls := 0
-	for _, call := range tools.grayCalls {
+	for _, call := range tools.fingerprintCalls {
 		if call == catalogCall {
 			calls++
 		}
 	}
 	if calls != 1 {
-		t.Errorf("catalog media decoded %d times across two splitters, want one persisted-cache fill; calls=%v", calls, tools.grayCalls)
+		t.Errorf("catalog media decoded %d times across two splitters, want one persisted-cache fill; calls=%v", calls, tools.fingerprintCalls)
 	}
 }
 
@@ -1517,19 +1572,15 @@ func TestPropose_CatalogFingerprintCompletedAtDeadlineIsStillPersisted(t *testin
 	existing.DurationMs = 30_000
 	st.clips[existing.Hash] = existing
 
-	pattern := make([]byte, 72)
-	for i := range pattern {
-		pattern[i] = byte(i)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	canceled := false
 	tools := &fakeTools{
 		chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
-		grayFrames: map[string][][]byte{
-			key3("deadline-candidate.mp4", 0, 30_000): {pattern},
-			key3("deadline.mp4", 0, 30_000):           {pattern},
+		spans: map[string]creative.Fingerprint{
+			key3("deadline-candidate.mp4", 0, 30_000): spot(1),
+			key3("deadline.mp4", 0, 30_000):           spot(1),
 		},
-		grayHook: func(path string, _, _ int64) {
+		fingerprintHook: func(path string, _, _ int64) {
 			// Simulate the pass expiring after ffmpeg produced the catalog frames but before the
 			// cache write. The write must detach from this context or the completed work is lost.
 			if path == "deadline-candidate.mp4" && !canceled {
@@ -1562,15 +1613,11 @@ func TestPropose_CatalogFingerprintCacheFailureFallsBackToMedia(t *testing.T) {
 	st.fingerprintReadErr = errors.New("cache read unavailable")
 	st.fingerprintWriteErr = errors.New("cache write unavailable")
 
-	pattern := make([]byte, 72)
-	for i := range pattern {
-		pattern[i] = byte(i)
-	}
 	tools := &fakeTools{
 		chapters: []filler.Chapter{{StartMs: 0, EndMs: 30_000, Title: "advert"}},
-		grayFrames: map[string][][]byte{
-			key3("cache-failure-candidate.mp4", 0, 30_000): {pattern},
-			key3("cache-failure.mp4", 0, 30_000):           {pattern},
+		spans: map[string]creative.Fingerprint{
+			key3("cache-failure-candidate.mp4", 0, 30_000): spot(1),
+			key3("cache-failure.mp4", 0, 30_000):           spot(1),
 		},
 	}
 	p, err := newSplitter(st, tools, nil, t.TempDir()).Propose(context.Background(), hash)
@@ -1768,7 +1815,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}}
 	sp := newSplitter(st, tools, nil, drop).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
-		Want:     func() string { return "en" },
+		Want:     func(context.Context) (string, error) { return "en", nil },
 		Budget:   func() int { return 10 },
 	})
 	// ⚠ Capture the proposal id from Propose's return, NOT by ranging st.proposals — Go randomises map
@@ -1851,9 +1898,9 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, seg.Path))
 		// #1988: a chapter title is the source's and the operator's edit is curated, in the catalog
 		// row and beside the bytes, so a rebuild restores both.
-		wantSource := map[string]clipcatalog.NameSource{
-			"Burger Barn": clipcatalog.NameFromSource, "Brickle": clipcatalog.NameFromSource,
-			"Edited boundary": clipcatalog.NameFromCurated,
+		wantSource := map[string]clips.NameSource{
+			"Burger Barn": clips.NameFromSource, "Brickle": clips.NameFromSource,
+			"Edited boundary": clips.NameFromCurated,
 		}[seg.Name]
 		if seg.NameSource != wantSource || tags.DisplayName != seg.Name || tags.NameProvenance != string(wantSource) {
 			t.Errorf("confirmed segment %q name source = %q, sidecar %q/%q; want %q", seg.Name, seg.NameSource,
@@ -1976,11 +2023,11 @@ func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	parentHash = bindCompilationIdentity(t, st, parentHash, parent)
-	tools := &fakeTools{chapters: []filler.Chapter{
+	mediaTools := &fakeTools{chapters: []filler.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "First reviewed child"},
 		{StartMs: 30_000, EndMs: 60_000, Title: "Second reviewed child"},
 	}}
-	sp := newSplitter(st, tools, nil, drop)
+	sp := newSplitter(st, mediaTools, nil, drop)
 	proposal, err := sp.Propose(context.Background(), parentHash)
 	if err != nil {
 		t.Fatal(err)
@@ -2010,7 +2057,7 @@ func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 	// A directory at the final sidecar name is an unrecoverable metadata publication failure.
 	// Confirm must roll back the first prepared sidecar when the later child fails, before either
 	// media name reaches the scan tree.
-	if err := os.Mkdir(mediatools.SidecarPathFor(children[1]), 0o700); err != nil {
+	if err := os.Mkdir(tools.SidecarPathFor(children[1]), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2021,7 +2068,7 @@ func TestConfirm_SidecarFailurePublishesNoChildMedia(t *testing.T) {
 		if _, err := os.Stat(child); !os.IsNotExist(err) {
 			t.Fatalf("child %d media became scan-visible without a complete batch: %v", i, err)
 		}
-		if _, err := os.Stat(mediatools.SidecarPathFor(child)); i == 0 && !os.IsNotExist(err) {
+		if _, err := os.Stat(tools.SidecarPathFor(child)); i == 0 && !os.IsNotExist(err) {
 			t.Fatalf("first child sidecar survived later sidecar failure: %v", err)
 		}
 		if _, found, err := st.GetClip(context.Background(), childHashes[i]); err != nil || found {
@@ -2891,7 +2938,7 @@ func TestConfirm_CancellationAfterFinalExactComparisonPublishesAndWritesNothing(
 	if _, err := os.Stat(child); !os.IsNotExist(err) {
 		t.Fatalf("child media published after cancellation: %v", err)
 	}
-	if _, err := os.Stat(mediatools.SidecarPathFor(child)); !os.IsNotExist(err) {
+	if _, err := os.Stat(tools.SidecarPathFor(child)); !os.IsNotExist(err) {
 		t.Fatalf("child sidecar published after cancellation: %v", err)
 	}
 }

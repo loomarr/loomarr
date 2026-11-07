@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -30,15 +30,15 @@ func TestRiverTrigger_IsNotOnTheSlowSchedulePath(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 
 	fired := make(chan time.Time, 4)
-	reg := scheduler.NewRegistry().Add(scheduler.Job{
-		Name: "probe", Group: scheduler.GroupSystem, Title: "Probe", Description: "probe job.",
+	reg := jobs.NewRegistry().Add(jobs.Job{
+		Name: "probe", Group: jobs.GroupSystem, Title: "Probe", Description: "probe job.",
 		// Far-future cron: only an explicit Trigger can run this, so the measurement can
 		// never accidentally time a periodic firing.
 		DefaultCron: "0 0 5 1 1 *",
 		Run:         func(context.Context) error { fired <- time.Now(); return nil },
 	})
 	log := slog.New(slog.DiscardHandler)
-	s := scheduler.New(st, reg, nil, time.Now, log)
+	s := jobs.New(st, reg, nil, time.Now, log)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

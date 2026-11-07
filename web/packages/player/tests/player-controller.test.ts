@@ -46,7 +46,6 @@ const harness = (
       mint: vi.fn((channel) => Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8` })),
     } satisfies PlayerSourcePort);
   const controller = createPlayerController({
-    profile: { maxResolution: 2160 },
     source: sourcePort,
     transport,
     ...options,
@@ -89,7 +88,6 @@ describe("player controller", () => {
     const { transport } = harness(source);
     const controller = createPlayerController({
       initialTune: "none",
-      profile: {},
       source,
       transport,
     });
@@ -106,7 +104,7 @@ describe("player controller", () => {
     const second = deferred<{ uri: string }>();
     const signals: AbortSignal[] = [];
     const source: PlayerSourcePort = {
-      mint: vi.fn((_channel, _profile, signal) => {
+      mint: vi.fn((_channel, signal) => {
         signals.push(signal);
         return signals.length === 1 ? first.promise : second.promise;
       }),
@@ -324,7 +322,7 @@ describe("player controller", () => {
     const pending = deferred<{ uri: string }>();
     let signal: AbortSignal | undefined;
     const { controller, emit, transport } = harness({
-      mint: vi.fn((_channel, _profile, nextSignal) => {
+      mint: vi.fn((_channel, nextSignal) => {
         signal = nextSignal;
         return pending.promise;
       }),
@@ -348,7 +346,7 @@ describe("player controller", () => {
     const pending = deferred<{ uri: string }>();
     let signal: AbortSignal | undefined;
     const { controller, emit, transport } = harness({
-      mint: vi.fn((_channel, _profile, nextSignal) => {
+      mint: vi.fn((_channel, nextSignal) => {
         signal = nextSignal;
         return pending.promise;
       }),
@@ -393,7 +391,7 @@ describe("player controller neighbour warming", () => {
 
   it("aborts the previous warms when the viewer moves on", async () => {
     const signals: AbortSignal[] = [];
-    const warm = vi.fn((_channel, _profile, signal: AbortSignal) => {
+    const warm = vi.fn((_channel, signal: AbortSignal) => {
       signals.push(signal);
       return new Promise<never>(() => {});
     });
@@ -411,7 +409,7 @@ describe("player controller neighbour warming", () => {
 
   it("stops warming on dispose", async () => {
     const signals: AbortSignal[] = [];
-    const warm = vi.fn((_channel, _profile, signal: AbortSignal) => {
+    const warm = vi.fn((_channel, signal: AbortSignal) => {
       signals.push(signal);
       return new Promise<never>(() => {});
     });

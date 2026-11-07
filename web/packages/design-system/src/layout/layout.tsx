@@ -1,16 +1,19 @@
 import { useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ComponentRef, ReactNode } from "react";
-import { forwardRef, useId, useState } from "react";
+import { forwardRef, useId } from "react";
 import { Pressable, ScrollView, useWindowDimensions } from "react-native";
 
+import { useFocusLook } from "../focus-look";
 import { Text } from "../primitives";
 import { type Density, semanticSpace, semanticTargets } from "../tokens";
+import { useViewportScale } from "../viewport";
 
 type AdaptiveDirection = "column" | "row";
 
-// The window's width in points. A component outside the design system reads it here, not from
+// The window's width in layout units: points, except on Apple TV, where the viewport stage lays
+// the app out at TV width. A component outside the design system reads it here, not from
 // react-native, so Storybook's docgen never has to parse the native package's Flow source.
-const useWindowWidth = () => useWindowDimensions().width;
+const useWindowWidth = () => useWindowDimensions().width / useViewportScale();
 
 const adaptiveBreakpoints: Record<Density, number> = {
   pointer: 900,
@@ -39,13 +42,13 @@ type AdaptiveSplitProps = Omit<ComponentProps<typeof View>, "children" | "flexDi
 const AdaptiveSplit = ({
   breakpoint,
   density = "pointer",
-  gap = "$section",
+  gap = "section",
   primary,
   secondary,
   secondaryWidth,
   ...props
 }: AdaptiveSplitProps) => {
-  const { width } = useWindowDimensions();
+  const width = useWindowWidth();
   const direction = resolveAdaptiveDirection(width, density, breakpoint);
   const isWide = direction === "row";
   const resolvedSecondaryWidth = secondaryWidth ?? (density === "tv" ? 520 : 360);
@@ -127,15 +130,15 @@ const Disclosure = ({
 }: DisclosureProps) => {
   const generatedId = useId();
   const contentId = `loomarr-disclosure-${generatedId.replaceAll(":", "")}`;
-  const [focused, setFocused] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook();
   const theme = useTheme();
 
   return (
     <View
       {...props}
-      backgroundColor="$surfaceRaised"
-      borderColor={focused ? "$actionFocus" : "$borderDecorative"}
-      borderRadius="$card"
+      backgroundColor="surfaceRaised"
+      borderColor={focused ? "actionFocus" : "borderDecorative"}
+      borderRadius="card"
       borderWidth={focused ? 3 : 1}
       overflow="hidden"
       width="100%"
@@ -147,8 +150,7 @@ const Disclosure = ({
         aria-disabled={disabled || undefined}
         aria-expanded={expanded}
         disabled={disabled}
-        onBlur={() => setFocused(false)}
-        onFocus={() => setFocused(true)}
+        {...focusHandlers}
         onPress={() => onExpandedChange(!expanded)}
         style={({ pressed }) => ({
           alignItems: "center",
@@ -177,12 +179,13 @@ const Disclosure = ({
       </Pressable>
       {expanded ? (
         <View
-          borderTopColor="$borderDecorative"
+          borderTopColor="borderDecorative"
           borderTopWidth={1}
-          gap="$control"
+          gap="control"
+          padding="control"
+          // `id` alone: Tamagui maps it on native, and since Tamagui 3 a `nativeID` reaches the web
+          // DOM as an unknown attribute, which React warns about.
           id={contentId}
-          nativeID={contentId}
-          padding="$control"
         >
           {children}
         </View>

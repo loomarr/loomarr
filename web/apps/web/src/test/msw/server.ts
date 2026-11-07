@@ -17,7 +17,7 @@ const server = setupServer();
 // Every request MSW did not handle, recorded for the afterEach assertion below.
 const unhandled: string[] = [];
 
-// ⚠ `onUnhandledRequest: "error"` DOES NOT FAIL THE TEST, and that is the trap this module exists
+// ⚠ `onUnhandledFrame: "error"` (`onUnhandledRequest` before MSW 3) DOES NOT FAIL THE TEST, and that is the trap this module exists
 // to avoid. MSW's own docs define it as "print an error and halt request execution" — the request
 // rejects and the error is logged, but the test runner never sees an exception, so a spec with no
 // assertion on the result passes anyway. The maintainer confirmed the mechanism in mswjs/msw#946:
@@ -34,9 +34,11 @@ const installServerLifecycle = (hooks: {
 }): void => {
   hooks.beforeAll(() => {
     server.listen({
-      onUnhandledRequest: (request, print) => {
-        unhandled.push(`${request.method} ${request.url}`);
-        print.error(); // keep MSW's verbose message — it names the request and suggests a handler
+      onUnhandledFrame: async ({ frame, defaults }) => {
+        // MSW 3 renamed `onUnhandledRequest` to `onUnhandledFrame` (frames cover WebSocket as
+        // well as HTTP). The frame's own message names the method and URL.
+        unhandled.push(await frame.getUnhandledMessage());
+        await defaults.error(); // keep MSW's verbose message — it names the request and suggests a handler
       },
     });
   });
@@ -48,7 +50,7 @@ const installServerLifecycle = (hooks: {
     server.resetHandlers();
     if (seen.length > 0) {
       throw new Error(
-        `MSW had no handler for:\n  ${seen.join("\n  ")}\n` +
+        `MSW had no handler:\n${seen.join("\n")}\n` +
           "Add a handler (see src/test/msw) or, if the route moved, regenerate the client.",
       );
     }

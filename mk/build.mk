@@ -1,6 +1,6 @@
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build rust-build image-cert image-bench image-parallelism-bench playout-bench playout-bench-corpus
+.PHONY: build rust-build image-cert image-bench image-parallelism-bench playout-bench playout-bench-corpus filler-encode-bench
 build: rust-build ## build the cgo-free Go server and required Rust image worker
 	release="$${LOOMARR_RELEASE:-dev}"; \
 	  CGO_ENABLED=0 $(GO) build \
@@ -49,6 +49,17 @@ playout-bench: ## run the cross-hardware playout bench on this host; PLAYOUT_BEN
 	  --tolerance "$${PLAYOUT_BENCH_TOLERANCE:-0.15}" \
 	  $${PLAYOUT_BENCH_ACCEPT:+--accept}
 
+filler-encode-bench: ## VMAF-measure filler derivative encode levels for one hardware family; FILLER_ENCODE_BENCH_MASTERS/LEVELS required, optional FAMILY/LIMIT/FFMPEG/VMAF_THREADS (docs/design/filler-pipeline.md)
+	@test -n "$${FILLER_ENCODE_BENCH_MASTERS:-}" || { echo "filler-encode-bench: FILLER_ENCODE_BENCH_MASTERS is required" >&2; exit 2; }; \
+	  test -n "$${FILLER_ENCODE_BENCH_LEVELS:-}" || { echo "filler-encode-bench: FILLER_ENCODE_BENCH_LEVELS is required" >&2; exit 2; }; \
+	  $(GO) run ./cmd/filler-encode-bench \
+	    -ffmpeg "$${FILLER_ENCODE_BENCH_FFMPEG:-ffmpeg}" \
+	    -masters "$$FILLER_ENCODE_BENCH_MASTERS" \
+	    -levels "$$FILLER_ENCODE_BENCH_LEVELS" \
+	    -family "$${FILLER_ENCODE_BENCH_FAMILY:-nvenc}" \
+	    -limit "$${FILLER_ENCODE_BENCH_LIMIT:-30}" \
+	    -vmaf-threads "$${FILLER_ENCODE_BENCH_VMAF_THREADS:-4}"
+
 image-parallelism-bench: rust-build ## compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux)
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  report_dir="$${IMAGE_BENCH_REPORT_DIR:-$$LOOMARR_ARTIFACT_DIR/image-parallelism}"; \
@@ -71,6 +82,14 @@ observability-dev-down: ## stop this worktree's local observability stack (prese
 observability-dev-test: ## prove seeded Loomarr metrics and Grafana provisioning over real Docker + HTTP
 	@./scripts/observability-dev-runtime-test.sh
 
+.PHONY: db-view
+# Exported rather than spliced into the recipe, so a quote in a password can't end the shell string.
+db-view: export DB_VIEW_FILE = $(FILE)
+db-view: export DB_VIEW_URL = $(URL)
+db-view: export DB_VIEW_ENGINE = $(ENGINE)
+db-view: ## browse a copy of a database in CloudBeaver until Ctrl-C (FILE=backup.db, URL=postgres://…, ENGINE=postgres)
+	@./scripts/db-view.sh
+
 .PHONY: test-sso
 test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
 	@# Not in comprehensive verification: §19 keeps the default suite Docker-free, like test-pg.
@@ -80,7 +99,7 @@ test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
 	@# refused. Authentik: its issuer is path-based WITH a trailing slash, which our
 	@# normalisation stripped — discovery failed outright. A hand-written stub IdP showed
 	@# neither, because it was our own reading of the spec on both sides of the wire.
-	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/auth/
+	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/people/auth/
 
 .PHONY: dev-be
 dev-be: rust-dev-build ## backend with live reload (Air) — rebuilds + restarts on Go/Rust changes
@@ -130,6 +149,20 @@ seed: ## populate a dev store via the real domain paths (approval gate honored �
 # The demo library (#1587): invented titles, generated art and video, no real media anywhere.
 # Its stand-in media server listens on 22000 + this worktree's slot (LOOMARR_AGENT_SLOT from
 # dev-env.sh), beside the other dev ports; DEMO_LIBRARY_ADDR overrides it.
+.PHONY: demo-site demo-site-down
+demo-site: ## run the demo site from an image: VERSION=<release>, or LOOMARR_IMAGE=<image built from this checkout>
+	@./scripts/demo-site.sh up
+
+demo-site-down: ## stop the demo site and delete its data
+	@./scripts/demo-site.sh down
+
+.PHONY: migration-rehearsal hardware-gate
+migration-rehearsal: ## boot IMAGE on a copy of the backup in BACKUP, with no network; run it where the backup lives
+	@./scripts/migration-rehearsal.sh "$(BACKUP)" "$(IMAGE)"
+
+hardware-gate: ## has COMMIT passed the playout bench on Intel and NVIDIA?
+	@./scripts/check-hardware-gate.sh "$(COMMIT)"
+
 .PHONY: demo-library
 demo-library: ## serve the demo library's Emby-compatible stand-in (generates its clips and art on first run)
 	@eval "$$(./scripts/dev-env.sh export)"; go run ./cmd/demo-library serve

@@ -1,7 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
-import * as systemApi from "@loomarr/api/endpoints/system";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -36,11 +36,11 @@ const SettingsPage = ({
   children,
   footer,
 }: SettingsPageProps) => {
-  const queryClient = useQueryClient();
   // ⚠ The edit buffer lives in the LAYOUT, not here (V9). Held locally, it died on every tab
   // switch and took the operator's unsaved edits with it — silently, which is the worst way to
   // lose work. The save unit is still "everything staged", the bar is still one bar; what
   // changed is that the buffer outlives this component.
+  const queryClient = useQueryClient();
   const { edits, results, setEdit, setResults, clearEdits } = useSettingsEdits();
   const [testing, setTesting] = useState<string | undefined>();
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; hint?: string }>>({});
@@ -52,14 +52,9 @@ const SettingsPage = ({
     mutation: {
       onSuccess: async (response) => {
         setResults(response.status === 200 ? (response.data.results ?? []) : []);
-        // A saved connection key can flip its check — refresh both, like the wizard.
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-          // Saving provider/base/key must refresh the hosted catalog. Otherwise the
-          // picker keeps its pre-save "add a key" snapshot until a full reload.
-          queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() }),
-        ]);
+        // The `settings` row of core's table, awaited before the buffer clears so a saved field
+        // never shows its old value.
+        await invalidateSettings(queryClient);
         if (response.status === 200) {
           clearEdits(
             (response.data.results ?? [])
@@ -74,14 +69,10 @@ const SettingsPage = ({
   // verbs: it commits immediately rather than staging into the save buffer, because it
   // changes WHO MANAGES the key rather than its value — and a field that stayed locked until
   // Save could not be edited to produce something to save.
+  // The claim changes provenance and lock state, and unlocking seeds a stored value the field
+  // must render, so the list refetches through the `settings` row.
   const envOverride = settingsApi.useSettingsEnvOverride({
-    mutation: {
-      onSuccess: async () => {
-        // Re-read: the claim changes provenance and lock state for that key, and unlocking
-        // seeds a stored value the field must now render.
-        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
-      },
-    },
+    mutation: { onSuccess: () => invalidateSettings(queryClient) },
   });
   const onEnvOverride = (key: string, enabled: boolean) => {
     envOverride.mutate({ key, data: { enabled } });
@@ -180,8 +171,8 @@ const SettingsPage = ({
     <div className={cn("flex flex-col", !embedded && "h-full")}>
       {embedded ? (
         <div>
-          <h2 className="font-semibold text-xl">{title}</h2>
-          {description && <p className="mt-1 text-muted-foreground text-sm">{description}</p>}
+          <h2 className="text-xl font-semibold">{title}</h2>
+          {description && <p className="text-muted-foreground mt-1 text-sm">{description}</p>}
         </div>
       ) : (
         <PageHeader title={title} description={description} />
@@ -252,11 +243,11 @@ const SettingsPage = ({
               key={block.title}
               className={cn(
                 "flex flex-col gap-4",
-                block.surface === "card" && "rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6",
+                block.surface === "card" && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
               )}
             >
               <div>
-                <h2 className="font-semibold text-lg">{block.title}</h2>
+                <h2 className="text-lg font-semibold">{block.title}</h2>
                 {block.description && <p className="text-muted-foreground text-sm">{block.description}</p>}
               </div>
               <SettingsFields

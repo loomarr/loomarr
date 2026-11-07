@@ -36,10 +36,10 @@ const RequestCard = ({ action, entry, hint, nowMs, onOpen, trailing }: RequestCa
   const { journey, status } = entry;
   const detail = hint ?? status.detail;
   const body = (
-    <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$control">
+    <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="control">
       {/* A request has no artwork of its own, and the shared ArtworkFrame's "No artwork" fallback is a
           card-sized state, so the phone leaves the slot out rather than draw a placeholder. */}
-      <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$inline">
+      <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap="inline">
         <Badge density="touch" tone={requestBadgeTone(status.tone)}>
           {status.line}
         </Badge>
@@ -59,7 +59,7 @@ const RequestCard = ({ action, entry, hint, nowMs, onOpen, trailing }: RequestCa
     </Surface>
   );
   return (
-    <Surface gap="$control" level="raised" padding="$control" width="100%">
+    <Surface gap="control" padding="control" width="100%" level="raised">
       {onOpen ? (
         <Pressable
           accessibilityHint="Opens this request"

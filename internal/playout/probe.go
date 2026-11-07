@@ -6,22 +6,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 )
 
-// Shared source observations and seek-local copy proofs use one stream/packet model (§9.1).
+// Shared source observations use one stream/packet model (§9.1).
 //
 // Playout asks three questions of a source, and they used to be three separate ffprobe calls with
 // three JSON shapes and three copies of the shell-out: which audio track to map (audio.go), the
 // tracks the Watch pickers list (tracks.go), and the codec the copy decision needs (format,
-// directplay/copyplan). They all read the SAME `ffprobe -show_streams` output — so this file runs
+// mediaformat.go). They all read the SAME `ffprobe -show_streams` output — so this file runs
 // it once into one `probedStream` slice, and each consumer is a pure function over that. Fewer
 // execs, one JSON shape, no drift between three parsers of the same data.
 
@@ -31,7 +29,6 @@ type probedStream struct {
 	Index          int             `json:"index"`
 	CodecType      string          `json:"codec_type"`
 	CodecName      string          `json:"codec_name"`
-	HasBFrames     *int            `json:"has_b_frames"`
 	Profile        string          `json:"profile"`
 	Level          json.RawMessage `json:"level"`
 	Width          int             `json:"width"`
@@ -143,64 +140,6 @@ func executeFFprobeObserved(ctx context.Context, bin string, args []string, mana
 		return probed{}, err
 	}
 	return parseProbeJSON(out.Bytes())
-}
-
-// CopyStartProber proves a video random-access point for this finite source interval.
-// The returned seek retains that frame at FFmpeg's millisecond argument precision.
-type CopyStartProber func(context.Context, string, time.Duration, time.Duration, float64) (time.Duration, bool)
-
-func FFprobeCopyStartNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) CopyStartProber {
-	bin := ffprobeBesideFFmpeg(ffmpegPath)
-	var observer *diagnostics.ProcessManager
-	if len(observers) > 0 {
-		observer = observers[0]
-	}
-	return func(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool) {
-		if offset < 0 || limit <= 0 || fps <= 0 || math.IsNaN(fps) || math.IsInf(fps, 0) {
-			return 0, false
-		}
-		ctx, cancel := context.WithTimeout(ctx, time.Second)
-		defer cancel()
-		args := []string{"-v", "error", "-select_streams", "v:0", "-read_intervals", seconds(offset) + "%+#256",
-			"-show_entries", "stream=index,codec_type,has_b_frames:packet=stream_index,pts_time,flags:format=start_time", "-of", "json", input}
-		result, err := executeFFprobeObserved(ctx, bin, args, observer)
-		if err != nil || ctx.Err() != nil {
-			return 0, false
-		}
-		return copyStartOf(result, offset, limit, fps)
-	}
-}
-
-func copyStartOf(result probed, offset, limit time.Duration, fps float64) (time.Duration, bool) {
-	if len(result.Streams) != 1 || result.Streams[0].CodecType != "video" || result.Streams[0].HasBFrames == nil || *result.Streams[0].HasBFrames != 0 || offset < 0 || limit <= 0 || fps <= 0 || math.IsNaN(fps) || math.IsInf(fps, 0) {
-		return 0, false
-	}
-	start, err := strconv.ParseFloat(result.Format.StartTime, 64)
-	if err != nil || math.IsNaN(start) || math.IsInf(start, 0) {
-		return 0, false
-	}
-	frameNanos := float64(time.Second) / fps
-	if frameNanos < 1 || frameNanos >= float64(math.MaxInt64) {
-		return 0, false
-	}
-	frame := time.Duration(frameNanos)
-	for _, packet := range result.Packets {
-		if packet.StreamIndex != result.Streams[0].Index || !strings.Contains(packet.Flags, "K") || strings.Contains(packet.Flags, "D") {
-			continue
-		}
-		pts, err := strconv.ParseFloat(packet.PTS, 64)
-		at := pts - start
-		if err != nil || math.IsNaN(at) || math.IsInf(at, 0) || at < 0 || at >= float64(math.MaxInt64)/float64(time.Second) {
-			continue
-		}
-		point := time.Duration(at * float64(time.Second))
-		if point-offset > -frame && point-offset < frame && point-offset < limit {
-			// ProgramArgs renders seeks at millisecond precision. Rounding above a
-			// proven fractional keyframe would discard exactly the frame we need.
-			return min(point, offset).Truncate(time.Millisecond), true
-		}
-	}
-	return 0, false
 }
 
 // probeOutputLimit prevents malformed probe output from growing without bound.
@@ -398,10 +337,10 @@ func tracksOf(streams []probedStream) MediaTracks {
 	return tracks
 }
 
-// --- Consumer 3: the copy/transcode decision (copyplan.go's MediaFormat) ------------------------
+// --- Consumer 3: the source's class and geometry (mediaformat.go's MediaFormat) ----------------
 
 // FFprobeFormatNextTo returns a FormatProber built on the shared probe — the full MediaFormat for
-// PlanCopy and any later feature that needs it.
+// ClassOf and any later feature that needs it.
 func FFprobeFormatNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) FormatProber {
 	bin := ffprobeBesideFFmpeg(ffmpegPath)
 	var observer *diagnostics.ProcessManager
@@ -431,7 +370,7 @@ func formatOf(p probed) MediaFormat {
 				videoIndex = s.Index
 				f.VideoCodec = strings.ToLower(s.CodecName)
 				f.Width, f.Height = s.Width, s.Height
-				f.FrameRate = parseRational(s.AvgFrameRate)
+				f.FrameRate = ParseFrameRate(s.AvgFrameRate)
 				f.PixelFormat = strings.ToLower(s.PixFmt)
 				f.ColorTransfer = s.ColorTransfer
 				f.Interlaced = s.FieldOrder != "" && s.FieldOrder != "progressive" && s.FieldOrder != "unknown"
@@ -457,9 +396,10 @@ func formatOf(p probed) MediaFormat {
 	return f
 }
 
-// parseRational turns ffprobe's "24000/1001" framerate into fps. Returns 0 on anything unparseable
-// or a zero denominator (ffprobe emits "0/0" for streams with no framerate).
-func parseRational(s string) float64 {
+// ParseFrameRate turns ffprobe's "24000/1001" framerate into fps. Returns 0 on anything unparseable
+// or a zero denominator (ffprobe emits "0/0" for streams with no framerate). The inventory stores
+// the same string, so playout's format from stored facts parses it with this too.
+func ParseFrameRate(s string) float64 {
 	num, den, ok := strings.Cut(s, "/")
 	if !ok {
 		return parseFloat(s)

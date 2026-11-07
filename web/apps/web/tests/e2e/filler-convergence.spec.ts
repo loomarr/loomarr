@@ -175,23 +175,19 @@ test("a fetched arrival becomes playable automatically after its checks complete
           : [],
       });
     }
-    if (path === "/v1/filler/decisions/activity") {
+    // Manage › Quality reads the defect floor's report (#2034); the clip has no record until the floor's pass.
+    if (path === "/v1/filler/defects") {
       return reply({
-        rows: readyCommitted
-          ? [
-              {
-                id: "automatic-event",
-                decisionId: "decision-2",
-                clipHash: clip.hash,
-                kind: "automatic_admit",
-                createdAt: "2026-08-24T04:00:02Z",
-              },
-            ]
-          : [],
-        total: readyCommitted ? 1 : 0,
+        floorVersion: "floor-v3-provisional",
+        clips: fetched ? 1 : 0,
+        unmeasured: fetched ? 1 : 0,
+        labelled: 0,
+        verdicts: { pass: 0, fail: 0, undecided: 0, pending: 0 },
+        scores: [],
+        total: 0,
+        rows: [],
       });
     }
-    if (path === "/v1/filler/decisions/diagnostics") return reply({ rows: [], total: 0 });
     if (path === "/v1/filler/watch") {
       return reply({
         sourcesOn: 1,
@@ -251,7 +247,8 @@ test("a fetched arrival becomes playable automatically after its checks complete
       return reply({
         level: "exact",
         total: readyCommitted ? 1 : 0,
-        geography: { country: "US", market: "" },
+        geography: { country: "US", place: "" },
+        defaultKinds: ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"],
         rungs: [{ level: "exact", clips: readyCommitted ? 1 : 0 }],
         criteria: [
           { criterion: "era", clips: readyCommitted ? 1 : 0 },
@@ -269,7 +266,8 @@ test("a fetched arrival becomes playable automatically after its checks complete
         coverage: {
           level: "exact",
           total: readyCommitted ? 1 : 0,
-          geography: { country: "US", market: "" },
+          geography: { country: "US", place: "" },
+          defaultKinds: ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"],
           rungs: [{ level: "exact", clips: readyCommitted ? 1 : 0 }],
           criteria: [],
         },
@@ -322,7 +320,6 @@ test("a fetched arrival becomes playable automatically after its checks complete
   await expect(page.getByRole("heading", { name: "Admission summary" })).toHaveCount(0);
   await expect(page.getByText("Needs judgment")).toHaveCount(0);
   await expect(page.getByText(/licen[cs]/i)).toHaveCount(0);
-  expect(requestedPaths).not.toContain("/v1/filler/decisions/overview");
   const fillerNav = page.getByRole("navigation", { name: "Filler sections" });
   // The web mock's three sections; Sources and Incoming open from the Manage hub (#1659).
   await expect(fillerNav.getByRole("link", { name: "Overview" })).toBeVisible();
@@ -332,7 +329,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
   await expect(fillerNav.getByRole("link", { name: "Sources" })).toHaveCount(0);
 
   await page.goto("/filler/manage");
-  await expect(page.getByText("Nothing has happened yet.")).toBeVisible();
+  await expect(page.getByText(/^Product, format, season and audience · /)).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
   await expect(page.getByRole("heading", { name: "What this channel can play" })).toBeVisible();
@@ -351,7 +348,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
   readyCommitted = true;
 
   await page.goto("/filler/manage");
-  await expect(page.getByText("Added automatically")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Filler tools" })).toBeVisible();
 
   await page.goto("/filler/incoming");
   await expect(page.getByRole("heading", { name: "1 clip added to your Library" })).toBeVisible();

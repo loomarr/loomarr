@@ -9,7 +9,7 @@ const meta = {
   component: TvStatic,
   decorators: [
     (Story) => (
-      <div className="relative h-40 w-80 bg-background">
+      <div className="bg-background relative h-40 w-80">
         <Story />
       </div>
     ),

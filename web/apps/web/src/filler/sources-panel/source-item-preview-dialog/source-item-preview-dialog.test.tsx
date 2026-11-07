@@ -1,15 +1,39 @@
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { providerEmbedURL } from "./source-item-preview-dialog";
+import { SourceItemPreviewDialog } from "./source-item-preview-dialog";
 
-describe("providerEmbedURL", () => {
-  it("builds only provider-owned autoplay embeds", () => {
-    expect(providerEmbedURL("archive", "https://archive.org/details/station_break_one")).toBe(
-      "https://archive.org/embed/station_break_one?autoplay=1",
+// The player URL is the provider's to build and arrives on the item, so the dialog plays what it is
+// given and falls back to the original when it is given nothing.
+describe("SourceItemPreviewDialog", () => {
+  it("plays the embed the provider supplied and names the provider", () => {
+    render(
+      <SourceItemPreviewDialog
+        item={{
+          title: "Station break",
+          url: "https://example.test/item",
+          embedUrl: "https://example.test/embed/1",
+        }}
+        providerLabel="Registry Name"
+        onClose={() => {}}
+      />,
     );
-    expect(providerEmbedURL("youtube", "https://www.youtube.com/watch?v=video-one")).toBe(
-      "https://www.youtube-nocookie.com/embed/video-one?autoplay=1&playsinline=1",
+    expect(screen.getByText(/This plays from Registry Name\./)).toBeVisible();
+    expect(screen.getByTitle("Preview Station break")).toHaveAttribute("src", "https://example.test/embed/1");
+  });
+
+  it("offers only the original when the provider supplied no embed", () => {
+    render(
+      <SourceItemPreviewDialog
+        item={{ title: "Station break", url: "https://example.test/item" }}
+        providerLabel="Registry Name"
+        onClose={() => {}}
+      />,
     );
-    expect(providerEmbedURL("youtube", "https://example.com/watch?v=video-one")).toBeUndefined();
-    expect(providerEmbedURL("archive", "not a URL")).toBeUndefined();
+    expect(screen.queryByTitle("Preview Station break")).not.toBeInTheDocument();
+    expect(screen.getByText(/cannot show the item here/)).toBeVisible();
+    expect(screen.getByRole("link", { name: /Open original/ })).toHaveAttribute(
+      "href",
+      "https://example.test/item",
+    );
   });
 });

@@ -2,15 +2,13 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { ApiError } from "@loomarr/api/mutator";
 import { bootstrapSchema } from "@loomarr/core/schemas";
-import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import type { BootstrapStepProps } from "./bootstrap-step.type";
 
 // Wizard step 1 — create the owning admin (§11, §13). Unauthenticated *because* it is
@@ -45,7 +43,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
     },
   });
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { username: "", password: "", confirm: "" },
     validators: { onSubmit: bootstrapSchema },
     onSubmit: ({ value }) => {
@@ -73,7 +71,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
             "Signed in as ⏎ fictional ⏎ …" with a stray gap around the name. Kept as ONE
             text node inside a <span> so the formatter cannot break it mid-sentence. */}
         <p className="flex items-center gap-2 text-sm">
-          <Check className="size-4 shrink-0 text-signal" aria-hidden />
+          <Check className="text-signal size-4 shrink-0" aria-hidden />
           <span>Your admin account is ready. You&rsquo;re signed in as {ownerName}.</span>
         </p>
         {/* Plain language over mechanism: "bootstrap runs once" is our word for it, not the
@@ -90,7 +88,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
     return (
       <div className="flex flex-col gap-3">
         <p className="text-sm">This Loomarr already has an owner account, so you can sign in instead.</p>
-        <Link to="/login" className="w-fit text-sm text-tune underline-offset-4 hover:underline">
+        <Link to="/login" className="text-tune w-fit text-sm underline-offset-4 hover:underline">
           Sign in instead
         </Link>
       </div>
@@ -108,70 +106,31 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
     >
       {blockingError != null && <ErrorState error={blockingError} />}
 
-      <form.Field name="username">
-        {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bootstrap-username">Username</Label>
-            <Input
-              id="bootstrap-username"
-              name={field.name}
-              autoComplete="username"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            {field.state.meta.errors[0] && (
-              <p role="alert" className="text-onair-300 text-sm">
-                {field.state.meta.errors[0].message}
-              </p>
-            )}
-          </div>
-        )}
-      </form.Field>
+      <form.AppField name="username">
+        {(field) => <field.TextField autoComplete="username" id="bootstrap-username" label="Username" />}
+      </form.AppField>
 
-      <form.Field name="password">
+      <form.AppField name="password">
         {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bootstrap-password">Password</Label>
-            <Input
-              id="bootstrap-password"
-              name={field.name}
-              type="password"
-              autoComplete="new-password"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            {field.state.meta.errors[0] && (
-              <p role="alert" className="text-onair-300 text-sm">
-                {field.state.meta.errors[0].message}
-              </p>
-            )}
-          </div>
+          <field.TextField
+            autoComplete="new-password"
+            id="bootstrap-password"
+            label="Password"
+            type="password"
+          />
         )}
-      </form.Field>
+      </form.AppField>
 
-      <form.Field name="confirm">
+      <form.AppField name="confirm">
         {(field) => (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bootstrap-confirm">Confirm password</Label>
-            <Input
-              id="bootstrap-confirm"
-              name={field.name}
-              type="password"
-              autoComplete="new-password"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            {field.state.meta.errors[0] && (
-              <p role="alert" className="text-onair-300 text-sm">
-                {field.state.meta.errors[0].message}
-              </p>
-            )}
-          </div>
+          <field.TextField
+            autoComplete="new-password"
+            id="bootstrap-confirm"
+            label="Confirm password"
+            type="password"
+          />
         )}
-      </form.Field>
+      </form.AppField>
 
       <Button type="submit" disabled={busy} className="w-fit">
         {busy && <Loader2 className="animate-spin" aria-hidden />}

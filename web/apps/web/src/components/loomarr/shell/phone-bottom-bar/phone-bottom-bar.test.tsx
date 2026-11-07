@@ -53,7 +53,7 @@ describe("PhoneBottomBar", () => {
       within(dialog)
         .getAllByRole("button")
         .map((b) => b.getAttribute("aria-label")),
-    ).toEqual(["Close", "Filler", "People", "Settings", "Help"]);
+    ).toEqual(["Close", "Library", "Filler", "People", "Settings", "Help"]);
     await user.click(within(dialog).getByRole("button", { name: "Settings" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument());
   });
@@ -118,10 +118,10 @@ describe("PhoneBottomBar", () => {
     expect(screen.getByRole("tab", { name: "Home" })).toHaveAttribute("aria-selected", "false");
   });
 
-  it("selects Watch for any /channels/:id/watch route, not only the bar's own target", async () => {
+  it("selects Watch for any /watch/:id route, not only the bar's own target", async () => {
     // "$id" here is itself the literal param VALUE the harness's route pattern resolves to —
     // a different channel than the bar's own target ("ch-7"), which is the point of the test.
-    renderBar({ isAdmin: true, watchChannelId: "ch-7" }, "/channels/$id/watch");
+    renderBar({ isAdmin: true, watchChannelId: "ch-7" }, "/watch/$id");
     expect(await screen.findByRole("tab", { name: "Watch" })).toHaveAttribute("aria-selected", "true");
   });
 

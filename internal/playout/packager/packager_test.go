@@ -59,7 +59,16 @@ type synth struct {
 	wrote       *atomic.Int64   // counts fragments written
 	// audioJitter stamps AAC frames ±16 around 1024 samples (a Matroska-timed DTS source, live).
 	audioJitter bool
+	// sourceEnded, if set, makes the stream a SourceEnd reporting it.
+	sourceEnded *bool
 }
+
+type sourceEndStream struct {
+	io.ReadCloser
+	ended bool
+}
+
+func (s sourceEndStream) SourceEnded() bool { return s.ended }
 
 func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadCloser {
 	pr, pw := io.Pipe()
@@ -138,7 +147,46 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 		}
 	}()
 	go func() { <-ctx.Done(); pr.CloseWithError(ctx.Err()) }()
+	if s.sourceEnded != nil {
+		return sourceEndStream{ReadCloser: pr, ended: *s.sourceEnded}
+	}
 	return pr
+}
+
+// A source that ran out before its slot filled (2026-10-24: a commercial whose audio runs half a
+// second past its picture) is not reopened at its last frame: the rest of its slot is slate, and the
+// next item airs at the slot's end. The slate is held to SlateRetry, so a file that ended long
+// before its runtime rejoins as a failure would. An encoder that stopped any other way still rejoins
+// through the schedule at once; in this harness the schedule hands out the next plan.
+func TestSourceThatRanOutSlatesTheRestOfItsSlot(t *testing.T) {
+	ranOut := 40 * time.Second / testFPS // the ad delivers 40 of its slot's 60 frames
+	retry := 10 * time.Second / testFPS  // shorter than the 20 frames left, and whole frames
+	for _, tc := range []struct {
+		name       string
+		ended      bool
+		retry      time.Duration
+		wantNextAt time.Duration
+		wantSlates int
+	}{
+		{"ran out", true, 0, 2 * time.Second, 1},
+		{"ran out longer than the retry", true, retry, ranOut + retry, 1},
+		{"stopped", false, 0, ranOut, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := runPlans(t, Config{SlateRetry: tc.retry}, []plan{
+				{"ad", 2 * time.Second, synth{label: "ad", frames: 40, sourceEnded: &tc.ended}},
+				{"prog", time.Second, synth{label: "prog"}},
+			})
+			payloads, _ := assertGapless(t, h)
+			if got := countPrefix(payloads, "ad"); got != 40 {
+				t.Fatalf("ad put %d frames on the timeline, want the 40 it had", got)
+			}
+			v, _ := h.opened.Load("prog")
+			if at, slates := v.(Slot).Offset, h.p.Stats().Slates; at != tc.wantNextAt || slates != tc.wantSlates {
+				t.Errorf("next item at %v after %d slates, want at %v after %d", at, slates, tc.wantNextAt, tc.wantSlates)
+			}
+		})
+	}
 }
 
 // readySlate is the SlateSource of a slate already in hand.
@@ -872,6 +920,38 @@ func TestSubFrameRemainderRollsIntoTheNextItem(t *testing.T) {
 	}
 }
 
+// The same remainder on a card slot (a break whose clips ran out before its end) has no item to open,
+// so it slates. Under half a frame of card rounds to no frames of slate, and the timeline cannot move
+// past it: live, the packager asked for that instant forever, a core spinning and the picture frozen
+// on the break's last commercial. It must roll into what airs at the card's end, as an item does.
+func TestSubFrameCardRemainderRollsIntoTheNextItem(t *testing.T) {
+	t0 := time.Unix(1_000_000, 0)
+	boundary := t0.Add(1010 * time.Millisecond) // 25.25 frames: the card's slate rounds to 25
+	var asked atomic.Int64
+	sched := func(ctx context.Context, at time.Time) (Item, error) {
+		asked.Add(1)
+		if at.Before(boundary) {
+			return Item{Label: "card", Duration: boundary.Sub(at)}, nil
+		}
+		return Item{Label: "b", Duration: time.Hour, Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+			return synth{label: "b"}.encode(t, ictx, slot), nil
+		}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour, SlateRetry: 2 * time.Second,
+		Now: func() time.Time { return t0 }}, sched, readySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start(t, p)
+	deadline := time.Now().Add(3 * time.Second)
+	for p.Stats().Items < 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if s := p.Stats(); s.Items < 1 {
+		t.Fatalf("stats %+v after %d schedule lookups: want the item after the card to air", s, asked.Load())
+	}
+}
+
 // A tune-in that lands in an airing's last half frame skips it without airing anything, so the next
 // item is still the tune-in item: it gets FirstItemWait, not the lead a later item needs.
 func TestTuneInOnASubFrameRemainderKeepsTheTuneInWait(t *testing.T) {
@@ -961,5 +1041,90 @@ func TestCodecsAttrNamesAnHEVCInit(t *testing.T) {
 	}
 	if got := CodecsAttr(boxed); got != CodecsAttr(init) {
 		t.Fatalf("CodecsAttr(HDR10 init) = %q, want the raw init's %q", got, CodecsAttr(init))
+	}
+}
+
+// A viewer receiving a segment is what airs its item (Item.Served): the first segment fetched
+// fires the item's callback once however often it is fetched, an item no viewer fetched never
+// fires, and a slate segment, which has no item, is ignored.
+func TestSegmentServedFiresItsItemsCallbackOnce(t *testing.T) {
+	var fired sync.Map // label -> *atomic.Int32
+	count := func(label string) int32 {
+		v, ok := fired.Load(label)
+		if !ok {
+			return 0
+		}
+		return v.(*atomic.Int32).Load()
+	}
+	plans := []plan{
+		{"first", time.Second, synth{label: "first"}},
+		{"second", time.Second, synth{label: "second"}},
+	}
+	var i atomic.Int32
+	finished := make(chan struct{})
+	sched := func(ctx context.Context, _ time.Time) (Item, error) {
+		n := int(i.Add(1)) - 1
+		if n >= len(plans) {
+			close(finished)
+			<-ctx.Done()
+			return Item{}, ctx.Err()
+		}
+		pl := plans[n]
+		n32 := &atomic.Int32{}
+		fired.Store(pl.label, n32)
+		return Item{Label: pl.label, Duration: pl.dur,
+			Open:   func(ictx context.Context, slot Slot) (io.ReadCloser, error) { return pl.enc.encode(t, ictx, slot), nil },
+			Served: func() { n32.Add(1) },
+		}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, readySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start(t, p)
+	select {
+	case <-finished:
+	case <-time.After(10 * time.Second):
+		t.Fatal("plans did not finish airing")
+	}
+
+	if count("first") != 0 || count("second") != 0 {
+		t.Fatal("an item fired before any viewer received a segment of it")
+	}
+	first := segmentName(0)
+	p.SegmentServed("init.mp4")
+	p.SegmentServed("seg99999999.m4s")
+	if count("first") != 0 || count("second") != 0 {
+		t.Fatal("a name that is no segment of the window fired an item")
+	}
+	p.SegmentServed(first)
+	p.SegmentServed(first)
+	if got := count("first"); got != 1 {
+		t.Fatalf("first item fired %d times across two fetches of its segment, want once", got)
+	}
+	if got := count("second"); got != 0 {
+		t.Fatalf("second item fired %d times though none of its segments was fetched", got)
+	}
+	// The first item's last segment is the same item: still once.
+	for seq := uint32(0); ; seq++ {
+		p.mu.Lock()
+		var seg segment
+		var ok bool
+		for _, s := range p.window.segs {
+			if s.seq == seq {
+				seg, ok = s, true
+			}
+		}
+		p.mu.Unlock()
+		if !ok {
+			t.Fatal("the second item produced no segment")
+		}
+		p.SegmentServed(seg.name)
+		if count("second") == 1 {
+			break
+		}
+	}
+	if count("first") != 1 || count("second") != 1 {
+		t.Fatalf("fired first=%d second=%d, want once each", count("first"), count("second"))
 	}
 }

@@ -19,7 +19,8 @@ type locationBody struct {
 type locationResult struct {
 	Label       string `json:"label"`
 	Country     string `json:"country"`
-	Market      string `json:"market"`
+	ID          string `json:"id"`
+	Place       string `json:"place"`
 	Region      string `json:"region"`
 	Source      string `json:"source"`
 	Approximate bool   `json:"approximate"`
@@ -72,8 +73,20 @@ func TestLocationsSearchAndResolveUseTheEmbeddedIndex(t *testing.T) {
 
 	response, body = locationRequest(t, server.Client(), http.MethodPost, server.URL+"/v1/locations/resolve",
 		`{"latitude":40.7128,"longitude":-74.006}`, nil)
-	if response.StatusCode != http.StatusOK || body.Location.Country != "US" || body.Location.Market != "New York City" || body.Location.Source != "device" || body.Location.Approximate {
+	if response.StatusCode != http.StatusOK || body.Location.Country != "US" || body.Location.Place == "" ||
+		body.Location.Place != body.Location.ID || body.Location.Source != "device" || body.Location.Approximate {
 		t.Fatalf("resolve = %d %#v", response.StatusCode, body)
+	}
+
+	// A saved place reads back by id, so a form can show what it holds (#2062).
+	saved := body.Location
+	response, body = locationRequest(t, server.Client(), http.MethodGet, server.URL+"/v1/locations/"+saved.Place, "", nil)
+	if response.StatusCode != http.StatusOK || body.Location.Label != saved.Label || body.Location.Place != saved.Place {
+		t.Fatalf("get saved place = %d %#v, want %#v", response.StatusCode, body.Location, saved)
+	}
+	response, _ = locationRequest(t, server.Client(), http.MethodGet, server.URL+"/v1/locations/999999999999", "", nil)
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("get unknown place = %d, want 404", response.StatusCode)
 	}
 }
 

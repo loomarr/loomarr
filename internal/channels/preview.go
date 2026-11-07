@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -128,7 +128,7 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor()
-	chDomain.WindowZone = e.windowZoneFor()
+	chDomain = chDomain.WithCalendar(e.Calendar())
 	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, at)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
@@ -160,14 +160,17 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 		pw.PrewarmDurations(ids)
 	}
 
-	desired := schedule.ComputeDesiredAt(chDomain, lineup, availability, e.policy, ch.Policy, at)
+	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, lineup, availability, e.policy, ch.Policy, at)
+	if err != nil {
+		return CycleResult{}, fmt.Errorf("compute cycle for channel %s: %w", ch.ID, err)
+	}
 	if playsInternally {
 		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
 	}
 	return CycleResult{
 		At:     at,
 		Slots:  desired.Slots,
-		Active: schedule.ActiveRuleAt(ch.Policy.Rules, at),
+		Active: schedule.ActiveRuleAt(ch.Policy.Rules, at, e.Calendar()),
 		Window: schedule.ResolveWindow(chDomain, ch.Policy, at),
 		// ⚠ Carried out rather than dropped. This is the ONLY place the exclusion report reaches
 		// a caller: reconcile computes the identical report and discards it, so a title refused

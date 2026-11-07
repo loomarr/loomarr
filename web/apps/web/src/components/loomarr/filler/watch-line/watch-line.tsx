@@ -38,7 +38,7 @@ const WatchLine = ({ status, health, className }: WatchLineProps) => (
       )}
       aria-hidden
     />
-    <span className="min-w-0 font-mono text-muted-foreground text-xs">{status}</span>
+    <span className="text-muted-foreground min-w-0 font-mono text-xs">{status}</span>
     {/* ⚠ The dot is `aria-hidden`, so its meaning has to be said in words or it is invisible to a
         screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
         (it sees a decorated span, not a missing sentence). */}

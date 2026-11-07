@@ -12,7 +12,7 @@ env:
 
 jobs:
   run:
-    name: Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: Frontend — ${{ matrix.shard == 7 && 'biome + typecheck + build' || matrix.shard == 8 && 'package tests' || format('web unit ({0}/6)', matrix.shard) }}
     runs-on: ubuntu-latest
     # `make fe` was 394s and this job 7.0 min. The jsdom unit suite is the bulk of it ON THIS
     # RUNNER, which is the part worth spelling out: locally the whole suite is 33.5s (measured
@@ -21,16 +21,19 @@ jobs:
     # vitest is the most parallelism-hungry stage in the chain, and a 4-core runner is roughly
     # a sixth of the dev box it was measured on, so it degrades far more than the rest.
     #
-    # Everything except the unit tests re-runs in both shards. That is the same trade as the Go
-    # job: parallel, so it costs no wall clock, and it keeps CI running the same `make fe` a
-    # developer runs rather than a bespoke decomposition of it.
+    # Eight entries split `make fe` between them. 1-6 each run codegen and a sixth of the web unit
+    # tests (`make fe-unit`). 7 runs codegen and the static checks and builds (`make fe-checks`), 8
+    # the package tests (`make fe-packages`, 67s, most of it packages/ui). Only codegen repeats,
+    # because each entry needs the generated files. Repeating the other stages in every shard cost
+    # about 2m20s of a 4m40s job. Expressions have no arithmetic, so the /6 is literal: change it
+    # together with the matrix and the entry 7 and 8 conditions.
     strategy:
       fail-fast: false # one shard's failures must not hide the others'
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Enable pnpm (pinned via web/package.json packageManager)
@@ -43,13 +46,17 @@ jobs:
           key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
       - run: make fe-install
-      - run: make fe FE_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
+      - if: matrix.shard <= 6
+        run: make fe-unit FE_SHARD=${{ matrix.shard }}/6
+      - if: matrix.shard == 7
+        run: make fe-checks
       # Whole-repo and shard-independent — diffing the same generated token artifacts in every
-      # shard would prove the same thing N times. Shard 1, matching the drift checks in the Go
-      # job and e2e in the Playwright job.
+      # shard would prove the same thing N times. Entry 7, with the other whole-repo checks.
       - name: Token artifacts are committed and current
-        if: matrix.shard == 1
+        if: matrix.shard == 7
         run: make fe-tokens-verify
+      - if: matrix.shard == 8
+        run: make fe-packages
       # ⚠ Never from the merge queue (#1679). A cache is readable only from its own ref and the
       # default branch, and every queue batch has a unique `gh-readonly-queue/…` ref, so a queue save
       # is written once, read by nothing, and spends the 10 GB quota that evicts the Go caches.

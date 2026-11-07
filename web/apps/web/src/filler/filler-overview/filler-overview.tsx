@@ -3,12 +3,12 @@ import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO"
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import type { FillerSettingsSection } from "../filler-settings-section";
 
 type ActionBase = {
@@ -26,13 +26,6 @@ type Action = ActionBase &
     | {
         to: "/filler/incoming" | "/filler/library" | "/filler/sources";
         section?: never;
-        hash?: never;
-      }
-    | {
-        // Diagnostics live in Manage's Needs attention panel, which opens on this hash.
-        to: "/filler/manage";
-        section?: never;
-        hash: "diagnostics";
       }
   );
 
@@ -86,17 +79,15 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
       return {
         title: "A download needs another try",
         description: `${pluralize(readiness.actionCount ?? 0, "item")} could not finish downloading.`,
-        label: "Open diagnostics",
-        to: "/filler/manage",
-        hash: "diagnostics",
+        label: "Open Incoming",
+        to: "/filler/incoming",
       };
     case "retry_failed_work":
       return {
         title: "Some filler can be retried",
         description: `${pluralize(readiness.actionCount ?? 0, "item")} hit a recoverable processing problem.`,
-        label: "Open diagnostics",
-        to: "/filler/manage",
-        hash: "diagnostics",
+        label: "Open Incoming",
+        to: "/filler/incoming",
       };
     case "review_incoming":
       return {
@@ -155,9 +146,9 @@ const FillerOverview = () => {
   }
   if (!readiness) {
     return (
-      <Card aria-live="polite" className="p-6">
+      <Card aria-live="polite" padding={24}>
         <p className="font-medium">Checking filler health…</p>
-        <p className="mt-1 text-muted-foreground text-sm">Finding out what's ready and what's on the way.</p>
+        <p className="text-muted-foreground mt-1 text-sm">Finding out what's ready and what's on the way.</p>
       </Card>
     );
   }
@@ -170,16 +161,16 @@ const FillerOverview = () => {
           action colour, so a state where nothing needs doing doesn't wear it: the ready card is
           plain, with the same green dot as the healthy watch line above it. */}
       {action ? (
-        <Card className="border-caution/40 bg-caution/5 p-5">
+        <Card className="border-caution/40! bg-caution/5!" padding={20}>
           <div className="flex flex-col items-start gap-4 sm:flex-row">
             <div className="min-w-0 flex-1">
               <Badge variant="caution">Action recommended</Badge>
-              <h2 className="mt-3 font-semibold text-xl">{action.title}</h2>
-              <p className="mt-1 max-w-3xl text-muted-foreground text-sm">{action.description}</p>
+              <h2 className="mt-3 text-xl font-semibold">{action.title}</h2>
+              <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{action.description}</p>
               {/* Every destination behind the button is admin-only, so a member got a button
                   that bounced. They get the state and who can act on it instead. */}
               {isAdmin ? null : (
-                <p className="mt-2 text-muted-foreground text-sm">
+                <p className="text-muted-foreground mt-2 text-sm">
                   An admin can sort this out from Filler › Manage.
                 </p>
               )}
@@ -190,7 +181,7 @@ const FillerOverview = () => {
                   action.section ? (
                     <Link to="/filler/settings/$section" params={{ section: action.section }} />
                   ) : (
-                    <Link to={action.to} {...(action.hash ? { hash: action.hash } : {})} />
+                    <Link to={action.to} />
                   )
                 }
               >
@@ -200,8 +191,8 @@ const FillerOverview = () => {
           </div>
         </Card>
       ) : (
-        <Card className="flex items-center gap-2.5 p-4">
-          <span aria-hidden className="size-2 shrink-0 rounded-full bg-lock" />
+        <Card alignItems="center" flexDirection="row" gap={10} padding={16}>
+          <span aria-hidden className="bg-lock size-2 shrink-0 rounded-full" />
           <div className="min-w-0">
             <h2 className="font-semibold">Filler is working on its own</h2>
             <p className="text-muted-foreground text-sm">
@@ -214,7 +205,7 @@ const FillerOverview = () => {
       <section aria-labelledby="coverage-heading">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="coverage-heading" className="font-semibold text-lg">
+            <h2 id="coverage-heading" className="text-lg font-semibold">
               Channel coverage
             </h2>
             <p className="text-muted-foreground text-sm">
@@ -230,7 +221,7 @@ const FillerOverview = () => {
             {readiness.pool.channels.map((channel) => {
               const badge = COVERAGE_BADGE[channel.level];
               return (
-                <Card key={channel.channelId} className="p-4">
+                <Card key={channel.channelId} padding={16}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Link
@@ -241,7 +232,7 @@ const FillerOverview = () => {
                       >
                         {channel.number} · {channel.name}
                       </Link>
-                      <p className="mt-1 text-muted-foreground text-sm">
+                      <p className="text-muted-foreground mt-1 text-sm">
                         {channel.level === "bumper_card"
                           ? "Only a bumper card"
                           : `${formatDuration(channel.durationMs)} playable · ${pluralize(channel.total, "clip")}`}
@@ -251,7 +242,7 @@ const FillerOverview = () => {
                       {badge.label}
                     </Badge>
                   </div>
-                  <p className="mt-3 text-muted-foreground text-xs">
+                  <p className="text-muted-foreground mt-3 text-xs">
                     {channel.categories} {channel.categories === 1 ? "category" : "categories"} ·{" "}
                     {pluralize(channel.brands, "brand")}
                   </p>
@@ -260,7 +251,7 @@ const FillerOverview = () => {
             })}
           </div>
         ) : (
-          <Card className="p-4 text-muted-foreground text-sm">
+          <Card className="text-muted-foreground text-sm" padding={16}>
             {readinessQuery.error
               ? "Channel coverage is temporarily unavailable."
               : "No live channels need filler coverage yet."}

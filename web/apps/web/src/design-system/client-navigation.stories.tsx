@@ -17,8 +17,8 @@ const NavigationWorkshop = ({
   // A phone docks its tab bar under the content, as ClientShell does.
   const phone = density === "touch";
   return (
-    <Screen density={density} footer={phone ? navigation : undefined} gap="$section">
-      <Surface flex={1} gap="$control" justifyContent="center" padding="$section">
+    <Screen density={density} footer={phone ? navigation : undefined} gap="section">
+      <Surface flex={1} gap="control" justifyContent="center" padding="section">
         <Text density={density} textRole="metadata" tone="info">
           CURRENT DESTINATION
         </Text>

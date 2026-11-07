@@ -1,8 +1,10 @@
 package channels_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -12,10 +14,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/quality"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -379,6 +381,8 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 	guide.pokes, guide.rescans = 0, 0
 	stopsAfterMaterialization := len(playout.StoppedChannels())
 
+	// B lands after A, which is on air: the guide refreshes, and the stream keeps playing. The
+	// packager reaches B at its next lookup; a restart would only re-tune every viewer.
 	avail["movie:tmdb:90000002"] = "lib-2"
 	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
 		t.Fatal(err)
@@ -387,8 +391,17 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 		t.Fatalf("internal desired change freshness = %d rescans/%d pokes, want 0/1",
 			guide.rescans, guide.pokes)
 	}
+	if got := len(playout.StoppedChannels()); got != stopsAfterMaterialization {
+		t.Fatalf("a change after what is on air produced %d total session stops, want %d", got, stopsAfterMaterialization)
+	}
+
+	// A, on air now, is replaced by another file: what airs changes, so the stream restarts once.
+	avail["movie:tmdb:90000001"] = "lib-1b"
+	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
+		t.Fatal(err)
+	}
 	if got := len(playout.StoppedChannels()); got != stopsAfterMaterialization+1 {
-		t.Fatalf("changed internal cycle produced %d total session stops, want %d", got, stopsAfterMaterialization+1)
+		t.Fatalf("a change to what is on air produced %d total session stops, want %d", got, stopsAfterMaterialization+1)
 	}
 
 	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
@@ -1469,7 +1482,7 @@ func (e errPokeType) Error() string { return string(e) }
 //
 // Driven through the availability gate (no entry resolves to a library id) because it
 // is the simplest way to empty a deck; the seasonal path that actually hit this in the
-// wild is covered in internal/schedule.
+// wild is covered in internal/channels/schedule.
 func TestReconcile_EmptyDeckIsNotLive(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
@@ -1486,5 +1499,40 @@ func TestReconcile_EmptyDeckIsNotLive(t *testing.T) {
 	}
 	if ch.Status != schedule.StatusEmpty {
 		t.Fatalf("status = %s, want %s", ch.Status, schedule.StatusEmpty)
+	}
+}
+
+// A channel older than jobs.retention has lost the job it was made from. That is not a failure to
+// read the first-live milestone: the channel is simply not eligible for the observation, and
+// reconciling it must not log a warning every time.
+func TestReconcilePurgedOriginJobIsSilentlyNotEligibleForFirstLive(t *testing.T) {
+	st := newStore(t)
+	seedChannel(t, st, "old-channel", 5, entry("movie:tmdb:90000001", "A"))
+	ch, err := st.GetChannel(t.Context(), "old-channel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.IntentRef = "purged-origin-job"
+	if _, err := st.SaveChannel(t.Context(), ch); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	sink := &testkit.QualityRecorder{}
+	engine := channels.New(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil, channels.Config{
+		ReconcileTTL: 10 * time.Minute,
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
+			return schedule.PlayoutBackendInternal, nil
+		},
+	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, slog.New(slog.NewTextHandler(&logs, nil))).
+		WithQualityRecorder(quality.NewSchedulingRecorder(sink, testkit.Logger()))
+	if err := engine.Reconcile(t.Context(), "old-channel"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(logs.String(), "scheduling milestone") {
+		t.Errorf("a purged origin job logged a warning:\n%s", logs.String())
+	}
+	if got := sink.Observations(); len(got) != 0 {
+		t.Errorf("a channel with no origin job recorded observations: %+v", got)
 	}
 }

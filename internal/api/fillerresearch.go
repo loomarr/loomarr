@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/filler/research"
 )
 
 type FillerResearchStatusDTO struct {
@@ -72,8 +72,8 @@ func (s *Server) fillerResearchTest(ctx context.Context, in *fillerResearchTestI
 	if s.fillerResearch == nil {
 		return nil, errNotImplemented("Clip-detail research unavailable", "Clip-detail research isn't available on this server.")
 	}
-	config := fillerresearch.WebConfig{
-		Provider:    fillerresearch.WebProvider(in.Body.Provider),
+	config := research.WebConfig{
+		Provider:    research.WebProvider(in.Body.Provider),
 		BraveAPIKey: in.Body.APIKey,
 		SearXNGURL:  in.Body.Endpoint,
 	}
@@ -88,7 +88,7 @@ func (s *Server) fillerResearchTest(ctx context.Context, in *fillerResearchTestI
 	return out, nil
 }
 
-func fillerResearchStatusDTO(status fillerresearch.WebStatus) FillerResearchStatusDTO {
+func fillerResearchStatusDTO(status research.WebStatus) FillerResearchStatusDTO {
 	out := FillerResearchStatusDTO{
 		StructuredEnabled: status.StructuredEnabled,
 		Provider:          string(status.Provider), Configured: status.Configured, State: string(status.State),

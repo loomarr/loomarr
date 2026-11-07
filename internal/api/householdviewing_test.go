@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -28,7 +28,7 @@ type seekCloser struct{ *bytes.Reader }
 
 func (seekCloser) Close() error { return nil }
 
-func (pollPlayout) OpenAsset(context.Context, string, playout.EncodePlan, string, bool) (playout.Asset, bool, error) {
+func (pollPlayout) OpenAsset(context.Context, string, string, bool) (playout.Asset, bool, error) {
 	body := "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\nseg-1.ts\n"
 	return playout.Asset{Content: seekCloser{bytes.NewReader([]byte(body))}, Modified: time.Unix(1, 0), Playlist: true}, true, nil
 }
@@ -69,9 +69,9 @@ func newViewingHarness(t *testing.T) *viewingHarness {
 		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		devices := auth.NewDeviceManager(defaults.Store, time.Now)
-		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
-		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
-		seedImported(t, defaults.Store, "u-sis", "sis", store.RoleMember)
+		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
+		seedImported(t, defaults.Store, "u-sis", "sis", identitystore.RoleMember)
 		cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
 		sessions := pollPlayout{&fakePlayoutSessions{}}
 		return api.Router(defaults.Log, api.Options{
@@ -82,7 +82,7 @@ func newViewingHarness(t *testing.T) *viewingHarness {
 			Sessions:        mgr,
 			Devices:         devices,
 			CookieSecure:    "false",
-			LiveConfig:      func(key string) string { return cfg[key] },
+			LiveSettings:    stringSettings(func(key string) string { return cfg[key] }),
 			Playout:         sessions,
 			PlayoutObserver: sessions,
 			PlayoutSecret:   func() string { return playoutToken },

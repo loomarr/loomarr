@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { PairingShell } from "../index";
+import { stylesOfText } from "./support/atomic-css";
 
 (
   globalThis as typeof globalThis & {
@@ -340,7 +341,7 @@ describe("TV pairing offer", () => {
     );
 
     expect(markup).toContain("Expires in 0:59");
-    expect(markup).toMatch(/col-stateDanger/);
+    expect(stylesOfText(markup, "Expires in")).toContain("color:var(--stateDanger)");
 
     session.stop();
     await pairing;
@@ -356,7 +357,8 @@ describe("TV pairing offer", () => {
     );
 
     expect(markup).toContain("Expires in 1:00");
-    expect(markup).not.toMatch(/col-stateDanger/);
+    expect(stylesOfText(markup, "Expires in")).not.toContain("var(--stateDanger)");
+    expect(stylesOfText(markup, "Expires in")).not.toContain("font-weight:600");
 
     session.stop();
     await pairing;

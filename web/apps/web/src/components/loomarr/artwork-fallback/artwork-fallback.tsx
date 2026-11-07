@@ -19,12 +19,12 @@ const ArtworkFallback = ({ channel, className }: ArtworkFallbackProps) => {
     <div
       role="presentation"
       style={{ backgroundImage: LINES }}
-      className={cn("flex size-full items-center justify-center bg-static-800", className)}
+      className={cn("bg-static-800 flex size-full items-center justify-center", className)}
     >
       {channel && (
         <span
           style={{ color: hue }}
-          className="font-mono font-semibold text-base tracking-[0.08em] opacity-75"
+          className="font-mono text-base font-semibold tracking-[0.08em] opacity-75"
         >
           {monogramOf(channel.name)}
         </span>

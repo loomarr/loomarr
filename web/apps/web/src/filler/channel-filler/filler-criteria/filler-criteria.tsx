@@ -6,6 +6,7 @@ import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
 import { useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
+import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,8 @@ const KIND_LABEL: Record<(typeof KINDS)[number], string> = {
   psa: "PSAs",
   trailer: "Trailers",
   interstitial: "Interstitials",
+  political: "Political ads",
+  news: "News & weather",
 };
 
 const AUDIENCE_LABEL: Record<(typeof AUDIENCES)[number], string> = {
@@ -83,6 +86,16 @@ const toggle = (list: string[] | null | undefined, value: string): string[] | un
   if (set.has(value)) set.delete(value);
   else set.add(value);
   return set.size === 0 ? undefined : [...set];
+};
+
+// toggleKind — toggle a clip kind against what the checklist SHOWS. No kinds chosen shows the
+// server's default set ticked (#2037), so the first tick starts from it rather than from nothing;
+// a set that matches the default again saves as no choice, so the channel keeps following it.
+const toggleKind = (shown: string[], value: string, defaults: string[]): string[] | undefined => {
+  const next = toggle(shown, value);
+  const isDefault =
+    next !== undefined && next.length === defaults.length && defaults.every((kind) => next.includes(kind));
+  return isDefault ? undefined : next;
 };
 
 const YEAR_MIN = 1900;
@@ -285,6 +298,7 @@ const FillerCriteria = ({
   scopeEra,
   programmingDates,
   installationGeography,
+  defaultKinds,
 }: {
   selection: FillerSelection;
   onChange: (next: FillerSelection) => void;
@@ -295,8 +309,12 @@ const FillerCriteria = ({
   // channel drawing 1990s ads from a blank field looked like it was drawing from everything.
   scopeEra?: { from?: number; to?: number };
   programmingDates?: DateScope;
-  installationGeography?: { country?: string; market?: string };
+  installationGeography?: { country?: string; place?: string };
+  // The kinds a channel that chose none airs, from the server's coverage answer. Until it arrives
+  // the checklist cannot show the default, so it stays disabled rather than narrowing from nothing.
+  defaultKinds?: string[];
 }) => {
+  const installationPlaceLabel = usePlaceLabel(installationGeography?.place);
   const era = selection.era;
   const eraWindows = selection.eraWindows;
   // ⚠ **Three states, and they are only distinguishable because `era` is a POINTER on the wire.**
@@ -315,7 +333,9 @@ const FillerCriteria = ({
     : undefined;
   const scopeLabel = rangesLabel(inheritedWindows) ?? scalarScopeLabel(scopeEra);
   const categories = selection.categories ?? [];
-  const kinds = selection.kinds ?? [];
+  const chosenKinds = selection.kinds ?? [];
+  const kinds = chosenKinds.length > 0 ? chosenKinds : (defaultKinds ?? []);
+  const kindsUnknown = chosenKinds.length === 0 && defaultKinds === undefined;
   const productCategories = useProductCategories();
   const [choosingCategories, setChoosingCategories] = useState(false);
   const fixedCountry = installationGeography?.country?.trim().toUpperCase();
@@ -325,13 +345,13 @@ const FillerCriteria = ({
     // (checkbox row) span both columns.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
       <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <FieldLabel help="Country is a hard boundary. A local market also excludes local clips from every other market; timezone is never used as location.">
+        <FieldLabel help="Country is a hard boundary. A place also limits local clips to TV stations near it; timezone is never used as location.">
           Geography
         </FieldLabel>
         {selection.geography == null ? (
           <p className="text-muted-foreground text-xs" data-testid="geography-inherited">
             {installationGeography?.country
-              ? `Following this installation (${installationGeography.country}${installationGeography.market ? ` · ${installationGeography.market}` : ""}).`
+              ? `Following this installation (${installationGeography.country}${installationPlaceLabel ? ` · ${installationPlaceLabel}` : ""}).`
               : "No installation geography is configured; legacy unrestricted matching remains active."}{" "}
             <button
               type="button"
@@ -342,10 +362,8 @@ const FillerCriteria = ({
               onClick={() =>
                 onChange({
                   ...selection,
-                  geography: {
-                    country: installationGeography?.country ?? "US",
-                    market: installationGeography?.market,
-                  },
+                  // The place stays empty, so the channel keeps following the installation's.
+                  geography: { country: installationGeography?.country ?? "US" },
                 })
               }
             >
@@ -377,23 +395,21 @@ const FillerCriteria = ({
                   }
                 />
               </div>
-              <div className="flex min-w-52 flex-1 flex-col gap-1">
-                <Label htmlFor="filler-market" className="text-muted-foreground text-xs">
-                  Local market (optional)
-                </Label>
-                <Input
-                  id="filler-market"
-                  disabled={disabled}
-                  defaultValue={selection.geography.market ?? ""}
-                  key={`market-${selection.geography.market ?? ""}`}
-                  placeholder="New York"
-                  onBlur={(event) =>
+              <div className="min-w-52 flex-1">
+                <LocationPicker
+                  value={{
+                    country: fixedCountry ?? selection.geography.country,
+                    place: selection.geography.place,
+                  }}
+                  restrictCountry={fixedCountry}
+                  locked={disabled}
+                  onChange={(location) =>
                     onChange({
                       ...selection,
                       geography: {
                         ...selection.geography!,
-                        country: fixedCountry ?? selection.geography!.country,
-                        market: event.target.value.trim() || undefined,
+                        country: fixedCountry ?? location.country,
+                        place: location.place || undefined,
                       },
                     })
                   }
@@ -401,7 +417,7 @@ const FillerCriteria = ({
               </div>
             </div>
             <p className="text-muted-foreground text-xs">
-              A blank market means country-wide national filler only.{" "}
+              A blank place follows the installation's city; with no city, only national filler airs.{" "}
               <button
                 type="button"
                 className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
@@ -634,7 +650,7 @@ const FillerCriteria = ({
                       "cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                       // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
                       on
-                        ? "border-foreground bg-static-800 font-semibold text-foreground"
+                        ? "border-foreground bg-static-800 text-foreground font-semibold"
                         : "border-border text-muted-foreground hover:border-input hover:text-foreground",
                     )}
                   >
@@ -646,10 +662,10 @@ const FillerCriteria = ({
         )}
       </div>
 
-      {/* Kinds — checkboxes over the six playable clip kinds. None checked means the default set
-          (commercials + bumpers + station IDs). */}
+      {/* Kinds — checkboxes over the playable clip kinds. A channel that chose none shows the
+          server's default ticked: every kind except political ads and news (#2037). */}
       <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <FieldLabel help="Which clips a break may use. None checked uses the default mix (commercials, bumpers, station IDs).">
+        <FieldLabel help="Which clips a break may use. Political ads and news stay off until you tick them; a nearby station's own news airs with its station IDs.">
           Clip kinds
         </FieldLabel>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
@@ -662,13 +678,18 @@ const FillerCriteria = ({
               <Checkbox
                 id={`filler-kind-${k}`}
                 checked={kinds.includes(k)}
-                disabled={disabled}
-                onChange={() => onChange({ ...selection, kinds: toggle(kinds, k) })}
+                disabled={disabled || kindsUnknown}
+                onChange={() => onChange({ ...selection, kinds: toggleKind(kinds, k, defaultKinds ?? []) })}
               />
               {KIND_LABEL[k]}
             </label>
           ))}
         </div>
+        {kindsUnknown && (
+          <p className="text-muted-foreground text-xs">
+            Clip kinds unlock once this channel's coverage check loads.
+          </p>
+        )}
       </div>
     </div>
   );

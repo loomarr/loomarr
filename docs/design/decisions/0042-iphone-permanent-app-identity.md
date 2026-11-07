@@ -14,7 +14,7 @@ good: changing it later makes a different app that testers must reinstall.
 `media.loomarr.mobile` is the iPhone app's one permanent bundle identifier, displayed as "Loomarr"
 with the `loomarr` URL scheme. As with the TV client ([0023](0023-android-tv-watching-first.md)),
 development, Storybook and simulator builds keep the prototype identity; only an explicit release
-configuration (`LOOMARR_IOS_RELEASE_CHANNEL=testflight` with a validated version and build number)
+configuration (`LOOMARR_APPLE_RELEASE_CHANNEL=testflight` with a validated version and build number)
 selects the permanent one. The Android touch build keeps its prototype identity until it has its own
 release decision.
 

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // Channels and the scheduling caches (§5, §9): the channel row and its lease, plus the
@@ -20,6 +20,8 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	ch := Channel{}
 	ch.ID = id
 	ch.IntentRef = "intent-" + id
+	ch.IntentJSON = `{"description":"intent of ` + id + `"}`
+	ch.RequestedBy = "requester-" + id
 	ch.Name = "Channel " + id
 	ch.Number = number
 	ch.Group = "Loomarr"
@@ -245,7 +247,7 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 }
 
 // testChannelOrigin (#1663, Home's "New channel"): a channel remembers when it was created, which
-// no later save moves, and who asked for it, read through the job that produced it.
+// no later save moves, and who asked for it, read from the channel's own `requested_by`.
 func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
@@ -254,25 +256,17 @@ func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	for _, j := range []Job{
-		{ID: "job-member", Kind: "suggest", Status: "done", CreatedBy: "u-member"},
-		{ID: "job-ghost", Kind: "suggest", Status: "done", CreatedBy: "u-gone"},
-	} {
-		if err := s.CreateJob(ctx, j); err != nil {
-			t.Fatal(err)
-		}
-	}
 	day0 := time.Unix(1_800_000_000, 0).UTC()
 
 	requested := sampleChannel("ch-req", 1, time.Time{})
-	requested.IntentRef = "job-member"
+	requested.IntentRef, requested.RequestedBy = "job-member", "u-member"
 	before := time.Now().Add(-time.Second)
 	mustSaveChannel(t, s, requested) // no CreatedAt: the store stamps it
 	handMade := sampleChannel("ch-hand", 2, time.Time{})
-	handMade.IntentRef, handMade.CreatedAt = "", day0
+	handMade.IntentRef, handMade.RequestedBy, handMade.CreatedAt = "", "", day0
 	mustSaveChannel(t, s, handMade)
 	ghost := sampleChannel("ch-ghost", 3, time.Time{})
-	ghost.IntentRef = "job-ghost"
+	ghost.IntentRef, ghost.RequestedBy = "job-ghost", "u-gone"
 	mustSaveChannel(t, s, ghost)
 
 	got, err := s.GetChannel(ctx, "ch-req")
@@ -658,6 +652,24 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	}
 	if len(none) != 0 {
 		t.Errorf("unknown channel returned %d entries, want 0", len(none))
+	}
+
+	// BY KEY: the latest airing of any unit of a key, scoped to the channel.
+	base := time.Now().Truncate(time.Second)
+	epA, epB := provision.Key("series:tvdb:90071700"), provision.Key("movie:tmdb:90000700")
+	record("ch-bykey", epA, "ep-1", base.Add(-48*time.Hour), base.Add(-48*time.Hour))
+	record("ch-bykey", epA, "ep-2", base.Add(-24*time.Hour), base.Add(-24*time.Hour))
+	record("ch-bykey", epB, "lib-90000700", base.Add(-72*time.Hour), base.Add(-72*time.Hour))
+	record("ch-bykey-other", epB, "lib-90000700", base, base)
+	keyed, kerr := st.LastAiredByKey(ctx, "ch-bykey")
+	if kerr != nil {
+		t.Fatalf("LastAiredByKey: %v", kerr)
+	}
+	if len(keyed) != 2 || !keyed[epA].Equal(base.Add(-24*time.Hour)) || !keyed[epB].Equal(base.Add(-72*time.Hour)) {
+		t.Errorf("LastAiredByKey = %v, want the newest unit per key and no other channel's rows", keyed)
+	}
+	if empty, eerr := st.LastAiredByKey(ctx, "ch-never"); eerr != nil || len(empty) != 0 {
+		t.Errorf("unknown channel = %v, %v, want an empty map", empty, eerr)
 	}
 }
 

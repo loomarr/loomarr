@@ -14,14 +14,14 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
     <div
       role="alert"
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-lg border border-onair-tint-30 bg-onair-tint-8 p-8 text-center",
+        "border-onair-tint-30 bg-onair-tint-8 flex flex-col items-center justify-center gap-3 rounded-lg border p-8 text-center",
         className,
       )}
     >
-      <AlertTriangle className="size-6 text-onair-300" aria-hidden />
+      <AlertTriangle className="text-onair-300 size-6" aria-hidden />
       <div>
-        <p className="font-medium text-onair-300">{p.title ?? "Something went wrong"}</p>
-        {p.detail && <p className="mt-1 max-w-md text-muted-foreground text-sm">{p.detail}</p>}
+        <p className="text-onair-300 font-medium">{p.title ?? "Something went wrong"}</p>
+        {p.detail && <p className="text-muted-foreground mt-1 max-w-md text-sm">{p.detail}</p>}
       </div>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>

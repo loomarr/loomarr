@@ -5,6 +5,7 @@ import {
   Clapperboard,
   House,
   Inbox,
+  Library as LibraryIcon,
   ListChecks,
   LogOut,
   PlayCircle,
@@ -61,6 +62,8 @@ const ADMIN_NAV: NavItem[] = [
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: CalendarClock },
+  // The titles Loomarr found in its media folders (#2151 decision 22, design/library).
+  { to: "/library", label: "Library", icon: LibraryIcon },
   { to: "/requests", label: "Requests", icon: Inbox },
   { to: "/filler", label: "Filler", icon: Clapperboard },
   { to: "/people", label: "People", icon: Users },
@@ -95,7 +98,7 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
   const base = isAdmin ? ADMIN_NAV : MEMBER_NAV;
   if (watchChannelId === undefined) return base;
   const watch: WatchNavItem = {
-    to: "/channels/$id/watch",
+    to: "/watch/$id",
     channelId: watchChannelId,
     label: "Watch",
     icon: PlayCircle,
@@ -121,29 +124,30 @@ const AppShell = ({
   // the bar as a normal last row, not `position: fixed`, so it reserves real layout space and the
   // Guide's own docked strip (#1795) naturally ends up above it rather than needing a manual inset.
   const phoneWidth = usePhoneWidth();
-  // Decision X2 (critique row 5): any channel's Watch tab highlights Watch; any of its management
+  // Decision X2 (critique row 5): any channel's `/watch/$id` player highlights Watch; any of its management
   // tabs (Info/Programming/Filler/Danger) highlight Guide instead, so one channel never lights two
   // rail items. `channelNavHighlight` is the one place that rule lives — shared with PhoneBottomBar.
   const { pathname } = useLocation();
   const highlight = channelNavHighlight(pathname);
+  const accountInitials = userName.slice(0, 2).toUpperCase();
   return (
     // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
     // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
     // unbounded height and never becomes a scroll viewport — the page scrolls instead. That is
     // invisible on short pages and breaks anything that needs a real viewport: the Guide's
     // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground md:grid md:grid-cols-[auto_1fr]">
+    <div className="bg-background text-foreground flex h-screen flex-col overflow-hidden md:grid md:grid-cols-[auto_1fr]">
       {/* WCAG 2.4.1: the rail puts nine-plus stops before any page content, so the first Tab stop
           jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
       <a
         href={`#${MAIN_ID}`}
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-signal focus:px-3 focus:py-2 focus:font-medium focus:text-sm focus:text-static-950"
+        className="focus:bg-signal focus:text-static-950 sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-3 focus:py-2 focus:text-sm focus:font-medium"
       >
         Skip to content
       </a>
       {/* `hidden md:flex`, not a width that collapses to icons: below `md` the rail is replaced
           outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
-      <aside className="hidden flex-col gap-1 border-border border-r bg-card px-3 py-4 md:flex md:w-56">
+      <aside className="border-border bg-card hidden flex-col gap-1 border-r px-3 py-4 md:flex md:w-56">
         <nav aria-label="Primary" className="flex w-56 flex-col gap-1">
           <div className="mb-4 px-2">
             <BrandLockup variant="compact" />
@@ -152,24 +156,23 @@ const AppShell = ({
           <button
             type="button"
             onClick={onOpenCommand}
-            aria-label="Open global search"
             aria-keyshortcuts={commandShortcutAria()}
-            className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent"
+            className="border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
           >
             <Search className="size-4" aria-hidden />
             <span>Search…</span>
-            <kbd className="ml-auto font-mono text-static-400 text-xs">{commandShortcutLabel()}</kbd>
+            <kbd className="text-static-400 ml-auto font-mono text-xs">{commandShortcutLabel()}</kbd>
           </button>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
             const { label, icon: Icon } = item;
             // Watch and Guide override TanStack's own path-match active state (`data-status`):
-            // Watch's href always points at ONE channel, but any channel's watch route must light
+            // Watch's href always points at ONE channel, but any channel's /watch/$id route must light
             // it, and Guide must stay lit while the URL has already moved on to a management tab.
             // Every other item keeps the plain automatic match, and so does Guide off a channel route:
             // forcing it to `false` there left /guide itself with no current item.
             const forcedActive =
-              item.to === "/channels/$id/watch"
+              item.to === "/watch/$id"
                 ? highlight === "watch"
                 : item.to === "/guide" && highlight !== undefined
                   ? highlight === "guide"
@@ -177,11 +180,11 @@ const AppShell = ({
             // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground
             // text at 500 and a 2px foreground edge. Amber is focus only.
             const linkClassName = cn(
-              "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground",
+              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
               forcedActive === undefined
-                ? "data-[status=active]:bg-static-800 data-[status=active]:font-medium data-[status=active]:text-foreground data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
+                ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:font-medium data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
                 : forcedActive &&
-                    "bg-static-800 font-medium text-foreground shadow-[inset_2px_0_0_var(--color-static-100)]",
+                    "bg-static-800 text-foreground font-medium shadow-[inset_2px_0_0_var(--color-static-100)]",
             );
             const content = (
               <>
@@ -190,20 +193,20 @@ const AppShell = ({
                 {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
                     ignore it. Watch has no badge key (its `to` isn't a stable `NavTo` literal). */}
-                {item.to !== "/channels/$id/watch" && (badges?.[item.to] ?? 0) > 0 && (
+                {item.to !== "/watch/$id" && (badges?.[item.to] ?? 0) > 0 && (
                   <span
                     data-testid={`nav-badge-${item.to}`}
-                    className="ml-auto rounded-full bg-suggest-tint-15 px-[7px] py-px font-mono text-2xs text-suggest-300"
+                    className="bg-suggest-tint-15 text-2xs text-suggest-300 ml-auto rounded-full px-[7px] py-px font-mono"
                   >
                     {badges?.[item.to]}
                   </span>
                 )}
               </>
             );
-            return item.to === "/channels/$id/watch" ? (
+            return item.to === "/watch/$id" ? (
               <Link
                 key={`watch-${item.channelId}`}
-                to="/channels/$id/watch"
+                to="/watch/$id"
                 params={{ id: item.channelId }}
                 className={linkClassName}
               >
@@ -225,10 +228,10 @@ const AppShell = ({
                   <Link
                     to="/settings/system/about"
                     aria-label={`Loomarr ${serverVersion} — About`}
-                    className="mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-static-400 text-xs transition-colors hover:bg-accent hover:text-foreground"
+                    className="text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors"
                   />
                 ) : (
-                  <span className="mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-static-400 text-xs" />
+                  <span className="text-static-400 mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-xs" />
                 )
               }
             >
@@ -244,20 +247,23 @@ const AppShell = ({
         )}
 
         <div
-          className={`${serverVersion ? "mt-1" : "mt-auto"} flex flex-row gap-2 border-border border-t px-2 pt-3 text-sm`}
+          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border flex flex-row gap-2 border-t px-2 pt-3 text-sm`}
         >
           {/* The footer identity is the way into Your account (§11) — where the mock puts
               it, and where someone looks for "my settings" rather than the app's. Not a
               NAV item: it isn't a section of the app, it's you. */}
           <Link
             to="/account"
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-accent"
-            aria-label="Your account"
+            className="hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors"
+            // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
+            aria-label={`Your account: ${accountInitials} ${userName}`}
           >
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-static-800 font-mono text-xs">
-              {userName.slice(0, 2).toUpperCase()}
+            <div className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full font-mono text-xs">
+              {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
+                  between, so "KB" + "Kira" would otherwise read as one word against the label. */}
+              {accountInitials}{" "}
             </div>
-            <span className="truncate text-muted-foreground">{userName}</span>
+            <span className="text-muted-foreground truncate">{userName}</span>
           </Link>
           {onLogout && (
             <Tooltip>
@@ -267,7 +273,7 @@ const AppShell = ({
                     type="button"
                     onClick={onLogout}
                     aria-label="Sign out"
-                    className="shrink-0 cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
+                    className="text-static-400 hover:bg-accent hover:text-foreground shrink-0 cursor-pointer rounded-md p-1.5 transition-colors"
                   />
                 }
               >

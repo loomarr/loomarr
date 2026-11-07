@@ -2,8 +2,9 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
-import { pluralize } from "@loomarr/core/format";
+import { goDurationMinutes, pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-se
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
+import { usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,19 +39,6 @@ type DurationChoiceFieldProps = {
   defaultValue: string | undefined;
   disabled: boolean;
   onChange: (next: string | undefined) => void;
-};
-
-// Go writes durations with every unit ("4h0m0s", "1h30m0s"); the field also accepts the short
-// forms it sends itself ("2m", "4h"). Returns total minutes.
-const durationMinutes = (value: string | undefined): number | undefined => {
-  const text = value?.trim() ?? "";
-  if (!/^(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h))+$/.test(text)) return undefined;
-  const perMinute: Record<string, number> = { ms: 1 / 60_000, s: 1 / 60, m: 1, h: 60 };
-  let minutes = 0;
-  for (const [, amount, unit] of text.matchAll(/([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)/g)) {
-    minutes += Number(amount) * (perMinute[unit ?? "m"] ?? 1);
-  }
-  return minutes;
 };
 
 type DurationChoice = {
@@ -87,7 +76,7 @@ const COMMERCIAL_SPACING: DurationChoice = {
   min: 0,
   step: 0.5,
   fallbackDefault: 4,
-  help: "Minimum time before a commercial repeats on this channel. Loomarr first uses commercials from a nearby year, and repeats one sooner only when a break would otherwise run short.",
+  help: "Minimum time before a commercial you saw on any channel airs again here. Loomarr first uses commercials from a nearby year, and repeats one sooner only when a break would otherwise run short.",
 };
 
 // One field for a channel duration that follows a default or overrides it. Break length uses it
@@ -102,7 +91,7 @@ const DurationChoiceField = ({
 }: DurationChoiceFieldProps & { choice: DurationChoice }) => {
   const { unit, min } = choice;
   const inUnit = (duration: string | undefined) => {
-    const minutes = durationMinutes(duration);
+    const minutes = goDurationMinutes(duration);
     return minutes === undefined ? undefined : minutes / unit.minutes;
   };
   const mode = value === undefined ? "default" : "custom";
@@ -110,7 +99,7 @@ const DurationChoiceField = ({
   const [customValue, setCustomValue] = useState(String(inUnit(value) ?? defaultAmount));
 
   useEffect(() => {
-    const minutes = durationMinutes(value);
+    const minutes = goDurationMinutes(value);
     if (minutes !== undefined) setCustomValue(String(minutes / unit.minutes));
   }, [value, unit.minutes]);
 
@@ -187,12 +176,15 @@ const DurationChoiceField = ({
 
 // The one-line summary of what this channel's pool is limited to, from the coverage the backend
 // computed: its location boundary and how many commercials fit. Undefined until coverage loads.
-const poolSummary = (coverage: CoverageDTO | undefined): string | undefined => {
+const poolSummary = (
+  coverage: CoverageDTO | undefined,
+  placeLabel: string | undefined,
+): string | undefined => {
   if (!coverage) return undefined;
-  const { country, market } = coverage.geography;
+  const { country } = coverage.geography;
   const fits = `${coverage.total} ${coverage.total === 1 ? "fits" : "fit"} this channel`;
   if (!country) return fits;
-  return `${market ? `${market}, ${country}` : country} commercials only · ${fits}`;
+  return `${placeLabel ?? country} commercials only · ${fits}`;
 };
 
 // The persisted pointer has three meaningful states. This field owns that encoding so the
@@ -327,14 +319,14 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
   // answers 501 and three retries is console noise for a state that simply renders nothing.
   const settings = settingsApi.useSettingsList({ query: { retry: false } });
   const settingEntries = unwrap(settings.data, (b) => b.settings) ?? [];
-  const defaultBreaksEntry = settingEntries.find((e) => e.key === "filler.breaks_per_hour");
+  const defaultBreaksEntry = settingEntries.find((e) => e.key === SettingKey.FillerBreaksPerHour);
   const defaultBreaksPerHour = defaultBreaksEntry ? Number(defaultBreaksEntry.value) : undefined;
-  const defaultBreakDuration = settingEntries.find((e) => e.key === "filler.break_duration")?.value;
+  const defaultBreakDuration = settingEntries.find((e) => e.key === SettingKey.FillerBreakDuration)?.value;
   // A whole number of seconds; the field reads durations, so it gets the seconds unit.
-  const defaultSpacingSeconds = settingEntries.find((e) => e.key === "filler.cooldown_seconds")?.value;
+  const defaultSpacingSeconds = settingEntries.find((e) => e.key === SettingKey.FillerCooldownSeconds)?.value;
   const defaultCommercialSpacing = defaultSpacingSeconds ? `${defaultSpacingSeconds}s` : undefined;
-  const homeCountry = settingEntries.find((e) => e.key === "filler.home_country")?.value;
-  const homeMarket = settingEntries.find((e) => e.key === "filler.home_market")?.value;
+  const homeCountry = settingEntries.find((e) => e.key === SettingKey.FillerHomeCountry)?.value;
+  const homePlace = settingEntries.find((e) => e.key === SettingKey.FillerHomePlace)?.value;
 
   // Coverage for the channel's SAVED selection (V29b). A filler-less install answers 501;
   // retrying that three times is noise for a diagnostic disclosure that simply renders nothing.
@@ -342,6 +334,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
     query: { retry: false },
   });
   const coverage = unwrap(coverageQuery.data);
+  const poolPlaceLabel = usePlaceLabel(coverage?.geography.place);
 
   const entries = preview?.entries ?? [];
 
@@ -354,13 +347,13 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         {from === "filler" ? (
           <Link
             to="/filler"
-            className="mb-3 inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
           >
             <ArrowLeft className="size-3.5" aria-hidden />
             Filler overview
           </Link>
         ) : null}
-        <h2 className="font-semibold text-lg">Filler</h2>
+        <h2 className="text-lg font-semibold">Filler</h2>
         <p className="text-muted-foreground text-sm">
           This channel picks its commercials and clips automatically. Only change these settings if it needs
           something different.
@@ -371,11 +364,11 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           works before meeting the controls that can make its pool narrower. This is intentionally
           not collapsed: coverage is the primary answer, not advanced diagnosis. The headings and
           sentences on this page are the web mock's. */}
-      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+      <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
         <div>
-          <h3 className="font-semibold text-base">What this channel can play</h3>
+          <h3 className="text-base font-semibold">What this channel can play</h3>
           <p className="text-muted-foreground text-sm">
-            {poolSummary(coverage) ?? "Clips that fit this channel's settings right now."}
+            {poolSummary(coverage, poolPlaceLabel) ?? "Clips that fit this channel's settings right now."}
           </p>
         </div>
         {coverageQuery.isLoading ? (
@@ -393,9 +386,9 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         )}
       </section>
 
-      <section className="flex flex-col gap-5 rounded-lg border border-border bg-card p-5">
+      <section className="border-border bg-card flex flex-col gap-5 rounded-lg border p-5">
         <div>
-          <h3 className="font-semibold text-base">Choose what fits</h3>
+          <h3 className="text-base font-semibold">Choose what fits</h3>
           <p className="text-muted-foreground text-sm">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
             <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
@@ -436,7 +429,8 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           disabled={isApplying}
           scopeEra={eraOf(policy?.scope?.dates)}
           programmingDates={policy?.scope?.dates}
-          installationGeography={{ country: homeCountry, market: homeMarket }}
+          installationGeography={{ country: homeCountry, place: homePlace }}
+          defaultKinds={coverage?.defaultKinds}
         />
       </section>
 
@@ -474,8 +468,8 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
       </CollapsibleSection>
 
       {/* The live break — the ground-truth preview of the current draft. */}
-      <section className="flex flex-col gap-2 rounded-lg border border-border bg-card p-5">
-        <h3 className="font-semibold text-base">Preview break</h3>
+      <section className="border-border bg-card flex flex-col gap-2 rounded-lg border p-5">
+        <h3 className="text-base font-semibold">Preview break</h3>
         {previewError ? (
           <p className="text-onair-300 text-sm">
             Couldn't assemble a preview for this selection. Adjust the criteria and try again.
@@ -498,7 +492,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         ) : (
           <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
             <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
-            <p className="mt-2 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-2 text-sm">
               {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
             </p>
           </div>
@@ -508,14 +502,14 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
       {/* Apply / Discard — only offered when the draft differs from what's saved. Apply is
           the seamless commit; Discard throws the draft away. */}
       {isDirty && (
-        <div className="sticky bottom-0 flex items-center gap-2 rounded-lg border border-border bg-background/95 p-3 shadow-lg backdrop-blur">
+        <div className="border-border bg-background/95 sticky bottom-0 flex items-center gap-2 rounded-lg border p-3 shadow-lg backdrop-blur">
           <Button variant="suggest" size="sm" disabled={isApplying} onClick={apply}>
             {isApplying ? "Applying…" : "Apply filler"}
           </Button>
           <Button variant="ghost" size="sm" disabled={isApplying} onClick={discard}>
             Discard
           </Button>
-          <span className="ml-auto text-muted-foreground text-xs">Unsaved changes</span>
+          <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
         </div>
       )}
 
@@ -527,7 +521,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
               <SheetDescription>Preview from this assembled break</SheetDescription>
             </SheetHeader>
             <div className="p-6">
-              <div className="overflow-hidden rounded-lg border border-border">
+              <div className="border-border overflow-hidden rounded-lg border">
                 <ClipPreview clip={{ hash: previewingClip.hash, name: previewingClip.name }} />
               </div>
             </div>

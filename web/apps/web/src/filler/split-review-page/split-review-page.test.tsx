@@ -16,10 +16,12 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
-import { SplitReviewPage, validateSplitReviewSearch } from "./split-review-page";
+import { render } from "@/test/render";
+import { validateSplitReviewSearch } from "../split-review-search";
+import { SplitReviewPage } from "./split-review-page";
 
 // A MINIMAL router, not the app tree: the page navigates on confirm/back, and TanStack
 // throws navigating to a route the tree doesn't have — so the tree is exactly the two
@@ -41,7 +43,8 @@ const PROPOSAL = {
   id: "sp-1",
   clipHash: "comp-hash",
   createdAt: "2026-07-25T20:00:00Z",
-  languagePreference: "en",
+  checkedLanguages: ["en"],
+  currentLanguages: ["en"],
   languageExclusions: [
     {
       startMs: 61000,
@@ -76,34 +79,13 @@ const PROPOSAL = {
   ],
 };
 
-const languageSetting = (value: string) => ({
-  key: "filler.language",
-  label: "Commercial language",
-  group: "filler",
-  kind: "enum",
-  owner: "installation_location",
-  presentation: "language",
-  value,
-  provenance: "default" as const,
-  apply: "live" as const,
-  advanced: false,
-  secret: false,
-  set: true,
-  doc: "Commercial language",
-  enum: ["en", "es", "pl"],
-  enumOptions: [
-    { value: "en", label: "en" },
-    { value: "es", label: "es" },
-    { value: "pl", label: "pl" },
-  ],
-});
-
 // ⚠ The stub this replaced dispatched by URL SUBSTRING, in order, with a catch-all `{}` at the
 // end — and the ordering was load-bearing: `/v1/filler/splits/sp-1/confirm` had to be tested
 // before `/v1/filler/splits/`, which had to precede `/v1/filler`. A prefix that also matches its
 // own sibling is a bug waiting for someone to reorder the list. Route-bound handlers have no
 // order at all.
-const stubSplit = (me: MeBody = ADMIN, language = "en") => {
+// `current` is what intake admits now, the channels' commercial languages (#2030 decision 13).
+const stubSplit = (me: MeBody = ADMIN, current: string[] = ["en"]) => {
   const confirms: unknown[] = [];
   const rewinds: unknown[] = [];
   const composite = {
@@ -121,8 +103,8 @@ const stubSplit = (me: MeBody = ADMIN, language = "en") => {
   };
   server.use(
     getMeMockHandler({ ...me }),
-    getSettingsListMockHandler({ settings: [languageSetting(language)], features: {} }),
-    getGetFillerSplitMockHandler(() => PROPOSAL),
+    getSettingsListMockHandler({ settings: [], features: {} }),
+    getGetFillerSplitMockHandler(() => ({ ...PROPOSAL, currentLanguages: current })),
     getListFillerMockHandler(({ request }) => {
       const params = new URL(request.url).searchParams;
       // Match the real catalog boundary: composites are non-airable and invisible unless the
@@ -184,17 +166,18 @@ describe("SplitReviewPage", () => {
     stubSplit();
     renderPage();
     expect(await screen.findByRole("heading", { name: /review clips/i })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /open clip 1: first ad/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /open clip .*#1.*first ad/i })).toBeInTheDocument();
     expect(screen.getByText("Classic Toy Commercial Compilation 1989")).toBeInTheDocument();
     expect(screen.queryByText("comp-hash")).not.toBeInTheDocument();
     expect(screen.getByText(/left out 1 clip spoken in another language/i)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/show skipped clip/i));
     expect(screen.getByText(/polish supermarket advert/i)).toBeInTheDocument();
     expect(screen.getByText(/polish.*01:01.*01:31/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /recheck/i })).not.toBeInTheDocument();
   });
 
   it("offers to recheck a persisted split when the household language changed", async () => {
-    const { rewinds } = stubSplit(ADMIN, "es");
+    const { rewinds } = stubSplit(ADMIN, ["es"]);
     renderPage();
 
     expect(await screen.findByText(/commercial language is now spanish/i)).toBeInTheDocument();
@@ -204,8 +187,18 @@ describe("SplitReviewPage", () => {
     expect(rewinds).toEqual([{ hash: "comp-hash", from: "split" }]);
   });
 
+  // A channel in a new language widens what intake admits (#2030 decision 13), with no settings change.
+  it("offers to recheck when a channel adds a language", async () => {
+    stubSplit(ADMIN, ["en", "es"]);
+    renderPage();
+
+    expect(await screen.findByText(/commercial languages are now english and spanish/i)).toBeInTheDocument();
+    expect(screen.getByText(/checked for english\. recheck it before you confirm/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /recheck with english and spanish/i })).toBeInTheDocument();
+  });
+
   it("uses plain wording when the household turns the language filter off", async () => {
-    stubSplit(ADMIN, "");
+    stubSplit(ADMIN, []);
     renderPage();
 
     expect(await screen.findByText(/commercials can now use any language/i)).toBeInTheDocument();
@@ -215,7 +208,7 @@ describe("SplitReviewPage", () => {
   it("confirms the edited draft as the POST body and returns to the catalog", async () => {
     const { confirms } = stubSplit();
     const router = renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: /open clip 2: second ad/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /open clip .*#2.*second ad/i }));
     const second = await screen.findByRole("dialog", { name: /second ad/i });
     // Answer the open era question, then commit.
     fireEvent.click(within(second).getByRole("button", { name: /use 1985/i }));
@@ -234,7 +227,7 @@ describe("SplitReviewPage", () => {
   it("Back leaves without calling confirm", async () => {
     const { confirms } = stubSplit();
     renderPage();
-    await screen.findByRole("button", { name: /open clip 1: first ad/i });
+    await screen.findByRole("button", { name: /open clip .*#1.*first ad/i });
     fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
     await screen.findByText("the catalog");
     expect(confirms).toHaveLength(0);
@@ -265,11 +258,5 @@ describe("SplitReviewPage", () => {
     expect(router.state.location.pathname).toBe("/filler/library");
   });
 
-  it("keeps only the two known origins", () => {
-    expect(validateSplitReviewSearch({ from: "incoming" })).toEqual({ from: "incoming" });
-    expect(validateSplitReviewSearch({ from: "library" })).toEqual({ from: "library" });
-    expect(validateSplitReviewSearch({ from: "/channels" })).toEqual({});
-    expect(validateSplitReviewSearch({})).toEqual({});
-  });
   // §19's member case lives at the route now (AdminOnly, #1977): test/app-router.test.tsx.
 });

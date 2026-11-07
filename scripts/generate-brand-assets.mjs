@@ -87,6 +87,55 @@ const renderLockup = ({ output, width, height, barWidth, barHeight, left, top, p
   outputs.push(output);
 };
 
+// The TV banner's lockup at 1280x720. The Apple TV home-screen icon and Top Shelf images centre the
+// same lockup on the canvas sizes tvOS requires; `scale` renders an @2x image.
+const tvBannerLockup = {
+  width: 1280,
+  height: 720,
+  barWidth: 40,
+  barHeight: 53,
+  left: 104,
+  top: 332,
+  pointSize: 112,
+  textX: 452,
+  baseline: 408,
+};
+
+const renderCenteredTvLockup = ({ output, width, height, scale = 1 }) => {
+  const dx = (width / scale - tvBannerLockup.width) / 2;
+  const dy = (height / scale - tvBannerLockup.height) / 2;
+  renderLockup({
+    output,
+    width,
+    height,
+    barWidth: tvBannerLockup.barWidth * scale,
+    barHeight: tvBannerLockup.barHeight * scale,
+    left: (tvBannerLockup.left + dx) * scale,
+    top: (tvBannerLockup.top + dy) * scale,
+    pointSize: tvBannerLockup.pointSize * scale,
+    textX: (tvBannerLockup.textX + dx) * scale,
+    baseline: (tvBannerLockup.baseline + dy) * scale,
+  });
+};
+
+// The small home-screen icons are the 1280x768 icon scaled down: 400x240 and 800x480 are the same
+// 5:3 canvas, and the lockup's bars would otherwise land on fractional pixels.
+const renderResized = ({ input, output, width, height }) => {
+  execFileSync("magick", [
+    input,
+    "-resize",
+    `${width}x${height}!`,
+    "-alpha",
+    "off",
+    "-type",
+    "TrueColor",
+    "-depth",
+    "8",
+    output,
+  ]);
+  outputs.push(output);
+};
+
 const favicon = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Loomarr">
   <title>Loomarr</title>
   <defs><clipPath id="card"><rect x="2" y="2" width="28" height="28" rx="6.5" /></clipPath></defs>
@@ -129,6 +178,36 @@ renderLockup({
   pointSize: 112,
   textX: 452,
   baseline: 408,
+});
+// @react-native-tvos/config-tv's appleTVImages: the brand assets an Apple TV build needs for its
+// home-screen icon and Top Shelf, at the exact sizes App Store Connect accepts.
+const appleTvAssets = join(repoRoot, "web/apps/tv/assets/apple-tv");
+renderCenteredTvLockup({ output: join(appleTvAssets, "icon-1280x768.png"), width: 1280, height: 768 });
+renderResized({
+  input: join(appleTvAssets, "icon-1280x768.png"),
+  output: join(appleTvAssets, "icon-400x240.png"),
+  width: 400,
+  height: 240,
+});
+renderResized({
+  input: join(appleTvAssets, "icon-1280x768.png"),
+  output: join(appleTvAssets, "icon-800x480.png"),
+  width: 800,
+  height: 480,
+});
+renderCenteredTvLockup({ output: join(appleTvAssets, "top-shelf-1920x720.png"), width: 1920, height: 720 });
+renderCenteredTvLockup({
+  output: join(appleTvAssets, "top-shelf-3840x1440.png"),
+  width: 3840,
+  height: 1440,
+  scale: 2,
+});
+renderCenteredTvLockup({ output: join(appleTvAssets, "top-shelf-wide-2320x720.png"), width: 2320, height: 720 });
+renderCenteredTvLockup({
+  output: join(appleTvAssets, "top-shelf-wide-4640x1440.png"),
+  width: 4640,
+  height: 1440,
+  scale: 2,
 });
 renderLockup({
   output: join(repoRoot, "store-listing/android-tv/tv-banner-1280x720.png"),

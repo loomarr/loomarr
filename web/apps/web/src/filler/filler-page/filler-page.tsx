@@ -2,6 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
@@ -11,13 +12,13 @@ import { PoolHealth } from "@/components/loomarr/filler/pool-health";
 import { WatchLine } from "@/components/loomarr/filler/watch-line";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { FillerCatalog } from "../filler-catalog";
 import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
+import { FillerQuality } from "../filler-quality";
 import type { FillerSearch } from "../filler-search";
 import { FillerSettings, FillerSettingsIndex } from "../filler-settings";
 import { Incoming } from "../incoming";
@@ -128,7 +129,11 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
             { id: "manage", label: "Manage", to: "/filler/manage" },
           ]}
           activeId={
-            tab === "taxonomy" || tab === "settings" || tab === "sources" || tab === "incoming"
+            tab === "taxonomy" ||
+            tab === "settings" ||
+            tab === "sources" ||
+            tab === "incoming" ||
+            tab === "quality"
               ? "manage"
               : tab
           }
@@ -136,10 +141,10 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
 
         {/* Manage's children say where they return to, as the Settings index already did: the lit
             Manage tab scrolls away with the page on a phone (#1817, decided on #1908). */}
-        {tab === "incoming" || tab === "sources" || tab === "taxonomy" ? (
+        {tab === "incoming" || tab === "sources" || tab === "taxonomy" || tab === "quality" ? (
           <Link
             to="/filler/manage"
-            className="inline-flex items-center gap-1.5 self-start text-muted-foreground text-sm hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
           >
             <ArrowLeft className="size-3.5" aria-hidden />
             Manage
@@ -149,10 +154,17 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
 
         {watch?.autoFetch?.stoppedBy === "catalog" && tab === "library" ? (
-          <Card className="flex flex-wrap items-center gap-3 border-caution/40 bg-caution/5 p-4">
+          <Card
+            alignItems="center"
+            className="border-caution/40! bg-caution/5!"
+            flexDirection="row"
+            flexWrap="wrap"
+            gap={12}
+            padding={16}
+          >
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm">Automatic fetching is paused</p>
-              <p className="mt-0.5 text-muted-foreground text-sm">
+              <p className="text-sm font-medium">Automatic fetching is paused</p>
+              <p className="text-muted-foreground mt-0.5 text-sm">
                 {watch.autoFetch.catalogClips.toLocaleString()} of{" "}
                 {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use. You can still
                 add clips yourself. Remove clips you no longer want or raise this limit to restart automatic
@@ -177,6 +189,8 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
           <Incoming />
         ) : tab === "manage" ? (
           <FillerManage />
+        ) : tab === "quality" && isAdmin ? (
+          <FillerQuality />
         ) : tab === "sources" ? (
           <SourcesTab
             selectedSourceID={sourceID}

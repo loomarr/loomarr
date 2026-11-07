@@ -69,7 +69,7 @@ describe("ChannelPolicyFields", () => {
 
     await userEvent.type(screen.getByLabelText("Movie release new range from"), "2005");
     await userEvent.type(screen.getByLabelText("Movie release new range to"), "2009");
-    await userEvent.click(screen.getByRole("button", { name: "Add Movie release range" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add range for Movie release" }));
 
     expect(onChange).toHaveBeenLastCalledWith({
       scope: {
@@ -220,7 +220,7 @@ describe("ChannelPolicyFields", () => {
     await userEvent.click(screen.getByRole("button", { name: "Use separate date windows" }));
     await userEvent.type(screen.getByLabelText("Movie release new range from"), "2005");
     await userEvent.type(screen.getByLabelText("Movie release new range to"), "2009");
-    await userEvent.click(screen.getByRole("button", { name: "Add Movie release range" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add range for Movie release" }));
     expect(onChange).toHaveBeenLastCalledWith({
       scope: {
         dates: { movieRelease: [era, { from: 2005, to: 2009 }], seriesPremiere: [era], seriesAiring: [era] },

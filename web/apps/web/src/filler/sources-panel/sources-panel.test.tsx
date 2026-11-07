@@ -7,6 +7,7 @@ import {
   getFetchFillerSourceMockHandler,
   getFillerReadinessMockHandler,
   getGetFillerAcquisitionMockHandler,
+  getListFillerProvidersMockHandler,
   getListFillerSourcesMockHandler,
   getLocationsSearchMockHandler,
   getMeMockHandler,
@@ -15,6 +16,7 @@ import {
   getResolveFillerSourceMockHandler,
   getSetFillerProviderEnabledMockHandler,
   getSetFillerSourceEnabledMockHandler,
+  getSuggestFillerSourcesMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -22,6 +24,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { type ReactNode, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
+import { fillerProviders } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { SourcesPanel } from "./sources-panel";
@@ -121,7 +124,7 @@ const stubSources = () => {
           id: "6167865",
           label: "Toronto, Canada",
           country: "CA",
-          market: "Toronto",
+          place: "6167865",
           region: "Ontario",
         },
       ],
@@ -193,7 +196,11 @@ const stubSources = () => {
         title: "Classic TV",
         alreadyAdded: true,
         previewItems: [
-          { title: "First station break", url: "https://archive.org/details/station_break_one" },
+          {
+            title: "First station break",
+            url: "https://archive.org/details/station_break_one",
+            embedUrl: "https://archive.org/embed/station_break_one?autoplay=1",
+          },
           { title: "Second station break", url: "https://archive.org/details/station_break_two" },
         ],
       };
@@ -268,7 +275,10 @@ const PanelHarness = ({
 const renderPanel = (sources: FillerSourceDTO[] = [source({ kind: "folder" })], initialSourceID?: string) =>
   render(<PanelHarness sources={sources} initialSourceID={initialSourceID} />, { wrapper: makeWrapper() });
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  sessionStorage.clear();
+  server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+});
 
 describe("SourcesPanel", () => {
   it("shows one calm server-owned storage summary", async () => {
@@ -394,13 +404,13 @@ describe("SourcesPanel", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Classic TV Commercials" })).toBeInTheDocument();
-    expect(screen.getByText("Archive.org collection")).toBeInTheDocument();
+    expect(await screen.findByText("Archive.org collection")).toBeInTheDocument();
   });
 
   it("returns focus to the selected row when the source workspace closes", async () => {
     stubSources();
     renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
-    const trigger = screen.getByRole("button", { name: "Manage Classic TV" });
+    const trigger = screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ });
 
     await userEvent.click(trigger);
     await screen.findByRole("heading", { name: "Classic TV" });
@@ -420,6 +430,8 @@ describe("SourcesPanel", () => {
 
     // The add form is admin-only, so it appears only once `/v1/auth/me` has resolved.
     const local = await screen.findByRole("region", { name: "Your files" });
+    await userEvent.click(await within(local).findByRole("combobox", { name: "Kind of source to add" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Media library" }));
     const library = await within(local).findByRole("textbox", { name: "Library name" });
     await userEvent.type(library, "Commercials");
     await userEvent.click(within(local).getByRole("button", { name: /add source/i }));
@@ -429,16 +441,39 @@ describe("SourcesPanel", () => {
     });
   });
 
+  it("offers a source finder only for a provider the registry says can be discovered", async () => {
+    stubSources();
+    server.use(
+      getListFillerProvidersMockHandler({
+        providers: fillerProviders.map((provider) =>
+          provider.id === "youtube" ? { ...provider, discoverable: false } : provider,
+        ),
+      }),
+    );
+    renderPanel([
+      source({ kind: "archive", id: "provider:archive", target: "Archive.org", group: true }),
+      source({ kind: "youtube", id: "provider:youtube", target: "YouTube", group: true }),
+    ]);
+
+    expect(await screen.findByRole("combobox", { name: "Find an Archive.org collection" })).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "Find a YouTube channel or playlist" })).toBeNull();
+  });
+
   it("adds remote targets inside their provider without a kind selector", async () => {
     const { adds } = stubSources();
     server.use(
-      getResolveFillerSourceMockHandler({
-        provider: "youtube",
-        targetType: "channel",
-        canonicalId: "UC-retroads",
-        canonicalUrl: "https://www.youtube.com/channel/UC-retroads/videos",
-        title: "Retro Ads",
-        alreadyAdded: false,
+      getSuggestFillerSourcesMockHandler({
+        exact: true,
+        suggestions: [
+          {
+            provider: "youtube",
+            targetType: "channel",
+            canonicalId: "UC-retroads",
+            canonicalUrl: "https://www.youtube.com/channel/UC-retroads/videos",
+            title: "Retro Ads",
+            alreadyAdded: false,
+          },
+        ],
       }),
     );
     renderPanel([
@@ -454,7 +489,11 @@ describe("SourcesPanel", () => {
     ]);
 
     const input = await screen.findByRole("combobox", { name: "Find a YouTube channel or playlist" });
-    expect(screen.queryByRole("combobox", { name: /kind of source/i })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "YouTube" })).queryByRole("combobox", {
+        name: /kind of source/i,
+      }),
+    ).not.toBeInTheDocument();
     await userEvent.type(input, "https://www.youtube.com/@retroads/videos");
     await userEvent.click(await screen.findByRole("button", { name: "Add source" }));
 
@@ -479,7 +518,7 @@ describe("SourcesPanel", () => {
     );
     renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
     const save = screen.getByRole("button", { name: "Save automatic downloads" });
     await userEvent.click(save);
@@ -540,17 +579,17 @@ describe("SourcesPanel", () => {
     const { unmount } = renderPanel([
       source({ kind: "archive", id: "a", target: "classic_tv", searchable: true }),
     ]);
-    await userEvent.click(screen.getByRole("button", { name: "Manage classic_tv" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage classic_tv/ }));
     expect(await screen.findByRole("dialog", { name: "classic_tv" })).toHaveTextContent(
       "Find a specific clip",
     );
     expect(screen.queryByRole("textbox", { name: "Search this source" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     expect(screen.getByRole("textbox", { name: "Search this source" })).toBeInTheDocument();
     unmount();
 
     renderPanel([source({ kind: "youtube", id: "y", target: "vintage_ads", searchable: false })]);
-    await userEvent.click(screen.getByRole("button", { name: "Manage vintage_ads" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage vintage_ads/ }));
     expect(await screen.findByRole("dialog", { name: "vintage_ads" })).not.toHaveTextContent(
       "Find a specific clip",
     );
@@ -580,12 +619,12 @@ describe("SourcesPanel", () => {
     expect(screen.queryByRole("button", { name: "Advanced" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Browse clips" })).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     const workspace = await screen.findByRole("dialog", { name: "Classic TV" });
     expect(workspace).toHaveTextContent("Look for new clips");
     expect(workspace).toHaveTextContent("Find a specific clip");
     expect(screen.queryByRole("textbox", { name: "Search this source" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     expect(screen.getByRole("textbox", { name: "Search this source" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Location" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
@@ -605,7 +644,7 @@ describe("SourcesPanel", () => {
       }),
     ]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage TV Ads" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage TV Ads/ }));
     const workspace = await screen.findByRole("dialog", { name: "TV Ads" });
     expect(workspace).toHaveTextContent("0 ready");
     expect(within(workspace).getByRole("link", { name: "22 being checked" })).toHaveAttribute(
@@ -627,7 +666,7 @@ describe("SourcesPanel", () => {
       }),
     ]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
 
     const findRow = screen.getByText("Find a specific clip");
     expect(findRow.closest("button")).not.toBeNull();
@@ -652,7 +691,7 @@ describe("SourcesPanel", () => {
       }),
     ]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Drop folder" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Drop folder/ }));
     const workspace = await screen.findByRole("dialog", { name: "Drop folder" });
     expect(workspace).toHaveTextContent("/data/filler/commercials");
     expect(workspace).toHaveTextContent(/last checked/i);
@@ -665,12 +704,13 @@ describe("SourcesPanel", () => {
         kind: "archive",
         id: "archive:classic",
         uri: "classic_tv",
+        pageUrl: "https://archive.org/details/classic_tv",
         target: "Classic TV",
         searchable: true,
       }),
     ]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     const workspace = await screen.findByRole("dialog", { name: "Classic TV" });
     expect(await screen.findByRole("link", { name: "First station break" })).toBeInTheDocument();
     expect(resolutions).toEqual([{ kind: "archive", input: "classic_tv" }]);
@@ -697,7 +737,7 @@ describe("SourcesPanel", () => {
     expect(screen.queryByRole("combobox", { name: "Location" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /remove classic tv/i })).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
     const location = screen.getByRole("combobox", { name: "Location" });
     await userEvent.clear(location);
@@ -709,7 +749,7 @@ describe("SourcesPanel", () => {
       expect(enables).toEqual([
         {
           id: "archive:classic",
-          body: { enabled: true, geography: { country: "CA", market: "Toronto" } },
+          body: { enabled: true, geography: { country: "CA" } },
         },
       ]);
     });
@@ -732,7 +772,7 @@ describe("SourcesPanel", () => {
       }),
     ]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
     expect(
       screen.getByText("Uses your defaults: every 6 hours, up to 10 clips each check."),
@@ -769,23 +809,21 @@ describe("SourcesPanel", () => {
         id: "archive:classic",
         target: "Classic TV",
         country: "CA",
-        market: "Toronto",
         effectiveCountry: "CA",
-        effectiveMarket: "Toronto",
         locationSource: "source",
       }),
     ]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
-    expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("Toronto, Canada");
+    expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("Canada");
     await userEvent.click(screen.getByRole("button", { name: "Use my location" }));
 
     await waitFor(() => {
       expect(enables).toEqual([
         {
           id: "archive:classic",
-          body: { enabled: true, geography: { country: "", market: "" } },
+          body: { enabled: true, geography: { country: "" } },
         },
       ]);
     });
@@ -795,7 +833,7 @@ describe("SourcesPanel", () => {
     const { fetches } = stubSources();
     renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     await userEvent.click(screen.getByRole("button", { name: "Look for new clips" }));
 
     await waitFor(() => expect(fetches).toHaveLength(1));
@@ -827,8 +865,8 @@ describe("SourcesPanel per-source search", () => {
     const { discoveries } = stubSources();
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "cereal");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
@@ -854,8 +892,8 @@ describe("SourcesPanel per-source search", () => {
     );
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
@@ -917,8 +955,8 @@ describe("SourcesPanel per-source search", () => {
     );
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
@@ -944,8 +982,8 @@ describe("SourcesPanel per-source search", () => {
       }),
     );
     const first = renderPanel(twoCollections);
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
     await userEvent.click(await screen.findByRole("button", { name: /queue download: hearthpot's soup/i }));
@@ -953,8 +991,8 @@ describe("SourcesPanel per-source search", () => {
     first.unmount();
 
     renderPanel(twoCollections);
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "soup");
     await userEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
@@ -966,7 +1004,7 @@ describe("SourcesPanel per-source search", () => {
     stubSources();
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
 
     expect(await screen.findByRole("dialog", { name: "Classic TV Commercials" })).toBeInTheDocument();
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
@@ -978,15 +1016,15 @@ describe("SourcesPanel per-source search", () => {
     stubSources();
     renderPanel(twoCollections);
 
-    await userEvent.click(screen.getByRole("button", { name: "Manage Classic TV Commercials" }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV Commercials/ }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     await userEvent.type(screen.getByRole("textbox", { name: /search this source/i }), "cereal");
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
-    await userEvent.click(screen.getByRole("button", { name: "Manage Vintage PSAs" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Manage Vintage PSAs/ }));
 
     expect(await screen.findByRole("dialog", { name: "Vintage PSAs" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /search this source/i })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     expect(screen.getByRole("textbox", { name: /search this source/i })).toHaveValue("");
   });
 
@@ -994,7 +1032,7 @@ describe("SourcesPanel per-source search", () => {
     stubSources();
     renderPanel(twoCollections);
 
-    const trigger = screen.getByRole("button", { name: "Manage Classic TV Commercials" });
+    const trigger = screen.getByRole("button", { name: /^Manage Classic TV Commercials/ });
     await userEvent.click(trigger);
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
 

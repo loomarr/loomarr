@@ -12,7 +12,7 @@ const FullscreenButton = ({ active, onToggle }: FullscreenButtonProps) => (
     size="icon"
     onClick={onToggle}
     aria-label={active ? "Exit fullscreen" : "Fullscreen"}
-    className="size-8 shrink-0 rounded-full text-static-300 transition-transform hover:scale-110 hover:bg-transparent hover:text-static-0 active:scale-95 motion-reduce:transition-none"
+    className="text-static-300 hover:text-static-0 size-8 shrink-0 rounded-full transition-transform hover:scale-110 hover:bg-transparent active:scale-95 motion-reduce:transition-none"
   >
     {active ? <Minimize aria-hidden /> : <Maximize aria-hidden />}
   </Button>

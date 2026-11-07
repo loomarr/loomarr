@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -33,7 +33,7 @@ func TestTranscodeStage_RefusesCapacityBeforeCreatingRetainedOrDerivedMedia(t *t
 	}}, func(storagegovernor.Domain) storagegovernor.Policy {
 		return storagegovernor.Policy{SoftBudgetBytes: 1}
 	})
-	stage := NewTranscodeStage(&transcodeStore{}, nil, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now).
+	stage := NewTranscodeStage(&transcodeStore{}, nil, dir, tools.DefaultMezzanine(), nil, nil, time.Now).
 		WithMediaDerivatives().
 		WithStorageGovernor(governor)
 
@@ -69,8 +69,8 @@ func TestTranscodeStage_StopsOversizedPrivateOutputBeforePublication(t *testing.
 	store := &transcodeStore{}
 	stage := NewTranscodeStage(store, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		if err := os.WriteFile(request.Out, nil, 0o600); err != nil {
 			return MediaQuality{}, err
 		}
@@ -158,8 +158,8 @@ func TestTranscodeStage_ConcurrentSyncHoldsPublishedConditionedTargetUntilCatalo
 	before := completeConditioningMeasurement(-28.4)
 	after := completeConditioningMeasurement(-23.1)
 	for i := range after.Cuts[0].Streams {
-		after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-		after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
 	published := make(chan StoreClip, 1)
 	resumeRekey := make(chan struct{})
@@ -172,12 +172,12 @@ func TestTranscodeStage_ConcurrentSyncHoldsPublishedConditionedTargetUntilCatalo
 	}
 	stage := NewTranscodeStage(stageStore, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	}, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return after.Quality, os.WriteFile(req.Out, []byte("conditioned target bytes"), 0o600)
 	}
 	measurements := 0
-	stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measurements++
 		if measurements == 1 {
 			return before, nil
@@ -228,30 +228,30 @@ func (s *transcodeStore) GetClip(_ context.Context, hash string) (StoreClip, boo
 	return c, ok, nil
 }
 
-func completeConditioningMeasurement(lufs float64) mediatools.ConditioningMeasurement {
-	available := func(ms int64) mediatools.OptionalMilliseconds {
-		return mediatools.OptionalMilliseconds{Milliseconds: ms, Available: true}
+func completeConditioningMeasurement(lufs float64) tools.ConditioningMeasurement {
+	available := func(ms int64) tools.OptionalMilliseconds {
+		return tools.OptionalMilliseconds{Milliseconds: ms, Available: true}
 	}
-	return mediatools.ConditioningMeasurement{
+	return tools.ConditioningMeasurement{
 		ContainerDurationMs: 30_000,
-		Streams: []mediatools.ConditioningStream{
-			{Kind: mediatools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000),
-				Cadence: &mediatools.Rational{Numerator: 30_000, Denominator: 1001}},
-			{Kind: mediatools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
+		Streams: []tools.ConditioningStream{
+			{Kind: tools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000),
+				Cadence: &tools.Rational{Numerator: 30_000, Denominator: 1001}},
+			{Kind: tools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
 		},
-		AVSkew: mediatools.ConditioningSkew{Start: available(120), End: available(0)},
-		Loudness: mediatools.ConditioningLoudness{
+		AVSkew: tools.ConditioningSkew{Start: available(120), End: available(0)},
+		Loudness: tools.ConditioningLoudness{
 			IntegratedLUFS: lufs, Available: true,
-			TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakFinite, DBTP: -2.1},
+			TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakFinite, DBTP: -2.1},
 		},
 		Quality: MediaQuality{
-			EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-			Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+			EvidenceVersion: tools.MediaQualityEvidenceV1,
+			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
 		},
-		Cuts: []mediatools.ConditioningCutMeasurement{{Intended: mediatools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []mediatools.ConditioningCutStream{
-			{Kind: mediatools.StreamVideo, Index: 0, StartError: available(3), EndError: available(-4)},
-			{Kind: mediatools.StreamAudio, Index: 1, StartError: available(5), EndError: available(-2)},
+		Cuts: []tools.ConditioningCutMeasurement{{Intended: tools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []tools.ConditioningCutStream{
+			{Kind: tools.StreamVideo, Index: 0, StartError: available(3), EndError: available(-4)},
+			{Kind: tools.StreamAudio, Index: 1, StartError: available(5), EndError: available(-2)},
 		}}},
 	}
 }
@@ -274,28 +274,28 @@ func TestTranscodeStage_UnavailableOrMalformedConditioningHoldsChildWithoutTrans
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
+	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
 		t.Fatal("unavailable evidence must stop before transcode")
 		return MediaQuality{}, nil
 	}
 	cases := []struct {
 		name   string
-		mutate func(*mediatools.ConditioningMeasurement)
+		mutate func(*tools.ConditioningMeasurement)
 	}{
-		{name: "unavailable loudness", mutate: func(m *mediatools.ConditioningMeasurement) {
+		{name: "unavailable loudness", mutate: func(m *tools.ConditioningMeasurement) {
 			m.Loudness.Available = false
 		}},
-		{name: "non-finite loudness", mutate: func(m *mediatools.ConditioningMeasurement) {
+		{name: "non-finite loudness", mutate: func(m *tools.ConditioningMeasurement) {
 			m.Loudness.IntegratedLUFS = math.NaN()
 		}},
-		{name: "unknown stream kind", mutate: func(m *mediatools.ConditioningMeasurement) {
-			m.Streams[0].Kind = mediatools.StreamKind("subtitle")
+		{name: "unknown stream kind", mutate: func(m *tools.ConditioningMeasurement) {
+			m.Streams[0].Kind = tools.StreamKind("subtitle")
 		}},
-		{name: "duplicate stream", mutate: func(m *mediatools.ConditioningMeasurement) {
+		{name: "duplicate stream", mutate: func(m *tools.ConditioningMeasurement) {
 			m.Streams = append(m.Streams, m.Streams[0])
 		}},
-		{name: "unavailable cut edge", mutate: func(m *mediatools.ConditioningMeasurement) {
+		{name: "unavailable cut edge", mutate: func(m *tools.ConditioningMeasurement) {
 			m.Cuts[0].Streams[0].EndError.Available = false
 		}},
 	}
@@ -303,7 +303,7 @@ func TestTranscodeStage_UnavailableOrMalformedConditioningHoldsChildWithoutTrans
 		t.Run(tc.name, func(t *testing.T) {
 			measurement := completeConditioningMeasurement(-23)
 			tc.mutate(&measurement)
-			stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+			stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 				return measurement, nil
 			})
 			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
@@ -350,12 +350,12 @@ func TestTranscodeStage_HoldsWhenConditioningSourceOrParentBytesDoNotMatchCatalo
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 				return Probed{DurationMs: 30_000, Height: 480}, nil
-			}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-			stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+			}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+			stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 				t.Fatal("identity mismatch must stop before conditioning measurement")
-				return mediatools.ConditioningMeasurement{}, nil
+				return tools.ConditioningMeasurement{}, nil
 			})
-			stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
+			stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
 				t.Fatal("identity mismatch must stop before transcode")
 				return MediaQuality{}, nil
 			}
@@ -387,25 +387,25 @@ func TestTranscodeStage_PathReplacementDuringConditioningPublishesNothing(t *tes
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
 	measurements := 0
-	stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measurements++
 		if measurements == 1 {
 			if err := os.WriteFile(childFull, []byte("replacement during measurement"), 0o600); err != nil {
-				return mediatools.ConditioningMeasurement{}, err
+				return tools.ConditioningMeasurement{}, err
 			}
 		}
 		measurement := completeConditioningMeasurement(-23)
 		if measurements > 1 {
 			for i := range measurement.Cuts[0].Streams {
-				measurement.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-				measurement.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+				measurement.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+				measurement.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 			}
 		}
 		return measurement, nil
 	})
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		measurement := completeConditioningMeasurement(-23)
 		return measurement.Quality, os.WriteFile(req.Out, []byte("would-be output"), 0o600)
 	}
@@ -444,9 +444,9 @@ func TestTranscodeStage_SparseIdentityCollisionCannotHideSourceOrParentReplaceme
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 				return Probed{DurationMs: 30_000, Height: 480}, nil
-			}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+			}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
 			measurements := 0
-			stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+			stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 				measurements++
 				if measurements == 1 {
 					path, replacement := childFull, childReplacement
@@ -455,19 +455,19 @@ func TestTranscodeStage_SparseIdentityCollisionCannotHideSourceOrParentReplaceme
 						replacement = parentReplacement
 					}
 					if err := os.WriteFile(path, replacement, 0o600); err != nil {
-						return mediatools.ConditioningMeasurement{}, err
+						return tools.ConditioningMeasurement{}, err
 					}
 				}
 				measurement := completeConditioningMeasurement(-23)
 				if measurements > 1 {
 					for i := range measurement.Cuts[0].Streams {
-						measurement.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-						measurement.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+						measurement.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+						measurement.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 					}
 				}
 				return measurement, nil
 			})
-			stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+			stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 				measurement := completeConditioningMeasurement(-23)
 				return measurement.Quality, os.WriteFile(req.Out, []byte("would-be output"), 0o600)
 			}
@@ -493,7 +493,7 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mp4"))
 	measurement := completeConditioningMeasurement(-23)
 	if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
-		OriginalName: "Completed child", Mezzanine: mediatools.DefaultMezzanine().ID(),
+		OriginalName: "Completed child", Mezzanine: tools.DefaultMezzanine().ID(),
 		MediaQuality: &measurement.Quality,
 		ConditioningLineage: &ConditioningLineage{
 			ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
@@ -512,14 +512,14 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 		t.Fatal("complete restart evidence must avoid another probe")
 		return Probed{}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
+	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
 		t.Fatal("complete restart evidence must avoid another transcode")
 		return MediaQuality{}, nil
 	}
-	stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		t.Fatal("complete restart evidence must avoid another measurement")
-		return mediatools.ConditioningMeasurement{}, nil
+		return tools.ConditioningMeasurement{}, nil
 	})
 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
@@ -575,8 +575,8 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 			before := completeConditioningMeasurement(-28.4)
 			after := completeConditioningMeasurement(-23.1)
 			for i := range after.Cuts[0].Streams {
-				after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-				after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 			}
 			evidence := ConditioningEvidence{
 				BeforeRewriteHash: childHash, AfterRewriteHash: childHash,
@@ -587,7 +587,7 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 			parent := StoreClip{Clip: Clip{Hash: parentHash, Path: parentRel, IsComposite: true}}
 			tc.mutate(&lineage, &evidence, &quality, &parent)
 			if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
-				Mezzanine: mediatools.DefaultMezzanine().ID(), NormalizedLUFS: -23,
+				Mezzanine:    tools.DefaultMezzanine().ID(),
 				MediaQuality: &quality, ConditioningLineage: &lineage, Conditioning: &evidence,
 			}, false); err != nil {
 				t.Fatal(err)
@@ -596,10 +596,10 @@ func TestTranscodeStage_RestartHoldsMalformedOrUnboundConditioningEvidence(t *te
 			stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 				t.Fatal("invalid restart evidence must hold before probing")
 				return Probed{}, nil
-			}, dir, mediatools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
-			stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+			}, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
+			stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 				t.Fatal("invalid restart evidence must hold before measuring")
-				return mediatools.ConditioningMeasurement{}, nil
+				return tools.ConditioningMeasurement{}, nil
 			})
 			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 				Hash: childHash, Path: childRel, ParentHash: parentHash,
@@ -637,17 +637,17 @@ func TestReadConditioningSidecar_ReturnsRetryableErrorWhenPathBecomesDirectory(t
 	}
 }
 
-func TestTranscodeStage_NormalizedMarkerAloneCannotCertifyAChildRestart(t *testing.T) {
+func TestTranscodeStage_MezzanineMarkerAloneCannotCertifyAChildRestart(t *testing.T) {
 	dir := t.TempDir()
 	parentHash := writeContentAddressedClip(t, dir, []byte("retained parent"), ".mp4")
 	parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
 	childHash := writeContentAddressedClip(t, dir, []byte("marker-only child"), ".mp4")
 	childRel := filepath.ToSlash(ClipRelPath(childHash, ".mp4"))
 	if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
-		Mezzanine: mediatools.DefaultMezzanine().ID(), NormalizedLUFS: -23,
+		Mezzanine: tools.DefaultMezzanine().ID(),
 		MediaQuality: &MediaQuality{
-			EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-			Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+			EvidenceVersion: tools.MediaQualityEvidenceV1,
+			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
 		},
 		ConditioningLineage: &ConditioningLineage{
@@ -658,7 +658,7 @@ func TestTranscodeStage_NormalizedMarkerAloneCannotCertifyAChildRestart(t *testi
 	}
 	stage := NewTranscodeStage(&transcodeStore{clips: map[string]StoreClip{parentHash: {Clip: Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
-	}}}}, nil, dir, mediatools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
+	}}}}, nil, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
 		Hash: childHash, Path: childRel, ParentHash: parentHash,
 	}})
@@ -685,15 +685,15 @@ func TestTranscodeStage_PostMeasurementFailurePublishesNothing(t *testing.T) {
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return MediaQuality{DurationMs: 30_000}, os.WriteFile(req.Out, []byte("unpublished mezzanine"), 0o644)
 	}
 	measurements := 0
-	stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measurements++
 		if measurements == 2 {
-			return mediatools.ConditioningMeasurement{}, errors.New("post measurement failed")
+			return tools.ConditioningMeasurement{}, errors.New("post measurement failed")
 		}
 		return completeConditioningMeasurement(-27), nil
 	})
@@ -725,12 +725,12 @@ func TestTranscodeStage_MissingParentHoldsBeforeMeasurement(t *testing.T) {
 	}, false); err != nil {
 		t.Fatal(err)
 	}
-	stage := NewTranscodeStage(&transcodeStore{}, nil, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage := NewTranscodeStage(&transcodeStore{}, nil, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		t.Fatal("missing parent must stop before measurement")
-		return mediatools.ConditioningMeasurement{}, nil
+		return tools.ConditioningMeasurement{}, nil
 	})
-	stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
 		t.Fatal("missing parent must stop before transcode")
 		return MediaQuality{}, nil
 	}
@@ -769,17 +769,17 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 				return Probed{DurationMs: 30_000, Height: 480}, nil
-			}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+			}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
 			started := make(chan struct{})
 			observedCancellation := make(chan error, 1)
 			measurements := 0
-			stage.WithConditioning(func(ctx context.Context, _ mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+			stage.WithConditioning(func(ctx context.Context, _ tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 				measurements++
 				measurement := completeConditioningMeasurement(-23)
 				if measurements > 1 {
 					for i := range measurement.Cuts[0].Streams {
-						measurement.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-						measurement.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+						measurement.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+						measurement.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 					}
 				}
 				if phase == "conditioning" && measurements == 1 {
@@ -789,7 +789,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 				}
 				return measurement, nil
 			})
-			stage.transcode = func(ctx context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+			stage.transcode = func(ctx context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 				if phase == "transcode" {
 					close(started)
 					<-ctx.Done()
@@ -854,20 +854,20 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
 	before := completeConditioningMeasurement(-28.4)
 	after := completeConditioningMeasurement(-23.1)
-	before.Cuts[0].Intended = mediatools.Interval{StartMs: 10_000, EndMs: 40_000}
+	before.Cuts[0].Intended = tools.Interval{StartMs: 10_000, EndMs: 40_000}
 	after.Cuts[0].Intended = before.Cuts[0].Intended
 	for i := range after.Cuts[0].Streams {
-		after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-		after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return after.Quality, os.WriteFile(req.Out, []byte("measured mezzanine"), 0o644)
 	}
 	measurements := 0
-	stage.WithConditioning(func(_ context.Context, req mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measurements++
 		if measurements%2 == 1 {
 			return before, nil
@@ -917,10 +917,10 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 // be the measured container's.
 func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t *testing.T) {
 	sourceTimeline := MediaQuality{
-		EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-		Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+		EvidenceVersion: tools.MediaQualityEvidenceV1,
+		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
-		Silence:         []mediatools.Interval{{StartMs: 25_999, EndMs: 30_000}},
+		Silence:         []tools.Interval{{StartMs: 25_999, EndMs: 30_000}},
 	}
 	for name, tc := range map[string]struct {
 		probedMs    int64
@@ -946,22 +946,22 @@ func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t 
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 				return Probed{DurationMs: tc.probedMs, Height: 480}, nil
-			}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+			}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
 			before := completeConditioningMeasurement(-28.4)
 			after := completeConditioningMeasurement(-23.1)
-			before.Cuts[0].Intended = mediatools.Interval{StartMs: 10_000, EndMs: 40_000}
+			before.Cuts[0].Intended = tools.Interval{StartMs: 10_000, EndMs: 40_000}
 			after.Cuts[0].Intended = before.Cuts[0].Intended
 			for i := range after.Cuts[0].Streams {
-				after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-				after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 			}
 			// The same trailing silence, on the staged file's container timeline.
-			after.Quality.Silence = []mediatools.Interval{{StartMs: 26_021, EndMs: 30_000}}
-			stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+			after.Quality.Silence = []tools.Interval{{StartMs: 26_021, EndMs: 30_000}}
+			stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 				return sourceTimeline, os.WriteFile(req.Out, []byte("measured mezzanine"), 0o644)
 			}
 			measurements := 0
-			stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+			stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 				measurements++
 				if measurements%2 == 1 {
 					return before, nil
@@ -999,8 +999,8 @@ func TestTranscodeStage_RecoversAPublishedPairAfterStoreFailure(t *testing.T) {
 	probe := func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage := NewTranscodeStage(stored, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return MediaQuality{}, os.WriteFile(req.Out, []byte("replacement"), 0o644)
 	}
 	clip := StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Named advert", Kind: Commercial}}
@@ -1082,11 +1082,11 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 			before := completeConditioningMeasurement(-28.4)
 			after := completeConditioningMeasurement(-23.1)
 			for i := range after.Cuts[0].Streams {
-				after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-				after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 			}
 			existing := SidecarTags{
-				Mezzanine: mediatools.DefaultMezzanine().ID(), MediaQuality: &after.Quality,
+				Mezzanine: tools.DefaultMezzanine().ID(), MediaQuality: &after.Quality,
 				ConditioningLineage: lineage,
 				Conditioning: &ConditioningEvidence{
 					BeforeRewriteHash: sourceHash, AfterRewriteHash: outputHash,
@@ -1121,12 +1121,12 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 			}}}}
 			stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 				return Probed{DurationMs: 30_000, Height: 480}, nil
-			}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-			stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+			}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+			stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 				return after.Quality, os.WriteFile(req.Out, outputBytes, 0o600)
 			}
 			measurements := 0
-			stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+			stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 				measurements++
 				if measurements == 1 {
 					return before, nil
@@ -1162,8 +1162,8 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 	before := completeConditioningMeasurement(-28.4)
 	after := completeConditioningMeasurement(-23.1)
 	for i := range after.Cuts[0].Streams {
-		after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-		after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
 	outputBytes := []byte("recoverable conditioned output")
 	stored := &transcodeStore{err: errors.New("catalog replacement failed"), clips: map[string]StoreClip{parentHash: {Clip: Clip{
@@ -1171,12 +1171,12 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	}, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return after.Quality, os.WriteFile(req.Out, outputBytes, 0o600)
 	}
 	measurements := 0
-	stage.WithConditioning(func(_ context.Context, req mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measurements++
 		if measurements%2 == 1 {
 			return before, nil
@@ -1195,7 +1195,7 @@ func TestTranscodeStage_ConditionedReplacementFailurePreservesSourceAndEvidenceF
 	outputHashPath := filepath.Join(dir, filepath.FromSlash(ClipRelPath(stored.clip.Hash, ".mp4")))
 	tags, ok := ReadSidecarTags(outputHashPath)
 	if !ok || tags.Conditioning == nil || tags.Conditioning.BeforeRewriteHash != sourceHash ||
-		tags.Conditioning.AfterRewriteHash != stored.clip.Hash || tags.NormalizedLUFS != -23 {
+		tags.Conditioning.AfterRewriteHash != stored.clip.Hash {
 		t.Fatalf("recoverable published evidence = %+v, ok=%v", tags, ok)
 	}
 
@@ -1227,8 +1227,8 @@ func TestTranscodeStage_RecoveryCanonicalizesPostRewriteDurationBeforeEvidenceCo
 	after.Streams[1].Duration.Milliseconds = 29_847
 	after.Quality.DurationMs = 29_967
 	for i := range after.Cuts[0].Streams {
-		after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-		after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
 	outputBytes := []byte("duration-shift output")
 	stored := &transcodeStore{err: errors.New("first replacement failed"), clips: map[string]StoreClip{parentHash: {Clip: Clip{
@@ -1239,13 +1239,13 @@ func TestTranscodeStage_RecoveryCanonicalizesPostRewriteDurationBeforeEvidenceCo
 			return Probed{DurationMs: 29_967, Height: 480}, nil
 		}
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		quality := after.Quality
 		quality.DurationMs = 30_000 // detector result before canonical output probe duration is applied
 		return quality, os.WriteFile(req.Out, outputBytes, 0o600)
 	}
-	stage.WithConditioning(func(_ context.Context, req mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		if req.Path == sourceFull || filepath.Ext(req.Path) == ".mkv" {
 			return before, nil
 		}
@@ -1277,20 +1277,20 @@ func TestTranscodeStage_SourceCleanupFailureLeavesDurableQuarantineAcrossSync(t 
 	before := completeConditioningMeasurement(-28.4)
 	after := completeConditioningMeasurement(-23.1)
 	for i := range after.Cuts[0].Streams {
-		after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-		after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+		after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 	}
 	stored := &transcodeStore{clips: map[string]StoreClip{parentHash: {Clip: Clip{
 		Hash: parentHash, Path: parentRel, IsComposite: true,
 	}}}}
 	stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	}, dir, tools.DefaultMezzanine(), nil, func() float64 { return -23 }, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return after.Quality, os.WriteFile(req.Out, []byte("conditioned replacement"), 0o600)
 	}
 	measurements := 0
-	stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	stage.WithConditioning(func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measurements++
 		if measurements == 1 {
 			return before, nil
@@ -1340,9 +1340,9 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 	probe := func(_ context.Context, path string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, nil,
+	stage := NewTranscodeStage(stored, probe, dir, tools.DefaultMezzanine(), nil, nil,
 		func() time.Time { return time.Unix(1_900_000_000, 0) })
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return MediaQuality{}, os.WriteFile(req.Out, newBytes, 0o644)
 	}
 
@@ -1383,7 +1383,7 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 	if tags.OriginalName != in.Name {
 		t.Errorf("originalName = %q, want display name %q — a split child must not rescan as a hash", tags.OriginalName, in.Name)
 	}
-	if tags.Mezzanine != mediatools.DefaultMezzanine().ID() || tags.Era != in.Era || tags.Category != in.Category {
+	if tags.Mezzanine != tools.DefaultMezzanine().ID() || tags.Era != in.Era || tags.Category != in.Category {
 		t.Errorf("sidecar did not carry the transform metadata: %+v", tags)
 	}
 	if tags.MediaAssets == nil || tags.MediaAssets.SourceMaster.ClipHash != oldHash {
@@ -1421,8 +1421,8 @@ func TestTranscodeStage_IdenticalOutputAlreadyAtCanonicalPath(t *testing.T) {
 	probe := func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage := NewTranscodeStage(stored, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return MediaQuality{}, os.WriteFile(req.Out, bytes, 0o644)
 	}
 
@@ -1443,7 +1443,7 @@ func TestTranscodeStage_IdenticalOutputAlreadyAtCanonicalPath(t *testing.T) {
 		t.Fatalf("canonical media changed: %q", got)
 	}
 	tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(rel)))
-	if !ok || tags.Mezzanine != mediatools.DefaultMezzanine().ID() || tags.MediaQuality == nil {
+	if !ok || tags.Mezzanine != tools.DefaultMezzanine().ID() || tags.MediaQuality == nil {
 		t.Fatalf("canonical sidecar = %+v, ok=%v", tags, ok)
 	}
 }
@@ -1457,8 +1457,8 @@ func TestTranscodeStage_IdenticalOutputMovesToCanonicalPath(t *testing.T) {
 	probe := func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage := NewTranscodeStage(stored, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return MediaQuality{}, os.WriteFile(req.Out, bytes, 0o644)
 	}
 
@@ -1508,8 +1508,8 @@ func TestTranscodeStage_RejectsNearTotalBlackContentAndPersistsEvidence(t *testi
 	probe := func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	stage := NewTranscodeStage(stored, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage := NewTranscodeStage(stored, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return MediaQuality{DurationMs: 30_000, Black: []Interval{{StartMs: 0, EndMs: 28_000}}},
 			os.WriteFile(req.Out, []byte("replacement"), 0o644)
 	}
@@ -1528,47 +1528,31 @@ func TestTranscodeStage_RejectsNearTotalBlackContentAndPersistsEvidence(t *testi
 	}
 }
 
-func TestTranscodeStage_BackfillsQualityWithoutReencodingOldMezzanine(t *testing.T) {
+// The state a transcode leaves when its verdict's hold/tombstone write failed: the mezzanine and
+// an anomalous report are on disk. The next pass must re-emit that verdict from the sidecar.
+func TestTranscodeStage_ReemitsPersistedAnomalousQualityWithoutDecoding(t *testing.T) {
 	dir := t.TempDir()
-	hash := writeContentAddressedClip(t, dir, []byte("old mezzanine"), ".mp4")
+	hash := writeContentAddressedClip(t, dir, []byte("mezzanine"), ".mp4")
 	rel := filepath.ToSlash(ClipRelPath(hash, ".mp4"))
 	full := filepath.Join(dir, filepath.FromSlash(rel))
 	if err := WriteSidecarTags(full, SidecarTags{
-		OriginalName: "Old advert", Mezzanine: mediatools.DefaultMezzanine().ID(),
+		OriginalName: "Silent advert", Mezzanine: tools.DefaultMezzanine().ID(),
+		MediaQuality: &MediaQuality{DurationMs: 30_000, Silence: []Interval{{StartMs: 0, EndMs: 29_000}}},
 	}, false); err != nil {
 		t.Fatal(err)
 	}
 	stage := NewTranscodeStage(&transcodeStore{}, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil
-	}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
-	stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
-		t.Fatal("an existing mezzanine must not be re-encoded to backfill quality")
+	}, dir, tools.DefaultMezzanine(), nil, nil, time.Now)
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
+		t.Fatal("a persisted verdict must not be re-encoded")
 		return MediaQuality{}, nil
 	}
-	stage.inspect = func(context.Context, string, string, int64, bool) (MediaQuality, error) {
-		return MediaQuality{DurationMs: 30_000, Silence: []Interval{{StartMs: 0, EndMs: 29_000}}}, nil
-	}
-	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: hash, Path: rel, Name: "Old advert", Kind: Commercial,
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Verdict != VerdictReject || out.Reason != ReasonSilentContent {
-		t.Fatalf("backfill verdict = %v/%q", out.Verdict, out.Reason)
-	}
-	tags, ok := ReadSidecarTags(full)
-	if !ok || tags.MediaQuality == nil {
-		t.Fatal("quality backfill was not persisted beside the old mezzanine")
-	}
-	if applies, _ := stage.Applies(context.Background(), out.Clip); !applies {
+	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Silent advert", Kind: Commercial}}
+	if applies, _ := stage.Applies(context.Background(), clip); !applies {
 		t.Fatal("an anomalous report must remain applicable until its airability gate is durable")
 	}
-	stage.inspect = func(context.Context, string, string, int64, bool) (MediaQuality, error) {
-		t.Fatal("retry must use the persisted quality evidence")
-		return MediaQuality{}, nil
-	}
-	retry, err := stage.Run(context.Background(), out.Clip)
+	retry, err := stage.Run(context.Background(), clip)
 	if err != nil || retry.Verdict != VerdictReject || retry.Reason != ReasonSilentContent {
 		t.Fatalf("persisted quality retry = %+v, %v", retry, err)
 	}

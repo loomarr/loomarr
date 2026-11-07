@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // taxonomyEditor is the deep app module around a graph edit. Its interface is only preview/apply;
@@ -18,13 +19,16 @@ type taxonomyEditor struct {
 	store store.Store
 	wake  *fillerChannelWake
 	now   func() time.Time
+	// holidaysChanged rereads the holiday snapshot: a seasonal taxon's edit can add or retire the
+	// undated holiday it owns (#2030).
+	holidaysChanged func(context.Context)
 }
 
-func (e taxonomyEditor) Preview(ctx context.Context, edit store.TaxonomyEdit) (api.TaxonomyImpact, error) {
+func (e taxonomyEditor) Preview(ctx context.Context, edit catalogstore.TaxonomyEdit) (api.TaxonomyImpact, error) {
 	return e.preview(ctx, edit)
 }
 
-func (e taxonomyEditor) Apply(ctx context.Context, edit store.TaxonomyEdit) (api.TaxonomyImpact, error) {
+func (e taxonomyEditor) Apply(ctx context.Context, edit catalogstore.TaxonomyEdit) (api.TaxonomyImpact, error) {
 	impact, err := e.preview(ctx, edit)
 	if err != nil {
 		return api.TaxonomyImpact{}, err
@@ -39,6 +43,10 @@ func (e taxonomyEditor) Apply(ctx context.Context, edit store.TaxonomyEdit) (api
 	}
 	if err := e.store.ApplyTaxonomyEdit(ctx, edit, now().UTC()); err != nil {
 		return api.TaxonomyImpact{}, err
+	}
+	if e.holidaysChanged != nil {
+		// The edit is committed: a client that hangs up now must not leave the snapshot stale.
+		e.holidaysChanged(context.WithoutCancel(ctx))
 	}
 	after, err := e.playableSnapshots(ctx, impact.Store.PlayableClipHashes)
 	if err != nil {
@@ -57,7 +65,7 @@ func (e taxonomyEditor) Apply(ctx context.Context, edit store.TaxonomyEdit) (api
 	return impact, nil
 }
 
-func (e taxonomyEditor) preview(ctx context.Context, edit store.TaxonomyEdit) (api.TaxonomyImpact, error) {
+func (e taxonomyEditor) preview(ctx context.Context, edit catalogstore.TaxonomyEdit) (api.TaxonomyImpact, error) {
 	if e.store == nil {
 		return api.TaxonomyImpact{}, fmt.Errorf("preview taxonomy edit: no store configured")
 	}
@@ -101,7 +109,7 @@ func (e taxonomyEditor) playableSnapshots(ctx context.Context, hashes []string) 
 	if len(hashes) == 0 {
 		return nil, nil
 	}
-	clips, err := e.store.ListClips(ctx, store.ClipFilter{Hashes: hashes})
+	clips, err := e.store.ListClips(ctx, catalogstore.ClipFilter{Hashes: hashes})
 	if err != nil {
 		return nil, err
 	}

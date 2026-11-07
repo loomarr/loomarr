@@ -1,0 +1,457 @@
+diff --git a/scripts/cocoapods/pinned_artifacts.rb b/scripts/cocoapods/pinned_artifacts.rb
+new file mode 100644
+index 0000000..6a8a1cb
+--- /dev/null
++++ b/scripts/cocoapods/pinned_artifacts.rb
+@@ -0,0 +1,52 @@
++# Loomarr: one checked acquisition path for the pinned Apple binary artifacts.
++require 'digest'
++require 'open3'
++require 'uri'
++require 'tempfile'
++require 'fileutils'
++
++module ReactNativePinnedArtifacts
++  def self.fetch(url, destination)
++    _stdout, stderr, status = Open3.capture3(
++      'curl', '--fail', '--location', '--silent', '--show-error',
++      '--connect-timeout', '10', '--max-time', '120', '--retry', '3',
++      '--retry-all-errors', '--retry-max-time', '180', '--output', destination, url)
++    abort("[ReactNative] HTTP acquisition failed for #{url}: #{stderr.strip}") unless status.success?
++  end
++
++  def self.acquire(url, filename, destination_dir, cache_dir, skip_cache, fetcher = method(:fetch))
++    expected = Tempfile.create('react-native-sha1') do |file|
++      fetcher.call("#{url}.sha1", file.path)
++      digest = File.read(file.path).strip
++      abort("[ReactNative] Invalid SHA1 metadata for #{url}") unless digest.match?(/\A[a-fA-F0-9]{40}\z/)
++      digest.downcase
++    end
++    FileUtils.mkdir_p(destination_dir)
++    destination = File.join(destination_dir, filename)
++    cached = File.join(cache_dir, filename)
++    (skip_cache ? [] : [destination, cached]).each do |candidate|
++      next unless File.file?(candidate)
++      if Digest::SHA1.file(candidate).hexdigest == expected
++        FileUtils.cp(candidate, destination) unless candidate == destination
++        return destination
++      end
++      File.delete(candidate)
++    end
++    Tempfile.create(['react-native-', '.download'], destination_dir) do |file|
++      fetcher.call(url, file.path)
++      actual = Digest::SHA1.file(file.path).hexdigest
++      abort("[ReactNative] SHA1 mismatch for #{filename}: expected #{expected}, got #{actual}") unless actual == expected
++      FileUtils.mv(file.path, destination)
++    end
++    unless skip_cache
++      FileUtils.mkdir_p(cache_dir)
++      FileUtils.cp(destination, cached)
++    end
++    destination
++  end
++
++  def self.local_source(path)
++    escaped = URI::DEFAULT_PARSER.escape(File.expand_path(path), /[^a-zA-Z0-9\-._~\/]/)
++    { :http => "file://#{escaped}", :sha1 => Digest::SHA1.file(path).hexdigest }
++  end
++end
+diff --git a/scripts/cocoapods/rncore.rb b/scripts/cocoapods/rncore.rb
+index ae6669e..20872de 100644
+--- a/scripts/cocoapods/rncore.rb
++++ b/scripts/cocoapods/rncore.rb
+@@ -8,6 +8,7 @@ require 'net/http'
+ require 'rexml/document'
+ 
+ require_relative './utils.rb'
++require_relative './pinned_artifacts.rb'
+ 
+ ### Adds ReactNativeCore-prebuilt as a dependency to the given podspec if we're not
+ ### building ReactNativeCore from source (then this function does nothing).
+@@ -64,7 +65,8 @@ class ReactNativeCoreUtils
+             end
+ 
+             use_local_xcframework = ENV["RCT_TESTONLY_RNCORE_TARBALL_PATH"] && File.exist?(ENV["RCT_TESTONLY_RNCORE_TARBALL_PATH"])
+-            artifacts_exists = ENV["RCT_USE_PREBUILT_RNCORE"] == "1" && (@@use_nightly ? nightly_artifact_exists(@@react_native_version) : release_artifact_exists(@@react_native_version))
++            # A transient HTTP failure cannot select a different dependency graph.
++            artifacts_exists = ENV["RCT_USE_PREBUILT_RNCORE"] == "1"
+             @@build_from_source = !use_local_xcframework && !artifacts_exists
+ 
+             if @@build_from_source && ENV["RCT_TESTONLY_RNCORE_TARBALL_PATH"] && !use_local_xcframework
+@@ -148,8 +150,7 @@ class ReactNativeCoreUtils
+         rncore_log("  #{Pathname.new(destinationDebug).relative_path_from(Pathname.pwd).to_s}")
+         rncore_log("  #{Pathname.new(destinationRelease).relative_path_from(Pathname.pwd).to_s}")
+ 
+-        return {:http => stable_tarball_url(@@react_native_version, :debug) } unless @@download_dsyms
+-        return {:http => ReactNativePodsUtils.local_file_uri(destinationDebug) }
++        return ReactNativePinnedArtifacts.local_source(destinationDebug)
+     end
+ 
+     def self.podspec_source_download_prebuilt_nightly_tarball()
+@@ -352,8 +353,9 @@ class ReactNativeCoreUtils
+     end
+ 
+     def self.stable_tarball_url(version, build_type, dsyms = false)
+-        candidates = stable_tarball_urls(version, build_type, dsyms)
+-        return candidates.find { |url| artifact_exists(url) } || candidates.first
++        # Loomarr: the authoritative repository (ENTERPRISE_REPOSITORY, else Maven Central),
++        # chosen without an HTTP availability probe; acquisition verifies its digest.
++        return stable_tarball_urls(version, build_type, dsyms).last
+     end
+ 
+     def self.stable_tarball_urls(version, build_type, dsyms = false)
+@@ -426,69 +428,8 @@ class ReactNativeCoreUtils
+         filename = configuration == nil ?
+             "reactnative-core-#{version}#{dsyms ? "-dSYM" : ""}.tar.gz" :
+             "reactnative-core-#{version}#{dsyms ? "-dSYM" : ""}-#{configuration}.tar.gz"
+-        destination_path = "#{artifacts_dir()}/#{filename}"
+-
+-        if File.exist?(destination_path)
+-          rncore_log("Tarball #{filename} already exists in Pods. Skipping download.")
+-          return destination_path
+-        end
+-
+-        `mkdir -p "#{artifacts_dir()}"`
+-
+-        if ReactNativePodsUtils.skip_caches?
+-          rncore_log("RCT_SKIP_CACHES is set. Downloading #{filename} directly (bypassing shared cache).")
+-          tmp_file = "#{artifacts_dir()}/reactnative-core.download"
+-          `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-          unless File.exist?(destination_path)
+-            abort("[ReactNativeCore] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-          end
+-          return destination_path
+-        end
+-
+-        cached_path = File.join(ReactNativePodsUtils.shared_cache_dir(), filename)
+-        if File.exist?(cached_path)
+-          rncore_log("Verifying checksum for cached #{filename}...")
+-          if ReactNativePodsUtils.validate_tarball(cached_path, tarball_url)
+-            rncore_log("Cache hit: copying #{filename} from shared cache (#{ReactNativePodsUtils.shared_cache_dir()})")
+-            FileUtils.cp(cached_path, destination_path)
+-          else
+-            rncore_log("Shared cache file #{filename} failed SHA verification. Re-downloading.")
+-            File.delete(cached_path)
+-            tmp_file = "#{artifacts_dir()}/reactnative-core.download"
+-            `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-            unless File.exist?(destination_path)
+-              abort("[ReactNativeCore] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-            end
+-            rncore_log("Verifying checksum for downloaded #{filename}...")
+-            if ReactNativePodsUtils.validate_tarball(destination_path, tarball_url)
+-              FileUtils.cp(destination_path, cached_path)
+-              rncore_log("Saved #{filename} to shared cache (#{ReactNativePodsUtils.shared_cache_dir()})")
+-            else
+-              File.delete(destination_path) if File.exist?(destination_path)
+-              abort("[ReactNativeCore] Downloaded file #{filename} failed SHA verification. Aborting.")
+-            end
+-          end
+-        else
+-          rncore_log("Cache miss: downloading #{filename} from #{tarball_url}")
+-          # Download to a temporary file first so we don't cache incomplete downloads.
+-          tmp_file = "#{artifacts_dir()}/reactnative-core.download"
+-          `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-          unless File.exist?(destination_path)
+-            abort("[ReactNativeCore] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-          end
+-          rncore_log("Verifying checksum for downloaded #{filename}...")
+-          if ReactNativePodsUtils.validate_tarball(destination_path, tarball_url)
+-            # Save to shared cache for future use
+-            `mkdir -p "#{ReactNativePodsUtils.shared_cache_dir()}"`
+-            FileUtils.cp(destination_path, cached_path)
+-            rncore_log("Saved #{filename} to shared cache (#{ReactNativePodsUtils.shared_cache_dir()})")
+-          else
+-            File.delete(destination_path) if File.exist?(destination_path)
+-            abort("[ReactNativeCore] Downloaded file #{filename} failed SHA verification. Aborting.")
+-          end
+-        end
+-
+-        return destination_path
++        ReactNativePinnedArtifacts.acquire(tarball_url, filename, artifacts_dir(),
++          ReactNativePodsUtils.shared_cache_dir(), ReactNativePodsUtils.skip_caches?)
+     end
+ 
+     def self.release_artifact_exists(version)
+diff --git a/scripts/cocoapods/rndependencies.rb b/scripts/cocoapods/rndependencies.rb
+index c240b0b..b330fd6 100644
+--- a/scripts/cocoapods/rndependencies.rb
++++ b/scripts/cocoapods/rndependencies.rb
+@@ -8,6 +8,7 @@ require 'net/http'
+ require 'rexml/document'
+ 
+ require_relative './utils.rb'
++require_relative './pinned_artifacts.rb'
+ 
+ ## There are two environment variables that is related to ReactNativeDependencies:
+ ## - RCT_USE_RN_DEP: If set to 1, it will use the release tarball from Maven instead of building from source.
+@@ -96,8 +97,7 @@ class ReactNativeDependenciesUtils
+     end
+ 
+     ## Sets up wether react-native-dependencies should be built from source or not.
+-    ## If RCT_USE_RN_DEP is set to 1 and the artifacts exists on Maven, it will
+-    ## not build from source. Otherwise, it will build from source.
++    ## RCT_USE_RN_DEP selects the build mode; acquisition failures abort that mode.
+     def self.setup_react_native_dependencies(react_native_path, react_native_version)
+         # We don't want setup to be called multiple times, so we check if the variables are already set.
+         if @@react_native_version == ""
+@@ -119,7 +119,8 @@ class ReactNativeDependenciesUtils
+               abort_if_use_local_rndeps_with_no_file()
+             end
+ 
+-            artifacts_exists = ENV["RCT_USE_RN_DEP"] == "1" && (@@use_nightly ? nightly_artifact_exists(@@react_native_version) : release_artifact_exists(@@react_native_version))
++            # A transient HTTP failure cannot select a different dependency graph.
++            artifacts_exists = ENV["RCT_USE_RN_DEP"] == "1"
+             use_local_xcframework = ENV["RCT_USE_LOCAL_RN_DEP"] && File.exist?(ENV["RCT_USE_LOCAL_RN_DEP"])
+ 
+             @@build_from_source = !use_local_xcframework && !artifacts_exists
+@@ -225,15 +226,16 @@ class ReactNativeDependenciesUtils
+ 
+         url = release_tarball_url(@@react_native_version, :debug)
+         rndeps_log("Using tarball from URL: #{url}")
+-        download_stable_rndeps(@@react_native_path, @@react_native_version, :debug)
++        destinationDebug = download_stable_rndeps(@@react_native_path, @@react_native_version, :debug)
+         download_stable_rndeps(@@react_native_path, @@react_native_version, :release)
+ 
+-        return {:http => url }
++        return ReactNativePinnedArtifacts.local_source(destinationDebug)
+     end
+ 
+     def self.release_tarball_url(version, build_type)
+-        candidates = release_tarball_urls(version, build_type)
+-        return candidates.find { |url| artifact_exists(url) } || candidates.first
++        # Loomarr: the authoritative repository (ENTERPRISE_REPOSITORY, else Maven Central),
++        # chosen without an HTTP availability probe; acquisition verifies its digest.
++        return release_tarball_urls(version, build_type).last
+     end
+ 
+     def self.release_tarball_urls(version, build_type)
+@@ -318,69 +320,8 @@ class ReactNativeDependenciesUtils
+         filename = configuration == nil ?
+             "reactnative-dependencies-#{version}.tar.gz" :
+             "reactnative-dependencies-#{version}-#{configuration}.tar.gz"
+-        destination_path = "#{artifacts_dir()}/#{filename}"
+-
+-        if File.exist?(destination_path)
+-          rndeps_log("Tarball #{filename} already exists in Pods. Skipping download.")
+-          return destination_path
+-        end
+-
+-        `mkdir -p "#{artifacts_dir()}"`
+-
+-        if ReactNativePodsUtils.skip_caches?
+-          rndeps_log("RCT_SKIP_CACHES is set. Downloading #{filename} directly (bypassing shared cache).")
+-          tmp_file = "#{artifacts_dir()}/reactnative-dependencies.download"
+-          `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-          unless File.exist?(destination_path)
+-            abort("[ReactNativeDependencies] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-          end
+-          return destination_path
+-        end
+-
+-        cached_path = File.join(ReactNativePodsUtils.shared_cache_dir(), filename)
+-        if File.exist?(cached_path)
+-          rndeps_log("Verifying checksum for cached #{filename}...")
+-          if ReactNativePodsUtils.validate_tarball(cached_path, tarball_url)
+-            rndeps_log("Cache hit: copying #{filename} from shared cache (#{ReactNativePodsUtils.shared_cache_dir()})")
+-            FileUtils.cp(cached_path, destination_path)
+-          else
+-            rndeps_log("Shared cache file #{filename} failed SHA verification. Re-downloading.")
+-            File.delete(cached_path)
+-            tmp_file = "#{artifacts_dir()}/reactnative-dependencies.download"
+-            `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-            unless File.exist?(destination_path)
+-              abort("[ReactNativeDependencies] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-            end
+-            rndeps_log("Verifying checksum for downloaded #{filename}...")
+-            if ReactNativePodsUtils.validate_tarball(destination_path, tarball_url)
+-              FileUtils.cp(destination_path, cached_path)
+-              rndeps_log("Saved #{filename} to shared cache (#{ReactNativePodsUtils.shared_cache_dir()})")
+-            else
+-              File.delete(destination_path) if File.exist?(destination_path)
+-              abort("[ReactNativeDependencies] Downloaded file #{filename} failed SHA verification. Aborting.")
+-            end
+-          end
+-        else
+-          rndeps_log("Cache miss: downloading #{filename} from #{tarball_url}")
+-          # Download to a temporary file first so we don't cache incomplete downloads.
+-          tmp_file = "#{artifacts_dir()}/reactnative-dependencies.download"
+-          `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-          unless File.exist?(destination_path)
+-            abort("[ReactNativeDependencies] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-          end
+-          rndeps_log("Verifying checksum for downloaded #{filename}...")
+-          if ReactNativePodsUtils.validate_tarball(destination_path, tarball_url)
+-            # Save to shared cache for future use
+-            `mkdir -p "#{ReactNativePodsUtils.shared_cache_dir()}"`
+-            FileUtils.cp(destination_path, cached_path)
+-            rndeps_log("Saved #{filename} to shared cache (#{ReactNativePodsUtils.shared_cache_dir()})")
+-          else
+-            File.delete(destination_path) if File.exist?(destination_path)
+-            abort("[ReactNativeDependencies] Downloaded file #{filename} failed SHA verification. Aborting.")
+-          end
+-        end
+-
+-        return destination_path
++        ReactNativePinnedArtifacts.acquire(tarball_url, filename, artifacts_dir(),
++          ReactNativePodsUtils.shared_cache_dir(), ReactNativePodsUtils.skip_caches?)
+     end
+ 
+     def self.release_artifact_exists(version)
+diff --git a/sdks/hermes-engine/hermes-utils.rb b/sdks/hermes-engine/hermes-utils.rb
+index a0bd11a..a8f9635 100644
+--- a/sdks/hermes-engine/hermes-utils.rb
++++ b/sdks/hermes-engine/hermes-utils.rb
+@@ -5,6 +5,7 @@
+ 
+ require_relative '../../scripts/cocoapods/utils.rb'
+ require 'digest'
++require_relative '../../scripts/cocoapods/pinned_artifacts'
+ 
+ HERMES_GITHUB_URL = "https://github.com/facebook/hermes.git"
+ ENV_BUILD_FROM_SOURCE = "RCT_BUILD_HERMES_FROM_SOURCE"
+@@ -72,11 +73,9 @@ def hermes_source_type(version, react_native_path)
+         return HermesEngineSourceType::BUILD_FROM_GITHUB_STABLE_BRANCH
+     end
+ 
+-    if release_artifact_exists(version)
+-        return HermesEngineSourceType::DOWNLOAD_PREBUILD_RELEASE_TARBALL
+-    end
+-
+-    return HermesEngineSourceType::BUILD_FROM_GITHUB_STABLE_BRANCH
++    # Loomarr: this exact npm release owns the Hermes version. HTTP availability
++    # must never change that selection to a moving source ref.
++    return HermesEngineSourceType::DOWNLOAD_PREBUILD_RELEASE_TARBALL
+ end
+ 
+ def override_hermes_nightly_build_version_defined()
+@@ -195,9 +194,11 @@ end
+ def podspec_source_download_prebuild_release_tarball(react_native_path, version)
+     url = release_tarball_url(version, :debug)
+     hermes_log("Using release tarball from URL: #{url}")
+-    download_stable_hermes(react_native_path, version, :debug)
++    debug_path = download_stable_hermes(react_native_path, version, :debug)
+     download_stable_hermes(react_native_path, version, :release)
+-    return {:http => url}
++    # Avoid a second, unchecked remote download by CocoaPods. Keep the release
++    # source type so the original compiler and configuration replacement still run.
++    return ReactNativePinnedArtifacts.local_source(debug_path)
+ end
+ 
+ # HELPERS
+@@ -211,8 +212,9 @@ def hermestag_file(react_native_path)
+ end
+ 
+ def release_tarball_url(version, build_type)
+-    candidates = release_tarball_urls(version, build_type)
+-    return candidates.find { |url| hermes_artifact_exists(url) } || candidates.first
++    # Loomarr: the authoritative repository (ENTERPRISE_REPOSITORY, else Maven Central),
++    # chosen without an HTTP availability probe; acquisition verifies its digest.
++    return release_tarball_urls(version, build_type).last
+ end
+ 
+ def release_tarball_urls(version, build_type)
+@@ -257,99 +259,21 @@ def shared_cache_dir()
+     return File.join(Dir.home, "Library", "Caches", "ReactNative")
+ end
+ 
+-def fetch_maven_sha1(tarball_url)
+-    sha1 = `curl -sL "#{tarball_url}.sha1"`.strip
+-    return sha1.downcase if $?.success? && sha1.match?(/\A[a-fA-F0-9]{40}\z/)
+-    nil
++# Retain the upstream consumer seam for network-free regression fixtures.
++def hermes_fetch(url, destination)
++    ReactNativePinnedArtifacts.fetch(url, destination)
+ end
+ 
+ def skip_caches?
+     ENV['RCT_SKIP_CACHES'] == '1'
+ end
+ 
+-def validate_hermes_tarball(path, tarball_url)
+-    expected_sha1 = fetch_maven_sha1(tarball_url)
+-    basename = File.basename(path)
+-    if expected_sha1.nil?
+-      hermes_log("SHA1 not available from Maven for #{basename}. Skipping validation.", :info)
+-      return true
+-    end
+-    actual_sha1 = Digest::SHA1.file(path).hexdigest
+-    if actual_sha1 == expected_sha1
+-      hermes_log("SHA1 verified for #{basename}", :info)
+-      return true
+-    end
+-    hermes_log("SHA1 mismatch for #{basename}: expected #{expected_sha1}, got #{actual_sha1}", :error)
+-    return false
+-end
+-
+ def download_hermes_tarball(react_native_path, tarball_url, version, configuration)
+     filename = configuration == nil ?
+         "hermes-ios-#{version}.tar.gz" :
+         "hermes-ios-#{version}-#{configuration}.tar.gz"
+-    destination_path = "#{artifacts_dir()}/#{filename}"
+-
+-    if File.exist?(destination_path)
+-      hermes_log("Tarball #{filename} already exists in Pods. Skipping download.", :info)
+-      return destination_path
+-    end
+-
+-    `mkdir -p "#{artifacts_dir()}"`
+-
+-    if skip_caches?
+-      hermes_log("RCT_SKIP_CACHES is set. Downloading #{filename} directly (bypassing shared cache).", :info)
+-      tmp_file = "#{artifacts_dir()}/hermes-ios.download"
+-      `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-      unless File.exist?(destination_path)
+-        abort("[Hermes] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-      end
+-      return destination_path
+-    end
+-
+-    cached_path = File.join(shared_cache_dir(), filename)
+-    if File.exist?(cached_path)
+-      hermes_log("Verifying checksum for cached #{filename}...", :info)
+-      if validate_hermes_tarball(cached_path, tarball_url)
+-        hermes_log("Cache hit: copying #{filename} from shared cache (#{shared_cache_dir()})", :info)
+-        FileUtils.cp(cached_path, destination_path)
+-      else
+-        hermes_log("Shared cache file #{filename} failed SHA verification. Re-downloading.", :info)
+-        File.delete(cached_path)
+-        tmp_file = "#{artifacts_dir()}/hermes-ios.download"
+-        `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-        unless File.exist?(destination_path)
+-          abort("[Hermes] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-        end
+-        hermes_log("Verifying checksum for downloaded #{filename}...", :info)
+-        if validate_hermes_tarball(destination_path, tarball_url)
+-          FileUtils.cp(destination_path, cached_path)
+-          hermes_log("Saved #{filename} to shared cache (#{shared_cache_dir()})", :info)
+-        else
+-          File.delete(destination_path) if File.exist?(destination_path)
+-          abort("[Hermes] Downloaded file #{filename} failed SHA verification. Aborting.")
+-        end
+-      end
+-    else
+-      hermes_log("Cache miss: downloading #{filename} from #{tarball_url}", :info)
+-      # Download to a temporary file first so we don't cache incomplete downloads.
+-      tmp_file = "#{artifacts_dir()}/hermes-ios.download"
+-      `curl -A "react-native-#{version}" "#{tarball_url}" -Lo "#{tmp_file}" && mv "#{tmp_file}" "#{destination_path}"`
+-      unless File.exist?(destination_path)
+-        abort("[Hermes] Failed to download #{filename} from #{tarball_url}. Aborting.")
+-      end
+-      hermes_log("Verifying checksum for downloaded #{filename}...", :info)
+-      if validate_hermes_tarball(destination_path, tarball_url)
+-        # Save to shared cache for future use
+-        `mkdir -p "#{shared_cache_dir()}"`
+-        FileUtils.cp(destination_path, cached_path)
+-        hermes_log("Saved #{filename} to shared cache (#{shared_cache_dir()})", :info)
+-      else
+-        File.delete(destination_path) if File.exist?(destination_path)
+-        abort("[Hermes] Downloaded file #{filename} failed SHA verification. Aborting.")
+-      end
+-    end
+-
+-    return destination_path
++    ReactNativePinnedArtifacts.acquire(tarball_url, filename, artifacts_dir(),
++      shared_cache_dir(), skip_caches?, method(:hermes_fetch))
+ end
+ 
+ def resolve_url_redirects(url)

@@ -34,10 +34,27 @@ type Item struct {
 	// reader is closed. It is not called for an item that never produced, or whose channel stopped
 	// mid-item. An encoder's cost is its CPU over this media, not over its slot.
 	Delivered func(frames int64)
+	// Served, if set, is called once when a viewer first receives a segment of this item
+	// (SegmentServed, WaitSegment). An item that is encoded but never fetched, such as a neighbour
+	// warm's, never calls it. It runs on the fetching goroutine, so it must be quick.
+	Served func()
 	// Wait, if set, is the least time the item gets to produce its first fragment: an item resumed
 	// on a new rung after its encoder ran the timeline's lead down would otherwise miss a deadline
 	// already past and slate, where a short hold keeps the picture.
 	Wait time.Duration
+}
+
+// SourceEnd is implemented by an item stream that can tell a source that ran out (its encoder read
+// the input to its end and exited cleanly) from one that was stopped or failed. A source that ran
+// out before its slot filled has nothing more to give: asking the schedule again would reopen the
+// same airing at its last frame, start an encoder that produces nothing, and slate anyway. The
+// packager slates the rest of the slot instead, at most SlateRetry, so a file that ended long
+// before its runtime (ffmpeg also exits 0 on a truncated or unreadable input) still rejoins as a
+// failure would. Any other early end rejoins through the schedule at once.
+type SourceEnd interface {
+	// SourceEnded reports a clean end of input. It is asked once, after the stream's last
+	// fragment and before the item's context is cancelled.
+	SourceEnded() bool
 }
 
 // Slot is one item's place on the channel timeline, fixed before its encoder starts.
@@ -53,6 +70,9 @@ type Slot struct {
 // Schedule resolves what airs at an instant. An error or a non-positive Duration fills
 // Config.SlateRetry of slate before the packager asks again.
 type Schedule func(ctx context.Context, at time.Time) (Item, error)
+
+// DefaultRunAhead is Config.RunAhead's default: how far the encoded timeline may lead the clock.
+const DefaultRunAhead = 12 * time.Second
 
 type Config struct {
 	// FPS is the output frame rate; 90000 must divide by it (24, 25, 30, 50, 60).
@@ -99,7 +119,7 @@ func (c *Config) defaults() error {
 			*d = v
 		}
 	}
-	def(&c.RunAhead, 12*time.Second)
+	def(&c.RunAhead, DefaultRunAhead)
 	def(&c.ListAhead, 6*time.Second)
 	def(&c.FirstManifest, 4*time.Second)
 	def(&c.DVR, 15*time.Minute)
@@ -126,6 +146,8 @@ type Packager struct {
 	// Timeline counters, owned by Run: the next video tick (90 kHz) and audio sample (48 kHz).
 	v, a int64
 	seq  uint32
+	// airing is the item whose fragments are being appended, nil while the slate is. Owned by Run.
+	airing *servedOnce
 
 	mu       sync.Mutex
 	epoch    time.Time // wall instant of media time 0
@@ -190,17 +212,11 @@ func (p *Packager) run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		if err != nil || item.Duration <= 0 || item.Open == nil {
-			// Nothing playable (an empty lineup, a card slot) slates for that slot's length, and a
-			// failed lookup for SlateRetry; either way the schedule is asked again at most that late.
-			d := p.cfg.SlateRetry
-			if err == nil && item.Duration > 0 {
-				d = min(item.Duration, d)
-			} else {
-				p.cfg.Log.Warn("packager: nothing to air; slate", "at", airAt, "err", err)
-			}
+		if err != nil || item.Duration <= 0 {
+			// A failed lookup slates for SlateRetry, then the schedule is asked again.
+			p.cfg.Log.Warn("packager: nothing to air; slate", "at", airAt, "err", err)
 			tuneIn = false
-			if err := p.fillSlate(ctx, p.slotFor(airAt, d)); err != nil {
+			if err := p.fillSlate(ctx, p.slotFor(airAt, p.cfg.SlateRetry)); err != nil {
 				return err
 			}
 			continue
@@ -209,8 +225,19 @@ func (p *Packager) run(ctx context.Context) error {
 		if slot.Frames <= 0 {
 			// Less than half a frame of this airing is left: the previous slot's rounding already
 			// covered it. Ask what airs at its end, on the same timeline position (a frame of slate
-			// here was a black frame at every boundary whose rounding fell short).
+			// here was a black frame at every boundary whose rounding fell short). ⚠ A card slot too:
+			// its slate would round to no frames, the timeline would not move, and the same instant
+			// would be asked for forever (a break whose clips ran out, frozen on its last commercial).
 			lookAt = at.Add(item.Duration)
+			continue
+		}
+		if item.Open == nil {
+			// Nothing playable (an empty lineup, a card slot) slates for that slot's length, at most
+			// SlateRetry, so the schedule is asked again at most that late.
+			tuneIn = false
+			if err := p.fillSlate(ctx, p.slotFor(airAt, min(item.Duration, p.cfg.SlateRetry))); err != nil {
+				return err
+			}
 			continue
 		}
 		// An item must be producing SlateLead before it airs. When the timeline leads by less than
@@ -360,9 +387,13 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 			"first_fragment_ms", p.cfg.Now().Sub(openedAt).Milliseconds())
 	}
 	p.count(func(s *Stats) { s.Items++ })
+	if item.Served != nil {
+		p.airing = &servedOnce{fn: item.Served}
+	}
 
 	var nv, na int64
 	first := true
+	drained := false // the stream closed on its own: its reader is done, so its end can be asked
 	for ; frag != nil; first = false {
 		keep := map[uint32]int64{videoTrack: slot.Frames - nv, audioTrack: slot.AudioFrames - na}
 		c, err := p.forward(ctx, frag, first, keep)
@@ -380,16 +411,31 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		}
 		f, ok := <-stream.frags
 		if !ok {
+			drained = true
 			break
 		}
 		frag = f
 	}
+	p.airing = nil // whatever slates the rest of the slot is not this item
 	if item.Delivered != nil && ctx.Err() == nil {
 		item.Delivered(nv) // before the encoder is stopped and reaped
+	}
+	// A source shorter than its slot (a commercial whose audio runs past its picture, a file
+	// shorter than its listed runtime) ends with the slot unfilled. Asked before cancel, which
+	// would stop an encoder still finishing.
+	ranOut := false
+	if end, ok := rc.(SourceEnd); ok && drained && nv < slot.Frames && stream.err == nil && ctx.Err() == nil {
+		ranOut = end.SourceEnded()
 	}
 	cancel()
 	if nv < slot.Frames && stream.err != nil && ctx.Err() == nil {
 		p.cfg.Log.Warn("packager: item ended early", "item", item.Label, "frames", nv, "want", slot.Frames, "err", stream.err)
+	}
+	if ranOut {
+		left := min(time.Duration(slot.Frames-nv)*time.Second/time.Duration(p.cfg.FPS), p.cfg.SlateRetry)
+		p.cfg.Log.Info("packager: item's source ended before its slot; slate", "item", item.Label, "frames", nv,
+			"want", slot.Frames, "slate_ms", left.Milliseconds())
+		return p.fillSlate(ctx, p.slotFor(p.airAt(p.v), left))
 	}
 	return nil
 }
@@ -499,7 +545,7 @@ func (p *Packager) appendSegment(ctx context.Context, b []byte, c map[uint32]int
 	if err := os.WriteFile(filepath.Join(p.cfg.Dir, name), b, 0o600); err != nil {
 		return fmt.Errorf("packager: write segment: %w", err)
 	}
-	seg := segment{seq: p.seq, name: name, start: p.v, dur: c[videoTrack] * p.frameDur}
+	seg := segment{seq: p.seq, name: name, start: p.v, dur: c[videoTrack] * p.frameDur, served: p.airing}
 	p.seq++
 	p.v += seg.dur
 	p.a += c[audioTrack] * aacFrame
@@ -618,16 +664,19 @@ func (p *Packager) WaitSegment(ctx context.Context, seq uint32) ([]byte, error) 
 		p.mu.Lock()
 		listed := p.window.listable(p.listEdgeLocked(p.cfg.Now()))
 		var name string
+		var served *servedOnce
 		switch {
 		case len(p.window.segs) > 0 && seq < p.window.segs[0].seq:
 			p.mu.Unlock()
 			return nil, ErrSegmentGone
 		case len(listed) > 0 && seq <= listed[len(listed)-1].seq:
-			name = listed[seq-listed[0].seq].name
+			seg := listed[seq-listed[0].seq]
+			name, served = seg.name, seg.served
 		}
 		done, err, changed := p.done, p.err, p.changed
 		p.mu.Unlock()
 		if name != "" {
+			served.fire()
 			return os.ReadFile(filepath.Join(p.cfg.Dir, name))
 		}
 		if done {
@@ -644,6 +693,22 @@ func (p *Packager) WaitSegment(ctx context.Context, seq uint32) ([]byte, error) 
 		}
 		t.Stop()
 	}
+}
+
+// SegmentServed records that a viewer is receiving the named segment file (an HLS media segment
+// fetch): the first fetch of any segment of an item calls the item's Served. A name that is not a
+// segment of the window, the init segment and slate segments call nothing.
+func (p *Packager) SegmentServed(name string) {
+	p.mu.Lock()
+	var served *servedOnce
+	for _, s := range p.window.segs {
+		if s.name == name {
+			served = s.served
+			break
+		}
+	}
+	p.mu.Unlock()
+	served.fire()
 }
 
 // Init returns the channel init segment as served, or nil before the first item produced.

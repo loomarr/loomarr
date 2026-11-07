@@ -2,8 +2,13 @@ package playout
 
 import (
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // frame is a flat luma frame with an optional square painted in.
@@ -163,9 +168,32 @@ func TestSameParameterSets(t *testing.T) {
 	}
 }
 
+// The check is handed a scratch path that does not exist yet (the app passes `check-<encoder>`
+// under its watermarks dir and removes it after), and its first ffmpeg writes a source clip into
+// it. A check that left making the dir to a later step failed on every host: the stub ffmpeg here
+// refuses an output whose directory is missing, as the real one does.
+func TestWatermarkCheck_MakesItsScratchDir(t *testing.T) {
+	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+	script := "#!/bin/sh\nfor a; do out=$a; done\n" +
+		"[ -d \"$(dirname \"$out\")\" ] || { echo 'Error opening output: No such file or directory' >&2; exit 254; }\n" +
+		"echo 'stub encoder' >&2; exit 1\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "check-h264_nvenc")
+
+	r := WatermarkCheck(t.Context(), ffmpeg, encode.HostProfile{Family: encode.FamilyNVENC}, dir)
+	if strings.Contains(r.Detail, "No such file or directory") {
+		t.Fatalf("the check wrote into a dir it never made: %s", r.Detail)
+	}
+	if !strings.Contains(r.Detail, "stub encoder") {
+		t.Fatalf("the source clip never reached ffmpeg: %s", r.Detail)
+	}
+}
+
 func TestWatermarkCheck_NoGPUOverlayFamilies(t *testing.T) {
-	for _, f := range []Family{FamilySoftware, FamilyGeneric, FamilyVideoToolbox} {
-		if r := WatermarkCheck(t.Context(), "ffmpeg-not-run", HostProfile{Family: f}, t.TempDir()); r.Works {
+	for _, f := range []encode.Family{encode.FamilySoftware, encode.FamilyGeneric, encode.FamilyVideoToolbox} {
+		if r := WatermarkCheck(t.Context(), "ffmpeg-not-run", encode.HostProfile{Family: f}, t.TempDir()); r.Works {
 			t.Errorf("%s: the watermark passed without a GPU overlay", f)
 		}
 	}

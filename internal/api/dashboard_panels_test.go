@@ -10,11 +10,11 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, fillerstore.Store) {
+func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, records.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -71,8 +71,8 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	// and everything else as failing — a second double would be one more thing to keep in
 	// agreement with the real interface.
 	srv, _ := serverWithPanels(t, api.Options{
-		Settings:   &fakeSettings{},
-		LiveConfig: func(key string) string { return map[string]string{"seerr.url": "http://seerr.lan:5055"}[key] },
+		Settings:     &fakeSettings{},
+		LiveSettings: mapSettings{"seerr.url": "http://seerr.lan:5055"},
 	})
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")

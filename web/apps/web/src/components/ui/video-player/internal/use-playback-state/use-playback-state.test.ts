@@ -89,8 +89,8 @@ describe("usePlaybackState", () => {
     act(() => pausedResult.current.toggle());
     act(() => playingResult.current.toggle());
 
-    expect(transport.play).toHaveBeenCalledWith(paused.current);
-    expect(transport.pause).toHaveBeenCalledWith(playing.current);
+    expect(transport.play).toHaveBeenCalledOnce();
+    expect(transport.pause).toHaveBeenCalledOnce();
     expect(paused.current.play).not.toHaveBeenCalled();
     expect(playing.current.pause).not.toHaveBeenCalled();
   });

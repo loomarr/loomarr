@@ -9,7 +9,7 @@ import type { ChannelDefaultsSummaryProps } from "./channel-defaults-summary.typ
 const ChannelDefaultsSummary = ({ policy, className }: ChannelDefaultsSummaryProps) => {
   const { overridden, total } = overrideCount(policy);
   return (
-    <div className={cn("rounded-lg border border-border bg-card p-4", className)}>
+    <div className={cn("border-border bg-card rounded-lg border p-4", className)}>
       <p className="text-sm">
         {overridden} of {total} fields are channel overrides. Most defaults here are Loomarr's built-in
         values, not a household setting — only Schedule horizon and Commercial-break frequency live on

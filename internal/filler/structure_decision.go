@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 type structureDecisionProjectionInterval struct {
@@ -21,15 +21,15 @@ type structureDecisionProjectionAuthority struct {
 	intervals      map[[2]int64]structureDecisionProjectionInterval
 }
 
-func newStructureDecisionProjectionAuthority(source SplitSourceAsset, artifact fillerstructure.Artifact) (*structureDecisionProjectionAuthority, error) {
+func newStructureDecisionProjectionAuthority(source SplitSourceAsset, artifact structure.Artifact) (*structureDecisionProjectionAuthority, error) {
 	if err := source.validate(); err != nil {
 		return nil, err
 	}
-	if err := fillerstructure.ValidateArtifact(artifact); err != nil {
+	if err := structure.ValidateArtifact(artifact); err != nil {
 		return nil, err
 	}
 	decision := artifact.Decision
-	if decision.Status != fillerstructure.StatusConfirmed {
+	if decision.Status != structure.StatusConfirmed {
 		return nil, errors.New("source structure decision is held")
 	}
 	if decision.Source.SHA256 != source.SHA256 || decision.Source.Bytes != source.Bytes || decision.Source.DurationMS != source.DurationMs {
@@ -71,7 +71,7 @@ func newStructureDecisionProjectionAuthority(source SplitSourceAsset, artifact f
 
 // ValidateStructureDecisionProjection proves that the proposal assessment is an exact projection
 // of one replayable, confirmed independent-assessor decision. It grants no certification itself.
-func ValidateStructureDecisionProjection(assessment SourceStructureAssessment, artifact fillerstructure.Artifact) error {
+func ValidateStructureDecisionProjection(assessment SourceStructureAssessment, artifact structure.Artifact) error {
 	authority, err := newStructureDecisionProjectionAuthority(assessment.Source, artifact)
 	if err != nil {
 		return err
@@ -95,7 +95,7 @@ func ValidateStructureDecisionProjection(assessment SourceStructureAssessment, a
 	return nil
 }
 
-func validateSourceStructureAssessmentOrProjection(assessment SourceStructureAssessment, artifact *fillerstructure.Artifact) error {
+func validateSourceStructureAssessmentOrProjection(assessment SourceStructureAssessment, artifact *structure.Artifact) error {
 	strictErr := ValidateSourceStructureAssessment(assessment)
 	if strictErr == nil {
 		return nil
@@ -106,24 +106,24 @@ func validateSourceStructureAssessmentOrProjection(assessment SourceStructureAss
 	return strictErr
 }
 
-func projectedStructureKind(unit fillerstructure.Unit) (SourceStructureKind, error) {
+func projectedStructureKind(unit structure.Unit) (SourceStructureKind, error) {
 	switch unit {
-	case fillerstructure.UnitStandalone, fillerstructure.UnitProgrammeExcerpt:
+	case structure.UnitStandalone, structure.UnitProgrammeExcerpt:
 		return StructureSingleUnit, nil
-	case fillerstructure.UnitCompilation:
+	case structure.UnitCompilation:
 		return StructureCompilationBreak, nil
-	case fillerstructure.UnitProgrammeSpots:
+	case structure.UnitProgrammeSpots:
 		return StructureProgrammeSpots, nil
 	default:
 		return "", fmt.Errorf("source structure decision unit %q cannot be projected", unit)
 	}
 }
 
-func projectedStructureDisposition(disposition fillerstructure.Disposition) (StructureSegmentDisposition, error) {
+func projectedStructureDisposition(disposition structure.Disposition) (StructureSegmentDisposition, error) {
 	switch disposition {
-	case fillerstructure.DispositionFillerCandidate:
+	case structure.DispositionFillerCandidate:
 		return StructureKeep, nil
-	case fillerstructure.DispositionNonFiller:
+	case structure.DispositionNonFiller:
 		return StructureDiscard, nil
 	default:
 		return "", fmt.Errorf("source structure decision disposition %q cannot be projected", disposition)

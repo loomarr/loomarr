@@ -51,6 +51,34 @@ const formatMmSs = (ms: number): string => {
   return `${String(Math.floor(totalSec / 60)).padStart(2, "0")}:${String(totalSec % 60).padStart(2, "0")}`;
 };
 
+// A Go-duration STRING from the wire ("168h", "30h0m0s"), tidied for display: Go's
+// Duration.String() writes every unit, so the zero ones are dropped ("30h0m0s" → "30h"). A zero
+// duration ("0s", "0h0m0s") or an absent one is "", which each caller names for its own field
+// ("No restriction", built-in spacing). Text that is not an h/m/s duration comes back unchanged,
+// so a bad value stays visible instead of disappearing.
+const tidyGoDuration = (value: string | undefined): string => {
+  if (!value) return "";
+  const m = /^(\d+h)?(\d+m)?(\d+s)?$/.exec(value);
+  if (!m || (!m[1] && !m[2] && !m[3])) return value;
+  return [m[1], m[2], m[3]].filter((unit) => unit && !/^0[hms]$/.test(unit)).join("");
+};
+
+// Total minutes in a Go-duration string, in the long form Go writes ("4h0m0s", "1h30m0s") or the
+// short form a client sends ("2m", "4h"), with ms/s/m/h units and decimals. Undefined for anything
+// else, rather than a guess.
+const goDurationMinutes = (value: string | undefined): number | undefined => {
+  const text = value?.trim() ?? "";
+  // Go's ParseDuration takes a bare "0" as the only unitless duration.
+  if (text === "0") return 0;
+  if (!/^(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h))+$/.test(text)) return undefined;
+  const perMinute: Record<string, number> = { ms: 1 / 60_000, s: 1 / 60, m: 1, h: 60 };
+  let minutes = 0;
+  for (const [, amount, unit] of text.matchAll(/([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)/g)) {
+    minutes += Number(amount) * (perMinute[unit ?? "m"] ?? 1);
+  }
+  return minutes;
+};
+
 // The inverse of formatMmSs for the cut editor's text inputs. Accepts "m:ss" or "mm:ss"
 // (seconds may exceed 59 — "90" is 90s); returns undefined for anything else rather than
 // guessing, because a wrong cut point is exactly what the review gate exists to catch.
@@ -144,6 +172,18 @@ const formatRelative = (t: Instant, now: number = Date.now()): string => {
   return `${Math.round(hrs / 24)}d ago`;
 };
 
+// formatRelative in whole words, for household-facing copy: "just now" · "12 minutes ago" ·
+// "1 hour ago" · "5 days ago".
+const formatAgo = (t: Instant, now: number = Date.now()): string => {
+  const secs = Math.max(0, Math.round((now - msOf(t)) / 1000));
+  if (secs < 45) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${pluralize(mins, "minute")} ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${pluralize(hrs, "hour")} ago`;
+  return `${pluralize(Math.round(hrs / 24), "day")} ago`;
+};
+
 // The forward-looking twin: "in 20m" · "in 3h" · "in 5d" · "expired". Used for session
 // expiry, where "expires in 6d" is the number an admin judges a stale session by.
 // Deliberately coarse, matching formatRelative — these read as an at-a-glance sense of
@@ -207,9 +247,50 @@ const humanizeRelaxation = (step: { kind: string; from: string; to: string }) =>
   to: humanizeRelaxationValue(step.to),
 });
 
+// languageLabel turns an ISO language code into a human name using the PLATFORM's own language
+// data (Intl.DisplayNames), not a hand-written table that would drift and only cover a handful of
+// languages. The mapping is the browser's CLDR data, localized to the viewer's own locale for
+// free ("eng" → "English" for an English user, "Englisch" for a German one).
+//
+// Our tracks carry ISO 639-2 (3-letter, "eng"); Intl prefers 639-1 but accepts many 3-letter
+// codes. Where it can't resolve one it returns the input unchanged, so we fall back to the
+// upper-cased code. Intl.DisplayNames throws on a malformed code, and very old runtimes lack it,
+// so both are guarded; the one instance is created lazily and reused.
+let displayNames: Intl.DisplayNames | undefined;
+let displayNamesInitialised = false;
+
+const languageResolver = (): Intl.DisplayNames | undefined => {
+  if (!displayNamesInitialised) {
+    displayNamesInitialised = true;
+    try {
+      displayNames = new Intl.DisplayNames(undefined, { type: "language" });
+    } catch {
+      displayNames = undefined;
+    }
+  }
+  return displayNames;
+};
+
+const languageLabel = (code: string): string => {
+  const c = code.trim();
+  if (!c) return "Unknown";
+  const dn = languageResolver();
+  if (dn) {
+    try {
+      const name = dn.of(c);
+      // Intl returns the input unchanged when it can't resolve the code: no match.
+      if (name && name.toLowerCase() !== c.toLowerCase()) return name;
+    } catch {
+      // malformed code — fall through
+    }
+  }
+  return c.toUpperCase();
+};
+
 export type { Instant };
 export {
   channelNumber,
+  formatAgo,
   formatBytes,
   formatClipDuration,
   formatCompactCount,
@@ -223,8 +304,11 @@ export {
   formatRuntime,
   formatUntil,
   formatUptime,
+  goDurationMinutes,
   humanizeRelaxation,
   humanizeSettingKey,
+  languageLabel,
   parseMmSs,
   pluralize,
+  tidyGoDuration,
 };

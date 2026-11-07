@@ -9,7 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -72,10 +72,16 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list filler sources", err)
 	}
-	live := make(map[string]fillerstore.FillerSource, len(srcs))
+	// The same source rule as the fetcher and the Sources page's "Fetch now" (ServesHome): nothing
+	// downloads before the installation has a location, attended or not.
 	home := s.fillerHomeGeography()
+	if home.Normalize().Country == "" {
+		return nil, errConflict("Set your location first",
+			"Loomarr only downloads filler for a location it knows. Choose your location in Settings, then approve this pull again.")
+	}
+	live := make(map[string]records.FillerSource, len(srcs))
 	for _, src := range srcs {
-		if src.EffectiveEnabled() && src.Fetchable() && src.GeographicallyEligible(home) {
+		if src.EffectiveEnabled() && src.Fetchable() && src.ServesHome(home) {
 			live[src.ID] = src
 		}
 	}
@@ -127,7 +133,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	if _, err := s.filler.IngestPull(ctx, p.ID, targets, func(commitCtx context.Context, run filler.AcquisitionRun) error {
 		return s.store.CommitPullApproval(commitCtx, p, run)
 	}); err != nil {
-		if errors.Is(err, fillerstore.ErrPullNotPending) {
+		if errors.Is(err, records.ErrPullNotPending) {
 			return nil, errConflict("That pull has already been decided or started", "Another decision or acquisition already owns this pull. Review its history before proposing a new one.")
 		}
 		if errors.Is(err, ErrIngestUnavailable) {
@@ -236,7 +242,7 @@ func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInp
 	p.DecidedAt = time.Now().UTC()
 	p.DecidedBy = auditActor(ctx)
 	if err := s.store.DismissPull(ctx, p); err != nil {
-		if errors.Is(err, fillerstore.ErrPullNotPending) {
+		if errors.Is(err, records.ErrPullNotPending) {
 			return nil, errConflict("That pull has already been decided", "Another decision won. Reload the pull to see its history.")
 		}
 		return nil, huma.Error500InternalServerError("save pull decision", err)

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // rotatingSource airs short items rotating through generated sources, so a channel crosses an item
@@ -33,8 +35,8 @@ func (s rotatingSource) ItemAt(_ context.Context, _ string, at time.Time) (Packa
 
 func (rotatingSource) Premium(context.Context, string) FormatClass { return "" }
 
-func (s rotatingSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
-	return HostFor(EncoderSoftware, true, GPUFilters{}), s.out
+func (s rotatingSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
+	return encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), s.out
 }
 
 // TestPackagerOriginServesHLSAndTSAcrossItemBoundaries runs a channel packager behind the real
@@ -68,13 +70,13 @@ func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 	defer cancel()
 
 	// The tuner joins first, so its stream starts at the channel's first segment.
-	tuner, err := o.Tune(ctx, TuneRequest{ChannelID: "ch", Plan: PlanBaseline, Delivery: DeliveryMPEGTS})
+	tuner, err := o.Tune(ctx, TuneRequest{ChannelID: "ch", Delivery: DeliveryMPEGTS})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tuner.Release()
 
-	browser, err := o.Tune(ctx, TuneRequest{ChannelID: "ch", Plan: PlanBaseline, Delivery: DeliveryHLS})
+	browser, err := o.Tune(ctx, TuneRequest{ChannelID: "ch", Delivery: DeliveryHLS})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +86,7 @@ func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 		!strings.Contains(master, "\n1080p-h264-sdr.m3u8\n") {
 		t.Fatalf("master playlist:\n%s", master)
 	}
-	variant, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, "1080p-h264-sdr.m3u8", false)
+	variant, ok, err := o.OpenAsset(ctx, "ch", "1080p-h264-sdr.m3u8", false)
 	if err != nil || !ok || !variant.Playlist {
 		t.Fatalf("variant: ok %v playlist %v err %v", ok, variant.Playlist, err)
 	}
@@ -101,7 +103,7 @@ func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 		t.Fatalf("variant lists no init and segment:\n%s", body)
 	}
 	for _, u := range uris {
-		a, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, u, false)
+		a, ok, err := o.OpenAsset(ctx, "ch", u, false)
 		if err != nil || !ok {
 			t.Fatalf("asset %q named by the variant: ok %v err %v", u, ok, err)
 		}

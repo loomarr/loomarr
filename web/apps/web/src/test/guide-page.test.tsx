@@ -4,6 +4,7 @@ import {
   getChannelGuideMockHandler,
   getDeleteChannelMockHandler,
   getEnqueueTitleMockHandler,
+  getGetProposalJobMockHandler,
   getListChannelsMockHandler,
   getListTitlesMockHandler,
   getMeMockHandler,
@@ -15,7 +16,7 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
 import { setting } from "@/test/fixtures/settings";
@@ -136,8 +137,18 @@ const stubGuide = (who: MeBody = me(), opts: { empty?: boolean } = {}) => {
   return { enqueued };
 };
 
+// The Guide prefetches neighbouring windows, so a test can end with requests still in flight.
+// Such a request would reach the NEXT test's handlers and be recorded there (the slow-window
+// stub would take it for its own "first" window and gate the real one), so every test drains
+// its clients before it ends.
+const clients: QueryClient[] = [];
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((c) => vi.waitFor(() => expect(c.isFetching()).toBe(0))));
+});
+
 const renderAt = (path: string) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  clients.push(queryClient);
   const router = createRouter({
     routeTree,
     context: { queryClient },
@@ -508,5 +519,56 @@ describe("?new=1", () => {
     stubGuide();
     renderAt("/guide?new=1");
     expect(await screen.findByLabelText("Channel intent")).toHaveValue("");
+  });
+});
+
+// Origination lives in the URL, and the tab remembers the Job it follows: arriving at the Guide
+// with no origination params resumes it, while Close (which stays on the route) does not reopen.
+describe("returning to the Guide", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    server.use(
+      getGetProposalJobMockHandler({
+        version: 1,
+        jobId: "job-1",
+        milestone: "generating",
+        intent: { description: "90s action movies" },
+        attempts: [{ version: 1, number: 1, status: "running", startedAt: "2026-08-22T12:00:00Z" }],
+        actions: ["wait"],
+        createdAt: "2026-08-22T12:00:00Z",
+        updatedAt: "2026-08-22T12:00:00Z",
+      }),
+    );
+  });
+
+  it("resumes the Job this tab follows", async () => {
+    stubGuide();
+    window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
+    renderAt("/guide");
+
+    expect(await screen.findByRole("heading", { name: "Finding titles", level: 1 })).toBeInTheDocument();
+  });
+
+  it("stays closed after Close, and reopens onto the same Job", async () => {
+    stubGuide();
+    window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
+    const view = renderAt("/guide");
+
+    await userEvent.click(await view.findByRole("button", { name: /close/i }));
+    expect(await view.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+
+    await userEvent.click(view.getByRole("button", { name: /add a channel/i }));
+    expect(await view.findByRole("heading", { name: "Finding titles", level: 1 })).toBeInTheDocument();
+  });
+
+  it("reopens a draft kept across the setup trip", async () => {
+    stubGuide();
+    window.sessionStorage.setItem(
+      "loomarr.pendingProposalIntent",
+      JSON.stringify({ description: "Saturday morning cartoons" }),
+    );
+    renderAt("/guide");
+
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue("Saturday morning cartoons");
   });
 });

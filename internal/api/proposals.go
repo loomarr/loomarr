@@ -2,19 +2,23 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/proposaloutlook"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/outlook"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // userIDFromHuma returns the authenticated user's id, or "" for a token
@@ -76,19 +80,30 @@ func (s *Server) registerProposals(api huma.API) {
 
 // --- submit ---
 
-// submitInput takes the FULL typed suggest.Intent, for the same reason ProposalDTO
-// carries suggest.Proposal (§12, 1:1): the previous hand-mirrored body had already
+// submitInput takes the FULL typed proposals.Intent, for the same reason ProposalDTO
+// carries proposals.Proposal (§12, 1:1): the previous hand-mirrored body had already
 // drifted from the domain — it omitted RuntimeTgt, so `runtimeTargetMin` was
 // unreachable even though the suggester honors it (prompt + scoring) and §13 lists a
 // runtime target among the intent constraints a user may set. Typing from the domain
 // removes the whole drift class rather than patching one missing field.
 type submitInput struct {
-	Body suggest.Intent
+	Body proposals.Intent
 }
 type submitOutput struct {
 	Body struct {
 		JobID string `json:"jobId"`
 	}
+}
+
+// checkDescription refuses a channel description shorter than proposals.MinDescriptionLen once
+// trimmed. The spec's minLength counts raw characters, so three spaces pass it; this is the
+// check that makes the rule the same one the web form applies.
+func checkDescription(description string) error {
+	if utf8.RuneCountInString(strings.TrimSpace(description)) < proposals.MinDescriptionLen {
+		return errBadRequest("Description too short",
+			fmt.Sprintf("Describe the channel you want in at least %d characters (a sentence is plenty).", proposals.MinDescriptionLen))
+	}
+	return nil
 }
 
 // suggestionConfigurationError maps the settings-owned readiness explanation to
@@ -104,9 +119,9 @@ func (s *Server) suggestionConfigurationError(ctx context.Context) error {
 	tmdbMissing := false
 	for _, key := range missing {
 		switch key {
-		case "llm.provider", "llm.model":
+		case settings.LLMProvider.Key(), settings.LLMModel.Key():
 			aiMissing = true
-		case "tmdb.api_key":
+		case settings.TMDBAPIKey.Key():
 			tmdbMissing = true
 		}
 	}
@@ -129,8 +144,8 @@ func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOu
 	if err := s.suggestionConfigurationError(ctx); err != nil {
 		return nil, err
 	}
-	if in.Body.Description == "" {
-		return nil, errBadRequest("Description required", "Describe the channel you want in a sentence.")
+	if err := checkDescription(in.Body.Description); err != nil {
+		return nil, err
 	}
 	createdBy := userIDFromHuma(ctx) // the member who requested it (§8 My proposals)
 	jobID, err := s.suggest.Submit(ctx, in.Body, createdBy)
@@ -145,7 +160,7 @@ func (s *Server) submitProposal(ctx context.Context, in *submitInput) (*submitOu
 // --- list / get ---
 
 // ProposalDTO is the API view of a persisted proposal (§8). Proposal is the FULL typed
-// suggest.Proposal (lineup, acquisitions, alternates, scores, rationale, policy) — typed
+// proposals.Proposal (lineup, acquisitions, alternates, scores, rationale, policy) — typed
 // straight from the domain struct so orval generates the FE's proposal types 1:1 (§12),
 // with zero hand-written mirror on either side and no fidelity lost through the wire.
 type ProposalDTO struct {
@@ -173,8 +188,8 @@ type ProposalDTO struct {
 	// ApprovedAt is when the gate let this through — the audit rows' ordering key (§7, V27).
 	// Omitted while unapproved. RFC3339 so a client can render it in the viewer's timezone;
 	// the store keeps epoch seconds.
-	ApprovedAt string           `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
-	Proposal   suggest.Proposal `json:"proposal"`
+	ApprovedAt string             `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
+	Proposal   proposals.Proposal `json:"proposal"`
 	// EpisodeSelectionPreview is a read-only projection from Proposal.Intent. It lets the
 	// approval UI explain a search-added series before approval; the client cannot submit it,
 	// and the approval gate independently re-derives every series item from the same Intent.
@@ -192,17 +207,13 @@ func rfc3339OrEmpty(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-func proposalToDTO(p store.Proposal) ProposalDTO {
-	var payload suggest.Proposal
-	// A malformed stored proposal shouldn't 500 a list; leave the payload zero-valued.
-	if len(p.ProposalJSON) > 0 {
-		_ = json.Unmarshal([]byte(p.ProposalJSON), &payload)
-	}
+func proposalToDTO(p store.Proposal, holidays holidayvocab.Vocabulary) ProposalDTO {
+	payload := p.Body
 	return ProposalDTO{
 		ID: p.ID, JobID: p.JobID, Status: p.Status, CreatedBy: p.CreatedBy,
 		ApprovedBy: p.ApprovedBy, DenyReason: p.DenyReason,
 		ModSummary: p.ModSummary, Note: p.Note, ApprovedAt: rfc3339OrEmpty(p.ApprovedAt),
-		Proposal: payload, EpisodeSelectionPreview: suggest.EpisodeSelectionForIntent(payload.Intent),
+		Proposal: payload, EpisodeSelectionPreview: suggest.EpisodeSelectionForIntent(payload.Intent, holidays),
 	}
 }
 
@@ -303,8 +314,9 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 	}
 	out := &listProposalsOutput{}
 	out.Body.Proposals = make([]ProposalDTO, 0, len(props))
+	holidays := s.holidayCalendar().Vocab()
 	for _, p := range props {
-		out.Body.Proposals = append(out.Body.Proposals, names.apply(proposalToDTO(p)))
+		out.Body.Proposals = append(out.Body.Proposals, names.apply(proposalToDTO(p, holidays)))
 	}
 	return out, nil
 }
@@ -326,13 +338,13 @@ func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposa
 	if err != nil {
 		return nil, err
 	}
-	return &proposalOutput{Body: names.apply(proposalToDTO(p))}, nil
+	return &proposalOutput{Body: names.apply(proposalToDTO(p, s.holidayCalendar().Vocab()))}, nil
 }
 
 // --- approve / deny (the approval gate — §8/§11) ---
 
 // The approve path reads the same typed ProposalPayload the list/get endpoints return
-// (defined above) — one mirror of the stored suggest.Proposal, no longer a second.
+// (defined above) — one mirror of the stored proposals.Proposal, no longer a second.
 
 // ApprovalEditDTO is the approver's modification, sent with POST …/approve (§7, D-K).
 //
@@ -350,7 +362,7 @@ type ApprovalEditDTO struct {
 	// The DOMAIN type, not a hand-written mirror — the same call this file already makes for
 	// ProposalDTO.Proposal, and for the same reason recorded there: the previous mirror had
 	// already drifted from what it mirrored.
-	Add []suggest.ProposalItem `json:"add,omitempty" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
+	Add []proposals.ProposalItem `json:"add,omitempty" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
 	// Note is the message to whoever requested this — why it came back altered.
 	Note string `json:"note,omitempty" doc:"A message to the requester, stored with the approval"`
 }
@@ -390,6 +402,13 @@ type approveOutput struct {
 	}
 }
 
+// errProposalTooOld is the answer for a proposal whose job was purged before the proposal was
+// decided: its channel cannot be created, but nothing is wrong with the server.
+func errProposalTooOld() huma.StatusError {
+	return errUnprocessable("This request is too old to approve",
+		"Loomarr no longer has the details this request needs to create a channel. Deny it and ask again.")
+}
+
 // approveProposal is the approval gate (§8/§11/§19): ADMIN ONLY. It flips the
 // proposal to approved and enqueues each acquisition as a `wanted` title — the
 // only path from a proposal to /v1/titles. Members cannot reach this (403), so
@@ -422,6 +441,9 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	if errors.Is(err, suggest.ErrSuperseded) {
 		return nil, errConflict("Newer suggestion already approved", "This older version cannot replace a channel after a newer version was approved. Dismiss it from the queue instead.")
 	}
+	if errors.Is(err, suggest.ErrProposalJobGone) {
+		return nil, errProposalTooOld()
+	}
 	if errors.Is(err, suggest.ErrRevisionActive) {
 		return nil, errConflict("Suggestions are updating", "Wait for the updated suggestions before creating this channel.")
 	}
@@ -444,9 +466,8 @@ func (s *Server) approveProposal(ctx context.Context, in *approveInput) (*approv
 	// shares (§7), and threading a recorder through it to satisfy a dashboard panel would
 	// widen the gate's signature for telemetry.
 	//
-	// The line says WHAT HAPPENED, not what was requested: the proposal's channel name lives
-	// inside ProposalJSON and this handler never unmarshals it, so parsing one purely for a
-	// feed label would add a failure mode to the approval path for a cosmetic gain.
+	// The line says WHAT HAPPENED, not what was requested: a feed label is not worth reading
+	// the proposal's channel name into the approval path.
 	s.activity.Info(ctx, store.ActivityKindProposal, p.ID, approvedLine(result.Enqueued))
 	return out, nil
 }
@@ -605,7 +626,7 @@ func approvedLine(enqueued int) string {
 	}
 }
 
-func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*struct{ Body proposaloutlook.Assessment }, error) {
+func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*struct{ Body outlook.Assessment }, error) {
 	p, err := s.store.GetProposal(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Suggestion not found", "That suggestion no longer exists.")
@@ -620,8 +641,11 @@ func (s *Server) getProposalOutlook(ctx context.Context, in *approveInput) (*str
 		return nil, errFeatureNotConfigured("Outlook unavailable", "Connect the media library to estimate this lineup.")
 	}
 	assessment, err := s.proposalOutlook.Assess(ctx, p, approvalEditFromDTO(in.Body))
+	if errors.Is(err, suggest.ErrProposalJobGone) {
+		return nil, errProposalTooOld()
+	}
 	if err != nil {
 		return nil, err
 	}
-	return &struct{ Body proposaloutlook.Assessment }{Body: assessment}, nil
+	return &struct{ Body outlook.Assessment }{Body: assessment}, nil
 }

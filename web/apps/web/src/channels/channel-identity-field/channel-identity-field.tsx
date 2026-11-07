@@ -100,7 +100,7 @@ const ChannelIdentityField = ({
       "border-input bg-static-800/40",
       // 448 px at most from `sm` up; below it the row is the name's alone (#1785). The textarea's
       // 5 px padding keeps one line of it the input's 40 px.
-      variant === "title" && "h-10 py-[5px] font-semibold text-xl sm:max-w-md",
+      variant === "title" && "h-10 py-[5px] text-xl font-semibold sm:max-w-md",
       variant === "compact" && "h-9 w-20 text-center font-mono tabular-nums",
       error && "border-onair-300 focus-visible:ring-onair-300",
     ),

@@ -1,12 +1,20 @@
-import { isWeb, Text as TamaguiText, useTheme, View } from "@tamagui/core";
-import type { ComponentProps, ComponentRef, ReactElement, ReactNode } from "react";
-import { cloneElement, forwardRef, isValidElement, useState } from "react";
+import { isWeb, useTheme, View } from "@tamagui/core";
+import type {
+  ComponentProps,
+  ComponentRef,
+  ForwardRefExoticComponent,
+  ReactElement,
+  ReactNode,
+  RefAttributes,
+} from "react";
+import { cloneElement, forwardRef, isValidElement, useId, useState } from "react";
 import { Platform, Pressable, TextInput } from "react-native";
 
+import { useFocusLook } from "../focus-look";
 import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
-import { useBehindModal } from "../modal-layer";
-import { Surface, Text } from "../primitives";
+import { lineHeightPx, Surface, Text } from "../primitives";
+import { TamaguiText } from "../text-base";
 import {
   brandChroma,
   type Density,
@@ -106,7 +114,14 @@ const mergeRenderProps = (
   return merged;
 };
 
-const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
+type ActionRef = ComponentRef<typeof Pressable>;
+
+// Annotated so the exported declaration names Pressable's instance type rather than React Native's
+// internal element class.
+const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> = forwardRef<
+  ActionRef,
+  ActionProps
+>(
   (
     {
       accessibilityState,
@@ -129,10 +144,8 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     ref,
   ) => {
     const theme = useTheme();
-    const [hasFocus, setFocused] = useState(false);
-    // A native Modal never blurs its opener, so a control behind an open modal drops its focus look.
-    const behindModal = useBehindModal();
-    const focused = hasFocus && !behindModal;
+    const focusLook = useFocusLook({ onBlur, onFocus });
+    const focused = focusLook.focused;
     const isDisabled = disabled === true;
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
@@ -215,18 +228,18 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             }
           />
           <TamaguiText
-            color={textColor ?? (tone === "secondary" ? "$contentSecondary" : "$contentInverse")}
-            fontFamily="$body"
+            color={textColor ?? (tone === "secondary" ? "contentSecondary" : "contentInverse")}
+            fontFamily="body"
             fontSize={typography[density].cardMeta.size}
             fontWeight={pressed ? "600" : undefined}
-            lineHeight={typography[density].cardMeta.lineHeight}
+            lineHeight={lineHeightPx(typography[density].cardMeta.lineHeight)}
             numberOfLines={1}
           >
             {children}
           </TamaguiText>
         </View>
       ) : icon ? (
-        <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="$inline">
+        <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="inline">
           <Icon
             decorative
             glyph={icons[icon]}
@@ -234,8 +247,8 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             tone={iconTone}
           />
           <TamaguiText
-            color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
-            fontFamily="$body"
+            color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
+            fontFamily="body"
             fontSize={tv ? typography.tv.data.size : typography[density].label.size}
             flexShrink={fitLabel ? 1 : undefined}
             fontWeight={labelWeight}
@@ -247,8 +260,8 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
         </View>
       ) : (
         <TamaguiText
-          color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
-          fontFamily="$body"
+          color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
+          fontFamily="body"
           fontSize={tv ? typography.tv.data.size : typography[density].label.size}
           fontWeight={labelWeight}
           textDecorationLine={variant === "link" ? "underline" : undefined}
@@ -288,22 +301,36 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     if (isWeb && render && isValidElement(render)) {
       // `onPress` is Action's own (Pressable/RN) handler name; a cloned host element only
       // understands `onClick`, so it is bridged here rather than spread through `...props`
-      // unchanged, which would silently never fire.
-      const { onPress, ...restProps } = props as typeof props & {
+      // unchanged, which would silently never fire. `accessibilityRole` is RN's too: it reaches the
+      // host as `role`, and spread raw it is an unknown DOM attribute.
+      const {
+        accessibilityRole: _role,
+        onPress,
+        ...restProps
+      } = props as typeof props & {
         onPress?: (event: unknown) => void;
       };
+      // The host's `style` is CSS, which has no paddingHorizontal/paddingVertical: spell them out.
+      const { paddingHorizontal, paddingVertical, ...hostStyle } = boxStyle;
       return cloneElement(
         render,
         mergeRenderProps(
           {
             ...restProps,
             "aria-disabled": isDisabled || undefined,
-            onBlur: () => setFocused(false),
+            onBlur: focusLook.onBlur,
             onClick: onPress,
-            onFocus: () => setFocused(true),
+            onFocus: focusLook.onFocus,
             ref,
             role,
-            style: { display: "inline-flex", ...boxStyle },
+            style: {
+              display: "inline-flex",
+              ...hostStyle,
+              paddingBottom: paddingVertical,
+              paddingLeft: paddingHorizontal,
+              paddingRight: paddingHorizontal,
+              paddingTop: paddingVertical,
+            },
             tabIndex: isDisabled ? -1 : tabIndex,
           },
           render.props,
@@ -321,14 +348,8 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
         aria-pressed={role === "button" && selected ? true : undefined}
         aria-selected={role === "tab" ? selected : undefined}
         disabled={isDisabled}
-        onBlur={(event) => {
-          setFocused(false);
-          onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          onFocus?.(event);
-        }}
+        onBlur={focusLook.onBlur}
+        onFocus={focusLook.onFocus}
         ref={ref}
         tabIndex={isDisabled ? -1 : tabIndex}
         style={(state) => [
@@ -359,21 +380,73 @@ type FieldProps = Omit<ComponentProps<typeof TextInput>, "editable"> & {
   label?: string;
 };
 
+// A password Field's button: the label names what a press does, so it flips with the state.
+const RevealButton = ({
+  density,
+  disabled,
+  onPress,
+  revealed,
+}: {
+  density: Density;
+  disabled: boolean;
+  onPress: () => void;
+  revealed: boolean;
+}) => {
+  const { focused, ...focusHandlers } = useFocusLook();
+  return (
+    <Pressable
+      accessibilityLabel={revealed ? "Hide password" : "Show password"}
+      accessibilityRole="button"
+      aria-pressed={revealed}
+      disabled={disabled}
+      {...focusHandlers}
+      onPress={onPress}
+      style={{
+        alignItems: "center",
+        bottom: 0,
+        justifyContent: "center",
+        // The ring around the glyph is the one focus look. Chrome's `auto` ring ignores a zero
+        // width, so the style is named too.
+        outlineStyle: "solid",
+        outlineWidth: 0,
+        position: "absolute",
+        right: 0,
+        top: 0,
+        width: semanticTargets[density],
+      }}
+    >
+      <View borderRadius="control" padding={2} {...boxFocusRing(focused, density)}>
+        <Icon
+          decorative
+          glyph={revealed ? icons.conceal : icons.reveal}
+          size={density === "tv" ? "control" : "compact"}
+          tone={focused ? "content" : "muted"}
+        />
+      </View>
+    </Pressable>
+  );
+};
+
 const Field = ({
   accessibilityLabel,
   density = "pointer",
   description,
   disabled = false,
   error,
+  id,
   invalid = false,
   label,
   onBlur,
   onFocus,
+  secureTextEntry = false,
   style,
   ...props
 }: FieldProps) => {
   const theme = useTheme();
-  const [focused, setFocused] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook({ onBlur, onFocus });
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
+  const [revealed, setRevealed] = useState(false);
   const hasError = invalid || Boolean(error);
   const borderColor = hasError
     ? theme.stateDanger.val
@@ -382,47 +455,61 @@ const Field = ({
       : theme.borderControl.val;
 
   return (
-    <View gap="$inline" width="100%">
+    <View gap="inline" width="100%">
       {label ? (
-        <Text density={density} textRole="label">
+        <Text
+          as={isWeb ? "label" : undefined}
+          density={density}
+          textRole="label"
+          {...(isWeb ? { htmlFor: inputId } : {})}
+        >
           {label}
         </Text>
       ) : null}
-      <TextInput
-        {...props}
-        accessibilityLabel={accessibilityLabel ?? label}
-        accessibilityState={{ disabled }}
-        aria-disabled={disabled || undefined}
-        aria-invalid={hasError || undefined}
-        editable={!disabled}
-        onBlur={(event) => {
-          setFocused(false);
-          onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          onFocus?.(event);
-        }}
-        placeholderTextColor={theme.contentMuted.val}
-        style={[
-          {
-            backgroundColor: disabled ? theme.surfaceRaised.val : theme.surfaceCanvas.val,
-            borderColor,
-            borderRadius: semanticRadius.control,
-            borderWidth: focused ? 3 : 2,
-            color: theme.contentPrimary.val,
-            // A raw TextInput: Tamagui's per-weight face swap doesn't reach it, so name the file.
-            fontFamily: isWeb
-              ? typography.family.data.web
-              : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
-            fontSize: typography[density].body.size,
-            minHeight: semanticTargets[density],
-            opacity: disabled ? 0.62 : 1,
-            paddingHorizontal: semanticSpace.control,
-          },
-          style,
-        ]}
-      />
+      <View position="relative" width="100%">
+        <TextInput
+          {...props}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={{ disabled }}
+          aria-disabled={disabled || undefined}
+          aria-invalid={hasError || undefined}
+          editable={!disabled}
+          id={inputId}
+          secureTextEntry={secureTextEntry && !revealed}
+          {...focusHandlers}
+          placeholderTextColor={theme.contentMuted.val}
+          style={[
+            {
+              backgroundColor: disabled ? theme.surfaceRaised.val : theme.surfaceCanvas.val,
+              borderColor,
+              borderRadius: semanticRadius.control,
+              borderWidth: focused ? 3 : 2,
+              color: theme.contentPrimary.val,
+              // A raw TextInput: Tamagui's per-weight face swap doesn't reach it, so name the file.
+              fontFamily: isWeb
+                ? typography.family.data.web
+                : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
+              fontSize: typography[density].body.size,
+              minHeight: semanticTargets[density],
+              opacity: disabled ? 0.62 : 1,
+              // The amber border is the focus look; the browser would add its own ring outside it.
+              outlineStyle: "solid",
+              outlineWidth: 0,
+              paddingHorizontal: semanticSpace.control,
+              paddingRight: secureTextEntry ? semanticTargets[density] : semanticSpace.control,
+            },
+            style,
+          ]}
+        />
+        {secureTextEntry ? (
+          <RevealButton
+            density={density}
+            disabled={disabled}
+            onPress={() => setRevealed((shown) => !shown)}
+            revealed={revealed}
+          />
+        ) : null}
+      </View>
       {error ? (
         <Text aria-live="polite" density={density} textRole="metadata" tone="danger">
           {error}
@@ -481,7 +568,7 @@ const FieldHint = ({ children, className, density = "pointer", id, role, tone = 
 const boxFocusRing = (focused: boolean, density: Density) =>
   focused
     ? ({
-        outlineColor: "$actionFocus",
+        outlineColor: "actionFocus",
         outlineOffset: 2,
         outlineStyle: "solid",
         outlineWidth: density === "tv" ? 3 : 2,
@@ -515,9 +602,7 @@ const Toggle = ({
 }: ToggleProps) => {
   const switchWidth = density === "tv" ? 72 : density === "touch" ? 56 : 48;
   const controlSize = density === "tv" ? 36 : density === "touch" ? 28 : 24;
-  const [hasFocus, setFocused] = useState(false);
-  const behindModal = useBehindModal();
-  const focused = hasFocus && !behindModal;
+  const { focused, ...focusHandlers } = useFocusLook();
   return (
     <Pressable
       accessibilityLabel={label}
@@ -526,8 +611,7 @@ const Toggle = ({
       aria-checked={checked}
       aria-disabled={disabled || undefined}
       disabled={disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
+      {...focusHandlers}
       onPress={() => onCheckedChange(!checked)}
       style={{
         alignItems: "center",
@@ -541,9 +625,9 @@ const Toggle = ({
           border and mark. Amber is the focus ring around the box, outside a gap. */}
       <Surface
         alignItems={kind === "switch" ? (checked ? "flex-end" : "flex-start") : "center"}
-        backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
-        borderColor={checked ? "$contentPrimary" : "$borderControl"}
-        borderRadius={kind === "switch" ? "$round" : "$control"}
+        backgroundColor={checked ? "surfaceElevated" : "surfaceCanvas"}
+        borderColor={checked ? "contentPrimary" : "borderControl"}
+        borderRadius={kind === "switch" ? "round" : "control"}
         height={controlSize}
         justifyContent="center"
         padding={kind === "switch" ? 3 : 0}
@@ -552,8 +636,8 @@ const Toggle = ({
       >
         {kind === "switch" ? (
           <View
-            backgroundColor={checked ? "$contentPrimary" : "$contentSecondary"}
-            borderRadius="$round"
+            backgroundColor={checked ? "contentPrimary" : "contentSecondary"}
+            borderRadius="round"
             height={controlSize - 8}
             width={controlSize - 8}
           />
@@ -608,8 +692,7 @@ const ChoiceRow = ({
   onPress: () => void;
   option: ChoiceOption<string>;
 }) => {
-  const [hasFocus, setFocused] = useState(false);
-  const behindModal = useBehindModal();
+  const { focused, ...focusHandlers } = useFocusLook();
   return (
     <Pressable
       accessibilityLabel={option.label}
@@ -618,8 +701,7 @@ const ChoiceRow = ({
       aria-checked={checked}
       aria-disabled={option.disabled || undefined}
       disabled={option.disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
+      {...focusHandlers}
       onPress={onPress}
       style={{
         alignItems: "center",
@@ -632,16 +714,16 @@ const ChoiceRow = ({
       <Surface
         alignItems="center"
         // A chosen option is neutral-pressed (#1909), like a checked box; amber is the focus ring.
-        backgroundColor={checked ? "$surfaceElevated" : "$surfaceCanvas"}
-        borderColor={checked ? "$contentPrimary" : "$borderControl"}
-        borderRadius="$round"
+        backgroundColor={checked ? "surfaceElevated" : "surfaceCanvas"}
+        borderColor={checked ? "contentPrimary" : "borderControl"}
+        borderRadius="round"
         height={density === "tv" ? 36 : 24}
         justifyContent="center"
         width={density === "tv" ? 36 : 24}
-        {...boxFocusRing(hasFocus && !behindModal, density)}
+        {...boxFocusRing(focused, density)}
       >
         {checked ? (
-          <View backgroundColor="$contentPrimary" borderRadius="$round" height="45%" width="45%" />
+          <View backgroundColor="contentPrimary" borderRadius="round" height="45%" width="45%" />
         ) : null}
       </Surface>
       <View flex={1} gap={2}>
@@ -665,7 +747,7 @@ const ChoiceGroup = <Value extends string>({
   options,
   value,
 }: ChoiceGroupProps<Value>) => (
-  <View aria-label={label} role="radiogroup" gap="$inline">
+  <View aria-label={label} role="radiogroup" gap="inline">
     <Text density={density} textRole="label">
       {label}
     </Text>

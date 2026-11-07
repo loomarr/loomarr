@@ -14,7 +14,7 @@
 // The provider only translates messages/tools to/from its wire format and
 // normalizes quirks (Ollama tool-call arguments arrive as a parsed object, the
 // OpenAI shape as a JSON string — see testkit/fixtures/llm/FINDINGS.md). The
-// *grounding loop* lives in the suggester (internal/suggest), which owns the
+// *grounding loop* lives in the suggester (internal/proposals/suggest), which owns the
 // catalog tool — this package is a dumb pipe, so grounding logic isn't smeared
 // across providers.
 package llm

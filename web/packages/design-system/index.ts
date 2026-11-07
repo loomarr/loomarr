@@ -14,7 +14,25 @@ export {
   brandLaunchMotion,
   resolveBrandLaunchMinHeight,
 } from "./src/brand";
-export { Card, CardContent, CardFooter, CardHeader, CardTitle } from "./src/card";
+export { Card } from "./src/card";
+export type {
+  DialogActionProps,
+  DialogContentProps,
+  DialogFooterProps,
+  DialogProps,
+  DialogSectionProps,
+} from "./src/dialog";
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./src/dialog";
+export { useFocusLook } from "./src/focus-look";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";
 export type {
@@ -78,7 +96,7 @@ export {
   Text,
 } from "./src/primitives";
 export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
-export { LoomarrProvider, resolveLoomarrTheme } from "./src/provider";
+export { LoomarrProvider, resolveLoomarrTheme, ThemeScope } from "./src/provider";
 export type { QrCodeProps } from "./src/qr-code";
 export { QrCode } from "./src/qr-code";
 export type { SegmentedControlProps, SegmentOption } from "./src/segmented-control";
@@ -107,6 +125,7 @@ export {
   brandContract,
   iconography,
   nativeFontFace,
+  playerChrome,
   semanticColors,
   semanticMotion,
   semanticRadius,
@@ -120,6 +139,8 @@ export {
   emptyViewportInsets,
   PHONE_GUTTER,
   resolveViewportInsets,
+  resolveViewportScale,
   TV_OVERSCAN_INSET,
   useResolvedViewportInsets,
+  ViewportStage,
 } from "./src/viewport";

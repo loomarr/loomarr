@@ -10,7 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 const Username = "developer"
@@ -75,7 +76,7 @@ func Ensure(ctx context.Context, st Store) (Result, error) {
 		result.User = "existing admin"
 	}
 
-	if err := st.SetSetting(ctx, "setup.completed", "true"); err != nil {
+	if err := st.SetSetting(ctx, settings.SetupCompleted.Key(), "true"); err != nil {
 		return Result{}, fmt.Errorf("complete setup: %w", err)
 	}
 	return result, nil

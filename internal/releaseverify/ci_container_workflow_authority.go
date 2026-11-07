@@ -182,15 +182,16 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			},
 		},
-		"ios-testflight.yml": {
+		"apple-testflight.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{
-				"plan": {condition: iosTestFlightMain},
+				"plan": {condition: appleTestFlightMain},
 				"release": {
-					condition: iosTestFlightReleaseCondition,
+					condition: appleTestFlightReleaseCondition,
 					environment: map[string]string{
-						"LOOMARR_IOS_BUILD_NUMBER": "${{ github.run_number }}",
-						"LOOMARR_IOS_OUTPUT_DIR":   "${{ github.workspace }}/.artifacts/ios-testflight",
+						"LOOMARR_APPLE_APP":          "${{ matrix.app }}",
+						"LOOMARR_APPLE_BUILD_NUMBER": "${{ github.run_number }}",
+						"LOOMARR_APPLE_OUTPUT_DIR":   "${{ github.workspace }}/.artifacts/testflight",
 					},
 					steps: map[string]workflowStepAuthority{
 						"make fe-install":     exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
@@ -252,8 +253,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
 			"make fe-codegen": exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
 			"web/scripts/install-android-ccache.sh \"${RUNNER_TEMP}/loomarr-android-ccache-tool\"": exactWorkflowStep(7, "Install pinned ccache", workflowStepAuthority{allowsAcquisition: true}),
-			"echo \"gradle-cache-primary-key=android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}\"\necho \"gradle-cache-hit=${{ steps.gradle-cache.outputs.cache-hit == 'true' }}\"\necho \"gradle-cache-source-sha=${GITHUB_SHA}\"\n": exactWorkflowStep(10, "Record Gradle cache provenance", workflowStepAuthority{}),
-			"make android-profile": exactWorkflowStep(11, "Build and profile the verified four-ABI bundle", workflowStepAuthority{
+			"make android-profile": exactWorkflowStep(9, "Build and profile the verified four-ABI bundle", workflowStepAuthority{
 				targets: []string{"android-profile", "android"},
 				environment: map[string]string{
 					"ANDROID_CI_OUTPUT_DIR":           "${{ github.workspace }}/.artifacts/android-ci",
@@ -265,16 +265,17 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"LOOMARR_ANDROID_GRADLE_WORKERS":  "2",
 				},
 			}),
-			"./scripts/android-ccache-promotion.sh pack \"$RUNNER_TEMP/loomarr-android-ccache\" \"$RUNNER_TEMP/loomarr-android-ccache-transfer\" \"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}\"": exactWorkflowStep(14, "Package the verified merge-queue compiler cache", workflowStepAuthority{
+			"./scripts/android-ccache-promotion.sh pack \"$RUNNER_TEMP/loomarr-android-ccache\" \"$RUNNER_TEMP/loomarr-android-ccache-transfer\" \"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}\"": exactWorkflowStep(10, "Package the verified merge-queue compiler cache", workflowStepAuthority{
 				condition: "github.event_name == 'merge_group'",
 			}),
 		}),
 		"ci-apple-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"cd web && pnpm -C packages/lan-discovery-native exec vitest run tests/ios-unicast-target-planner.test.mjs": exactWorkflowStep(4, "Test the iOS LAN discovery planner", workflowStepAuthority{}),
-			appleCacheFingerprintCommand:     exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
-			appleCacheConsumerPrepareCommand: exactWorkflowStep(7, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
-			"make client-apple-simulator CLIENT_APP=mobile": exactWorkflowStep(8, "Generate, build, install, and launch", workflowStepAuthority{
+			"cd web && pnpm -C packages/crash-reports-native exec vitest run tests/ios-crash-payload-store.test.mjs":    exactWorkflowStep(5, "Test the iOS MetricKit crash payload store", workflowStepAuthority{}),
+			appleCacheFingerprintCommand:     exactWorkflowStep(6, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+			appleCacheConsumerPrepareCommand: exactWorkflowStep(8, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
+			"make client-apple-simulator CLIENT_APP=mobile": exactWorkflowStep(9, "Generate, build, install, and launch", workflowStepAuthority{
 				targets: []string{"client-apple-simulator"},
 				environment: map[string]string{
 					"LOOMARR_APPLE_ARTIFACTS_DIR": "${{ runner.temp }}/apple-client-mobile",
@@ -301,7 +302,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-expo-android-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
 			"web/scripts/install-android-ccache.sh \"${RUNNER_TEMP}/loomarr-android-ccache-tool\"": exactWorkflowStep(6, "Install pinned ccache", workflowStepAuthority{allowsAcquisition: true}),
-			"make client-android-debug CLIENT_APP=mobile": exactWorkflowStep(9, "Generate and build the standalone mobile APK", workflowStepAuthority{
+			"make client-android-debug CLIENT_APP=mobile": exactWorkflowStep(7, "Generate and build the standalone mobile APK", workflowStepAuthority{
 				targets: []string{"client-android-debug"},
 				environment: map[string]string{
 					"CCACHE_DIR":                      "${{ runner.temp }}/loomarr-android-ccache",
@@ -333,10 +334,26 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			},
 		},
 		"ci-clients.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make fe-codegen": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-codegen"}}),
-			"make clients": exactWorkflowStep(6, "Verify the affected client graph", workflowStepAuthority{
-				targets: []string{"clients"},
+			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+			"make clients-checks": exactWorkflowStep(6, "Verify the affected client graph", workflowStepAuthority{
+				targets:   []string{"clients-checks"},
+				condition: "matrix.lane == 'checks'",
+				environment: map[string]string{
+					"TMPDIR":                   "${{ runner.temp }}",
+					"TURBO_TELEMETRY_DISABLED": "1",
+				},
+			}),
+			"make clients-tests CLIENTS_APP=${{ matrix.lane == 'tv-tests' && 'tv' || 'mobile' }}": exactWorkflowStep(7, "Typecheck and test the client", workflowStepAuthority{
+				targets:   []string{"clients-tests"},
+				condition: "endsWith(matrix.lane, '-tests')",
+				environment: map[string]string{
+					"TMPDIR":                   "${{ runner.temp }}",
+					"TURBO_TELEMETRY_DISABLED": "1",
+				},
+			}),
+			"make clients-bundles CLIENTS_APP=${{ matrix.lane }}": exactWorkflowStep(8, "Bundle the client", workflowStepAuthority{
+				targets:   []string{"clients-bundles"},
+				condition: "matrix.lane == 'mobile' || matrix.lane == 'tv'",
 				environment: map[string]string{
 					"TMPDIR":                   "${{ runner.temp }}",
 					"TURBO_TELEMETRY_DISABLED": "1",
@@ -346,22 +363,30 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{}),
 		"ci-frontend.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make fe FE_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe"}}),
-			"make fe-tokens-verify": exactWorkflowStep(6, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 1"}),
+			"make fe-unit FE_SHARD=${{ matrix.shard }}/6": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard <= 6"}),
+			"make fe-checks":        exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-checks"}, condition: "matrix.shard == 7"}),
+			"make fe-tokens-verify": exactWorkflowStep(7, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 7"}),
+			"make fe-packages":      exactWorkflowStep(8, "", workflowStepAuthority{targets: []string{"fe-packages"}, condition: "matrix.shard == 8"}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify eval-contract": exactWorkflowStep(5, "Static analysis and repository contracts", workflowStepAuthority{targets: []string{"fmt", "shellcheck", "privacy-verify", "vet", "tags-verify", "vet-tags", "lint", "agent-harness-test", "compose-verify", "release-verify", "go-race-verify", "eval-contract"}}),
-			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}}),
-			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}}),
-			"make config-docs-verify":       exactWorkflowStep(8, "Config docs are committed and current", workflowStepAuthority{targets: []string{"config-docs-verify"}}),
-			"make arch-docs-verify":         exactWorkflowStep(9, "The §2 package map is committed and current", workflowStepAuthority{targets: []string{"arch-docs-verify"}}),
-			"make dev-docs-verify":          exactWorkflowStep(10, "Command reference is committed and current", workflowStepAuthority{targets: []string{"dev-docs-verify"}}),
-			"make retired-verify":           exactWorkflowStep(11, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}}),
-			"make ci-lint":                  exactWorkflowStep(12, "Workflows are valid", workflowStepAuthority{targets: []string{"ci-lint"}}),
-			"make observability-verify":     exactWorkflowStep(13, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true})}),
-		"ci-go-cache-warm.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
-		}),
+			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
+			"make fmt privacy-verify tags-verify compose-verify go-race-verify eval-contract": exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "privacy-verify", "tags-verify", "compose-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
+			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 1"}),
+			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 1"}),
+			"make retired-verify":           exactWorkflowStep(8, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}, condition: "matrix.shard == 2"}),
+			"make observability-verify":     exactWorkflowStep(9, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true})}),
+		"ci-go-cache-warm.yml": {
+			environment: standardWorkflowEnvironment(),
+			permissions: standardWorkflowPermissions(),
+			jobs: map[string]workflowJobAuthority{
+				"run": {steps: map[string]workflowStepAuthority{
+					"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+				}},
+				"contracts": {steps: map[string]workflowStepAuthority{
+					"make vet vet-tags lint": exactWorkflowStep(4, "Compile what the contracts analyse", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+				}},
+			},
+		},
 		"ci-go.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make test GO_TEST_LANE=${{ matrix.lane }}": exactWorkflowStep(11, "", workflowStepAuthority{targets: []string{"test"}}),
 		}),
@@ -408,16 +433,37 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"ci-policy": {
 					condition: "always()",
 					steps: map[string]workflowStepAuthority{
-						"make ci-lint release-verify":                                                exactWorkflowStep(3, "Workflow and publication policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify"}}),
-						"make agent-harness-test shellcheck":                                         exactWorkflowStep(4, "Agent harness and shell policy", workflowStepAuthority{targets: []string{"agent-harness-test", "shellcheck"}}),
-						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify"}}),
+						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck": exactWorkflowStep(4, "Workflow, publication, agent harness, and shell policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck"}}),
+						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify":         exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify"}}),
 					},
 				},
 				"ci-ok": {
 					condition:   "always()",
-					permissions: map[string]string{"actions": "read", "contents": "read"},
+					permissions: map[string]string{"actions": "read", "contents": "read", "issues": "write"},
 					steps:       map[string]workflowStepAuthority{},
 				},
+			},
+		},
+		"merge-gate.yml": standardRunWorkflow(map[string]workflowStepAuthority{
+			"make vet": exactWorkflowStep(4, "The merged tree compiles, tests included", workflowStepAuthority{
+				targets:   []string{"vet"},
+				condition: "steps.go.outputs.changed == 'true'",
+			}),
+		}),
+		"merge-gate-cache.yml": {
+			environment: standardWorkflowEnvironment(),
+			permissions: map[string]string{"actions": "write", "contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"run": {steps: map[string]workflowStepAuthority{
+					"make vet": exactWorkflowStep(4, "Compile what the gate compiles", workflowStepAuthority{
+						targets:   []string{"vet"},
+						condition: "steps.warm.outputs.cache-hit != 'true'",
+					}),
+					`./scripts/ci-merge-gate-cache-prune.sh "${{ steps.warm.outputs.cache-primary-key }}"`: exactWorkflowStep(6, "Delete older gate caches", workflowStepAuthority{
+						condition:   "steps.warm.outputs.cache-hit != 'true'",
+						environment: map[string]string{"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}"},
+					}),
+				}},
 			},
 		},
 		"image-benchmark.yml": {
@@ -583,6 +629,66 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"vulnerabilities": {steps: map[string]workflowStepAuthority{
 					"make vuln": exactWorkflowStep(2, "Scan the code that ships", workflowStepAuthority{targets: []string{"vuln"}}),
 				}},
+			},
+		},
+		// The one workflow that publishes a release and opens a PR on a schedule. Everything it does is
+		// in the script; the job's write permissions are exactly what the script's three side effects need.
+		"ffmpeg-pin-refresh.yml": {
+			environment: map[string]string{"GO_VERSION": "1.27"},
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"refresh": {
+					permissions: map[string]string{"actions": "write", "contents": "write", "pull-requests": "write"},
+					steps: map[string]workflowStepAuthority{
+						`./scripts/ffmpeg-pin-refresh.sh automate "$RUNNER_TEMP/ffmpeg-pin"`: exactWorkflowStep(2, "Refresh the pin", workflowStepAuthority{
+							allowsAcquisition: true,
+							environment: map[string]string{
+								"GH_TOKEN": "${{ github.token }}", "LOOMARR_REPO": "${{ github.repository }}",
+								"DRY_RUN": "${{ inputs.dry_run || false }}",
+							},
+						}),
+					},
+				},
+			},
+		},
+		// Read-only: the script asks archive.org and YouTube whether each curated source still exists.
+		"curated-sources.yml": {
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"check": {steps: map[string]workflowStepAuthority{
+					"./scripts/check-curated-sources.sh": exactWorkflowStep(1, "Check every entry against its provider", workflowStepAuthority{}),
+				}},
+			},
+		},
+		// Dispatch and schedule only: the cloud key must never reach a pull request.
+		"staging.yml": {
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"build-image": {
+					condition:   "github.event_name == 'workflow_dispatch' && inputs.action == 'up' && inputs.version == ''",
+					permissions: map[string]string{"contents": "read", "packages": "write"},
+					steps:       map[string]workflowStepAuthority{},
+				},
+				"control": {
+					condition: "always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped')",
+					steps: map[string]workflowStepAuthority{
+						`./scripts/staging.sh "$STAGING_ACTION"`: exactWorkflowStep(1, "Run the staging action", workflowStepAuthority{
+							environment: map[string]string{
+								"VULTR_API_KEY":       "${{ secrets.VULTR_API_KEY }}",
+								"TS_AUTHKEY":          "${{ secrets.STAGING_TS_AUTHKEY }}",
+								"CF_TUNNEL_TOKEN":     "${{ secrets.STAGING_CF_TUNNEL_TOKEN }}",
+								"DEMO_ADMIN_PASSWORD": "${{ secrets.STAGING_DEMO_ADMIN_PASSWORD }}",
+								"STAGING_ACTION":      "${{ inputs.action || 'sweep' }}",
+								"STAGING_HOURS":       "${{ inputs.hours || '4' }}",
+								"STAGING_DATABASE":    "${{ inputs.database || 'sqlite' }}",
+								"STAGING_PUBLIC_URL":  "${{ inputs.public_url }}",
+								"VERSION":             "${{ inputs.version }}",
+								"STAGING_COMMIT":      "${{ inputs.action == 'up' && inputs.version == '' && github.sha || '' }}",
+								"STAGING_IMAGE":       "${{ inputs.action == 'up' && inputs.version == '' && format('ghcr.io/{0}-staging:{1}', github.repository, github.sha) || '' }}",
+							},
+						}),
+					},
+				},
 			},
 		},
 		"rust-maintenance.yml": {

@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -23,7 +23,7 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
-	// DataDir is the boot-configured data directory (config.DataDirFor): where the generated
+	// DataDir is the boot-configured data directory (config.Config.DataDir): where the generated
 	// installation key lives and what the storage-directory settings default beneath.
 	DataDir string
 	// Startup is the process-owned report for this application generation. nil creates a minimal
@@ -72,6 +72,11 @@ type Overrides struct {
 	// ImageWorkerExecutable selects the required Rust image worker in tests and embedded builds.
 	// Empty resolves LOOMARR_IMAGE_WORKER, then the sibling/local/PATH-installed release binary.
 	ImageWorkerExecutable string
+	// TunerPublishingDisabled is config.Config.TunerPublishingDisabled: the env-only agent-lane
+	// flag (#1555) that stops this process adding or retiring a Live TV tuner on the media
+	// server its library.* settings point at. It rides Overrides, not a setting, so nothing
+	// the Settings UI saves can turn it off.
+	TunerPublishingDisabled bool
 }
 
 // Build wires every subsystem from the already-open store + logger and returns one
@@ -124,7 +129,7 @@ func trackReplicaSettingsRefresh(
 	interval time.Duration,
 	after func(),
 ) bool {
-	if dialect != store.DialectPostgres || svc == nil {
+	if !store.SupportsReplicas(dialect) || svc == nil {
 		return false
 	}
 	owner.goRun(func(ctx context.Context) { svc.RefreshEvery(ctx, interval, after) })
@@ -133,7 +138,7 @@ func trackReplicaSettingsRefresh(
 
 func buildHandler(
 	rootCtx context.Context,
-	st fillerstore.Store,
+	st records.Store,
 	log *slog.Logger,
 	ov Overrides,
 	owner *generationLifecycle,
@@ -155,7 +160,10 @@ func buildHandler(
 	jobReg, activityRec := foundation.jobs, foundation.activity
 	// Channel watermarks (#1512 phase 1d): the channel packager asks for a programme's bug. The image
 	// service a custom upload is read from is bound once the suggestions build makes it.
-	watermarks := newChannelWatermarks(rootCtx, st, set, foundation.diagnostics, log)
+	// One household calendar (#2030): the channel engine, the on-screen logo and the commercial
+	// breaks date holidays alike.
+	calendar := householdCalendar(set, foundation.holidays, log)
+	watermarks := newChannelWatermarks(rootCtx, st, set, calendar, foundation.diagnostics, log)
 
 	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
@@ -163,7 +171,7 @@ func buildHandler(
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
 		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
-		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks,
+		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks, calendar,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -173,13 +181,13 @@ func buildHandler(
 	playoutRes, chanNumbers := channelsBuilt.playoutResolver, channelsBuilt.channelNumbers
 	setResidentVRAM := channelsBuilt.setResidentVRAM
 
-	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, log)
+	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, foundation.holidays, log)
 	proposalApprover := approval.approver
 
 	suggestions, err := buildSuggestions(
 		rootCtx, st, set, ov, eventBus, emitter, jobReg, fillerLayout, activityRec, log,
 		libraryClient, tmdbClient, channelSvc, proposalApprover, owner,
-		foundation.metrics,
+		foundation.metrics, foundation.holidays,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -188,8 +196,9 @@ func buildHandler(
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,
-		playbackHeadroomFor(channelsBuilt.resourceBudget), owner,
+		playbackHeadroomFor(channelsBuilt.resourceBudget), owner, foundation.reloadHolidays, calendar,
 	)
+	offerCuratedSources(rootCtx, st, log)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	// Not a setup connection test: the public address is checked only as a health fact.
 	healthProbes[diagnostics.StartupCheckPublicURL] = publicURLProbe(set, &http.Client{Timeout: startupIntegrationTimeout})
@@ -220,9 +229,16 @@ func buildHandler(
 		notificationDestinations: operations.notificationDestinations,
 		webPushPublicKey:         operations.webPushPublicKey,
 		invitationDelivery:       operations.invitationDelivery, passwordRecovery: operations.passwordRecovery,
-		liveConfig:        operations.liveConfig,
+		liveSettings:      operations.liveSettings,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,
+		library: buildLibrary(st, foundation.set, libraryBuild{
+			lib: libraryClient, budget: channelsBuilt.resourceBudget,
+			ffmpegPath: settings.PlayoutFFmpegPath.Get(foundation.set), processes: foundation.processDiagnostics,
+			images:     suggestions.images,
+			hookSecret: secrets.ArrWebhookSecret(), notify: libraryNotifierOf(operations.productNotifications),
+			tmdb: tmdbClient, log: log, owner: owner,
+		}),
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only
 	// through this process's writes and needs no polling reads. Postgres permits
@@ -230,5 +246,5 @@ func buildHandler(
 	// their complete runtime snapshot within the documented ~30-second bound.
 	trackReplicaSettingsRefresh(owner, store.DialectOf(st), set.svc,
 		replicaSettingsRefreshInterval, refreshSecretRedactor)
-	return handler, log, func() string { return set.str("server.public_url") }, nil
+	return handler, log, func() string { return settings.ServerPublicURL.Get(set) }, nil
 }

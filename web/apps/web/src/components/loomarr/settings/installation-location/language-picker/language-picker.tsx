@@ -35,11 +35,11 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
   return (
     <div className="max-w-2xl">
       <div className="mb-1.5 flex items-center gap-2">
-        <label htmlFor={`${listID}-input`} className="font-medium text-sm">
+        <label htmlFor={`${listID}-input`} className="text-sm font-medium">
           Commercial language
         </label>
         {locked && lockedLabel && (
-          <span className="inline-flex items-center gap-1 rounded-sm bg-static-800 px-1.5 py-0.5 font-mono text-2xs text-static-400 uppercase tracking-wide">
+          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono tracking-wide uppercase">
             <Lock className="size-3" aria-hidden /> {lockedLabel}
           </span>
         )}
@@ -83,7 +83,7 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
           <div
             id={listID}
             role="listbox"
-            className="relative z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg sm:absolute"
+            className="border-border bg-popover text-popover-foreground relative z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border p-1 shadow-lg sm:absolute"
           >
             {choices.map(({ code, label }, index) => (
               <button
@@ -105,12 +105,12 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
               </button>
             ))}
             {choices.length === 0 && (
-              <p className="px-3 py-3 text-muted-foreground text-sm">No languages found.</p>
+              <p className="text-muted-foreground px-3 py-3 text-sm">No languages found.</p>
             )}
           </div>
         )}
       </div>
-      <p className="mt-2 text-muted-foreground text-sm">
+      <p className="text-muted-foreground mt-2 text-sm">
         Loomarr skips commercials confidently spoken in another language. Wordless clips stay.
       </p>
     </div>

@@ -12,14 +12,17 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // serverWithClips builds a server over a real SQLite store seeded with clips, so the
 // per-source counts are counted rather than stubbed — the read-model's whole job.
-func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *httptest.Server {
+func serverWithClips(t *testing.T, cfg map[string]string, clips []catalogstore.Clip) *httptest.Server {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -37,15 +40,17 @@ func serverWithClips(t *testing.T, cfg map[string]string, clips []store.Clip) *h
 		Auth:         api.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
-		LiveConfig:   func(k string) string { return cfg[k] },
+		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
+
+		SourceProviders: testSourceProviders(t),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv
 }
 
-func clip(path, source string) store.Clip {
-	var c store.Clip
+func clip(path, source string) catalogstore.Clip {
+	var c catalogstore.Clip
 	// Hash AND Path — identity is the hash since V38c; a Path-only clip has an empty id, and the
 	// store keys on it, so every row would collide on "".
 	c.Hash = path
@@ -69,12 +74,12 @@ type sourceSuggestionsBody struct {
 
 func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	if err := st.UpsertFillerSource(context.Background(), fillerstore.NewFillerSource(
+	if err := st.UpsertFillerSource(context.Background(), records.NewFillerSource(
 		"archive:classic_tv_commercials", "archive", "classic_tv_commercials", "Classic TV Commercials", time.Now(),
 	)); err != nil {
 		t.Fatal(err)
 	}
-	ff.sourceSuggestions = []filler.SourceSuggestion{{
+	ff.sourceSuggestions = []source.Suggestion{{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials", ItemCount: 8362,
 	}}
@@ -104,10 +109,10 @@ func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testi
 
 func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = source.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
-		PreviewItems: []filler.SourcePreviewItem{
+		PreviewItems: []source.PreviewItem{
 			{Title: "First ad", URL: "https://archive.org/details/ad_one", DurationMS: 31500},
 			{Title: "Second ad", URL: "https://archive.org/details/ad_two"},
 		},
@@ -132,7 +137,7 @@ func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 
 func TestAddArchiveSourceRevalidatesItsCanonicalTarget(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = source.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
 	}
@@ -168,7 +173,7 @@ func TestAddArchiveSourcePersistsNothingWhenRevalidationFails(t *testing.T) {
 
 func TestAddYouTubeSourceRevalidatesAndStoresItsCanonicalTarget(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = filler.SourceSuggestion{
+	ff.resolvedSource = source.Suggestion{
 		Provider: "youtube", TargetType: "channel", CanonicalID: "UC-vault",
 		CanonicalURL: "https://www.youtube.com/channel/UC-vault/videos", Title: "Broadcast Vault",
 	}
@@ -244,7 +249,7 @@ func getSources(t *testing.T, srv *httptest.Server) sourcesBody {
 
 func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	src := fillerstore.NewFillerSource("archive:local", "archive", "local", "Local collection", time.Now().UTC())
+	src := records.NewFillerSource("archive:local", "archive", "local", "Local collection", time.Now().UTC())
 	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +278,7 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := t.Context()
-	src := fillerstore.NewFillerSource(
+	src := records.NewFillerSource(
 		"youtube:outcomes", "youtube", "https://www.youtube.com/@outcomes/videos", "Outcome channel", time.Now().UTC(),
 	)
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
@@ -287,13 +292,13 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 	}
 	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, filler.SourceCheckCompletion{
 		CheckedAt: checkedAt,
-		Checkpoint: filler.SourceScanCheckpoint{
+		Checkpoint: source.Checkpoint{
 			Cursor: "internal-cursor", PendingWatermark: "internal-newest",
 		},
 		ReplaceOutcomes: true,
-		Outcomes: filler.SourceCheckSummary{
-			filler.SourceOutcomeQueued: 3, filler.SourceOutcomeTooLong: 12,
-			filler.SourceOutcomeUnavailable: 2,
+		Outcomes: source.Outcomes{
+			source.OutcomeQueued: 3, source.OutcomeTooLong: 12,
+			source.OutcomeUnavailable: 2,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -314,7 +319,7 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 
 // The read-model's reason for existing: counts come from the CATALOG, not from a table.
 func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{
 		clip("a.mp4", "filler-dir"),
 		clip("b.mp4", "filler-dir"),
 		clip("c.mp4", "library"),
@@ -342,7 +347,7 @@ func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
 func TestFillerSources_CountsHeldClipsByProvenance(t *testing.T) {
 	held := clip("incoming.mp4", "filler-dir")
 	held.Held = true
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{held})
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{held})
 	body := getSources(t, srv)
 
 	folder := sourceOfKind(t, body, "folder")
@@ -357,7 +362,7 @@ func TestFillerSources_CountsHeldClipsByProvenance(t *testing.T) {
 func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
-	registered := fillerstore.NewFillerSource(
+	registered := records.NewFillerSource(
 		"archive:tv_ads", "archive", "tv_ads", "TV Ads", time.Unix(1_700_000_000, 0).UTC(),
 	)
 	if err := st.UpsertFillerSource(ctx, registered); err != nil {
@@ -391,7 +396,7 @@ func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 // ⚠ Total is sent rather than summed client-side: a clip whose `source` matches no known row
 // still belongs to the catalog, and a client adding up the rows would under-report it.
 func TestFillerSources_TotalIncludesUnrecognizedProvenance(t *testing.T) {
-	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
+	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []catalogstore.Clip{
 		clip("a.mp4", "filler-dir"),
 		clip("weird.mp4", "hand-copied-by-an-operator"),
 	})
@@ -451,7 +456,9 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 		Auth:         api.NewTokenAuthorizer(adminToken),
 		Log:          slog.New(slog.DiscardHandler),
 		FillerLayout: layout,
-		LiveConfig:   func(k string) string { return cfg[k] },
+		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
+
+		SourceProviders: testSourceProviders(t),
 	})
 	readSources := func() sourcesBody {
 		req := httptest.NewRequest(http.MethodGet, "/v1/filler/sources", nil)
@@ -477,13 +484,13 @@ func TestFillerSources_ReportsAppliedDirUntilRestart(t *testing.T) {
 	}
 }
 
-// The drop-folder switch is read through the BOOL seam, driven by a REAL settings service.
+// The drop-folder switch is read through its typed handle, driven by a REAL settings service.
 //
-// ⚠ A map[string]string stub is what hid this: the route read the bool key through
-// LiveConfig (settings.String), which PANICS on a non-string Kind, so GET /v1/filler/sources
-// died with an empty reply on every real install while every stubbed test passed. Wiring the
-// real service is the point of this test — a fake that cannot panic would only prove the fake
-// does not panic. Sabotage it by pointing folderEnabled back at s.liveConfig.
+// ⚠ A map[string]string stub is what once hid a kind-mismatch panic: the route read the bool key
+// through a string accessor, so GET /v1/filler/sources died with an empty reply on every real
+// install while every stubbed test passed. Wiring the real service keeps the read honest — a
+// fake that cannot answer the wrong kind would only prove the fake does not panic. Sabotage it by
+// hardcoding folderEnabled in the route.
 func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 	ctx := context.Background()
 	st := openTestStore(t, t.TempDir()+"/api.db")
@@ -517,13 +524,7 @@ func TestFillerSources_FolderSwitchReadsTheRealSettingsService(t *testing.T) {
 			return layout
 		}(),
 		// Wired exactly as the composition root wires them, typed per Kind.
-		LiveConfig: func(k string) string { return svc.String(k) },
-		LiveConfigBoolOn: func(k string) bool {
-			if b, ok := svc.Resolve(k).Value.(bool); ok {
-				return b
-			}
-			return true
-		},
+		LiveSettings: svc,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -594,8 +595,8 @@ func TestFillerSources_FetchRequiresOneSelectedSource(t *testing.T) {
 // rows that meant a successful 200 with no download ever queued — exactly the reported symptom.
 func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchResult.Outcomes = filler.SourceCheckSummary{
-		filler.SourceOutcomeQueued: 2, filler.SourceOutcomeTooLong: 4,
+	ff.fetchResult.Outcomes = source.Outcomes{
+		source.OutcomeQueued: 2, source.OutcomeTooLong: 4,
 	}
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -693,4 +694,163 @@ func TestFillerSources_FetchNowReportsUnavailableIngestTooling(t *testing.T) {
 	if ff.syncs != 0 {
 		t.Fatalf("catalog synced %d times after acquisition failed, want 0", ff.syncs)
 	}
+}
+
+// testSourceProviders is the registry a server under test publishes: the production providers'
+// shapes, with no network behind them.
+func testSourceProviders(t *testing.T) *source.Registry {
+	t.Helper()
+	registry, err := source.NewRegistry(
+		archiveprovider.New(archiveprovider.Config{}),
+		youtubeprovider.New(nil),
+		source.Folder(),
+		source.Library(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
+// The web asks the server which providers exist and what each can do, instead of carrying its own
+// list: a provider added to the registry shows up with no client change.
+func TestListFillerProviders_PublishesTheRegistry(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET providers → %d: %s", resp.StatusCode, readBody(t, resp))
+	}
+	var got struct {
+		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, len(got.Providers))
+	byID := map[string]api.FillerProviderDescriptionDTO{}
+	for i, p := range got.Providers {
+		ids[i] = p.ID
+		byID[p.ID] = p
+	}
+	if strings.Join(ids, ",") != "archive,youtube,folder,library" {
+		t.Fatalf("provider ids = %v, want the registry's order", ids)
+	}
+	archive := byID["archive"]
+	if archive.Label != "Archive.org" || !archive.Fetched || !archive.Listable || !archive.Searchable || !archive.Discoverable || archive.OpenSearchable {
+		t.Errorf("archive = %+v, want fetched, listable, searchable and discoverable", archive)
+	}
+	if youtube := byID["youtube"]; !youtube.Fetched || !youtube.Listable || youtube.Searchable || !youtube.Discoverable {
+		t.Errorf("youtube = %+v, want fetched and discoverable, not searchable in place", youtube)
+	}
+	folder := byID["folder"]
+	if folder.Fetched || folder.Listable || folder.Searchable || folder.Discoverable || !folder.Addable {
+		t.Errorf("folder = %+v, want scanned in place, never fetched, and addable by hand", folder)
+	}
+}
+
+func TestListFillerProviders_IsAdminOnly(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/providers", memberToken, ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("member GET providers → %d, want 403", resp.StatusCode)
+	}
+}
+
+// Everything the source page used to carry per provider arrives on the descriptor.
+func TestListFillerProviders_CarriesTheWordsTheSourcePageShows(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers", adminToken, "")
+	var got struct {
+		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]api.FillerProviderDescriptionDTO{}
+	for _, p := range got.Providers {
+		byID[p.ID] = p
+	}
+	youtube := byID["youtube"]
+	if youtube.SourceNoun != "YouTube channel or playlist" || youtube.FindMinQuery != 3 ||
+		youtube.FindLabel != "Find a YouTube channel or playlist" || youtube.Blurb == "" || youtube.PreviewHeading == "" {
+		t.Errorf("youtube = %+v", youtube)
+	}
+	if folder := byID["folder"]; folder.AddressHint == "" || folder.AddressLabel != "Folder path" || folder.FindLabel != "" {
+		t.Errorf("folder = %+v, want an address field and no finder", folder)
+	}
+}
+
+// An address is checked, not searched for: the finder answers with the one source it names.
+func TestFillerSourceSuggestions_CheckAnAddressInsteadOfSearchingForIt(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.resolvedSource = source.Suggestion{
+		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
+		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
+		PreviewItems: []source.PreviewItem{{Title: "First ad", URL: "https://archive.org/details/ad_one"}},
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/archive/suggestions?q=classic_tv_commercials", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET suggestions → %d: %s", resp.StatusCode, readBody(t, resp))
+	}
+	var body struct {
+		Exact       bool                            `json:"exact"`
+		Suggestions []api.FillerSourceSuggestionDTO `json:"suggestions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Exact || len(body.Suggestions) != 1 || len(body.Suggestions[0].PreviewItems) != 1 {
+		t.Fatalf("body = %+v", body)
+	}
+	if got := body.Suggestions[0].PreviewItems[0].EmbedURL; got != "https://archive.org/embed/ad_one?autoplay=1" {
+		t.Errorf("embed = %q, want the provider's player", got)
+	}
+	if len(ff.sourceSuggestionCalls) != 0 {
+		t.Fatalf("an address was searched for: %#v", ff.sourceSuggestionCalls)
+	}
+
+	words := do(t, srv, http.MethodGet, "/v1/filler/providers/archive/suggestions?q=cartoons", adminToken, "")
+	if words.StatusCode != http.StatusOK || len(ff.sourceSuggestionCalls) != 1 {
+		t.Fatalf("a word was not searched for: %d %#v", words.StatusCode, ff.sourceSuggestionCalls)
+	}
+}
+
+// The provider decides how short a search may be, so the route no longer needs one number for all.
+func TestFillerSourceSuggestions_HoldAProviderToItsOwnMinimum(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/youtube/suggestions?q=tv", adminToken, "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("2-character YouTube search → %d, want 422", resp.StatusCode)
+	}
+	if len(ff.sourceSuggestionCalls) != 0 {
+		t.Fatalf("a too-short search reached the finder: %#v", ff.sourceSuggestionCalls)
+	}
+}
+
+// A provider the registry does not know is refused by the registry, not by a list in the route.
+func TestFillerProviderRoutes_RefuseAnUnknownProviderByRegistry(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/providers/nonesuch/suggestions?q=classic", adminToken, ""); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("suggestions for an unknown provider → %d, want 422", resp.StatusCode)
+	}
+	if resp := do(t, srv, http.MethodPatch, "/v1/filler/providers/nonesuch", adminToken, `{"enabled":false}`); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("PATCH an unknown provider → %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestFillerSources_LinkARegisteredSourceToItsOwnPage(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	if err := st.UpsertFillerSource(t.Context(), records.NewFillerSource(
+		"archive:tv_ads", "archive", "tv_ads", "TV Ads", time.Now().UTC(),
+	)); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range getSources(t, srv).Sources {
+		if source.ID == "archive:tv_ads" {
+			if source.PageURL != "https://archive.org/details/tv_ads" {
+				t.Fatalf("pageUrl = %q", source.PageURL)
+			}
+			return
+		}
+	}
+	t.Fatal("registered source missing from the list")
 }

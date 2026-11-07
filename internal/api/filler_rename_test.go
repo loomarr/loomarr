@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // renameFixture is a drop-folder holding one filename-named clip, catalogued as the scan would
@@ -41,11 +41,11 @@ func renameFixture(t *testing.T) (*apiHarness, string) {
 	return h, dir
 }
 
-func seedFilenameNamedClip(t *testing.T, st fillerstore.Store) {
+func seedFilenameNamedClip(t *testing.T, st records.Store) {
 	t.Helper()
-	if err := st.UpsertClip(context.Background(), store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: filler.Clip{
 		Hash: "h-widgetmax", Path: "Widgetmax Ad 1991.mp4", Name: "Widgetmax Ad 1991",
-		NameSource: clipcatalog.NameFromFilename, Kind: filler.Commercial, DurationMs: 30_000,
+		NameSource: clips.NameFromFilename, Kind: filler.Commercial, DurationMs: 30_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -69,13 +69,13 @@ func TestPatchClip_RenameIsCuratedAndSurvivesARescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Widgetmax Turbo Blender" || got.NameSource != clipcatalog.NameFromCurated {
+	if got.Name != "Widgetmax Turbo Blender" || got.NameSource != clips.NameFromCurated {
 		t.Errorf("catalog = %q (%q), want the rename as curated", got.Name, got.NameSource)
 	}
 
 	// The scan reading this back is TestScanDir_KeepsACuratedRename.
 	tags, ok := filler.ReadSidecarTags(filepath.Join(dir, "Widgetmax Ad 1991.mp4"))
-	if !ok || tags.DisplayName != "Widgetmax Turbo Blender" || tags.NameProvenance != string(clipcatalog.NameFromCurated) {
+	if !ok || tags.DisplayName != "Widgetmax Turbo Blender" || tags.NameProvenance != string(clips.NameFromCurated) {
 		t.Fatalf("sidecar = %+v (%v), want displayName with curated provenance", tags, ok)
 	}
 }
@@ -104,11 +104,40 @@ func TestPatchClip_RenameRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Widgetmax Ad 1991" || got.NameSource != clipcatalog.NameFromFilename {
+	if got.Name != "Widgetmax Ad 1991" || got.NameSource != clips.NameFromFilename {
 		t.Errorf("after refusals = %q (%q), want the clip untouched", got.Name, got.NameSource)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "Widgetmax Ad 1991.info.json")); !os.IsNotExist(err) {
 		t.Errorf("a refused rename wrote a sidecar (%v)", err)
+	}
+}
+
+// A rename alongside a field the server refuses saves nothing: every refusal is decided before the
+// first write, so a 422 never stands in front of a half-applied edit.
+func TestPatchClip_RenameWithARefusedFieldSavesNothing(t *testing.T) {
+	h, dir := renameFixture(t)
+	for _, tc := range []struct{ name, field string }{
+		{"unknown tag", `"tags":["not-a-real-tag"]`},
+		{"local without a station", `"geography":{"scope":"local","country":"US"}`},
+		{"bad air date", `"geography":{"scope":"national","country":"US","airDate":"1991-13-40"}`},
+		{"bad scope", `"geography":{"scope":"regional","country":"US"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"hash":"h-widgetmax","name":"Widgetmax Turbo Blender","era":1991,` + tc.field + `}`
+			if resp := h.Do(http.MethodPatch, "/v1/filler/tags", adminToken, body); resp.StatusCode != http.StatusUnprocessableEntity {
+				t.Fatalf("→ %d, want 422", resp.StatusCode)
+			}
+		})
+	}
+	got, err := h.Store.GetClip(context.Background(), "h-widgetmax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Widgetmax Ad 1991" || got.NameSource != clips.NameFromFilename || got.Era != 0 {
+		t.Errorf("after refusals = %q (%q) era %d, want the clip untouched", got.Name, got.NameSource, got.Era)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Widgetmax Ad 1991.info.json")); !os.IsNotExist(err) {
+		t.Errorf("a refused edit wrote a sidecar (%v)", err)
 	}
 }
 
@@ -137,7 +166,7 @@ func TestPatchClip_RenameWithAnUnreadableSidecarSavesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Widgetmax Ad 1991" || got.NameSource != clipcatalog.NameFromFilename || got.Era != 0 {
+	if got.Name != "Widgetmax Ad 1991" || got.NameSource != clips.NameFromFilename || got.Era != 0 {
 		t.Errorf("after the refused edit = %q (%q) era %d, want the clip untouched", got.Name, got.NameSource, got.Era)
 	}
 }
@@ -146,20 +175,20 @@ func TestPatchClip_RenameWithAnUnreadableSidecarSavesNothing(t *testing.T) {
 // carries each clip's name and provenance into the pod.
 type storePods struct {
 	fakePods
-	st     fillerstore.Store
+	st     records.Store
 	hashes []string
 }
 
-func (p *storePods) PreviewAt(ctx context.Context, _ string, _ int64) (filler.Pod, error) {
+func (p *storePods) PreviewAt(ctx context.Context, _ string, _ filler.BreakSlot) (filler.Pod, error) {
 	return p.pod(ctx)
 }
 
-func (p *storePods) PreviewAtMany(ctx context.Context, _ string, starts []int64) ([]filler.Pod, error) {
+func (p *storePods) PreviewAtMany(ctx context.Context, _ string, slots []filler.BreakSlot) ([]filler.Pod, error) {
 	pod, err := p.pod(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.Pod, len(starts))
+	out := make([]filler.Pod, len(slots))
 	for i := range out {
 		out[i] = pod
 	}

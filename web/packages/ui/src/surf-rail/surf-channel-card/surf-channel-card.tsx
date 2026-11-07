@@ -15,15 +15,15 @@ const secondaryIndent = identSize + 12 + 20 + 12;
  */
 const SurfChannelCard = ({ channel, current, focused, logo, selected }: SurfChannelCardProps) => (
   <Surface
-    backgroundColor={selected ? "$surfaceRaised" : "$surfaceCanvas"}
-    borderColor={selected ? (focused ? "$actionFocus" : "$borderDecorative") : "$surfaceCanvas"}
+    backgroundColor={selected ? "surfaceRaised" : "surfaceCanvas"}
+    borderColor={selected ? (focused ? "actionFocus" : "borderDecorative") : "surfaceCanvas"}
     borderRadius={12}
     borderWidth={selected && focused ? 3 : 1}
     gap={4}
     paddingHorizontal={16}
     paddingVertical={12}
   >
-    <Surface alignItems="center" backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap={12}>
+    <Surface alignItems="center" backgroundColor="transparent" borderWidth={0} flexDirection="row" gap={12}>
       {logo ? (
         <View style={{ height: identSize, overflow: "hidden", width: identSize }}>{logo}</View>
       ) : (
@@ -40,17 +40,17 @@ const SurfChannelCard = ({ channel, current, focused, logo, selected }: SurfChan
         {channel.channelName}
       </Text>
       {current ? (
-        <Surface backgroundColor="$stateSuccess" borderRadius="$round" borderWidth={0} height={8} width={8} />
+        <Surface backgroundColor="stateSuccess" borderRadius="round" borderWidth={0} height={8} width={8} />
       ) : null}
     </Surface>
     {selected ? (
       <>
         <Surface
           alignItems="center"
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
           flexDirection="row"
-          gap="$inline"
+          gap="inline"
           paddingLeft={secondaryIndent}
         >
           <Text density="tv" flex={1} numberOfLines={1} textRole="caption" tone="muted">
@@ -64,7 +64,7 @@ const SurfChannelCard = ({ channel, current, focused, logo, selected }: SurfChan
             </Text>
           ) : null}
         </Surface>
-        <Surface backgroundColor="$transparent" borderWidth={0} paddingLeft={secondaryIndent} paddingTop={4}>
+        <Surface backgroundColor="transparent" borderWidth={0} paddingLeft={secondaryIndent} paddingTop={4}>
           <ProgressTrack
             accessibilityLabel={channel.now?.title ?? channel.channelName}
             percent={channel.now?.progressPercent ?? 0}

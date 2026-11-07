@@ -269,54 +269,6 @@ func TestParseMMS(t *testing.T) {
 	}
 }
 
-// --- dHash -------------------------------------------------------------------
-
-func grayFrame(v byte) []byte { // a flat 9x8 frame of one intensity
-	f := make([]byte, 72)
-	for i := range f {
-		f[i] = v
-	}
-	return f
-}
-
-func TestDHash_IdenticalSpansAreZero(t *testing.T) {
-	frames := [][]byte{grayFrame(10), grayFrame(200), grayFrame(90)}
-	a, b := dHashFrames(frames), dHashFrames(frames)
-	mean, ok := meanHamming(a, b)
-	if !ok || mean != 0 {
-		t.Errorf("identical span mean = %v, ok=%v; want 0", mean, ok)
-	}
-}
-
-func TestDHash_DifferentAdvertsSeparate(t *testing.T) {
-	// Two unrelated frame sequences: flat (all bits clear) vs a DECREASING
-	// gradient (every left pixel brighter than its right neighbour → all bits
-	// set — the maximum Hamming distance from flat).
-	var grad []byte
-	for row := 0; row < 8; row++ {
-		for col := 0; col < 9; col++ {
-			grad = append(grad, byte(224-col*28))
-		}
-	}
-	a := dHashFrames([][]byte{grayFrame(10), grayFrame(200)})
-	b := dHashFrames([][]byte{grad, grad, grad}) // longer — min-length compare
-	mean, ok := meanHamming(a, b)
-	if !ok {
-		t.Fatal("no result for differing lengths — must compare over the shorter")
-	}
-	if mean <= DupHashThreshold {
-		t.Errorf("different adverts flagged as duplicates (mean %v ≤ %v)", mean, DupHashThreshold)
-	}
-}
-
-func TestDHash_NoFramesIsNotADuplicate(t *testing.T) {
-	// An undecodable span must NEVER read as a duplicate — that is a silent drop,
-	// the exact failure the flag exists to avoid.
-	if _, ok := meanHamming(nil, dHashFrames([][]byte{grayFrame(1)})); ok {
-		t.Error("empty frame sequence compared equal")
-	}
-}
-
 // --- names / transcripts -----------------------------------------------------
 
 // ⚠ `TestSanitizeClipName` was deleted with the function it covered (§10 V51a). A segment's

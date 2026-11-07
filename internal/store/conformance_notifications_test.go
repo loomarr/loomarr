@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
 func testNotificationLifecycle(t *testing.T, newStore NewStoreFunc) {

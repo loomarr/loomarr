@@ -9,6 +9,8 @@ import (
 	"sort"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // ProposalApproval is the complete durable consequence of one approval decision.
@@ -112,10 +114,7 @@ func (s *sqlStore) commitProposalApproval(
 	// Proposal revision and approval serialize on the stable Job row. Generating
 	// a replacement temporarily closes the approval gate; a failed replacement
 	// leaves the old submitted proposal intact and terminal, so it can be approved.
-	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
-	if s.dialect == DialectPostgres {
-		jobStatusQuery += ` FOR UPDATE`
-	}
+	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), commit.Proposal.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
@@ -126,12 +125,16 @@ func (s *sqlStore) commitProposalApproval(
 	}
 
 	p := commit.Proposal
+	body, err := encodeProposalBody(p)
+	if err != nil {
+		return 0, err
+	}
 	result, err := tx.ExecContext(ctx, s.ph(
 		`UPDATE proposals SET job_id=?, status=?, created_by=?, approved_by=?, deny_reason=?,
 		   mod_summary=?, note=?, proposal_json=?, approved_at=?, updated_at=?
 		 WHERE id=? AND status='submitted'`),
 		p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		p.ProposalJSON, epoch(p.ApprovedAt), epoch(p.UpdatedAt), p.ID)
+		body, epoch(p.ApprovedAt), epoch(p.UpdatedAt), p.ID)
 	if err != nil {
 		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
 	}
@@ -162,16 +165,23 @@ func (s *sqlStore) commitProposalApproval(
 	// The transaction rolls this status change back when a superseder exists.
 	// Compare against the candidate row's persisted job/time, not caller fields. Epoch
 	// seconds cannot order a tie, so equal timestamps fail closed instead of guessing.
+	//
+	// Supersession is per CHANNEL: a refine and a re-curation are different jobs for one channel,
+	// so a newer approved proposal of any job that names or originated the planned channel
+	// supersedes an older candidate, or the older replace-lineup bind would drop the newer
+	// additions.
 	var supersedingID string
 	err = tx.QueryRowContext(ctx, s.ph(
 		`SELECT newer.id
 		   FROM proposals newer
 		   JOIN proposals candidate ON candidate.id = ?
-		  WHERE newer.job_id = candidate.job_id
-		    AND newer.status = 'approved'
+		  WHERE newer.status = 'approved'
 		    AND newer.id <> candidate.id
 		    AND newer.created_at >= candidate.created_at
-		  LIMIT 1`), p.ID).Scan(&supersedingID)
+		    AND (newer.job_id = candidate.job_id
+		         OR newer.job_id IN (SELECT id FROM jobs WHERE channel_id = ?)
+		         OR newer.job_id = (SELECT NULLIF(intent_ref, '') FROM channels WHERE id = ?))
+		  LIMIT 1`), p.ID, commit.Channel.ID, commit.Channel.ID).Scan(&supersedingID)
 	if err == nil {
 		return 0, fmt.Errorf("%w: proposal %s is preceded by approved proposal %s",
 			ErrProposalSuperseded, p.ID, supersedingID)
@@ -201,6 +211,9 @@ func (s *sqlStore) commitProposalApproval(
 			enqueued++
 		}
 	}
+	if err := validateApprovalBinding(ctx, tx, s.ph, p, commit.Channel); err != nil {
+		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)
+	}
 	if _, err := s.saveChannel(ctx, tx, commit.Channel); err != nil {
 		if isConstraintViolation(err) {
 			return 0, fmt.Errorf("%w: %v", ErrChannelConflict, err)
@@ -209,13 +222,13 @@ func (s *sqlStore) commitProposalApproval(
 	}
 	if p.CreatedBy != "" {
 		for _, item := range encoded {
-			if err := insertNotificationReferenceRecipient(
+			if err := identitystore.InsertNotificationReferenceRecipient(
 				ctx, tx, s.ph, "title", string(item.record.Key), p.CreatedBy, epoch(p.UpdatedAt),
 			); err != nil {
 				return 0, fmt.Errorf("approve proposal %s: record title notification provenance: %w", p.ID, err)
 			}
 		}
-		if err := insertNotificationReferenceRecipient(
+		if err := identitystore.InsertNotificationReferenceRecipient(
 			ctx, tx, s.ph, "channel", commit.Channel.ID, p.CreatedBy, epoch(p.UpdatedAt),
 		); err != nil {
 			return 0, fmt.Errorf("approve proposal %s: record channel notification provenance: %w", p.ID, err)
@@ -225,21 +238,6 @@ func (s *sqlStore) commitProposalApproval(
 		return 0, fmt.Errorf("approve proposal %s: commit: %w", p.ID, err)
 	}
 	return enqueued, nil
-}
-
-func insertNotificationReferenceRecipient(
-	ctx context.Context,
-	tx *sql.Tx,
-	placeholder func(string) string,
-	referenceKind, referenceID, personID string,
-	createdAt int64,
-) error {
-	_, err := tx.ExecContext(ctx, placeholder(`INSERT INTO notification_reference_recipients
-		(reference_kind, reference_id, person_id, created_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (reference_kind, reference_id, person_id) DO NOTHING`),
-		referenceKind, referenceID, personID, createdAt)
-	return err
 }
 
 func approvalOrderKey(p Proposal) string {
@@ -276,9 +274,7 @@ type proposalApprovalTxReader struct {
 }
 
 func (r proposalApprovalTxReader) GetUser(ctx context.Context, id string) (User, error) {
-	return scanUser(r.tx.QueryRowContext(ctx, r.s.ph(
-		`SELECT id, name, role, disabled, quota, auto_approve, media_server_linked, password_hash, created_at, updated_at
-		 FROM users WHERE id = ?`), id))
+	return identitystore.GetUserIn(ctx, r.tx, r.s.ph, id)
 }
 
 func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
@@ -294,17 +290,9 @@ func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Ke
 	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key)))
 }
 
-// isConstraintViolation recognizes the portable driver contracts without coupling the
-// store to either concrete error package. Postgres exposes SQLSTATE 23505; modernc SQLite
-// exposes extended result codes whose low byte is SQLITE_CONSTRAINT (19).
-func isConstraintViolation(err error) bool {
-	var state interface{ SQLState() string }
-	if errors.As(err, &state) && state.SQLState() == "23505" {
-		return true
-	}
-	var coded interface{ Code() int }
-	return errors.As(err, &coded) && coded.Code()&0xff == 19
-}
+// isConstraintViolation is storedb.IsConstraintViolation under the name this package's 14 call
+// sites already use.
+func isConstraintViolation(err error) bool { return storedb.IsConstraintViolation(err) }
 
 func validateApprovalChannel(p Proposal, ch Channel) error {
 	if err := ch.Validate(); err != nil {
@@ -316,10 +304,30 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 	if ch.IntentRef == "" {
 		return fmt.Errorf("channel %s has no intent ref", ch.ID)
 	}
-	if ch.IntentRef != p.JobID {
-		return fmt.Errorf("channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
-	}
 	return nil
+}
+
+// validateApprovalBinding checks, inside the approval transaction, that the planned channel is
+// the one the proposal's job belongs to: the channel a refine or re-curation job names, or the
+// channel the job originated. A job with no channel yet may only create one it originates.
+func validateApprovalBinding(ctx context.Context, q channelDB, ph placeholder, p Proposal, ch Channel) error {
+	bound, err := channelForJob(ctx, q, ph, p.JobID)
+	switch {
+	case err == nil:
+		if bound.ID != ch.ID {
+			// The plan predates a competing approval that bound the job first. The caller
+			// reloads and replans, exactly as for a lost uniqueness race.
+			return fmt.Errorf("%w: proposal job %q belongs to channel %s, not %s", ErrChannelConflict, p.JobID, bound.ID, ch.ID)
+		}
+		return nil
+	case errors.Is(err, ErrNotFound):
+		if ch.IntentRef != p.JobID {
+			return fmt.Errorf("new channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
+		}
+		return nil
+	default:
+		return err
+	}
 }
 
 func validateApprovalTitle(rec provision.Record) error {
@@ -356,10 +364,7 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 		return fmt.Errorf("deny proposal %s: begin: %w", p.ID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	jobStatusQuery := `SELECT status FROM jobs WHERE id = ?`
-	if s.dialect == DialectPostgres {
-		jobStatusQuery += ` FOR UPDATE`
-	}
+	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), p.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {

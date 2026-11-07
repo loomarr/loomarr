@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/httpx"
 )
 
 // Timeouts bounds one OpenAI-compatible call without a fixed whole-request deadline.
@@ -72,14 +73,19 @@ var (
 	ErrTotalTimeout      = &budgetError{"total_timeout"}
 )
 
-// StatusError is a non-2xx provider reply. Body is the provider's own explanation, capped.
-type StatusError struct {
-	Op   string
-	Code int
-	Body string
+// callStatusError names the call (op) a non-2xx provider reply answered. It wraps the
+// *httpx.StatusError, which holds the status and the provider's own capped explanation, so
+// httpx.Classify sees through it; Error keeps the "<op>: status N: <body>" text operators read.
+type callStatusError struct {
+	op  string
+	err *httpx.StatusError
 }
 
-func (e *StatusError) Error() string { return fmt.Sprintf("%s: status %d: %s", e.Op, e.Code, e.Body) }
+func (e *callStatusError) Error() string {
+	return fmt.Sprintf("%s: status %d: %s", e.op, e.err.Status, e.err.Body)
+}
+
+func (e *callStatusError) Unwrap() error { return e.err }
 
 // callSiteKey carries the caller's name for a call down to the provider.
 type callSiteKey struct{}
@@ -199,13 +205,11 @@ func (o *OpenAI) exchange(ctx context.Context, op string, body []byte) (completi
 		return completion{}, 0, fail(fmt.Errorf("%s [%s]: %w", op, site, err))
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// ⚠ The body carries WHY, and a bare status code hides it: "model not found" (a wrong
-		// llm.model), "no image input", "no credit", or a llama.cpp slot error. It is capped
-		// at 512 bytes and never contains our key.
-		var buf bytes.Buffer
-		_, _ = buf.ReadFrom(io.LimitReader(resp.Body, 512))
-		return completion{}, resp.StatusCode, &StatusError{Op: op, Code: resp.StatusCode, Body: strings.TrimSpace(buf.String())}
+	// ⚠ The body carries WHY, and a bare status code hides it: "model not found" (a wrong
+	// llm.model), "no image input", "no credit", or a llama.cpp slot error. It is capped at
+	// 512 bytes and never contains our key.
+	if err := checkStatusWithBody(resp, op); err != nil {
+		return completion{}, resp.StatusCode, err
 	}
 
 	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
@@ -324,7 +328,7 @@ func (o *OpenAI) finishCall(ctx context.Context, op string, started time.Time, c
 	if err != nil {
 		outcome = "error"
 		var fired *budgetError
-		var statusErr *StatusError
+		var statusErr *httpx.StatusError
 		switch {
 		case errors.As(err, &fired):
 			outcome = fired.outcome

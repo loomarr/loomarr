@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
 
@@ -17,7 +17,7 @@ func TestApprovalAdditionAdapterOwnsLibraryPresenceAtTheGate(t *testing.T) {
 	}}
 	adapter := approvalAdditionAdapter{presence: func() catalog.LibraryPresence { return presence }}
 
-	owned, isOwned, err := adapter.ResolveApprovalAddition(context.Background(), suggest.ProposalItem{
+	owned, isOwned, err := adapter.ResolveApprovalAddition(context.Background(), proposals.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned", InLibrary: false, OfficialRating: "G",
 		SizeBytes: 1, SizeConfidence: storagegovernor.SizeEstimated,
 	})
@@ -31,7 +31,7 @@ func TestApprovalAdditionAdapterOwnsLibraryPresenceAtTheGate(t *testing.T) {
 		t.Fatalf("owned addition size = %d (%q); want the Library's exact 4200000000", owned.SizeBytes, owned.SizeConfidence)
 	}
 
-	missing, isOwned, err := adapter.ResolveApprovalAddition(context.Background(), suggest.ProposalItem{
+	missing, isOwned, err := adapter.ResolveApprovalAddition(context.Background(), proposals.ProposalItem{
 		MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing", InLibrary: true,
 		LibraryItemID: "forged-id", OfficialRating: "G", SizeBytes: 9, SizeConfidence: storagegovernor.SizeExact,
 	})

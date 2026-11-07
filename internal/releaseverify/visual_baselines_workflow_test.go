@@ -75,7 +75,7 @@ func TestVerifyVisualBaselinesWorkflow(t *testing.T) {
 		{name: "a tracked symlink cannot be replaced", mutate: replaceOnce(`  if [ -n "$mode" ] && [ "$mode" != 100644 ]; then`, `  if false; then`, t), wantErr: true},
 		{name: "commit step environment cannot gain a token", mutate: replaceOnce("          FORCE: ${{ inputs.force }}\n        run: |\n          set -euo pipefail\n          in=", "          FORCE: ${{ inputs.force }}\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          set -euo pipefail\n          in=", t), wantErr: true},
 		{name: "dispatched CI stays the full scope", mutate: replaceOnce("-f scope=full", "-f scope=release-candidate", t), wantErr: true},
-		{name: "mutable actions are rejected", mutate: replaceOnce("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", "actions/download-artifact@v8", t), wantErr: true},
+		{name: "mutable actions are rejected", mutate: replaceOnce("actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333", "actions/download-artifact@v8", t), wantErr: true},
 		{name: "outputs cannot be replaced by a constant", mutate: replaceOnce("      pushed: ${{ steps.commit.outputs.pushed }}\n", "      pushed: 'true'\n", t), wantErr: true},
 		{name: "another job is rejected", mutate: replaceOnce("jobs:\n", "jobs:\n  bypass:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo bypass\n", t), wantErr: true},
 	})
@@ -109,7 +109,7 @@ func TestVerifyVisualBaselinesRenderWorkflow(t *testing.T) {
 		{name: "update step cannot be skipped", mutate: replaceOnce("        run: make fe-visual-update\n", "        if: false\n        run: make fe-visual-update\n", t), wantErr: true},
 		{name: "update step cannot tolerate its own failure", mutate: replaceOnce("        run: make fe-visual-update\n", "        continue-on-error: true\n        run: make fe-visual-update\n", t), wantErr: true},
 		{name: "render job cannot gain a step", mutate: replaceOnce("      - run: corepack enable\n", "      - run: corepack enable\n      - run: git config --global user.name bot\n", t), wantErr: true},
-		{name: "mutable actions are rejected", mutate: replaceOnce("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a", "actions/upload-artifact@v7", t), wantErr: true},
+		{name: "mutable actions are rejected", mutate: replaceOnce("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", "actions/upload-artifact@v7", t), wantErr: true},
 		{name: "another job is rejected", mutate: replaceOnce("jobs:\n", "jobs:\n  bypass:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo bypass\n", t), wantErr: true},
 	})
 }

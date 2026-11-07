@@ -2,20 +2,20 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/edit"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
@@ -224,7 +224,7 @@ type iconSuggestionsOutput struct {
 // (§icon P2): a Star Trek channel's five series posters, rather than a generic
 // placeholder. Read-only — any authenticated user may call it, matching get-channel.
 func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput) (*iconSuggestionsOutput, error) {
-	if s.icons == nil || s.unconfigured("tmdb.api_key") {
+	if s.icons == nil || s.unconfigured(settings.TMDBAPIKey) {
 		return nil, errNotImplemented("Icon suggestions aren't set up", "Connect TMDB in Settings to get channel icon suggestions from your lineup.")
 	}
 	if _, err := s.store.GetChannel(ctx, in.ID); errors.Is(err, store.ErrNotFound) {
@@ -265,17 +265,15 @@ func (s *Server) channelIconSuggestions(ctx context.Context, in *channelIDInput)
 
 type createChannelInput struct {
 	Body struct {
-		ID        string `json:"id,omitempty" doc:"Loomarr channel id (stable). Optional — omit and the server assigns one (ch_…); pass one to keep a caller-assigned id." example:"ch_abc123"`
-		Name      string `json:"name" example:"Saturday Morning Cartoons"`
-		Number    int    `json:"number" minimum:"1" example:"42"`
-		Group     string `json:"group,omitempty" example:"Kids"`
-		Logo      string `json:"logo,omitempty"`
-		Strategy  string `json:"strategy" enum:"sequential,shuffle,time_slot"`
-		IntentRef string `json:"intentRef,omitempty"`
+		ID       string `json:"id,omitempty" doc:"Loomarr channel id (stable). Optional — omit and the server assigns one (ch_…); pass one to keep a caller-assigned id." example:"ch_abc123"`
+		Name     string `json:"name" example:"Saturday Morning Cartoons"`
+		Number   int    `json:"number" minimum:"1" example:"42"`
+		Group    string `json:"group,omitempty" example:"Kids"`
+		Logo     string `json:"logo,omitempty"`
+		Strategy string `json:"strategy" enum:"sequential,shuffle,time_slot"`
 		// Series is an optional hand-made single-series channel (§7 "or hand-made"):
 		// the channel plays one show, optionally constrained to a season range (§9
-		// series expansion). The series must already be an `available` title. Use
-		// instead of intentRef; if both are set, intentRef wins.
+		// series expansion). The series must already be an `available` title.
 		Series *struct {
 			Key       string `json:"key" doc:"provisioning key, e.g. series:tvdb:71663" example:"series:tvdb:71663"`
 			Title     string `json:"title,omitempty"`
@@ -290,109 +288,19 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	ch := store.Channel{}
-	// The id is optional: a caller (e.g. the proposal-approval path) may supply a stable
-	// id, or omit it and let the server mint one — same `ch_…` scheme approval planning
-	// uses, so a hand-made channel is indistinguishable from an approved one. This is what
-	// lets the "New channel" UI action create without a client-side id scheme.
-	ch.ID = in.Body.ID
-	if ch.ID == "" {
-		ch.ID = binder.NewChannelID()
+	req := edit.NewChannel{
+		ID: in.Body.ID, Name: in.Body.Name, Number: in.Body.Number, Group: in.Body.Group, Logo: in.Body.Logo,
+		Strategy: schedule.Strategy(in.Body.Strategy),
 	}
-	ch.Name = in.Body.Name
-	ch.Number = in.Body.Number
-	ch.Group = in.Body.Group
-	ch.Logo = in.Body.Logo
-	ch.Strategy = schedule.Strategy(in.Body.Strategy)
-	ch.IntentRef = in.Body.IntentRef
-	ch.Status = schedule.StatusBuilding
-	// A non-empty intent has exactly one local channel. Approval now enforces this at the
-	// database boundary, so the legacy explicit create path must surface the same invariant as
-	// a clean conflict instead of leaking a unique-index error as a 500.
-	if ch.IntentRef != "" {
-		if _, err := s.store.GetChannelByIntentRef(ctx, ch.IntentRef); err == nil {
-			return nil, errConflict("Channel already exists", "That approved suggestion is already bound to a channel.")
-		} else if !errors.Is(err, store.ErrNotFound) {
-			return nil, err
+	if in.Body.Series != nil {
+		req.Series = &edit.SeriesScope{
+			Key: provision.Key(in.Body.Series.Key), Title: in.Body.Series.Title,
+			SeasonMin: in.Body.Series.SeasonMin, SeasonMax: in.Body.Series.SeasonMax,
 		}
 	}
-	// Bind the approved proposal's lineup (§7/§9: "create a channel from an
-	// approved proposal"). Empty intentRef ⇒ hand-made channel, no lineup yet.
-	lineup, err := s.lineupFromIntent(ctx, in.Body.IntentRef)
+	fresh, err := s.channelEdits().Create(ctx, req)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Couldn't build the lineup",
-			"Loomarr couldn't resolve the lineup for the approved suggestion. Try refining or re-approving it.", err)
-	}
-	// Bind the proposal's grounded ChannelPolicy (programming-design §8) onto the
-	// channel so enforcement (scope/audience/separation/seasonal) applies from the
-	// first reconcile. A hand-made channel / policy-less proposal → built-in defaults.
-	policy, err := s.policyFromIntent(ctx, in.Body.IntentRef)
-	if err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Couldn't apply the policy",
-			"Loomarr couldn't resolve the programming policy for the approved suggestion. Try refining or re-approving it.", err)
-	}
-	ch.Policy = policy
-	// Hand-made single-series channel (§7 "or hand-made"): one series entry with an
-	// optional season range (§9 expansion). Only when no proposal intent is given.
-	if in.Body.IntentRef == "" && in.Body.Series != nil {
-		key := provision.Key(in.Body.Series.Key)
-		if !key.IsSeries() {
-			return nil, errUnprocessable("Invalid series",
-				"For a single-series channel, pick a series (not a movie or episode).")
-		}
-		lineup = []schedule.LineupEntry{{
-			Key:       key,
-			Title:     in.Body.Series.Title,
-			SeasonMin: in.Body.Series.SeasonMin,
-			SeasonMax: in.Body.Series.SeasonMax,
-		}}
-	}
-	ch.Lineup = lineup
-	// Due NOW, so the sweep owns this channel from the moment it exists (§9 V54) — the same
-	// stamp approval planning applies, for the same reason: the immediate reconcile
-	// below is best-effort, and without a deadline the retry that is supposed to cover it never
-	// comes. A hand-made channel and an approved one must not differ in their recovery story.
-	ch.ReconcileDeadline = time.Now().UTC()
-	if err := ch.Validate(); err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
-			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
-	}
-	// Reject a duplicate id or number up front (the store's unique index would
-	// also reject, but a clean 409 is friendlier than a 500).
-	if _, err := s.store.GetChannel(ctx, ch.ID); err == nil {
-		return nil, errConflict("Channel already exists", "A channel with that id already exists.")
-	} else if !errors.Is(err, store.ErrNotFound) {
-		return nil, err
-	}
-	if err := s.numberConflict(ctx, ch.Number); err != nil {
-		return nil, err
-	}
-	saved, err := s.store.SaveChannel(ctx, ch)
-	if err != nil {
-		if errors.Is(err, store.ErrChannelConflict) {
-			return nil, errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
-		}
-		return nil, err
-	}
-	ch = saved
-	// Kick an initial reconcile so the channel goes live immediately (§9 "live
-	// immediately — never dead air"). Best-effort: a reconcile failure leaves the
-	// channel in `building` for the sweep to pick up, it doesn't fail creation.
-	if s.channels != nil {
-		if err := s.channels.Reconcile(ctx, ch.ID); err != nil {
-			// ERROR + the consequence, not a Warn (§9 V54): this leaves a channel that exists but
-			// has not converged on the backend selected for it.
-			s.log.Error("initial channel reconcile FAILED — it is not live yet; the next channel sweep will retry",
-				"channel", ch.ID, "name", ch.Name, "number", ch.Number, "err", err)
-			if s.activity != nil {
-				s.activity.Error(ctx, "channel.reconcile", ch.ID,
-					fmt.Sprintf("%q couldn't be brought live on its selected playout backend yet: %v. Loomarr will keep retrying.", ch.Name, err))
-			}
-		}
-	}
-	fresh, err := s.store.GetChannel(ctx, ch.ID)
-	if err != nil {
-		return nil, err
+		return nil, channelEditProblem(err)
 	}
 	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
 }
@@ -425,9 +333,8 @@ type updateChannelInput struct {
 	}
 }
 
-// updateChannel edits a channel (§7 PATCH). It mirrors createChannel's validate →
-// uniqueness → upsert → auto-reconcile shape, but as a partial update that preserves
-// operator/proposal ownership: a client may set name/number/group/strategy/policy and
+// updateChannel edits a channel (§7 PATCH) through channeledit, as a partial update that
+// preserves operator/proposal ownership: a client may set name/number/group/strategy/policy and
 // pause/resume, but never policy.applied (reconcile owns it) nor the derived Desired.
 // The edit AUTO-RECONCILES (best-effort, seamless) — there is no manual rebuild step.
 func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*channelOutput, error) {
@@ -435,19 +342,18 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	ch, err := s.store.GetChannel(ctx, in.ID)
-	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Channel not found", "That channel doesn't exist — it may have been removed.")
-	} else if err != nil {
-		return nil, err
+	fresh, err := s.channelEdits().Edit(ctx, checkpoint.editBackend(), in.ID, in.Body.Revision, func(ch *store.Channel) error {
+		return applyChannelPatch(ch, in)
+	})
+	if err != nil {
+		return nil, channelEditProblem(err)
 	}
-	if in.Body.Revision != ch.Revision {
-		return nil, staleChannelConflict()
-	}
-	before := ch
-	wasInternal := playsInternallyAt(ch, checkpoint)
-	wasTransportPlayable := transportPlayableAt(ch, checkpoint)
+	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
+}
 
+// applyChannelPatch applies a PATCH body's fields. The edit rules around it (number check,
+// `building` signal, deadline, revision, reconcile) are channeledit's.
+func applyChannelPatch(ch *store.Channel, in *updateChannelInput) error {
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
 	}
@@ -463,13 +369,8 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if in.Body.Strategy != nil {
 		ch.Strategy = schedule.Strategy(*in.Body.Strategy)
 	}
-	// Renumber: unique-check EXCLUDING self (a no-op renumber to the channel's own
-	// number must not 409). The store's unique index would also reject, but a clean
-	// 409 beats a 500 (matches createChannel's rationale).
-	if in.Body.Number != nil && *in.Body.Number != ch.Number {
-		if cerr := s.numberConflict(ctx, *in.Body.Number); cerr != nil {
-			return nil, cerr
-		}
+	// A renumber is checked by the service, and only when the number actually changes.
+	if in.Body.Number != nil {
 		ch.Number = *in.Body.Number
 	}
 	// Policy merge goes through the single ownership site (schedule.MergeFromOperator, §2.1):
@@ -479,11 +380,11 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
 	if in.Body.Policy != nil {
 		if err := in.Body.Policy.DateAliasConflict(); err != nil {
-			return nil, ambiguousDatesError(err)
+			return ambiguousDatesError(err)
 		}
 		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
 		if verr := next.Validate(); verr != nil {
-			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid policy",
+			return apiErrWithCause(http.StatusUnprocessableEntity, "Invalid policy",
 				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", verr)
 		}
 		ch.Policy = next
@@ -499,7 +400,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 			// nudge back onto the sweep, which the reconcile below will settle.
 			ch.Status = schedule.StatusBuilding
 		default:
-			return nil, errUnprocessable("Unsupported status",
+			return errUnprocessable("Unsupported status",
 				"A channel can only be paused or resumed here.")
 		}
 	}
@@ -511,64 +412,12 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if in.Body.Lineup != nil {
 		next, lerr := mergeLineupEdit(ch.Lineup, *in.Body.Lineup)
 		if lerr != nil {
-			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid lineup",
+			return apiErrWithCause(http.StatusUnprocessableEntity, "Invalid lineup",
 				"The lineup couldn't be saved. Check that each entry is a valid title, then try again.", lerr)
 		}
 		ch.Lineup = next
 	}
-
-	// `building` is the durable tuner-list freshness signal consumed by reconcile. Do not
-	// stamp it onto every edit: a lineup/policy-only change on an already-settled channel
-	// changes guide data, not the tuner channel list. Identity and effective-backend changes,
-	// a resume, and an empty internal channel attempting to materialize do change membership
-	// or M3U identity and therefore retain the stronger signal.
-	active := ch.Status.Reconcilable()
-	identityChanged := before.Name != ch.Name || before.Number != ch.Number ||
-		before.Group != ch.Group || before.Logo != ch.Logo
-	backendChanged := wasInternal != playsInternallyAt(ch, checkpoint)
-	materializingInternal := before.Status == schedule.StatusEmpty && playsInternallyAt(ch, checkpoint)
-	if active && (identityChanged || backendChanged || materializingInternal) {
-		ch.Status = schedule.StatusBuilding
-	}
-	if active {
-		// The immediate reconcile below is best-effort. Zero is the store's explicit due-now
-		// value, so an error cannot leave this edit waiting behind an old future deadline.
-		ch.ReconcileDeadline = time.Time{}
-	}
-	isTransportPlayable := transportPlayableAt(ch, checkpoint)
-
-	if err := ch.Validate(); err != nil {
-		return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid channel",
-			"Some channel details are invalid. Check the name, number, and strategy, then try again.", err)
-	}
-	ch.UpdatedAt = time.Now().Unix() // SaveChannel does not stamp this
-	saved, err := s.store.SaveChannel(ctx, ch)
-	if err != nil {
-		if errors.Is(err, store.ErrChannelStale) {
-			return nil, staleChannelConflict()
-		}
-		if errors.Is(err, store.ErrChannelConflict) {
-			return nil, errConflict("Channel already exists", "That channel number or approved suggestion was claimed by another channel. Refresh and try again.")
-		}
-		return nil, err
-	}
-	ch = saved
-	s.applyInternalPlayoutLifecycle(ctx, ch.ID, wasTransportPlayable, isTransportPlayable)
-
-	// Auto-reconcile so the edit reaches the selected playout backend with no user action
-	// (§9 "self-maintaining"; there is no manual rebuild). Best-effort + skipped while paused:
-	// the edit is durable regardless, and the sweep is the
-	// guarantee. A reconcile emits a `channel` SSE frame so the UI updates live.
-	if ch.Status.Reconcilable() && s.channels != nil {
-		if rerr := s.channels.Reconcile(ctx, ch.ID); rerr != nil {
-			s.log.Warn("reconcile after channel edit failed (sweep will retry)", "channel", ch.ID, "err", rerr)
-		}
-	}
-	fresh, err := s.store.GetChannel(ctx, ch.ID)
-	if err != nil {
-		return nil, err
-	}
-	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
+	return validateChannelPlace(ch.Policy)
 }
 
 type refineChannelInput struct {
@@ -584,9 +433,9 @@ type refineChannelOutput struct {
 }
 
 // refineChannel re-runs the channel's suggestion with a plain-language change (§7). It
-// seeds a refine intent from the channel's CURRENT lineup + the original description + the
-// change, and re-queues the channel's OWN suggestion job (its IntentRef) so the refined
-// proposal binds back to this channel — approving it patches in place, no duplicate.
+// seeds a refine intent from the channel's CURRENT lineup + the intent the channel owns + the
+// change, and submits a new job that names the channel so the refined proposal binds back to
+// it — approving it patches in place, no duplicate.
 // Grounding is unchanged: the current lineup is context; every pick is still catalog-tool
 // grounded.
 func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*refineChannelOutput, error) {
@@ -602,29 +451,36 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 	} else if err != nil {
 		return nil, err
 	}
-	// Refine only makes sense for an LLM-created channel: it re-runs that channel's own
-	// suggestion job. A hand-made channel (no IntentRef) has no job to re-run.
+	// Refine only makes sense for an LLM-created channel: it is seeded from the request the
+	// channel owns. A hand-made channel (no IntentRef) has no request to refine.
 	if ch.IntentRef == "" {
 		return nil, errUnprocessable("Can't refine this channel",
 			"This channel was made by hand, not from an AI suggestion, so there's nothing to refine.")
 	}
 
-	// Seed the refine intent from the channel's original intent (for description/constraints)
-	// plus the current lineup as context and the requested change.
-	intent := suggest.Intent{Description: ch.Name}
-	if job, jerr := s.store.GetJob(ctx, ch.IntentRef); jerr == nil {
-		var orig suggest.Intent
-		if json.Unmarshal([]byte(job.IntentJSON), &orig) == nil {
-			intent = orig // keep the original description + era/tone/constraints
-		}
+	// Seed the refine intent from the channel's own approved intent (description, era, tone,
+	// constraints) plus the current lineup as context and the requested change. A channel whose
+	// request is gone is never refined from a guess: the admin describes it again.
+	intent, err := suggest.IntentOfChannel(ch)
+	if errors.Is(err, suggest.ErrChannelIntentUnavailable) {
+		return nil, errUnprocessable("Can't refine this channel yet",
+			"Loomarr no longer has the original request for this channel. Describe the channel again to get a new proposal.")
+	} else if err != nil {
+		return nil, err
 	}
 	intent.RefineText = strings.TrimSpace(in.Body.Change)
 	intent.CurrentLineup = lineupContext(ch.Lineup)
-	// A name fixed when the channel was requested belongs to that request; the channel may have
-	// been renamed since, so a refine names its proposal as any refine does.
-	intent.ChannelName = ""
 
-	jobID, err := s.suggest.Refine(ctx, ch.IntentRef, intent)
+	// One channel job at a time: a second refine, or one during a re-curation, would race the
+	// first to replace the same lineup.
+	if busy, err := s.store.ChannelHasUnfinishedJob(ctx, ch.ID); err != nil {
+		return nil, err
+	} else if busy {
+		return nil, errConflict("A refine of this channel is already in progress",
+			"This channel already has a change being generated or waiting for review. Finish or dismiss it before asking for another.")
+	}
+
+	jobID, err := s.suggest.Refine(ctx, ch.ID, intent, userIDFromHuma(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -635,10 +491,10 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 
 // lineupContext turns a channel's stored lineup entries into the lightweight
 // name/year/key context the refiner reasons about.
-func lineupContext(entries []schedule.LineupEntry) []suggest.LineupContext {
-	out := make([]suggest.LineupContext, 0, len(entries))
+func lineupContext(entries []schedule.LineupEntry) []proposals.LineupContext {
+	out := make([]proposals.LineupContext, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, suggest.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
+		out = append(out, proposals.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
 	}
 	return out
 }
@@ -747,11 +603,4 @@ func (s *Server) applyInternalPlayoutLifecycle(
 			}
 		}
 	}
-}
-
-// staleChannelConflict is deliberately distinct from number/intent collisions: this edit was
-// valid when authored, but the channel changed before it could commit. The only honest recovery
-// is to refresh and let the operator decide again, especially for whole-list lineup replacement.
-func staleChannelConflict() error {
-	return errConflict("Channel changed", "This channel changed after you opened it. Refresh it, review the latest version, and try again.")
 }

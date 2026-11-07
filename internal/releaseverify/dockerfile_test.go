@@ -12,7 +12,6 @@ const boundedCurlPolicy = "--retry 5 --retry-all-errors --retry-delay 2 --retry-
 
 var pinnedDownloadOutputs = []string{
 	"/usr/local/bin/yt-dlp",
-	"/tmp/deno.zip",
 	"/tmp/ffmpeg.tar.xz",
 	"/tmp/whisper.tar.gz",
 	"/usr/local/share/whisper/ggml-small.en.bin",

@@ -4,32 +4,33 @@ import {
   getReviseProposalJobMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
-import type { EventHandlers, SuggestionPhase } from "@loomarr/core/events";
+import type { SuggestionPhase } from "@loomarr/core/events";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type ReactNode, useState } from "react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { LoomarrEventsProvider } from "@/events";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { server } from "@/test/msw/server";
 import { useSuggestionRun } from "./use-suggestion-run";
 
-// Capture the handlers useSuggestionRun registers so a test can drive the SSE phases the
-// hook otherwise only receives live. The real provider is an EventSource jsdom cannot run;
-// this stands in for exactly the one seam under test — the phase fan-out — without it.
-let handlers: EventHandlers | undefined;
-vi.mock("@/events/events-provider", () => ({
-  useLoomarrEventListener: (h: EventHandlers) => {
-    handlers = h;
-  },
-}));
-
+// The SSE phases arrive down the real events provider's stream, which the shared fake feeds.
 const emit = (jobId: string, phase: SuggestionPhase) =>
-  act(() => handlers?.onSuggestion?.({ jobId, phase, round: 0 }));
+  act(() => FakeEventSource.broadcast("suggestion", { jobId, phase, round: 0 }));
 
 const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <QueryClientProvider client={client}>
+      <LoomarrEventsProvider>{children}</LoomarrEventsProvider>
+    </QueryClientProvider>
   );
+};
+
+// The Guide keeps the Job in its URL and leaves it after a reset; here plain state stands in.
+const useRun = (initialJobId?: string) => {
+  const [jobId, setJobId] = useState(initialJobId);
+  return { ...useSuggestionRun({ jobId, onJob: setJobId }), leave: () => setJobId(undefined) };
 };
 
 // The SUBMIT succeeds (200 + jobId) even when the job later fails, so the proposals list
@@ -57,7 +58,7 @@ describe("useSuggestionRun", () => {
 
   it("surfaces a terminal `failed` phase as run.failed (not a silent empty state)", async () => {
     const journey = stub();
-    const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useRun(), { wrapper: makeWrapper() });
 
     act(() => result.current.start({ description: "90s action movies" }));
     await waitFor(() => expect(result.current.isRunning).toBe(true));
@@ -91,7 +92,7 @@ describe("useSuggestionRun", () => {
       target: 8,
       startedAt: "2026-08-22T12:00:00Z",
     };
-    const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useRun(), { wrapper: makeWrapper() });
     act(() => result.current.start({ description: "90s action movies" }));
     await waitFor(() => expect(result.current.progress?.stage).toBe("reading"));
 
@@ -119,7 +120,7 @@ describe("useSuggestionRun", () => {
 
   it("is not `failed` when the run is still in flight", async () => {
     stub();
-    const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useRun(), { wrapper: makeWrapper() });
 
     act(() => result.current.start({ description: "90s action movies" }));
     await emit("job-1", "reasoning");
@@ -128,7 +129,7 @@ describe("useSuggestionRun", () => {
     expect(result.current.isRunning).toBe(true);
   });
 
-  it("restores the active Job from authoritative state after a reload", async () => {
+  it("restores a given Job from authoritative state, as after a reload", async () => {
     const journey = stub();
     journey.milestone = "failed";
     journey.failure = {
@@ -139,21 +140,21 @@ describe("useSuggestionRun", () => {
       guidance: "Broaden the request.",
     };
     journey.actions = ["edit", "retry"];
-    window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
 
-    const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useRun("job-1"), { wrapper: makeWrapper() });
 
     await waitFor(() => expect(result.current.failed).toBe(true));
     expect(result.current.failure?.code).toBe("no_grounded_titles");
     expect(result.current.actions).toEqual(["edit", "retry"]);
   });
 
-  it("keeps a deep-linked Job resumable after its URL handoff is removed", async () => {
+  it("reports the Job a submit creates", async () => {
     stub();
+    const { result } = renderHook(() => useRun(), { wrapper: makeWrapper() });
 
-    renderHook(() => useSuggestionRun("job-1"), { wrapper: makeWrapper() });
+    act(() => result.current.start({ description: "90s action movies" }));
 
-    await waitFor(() => expect(window.sessionStorage.getItem("loomarr.activeProposalJob")).toBe("job-1"));
+    await waitFor(() => expect(result.current.jobId).toBe("job-1"));
   });
 
   it("retains the complete authorized intent when editing a failed request", async () => {
@@ -173,12 +174,14 @@ describe("useSuggestionRun", () => {
       guidance: "Broaden the request.",
     };
     journey.actions = ["edit"];
-    window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
 
-    const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useRun("job-1"), { wrapper: makeWrapper() });
     await waitFor(() => expect(result.current.failed).toBe(true));
 
-    act(() => result.current.reset(true));
+    act(() => {
+      result.current.reset(true);
+      result.current.leave();
+    });
     expect(result.current.intent).toEqual(journey.intent);
     expect(result.current.failed).toBe(false);
   });
@@ -259,7 +262,7 @@ describe("useSuggestionRun", () => {
         return { jobId: "job-1" };
       }),
     );
-    const { result } = renderHook(() => useSuggestionRun("job-1"), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useRun("job-1"), { wrapper: makeWrapper() });
     await waitFor(() => expect(result.current.proposal?.id).toBe("proposal-1"));
 
     const revisedIntent = {

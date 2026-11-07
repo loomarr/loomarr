@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Deterministic \"test card\" fixtures for Storybook stories + tests (web + future mobile).",
+  "description": "Deterministic \"test card\" fixtures for Storybook stories and tests on web, phone and TV.",
   "exports": {
     ".": "./index.ts"
   },
@@ -16,8 +16,8 @@
     "@loomarr/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "26.4.0",
+    "@types/node": "26.6.5",
     "typescript": "7.0.2",
-    "vitest": "4.1.11"
+    "vitest": "5.0.5"
   }
 }

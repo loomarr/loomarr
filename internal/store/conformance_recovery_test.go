@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/recovery"
+	"github.com/loomarr/loomarr/internal/people/recovery"
 )
 
 func testPasswordRecoveryPreviewDoesNotConsume(t *testing.T, newStore NewStoreFunc) {

@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // fakeProbeFFmpeg writes an executable that stands in for ffmpeg: it records its pid and reports
@@ -77,9 +79,9 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 		t.Fatal(err)
 	}
 	budget := NewResourceBudget(nvencFacts)
-	out := Profile{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}
+	out := Profile{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
 	cfg := ClassProbeConfig{
-		FFmpeg: fakeProbeFFmpeg(t, dir, pids), ClipDir: dir, Encoder: EncoderSoftware,
+		FFmpeg: fakeProbeFFmpeg(t, dir, pids), ClipDir: dir, Encoder: encode.EncoderSoftware,
 		Outputs: []Profile{out}, Classes: []StreamClass{clip.class}, Foreground: budget,
 	}
 	done := make(chan ClassProbeResult, 1)
@@ -144,9 +146,9 @@ func TestProbeClassCosts_SoftwareDeadlineKillIsUnmeasuredWithReason(t *testing.T
 	if err := os.WriteFile(filepath.Join(dir, clip.fileName()), []byte("clip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out := Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}
+	out := Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}
 	cfg := ClassProbeConfig{
-		FFmpeg: fakeStalledFFmpeg(t, dir), ClipDir: dir, Encoder: EncoderSoftware,
+		FFmpeg: fakeStalledFFmpeg(t, dir), ClipDir: dir, Encoder: encode.EncoderSoftware,
 		Outputs: []Profile{out}, Classes: []StreamClass{clip.class},
 	}
 
@@ -164,11 +166,20 @@ func TestProbeClassCosts_SoftwareDeadlineKillIsUnmeasuredWithReason(t *testing.T
 }
 
 // fakeSessionFFmpeg stands in for an encoder with a hard session cap: each run takes a free slot
-// directory and encodes, or fails like a GeForce past its NVENC limit.
+// file and encodes, or fails like a GeForce past its NVENC limit.
+//
+// A slot is claimed by the shell's own noclobber create (O_CREAT|O_EXCL), never by `mkdir`: the
+// probe opens sessions concurrently, and uutils mkdir (Ubuntu 26.04's, so GitHub's ubuntu-latest)
+// lets two racing runs both succeed on the same directory, which handed out more slots than exist.
+// The subshell matters: a failed redirection on the special builtin `:` exits a POSIX shell.
 func fakeSessionFFmpeg(t *testing.T, dir, slots string, capacity int) string {
 	t.Helper()
 	path := filepath.Join(dir, "ffmpeg")
-	script := "#!/bin/sh\nfor i in $(seq 1 " + strconv.Itoa(capacity) + "); do if mkdir '" + slots + "'/slot_$i 2>/dev/null; then echo frame=1; exec sleep 30; fi; done\n" +
+	var ids strings.Builder
+	for i := range capacity {
+		ids.WriteString(" " + strconv.Itoa(i+1))
+	}
+	script := "#!/bin/sh\nset -C\nfor i in" + ids.String() + "; do if (: > '" + slots + "'/slot_$i) 2>/dev/null; then echo frame=1; exec sleep 30; fi; done\n" +
 		"echo 'OpenEncodeSessionEx failed: out of memory (10)' >&2\nexit 1\n"
 	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
@@ -183,7 +194,10 @@ func fakeSessionFFmpeg(t *testing.T, dir, slots string, capacity int) string {
 func TestProbeSessionLimit_SettlesAndCountsSessionsInUse(t *testing.T) {
 	dir := t.TempDir()
 	slots := filepath.Join(dir, "slots")
-	if err := os.MkdirAll(filepath.Join(slots, "slot_1"), 0o700); err != nil { // another app's session
+	if err := os.MkdirAll(slots, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(slots, "slot_1"), nil, 0o600); err != nil { // another app's session
 		t.Fatal(err)
 	}
 	// The driver still lists a just-finished class measurement on the first read.
@@ -194,7 +208,7 @@ func TestProbeSessionLimit_SettlesAndCountsSessionsInUse(t *testing.T) {
 		return readings[min(i, len(readings)-1)], true
 	}
 	limit, err := ProbeSessionLimit(t.Context(), SessionProbeConfig{
-		FFmpeg: fakeSessionFFmpeg(t, dir, slots, 4), Encoder: EncoderNVENC, Bound: SessionProbeBound, InUse: inUse,
+		FFmpeg: fakeSessionFFmpeg(t, dir, slots, 4), Encoder: encode.EncoderNVENC, Bound: SessionProbeBound, InUse: inUse,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -248,8 +262,8 @@ func TestProbeClassCosts_TonemapSelfCheckRejectsABlackPicture(t *testing.T) {
 				t.Fatal(err)
 			}
 			res := ProbeClassCosts(t.Context(), ClassProbeConfig{
-				FFmpeg: fakeTonemapFFmpeg(t, dir, tc.ymax, tc.yavg), ClipDir: dir, Encoder: EncoderSoftware, CPUTonemap: true,
-				Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}},
+				FFmpeg: fakeTonemapFFmpeg(t, dir, tc.ymax, tc.yavg), ClipDir: dir, Encoder: encode.EncoderSoftware, CPUTonemap: true,
+				Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
 				Classes: []StreamClass{ClassHDR4K},
 			})
 			check := res.Tonemap
@@ -299,8 +313,8 @@ func TestProbeClassCosts_KeysHDRByTheLiveToneCurve(t *testing.T) {
 	}
 	const curve ToneCurve = "bt2390"
 	res := ProbeClassCosts(t.Context(), ClassProbeConfig{
-		FFmpeg: fakeTonemapFFmpeg(t, dir, 235, 118.4), ClipDir: dir, Encoder: EncoderSoftware, CPUTonemap: true,
-		Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}},
+		FFmpeg: fakeTonemapFFmpeg(t, dir, 235, 118.4), ClipDir: dir, Encoder: encode.EncoderSoftware, CPUTonemap: true,
+		Outputs: []Profile{{Width: 1280, Height: 720, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: encode.EncoderSoftware}},
 		Classes: []StreamClass{ClassHDR4K}, Curve: curve,
 	})
 	if _, ok := res.Costs[HDRKey(ClassHDR4K, 720, curve)]; !ok {

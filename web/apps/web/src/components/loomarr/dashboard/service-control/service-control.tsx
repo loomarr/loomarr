@@ -32,11 +32,11 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
       : null;
 
   return (
-    <section className={cn("rounded-lg border border-border p-4", className)}>
+    <section className={cn("border-border rounded-lg border p-4", className)}>
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="font-medium text-sm">Restart Loomarr</h2>
-          <p className="mt-0.5 text-muted-foreground text-sm">
+          <h2 className="text-sm font-medium">Restart Loomarr</h2>
+          <p className="text-muted-foreground mt-0.5 text-sm">
             {dropWarning ?? "Sessions survive; nobody has to sign in again."}
           </p>
         </div>
@@ -58,20 +58,20 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           what to do instead — hiding the control would leave an operator hunting for a
           feature the docs mention. */}
       {!cost.available && (
-        <p className="mt-3 rounded-md border border-border border-dashed p-3 text-muted-foreground text-sm">
+        <p className="border-border text-muted-foreground mt-3 rounded-md border border-dashed p-3 text-sm">
           This build can't restart itself. Restart the container or service the way you started it.
         </p>
       )}
 
       {error ? (
-        <p className="mt-3 flex items-start gap-2 text-danger text-sm" role="alert">
+        <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           {error}
         </p>
       ) : null}
 
       {confirming && (
-        <div className="mt-3 flex items-center gap-2 border-border border-t pt-3">
+        <div className="border-border mt-3 flex items-center gap-2 border-t pt-3">
           <p className="min-w-0 flex-1 text-sm">
             {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
           </p>

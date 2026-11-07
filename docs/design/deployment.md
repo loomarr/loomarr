@@ -35,7 +35,7 @@ One image, `ghcr.io/loomarr/loomarr`, for `linux/amd64` and `linux/arm64`. There
 server; macOS runs the Linux image through Docker Desktop.
 
 - **Contents:** a cgo-free static Go server with the embedded web UI, the required release-matched
-  `loomarr-image` Rust worker, and vendored `yt-dlp`, `ffmpeg`, `ffprobe`, `deno` and `whisper-cli`
+  `loomarr-image` Rust worker, and vendored `yt-dlp`, `ffmpeg`, `ffprobe`, `node` and `whisper-cli`
   with its model. Every non-Go binary runs through `exec`; pixel buffers never cross the process
   boundary. The base is non-root Debian/glibc (uid 65532) because the media tools need glibc.
 - **Why one image:** ffmpeg is load-bearing for playout, so a slim image without it would be a Loomarr
@@ -84,7 +84,7 @@ the fix, so a container rollback fails safe instead of corrupting data.
 
 ## The job scheduler
 
-All recurring background work runs under one scheduler (`internal/scheduler`): a code registry of
+All recurring background work runs under one scheduler (`internal/jobs`): a code registry of
 named jobs, each with a user-editable schedule and a **Run now** trigger.
 
 - **Jobs are code; schedules are settings; history is state.** Each schedule is a 6-field,
@@ -92,7 +92,9 @@ named jobs, each with a user-editable schedule and a **Run now** trigger.
   explicitly with seconds; `cron.ParseStandard` is 5-field and rejects every saved schedule.
 - **River is the engine.** Each job is a River periodic job calling the registry's `Run`; River owns
   due selection, leadership, retries and execution records. Its schema is applied at boot through
-  `rivermigrate`. `scheduled_jobs` stays the read model for the Tasks page.
+  `rivermigrate`. `scheduled_jobs` stays the read model for the Tasks page. River is the only
+  executor, so a store without a pool or a River start failure fails `app.Build` and the process does
+  not boot; there is no second scheduling path.
 - **Queues are derived from `Timeout`.** A job with a ceiling above River's one-minute default runs on
   `long`; others on `default` (1 worker on SQLite, 4 on PostgreSQL). `long` is 1 worker everywhere
   because media work competes with playout. Queue names are never hand-set, and Run now uses the same

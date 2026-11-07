@@ -1,4 +1,4 @@
-import type { SettingEntry } from "@loomarr/api";
+import type { SettingEntry, SettingKey } from "@loomarr/api";
 import {
   getBootstrapMockHandler,
   getLoginMockHandler,
@@ -32,18 +32,18 @@ const GREEN_CHECKS = [
 // The connections step (config-design §6) renders the settings GROUP forms, so the
 // settings list must carry a field per group for its blocks to appear. One essential key
 // each is enough to exercise the block headings + Test/verdict.
-const entry = (key: string, group: string): SettingEntry =>
+const entry = (key: SettingKey, group: string): SettingEntry =>
   setting({ key, group, doc: `${key} for tests`, set: false, value: "" });
 // An enum entry renders as the Base UI Select — the control the flavor-save regression
 // (below) exercises. `enum` fills its options; the jsdom Select shims live in test/setup.ts.
-const enumEntry = (key: string, group: string, options: string[]): SettingEntry => ({
+const enumEntry = (key: SettingKey, group: string, options: string[]): SettingEntry => ({
   ...entry(key, group),
   kind: "enum",
   enum: options,
 });
 const CONNECTION_ENTRIES = [
   enumEntry("library.flavor", "connections.media_server", ["emby", "jellyfin"]),
-  entry("media_server.url", "connections.media_server"),
+  entry("library.url", "connections.media_server"),
   entry("tunarr.url", "connections.tunarr"),
   entry("seerr.url", "connections.requester"),
   entry("tmdb.api_key", "connections.tmdb"),
@@ -66,7 +66,7 @@ const stubWizard = (opts: {
   publicUrl?: string;
   publicUrlPinned?: boolean;
   country?: string;
-  market?: string;
+  place?: string;
   settingsDelayMs?: number;
   settingsFailures?: number;
 }) => {
@@ -74,7 +74,7 @@ const stubWizard = (opts: {
   let backend = opts.backend ?? "tunarr";
   let publicUrl = opts.publicUrl ?? "http://loomarr:8080";
   let country = opts.country ?? "US";
-  let market = opts.market ?? "";
+  let place = opts.place ?? "";
   let settingsFailures = opts.settingsFailures ?? 0;
   const seq: string[] = [];
   const patches: string[] = [];
@@ -106,10 +106,10 @@ const stubWizard = (opts: {
         value: country,
       }),
       setting({
-        key: "filler.home_market",
+        key: "filler.home_place",
         label: "Local area",
         group: "filler",
-        value: market,
+        value: place,
       }),
       setting({
         key: "filler.language",
@@ -174,7 +174,7 @@ const stubWizard = (opts: {
           id: "5128581",
           label: "New York City, United States",
           country: "US",
-          market: "New York City",
+          place: "5128581",
           source: "proxy",
           approximate: true,
         },
@@ -207,7 +207,7 @@ const stubWizard = (opts: {
         }
         if (key === "playout.backend" && (value === "internal" || value === "tunarr")) backend = value;
         if (key === "filler.home_country") country = value;
-        if (key === "filler.home_market") market = value;
+        if (key === "filler.home_place") place = value;
         return { key, status: "saved" as const };
       });
       return { results };
@@ -279,7 +279,7 @@ describe("wizard", () => {
 
     await vi.waitFor(() => expect(seq).toContain("patch"));
     expect(patches.join()).toMatch(/filler\.home_country/);
-    expect(patches.join()).toMatch(/filler\.home_market/);
+    expect(patches.join()).toMatch(/filler\.home_place/);
     expect(patches.join()).toMatch(/filler\.language/);
     expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
   });
@@ -548,7 +548,7 @@ describe("wizard", () => {
 
       expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
       // The media server is still there (the library lives there either way)…
-      expect(await screen.findByLabelText("Media server URL")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Library URL")).toBeInTheDocument();
       // …and Tunarr is absent, not merely collapsed: its field is not in the DOM at all.
       expect(screen.queryByLabelText("Tunarr URL")).not.toBeInTheDocument();
       // Nor is it offered in the rail.

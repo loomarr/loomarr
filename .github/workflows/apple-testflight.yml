@@ -1,0 +1,142 @@
+name: Apple TestFlight betas
+
+# A push to main uploads each Apple app it changes: the iPhone app and the Apple TV app are separate
+# App Store Connect records. The plan job decides with the same classifier CI uses for the Apple
+# mobile and Apple TV gates, so a push that changes neither app uploads nothing. A dispatch rebuilds
+# one app from main on demand: a dry run (upload unset) or a re-upload.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      app:
+        description: The Apple app to build
+        required: true
+        type: choice
+        options: [iphone, apple-tv]
+      version:
+        description: Loomarr release version, e.g. 0.2.0-beta.9
+        required: true
+        type: string
+      upload:
+        description: Upload the verified IPA to TestFlight (otherwise build, verify, and validate only)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# App Store Connect picks each build number (web/scripts/asc-next-build-number.mjs); this
+# workflow's run number is only a floor under it.
+jobs:
+  plan:
+    name: Decide which Apple apps this run releases
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.plan.outputs.apps }}
+      upload: ${{ steps.plan.outputs.upload }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # the push's diff base and the newest release tag
+          persist-credentials: false
+
+      # Reads the event payload itself, so no input reaches a shell through an expression.
+      - name: Classify the change and pick the version
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: ./web/scripts/build-apple-testflight.sh plan "$EVENT_NAME" "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Archive, verify, and optionally upload the ${{ matrix.app }} beta
+    needs: plan
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.apps != '[]'
+    # One job per app the plan names; one app's failure leaves the other's upload alone.
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.apps) }}
+    # Serialized per app so two runs never pick the same build number. Only releasing runs queue
+    # here, so a push that changes no input of an app cannot replace its pending release; a newer
+    # pending release does replace an older one, and it builds a later main that contains the
+    # older change.
+    concurrency:
+      group: apple-testflight-release-${{ matrix.app }}
+      cancel-in-progress: false
+    # Same image as ci-apple-mobile.yml and ci-apple-tv.yml; the script fails closed on another
+    # Xcode major.
+    runs-on: xcode-27
+    timeout-minutes: 90
+    environment: ios-testflight
+    env:
+      LOOMARR_APPLE_APP: ${{ matrix.app }}
+      LOOMARR_APPLE_BUILD_NUMBER: ${{ github.run_number }}
+      LOOMARR_APPLE_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/testflight
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22"
+      - run: corepack enable
+      - run: make fe-install
+      # Metro bundles the generated API client during the Xcode archive.
+      - run: make fe-api-codegen
+
+      # Names every missing secret and variable at once, then writes the API key to runner temp.
+      # It runs after dependency installation so no package script runs while the key is on disk.
+      # Signing needs the key even when nothing is uploaded.
+      - name: Prepare the App Store Connect credentials
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
+          ASC_APPLE_TV_APP_ID: ${{ vars.ASC_APPLE_TV_APP_ID }}
+        run: ./web/scripts/build-apple-testflight.sh "$LOOMARR_APPLE_APP" prepare-credentials
+
+      - name: Archive, export, and verify the IPA
+        env:
+          LOOMARR_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: ./web/scripts/build-apple-testflight.sh "$LOOMARR_APPLE_APP" build "$RELEASE_VERSION"
+
+      - name: Retain the verified IPA and evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: loomarr-${{ matrix.app }}-${{ needs.plan.outputs.version }}-${{ github.run_number }}
+          path: |
+            ${{ env.LOOMARR_APPLE_OUTPUT_DIR }}/loomarr-*.ipa
+            ${{ env.LOOMARR_APPLE_OUTPUT_DIR }}/loomarr-*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Validate the IPA with App Store Connect
+        env:
+          LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          LOOMARR_ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
+          LOOMARR_ASC_APPLE_TV_APP_ID: ${{ vars.ASC_APPLE_TV_APP_ID }}
+        run: ./web/scripts/build-apple-testflight.sh "$LOOMARR_APPLE_APP" validate
+
+      - name: Upload to TestFlight
+        if: needs.plan.outputs.upload == 'true'
+        env:
+          LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          LOOMARR_ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
+          LOOMARR_ASC_APPLE_TV_APP_ID: ${{ vars.ASC_APPLE_TV_APP_ID }}
+        run: ./web/scripts/build-apple-testflight.sh "$LOOMARR_APPLE_APP" upload
+
+      - name: Remove credential files
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/asc"

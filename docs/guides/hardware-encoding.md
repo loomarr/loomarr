@@ -13,6 +13,8 @@ Which GPUs do what, including HDR tone mapping, is in the
 
 ## Intel and AMD
 
+AMD support is best-effort: we don't test AMD GPUs before a release.
+
 VAAPI, QSV and Vulkan all reach the GPU through `/dev/dri`. Pass it in:
 
 ```bash

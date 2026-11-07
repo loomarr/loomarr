@@ -8,14 +8,14 @@ const TunerOSD = ({ number, name, currentTitle, className }: TunerOSDProps) => (
     role="status"
     aria-live="polite"
     className={cn(
-      "pointer-events-none max-w-[70%] rounded-md border border-static-600/70 bg-black/75 px-3 py-2 shadow-lg backdrop-blur-sm",
+      "border-static-600/70 pointer-events-none max-w-[70%] rounded-md border bg-black/75 px-3 py-2 shadow-lg backdrop-blur-sm",
       className,
     )}
   >
-    <p className="font-mono text-signal text-xs tracking-wide">CH {number}</p>
-    <p className="truncate font-semibold text-sm text-static-50">{name}</p>
-    {currentTitle && <p className="truncate text-static-300 text-xs">{currentTitle}</p>}
-    <p className="mt-1 font-mono text-[0.65rem] text-static-400 uppercase tracking-wider">Tuning…</p>
+    <p className="text-signal font-mono text-xs tracking-wide">CH {number}</p>
+    <p className="text-static-50 truncate text-sm font-semibold">{name}</p>
+    {currentTitle && <p className="text-static-300 truncate text-xs">{currentTitle}</p>}
+    <p className="text-static-400 mt-1 font-mono text-[0.65rem] tracking-wider uppercase">Tuning…</p>
   </div>
 );
 

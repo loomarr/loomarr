@@ -14,9 +14,9 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/requester"
-	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -41,6 +41,9 @@ type settingsAdapter struct {
 	refreshRedactor func()
 	readSecret      func(context.Context, settings.GeneratedSecret) (string, error)
 	triggerHealth   func(context.Context)
+	// changed announces a committed settings write to the live-update stream, so every client read
+	// derived from settings refetches. nil-safe: a test or schema-only build publishes nothing.
+	changed func()
 	// tests maps a check name → a live connection probe (media_server, tunarr, …).
 	// nil-safe: an unknown/unconfigured check returns a neutral "not configured".
 	tests map[string]func(ctx context.Context) (bool, string)
@@ -120,9 +123,15 @@ func (a settingsAdapter) Patch(ctx context.Context, edits map[string]string, upd
 	}
 	out := make([]api.SettingResult, 0, len(results))
 	healthChanged := false
+	saved := false
 	for _, r := range results {
 		out = append(out, api.SettingResult{Key: r.Key, Status: string(r.Status), Problem: r.Problem})
+		saved = saved || r.Status == settings.PatchSaved
 		healthChanged = healthChanged || (r.Status == settings.PatchSaved && isHealthSetting(r.Key))
+	}
+	// A persistence error can follow keys the batch already committed, so it announces too.
+	if saved || err != nil {
+		a.announceChange()
 	}
 	// A persistence error surfaces as an extra synthetic invalid result so the UI
 	// shows the save failed rather than silently reporting nothing.
@@ -144,6 +153,9 @@ func (a settingsAdapter) Clear(ctx context.Context, key string) api.SettingResul
 	if err != nil {
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "clear failed"}
 	}
+	if res.Status == settings.PatchSaved {
+		a.announceChange()
+	}
 	if res.Status == settings.PatchSaved && isHealthSetting(key) && a.triggerHealth != nil {
 		a.triggerHealth(ctx)
 	}
@@ -159,10 +171,19 @@ func (a settingsAdapter) SetEnvOverride(ctx context.Context, key string, on bool
 	if err != nil {
 		return api.SettingResult{Key: key, Status: string(settings.PatchInvalid), Problem: "could not change who manages this setting"}
 	}
+	if st == settings.EnvOverrideApplied {
+		a.announceChange()
+	}
 	if st == settings.EnvOverrideApplied && isHealthSetting(key) && a.triggerHealth != nil {
 		a.triggerHealth(ctx)
 	}
 	return api.SettingResult{Key: key, Status: string(st)}
+}
+
+func (a settingsAdapter) announceChange() {
+	if a.changed != nil {
+		a.changed()
+	}
 }
 
 func isHealthSetting(key string) bool {
@@ -173,7 +194,7 @@ func isHealthSetting(key string) bool {
 			return true
 		}
 	}
-	return key == "job.system_health.schedule"
+	return key == settings.JobSystemHealthSchedule.Key()
 }
 
 func (a settingsAdapter) Features(ctx context.Context) map[string]bool {
@@ -264,7 +285,7 @@ func connectionTests(
 			return true, ""
 		},
 		"tunarr": func(ctx context.Context) (bool, string) {
-			if set.str("tunarr.url") == "" {
+			if settings.TunarrURL.Get(set) == "" {
 				return false, "set the Tunarr URL"
 			}
 			prog := tunarr.NewDynamic(set.tunarrConfig())
@@ -289,8 +310,8 @@ func connectionTests(
 		// target) — guide the user to Seerr when only that pair is set.
 		"requester": func(ctx context.Context) (bool, string) {
 			// Branch on the selected provider (§6): probe the direct arr(s) or Seerr.
-			if set.str("requester.provider") == "arr" {
-				if set.str("sonarr.url") == "" && set.str("radarr.url") == "" {
+			if settings.RequesterProvider.Get(set) == "arr" {
+				if settings.SonarrURL.Get(set) == "" && settings.RadarrURL.Get(set) == "" {
 					return false, "set a Sonarr and/or Radarr URL"
 				}
 				if err := requester.NewArr(set.arrConns()).Reachable(ctx); err != nil {
@@ -298,7 +319,7 @@ func connectionTests(
 				}
 				return true, ""
 			}
-			if set.str("seerr.url") == "" {
+			if settings.SeerrURL.Get(set) == "" {
 				return false, "set the Seerr URL"
 			}
 			if err := requester.NewSeerrDynamic(set.seerrConn()).Reachable(ctx); err != nil {
@@ -344,7 +365,7 @@ func connectionTests(
 		// tmdb (§7.2): validate the key with a cheap lookup of a stable known id
 		// (The Matrix, tmdb 603). A rejected key surfaces as a non-2xx error.
 		"tmdb": func(ctx context.Context) (bool, string) {
-			if set.str("tmdb.api_key") == "" || tmdbClient == nil {
+			if settings.TMDBAPIKey.Get(set) == "" || tmdbClient == nil {
 				return false, "set your TMDB API key"
 			}
 			if _, err := tmdbClient.Exists(ctx, provision.Movie, 603); err != nil {
@@ -356,11 +377,11 @@ func connectionTests(
 		// verifies the catalog root can be listed and written, then checks the effective drop folder
 		// (including the derived <root>/_watch default). A non-empty configured path is not health.
 		"filler": func(_ context.Context) (bool, string) {
-			root := set.str("filler.dir")
+			root := settings.FillerDir.Get(set)
 			if root == "" {
 				return false, "set the filler clip library folder"
 			}
-			layout, err := filler.NewLayout(root, set.str("filler.watch_dir"))
+			layout, err := filler.NewLayout(root, settings.FillerWatchDir.Get(set))
 			if err != nil {
 				return false, "filler storage layout is unsafe: " + err.Error()
 			}
@@ -413,6 +434,19 @@ func probeWritableDirectory(dir string) error {
 	return nil
 }
 
+// toAPIPresets carries the registry's common choices for an open-ended setting to the API, so
+// the UI offers them without keeping its own list.
+func toAPIPresets(presets []settings.Preset) []api.SettingPreset {
+	if len(presets) == 0 {
+		return nil
+	}
+	out := make([]api.SettingPreset, len(presets))
+	for i, p := range presets {
+		out[i] = api.SettingPreset{Value: p.Value, Label: p.Label}
+	}
+	return out
+}
+
 // toAPIEnumOptions carries the registry's {value, label} enum choices to the API
 // so the UI shows registry-owned labels ("OpenAI") instead of re-deriving them.
 func toAPIEnumOptions(opts []settings.EnumOption) []api.SettingEnumOption {
@@ -441,12 +475,14 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		Kind:         string(e.Setting.Kind),
 		Apply:        apply,
 		Presentation: string(e.Setting.Presentation),
+		Unit:         string(e.Setting.Unit),
 		Provenance:   string(e.Provenance),
 		Caution:      e.Caution,
 		Advanced:     e.Setting.Advanced,
 		Secret:       e.Setting.IsSecret(),
 		Enum:         e.Setting.EnumValues(),
 		EnumOptions:  toAPIEnumOptions(e.Setting.Enum),
+		Presets:      toAPIPresets(e.Setting.Presets),
 		ShowWhen:     e.Setting.ShowWhen,
 		RequiredFor:  string(e.Setting.Required),
 		Doc:          e.Setting.Doc,

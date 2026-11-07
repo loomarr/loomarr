@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -57,7 +58,7 @@ func NewArrObserved(c ArrConns, recorder *metrics.Recorder) *Arr {
 		sonarr: c.Sonarr, radarr: c.Radarr,
 		sonarrQualityProfile: c.SonarrQualityProfile, sonarrRootFolder: c.SonarrRootFolder,
 		radarrQualityProfile: c.RadarrQualityProfile, radarrRootFolder: c.RadarrRootFolder,
-		http: httpx.NewNamedObserved("arr", httpx.TimeoutArr, recorder),
+		http: httpx.NewNamedObserved(httpx.TargetArr, httpx.TimeoutArr, recorder),
 	}
 }
 
@@ -177,8 +178,8 @@ func (a *Arr) lookup(ctx context.Context, ep arrEndpoint) (map[string]any, error
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("arr lookup: status %d", resp.StatusCode)
+	if err := httpx.CheckStatus(resp); err != nil {
+		return nil, fmt.Errorf("arr lookup: %w", err)
 	}
 	var results []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
@@ -222,6 +223,49 @@ func (a *Arr) qualityProfileID(ctx context.Context, ep arrEndpoint) (int, error)
 		return 0, fmt.Errorf("arr: quality profile %q not found", ep.qualityOverride)
 	}
 	return profiles[0].ID, nil
+}
+
+// ErrArrNotConfigured reports an arr with no address set.
+var ErrArrNotConfigured = errors.New("arr: not configured")
+
+// RootFolders lists every root folder one arr reports, as the arr sees it ("sonarr" or
+// "radarr"), for discovering scan roots (#2151 decision 6). It ignores the root-folder override,
+// which only picks where new titles go. ErrArrNotConfigured when that arr has no address.
+func (a *Arr) RootFolders(ctx context.Context, app string) ([]string, error) {
+	var conn func() (string, string)
+	switch app {
+	case "sonarr":
+		conn = a.sonarr
+	case "radarr":
+		conn = a.radarr
+	default:
+		return nil, fmt.Errorf("arr: unknown app %q", app)
+	}
+	baseURL, apiKey := conn()
+	if baseURL == "" {
+		return nil, ErrArrNotConfigured
+	}
+	resp, err := a.do(ctx, arrEndpoint{baseURL: baseURL, apiKey: apiKey}, http.MethodGet, "/api/v3/rootfolder", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("arr rootfolder: status %d", resp.StatusCode)
+	}
+	var roots []struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&roots); err != nil {
+		return nil, fmt.Errorf("arr rootfolder decode: %w", err)
+	}
+	out := make([]string, 0, len(roots))
+	for _, r := range roots {
+		if r.Path != "" {
+			out = append(out, r.Path)
+		}
+	}
+	return out, nil
 }
 
 // rootFolderPath returns the override or the first root folder the arr reports.
@@ -269,8 +313,8 @@ func (a *Arr) Cancel(ctx context.Context, t provision.Title) error {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("arr cancel: status %d", resp.StatusCode)
+	if err := httpx.CheckStatus(resp); err != nil {
+		return fmt.Errorf("arr cancel: %w", err)
 	}
 	return nil
 }

@@ -11,14 +11,16 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/reconcile"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/scheduler"
-	"github.com/loomarr/loomarr/internal/setup"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/rating"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/tmdb"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -29,16 +31,18 @@ import (
 type recurateThresholds struct{ set resolved }
 
 func (t recurateThresholds) MinScorePct(context.Context) int {
-	return t.set.intv("recurate.min_score_pct")
+	return settings.RecurateMinScorePct.Get(t.set)
 }
-func (t recurateThresholds) MaxTitles(context.Context) int { return t.set.intv("recurate.max_titles") }
+func (t recurateThresholds) MaxTitles(context.Context) int {
+	return settings.RecurateMaxTitles.Get(t.set)
+}
 
 // liveTVAdapter answers setup status for the durably applied tuner/listing target. The explicit
 // resolver matters on Postgres: another replica can advance the checkpoint without changing this
 // process's controller Runtime, so request-path status must read DurableView instead.
 type liveTVAdapter struct {
-	c    *setup.LiveTVConnector
-	urls func(context.Context) (setup.LiveTVURLs, error)
+	c    *livetvpublish.LiveTVConnector
+	urls func(context.Context) (tunarr.LiveTVURLs, error)
 }
 
 func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
@@ -58,8 +62,8 @@ func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
 // it becomes the applied UI backend, and pause/detach must disappear from that prepared
 // M3U rather than pointlessly rescanning the still-applied Tunarr tuner.
 type transportTunerRescanner struct {
-	c    *setup.LiveTVConnector
-	urls func(context.Context) (setup.LiveTVURLs, error)
+	c    *livetvpublish.LiveTVConnector
+	urls func(context.Context) (tunarr.LiveTVURLs, error)
 }
 
 func (r transportTunerRescanner) RescanTuner(ctx context.Context) error {
@@ -80,10 +84,10 @@ func (r transportTunerRescanner) PokeGuideRefresh(ctx context.Context) error {
 	return r.c.PokeGuideRefresh(ctx)
 }
 
-// jobsAdapter adapts *scheduler.Scheduler to api.JobService: it maps scheduler.JobStatus →
+// jobsAdapter adapts *jobs.Scheduler to api.JobService: it maps jobs.JobStatus →
 // api.JobView (so the api package doesn't import scheduler) and the unknown-job error to the
 // api sentinel. Thin, wiring-only.
-type jobsAdapter struct{ s *scheduler.Scheduler }
+type jobsAdapter struct{ s *jobs.Scheduler }
 
 func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 	st, err := a.s.List(ctx)
@@ -105,7 +109,7 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 
 func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryView, error) {
 	history, err := a.s.History(ctx, name)
-	if errors.Is(err, scheduler.ErrUnknownJob) {
+	if errors.Is(err, jobs.ErrUnknownJob) {
 		return api.JobHistoryView{}, api.ErrJobNotFound
 	}
 	if err != nil {
@@ -131,9 +135,9 @@ func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryVi
 
 func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) error {
 	switch err := a.s.SetPaused(ctx, name, paused); {
-	case errors.Is(err, scheduler.ErrUnknownJob):
+	case errors.Is(err, jobs.ErrUnknownJob):
 		return api.ErrJobNotFound
-	case errors.Is(err, scheduler.ErrJobDisabled):
+	case errors.Is(err, jobs.ErrJobDisabled):
 		return api.ErrJobDisabled
 	default:
 		return err
@@ -142,9 +146,9 @@ func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) er
 
 func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 	switch err := a.s.Trigger(ctx, name); {
-	case errors.Is(err, scheduler.ErrUnknownJob):
+	case errors.Is(err, jobs.ErrUnknownJob):
 		return api.ErrJobNotFound
-	case errors.Is(err, scheduler.ErrJobDisabled):
+	case errors.Is(err, jobs.ErrJobDisabled):
 		return api.ErrJobDisabled
 	case err != nil:
 		return err
@@ -175,7 +179,7 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 				EpisodeEnd:    e.EpisodeEnd, // §5 multi-part: single-file span end
 				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
 				// so the schedule domain only ever compares ladder values (§4).
-				OfficialRating:  schedule.NormalizeRating(e.OfficialRating),
+				OfficialRating:  rating.Normalize(e.OfficialRating),
 				CommunityRating: e.CommunityRating,
 				Overview:        e.Overview,
 				Tags:            append([]string(nil), e.Tags...),
@@ -296,17 +300,17 @@ type approvalAdditionAdapter struct {
 
 func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	ctx context.Context,
-	item suggest.ProposalItem,
-) (suggest.ProposalItem, bool, error) {
+	item proposals.ProposalItem,
+) (proposals.ProposalItem, bool, error) {
 	key, err := (provision.Title{
 		MediaType: item.MediaType, TMDBID: item.TMDBID, TVDBID: item.TVDBID,
 	}).Key()
 	if err != nil {
-		return suggest.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
+		return proposals.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
 	}
 	mediaType, _, _, ok := provision.ParseKey(key)
 	if !ok {
-		return suggest.ProposalItem{}, false, errors.New("invalid title key")
+		return proposals.ProposalItem{}, false, errors.New("invalid title key")
 	}
 	item.InLibrary = false
 	item.LibraryItemID = ""
@@ -321,7 +325,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	}
 	owned, found, err := presence.Present(ctx, mediaType, item.TMDBID, item.TVDBID)
 	if err != nil {
-		return suggest.ProposalItem{}, false, err
+		return proposals.ProposalItem{}, false, err
 	}
 	if !found {
 		return item, false, nil
@@ -333,7 +337,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	return item.WithLibrarySize(owned.SizeBytes), true, nil
 }
 
-// tunarrNumbers adapts a Programmer to binder.NumberSource: it answers "which channel numbers
+// tunarrNumbers adapts a Programmer to approval.NumberSource: it answers "which channel numbers
 // does Tunarr already use?" and nothing else (§9 V54).
 //
 // ⚠ The narrowing is the point, and it lives HERE rather than in the binder. The binder needs one
@@ -390,7 +394,7 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 // re-listing every collection's members for every entry, which is the N+1 the whole stamping
 // design exists to avoid. One pass over the collections costs 1 + N(collections) calls total.
 //
-// Membership is indexed under EVERY key form via reconcile.ScanItemKeys, because a member
+// Membership is indexed under EVERY key form via provisionbackstop.ScanItemKeys, because a member
 // carrying both provider ids must be findable under whichever key the lineup entry was born
 // with — the same parity problem the availability scan solves, and the same solution.
 //
@@ -440,7 +444,7 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 			continue
 		}
 		for _, m := range members {
-			for _, k := range reconcile.ScanItemKeys(m) {
+			for _, k := range provisionbackstop.ScanItemKeys(m) {
 				idx[k] = append(idx[k], c.ID)
 			}
 		}

@@ -8,7 +8,7 @@
 | Tool | Version | Pinned in |
 | --- | --- | --- |
 | Go | 1.27+ | `go.mod` |
-| Rust | 1.93.x | `rust-toolchain.toml` |
+| Rust | 1.99.x | `rust-toolchain.toml` |
 | Node | 22.x (22.5 minimum) | `.node-version` + `web/package.json` → `engines.node` |
 | pnpm | 11.13.1, via Corepack from the pinned Node installation | `web/package.json` → `packageManager` |
 | GNU Make | 4.x | Make parser policy and the repository harness |

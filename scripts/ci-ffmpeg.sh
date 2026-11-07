@@ -12,9 +12,11 @@ read_pin() {
 }
 
 release="$(read_pin FFMPEG_RELEASE)"
+mirror="$(read_pin FFMPEG_MIRROR_RELEASE)"
 build_id="$(read_pin FFMPEG_BUILD_ID)"
 [[ "$release" =~ ^autobuild-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]] || exit 1
-[[ "$build_id" =~ ^n([0-9]+)\.([0-9]+)\.[0-9]+-[0-9]+-g[0-9a-f]+$ ]] || exit 1
+[[ "$mirror" =~ ^third-party-sources-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || exit 1
+[[ "$build_id" =~ ^n([0-9]+)\.([0-9]+)(\.[0-9]+)?-[0-9]+-g[0-9a-f]+$ ]] || exit 1
 series="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 release_date="${release:10:10}"
 version_id="$build_id-${release_date//-/}"
@@ -46,7 +48,7 @@ if [[ "$mode" == download && ! -f "$cached_archive" ]]; then
   # five-minute retry window. curl discards a failed attempt's partial --output before retrying,
   # and the digest check below still decides what is kept.
   curl --fail --location --retry 5 --retry-all-errors --retry-max-time 300 --connect-timeout 20 --max-time 180 \
-    --output "$partial" "https://github.com/BtbN/FFmpeg-Builds/releases/download/$release/$archive"
+    --output "$partial" "https://github.com/loomarr/loomarr/releases/download/$mirror/$archive"
   actual="$(sha256sum "$partial")"
   [[ "${actual%% *}" == "$digest" ]] || { echo "FFmpeg archive checksum mismatch" >&2; exit 1; }
   mv -- "$partial" "$cached_archive"

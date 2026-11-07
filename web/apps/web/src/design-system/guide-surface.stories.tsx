@@ -13,7 +13,7 @@ const layout = layoutGuide(
 const GuideArtwork = () => (
   <Surface
     alignItems="center"
-    backgroundColor="$stateInfoSurface"
+    backgroundColor="stateInfoSurface"
     borderWidth={0}
     flex={1}
     justifyContent="center"

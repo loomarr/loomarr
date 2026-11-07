@@ -7,10 +7,11 @@ import (
 	"slices"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -172,7 +173,10 @@ func (e *Engine) reconcileOnce(
 		run.qualityJobID = ""
 		if ch.IntentRef != "" {
 			job, qualityErr := e.store.GetJob(ctx, ch.IntentRef)
-			if qualityErr != nil {
+			if errors.Is(qualityErr, store.ErrNotFound) {
+				// Housekeeping purged the job this channel was made from: the first-live
+				// observation is simply not owed, and that is not worth a line per reconcile.
+			} else if qualityErr != nil {
 				if e.log != nil {
 					e.log.Warn("read Proposal Job scheduling milestone", "err", qualityErr)
 				}
@@ -241,7 +245,7 @@ func (e *Engine) reconcileOnce(
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
-	chDomain.WindowZone = e.windowZoneFor()
+	chDomain = chDomain.WithCalendar(e.Calendar())
 	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
 	// Rolling-window carry-over (#1675): the accepted window stays on air until the programme
 	// crossing its boundary ends, and the next one is anchored at that end. Internal playout
@@ -255,9 +259,25 @@ func (e *Engine) reconcileOnce(
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now())
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
-	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	if err != nil {
+		return fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
+	}
+	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
+	acceptedSlots, acceptedAnchor := ch.Desired, ch.PlayoutAnchor
 	if playsInternally {
 		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
+		// A re-sized break must not move what has aired (2026-10-24: each re-size threw the viewer
+		// back into the programme, or into the same break again). Breaks that have aired or air
+		// within the freeze horizon keep their accepted length; a turned window starts a new slice
+		// from its own anchor, so there is nothing to hold.
+		if !acceptedAnchor.IsZero() && turnAnchor.Equal(acceptedAnchor) {
+			desired.Slots = playout.KeepAcceptedBreaks(acceptedSlots, desired.Slots, acceptedAnchor,
+				e.now().Add(MidRollFreezeHorizon))
+			// The hold never outlasts the operator's break length: a shorter setting is an edit and
+			// applies to every break at once. A smaller catalog stays held; its breaks air what fits.
+			desired.Slots = capCommercialBreaks(desired.Slots, chDomain.BreakDurationMs)
+		}
 	}
 	// Building is the durable "this backend must (re)publish the channel list" marker:
 	// it covers first materialization and a backend switch that reuses a historical
@@ -404,13 +424,20 @@ func (e *Engine) reconcileOnce(
 	if run.qualityEligible && (ch.Status == schedule.StatusLive || ch.Status == schedule.StatusDrifted) {
 		run.qualityScheduled = true
 	}
-	// A shared encoder is reading the previously accepted cycle until it is retired.
-	// Guide freshness alone cannot switch its current playout session: live proof was a
-	// newly constrained Simpsons guide advertising S10 while the Shield reattached to a
-	// nine-minute-stale pre-edit stream. Stop only after the replacement Desired cycle is
-	// durable, and only when it actually changed; the next request starts at the correct
-	// wall-clock offset. Postgres lifecycle invalidations repeat this on peer replicas.
-	if playsInternally && desiredChangedLocally && e.scheduleInvalidator != nil {
+	// The channel packager reads the accepted cycle at every item boundary, so a change from the
+	// next lookup on reaches the stream by itself. Only a change to what is on air now (an item the
+	// packager may already be encoding, up to its run-ahead) needs the stream stopped, and only
+	// after the replacement Desired cycle is durable; the next request starts at the correct
+	// wall-clock offset. Stopping on ANY change restarted every viewer at every re-size
+	// (2026-10-24). A turned window aired its new slice before this commit, from the preview this
+	// reconcile computes again, so it keeps the stop-on-change rule. Postgres lifecycle
+	// invalidations apply the same rule on peer replicas (playout.OnAirChanged).
+	onAirChanged := desiredChangedLocally
+	if !acceptedAnchor.IsZero() && turnAnchor.Equal(acceptedAnchor) {
+		onAirChanged = playout.OnAirChanged(acceptedSlots, acceptedAnchor, ch.Desired, ch.PlayoutAnchor,
+			e.now(), e.now().Add(playout.OnAirLookahead))
+	}
+	if playsInternally && onAirChanged && e.scheduleInvalidator != nil {
 		e.scheduleInvalidator.StopChannel(ch.ID)
 	}
 
@@ -536,7 +563,7 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 					e.log.Warn("heal rating (entry stays unrated this pass)", "key", en.Key, "err", err)
 				}
 			} else if ok {
-				en.OfficialRating = schedule.NormalizeRating(raw)
+				en.OfficialRating = rating.Normalize(raw)
 			}
 		}
 		// Stamp media-server collection membership (§2.2) so scope.collections enforces with
@@ -696,8 +723,9 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 		sel.Pinned = append([]string(nil), f.Pinned...)
 		sel.Excluded = append([]string(nil), f.Excluded...)
 		if f.Geography != nil {
-			sel.Geography = filler.Geography{Country: f.Geography.Country, Market: f.Geography.Market}.Normalize()
+			sel.Geography = filler.Geography{Country: f.Geography.Country, Place: f.Geography.Place}.Normalize()
 		}
+		sel.Language = filler.NormalizeLanguage(f.Language)
 		if f.Era != nil {
 			// ⚠ **PRESENCE is the opt-in, and that is what finally makes "any era" reachable
 			// (§10, V51f).** A present range means the operator has ANSWERED the era question —

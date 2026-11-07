@@ -35,11 +35,19 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("Inventory", func(t *testing.T) {
 		t.Run("RoundTripAndIdempotency", func(t *testing.T) { testInventoryRoundTrip(t, newStore) })
 		t.Run("GroundedIdentityOnly", func(t *testing.T) { testInventoryGroundedIdentity(t, newStore) })
+		t.Run("OriginFollowsIDs", func(t *testing.T) { testInventoryOriginFollowsIDs(t, newStore) })
 		t.Run("MeasurementRevision", func(t *testing.T) { testInventoryMeasurementRevision(t, newStore) })
 		t.Run("AnalysisRevision", func(t *testing.T) { testInventoryAnalysisRevision(t, newStore) })
 		t.Run("ExplicitMissing", func(t *testing.T) { testInventoryExplicitMissing(t, newStore) })
 		t.Run("MalformedRejected", func(t *testing.T) { testInventoryMalformedRejected(t, newStore) })
 		t.Run("BoundsRejected", func(t *testing.T) { testInventoryBoundsRejected(t, newStore) })
+		t.Run("LibraryRootDiscovery", func(t *testing.T) { testLibraryRootDiscovery(t, newStore) })
+		t.Run("LibraryRootByHand", func(t *testing.T) { testLibraryRootByHand(t, newStore) })
+		t.Run("LibraryRootCheck", func(t *testing.T) { testLibraryRootCheck(t, newStore) })
+		t.Run("LibraryFiles", func(t *testing.T) { testLibraryFiles(t, newStore) })
+		t.Run("LibraryItems", func(t *testing.T) { testLibraryItems(t, newStore) })
+		t.Run("LibraryCatalog", func(t *testing.T) { testLibraryCatalog(t, newStore) })
+		t.Run("LibraryNeeds", func(t *testing.T) { testLibraryNeeds(t, newStore) })
 	})
 
 	t.Run("Titles", func(t *testing.T) {
@@ -59,6 +67,11 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ChannelTargetedRevisionWrites", func(t *testing.T) { testChannelTargetedRevisionWrites(t, newStore) })
 		t.Run("ChannelListAndDelete", func(t *testing.T) { testChannelListDelete(t, newStore) })
 		t.Run("ChannelOrigin", func(t *testing.T) { testChannelOrigin(t, newStore) })
+		t.Run("ChannelOutlivesItsPurgedJob", func(t *testing.T) { testChannelOutlivesItsPurgedJob(t, newStore) })
+		t.Run("ApprovalOfJobNamingAChannel", func(t *testing.T) { testApprovalOfJobNamingAChannel(t, newStore) })
+		t.Run("ChannelHasUnfinishedJob", func(t *testing.T) { testChannelHasUnfinishedJob(t, newStore) })
+		t.Run("ApprovalSupersessionIsPerChannel", func(t *testing.T) { testApprovalSupersessionIsPerChannel(t, newStore) })
+		t.Run("PurgeKeepsJobsAwaitingADecision", func(t *testing.T) { testPurgeKeepsJobsAwaitingADecision(t, newStore) })
 		t.Run("ChannelDeleteDropsImageRefs", func(t *testing.T) { testChannelDeleteDropsImageRefs(t, newStore) })
 		t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
 		t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })
@@ -82,7 +95,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClaimDueJobsConcurrent", func(t *testing.T) { testClaimJobsConcurrent(t, newStore) })
 		t.Run("JobCacheByIntentHash", func(t *testing.T) { testJobCacheByHash(t, newStore) })
 		t.Run("SuggestionSuccessAtomic", func(t *testing.T) { testSuggestionSuccessAtomic(t, newStore) })
-		t.Run("SuggestionRequeueCAS", func(t *testing.T) { testSuggestionRequeueCAS(t, newStore) })
+		t.Run("SuggestionReviseCAS", func(t *testing.T) { testSuggestionReviseCAS(t, newStore) })
 		t.Run("ProposalRevisionLifecycle", func(t *testing.T) { testProposalRevisionLifecycle(t, newStore) })
 		t.Run("ProposalRevisionFallbackApproval", func(t *testing.T) { testProposalRevisionFallbackApproval(t, newStore) })
 		t.Run("ProposalRevisionFallbackDenial", func(t *testing.T) { testProposalRevisionFallbackDenial(t, newStore) })
@@ -91,7 +104,6 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ProposalJobSnapshot", func(t *testing.T) { testProposalJobSnapshot(t, newStore) })
 		t.Run("ProposalJobFirstLiveMonotonic", func(t *testing.T) { testProposalJobFirstLiveMonotonic(t, newStore) })
 		t.Run("ScheduledJobRoundTrip", func(t *testing.T) { testScheduledJobRoundTrip(t, newStore) })
-		t.Run("ClaimDueScheduledJobs", func(t *testing.T) { testClaimDueScheduledJobs(t, newStore) })
 		t.Run("ScheduledJobPaused", func(t *testing.T) { testScheduledJobPaused(t, newStore) })
 		t.Run("ProposalRoundTripAndQueues", func(t *testing.T) { testProposalQueues(t, newStore) })
 		t.Run("ProposalApprovalAtomic", func(t *testing.T) { testProposalApprovalAtomic(t, newStore) })
@@ -104,6 +116,15 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ProposalApprovalManualOrdering", func(t *testing.T) { testProposalApprovalManualParticipatesInRequesterOrdering(t, newStore) })
 		t.Run("ProposalApprovalCanceledWaiter", func(t *testing.T) { testProposalApprovalCanceledWaiterReleasesOrdering(t, newStore) })
 		t.Run("LookupByNonID", func(t *testing.T) { testLookupByNonID(t, newStore) })
+	})
+
+	t.Run("Holidays", func(t *testing.T) {
+		t.Run("SeededOnOpen", func(t *testing.T) { testHolidaysSeededOnOpen(t, newStore) })
+		t.Run("FollowSeasonalTaxa", func(t *testing.T) { testHolidaysFollowSeasonalTaxa(t, newStore) })
+	})
+
+	t.Run("BroadcastStations", func(t *testing.T) {
+		t.Run("SeededOnOpen", func(t *testing.T) { testBroadcastStationsSeededOnOpen(t, newStore) })
 	})
 
 	t.Run("Notifications", func(t *testing.T) {
@@ -179,7 +200,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		})
 	})
 
-	// The filler suite runs in internal/fillerstore against the extended store, the value the app
+	// The filler suite runs in internal/filler/records against the extended store, the value the app
 	// holds (#1747).
 
 	t.Run("Ops", func(t *testing.T) {

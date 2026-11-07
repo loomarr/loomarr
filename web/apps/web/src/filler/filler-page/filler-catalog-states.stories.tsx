@@ -23,12 +23,12 @@ const clips: ClipDTO[] = Array.from({ length: 60 }, (_, index) => ({
 const LargeCatalogState = () => (
   <section aria-labelledby="large-catalog-heading">
     <div className="mb-3">
-      <h2 id="large-catalog-heading" className="font-semibold text-lg">
+      <h2 id="large-catalog-heading" className="text-lg font-semibold">
         60 clips
       </h2>
       <p className="text-muted-foreground text-sm">Showing 1–60 of 1,240</p>
     </div>
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="border-border overflow-hidden rounded-lg border">
       {clips.map((clip) => (
         <ClipRow key={clip.hash} clip={clip} />
       ))}

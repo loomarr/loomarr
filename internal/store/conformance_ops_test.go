@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/people/contact"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -607,7 +607,7 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 		claimedJob := claimed[0]
 		if outcome == "succeeded" {
 			proposal := Proposal{ID: "metric-proposal", JobID: claimedJob.ID, Status: "submitted",
-				CreatedBy: claimedJob.CreatedBy, ProposalJSON: `{}`, CreatedAt: now, UpdatedAt: now}
+				CreatedBy: claimedJob.CreatedBy, CreatedAt: now, UpdatedAt: now}
 			if err := s.CommitSuggestionSuccess(ctx, claimedJob.ID, claimedJob.Attempts, proposal, now); err != nil {
 				t.Fatal(err)
 			}

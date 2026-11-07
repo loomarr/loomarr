@@ -27,7 +27,7 @@ const boundObservations = (observations: AcceptedObservation[]): AcceptedObserva
   const bounded = [...observations];
   while (bounded.length > QUEUE_LIMIT) {
     const routine = bounded.findIndex(({ event }) => !errorEvents.has(event));
-    bounded.splice(routine >= 0 ? routine : 0, 1);
+    bounded.splice(Math.max(routine, 0), 1);
   }
   return bounded;
 };

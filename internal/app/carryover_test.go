@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // Rolling-window carry-over (#1675).
@@ -44,6 +44,8 @@ func (d *windowDecks) CyclePreview(_ context.Context, _ string, at time.Time) (
 func (d *windowDecks) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
 	return d.window, nil
 }
+
+func (d *windowDecks) Calendar() schedule.Calendar { return schedule.Calendar{} }
 
 func (d *windowDecks) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return true, nil

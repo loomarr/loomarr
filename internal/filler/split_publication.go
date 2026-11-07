@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // preparedSplitCut is one fully staged child plus its final content-addressed location.
@@ -48,7 +48,7 @@ func snapshotSplitComposite(ctx context.Context, source, stageDir, extension, ex
 }
 
 func validateSplitCompositeOwnership(ctx context.Context, source, snapshot string) error {
-	equal, err := exactFileBytesEqual(ctx, source, snapshot, mediatools.ConditioningMaxSnapshotBytes)
+	equal, err := exactFileBytesEqual(ctx, source, snapshot, tools.ConditioningMaxSnapshotBytes)
 	if err != nil {
 		return fmt.Errorf("split confirm: compare composite snapshot: %w", err)
 	}

@@ -4,7 +4,7 @@ import { surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
-import { Image } from "@/components/ui/image";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import type { StatusTone } from "@/components/ui/status-dot";
@@ -19,12 +19,11 @@ const MAX_CHANNELS = 6;
 const AiringArtwork = ({ airing, channel, sizes }: AiringArtworkProps) => {
   if (airing.thumbImage) {
     return (
-      <Image
+      <ServedImage
         image={airing.thumbImage}
         alt=""
         sizes={sizes}
         fallback={<ArtworkFallback channel={channel} />}
-        className="size-full object-cover"
       />
     );
   }
@@ -77,7 +76,7 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
                 tone={tone}
                 title={
                   <span className="flex items-center gap-2">
-                    <span className="font-mono text-foreground">
+                    <span className="text-foreground font-mono">
                       {String(source.number).padStart(2, "0")}
                     </span>
                     {source.name}
@@ -88,7 +87,7 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
                   <Link
                     to="/channels/$id"
                     params={{ id: source.channelId }}
-                    className="text-sm text-static-400 hover:text-foreground"
+                    className="text-static-400 hover:text-foreground text-sm"
                   >
                     View channel <span aria-hidden="true">→</span>
                   </Link>
@@ -110,12 +109,13 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
         {onNow.map(({ channel, data, airing }) => (
           <Link
             key={channel.source.channelId}
-            to="/channels/$id/watch"
+            to="/watch/$id"
             params={{ id: channel.source.channelId }}
-            aria-label={`Watch ${data.channelName} live`}
-            className="block min-w-0 overflow-hidden rounded-lg border border-static-700 bg-static-900 hover:border-static-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            // No aria-label: the whole card is the link, and WCAG 2.5.3 needs its name to contain
+            // everything it shows, so the name is the card's own text, ending in "Watch live".
+            className="border-static-700 bg-static-900 hover:border-static-500 focus-visible:ring-ring block min-w-0 overflow-hidden rounded-lg border focus-visible:ring-2 focus-visible:outline-none"
           >
-            <div className="relative aspect-video w-full overflow-hidden bg-static-800">
+            <div className="bg-static-800 relative aspect-video w-full overflow-hidden">
               <AiringArtwork
                 airing={airing}
                 channel={{ name: data.channelName, number: channel.source.number }}
@@ -130,20 +130,20 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
                   logo={data.channelLogoUri}
                   size={28}
                 />
-                <span className="font-mono text-foreground text-sm">
+                <span className="text-foreground font-mono text-sm">
                   {String(channel.source.number).padStart(2, "0")}
                 </span>
-                <span className="truncate text-static-400 text-xs">{data.channelName}</span>
+                <span className="text-static-400 truncate text-xs">{data.channelName}</span>
               </div>
-              <h3 className="m-0 break-words font-semibold text-base">
+              <h3 className="m-0 text-base font-semibold break-words">
                 {data.now.seriesTitle ?? data.now.title}
               </h3>
               {data.now.episodeLabel && (
-                <p className="m-0 text-static-400 text-xs">{data.now.episodeLabel}</p>
+                <p className="text-static-400 m-0 text-xs">{data.now.episodeLabel}</p>
               )}
-              <p className="m-0 font-mono text-static-400 text-xs">{data.now.timeLabel}</p>
+              <p className="text-static-400 m-0 font-mono text-xs">{data.now.timeLabel}</p>
               {/* The whole card is the link, so its trailing affordance is foreground (#1909 Q4). */}
-              <span className="font-medium text-foreground text-sm">
+              <span className="text-foreground text-sm font-medium">
                 Watch live <span aria-hidden="true">→</span>
               </span>
             </div>

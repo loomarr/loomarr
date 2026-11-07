@@ -9,9 +9,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // registerMiddleware resolves each request's role + user (§7) before the
@@ -20,7 +21,7 @@ func (s *Server) registerMiddleware(api huma.API) {
 	api.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
 		r, _ := humago.Unwrap(ctx)
 		role := RoleAnonymous
-		var user *store.User
+		var user *identitystore.User
 		var deviceID string
 		if s.auth != nil {
 			if ia, ok := s.auth.(identityAuthorizer); ok {
@@ -83,11 +84,11 @@ func (s *Server) registerMiddleware(api huma.API) {
 
 // TitleDTO is the API view of a provisioning record.
 type TitleDTO struct {
-	Key       string `json:"key" example:"movie:tmdb:1111867" doc:"Stable identity key"`
+	Key       string `json:"key" example:"movie:tmdb:91111867" doc:"Stable identity key"`
 	MediaType string `json:"mediaType" enum:"movie,series" example:"movie"`
-	TMDBID    int    `json:"tmdbId,omitempty" example:"1111867"`
+	TMDBID    int    `json:"tmdbId,omitempty" example:"91111867"`
 	TVDBID    int    `json:"tvdbId,omitempty"`
-	Name      string `json:"name,omitempty" example:"In Flames"`
+	Name      string `json:"name,omitempty" example:"Ashgrove Anomaly"`
 	Year      int    `json:"year,omitempty" example:"2023"`
 	State     string `json:"state" enum:"wanted,requested,downloading,available,unavailable" doc:"Provisioning state (§4)"`
 	LibraryID string `json:"libraryId,omitempty"`
@@ -194,7 +195,7 @@ func (s *Server) enqueueTitle(ctx context.Context, in *enqueueInput) (*titleOutp
 }
 
 type keyInput struct {
-	Key string `path:"key" example:"movie:tmdb:1111867"`
+	Key string `path:"key" example:"movie:tmdb:91111867"`
 }
 
 func (s *Server) getTitle(ctx context.Context, in *keyInput) (*titleOutput, error) {

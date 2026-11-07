@@ -4,20 +4,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 func screeningSubjectManifest(t *testing.T) MediaAssetManifest {
 	t.Helper()
-	tool := mediatools.MediaToolIdentity{
+	tool := tools.MediaToolIdentity{
 		Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("9", 64),
 	}
-	evidenceRecipe := mediatools.EvidenceDerivativeRecipe()
+	evidenceRecipe := tools.EvidenceDerivativeRecipe(tools.DefaultMezzanine())
 	evidenceRecipeSHA, err := evidenceRecipe.Digest()
 	if err != nil {
 		t.Fatal(err)
 	}
-	playbackRecipe := mediatools.PlaybackDerivativeRecipe(mediatools.DefaultMezzanine(), 0)
+	playbackRecipe := tools.PlaybackDerivativeRecipe(tools.DefaultMezzanine(), 0)
 	playbackRecipeSHA, err := playbackRecipe.Digest()
 	if err != nil {
 		t.Fatal(err)
@@ -25,8 +25,8 @@ func screeningSubjectManifest(t *testing.T) MediaAssetManifest {
 	input := Probed{DurationMs: 30_000, Height: 480}
 	output := Probed{DurationMs: 30_000, Height: 480}
 	quality := MediaQuality{
-		EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-		Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+		EvidenceVersion: tools.MediaQualityEvidenceV1,
+		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
 	}
 	source := MediaAssetIdentity{
@@ -120,22 +120,6 @@ func TestSegmentScreeningSubjectRequiresMeasuredDerivativeQuality(t *testing.T) 
 	manifest.Playback.Quality = MediaQuality{}
 	if _, err := NewSegmentScreeningSubject(manifest.Playback.Asset.ClipHash, SidecarTags{MediaAssets: &manifest}); err == nil {
 		t.Fatal("subject accepted playback without measured media quality")
-	}
-}
-
-func TestSegmentScreeningSubjectRequiresPlaybackQualityToMatchConditioning(t *testing.T) {
-	media := playbackIntegrityMediaFixture(t, validPlaybackIntegrityQuality())
-	tags, ok := ReadSidecarTags(media.PlaybackPath)
-	if !ok {
-		t.Fatal("playback sidecar is unavailable")
-	}
-	playback := *tags.MediaAssets.Playback
-	playback.Quality.Black = []Interval{{StartMs: 0, EndMs: 5_000}}
-	manifest := *tags.MediaAssets
-	manifest.Playback = &playback
-	tags.MediaAssets = &manifest
-	if _, err := NewSegmentScreeningSubject(playback.Asset.ClipHash, tags); err == nil {
-		t.Fatal("subject accepted playback quality that differed from post-rewrite conditioning")
 	}
 }
 

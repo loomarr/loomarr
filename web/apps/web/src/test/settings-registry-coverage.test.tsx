@@ -113,7 +113,9 @@ const ALLOWLIST: Record<string, string> = {
     "Edited through AiModelSettings' vision picker (AI page footer), not a blocks[].keys row.",
   "filler.home_country":
     "Edited through InstallationLocation on Access and devices (a children render-prop, not a blocks[].keys row).",
-  "filler.home_market":
+  "filler.home_place":
+    "Edited through InstallationLocation on Access and devices (a children render-prop, not a blocks[].keys row).",
+  "filler.local_radius_km":
     "Edited through InstallationLocation on Access and devices (a children render-prop, not a blocks[].keys row).",
   "channel.reconcile_every":
     "No row today — Channel defaults' 'Schedule horizon' block only lists sched.window_hours for the channels group.",
@@ -142,8 +144,6 @@ const ALLOWLIST: Record<string, string> = {
     "Edited through ClipDetailsSettings (the Filler 'Clip details' section's footer component), not a blocks[].keys row.",
   "filler.acquisition.compilations":
     "No row today — the Filler 'Automatic downloads' section only lists filler.fetch.every and filler.fetch.max_per_run.",
-  "filler.conditioning.normalize_loudness":
-    "No row today — not listed in the Filler 'Clip review' section's keys.",
   "filler.structure_window_authority_path":
     "No row today — not listed in the Filler 'Clip review' section's keys.",
   "filler.structure_window_deployment_path":
@@ -188,7 +188,9 @@ const parseSettingsDocs = (): DocRow[] => {
 };
 
 const isCovered = (key: string, group: string, blocks: readonly SettingsBlock[]): boolean =>
-  blocks.some((block) => block.group === group && (!block.keys || block.keys.includes(key)));
+  blocks.some(
+    (block) => block.group === group && (!block.keys || block.keys.some((declared) => declared === key)),
+  );
 
 let capturedBlocks: SettingsBlock[] | undefined;
 

@@ -210,9 +210,10 @@ Air run at pinned versions from the harness.
 
 - `api/openapi.yaml` → `make openapi`; verify with `make openapi-verify`
 - `docs/reference/settings.md` → `make config-docs`
+- `internal/settings/keys_gen.go` → `make settings-keys` after adding, renaming or retyping a setting
 - `docs/reference/make.md` → `make dev-docs`
-- `docs/design/package-map.md` → `make arch-docs`
-- `web/packages/tokens/generated/` → `make fe-tokens`
+- `docs/design/package-map.md` and `docs/design/areas/` → `make arch-docs`
+- `web/packages/design-system/generated/` → `make fe-tokens`
 - `web/packages/api/generated/` and `web/apps/web/src/routeTree.gen.ts` → `make fe-codegen`; both are
   gitignored and absent from a fresh worktree
 - applied migrations in `internal/store/migrations/` are immutable; add the next migration
@@ -222,7 +223,7 @@ Air run at pinned versions from the harness.
 - `cmd/loomarr` is the entrypoint; `internal/app` is the composition root; `internal/api` owns Huma
   routes.
 - Domain packages under `internal/` map to the ports documented in design §2.
-- `internal/fillerstructure` is the provider-neutral complete-timeline reducer shared by filler
+- `internal/filler/structure` is the provider-neutral complete-timeline reducer shared by filler
   certification and production; challenge truth and provider clients do not belong there.
 - `internal/testkit` is the shared mock and pinned-fixture module.
 - `web/` is a pnpm workspace: `apps/web` plus `packages/{api,core,tokens,fixtures}`. Frontend request
@@ -268,19 +269,30 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
 
 ## Hard rules
 
+- Tests assert on behaviour, never on the text of Go or TypeScript source. A test that reads a source
+  file and matches it with a regexp, `strings.Contains` or `toContain` passes while the behaviour is
+  broken and fails on a harmless refactor. Exercise the code; where the intent is structural, parse
+  it (`go/parser`, a JS parser) and check the syntax tree. Generated files, workflows, Makefiles,
+  JSON and docs are artefacts, not source. `internal/guard_test.go` and
+  `web/scripts/source-text-tests.mjs` enforce this with a shrinking allowlist.
 - Auth changes include the design §19 negatives: member 403s and sessions dying on disable.
 - Retiring a capability adds its identifier to `scripts/check-retired.sh` in the same PR.
 - Adding a setting changes design §15 first.
 - Adding a build tag changes the guarded `TAGS` list in the Makefile.
 - Adding a CI build input changes the per-job filter in `.github/workflows/ci.yml`; never add a
   workflow-level `paths:` filter.
-- Pull requests own fast affected feedback; the merge queue owns complete affected integration
-  evidence. Normal queue-produced pushes to `main` publish only and must not restore a third product
-  validation run. Keep `CI` required and strict for both PR and `merge_group` commits.
+- Pull requests own fast affected feedback. In the merge queue, `merge-gate.yml` reports the required
+  `CI` check in minutes, and ci.yml's complete affected gate set runs beside it as `CI assurance`,
+  which finishes after the merge and files an issue when a merged commit fails. Revert first: anyone
+  may revert that commit, and the fix lands as a new PR. Rerun a flake or outage. Normal queue-produced
+  pushes to `main` publish only and must not restore a third product validation run. Keep `CI`
+  required for both PR and `merge_group` commits.
 - CodeQL uses checked-in advanced setup. Trusted PR/main diffs select only changed languages;
   scheduled/manual runs, unknown paths, and unusable bases scan all six. Keep GitHub default setup
   disabled because it overrides advanced workflows and restores all-language scans on every change.
 - Frontend work uses the Vite server, not the stale SPA embedded on the backend port.
+- Read a database only through a copy (`make db-view`, or a `VACUUM INTO` snapshot), and never write
+  to one directly. To create state, drive the app's API or a test fixture.
 - Change source, test, config and doc files through the harness's file-edit tool, one reviewed
   change at a time. Never write them with `sed -i`, `perl -pi`, `awk`, a `python` script, or a shell
   heredoc or redirect. That includes conflict resolution and one-line tweaks. A scripted replace
@@ -288,6 +300,11 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
   fails loudly on a bad match. For a repetitive rename, use the edit tool's replace-all or ask
   first. Exempt: generators and formatters that a Make target owns (`make fe-codegen`, `make
   openapi`, `biome --write`, `gofmt`), and reading files with any tool.
+- Write code comments in the present tense, about the code as it stands. Say what it does and why,
+  and state a trap as a fact about today: "the server drops an unknown field silently", not "this
+  once said `maxAcquire` and the cap vanished". The story belongs in the commit and the issue, which
+  a comment may cite by number. Never narrate a change ("no longer", "used to", "now", "moved
+  from"): a comment that describes the past goes stale the day it is written.
 
 ## Stop points
 

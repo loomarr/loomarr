@@ -31,7 +31,7 @@ const ChannelBreaks = ({ channelId, className }: ChannelBreaksProps) => {
 
   return (
     <section className={cn("flex flex-col gap-1.5", className)}>
-      <h3 className="font-mono font-normal text-2xs text-muted-foreground uppercase tracking-wide">
+      <h3 className="text-2xs text-muted-foreground font-mono font-normal tracking-wide uppercase">
         Between shows
       </h3>
       <PodTimeline entries={entries} matchLevel={pod?.matchLevel} />

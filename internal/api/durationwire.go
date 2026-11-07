@@ -5,7 +5,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -13,7 +13,7 @@ import (
 //
 // ⚠ **This lives here, in the transport layer, because it is transport knowledge.** It used to be
 // a `Schema(huma.Registry) *huma.Schema` method on `schedule.Duration` itself, which made the
-// PURE DOMAIN package import the HTTP framework — `internal/schedule` is 4,000-odd lines of
+// PURE DOMAIN package import the HTTP framework — `internal/channels/schedule` is 4,000-odd lines of
 // I/O-free scheduling logic, and it depended on huma/v2 to describe one field's JSON encoding.
 // The architecture gate bans `internal/api` from the domain but says nothing about the framework
 // the API happens to use, so nothing caught it.

@@ -11,7 +11,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 const (
@@ -82,10 +83,9 @@ type IncomingReadyEstimateDTO struct {
 }
 
 type IncomingProcessingDTO struct {
-	Attempts        int                          `json:"attempts,omitempty" doc:"Attempts of the current processing stage; not a whole-preparation attempt count"`
-	NextTryAt       string                       `json:"nextTryAt,omitempty" doc:"RFC3339; absent unless this work is scheduled to retry"`
-	DiagnosticsHref string                       `json:"diagnosticsHref,omitempty" doc:"Existing operational owner; absent when no deeper evidence exists"`
-	Stages          []IncomingProcessingStageDTO `json:"stages"`
+	Attempts  int                          `json:"attempts,omitempty" doc:"Attempts of the current processing stage; not a whole-preparation attempt count"`
+	NextTryAt string                       `json:"nextTryAt,omitempty" doc:"RFC3339; absent unless this work is scheduled to retry"`
+	Stages    []IncomingProcessingStageDTO `json:"stages"`
 }
 
 type IncomingProcessingStageDTO struct {
@@ -133,8 +133,8 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 		at = s.now().UTC()
 	}
 	readyWindow := defaultRecentlyReadyWindow
-	if s.liveConfigDuration != nil {
-		readyWindow = s.liveConfigDuration("filler.incoming.ready_window")
+	if s.liveSettings != nil {
+		readyWindow = settings.FillerIncomingReadyWindow.Get(s.liveSettings)
 	}
 	out := &fillerIncomingOutput{}
 	out.Body.ReadyWindowSeconds = int64(readyWindow / time.Second)
@@ -183,7 +183,7 @@ func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyW
 	if more {
 		rows = rows[:incomingPageLimit]
 	}
-	clips := make([]store.Clip, 0, len(rows))
+	clips := make([]catalogstore.Clip, 0, len(rows))
 	for _, row := range rows {
 		clip, clipErr := s.store.GetClip(ctx, row.ClipHash)
 		if clipErr != nil {
@@ -246,7 +246,7 @@ func (s *Server) incomingHelpGroup(ctx context.Context, cursorValue string) (Inc
 	return group, nil
 }
 
-func incomingStatusDTO(clip store.Clip, row filler.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
+func incomingStatusDTO(clip catalogstore.Clip, row filler.ClipPipeline, label string, image func(string) *ImageDTO, at time.Time, estimate filler.ReadyEstimate) IncomingStatusDTO {
 	var thumb *ImageDTO
 	if image != nil {
 		thumb = image(clip.Hash)
@@ -344,9 +344,6 @@ func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProces
 		if stage.Stage == row.Stage && stage.Status == row.Status {
 			currentRecorded = true
 		}
-		if stage.Status == filler.StatusFailed {
-			detail.DiagnosticsHref = "/filler/manage#diagnostics"
-		}
 	}
 	// A running rung is intentionally absent from the stored completed-stage ladder. Append its
 	// current snapshot without replacing a prior failed attempt; both are true and useful. Queued,
@@ -359,9 +356,6 @@ func incomingProcessingDTO(row filler.ClipPipeline, at time.Time) IncomingProces
 			progress = &measured
 		}
 		detail.Stages = append(detail.Stages, incomingProcessingStage(row.Stage, row.Status, row.UpdatedAt, progress))
-	}
-	if row.Status == filler.StatusFailed {
-		detail.DiagnosticsHref = "/filler/manage#diagnostics"
 	}
 	return detail
 }
@@ -384,6 +378,8 @@ func friendlyIncomingProcessingStage(stage filler.StageID) string {
 		return "Checking video safety"
 	case filler.StageSplit:
 		return "Checking for separate clips"
+	case filler.StageDefects:
+		return "Checking picture and sound quality"
 	case filler.StageLanguage:
 		return "Detecting the language"
 	case filler.StageTranscribe:
@@ -399,7 +395,7 @@ func friendlyIncomingProcessingStage(stage filler.StageID) string {
 
 func friendlyIncomingStage(stage filler.StageID) string {
 	switch stage {
-	case filler.StageProbe, filler.StageTranscode, filler.StageScreen:
+	case filler.StageProbe, filler.StageTranscode, filler.StageScreen, filler.StageDefects:
 		return "Checking video"
 	case filler.StageSplit:
 		return "Checking for separate clips"

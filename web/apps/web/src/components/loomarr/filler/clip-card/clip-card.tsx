@@ -1,12 +1,12 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { Play, Scissors } from "lucide-react";
 import { useState } from "react";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
@@ -22,6 +22,8 @@ const KIND_LABEL: Record<ClipDTO["kind"], string> = {
   psa: "PSA",
   trailer: "Trailer",
   interstitial: "Interstitial",
+  political: "Political ad",
+  news: "News & weather",
 };
 
 // Keyed loosely because ClipDTO's audience includes "" (unset); the guard below skips it.
@@ -82,7 +84,7 @@ const ClipFrame = ({
 }: {
   // ⚠ `thumbImage` is REQUIRED here even though it is optional on ClipDTO. The frame exists only
   // when there is artwork to put in it, and stating that in the type is what lets this component
-  // hand the record straight to <Image> — the caller's `clip.thumbImage &&` guard is then the one
+  // hand the record straight to <ServedImage> — the caller's `clip.thumbImage &&` guard is then the one
   // place the absence is handled, rather than a narrowing TypeScript cannot carry across the
   // component boundary and a redundant re-check in here.
   clip: ClipDTO & { thumbImage: NonNullable<ClipDTO["thumbImage"]> };
@@ -121,7 +123,7 @@ const ClipFrame = ({
     <div
       // The frame bleeds to the card's edge, so its negative margin is the card's padding.
       className={cn(
-        "group relative aspect-video overflow-hidden rounded-t-[inherit] bg-static-800",
+        "group bg-static-800 relative aspect-video overflow-hidden rounded-t-[inherit]",
         compact ? "-mx-2 -mt-2" : "-mx-3 -mt-3",
       )}
       onMouseEnter={() => setHovered(true)}
@@ -139,14 +141,9 @@ const ClipFrame = ({
           would have a screen reader announce the same clip twice. The frame is decoration for a
           label that is already present.
 
-          No `priority`: a catalog is hundreds of cards, and <Image> defaults to lazy + async,
-          which is exactly right below the fold. */}
-      <Image
-        image={clip.thumbImage}
-        alt=""
-        sizes="(max-width: 640px) 45vw, 220px"
-        className="size-full object-cover"
-      />
+          No `priority`: a catalog is hundreds of cards, and <ServedImage> defaults to lazy +
+          async, which is exactly right below the fold. */}
+      <ServedImage image={clip.thumbImage} alt="" sizes="(max-width: 640px) 45vw, 220px" />
       {/* The animation, stacked ON the still rather than replacing its src. Swapping the src
           would blank the box for as long as the webp took to arrive — a flash of empty card on
           every hover — and would lose the still if the preview 404'd. Layering means the still is
@@ -160,20 +157,21 @@ const ClipFrame = ({
         //
         // The animation is ONE rendition and skips the ladder (§22 `animated`), so `sizes` is
         // nominal here — it is the still beneath that does the responsive work.
-        <Image
-          image={clip.hoverImage}
-          alt=""
-          sizes="(max-width: 640px) 45vw, 220px"
-          className="absolute inset-0 size-full object-cover"
-          fallback={null}
-        />
+        <span className="absolute inset-0">
+          <ServedImage
+            image={clip.hoverImage}
+            alt=""
+            sizes="(max-width: 640px) 45vw, 220px"
+            fallback={null}
+          />
+        </span>
       )}
 
       {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
           top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the frame
           — a thumbnail is arbitrary video, so text with no backing plate has NO guaranteed
           contrast against it. That is a legibility rule, not a style choice. */}
-      <span className="absolute right-1.5 bottom-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100 tabular-nums">
+      <span className="bg-static-900/80 text-2xs text-static-100 absolute right-1.5 bottom-1.5 rounded px-1.5 py-0.5 font-mono tabular-nums">
         {formatClipDuration(clip.durationMs)}
       </span>
       {clip.quality && !compact && (
@@ -183,7 +181,7 @@ const ClipFrame = ({
         // as letter-spaced shouting, which is the whole reason the label exists.
         <span
           role="img"
-          className="absolute top-1.5 right-1.5 rounded bg-static-900/80 px-1.5 py-0.5 font-mono text-2xs text-static-100"
+          className="bg-static-900/80 text-2xs text-static-100 absolute top-1.5 right-1.5 rounded px-1.5 py-0.5 font-mono"
           title="Resolution, from the clip's video height"
           aria-label={`Resolution ${clip.quality}`}
         >
@@ -224,8 +222,8 @@ const ClipFrame = ({
             aria-label={`Preview ${clip.name}`}
             title={`Preview ${clip.name}`}
             className={cn(
-              "pointer-events-auto h-full w-full rounded-none bg-transparent text-static-950 hover:bg-transparent",
-              "focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100",
+              "text-static-950 pointer-events-auto h-full w-full rounded-none bg-transparent hover:bg-transparent",
+              "group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100",
               // Visible focus ring against arbitrary video underneath.
               "focus-visible:ring-static-100 focus-visible:ring-offset-0",
             )}
@@ -233,7 +231,7 @@ const ClipFrame = ({
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
-            <span className="flex size-11 items-center justify-center rounded-full bg-signal/90 opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+            <span className="bg-signal/90 flex size-11 items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
               <Play className="ml-0.5 size-5 fill-current" aria-hidden />
             </span>
           </Button>
@@ -251,7 +249,6 @@ const ClipCard = ({
   selected,
   onToggleSelect,
   compact,
-  className,
 }: ClipCardProps) => {
   // Ready is the default and wears no chip (#1817, decided on #1908): a healthy library of a
   // thousand clips shouldn't carry a thousand amber badges. Only a clip that is NOT ready names
@@ -263,13 +260,10 @@ const ClipCard = ({
   const needsDetailsChip = !exception && clip.needsDetails ? <NeedsDetailsChip /> : null;
   return (
     <Card
-      className={cn(
-        "flex flex-col",
-        compact ? "gap-1.5 p-2" : "gap-2.5 p-3",
-        // Selection is neutral (#1909): amber is for focus and the primary action.
-        selected && "ring-1 ring-foreground",
-        className,
-      )}
+      // Selection is neutral (#1909): amber is for focus and the primary action.
+      className={cn(selected && "ring-foreground ring-1")}
+      gap={compact ? 6 : 10}
+      padding={compact ? 8 : 12}
     >
       {clip.thumbImage ? (
         <ClipFrame
@@ -297,7 +291,7 @@ const ClipCard = ({
             // `-my-0.5 py-0.5`: a 24 px tap area for a 20 px line, drawn where it was (#1785). The
             // shared `data-touch-target` box can't be used here: `truncate` clips it.
             className={cn(
-              "-my-0.5 min-w-0 flex-1 truncate rounded-sm py-0.5 text-left font-medium hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "hover:text-signal focus-visible:ring-ring -my-0.5 min-w-0 flex-1 truncate rounded-sm py-0.5 text-left font-medium focus-visible:ring-2 focus-visible:outline-none",
               compact ? "text-[13px]" : "text-sm",
             )}
           >
@@ -309,7 +303,7 @@ const ClipCard = ({
           </p>
         )}
         {!clip.thumbImage ? (
-          <span className="shrink-0 font-mono text-muted-foreground text-xs tabular-nums">
+          <span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
             {formatClipDuration(clip.durationMs)}
           </span>
         ) : null}
@@ -318,7 +312,7 @@ const ClipCard = ({
         (exceptionChip || needsDetailsChip) && <div className="flex">{exceptionChip ?? needsDetailsChip}</div>
       ) : (
         <>
-          {clip.brand ? <p className="truncate text-muted-foreground text-xs">{clip.brand}</p> : null}
+          {clip.brand ? <p className="text-muted-foreground truncate text-xs">{clip.brand}</p> : null}
           <div className="flex flex-wrap gap-1.5">
             {exceptionChip}
             {clip.kind !== "unclassified" ? <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge> : null}

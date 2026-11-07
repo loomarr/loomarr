@@ -41,8 +41,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make doctor` |  | verify toolchain and Docker readiness; report worktrees, ports, caches, and artifacts |
 | `make agent-harness-test` | ✅ | regression-test coordination, worktree isolation, and shared-output claims <br>*runs:* `agent-assets-verify` |
 | `make agent-assets-verify` |  | verify the curated skill catalog and agent adapters agree |
-| `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
-| `make release-verify` |  | verify release, CI acquisition, Android, and publication policy |
+| `make compose-verify` | ✅ | verify Traefik, database wiring, and pinned release images |
+| `make release-verify` | ✅ | verify release, CI acquisition, Android, and publication policy |
 | `make release-notes-preview` |  | generate validated release notes (TAG required; optional PREVIOUS_TAG and OUTPUT) |
 | `make docs-release-gate` |  | fail a release whose user-facing changes have no docs change (TAG, PREVIOUS_TAG required; run after release-notes-preview, #1682) |
 | `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
@@ -66,23 +66,23 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
 | `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
 | `make fmt` | ✅ | gofmt -l (fails if any file needs formatting) |
-| `make shellcheck` |  | shellcheck every repository shell script |
-| `make privacy-verify` |  | captured private fixture literals and real media titles must not re-enter the tracked tree <br>*runs:* `demo-titles-verify` |
-| `make vet` |  | go vet |
+| `make shellcheck` | ✅ | shellcheck every repository shell script |
+| `make privacy-verify` | ✅ | captured private fixture literals and real media titles must not re-enter the tracked tree <br>*runs:* `demo-titles-verify` |
+| `make vet` | ✅ | go vet |
 | `make platform-vet` |  | go vet the opposite Linux/macOS target to catch platform-only compile drift |
-| `make vet-tags` |  | go vet over custom-tagged sources |
-| `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
-| `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
+| `make vet-tags` | ✅ | go vet over custom-tagged sources |
+| `make tags-verify` | ✅ | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
+| `make lint` | ✅ | golangci-lint v2 (run via `go run` so no global install needed) |
 | `make vuln` | ✅ | govulncheck: known vulnerabilities reachable from Loomarr code, stdlib included |
 | `make deadcode` |  | functions no ./cmd binary reaches, per package (report only; not a PR gate) |
 | `make deadcode-baseline` |  | rewrite the committed deadcode baseline the monthly report compares against |
 | `make test` | ✅ | unit tests; unsharded runs include Rust worker and eval contracts (never network — §19) |
 | `make go-shard-verify` | ✅ | Go test lanes must cover every package within their latency and balance budgets |
 | `make go-race-weights` |  | regenerate the race-lane package weights from hosted merge-group runs (RUNS="run-id ...") |
-| `make go-race-verify` |  | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
+| `make go-race-verify` | ✅ | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
 | `make test-ffmpeg` | ✅ | media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification) |
 | `make research-verify` |  | compile the archived filler research module against its pinned core (all build tags; not a CI gate) |
-| `make eval-contract` |  | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |
+| `make eval-contract` | ✅ | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |
 | `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
 | `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |
 | `make eval-planner-cert` |  | compare one model against the frozen planner corpus; explicit, inference-spending, non-CI |
@@ -154,17 +154,23 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make image-bench` | ✅ | benchmark release-worker AVIF ladders; optional IMAGE_BENCH_RUNS/ROLES/REPORT <br>*runs:* `rust-build` |
 | `make playout-bench-corpus` |  | generate the playout-bench corpus cache (keyed by recipe hash); run OUTSIDE any shared lock, then make playout-bench |
 | `make playout-bench` | ✅ | run the cross-hardware playout bench on this host; PLAYOUT_BENCH_FAMILY/THRESHOLDS/HEIGHT/ACCEPT=1 (docs/contributing/playout-bench.md) |
+| `make filler-encode-bench` |  | VMAF-measure filler derivative encode levels for one hardware family; FILLER_ENCODE_BENCH_MASTERS/LEVELS required, optional FAMILY/LIMIT/FFMPEG/VMAF_THREADS (docs/design/filler-pipeline.md) |
 | `make image-parallelism-bench` | ✅ | compare AVIF process/thread shapes at 2/4/8 CPUs (opt-in, Linux) <br>*runs:* `rust-build` |
 | `make dev` |  | dev compose stack (external deps: tunarr-dev; portable Mac/Linux, CPU transcode) |
 | `make observability-dev` |  | seed SQLite if needed, then start isolated local Prometheus + Grafana |
 | `make observability-dev-down` |  | stop this worktree's local observability stack (preserves its data) |
 | `make observability-dev-test` |  | prove seeded Loomarr metrics and Grafana provisioning over real Docker + HTTP |
+| `make db-view` |  | browse a copy of a database in CloudBeaver until Ctrl-C (FILE=backup.db, URL=postgres://…, ENGINE=postgres) |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
 | `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
 | `make rust-dev-build` |  | build the required Rust worker for local development |
 | `make dev-gpu` |  | dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit) |
 | `make dev-fe` |  | frontend with HMR on this worktree's isolated port, proxying its backend |
 | `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
+| `make demo-site` |  | run the demo site from an image: VERSION=<release>, or LOOMARR_IMAGE=<image built from this checkout> |
+| `make demo-site-down` |  | stop the demo site and delete its data |
+| `make migration-rehearsal` |  | boot IMAGE on a copy of the backup in BACKUP, with no network; run it where the backup lives |
+| `make hardware-gate` |  | has COMMIT passed the playout bench on Intel and NVIDIA? |
 | `make demo-library` |  | serve the demo library's Emby-compatible stand-in (generates its clips and art on first run) |
 | `make demo-titles-verify` |  | no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, whenever ci-impact sees a scanned path) |
 | `make demo-seed` |  | point this worktree's backend at the running demo library and create the demo channels (idempotent) |
@@ -198,14 +204,15 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make config-docs` |  | generate docs/reference/settings.md from the settings registry |
+| `make settings-keys` |  | regenerate internal/settings/keys_gen.go (typed setting handles) from the registry |
 | `make config-docs-verify` | ✅ | regenerated config docs must match committed (CI red on drift) <br>*runs:* `config-docs` |
 
 ## Architecture map (docs/design/package-map.md)
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make arch-docs` |  | regenerate the package map in docs/design/package-map.md from the code |
-| `make arch-docs-verify` | ✅ | regenerated package map must match committed (CI red on drift) <br>*runs:* `arch-docs` |
+| `make arch-docs` |  | regenerate the package map and its area pages in docs/design/ from the code |
+| `make arch-docs-verify` | ✅ | regenerated package map and area pages must match committed (CI red on drift) <br>*runs:* `arch-docs` |
 
 ## Dev docs (the command contract)
 
@@ -231,7 +238,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make fe-install` | ✅ | install the web workspace (pnpm) |
-| `make fe-tokens` |  | regenerate design-token artifacts from packages/tokens (CI diff must be empty) |
+| `make fe-tokens` |  | regenerate the web theme stylesheet from the design-system tokens (CI diff must be empty) |
 | `make fe-tokens-verify` | ✅ | regenerated token artifacts must match committed <br>*runs:* `fe-tokens` |
 | `make brand-assets` |  | regenerate favicon, launcher, TV, and store artwork from the shared brand contract |
 | `make brand-assets-verify` |  | verify every platform brand derivative matches the shared brand contract |
@@ -240,8 +247,14 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make fe-lint` |  | Biome lint + format check, import and boundary gates (web/; needs codegen first) |
 | `make knip` |  | unused files, exports and dependencies in web/ (config: web/knip.ts) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
-| `make fe` | ✅ | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery |
-| `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `brand-assets-verify` `knip` |
+| `make fe` |  | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery <br>*runs:* `fe-checks` `fe-packages` `fe-unit` |
+| `make fe-checks` | ✅ | everything in fe except the tests: biome, knip, typecheck, SPA, storybook <br>*runs:* `fe-codegen` |
+| `make fe-packages` | ✅ | unit tests of the packages the web app uses, after codegen <br>*runs:* `fe-codegen` |
+| `make fe-unit` | ✅ | web unit tests after codegen (FE_SHARD=n/m runs one shard) <br>*runs:* `fe-codegen` |
+| `make clients` |  | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `clients-checks` `clients-tests` `clients-bundles` |
+| `make clients-checks` | ✅ | everything in clients except the mobile and TV tests and bundles <br>*runs:* `brand-assets-verify` `knip` |
+| `make clients-tests` | ✅ | typecheck and test the mobile and TV clients and the packages they use (CLIENTS_APP=mobile|tv for one) <br>*runs:* `fe-codegen` |
+| `make clients-bundles` | ✅ | bundle the mobile and TV clients for Android, iOS, and their TV platforms (CLIENTS_APP=mobile|tv for one) <br>*runs:* `fe-codegen` |
 | `make client-android-debug` | ✅ | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload` |  | build and inspect a signed permanent-identity Shield APK (SHIELD_VERSION=x.y.z) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload-test` |  | build with an ephemeral key, then clean-install and launch on the TV emulator <br>*runs:* `fe-api-codegen` |
@@ -277,7 +290,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-api-codegen` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual-update` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vuln`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `rust-check` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

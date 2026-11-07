@@ -133,11 +133,11 @@ const ProposalReview = ({
         <div className="min-w-0">
           {showWorkflowHeading ? (
             <>
-              <h2 className="font-semibold text-lg">Review your channel</h2>
-              <p className="mt-1 font-medium text-base">{proposal.channelName || "Your new channel"}</p>
+              <h2 className="text-lg font-semibold">Review your channel</h2>
+              <p className="mt-1 text-base font-medium">{proposal.channelName || "Your new channel"}</p>
             </>
           ) : (
-            <h2 className="font-semibold text-lg">{proposal.channelName || "Your new channel"}</h2>
+            <h2 className="text-lg font-semibold">{proposal.channelName || "Your new channel"}</h2>
           )}
         </div>
         {statusDisplay && <Badge variant={statusDisplay.variant}>{statusDisplay.label}</Badge>}
@@ -145,7 +145,7 @@ const ProposalReview = ({
 
       {editingBrief ? (
         <form
-          className="flex flex-col gap-3 rounded-lg border border-suggest/40 bg-suggest/5 p-4"
+          className="border-suggest/40 bg-suggest/5 flex flex-col gap-3 rounded-lg border p-4"
           onSubmit={(event) => {
             event.preventDefault();
             const description = brief.trim();
@@ -155,10 +155,10 @@ const ProposalReview = ({
           }}
         >
           <div>
-            <label htmlFor="proposal-brief" className="font-medium text-sm">
+            <label htmlFor="proposal-brief" className="text-sm font-medium">
               Update your brief
             </label>
-            <p className="mt-0.5 text-muted-foreground text-xs">
+            <p className="text-muted-foreground mt-0.5 text-xs">
               Loomarr will refresh its suggestions. Your title choices stay with the draft.
             </p>
           </div>
@@ -169,17 +169,17 @@ const ProposalReview = ({
             value={brief}
             disabled={controlsDisabled}
             onChange={(event) => setBrief(event.target.value)}
-            className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed shadow-sm focus-visible:border-suggest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-suggest"
+            className="border-input bg-background focus-visible:border-suggest focus-visible:ring-suggest w-full resize-none rounded-lg border px-3 py-2 text-sm leading-relaxed shadow-sm focus-visible:ring-2 focus-visible:outline-none"
           />
           {requestDetails.length > 0 && (
             <details className="text-sm">
-              <summary className="w-fit cursor-pointer text-muted-foreground">
+              <summary className="text-muted-foreground w-fit cursor-pointer">
                 Other request details ({requestDetails.length})
               </summary>
-              <dl className="mt-2 grid gap-x-4 gap-y-1.5 rounded-md bg-background/60 p-3 sm:grid-cols-[auto_1fr]">
+              <dl className="bg-background/60 mt-2 grid gap-x-4 gap-y-1.5 rounded-md p-3 sm:grid-cols-[auto_1fr]">
                 {requestDetails.map(([label, value]) => (
                   <div key={label} className="contents">
-                    <dt className="font-medium text-muted-foreground">{label}</dt>
+                    <dt className="text-muted-foreground font-medium">{label}</dt>
                     <dd>{value}</dd>
                   </div>
                 ))}
@@ -201,8 +201,8 @@ const ProposalReview = ({
           </div>
         </form>
       ) : (
-        <div className="flex flex-wrap items-start justify-between gap-3 border-border border-y py-3">
-          <p className="min-w-0 flex-1 text-muted-foreground text-sm">“{proposal.intent.description}”</p>
+        <div className="border-border flex flex-wrap items-start justify-between gap-3 border-y py-3">
+          <p className="text-muted-foreground min-w-0 flex-1 text-sm">“{proposal.intent.description}”</p>
           {actionable && onRevise && (
             <Button
               variant="ghost"
@@ -234,7 +234,7 @@ const ProposalReview = ({
       )}
 
       {revisionError && !revising && !findingMore && (
-        <p role="alert" className="rounded-md border border-onair/40 bg-onair/5 px-3 py-2 text-sm">
+        <p role="alert" className="border-onair/40 bg-onair/5 rounded-md border px-3 py-2 text-sm">
           We couldn't update the suggestions. Your current lineup is unchanged.
         </p>
       )}
@@ -274,9 +274,9 @@ const ProposalReview = ({
       />
 
       {actionable && onApprove && (
-        <footer className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-3 border-border border-t bg-card/95 px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:backdrop-blur-none">
+        <footer className="border-border bg-card/95 sticky bottom-0 z-10 -mx-4 flex flex-col gap-3 border-t px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:backdrop-blur-none">
           <div>
-            <p className="font-medium text-sm">
+            <p className="text-sm font-medium">
               {selectedCount === 0
                 ? "Choose at least one title"
                 : selectedMissing > 0
@@ -331,12 +331,12 @@ const ProposalReview = ({
       )}
 
       <details className="border-border border-t pt-3 text-sm">
-        <summary className="cursor-pointer font-medium text-muted-foreground">
+        <summary className="text-muted-foreground cursor-pointer font-medium">
           How these suggestions were chosen
         </summary>
-        <div className="mt-4 flex flex-col gap-5 text-muted-foreground">
+        <div className="text-muted-foreground mt-4 flex flex-col gap-5">
           <section aria-label="Why these titles" className="flex flex-col gap-2">
-            <h3 className="font-medium text-foreground">Why these titles</h3>
+            <h3 className="text-foreground font-medium">Why these titles</h3>
             {status === "partially-edited" ? (
               <p>You changed the title list. Check any titles you added against your brief.</p>
             ) : proposal.manual ? (
@@ -388,21 +388,21 @@ const ProposalReview = ({
                 </p>
                 {proposal.rationale && (
                   <section>
-                    <h3 className="mb-1 font-medium text-foreground">Suggestion summary</h3>
+                    <h3 className="text-foreground mb-1 font-medium">Suggestion summary</h3>
                     <p>{friendlyProposalRationale(proposal.rationale)}</p>
                   </section>
                 )}
                 {assessment && !assessmentPending && <ProposalOutlookDiagnostics assessment={assessment} />}
                 {proposal.trace?.candidates?.length ? (
                   <section aria-label="Titles considered">
-                    <h3 className="mb-2 font-medium text-foreground">Titles considered</h3>
-                    <ul className="flex flex-col divide-y divide-border">
+                    <h3 className="text-foreground mb-2 font-medium">Titles considered</h3>
+                    <ul className="divide-border flex flex-col divide-y">
                       {proposal.trace.candidates.map((candidate) => (
                         <li
                           key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
                           className="py-2"
                         >
-                          <p className="font-medium text-foreground">
+                          <p className="text-foreground font-medium">
                             {friendlyCandidateName(candidate.name)}
                           </p>
                           <p>{catalogDecision(candidate.disposition, candidate.reason)}</p>
@@ -411,7 +411,7 @@ const ProposalReview = ({
                     </ul>
                     <details className="mt-3">
                       <summary className="w-fit cursor-pointer text-xs">Raw search data</summary>
-                      <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs">
+                      <pre className="bg-muted mt-2 max-h-72 overflow-auto rounded-md p-3 text-xs">
                         {JSON.stringify(proposal.trace, null, 2)}
                       </pre>
                     </details>

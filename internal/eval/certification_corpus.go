@@ -15,18 +15,20 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
-const certificationManifestPath = "testdata/planner-certification-v17.json"
+const certificationManifestPath = "testdata/planner-certification-v18.json"
 
 //go:embed testdata/planner-certification-v1.json testdata/planner-certification-v2.json testdata/planner-certification-v3.json testdata/planner-certification-v4.json testdata/planner-certification-v5.json testdata/planner-certification-v6.json testdata/planner-certification-v7.json testdata/planner-certification-v8.json testdata/planner-certification-v9.json testdata/planner-certification-v10.json testdata/planner-certification-v6-base.json testdata/planner-certification-v8-base.json testdata/planner-catalog-v1.json testdata/planner-catalog-v2.json testdata/planner-catalog-v3.json testdata/planner-certification-v11.json testdata/planner-certification-v12.json testdata/planner-certification-v13.json testdata/planner-certification-v14.json testdata/planner-certification-v9-base.json testdata/planner-certification-v15.json
 //go:embed testdata/planner-certification-v16.json
 //go:embed testdata/planner-certification-v17.json
+//go:embed testdata/planner-certification-v18.json
 var certificationFiles embed.FS
 
 // CertificationCorpus is the immutable, held-out planner-model corpus contract.
@@ -670,7 +672,7 @@ type frozenCertificationScheduleMaterializer struct {
 	familyByName map[string]string
 }
 
-func (m frozenCertificationScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal suggest.Proposal) ([]MaterializedProgram, error) {
+func (m frozenCertificationScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal proposals.Proposal) ([]MaterializedProgram, error) {
 	fixtureID, ok := m.familyByName[c.Name]
 	if !ok {
 		return nil, fmt.Errorf("certification schedule case %q has no declared fixture binding", c.Name)
@@ -705,10 +707,10 @@ type embeddedCertificationGenerator struct {
 	caseByIntent map[string]string
 }
 
-func (g *embeddedCertificationGenerator) Suggest(ctx context.Context, intent suggest.Intent) (suggest.Proposal, error) {
+func (g *embeddedCertificationGenerator) Suggest(ctx context.Context, intent proposals.Intent) (proposals.Proposal, error) {
 	caseID, ok := g.caseByIntent[certificationIntentKey(intent.Description, intent.MustInclude)]
 	if !ok {
-		return suggest.Proposal{}, fmt.Errorf("Intent is absent from the embedded certification corpus")
+		return proposals.Proposal{}, fmt.Errorf("Intent is absent from the embedded certification corpus")
 	}
 	g.fixture.selectCase(caseID)
 	return g.inner.Suggest(ctx, intent)

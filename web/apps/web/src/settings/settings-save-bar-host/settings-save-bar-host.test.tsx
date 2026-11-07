@@ -49,7 +49,7 @@ const StageTwoEdits = () => {
         type="button"
         onClick={() => {
           setEdit("filler.home_country", "US");
-          setEdit("filler.home_market", "New York City");
+          setEdit("filler.home_place", "5128581");
         }}
       >
         Stage two edits
@@ -61,9 +61,15 @@ const StageTwoEdits = () => {
   );
 };
 
-const renderHost = ({ twoEdits = false }: { twoEdits?: boolean } = {}) =>
+const renderHost = ({
+  twoEdits = false,
+  client = new QueryClient(),
+}: {
+  twoEdits?: boolean;
+  client?: QueryClient;
+} = {}) =>
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <SettingsEditsProvider>
         {twoEdits ? <StageTwoEdits /> : <StageEdit />}
         <SettingsSaveBarHost />
@@ -107,13 +113,31 @@ describe("SettingsSaveBarHost", () => {
         data: {
           results: [
             { key: "filler.home_country", status: "saved" },
-            { key: "filler.home_market", status: "pinned" },
+            { key: "filler.home_place", status: "pinned" },
           ],
         },
       });
     });
 
     expect(screen.getByText("1 unsaved change")).toBeInTheDocument();
-    expect(screen.getByLabelText("Save results")).toHaveTextContent("filler.home_market:pinned");
+    expect(screen.getByLabelText("Save results")).toHaveTextContent("filler.home_place:pinned");
+  });
+
+  it("refetches every settings-derived read on save, including AI status", async () => {
+    const client = new QueryClient();
+    await client.prefetchQuery({ queryKey: ["/v1/system/llm"], queryFn: () => "status" });
+    await client.prefetchQuery({ queryKey: ["/v1/settings"], queryFn: () => "list" });
+    renderHost({ client });
+    await userEvent.click(screen.getByRole("button", { name: "Stage edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await act(async () => {
+      await mocks.onSuccess?.({
+        status: 200,
+        data: { results: [{ key: "guide.timezone", status: "saved" }] },
+      });
+    });
+
+    expect(client.getQueryState(["/v1/system/llm"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["/v1/settings"])?.isInvalidated).toBe(true);
   });
 });

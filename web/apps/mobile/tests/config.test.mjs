@@ -7,7 +7,12 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const { appleVersionFields } = createRequire(import.meta.url)("../app.config.cjs");
+
+// The installed SDK's catalog of native module versions, which expo-doctor also enforces.
+const bundledNativeModules = async () =>
+  JSON.parse(
+    await readFile(createRequire(import.meta.url).resolve("expo/bundledNativeModules.json"), "utf8"),
+  );
 
 const autolinkedNativeModules = async (platform) => {
   const autolinking = fileURLToPath(
@@ -32,9 +37,9 @@ const expoConfig = async (environment) => {
 
 const releaseEnvironment = (overrides) => ({
   ...process.env,
-  LOOMARR_IOS_RELEASE_CHANNEL: "testflight",
-  LOOMARR_IOS_VERSION: "0.2.0-beta.9",
-  LOOMARR_IOS_BUILD_NUMBER: "7",
+  LOOMARR_APPLE_RELEASE_CHANNEL: "testflight",
+  LOOMARR_APPLE_VERSION: "0.2.0-beta.9",
+  LOOMARR_APPLE_BUILD_NUMBER: "7",
   ...overrides,
 });
 
@@ -49,9 +54,9 @@ test("uses a prototype application identity", async () => {
 
 test("keeps the permanent identity unreachable outside the TestFlight build", async () => {
   const environment = { ...process.env };
-  delete environment.LOOMARR_IOS_RELEASE_CHANNEL;
-  delete environment.LOOMARR_IOS_VERSION;
-  delete environment.LOOMARR_IOS_BUILD_NUMBER;
+  delete environment.LOOMARR_APPLE_RELEASE_CHANNEL;
+  delete environment.LOOMARR_APPLE_VERSION;
+  delete environment.LOOMARR_APPLE_BUILD_NUMBER;
   const config = await expoConfig(environment);
 
   assert.equal(config.name, "Loomarr Mobile Prototype");
@@ -64,9 +69,9 @@ test("keeps the permanent identity unreachable outside the TestFlight build", as
 
 test("lets every build browse the local network for a server", async () => {
   const environment = { ...process.env };
-  delete environment.LOOMARR_IOS_RELEASE_CHANNEL;
-  delete environment.LOOMARR_IOS_VERSION;
-  delete environment.LOOMARR_IOS_BUILD_NUMBER;
+  delete environment.LOOMARR_APPLE_RELEASE_CHANNEL;
+  delete environment.LOOMARR_APPLE_VERSION;
+  delete environment.LOOMARR_APPLE_BUILD_NUMBER;
 
   for (const config of [await expoConfig(environment), await expoConfig(releaseEnvironment())]) {
     // Without NSBonjourServices iOS refuses the browse; without the description, the prompt.
@@ -119,34 +124,61 @@ test("resolves the TestFlight channel to the permanent iPhone identity", async (
   assert.match(config.android.package, /\.prototype$/);
 });
 
-test("maps release versions onto Apple's version grammar", () => {
-  assert.deepEqual(appleVersionFields("v0.2.0", "12"), { version: "0.2.0", buildNumber: "12" });
-  assert.deepEqual(appleVersionFields("1.10.3-rc.2", "300"), { version: "1.10.3", buildNumber: "300" });
-  // CFBundleShortVersionString is exactly three integers; the build is the CI run number, so a
-  // single positive integer without leading zeros.
-  assert.throws(() => appleVersionFields("0.2.0.1", "1"), /must be x\.y\.z/);
-  assert.throws(() => appleVersionFields("0.2.0", "007"), /positive integer/);
-  assert.throws(() => appleVersionFields("0.2.0", "1.2"), /positive integer/);
-});
-
 test("fails closed when a TestFlight build has an invalid channel or version metadata", async () => {
   await assert.rejects(
-    expoConfig(releaseEnvironment({ LOOMARR_IOS_RELEASE_CHANNEL: "appstore" })),
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_RELEASE_CHANNEL: "appstore" })),
     /channel must be testflight/,
   );
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_VERSION: "" })), /must be x\.y\.z/);
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_VERSION: "beta" })), /must be x\.y\.z/);
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_VERSION: "0.2" })), /must be x\.y\.z/);
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_BUILD_NUMBER: "" })), /positive integer/);
+  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_APPLE_VERSION: "" })), /must be x\.y\.z/);
+  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_APPLE_VERSION: "beta" })), /must be x\.y\.z/);
+  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_APPLE_VERSION: "0.2" })), /must be x\.y\.z/);
   await assert.rejects(
-    expoConfig(releaseEnvironment({ LOOMARR_IOS_BUILD_NUMBER: "seven" })),
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "" })),
     /positive integer/,
   );
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_BUILD_NUMBER: "0" })), /positive integer/);
   await assert.rejects(
-    expoConfig(releaseEnvironment({ LOOMARR_IOS_RELEASE_CHANNEL: "" })),
-    /requires LOOMARR_IOS_RELEASE_CHANNEL/,
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "seven" })),
+    /positive integer/,
   );
+  await assert.rejects(
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "0" })),
+    /positive integer/,
+  );
+  await assert.rejects(
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_RELEASE_CHANNEL: "" })),
+    /requires LOOMARR_APPLE_RELEASE_CHANNEL/,
+  );
+  await assert.rejects(
+    expoConfig(releaseEnvironment({ EXPO_PUBLIC_LOOMARR_CRASH_TEST: "1" })),
+    /must not set EXPO_PUBLIC_LOOMARR_CRASH_TEST/,
+  );
+});
+
+test("captures crashes for the paired server, with MetricKit linked into the iPhone app only", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(manifest.dependencies["@loomarr/crash-reports-native"], "workspace:*");
+  // The synchronous file API the fatal handler writes with; first-party Expo, at the version the SDK bundles.
+  assert.equal(
+    `~${manifest.dependencies["expo-file-system"]}`,
+    (await bundledNativeModules())["expo-file-system"],
+  );
+  assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/crash-reports-native"));
+  assert.equal((await autolinkedNativeModules("android")).has("@loomarr/crash-reports-native"), false);
+
+  // The shared bootstrap installs capture at module load, before the layout's first render.
+  const bootstrap = await readFile(new URL("../src/native-app.ts", import.meta.url), "utf8");
+  assert.match(bootstrap, /^const nativeApp = createNativeApp\(\);$/m);
+  const layout = await readFile(new URL("../app/_layout.tsx", import.meta.url), "utf8");
+  assert.match(layout, /<NativeAppRoot app=\{nativeApp\}>/);
+  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
+  assert.match(shell, /useCrashReportUpload\(credential, session\)/);
+  assert.match(shell, /diagnostics: nativeApp\.diagnostics/);
+  // The test trigger is gated on a bundle-time variable, never on a runtime value.
+  const capture = await readFile(
+    new URL("../../../packages/native-app/src/crash-reporting/crash-reporting.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(capture, /if \(process\.env\.EXPO_PUBLIC_LOOMARR_CRASH_TEST === "1" && /);
 });
 
 test("keeps unused animation modules out of Android without breaking Apple pods", async () => {
@@ -182,15 +214,17 @@ test("pauses the picture off Watching and forgets the pause before tuning from t
 test("builds the Expo modules core from source on iOS, against react-native-tvos", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
-  // The canary's precompiled ExpoModulesCore sizes React's ShadowNodeFamily 64 bytes smaller
-  // than react-native-tvos 0.86.2-0 does, so every Expo view overflowed the heap (#1816).
-  // Building it from source also builds every Expo pod that depends on it from source.
-  assert.ok(manifest.expo.autolinking.ios.buildFromSource.includes("expo-modules-core"));
+  // Expo's precompiled ExpoModulesCore is built against upstream React Native, not
+  // react-native-tvos. The SDK 58 canary's sized React's ShadowNodeFamily 64 bytes smaller than
+  // react-native-tvos did, so every Expo view overflowed the heap (#1816). Building it from
+  // source also builds every Expo pod that depends on it (expo-video included) from source.
+  assert.deepEqual(manifest.expo.autolinking.ios.buildFromSource, ["expo-modules-core"]);
 });
 
-test("pins the native modules the shared player imports to the expo version", async () => {
+test("pins the native modules the shared player imports to the versions the SDK bundles", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const bundled = await bundledNativeModules();
 
-  assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
-  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
+  assert.equal(`~${manifest.dependencies["expo-video"]}`, bundled["expo-video"]);
+  assert.equal(`~${manifest.dependencies["expo-crypto"]}`, bundled["expo-crypto"]);
 });

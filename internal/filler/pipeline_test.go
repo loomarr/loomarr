@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // --- doubles -----------------------------------------------------------------
@@ -44,20 +46,6 @@ func (m *pipeMemStore) HoldClips(_ context.Context, paths []string, _ time.Time)
 		}
 	}
 	m.held = append(m.held, paths...)
-	return n, nil
-}
-
-func (m *pipeMemStore) ReleaseCompositeHolds(_ context.Context, paths []string, _ time.Time) (int, error) {
-	n := 0
-	for _, p := range paths {
-		for hash, c := range m.clips {
-			if c.Path == p && c.IsComposite {
-				c.Held = false
-				m.clips[hash] = c
-				n++
-			}
-		}
-	}
 	return n, nil
 }
 
@@ -557,120 +545,6 @@ func TestPipeline_RetryFailureRefusesContentDecision(t *testing.T) {
 	}
 }
 
-func TestPipeline_DiagnosticRetryStatusDistinguishesAutomaticFromManualRecovery(t *testing.T) {
-	st := newPipeMemStore()
-	seedEnrolled(st, "scheduled")
-	now := time.Unix(1_800_000_000, 0).UTC()
-	row := st.rows["scheduled"]
-	row.Stage, row.Status = filler.StageVision, filler.StatusFailed
-	row.NextRun = now.Add(30 * time.Minute)
-	st.rows[row.ClipHash] = row
-	p := newPipe(st, nil, filler.DefaultBudget())
-
-	status, err := p.DiagnosticRetryStatus(context.Background(), row.ClipHash)
-	if err != nil || !status.Automatic || !status.RetryAt.Equal(row.NextRun) {
-		t.Fatalf("scheduled diagnostic retry = %+v, %v", status, err)
-	}
-
-	row.Disposition, row.Stage = filler.DispositionRejected, filler.StageTranscode
-	row.RejectReason = filler.ReasonUnplayable
-	st.rows[row.ClipHash] = row
-	status, err = p.DiagnosticRetryStatus(context.Background(), row.ClipHash)
-	if err != nil || status.Automatic || !status.RetryAt.IsZero() {
-		t.Fatalf("manual diagnostic retry = %+v, %v", status, err)
-	}
-}
-
-func TestPipeline_RequeuesFiledLegacyMezzanineForQualityWithoutSpendingPastBudget(t *testing.T) {
-	dir := t.TempDir()
-	st := newPipeMemStore()
-	hash := "legacy-quality"
-	path := "aa/bb/legacy.mp4"
-	full := filepath.Join(dir, filepath.FromSlash(path))
-	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(full, []byte("mezzanine"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := filler.WriteSidecarTags(full, filler.SidecarTags{
-		Mezzanine: "h264-crf20-aac192",
-	}, false); err != nil {
-		t.Fatal(err)
-	}
-	st.put(filler.StoreClip{Clip: filler.Clip{Hash: hash, Path: path, Name: "Legacy advert"}})
-	st.rows[hash] = filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone,
-		Disposition: filler.DispositionReady,
-		Stages:      []filler.StageRecord{{Stage: filler.StageProbe, Status: filler.StatusDone}},
-	}
-	transcode := stage(filler.StageTranscode)
-	transcode.cost = filler.CostTranscode
-	p := newPipe(st, []filler.Stage{transcode}, filler.Budget{
-		MaxTranscodes: func() int { return 0 },
-	}).WithRewind(st, dir)
-
-	res, err := p.RunOnce(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	row := st.rows[hash]
-	if res.Requeued != 1 || row.Stage != filler.StageTranscode || row.Disposition != filler.DispositionRunning {
-		t.Fatalf("result/row = %+v / %+v, want queued quality backfill", res, row)
-	}
-	if transcode.runs != 0 {
-		t.Error("quality backfill ignored the transcode budget")
-	}
-}
-
-func TestPipeline_RepairsCompletedCompositeHeldByOlderConfirm(t *testing.T) {
-	st := newPipeMemStore()
-	const hash = "legacy-confirmed-reel"
-	st.put(filler.StoreClip{Clip: filler.Clip{
-		Hash: hash, Path: "reels/legacy-confirmed.mp4", Name: "Legacy confirmed reel",
-		IsComposite: true, Held: true,
-	}})
-	st.rows[hash] = filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
-		Disposition: filler.DispositionComplete,
-	}
-
-	res, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Repaired != 1 {
-		t.Fatalf("pipeline reported %d repaired composites, want 1", res.Repaired)
-	}
-	if got := st.clips[hash]; got.Held {
-		t.Fatalf("completed composite remains held after compatibility pass: %+v", got)
-	}
-}
-
-func TestPipeline_DoesNotReleaseCompositeWithSplitProposalStillWaiting(t *testing.T) {
-	st := newPipeMemStore()
-	const hash = "partly-confirmed-reel"
-	st.put(filler.StoreClip{Clip: filler.Clip{
-		Hash: hash, Path: "reels/partly-confirmed.mp4", Name: "Partly confirmed reel",
-		IsComposite: true, Held: true,
-	}})
-	st.rows[hash] = filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageSplit, Status: filler.StatusDone,
-		Disposition: filler.DispositionComplete,
-	}
-	st.proposals = []filler.SplitProposal{{
-		ID: "proposal-with-leftovers", ClipHash: hash,
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
-	}}
-
-	if _, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "").RunOnce(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if got := st.clips[hash]; !got.Held {
-		t.Fatalf("composite with a pending split proposal was filed: %+v", got)
-	}
-}
-
 func TestPipeline_DoesNotFileCompositeStillWaitingForDecision(t *testing.T) {
 	st := newPipeMemStore()
 	const hash = "review-reel"
@@ -909,6 +783,64 @@ func TestPipeline_FatalFailureRejects(t *testing.T) {
 	// ⚠ The fatal branch had the SAME omission as the verdict paths, one function away: it records
 	// the rung `failed` and sets the disposition, and left Status at `running`.
 	assertRowAgreesWithItsLadder(t, row)
+}
+
+// ⚠ **No room is not a broken file** (#2031). A household install had 33 of 35 `unplayable`
+// rejections caused by `reserve transcode storage (library_limit)`: the storage governor refused
+// the work MaxAttempts times and the fatal transcode rung rejected a good clip. However many passes
+// the governor refuses, the clip must stay on the conveyor, spend no attempt, and say why it waits.
+//
+// Both doors are covered: the lease refused before the encode starts, and the write monitor pausing
+// an encode that outgrew its lease.
+func TestPipeline_AStorageHoldNeverRejectsTheClip(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		reason storagegovernor.Reason
+		op     string
+	}{
+		{"reserve refused", storagegovernor.ReasonLibraryLimit, "reserve transcode storage"},
+		{"write outgrew its lease", storagegovernor.ReasonHostReserve, "storage write paused"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newPipeMemStore()
+			seedEnrolled(st, "c1")
+			row := st.rows["c1"]
+			row.Stage = filler.StageTranscode
+			st.rows["c1"] = row
+			stages := allStages()
+			stages[filler.StageTranscode].err = fmt.Errorf("transcode: %w", storagegovernor.Pause(tc.op,
+				storagegovernor.Decision{Snapshot: storagegovernor.Snapshot{Reason: tc.reason}}))
+
+			at := time.Unix(1_800_000_000, 0).UTC()
+			p := newPipe(st, asSlice(stages), filler.DefaultBudget())
+			for i := 0; i < filler.MaxAttempts+2; i++ {
+				if err := p.Advance(context.Background(), "c1"); err != nil && !errors.Is(err, filler.ErrDeferred) {
+					t.Fatal(err)
+				}
+				// Space frees on a cleanup, not within a pass: the clip must not ask again at once.
+				if wait := st.rows["c1"].NextRun.Sub(at); wait < 10*time.Minute {
+					t.Fatalf("pass %d: held clip due again in %v, want it to wait for space", i, wait)
+				}
+				st.rows["c1"] = resetSchedule(st.rows["c1"])
+			}
+
+			got := st.rows["c1"]
+			if got.Disposition != filler.DispositionRunning || got.RejectReason != "" {
+				t.Fatalf("storage-held clip = %q / %q, want still running and unrejected", got.Disposition, got.RejectReason)
+			}
+			if got.Stage != filler.StageTranscode || got.Status != filler.StatusQueued || got.Attempts != 0 {
+				t.Fatalf("storage-held row = %q/%q attempts=%d, want transcode/queued with no attempt spent",
+					got.Stage, got.Status, got.Attempts)
+			}
+			if !st.clips["c1"].RemovedAt.IsZero() {
+				t.Fatal("a storage hold tombstoned the clip")
+			}
+			last := got.Stages[len(got.Stages)-1]
+			if last.Stage != filler.StageTranscode || !strings.Contains(last.Note, string(tc.reason)) {
+				t.Fatalf("ladder note = %+v, want the transcode rung to say it is waiting for storage", last)
+			}
+		})
+	}
 }
 
 // A failure short of the retry limit BACKS OFF rather than resolving — it stays on the same stage,

@@ -59,6 +59,10 @@ classify() {
     cmd/seed/*|cmd/demo-library/*|internal/demolibrary/*|web/*.stories.tsx|web/apps/web/tests/e2e/mock-backend.ts|web/scripts/tv-emulator-fixture-server.mjs)
       select_gate contracts
       ;;
+    # inventedGoFixtures: Go test fixtures written as invented data.
+    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/*|internal/metadataprovider/nfo/testdata/*)
+      select_gate contracts
+      ;;
     web/packages/fixtures/src/*)
       [[ "$path" == *.test.* ]] || select_gate contracts
       ;;
@@ -210,6 +214,20 @@ classify() {
       select_gate expo_android_tv
       select_gate android
       ;;
+    web/packages/crash-reports-native/*)
+      # Phone apps only; the pod links into iOS, and the Android phone bundles its JavaScript.
+      known=true
+      select_gate clients
+      select_gate apple_mobile
+      select_gate expo_android_mobile
+      ;;
+    web/packages/native-app/*|web/packages/paired-client/*)
+      # The bootstrap and the paired runtime both native apps call: every native client builds them.
+      known=true
+      select_gate clients
+      select_all_native_clients
+      select_gate android
+      ;;
     web/packages/design-system/*|web/packages/ui/*|web/packages/ui-tv/*)
       known=true
       select_gate clients
@@ -218,6 +236,15 @@ classify() {
       # directly. Their output is therefore part of the committed visual contract.
       select_gate visual
       select_gate android
+      case "$path" in
+        web/packages/design-system/src/tokens/*|web/packages/design-system/web-theme.ts|web/packages/design-system/generated/*|web/packages/design-system/scripts/*)
+          # The web theme tokens generate the production stylesheet (generated/theme.css) that the web
+          # build, its token drift check and the real tuner SPA build consume.
+          select_gate web
+          select_gate image
+          select_gate tuner
+          ;;
+      esac
       ;;
     web/packages/fixtures/src/testcard/*)
       # Test-card filler/guide data is imported only by browser stories and tests. It
@@ -279,12 +306,20 @@ classify() {
       select_gate apple_mobile
       select_gate apple_tv
       ;;
-    web/scripts/build-ios-testflight.sh|web/scripts/build-ios-testflight.test.sh)
-      # The release script runs only in the main-only ios-testflight workflow, which also reads this
-      # classifier's apple_mobile decision; its test runs in release-verify, which the contracts
-      # gate owns.
+    web/scripts/build-apple-testflight.sh|web/scripts/build-apple-testflight.test.sh)
+      # The release script runs only in the main-only apple-testflight workflow, which also reads
+      # this classifier's apple_mobile and apple_tv decisions; its test runs in release-verify,
+      # which the contracts gate owns.
       known=true
       select_gate contracts
+      ;;
+    web/scripts/apple-testflight-config.cjs|web/scripts/apple-testflight-config.test.cjs)
+      # Both Apple app configs read the release identity from here, so a change uploads both apps.
+      # Its test runs in `imports:check`, which the clients gate owns.
+      known=true
+      select_gate clients
+      select_gate apple_mobile
+      select_gate apple_tv
       ;;
     web/scripts/build-android-client.sh|web/scripts/with-memory-safe-android-build.cjs|web/scripts/with-memory-safe-android-build.test.cjs)
       known=true
@@ -346,14 +381,8 @@ classify() {
           ;;
       esac
       case "$path" in
-        web/packages/tokens/*|web/apps/web/public/*|web/apps/web/tests/visual/*|*.stories.ts|*.stories.tsx|*.snap|*.css)
+        web/apps/web/public/*|web/apps/web/tests/visual/*|*.stories.ts|*.stories.tsx|*.snap|*.css)
           select_gate visual
-          ;;
-      esac
-      case "$path" in
-        web/packages/tokens/*)
-          # Tokens feed the production stylesheet consumed by the real tuner SPA build.
-          select_gate tuner
           ;;
       esac
       case "$path" in
@@ -362,7 +391,7 @@ classify() {
           ;;
       esac
       case "$path" in
-        web/apps/web/tests/e2e/tuner-*|web/apps/web/src/channels/channel-watch/*|web/apps/web/src/channels/guide-*|web/apps/web/src/channels/tuner-*|web/apps/web/src/channels/use-channel-tuner/*|web/apps/web/src/channels/use-hls-player/*)
+        web/apps/web/tests/e2e/tuner-*|web/apps/web/src/channels/channel-watch/*|web/apps/web/src/channels/guide-*|web/apps/web/src/channels/tuner-*|web/apps/web/src/channels/use-watch-player/*)
           select_gate tuner
           ;;
       esac
@@ -483,7 +512,7 @@ classify() {
       select_gate go
       select_gate go_full
       ;;
-    internal/fillereval/corpus/*)
+    internal/filler/eval/corpus/*)
       known=true
       select_gate contracts
       select_gate go
@@ -493,12 +522,12 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/recommend/testdata/*)
+    internal/channels/recommend/testdata/*)
       known=true
       select_gate contracts
       select_gate go
       ;;
-    internal/plannerreference/testdata/*)
+    internal/proposals/plannerreference/testdata/*)
       known=true
       select_gate contracts
       select_gate go
@@ -508,13 +537,36 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/installationlocation/*.gz|internal/installationlocation/*.json)
+    internal/media/defects/corpus/*)
+      # The defect floor's labelled synthetic corpus (#2034), embedded by corpus.go. The image
+      # gate runs `make test-ffmpeg`, the only job that renders and scores it.
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate image
+      ;;
+    internal/filler/location/*.gz|internal/filler/location/*.json)
       # Generated runtime indexes are embedded by data.go. They can change location
       # behavior and the production image, but they are not inputs to any native client.
       known=true
       select_gate contracts
       select_gate go
       select_gate image
+      ;;
+    internal/filler/station/*.gz|internal/filler/station/*.json)
+      # The generated station seed is embedded by seed.go and applied by every store open,
+      # so it reaches the Postgres store suite as well as the image.
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate postgres
+      select_gate image
+      ;;
+    cmd/station-data/*.rq|cmd/station-data/*.tsv)
+      # Generator inputs only: a change matters once `go generate` rewrites the seed above.
+      known=true
+      select_gate contracts
+      select_gate go
       ;;
     internal/watermark/fonts/*)
       # The Plate bug's typeface and its licence, embedded by render.go. They change the rendered
@@ -537,6 +589,13 @@ classify() {
       # instead of falling through to the generic Go-package fixture rule.
       known=true
       select_gate policy
+      ;;
+    internal/filler/curated/*)
+      # The curated sources list (#2035) is embedded in the filler package and read at boot; the
+      # scheduled curated-sources workflow checks it against the live providers.
+      known=true
+      select_gate contracts
+      select_gate go
       ;;
     internal/*/testdata/*)
       # Go package fixtures belong to their owning package's tests. Treating a new fixture
@@ -565,6 +624,8 @@ classify() {
         scripts/agent*|scripts/changed-paths*|scripts/go-direct-impact*|scripts/test-affected*) select_gate agent; select_gate policy ;;
         scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
         scripts/ci-ffmpeg.sh|scripts/go-mod-download.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
+        # Rewrites the FFmpeg pin evidence that internal/releaseverify (contracts) verifies.
+        scripts/ffmpeg-pin-refresh.sh) select_gate contracts; select_gate policy ;;
         scripts/go-certification-lanes.tsv|scripts/go-race-policy.sh|scripts/go-race-weights.tsv|scripts/go-shard.sh|scripts/go-test-lane.sh|scripts/go-test-packages.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         scripts/tuner-args*|scripts/flake-quarantine*) select_gate tuner; select_gate policy ;;
@@ -572,7 +633,7 @@ classify() {
         # Selection policy is control-plane code. Product gates validate files they consume;
         # the always-on policy job independently validates this classifier and its fixtures.
         scripts/ci-impact.sh) select_gate policy ;;
-        scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/testdata/ci-*) select_gate policy ;;
+        scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/ci-merge-gate*|scripts/ci-assurance-alert*|scripts/testdata/ci-*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
         # Local-only dev watchers; the agent gate runs their tests and shellcheck.
         scripts/dev/*) select_gate agent ;;
@@ -600,6 +661,8 @@ classify() {
         scripts/check-compose.sh) select_gate contracts ;;
         scripts/check-release-image-absence.sh) select_gate contracts ;;
         scripts/check-retired.sh) select_gate contracts ;;
+        # Run by the curated-sources workflow against live providers; contracts shellchecks it.
+        scripts/check-curated-sources.sh) select_gate contracts ;;
         # The docs gate's inline-path check (ci-docs.yml, `make docs-lint-paths`) and its allowlist.
         scripts/check-doc-paths*) select_gate docs ;;
         # The docs screenshot capture (`make docs-capture`) is a manual operator helper; no gate
@@ -615,7 +678,13 @@ classify() {
         scripts/merge-release-digests.sh) select_gate contracts ;;
         scripts/observability-dev-runtime-test.sh) select_gate contracts ;;
         scripts/observability-dev-test.sh) select_gate contracts ;;
+        scripts/demo-site.sh|scripts/staging.sh|scripts/staging-test.sh|scripts/check-hardware-gate.sh|scripts/check-hardware-gate-test.sh) select_gate contracts ;;
+        # A glob, because release verification reads a literal path here as a command CI may run,
+        # and this one runs a container on a household backup. Only a maintainer runs it.
+        scripts/migration-rehearsal.*) select_gate contracts ;;
         scripts/observability-dev.sh) select_gate contracts ;;
+        # make db-view, run by hand; compose-verify renders its Compose file.
+        scripts/db-view.sh) select_gate contracts ;;
         scripts/publish-release-image.sh) select_gate contracts ;;
         scripts/smoke.sh) select_gate contracts ;;
         scripts/verify-observability.sh) select_gate contracts ;;
@@ -706,7 +775,7 @@ classify() {
       known=true
       select_all
       ;;
-    .github/workflows/ci.yml)
+    .github/workflows/ci.yml|.github/workflows/merge-gate.yml)
       known=true
       select_gate policy
       ;;
@@ -802,7 +871,7 @@ classify() {
     # Workflows whose product checks run elsewhere (release, maintenance, reporting, cache
     # housekeeping). There is no .github/workflows/* catch-all: a workflow no rule names is
     # unknown and selects every gate until it is classified (#1570).
-    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/go-maintenance.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml|.github/workflows/visual-baselines.yml|.github/workflows/visual-baselines-render.yml)
+    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/curated-sources.yml|.github/workflows/staging.yml|.github/workflows/deadcode.yml|.github/workflows/ffmpeg-pin-refresh.yml|.github/workflows/go-maintenance.yml|.github/workflows/image-benchmark.yml|.github/workflows/merge-gate-cache.yml|.github/workflows/apple-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml|.github/workflows/visual-baselines.yml|.github/workflows/visual-baselines-render.yml)
       known=true
       select_gate policy
       ;;

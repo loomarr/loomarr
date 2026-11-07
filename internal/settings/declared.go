@@ -145,6 +145,23 @@ func positiveDuration(v any) error {
 	return nil
 }
 
+// jobSchedulePresets are the household cron choices every job schedule (each KindCron setting,
+// backup.schedule included) offers in the Tasks
+// page's Modify Job dialog (§18.1), most to least frequent. Each is a 6-field seconds-leading
+// cron; a schedule matching none of them reads as Custom with its raw expression.
+var jobSchedulePresets = []Preset{
+	preset("0 * * * * *", "Every minute"),
+	preset("0 */5 * * * *", "Every 5 minutes"),
+	preset("0 */10 * * * *", "Every 10 minutes"),
+	preset("0 */15 * * * *", "Every 15 minutes"),
+	preset("0 */30 * * * *", "Every 30 minutes"),
+	preset("0 0 * * * *", "Every hour"),
+	preset("0 0 */6 * * *", "Every 6 hours"),
+	preset("0 0 */12 * * *", "Every 12 hours"),
+	preset("0 0 3 * * *", "Daily at 3 am"),
+	preset("0 0 0 * * *", "Daily at midnight"),
+}
+
 func fillerFetchInterval(v any) error {
 	d, ok := v.(time.Duration)
 	if !ok {
@@ -201,6 +218,50 @@ func breakDuration(v any) error {
 	}
 	if d < 30*time.Second {
 		return fmt.Errorf("want at least 30s (got %s) — shorter values are clamped by Tunarr and would make playout backends disagree", d)
+	}
+	return nil
+}
+
+// countryCodeList validates filler.region_fallback: every entry an ISO 3166-1 alpha-2 code.
+func countryCodeList(v any) error {
+	list, ok := v.([]string)
+	if !ok {
+		return fmt.Errorf("want a list of country codes")
+	}
+	for _, c := range list {
+		if c == "" {
+			continue
+		}
+		if err := optionalCountryCode(c); err != nil {
+			return fmt.Errorf("%q: %w", c, err)
+		}
+	}
+	return nil
+}
+
+// optionalPlaceID accepts an empty place or a city id from the embedded location index (numeric
+// GeoNames ids). Whether the id exists is the location search's business; an unknown id resolves
+// to no place, so local filler fails closed.
+func optionalPlaceID(v any) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("want a place id")
+	}
+	for _, r := range strings.TrimSpace(s) {
+		if r < '0' || r > '9' {
+			return fmt.Errorf("want a place id from the location search")
+		}
+	}
+	return nil
+}
+
+func localRadiusKM(v any) error {
+	n, ok := v.(int)
+	if !ok {
+		return fmt.Errorf("want a whole number of kilometres")
+	}
+	if n < 10 || n > 400 {
+		return fmt.Errorf("want 10-400 km (got %d)", n)
 	}
 	return nil
 }
@@ -291,6 +352,12 @@ func declared() []Setting {
 			Key: "library.path_map", EnvVar: "LIBRARY_PATH_MAP", Group: GroupMediaServer,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead.",
+		},
+		{
+			// The scanner's kill switch (#2151): passes, folder watches and header reads stop.
+			Key: "library.scanner.enabled", Label: "Scan media folders", EnvVar: "LIBRARY_SCANNER_ENABLED",
+			Group: GroupMediaServer, Kind: KindBool, Default: true, Advanced: true,
+			Doc: "Whether Loomarr reads your media folders itself to learn what each file is. Turn this off to stop it reading them; what it already learned is kept.",
 		},
 		// --- Connections: requester (§15, Phase 6) ---
 		// How Loomarr acquires missing titles: through Seerr (default), or Sonarr + Radarr
@@ -463,7 +530,7 @@ func declared() []Setting {
 		{
 			Key: "playout.audio_language", Label: "Preferred audio language", EnvVar: "PLAYOUT_AUDIO_LANGUAGE", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationLanguage, Default: "eng",
-			Doc: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Watch tab (§9.1).",
+			Doc: "Preferred audio language for internal playout, as an ISO 639-2 code (eng, fra, spa, jpn). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Channel info page.",
 		},
 		{
 			Key: "playout.quality_tier", Label: "Maximum playback quality", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
@@ -498,7 +565,7 @@ func declared() []Setting {
 			// maintainer chose 40% from a real 1080p preview. Read per programme item, and the
 			// rendered-bug cache is keyed by opacity, so a change re-renders the bugs.
 			Key: "playout.watermark_opacity_pct", Label: "On-screen logo opacity", EnvVar: "PLAYOUT_WATERMARK_OPACITY_PCT", Group: GroupPlayout,
-			Kind: KindInt, Default: "40", Validate: watermarkOpacityRange,
+			Kind: KindInt, Unit: UnitPercent, Default: "40", Validate: watermarkOpacityRange,
 			Doc: "How solid the on-screen logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own opacity keeps it. A change shows from each channel's next programme.",
 		},
 		{
@@ -566,12 +633,12 @@ func declared() []Setting {
 			// encoder's device context and pipeline hold ~0.5–1 GiB of host RAM. Hot-applied because
 			// the ResourceBudget re-reads it on every admission.
 			Key: "playout.memory_reserve_mb", Label: "Host memory reserve for encodes", EnvVar: "PLAYOUT_MEMORY_RESERVE_MB", Group: GroupPlayout,
-			Kind: KindInt, Default: "2048", Advanced: true, Validate: nonNegativeWholeNumber,
+			Kind: KindInt, Unit: UnitMiB, Default: "2048", Advanced: true, Validate: nonNegativeWholeNumber,
 			Doc: "Host memory, in MiB, that hardware encoding must leave available. Loomarr does not start a hardware transcode that would take free memory below this. Set 0 to disable the host-memory check. Changes apply to the next encode without restart.",
 		},
 		{
 			Key: "playout.encode_memory_mb", Label: "Host memory per encode", EnvVar: "PLAYOUT_ENCODE_MEMORY_MB", Group: GroupPlayout,
-			Kind: KindInt, Default: "0", Advanced: true, Validate: nonNegativeWholeNumber,
+			Kind: KindInt, Unit: UnitMiB, Default: "0", Advanced: true, Validate: nonNegativeWholeNumber,
 			Doc: "Host memory, in MiB, one hardware encode is expected to use. Leave at 0 to use 1024 MiB, or more if the encoder capability check measured more on this machine; set it when real encodes here use more, for example 4K or HDR tone mapping. Changes apply to the next encode without restart.",
 		},
 		{
@@ -617,7 +684,7 @@ func declared() []Setting {
 		// --- Backup (§16, §15 — added by V4) ---
 		{
 			Key: "backup.schedule", Label: "Automatic backup schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
-			Kind: KindCron, Default: "0 30 3 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 30 3 * * *",
 			Doc: "When to write the nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped data keys, but not the external installation key. It does not contain filler, cached artwork, or operator image uploads.",
 		},
 		{
@@ -655,7 +722,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "images.cache_budget_mb", Label: "Resized-image cache", EnvVar: "IMAGES_CACHE_BUDGET_MB", Group: GroupImages,
-			Kind: KindInt, Default: "2048", Advanced: true,
+			Kind: KindInt, Unit: UnitMiB, Default: "2048", Advanced: true,
 			Doc: "How much disk the resized copies may use before Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image.",
 		},
 
@@ -739,12 +806,12 @@ func declared() []Setting {
 		// --- Self-updating channels / re-curation (programming-design §8.2) ---
 		{
 			Key: "job.recurate.schedule", EnvVar: "JOB_RECURATE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 4 * * 0", Advanced: true,
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 0 4 * * 0", Advanced: true,
 			Doc: "How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent.",
 		},
 		{
 			Key: "recurate.min_score_pct", Label: "Auto-curation request threshold", EnvVar: "RECURATE_MIN_SCORE_PCT", Group: GroupAI,
-			Kind: KindInt, Default: 60, Advanced: true,
+			Kind: KindInt, Unit: UnitPercent, Default: 60, Advanced: true,
 			Doc: "Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser.",
 		},
 		{
@@ -769,12 +836,24 @@ func declared() []Setting {
 		{
 			Key: "filler.home_country", Label: "Country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
 			Kind: KindString, Default: "", Validate: optionalCountryCode,
-			Doc: "Where your channels are watched. Loomarr uses this country for channels and filler sources.",
+			Doc: "Where your channels are watched. Loomarr uses this country for channels and filler sources, and keeps its holidays on its dates (Canada's Thanksgiving in October, Britain's Mothering Sunday in spring). Empty, or a country Loomarr has no holidays for yet, keeps the US calendar.",
 		},
 		{
-			Key: "filler.home_market", Label: "Local area", EnvVar: "FILLER_HOME_MARKET", Group: GroupFiller,
-			Kind: KindString, Default: "",
-			Doc: "Optional. Add a city or TV market when you want local filler, such as New York or Seattle.",
+			// #2062: a picked place (an embedded location index id), never a typed name — a name
+			// could not be measured against a broadcast station's community of license.
+			Key: "filler.home_place", Label: "Home city", EnvVar: "FILLER_HOME_PLACE", Group: GroupFiller,
+			Kind: KindString, Default: "", Validate: optionalPlaceID,
+			Doc: "Optional. Pick your city to get local TV material, such as station news and weather, from stations near you. Without it, only national filler airs.",
+		},
+		{
+			Key: "filler.local_radius_km", Label: "Local station radius", EnvVar: "FILLER_LOCAL_RADIUS_KM", Group: GroupFiller,
+			Kind: KindInt, Default: "100", Validate: localRadiusKM,
+			Doc: "How far from your city a TV station can be and still count as local, in kilometres.",
+		},
+		{
+			Key: "filler.region_fallback", Label: "Other countries", EnvVar: "FILLER_REGION_FALLBACK", Group: GroupFiller,
+			Kind: KindStringList, Default: "", Validate: countryCodeList,
+			Doc: "Optional, in order of preference: countries whose national commercials may air and whose sources may download after your own country's, such as GB, CA, AU. Your country's commercials always come first within an era; these fill in when its supply for that era runs thin.",
 		},
 		{
 			// ⚠ Defaults inside /data, like database.url and backup.dir — the documented
@@ -901,37 +980,19 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"filler.vision.provider": {"openai"}},
 		},
 		{
-			// Playback-derivative loudness normalisation (§10 V42/V66).
-			//
-			// ⚠ **This key spent three phases gating a function nothing called, and the note that
-			// used to sit here claimed the opposite.** It said the setting "lands with its
-			// consumer (`filler.NormalizeInPlace`, called from the auto-file step)" (retired-ok) — invoking
-			// §15's own rule that a setting nothing READS does not exist. The consumer was
-			// deleted or never wired; V51b found the function with no production caller at all,
-			// so the toggle has been inert since it shipped. It is now read by the TRANSCODE rung,
-			// which applies the loudness filter in the pass that is already re-encoding the clip.
-			//
-			// The lesson is the one §15's rule was written for, arriving from the other side: a
-			// COMMENT asserting a consumer exists is not the same as a consumer existing, and
-			// nothing failed when it stopped being true.
-			//
-			// DEFAULT OFF. The conditioning rung retains an immutable source master and applies
-			// this only to the playback derivative, so the operator can opt into a baked playback
-			// correction without sacrificing evidence or recoverability.
-			//
-			// ⚠ There is deliberately NO separate target here. The pass reuses
-			// `filler.target_lufs` (−23), because two targets in one system means a clip
-			// normalised on file gets corrected again at playout toward a different number —
-			// double processing, and quieter than either setting asks for.
-			//
-			// ⚠ Idempotency is NOT optional for this one. A re-scan cannot tell by looking that
-			// a file was already normalised, so without the sidecar's `normalizedLufs` marker
-			// every pass would normalise an already-normalised file and walk the loudness down
-			// run after run. The transcode rung writes that marker after the encode lands, and
-			// its own `mezzanine` marker stops the re-encode independently.
-			Key: "filler.conditioning.normalize_loudness", Label: "Normalize playback derivative loudness", EnvVar: "FILLER_CONDITIONING_NORMALIZE_LOUDNESS",
-			Group: GroupFiller, Kind: KindBool, Default: false,
-			Doc: "Normalize the playback derivative during conditioning while retaining the immutable source master. Leave off to normalize only during playback.",
+			// The defect floor's judge (#2034) reuses the vision model above. Each look is reserved
+			// at this ceiling before the call and settled at what it cost; an operator-run endpoint
+			// reserves nothing. Whole cents, because a setting has no decimal kind.
+			Key: "filler.defects.judge_look_cents", Label: "Most one picture-quality check may cost (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_LOOK_CENTS", Group: GroupFiller,
+			Kind: KindInt, Default: 2, Advanced: true,
+			Doc: "Ads whose picture is close to the quality limit are shown to the vision model above for a ruling. This is the most one look may cost on a hosted model. 0 stops hosted looks, and those ads wait.",
+		},
+		{
+			// ⚠ The ledger's day is shared: it sums every metered filler model call that day, not
+			// only the judge's, so the doc says "paid filler AI" rather than "these checks".
+			Key: "filler.defects.judge_daily_cents", Label: "Daily ceiling for picture-quality checks (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_DAILY_CENTS", Group: GroupFiller,
+			Kind: KindInt, Default: 50, Advanced: true,
+			Doc: "Picture-quality checks on a hosted model stop for the day (UTC) once Loomarr's paid filler AI spend that day would pass this. Ads past the limit wait for the next day.",
 		},
 
 		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
@@ -1046,6 +1107,10 @@ func declared() []Setting {
 		{
 			Key: "filler.fetch.every", Label: "Look for new clips", EnvVar: "FILLER_FETCH_EVERY", Group: GroupFiller,
 			Kind: KindDuration, Presentation: PresentationFillerDownloadSchedule, Default: "6h", Validate: fillerFetchInterval,
+			Presets: []Preset{
+				preset("0s", "Never"), preset("6h", "Every 6 hours"), preset("12h", "Every 12 hours"),
+				preset("24h", "Daily"), preset("168h", "Weekly"),
+			},
 			Doc: "How often Loomarr checks enabled sources for new clips. Never stops sources that use this default; you can still check one yourself.",
 		},
 		{
@@ -1073,7 +1138,7 @@ func declared() []Setting {
 		},
 		{
 			Key: "filler.storage.library_budget_gb", Label: "Filler storage allowance", EnvVar: "FILLER_STORAGE_LIBRARY_BUDGET_GB", Group: GroupFiller,
-			Kind: KindInt, Default: 0, Validate: nonNegativeWholeNumber,
+			Kind: KindInt, Unit: UnitGiB, Default: 0, Validate: nonNegativeWholeNumber,
 			Doc: "How much space Loomarr may use for filler, in GiB. Leave at 0 to choose a safe allowance automatically. Loomarr always keeps a protected amount of free space for the rest of the system.",
 		},
 		{
@@ -1147,7 +1212,7 @@ func declared() []Setting {
 		{
 			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
 			Kind: KindInt, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "Default seconds before the same commercial airs again on a channel (14400 is 4 hours). Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
+			Doc: "Default seconds before a commercial seen on any channel airs again (14400 is 4 hours). Only watched airings count. Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
 		},
 		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
 		// `00014_clips_quality` shipped with quality as display-only and warned that a
@@ -1236,7 +1301,7 @@ func declared() []Setting {
 			// those are often the best filler. Only confident non-target speech rejects (§10 V40).
 			Key: "filler.language", Label: "Commercial language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
 			Kind: KindEnum, Enum: fillerLanguageOptions(), Presentation: PresentationLanguage, Default: "en",
-			Doc: "The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept.",
+			Doc: "Every channel's commercial language unless the channel sets its own. New clips are kept when their speech is in a language some channel uses and rejected when it is confidently in none of them; a clip with no speech at all is always kept. A clip whose language could not be determined airs only on channels that use this language.",
 		},
 		// --- Filler ingest (§10, §15) ---
 		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be
@@ -1354,27 +1419,27 @@ func declared() []Setting {
 		// + an advanced raw-cron field). These OVERRIDE each job's built-in default cron.
 		{
 			Key: "job.system_health.schedule", EnvVar: "JOB_SYSTEM_HEALTH_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "*/30 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "*/30 * * * * *",
 			Doc: "How often Loomarr checks its database and configured connections for Current Health (cron).",
 		},
 		{
 			Key: "job.notification_delivery.schedule", EnvVar: "JOB_NOTIFICATION_DELIVERY_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "*/15 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "*/15 * * * * *",
 			Doc: "How often Loomarr claims queued invitation and recovery messages for delivery (cron).",
 		},
 		{
 			Key: "job.reconcile.schedule", EnvVar: "JOB_RECONCILE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */5 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr checks on in-progress downloads (cron).",
 		},
 		{
 			Key: "job.channel_maintenance.schedule", EnvVar: "JOB_CHANNEL_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */10 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */10 * * * *",
 			Doc: "How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron).",
 		},
 		{
 			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */15 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */15 * * * *",
 			Doc: "How often Loomarr syncs the filler catalog (cron).",
 		},
 		{
@@ -1382,8 +1447,24 @@ func declared() []Setting {
 			// so a faster cadence buys nothing and only widens the chance of a pass landing while
 			// an operator is mid-review on a reel one hour past its expiry.
 			Key: "job.filler_split_sweep.schedule", EnvVar: "JOB_FILLER_SPLIT_SWEEP_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 45 4 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 45 4 * * *",
 			Doc: "How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`.",
+		},
+		{
+			// Hourly at :20, clear of the :00 pipeline-heavy minute: a better copy that becomes
+			// ready replaces the old one within the hour, and a pass only decodes clips it has
+			// never fingerprinted (#2033).
+			Key: "job.filler_identity.schedule", EnvVar: "JOB_FILLER_IDENTITY_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 20 * * * *",
+			Doc: "How often Loomarr looks for copies of the same ad, keeps the best one, and links shorter or alternate versions (cron).",
+		},
+		{
+			// Every five minutes: a new clip waits at the defects rung for this pass's verdict
+			// (#2036), so the interval is how long admission waits. A pass decodes within a bounded
+			// budget, held clips first, and an idle pass reads the records and decodes nothing.
+			Key: "job.filler_defects.schedule", EnvVar: "JOB_FILLER_DEFECTS_SCHEDULE", Group: GroupAdvanced,
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
+			Doc: "How often Loomarr measures ads' picture and sound defects against the standard for their era (cron). A new ad waits for this check before it airs, and an ad that fails is removed and a better copy sought.",
 		},
 		{
 			// ⚠ **Every scheduled job needs its ScheduleKey declared here** — `Resolve` PANICS on
@@ -1415,7 +1496,7 @@ func declared() []Setting {
 			// startup on `Resolve` of an undeclared key — so a new job and its key always land in
 			// the same change.
 			Key: "job.filler_pipeline.schedule", EnvVar: "JOB_FILLER_PIPELINE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */2 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */2 * * * *",
 			Doc: "How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron).",
 		},
 		// --- The image service jobs (§22, V52) ---
@@ -1429,7 +1510,7 @@ func declared() []Setting {
 			// placeholder. A pass is bounded by the concurrency cap and an indexed work-list
 			// query, so an idle install costs one cheap SELECT.
 			Key: "job.images_fetch.schedule", EnvVar: "JOB_IMAGES_FETCH_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
 			Doc: "How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders.",
 		},
 		{
@@ -1439,7 +1520,7 @@ func declared() []Setting {
 			// work list selects only clips with artwork on disk and no image identity yet, so a
 			// healthy install pays one indexed query.
 			Key: "job.images_adopt_artwork.schedule", EnvVar: "JOB_IMAGES_ADOPT_ARTWORK_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */5 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr copies clip thumbnails and hover previews into the shared image library (cron). Until a clip has been copied over, its older thumbnail is still what you see.",
 		},
 		{
@@ -1448,22 +1529,22 @@ func declared() []Setting {
 			// genuinely contends for the box — §22 keeps it off request latency so a cold grid of
 			// 50 posters cannot launch 50 encodes at once.
 			Key: "job.images_avif.schedule", EnvVar: "JOB_IMAGES_AVIF_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 20 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 20 * * * *",
 			Doc: "How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP.",
 		},
 		{
 			Key: "job.images_maintenance.schedule", EnvVar: "JOB_IMAGES_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 5 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 0 5 * * *",
 			Doc: "When Loomarr restores recoverable artwork, enforces retention, and cleans up image storage.",
 		},
 		{
 			Key: "job.library_scan.schedule", EnvVar: "JOB_LIBRARY_SCAN_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 */5 * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
 			Doc: "How often Loomarr scans the media server for newly-added titles to mark requested items available (cron).",
 		},
 		{
 			Key: "job.library_full_scan.schedule", EnvVar: "JOB_LIBRARY_FULL_SCAN_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 0 3 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 0 3 * * *",
 			Doc: "How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron).",
 		},
 		{
@@ -1478,12 +1559,12 @@ func declared() []Setting {
 		},
 		{
 			Key: "job.arr_queue_poll.schedule", EnvVar: "JOB_ARR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
 			Doc: "How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only).",
 		},
 		{
 			Key: "job.seerr_queue_poll.schedule", EnvVar: "JOB_SEERR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 * * * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
 			Doc: "How often Loomarr polls Seerr for coarse acquisition status (cron; Seerr requester only).",
 		},
 		{
@@ -1524,12 +1605,12 @@ func declared() []Setting {
 		},
 		{
 			Key: "diagnostics.max_storage_mb", EnvVar: "DIAGNOSTICS_MAX_STORAGE_MB", Group: GroupAdvanced,
-			Kind: KindInt, Default: 512, Validate: positiveWholeNumber,
+			Kind: KindInt, Unit: UnitMiB, Default: 512, Validate: positiveWholeNumber,
 			Doc: "Soft global storage budget in MiB for retained Diagnostic events and bounded Process output. Active Process runs remain protected.",
 		},
 		{
 			Key: "job.housekeeping.schedule", EnvVar: "JOB_HOUSEKEEPING_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 30 4 * * *",
+			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 30 4 * * *",
 			Doc: "When Loomarr removes expired sessions and operational records beyond their retention periods.",
 		},
 		{

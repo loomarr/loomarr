@@ -15,11 +15,13 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -389,9 +391,9 @@ func (a libPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID
 	return catalog.Presence{LibraryItemID: d.ID, OfficialRating: d.OfficialRating, Genres: d.Genres}, true, nil
 }
 
-// mapIntent converts the corpus Intent to a suggest.Intent.
-func mapIntent(i Intent) suggest.Intent {
-	return suggest.Intent{
+// mapIntent converts the corpus Intent to a proposals.Intent.
+func mapIntent(i Intent) proposals.Intent {
+	return proposals.Intent{
 		Description: i.Description, Era: i.Era, Tone: i.Tone, RuntimeTgt: i.RuntimeTgt,
 		RefineText: i.RefineText, CurrentLineup: i.CurrentLineup,
 		MustInclude: i.MustInclude, MustExclude: i.MustExclude, MaxAcquire: i.MaxAcquire,
@@ -447,7 +449,7 @@ func (r *Result) addFailures(stage FailureStage, failures ...string) {
 // deterministicChecks applies the corpus case's hard expectations to a proposal.
 // These are the assertions a mock could never make — they run against the real
 // grounded output. Returns the list of failures (empty = all gates passed).
-func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []string {
+func deterministicChecks(c Case, prop proposals.Proposal, groundErr error) []string {
 	var f []string
 
 	// No-fabrication case: the grounded set may be any size (even 0), but EVERY item
@@ -625,13 +627,13 @@ func deterministicChecks(c Case, prop suggest.Proposal, groundErr error) []strin
 	// SAFETY: no grounded item may carry a rating above the forbidden ceiling — the
 	// end-to-end audience guarantee, measured on the real grounded output.
 	if c.ForbidRatingsAbove != "" {
-		ceiling := schedule.NormalizeRating(c.ForbidRatingsAbove)
+		ceiling := rating.Normalize(c.ForbidRatingsAbove)
 		for _, it := range allItems(prop) {
-			r := schedule.NormalizeRating(it.OfficialRating)
+			r := rating.Normalize(it.OfficialRating)
 			// A rated item ABOVE the ceiling is a hard failure. An unrated item is not
 			// asserted here (the enforcer fails it closed at reconcile; the corpus's
 			// ExpectCeiling covers the extraction side).
-			if r != "" && !ratingAtOrBelow(r, ceiling) {
+			if r != "" && !r.AtOrBelow(ceiling) {
 				f = append(f, fmt.Sprintf("grounded item %q is rated %q, above the forbidden ceiling %q",
 					it.Name, it.OfficialRating, c.ForbidRatingsAbove))
 			}
@@ -670,37 +672,7 @@ func normalizeExactTitle(title string) string {
 	return strings.ToLower(strings.Join(strings.Fields(title), " "))
 }
 
-func allItems(p suggest.Proposal) []suggest.ProposalItem {
-	out := append([]suggest.ProposalItem{}, p.Lineup...)
+func allItems(p proposals.Proposal) []proposals.ProposalItem {
+	out := append([]proposals.ProposalItem{}, p.Lineup...)
 	return append(out, p.Acquisitions...)
-}
-
-// ratingAtOrBelow reports whether item rating r is at or below ceiling on the
-// shared ladder. Both must be mappable; an unmappable r returns false (caller
-// handles the unrated case separately).
-func ratingAtOrBelow(r, ceiling schedule.Rating) bool {
-	// NormalizeRating already mapped both onto the ladder; reuse the schedule
-	// package's own comparison by round-tripping through a tiny policy check would
-	// be heavy — instead rank locally via the exported normalize + a fixed order.
-	return ladderIndex(r) >= 0 && ladderIndex(ceiling) >= 0 && ladderIndex(r) <= ladderIndex(ceiling)
-}
-
-// ladderIndex mirrors schedule's rating ladder order for the eval's own comparison
-// (kept local so the eval doesn't need an exported rank). Unmapped → -1.
-func ladderIndex(r schedule.Rating) int {
-	switch r {
-	case "TV-Y":
-		return 0
-	case "TV-Y7":
-		return 1
-	case "TV-G", "G":
-		return 2
-	case "TV-PG", "PG":
-		return 3
-	case "TV-14", "PG-13":
-		return 4
-	case "TV-MA", "R", "NC-17":
-		return 5
-	}
-	return -1
 }

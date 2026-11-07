@@ -481,7 +481,7 @@ fn generate(request: GenerateRequest, avif_threads: usize) -> Result<GenerateRes
 
 fn encode_jpeg(pixels: &[u8], width: u32, height: u32) -> Result<Vec<u8>, WorkerError> {
     let mut rgb = Vec::with_capacity((u64::from(width) * u64::from(height) * 3) as usize);
-    for pixel in pixels.chunks_exact(4) {
+    for pixel in pixels.as_chunks::<4>().0 {
         rgb.extend_from_slice(&pixel[..3]);
     }
     let mut encoded = Vec::new();
@@ -527,22 +527,20 @@ fn image_metadata(pixels: &[u8], width: u32, height: u32) -> Result<(String, Str
     let mut green = 0_u64;
     let mut blue = 0_u64;
     let mut alpha = 0_u64;
-    for pixel in pixels.chunks_exact(4) {
+    for pixel in pixels.as_chunks::<4>().0 {
         let a = u64::from(pixel[3]);
         red += u64::from(pixel[0]) * a;
         green += u64::from(pixel[1]) * a;
         blue += u64::from(pixel[2]) * a;
         alpha += a;
     }
-    let dominant = if alpha == 0 {
-        "#000000".to_owned()
-    } else {
-        format!(
-            "#{:02x}{:02x}{:02x}",
-            red / alpha,
-            green / alpha,
-            blue / alpha
-        )
+    let dominant = match (
+        red.checked_div(alpha),
+        green.checked_div(alpha),
+        blue.checked_div(alpha),
+    ) {
+        (Some(red), Some(green), Some(blue)) => format!("#{red:02x}{green:02x}{blue:02x}"),
+        _ => "#000000".to_owned(),
     };
     Ok((
         base64::engine::general_purpose::STANDARD.encode(thumb),

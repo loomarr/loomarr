@@ -24,20 +24,20 @@ const LEVEL_DOT: Record<string, string> = {
 };
 
 const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProps) => (
-  <section className={cn("overflow-hidden rounded-lg border border-border", className)}>
-    <h2 className="border-border border-b px-4 py-3.5 font-medium text-sm">Recent activity</h2>
+  <section className={cn("border-border overflow-hidden rounded-lg border", className)}>
+    <h2 className="border-border border-b px-4 py-3.5 text-sm font-medium">Recent activity</h2>
 
     {entries.length === 0 ? (
       // A fresh install has done nothing yet. Saying so beats an empty box, which reads as a
       // panel that failed to load.
-      <p className="px-4 py-6 text-center text-muted-foreground text-sm">
+      <p className="text-muted-foreground px-4 py-6 text-center text-sm">
         Nothing yet. Activity shows up here as Loomarr acquires titles and builds channels.
       </p>
     ) : (
       <ul>
         {entries.map((e) => (
           <PanelRow key={e.id} className="gap-3">
-            <span className="w-14 shrink-0 whitespace-nowrap font-mono text-muted-foreground text-xs">
+            <span className="text-muted-foreground w-14 shrink-0 font-mono text-xs whitespace-nowrap">
               {/* `at` is unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
               {formatRelative(e.at * 1000, now)}
             </span>

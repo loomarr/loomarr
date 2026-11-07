@@ -1,15 +1,25 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+// The installed SDK's catalog of native module versions, which expo-doctor also enforces.
+const bundledNativeModules = async () =>
+  JSON.parse(
+    await readFile(createRequire(import.meta.url).resolve("expo/bundledNativeModules.json"), "utf8"),
+  );
+
 // The paired runtime (catalog, guide, diagnostics, event stream, lifecycle) is shared with the phone, so it
-// lives in the player package's usePairedClient; the TV supplies its identity and tune marks.
+// lives in the paired-client package's usePairedClient; the TV supplies its identity and tune marks.
 const readPairedClient = () =>
-  readFile(new URL("../../../packages/player/src/paired-client/paired-client.ts", import.meta.url), "utf8");
+  readFile(
+    new URL("../../../packages/paired-client/src/paired-client/paired-client.ts", import.meta.url),
+    "utf8",
+  );
 
 test("keeps the TV proof isolated from the shipping application", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
@@ -20,6 +30,8 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   assert.ok(config.expo.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
   // A server under a local DNS name may be plain HTTP on Apple TV too, as it already is on Android TV.
   assert.ok(config.expo.plugins.includes("../../scripts/with-loomarr-ios-network.cjs"));
+  // Apple TV lays out at Android TV's 960-wide scale and draws it sharp at the screen's (#2141).
+  assert.ok(config.expo.plugins.includes("../../scripts/with-tvos-render-scale.cjs"));
   assert.equal(config.expo.name, "Loomarr TV Prototype");
   assert.equal(config.expo.slug, "loomarr-tv-prototype");
   assert.match(config.expo.ios.bundleIdentifier, /\.prototype$/);
@@ -44,6 +56,116 @@ test("resolves each explicit Shield release channel to the permanent Android ide
     assert.equal(config.version, "0.1.2-beta.3");
     assert.equal(config.android.package, "loomarr.media");
     assert.equal(config.android.versionCode, 1020003);
+    // A Shield release never claims the Apple TV identity.
+    assert.match(config.ios.bundleIdentifier, /\.prototype$/);
+  }
+});
+
+const expoConfig = async (environment) => {
+  const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
+    cwd: new URL("..", import.meta.url),
+    env: environment,
+  });
+  return JSON.parse(stdout);
+};
+
+const appleTvReleaseEnvironment = (overrides) => ({
+  ...process.env,
+  LOOMARR_APPLE_RELEASE_CHANNEL: "testflight",
+  LOOMARR_APPLE_VERSION: "0.2.0-beta.9",
+  LOOMARR_APPLE_BUILD_NUMBER: "7",
+  ...overrides,
+});
+
+test("resolves the TestFlight channel to the permanent Apple TV identity", async () => {
+  const config = await expoConfig(appleTvReleaseEnvironment());
+
+  // Its own App Store Connect record, apart from the iPhone's media.loomarr.mobile.
+  assert.equal(config.name, "Loomarr TV");
+  assert.equal(config.slug, "loomarr-tv");
+  assert.equal(config.ios.bundleIdentifier, "media.loomarr.tv");
+  // Every prerelease of 0.2.0 shares the 0.2.0 TestFlight train; the build orders them.
+  assert.equal(config.version, "0.2.0");
+  assert.equal(config.ios.buildNumber, "7");
+  // Without these App Store Connect asks the export-compliance question on every upload, and
+  // required-reason API use is undeclared.
+  assert.equal(config.ios.config.usesNonExemptEncryption, false);
+  assert.deepEqual(config.ios.privacyManifests.NSPrivacyAccessedAPITypes, [
+    {
+      NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
+      NSPrivacyAccessedAPITypeReasons: ["CA92.1"],
+    },
+  ]);
+  // The Shield identity and the TV build plugins are the development config, untouched.
+  assert.match(config.android.package, /\.prototype$/);
+  assert.equal(config.android.versionCode, undefined);
+  assert.ok(config.plugins.includes("../../scripts/with-loomarr-ios-network.cjs"));
+  assert.ok(
+    config.plugins.some((plugin) => Array.isArray(plugin) && plugin[0] === "@react-native-tvos/config-tv"),
+  );
+});
+
+test("fails closed when an Apple TV TestFlight build has an invalid channel or version metadata", async () => {
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_RELEASE_CHANNEL: "appstore" })),
+    /Apple TV release channel must be testflight/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_VERSION: "" })),
+    /must be x\.y\.z/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_VERSION: "0.2" })),
+    /must be x\.y\.z/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "0" })),
+    /positive integer/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "seven" })),
+    /positive integer/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_RELEASE_CHANNEL: "" })),
+    /requires LOOMARR_APPLE_RELEASE_CHANNEL/,
+  );
+  await assert.rejects(
+    expoConfig(
+      appleTvReleaseEnvironment({
+        LOOMARR_SHIELD_RELEASE_CHANNEL: "sideload",
+        LOOMARR_ANDROID_VERSION_CODE: "1020003",
+        LOOMARR_ANDROID_VERSION_NAME: "0.1.2-beta.3",
+      }),
+    ),
+    /either the Shield or the Apple TV app/,
+  );
+});
+
+// A PNG's IHDR chunk holds its width and height as big-endian integers at bytes 16 and 20.
+const pngSize = async (path) => {
+  const bytes = await readFile(new URL(path, new URL("../", import.meta.url)));
+  return `${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`;
+};
+
+test("gives tvOS every home-screen icon and Top Shelf image at the size App Store Connect accepts", async () => {
+  const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
+  const tvPlugin = config.expo.plugins.find(
+    (plugin) => Array.isArray(plugin) && plugin[0] === "@react-native-tvos/config-tv",
+  );
+  const sizes = {
+    icon: "1280x768",
+    iconSmall: "400x240",
+    iconSmall2x: "800x480",
+    topShelf: "1920x720",
+    topShelf2x: "3840x1440",
+    topShelfWide: "2320x720",
+    topShelfWide2x: "4640x1440",
+  };
+
+  assert.deepEqual(Object.keys(tvPlugin[1].appleTVImages).sort(), Object.keys(sizes).sort());
+  for (const [image, size] of Object.entries(sizes)) {
+    assert.equal(await pngSize(tvPlugin[1].appleTVImages[image]), size, image);
   }
 });
 
@@ -61,6 +183,9 @@ test("keeps the permanent identity unreachable outside the sideload build", asyn
   delete environment.LOOMARR_SHIELD_RELEASE_CHANNEL;
   delete environment.LOOMARR_ANDROID_VERSION_CODE;
   delete environment.LOOMARR_ANDROID_VERSION_NAME;
+  delete environment.LOOMARR_APPLE_RELEASE_CHANNEL;
+  delete environment.LOOMARR_APPLE_VERSION;
+  delete environment.LOOMARR_APPLE_BUILD_NUMBER;
   const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
     cwd: new URL("..", import.meta.url),
     env: environment,
@@ -70,6 +195,10 @@ test("keeps the permanent identity unreachable outside the sideload build", asyn
   assert.equal(config.name, "Loomarr TV Prototype");
   assert.equal(config.slug, "loomarr-tv-prototype");
   assert.match(config.android.package, /\.prototype$/);
+  assert.match(config.ios.bundleIdentifier, /\.prototype$/);
+  // The release-only compliance settings never reach development builds.
+  assert.equal(config.ios.config, undefined);
+  assert.equal(config.ios.privacyManifests, undefined);
 });
 
 test("fails closed when a Shield release has an invalid channel or version metadata", async () => {
@@ -95,11 +224,28 @@ test("declares the shared TV journey and native playback boundaries", async () =
 
   assert.equal(manifest.dependencies["@loomarr/player"], "workspace:*");
   assert.equal(manifest.dependencies["@loomarr/ui-tv"], "workspace:*");
-  assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
-  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
-  assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.86.2-0");
+  const bundled = await bundledNativeModules();
+  assert.equal(`~${manifest.dependencies["expo-video"]}`, bundled["expo-video"]);
+  assert.equal(`~${manifest.dependencies["expo-crypto"]}`, bundled["expo-crypto"]);
+  assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.88.1-0");
   assert.match(manifest.scripts.bundle, /--platform android/);
   assert.match(manifest.scripts.bundle, /--platform ios/);
+});
+
+test("boots through the shared native app and reports its crashes to the paired server", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const bundled = await bundledNativeModules();
+  assert.equal(manifest.dependencies["@loomarr/native-app"], "workspace:*");
+  // The crash files and the app version come from first-party Expo modules at the SDK's versions.
+  for (const name of ["expo-constants", "expo-file-system"]) {
+    assert.equal(`~${manifest.dependencies[name]}`, bundled[name]);
+  }
+
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+  assert.match(appSource, /createNativeApp\(\{/);
+  assert.match(appSource, /useCrashReportUpload\(credential, session\)/);
+  assert.match(appSource, /<NativeAppRoot app=\{nativeApp\}>/);
+  assert.doesNotMatch(appSource, /SafeAreaProvider|LoomarrProvider/);
 });
 
 test("starts from SecureStore without the abandoned Compose credential bridge", async () => {
@@ -118,8 +264,8 @@ test("starts from SecureStore without the abandoned Compose credential bridge", 
 test("composes the production TV root around shared dark pairing and paired API transport", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /<SafeAreaProvider>/);
-  assert.match(appSource, /<LoomarrProvider insets=\{insets\} theme="dark">/);
+  // The shared root draws the safe-area and Loomarr providers (the provider's default theme is dark).
+  assert.match(appSource, /<NativeAppRoot app=\{nativeApp\}>\s+<TvClient \/>\s+<\/NativeAppRoot>/);
   assert.match(appSource, /<PairingShell/);
   assert.match(appSource, /allowServerEntry/);
   assert.match(appSource, /discovery=\{discovery\}/);
@@ -145,7 +291,10 @@ test("hands the native splash to the shared Loomarr launch identity", async () =
     (plugin) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen",
   );
 
-  assert.equal(manifest.dependencies["expo-splash-screen"], manifest.dependencies.expo);
+  assert.equal(
+    `~${manifest.dependencies["expo-splash-screen"]}`,
+    (await bundledNativeModules())["expo-splash-screen"],
+  );
   assert.equal(splashPlugin?.[1].backgroundColor, "#0B0C0E");
   assert.equal(splashPlugin?.[1].dark.backgroundColor, "#0B0C0E");
   assert.match(appSource, /SplashScreen\.preventAutoHideAsync\(\)/);
@@ -280,10 +429,9 @@ test("mounts authoritative grouped Surf data with previous-Channel history", asy
 test("routes the native remote through TV adapters and preserves platform-home Back", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
+  // The remote itself (digit entry and its timer, OK versus a long press letting go) is
+  // createTvRemote, whose behaviour packages/ui-tv/tests/tv-remote.test.ts pins.
   assert.match(appSource, /useTVEventHandler/);
-  assert.match(appSource, /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\), eventKeyAction\)/);
-  assert.match(appSource, /event && event\.key !== "select"/);
-  assert.match(appSource, /reduceTvWatchingRemote\(remoteStateRef\.current, event, autoTuneMs\)/);
   // The per-device auto-tune duration (#1659 decision N4) is read from the device's secure store.
   assert.match(appSource, /createTvAutoTuneSetting\(\{\s*getItem: SecureStore\.getItemAsync/);
   // The Guide's time edges page through the shared reducer (#1659 decision N4).
@@ -291,13 +439,7 @@ test("routes the native remote through TV adapters and preserves platform-home B
     appSource,
     /onTimeEdge=\{\(side\) => void tvGuideTimeEdge\(guide, guideFocusRegistry, side, Date\.now\(\)\)\}/,
   );
-  // Watching's OK opens the Guide, except the press tvOS sends when a long press of Select lifts.
-  assert.match(
-    appSource,
-    /onOpenGuide=\{\(\) => \{[\s\S]*?tvPressIsLongSelectRelease\(longSelectAtMs\.current, Date\.now\(\)\)[\s\S]*?else dispatchRemoteEvent\(\{ key: "select" \}\);\s*\}\}/,
-  );
   assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
-  assert.match(appSource, /numberEntry=\{tvNumberEntryPresentation\(remoteState, snapshot\.catalog\)\}/);
   assert.match(appSource, /if \(!destination\) return false/);
   // tvOS routes Menu to BackHandler only while the menu key is enabled: on wherever Back has a
   // destination, off at the roots so Menu goes Home there (#1500 audit #1).
@@ -313,7 +455,8 @@ test("offers digit entry only on a remote with number keys", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
   // The Siri Remote has no digits (#1500 audit #3): no "0–9 jump" hint, no channel-number wait.
-  assert.match(appSource, /const remoteHasDigits = !Platform\.isTVOS/);
+  assert.match(appSource, /const isTvOS = Platform\.OS === "ios" && Platform\.isTV;/);
+  assert.match(appSource, /const remoteHasDigits = !isTvOS/);
   assert.match(appSource, /channelDigits=\{remoteHasDigits\}/);
   assert.match(appSource, /autoTune=\{\s*remoteHasDigits\s*\?/);
 });
@@ -322,7 +465,7 @@ test("restarts Watching inactivity only for handled remote and tune activity", a
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
   assert.match(appSource, /controlsActivityKey=\{controlsActivityKey\}/);
-  assert.match(appSource, /if \(result\.handled\) showControlsForActivity\(\);/);
+  assert.match(appSource, /if \(handled\) showControlsForActivity\(\);/);
 
   // Guide and Surf share tuneFromList, which skips only the press tvOS sends when a long-press Select lifts.
   assert.match(
@@ -364,8 +507,9 @@ test("reports playback diagnostics to the paired server and recovers player erro
 
   const pairedClient = await readPairedClient();
 
-  assert.match(appSource, /platform: "android_tv", source: "android_tv"/);
-  assert.match(appSource, /diagnostics: tvDiagnostics/);
+  // Who the TV is follows the platform it runs on (Apple TV is not android_tv), so the shared bootstrap derives it.
+  assert.doesNotMatch(appSource, /android_tv/);
+  assert.match(appSource, /diagnostics: nativeApp\.diagnostics/);
   assert.match(pairedClient, /createAuthenticatedBatchSender\(request,/);
   assert.match(pairedClient, /onPlayerError: reporting\?\.playback\.playerError/);
   assert.match(pairedClient, /transport\.subscribe\(reporting\.playback\.transportEvent\)/);

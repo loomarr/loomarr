@@ -4,7 +4,6 @@ import { Platform } from "react-native";
 import {
   type FontFamilyRole,
   nativeFontFace,
-  semanticColors,
   semanticRadius,
   semanticSpace,
   semanticTargets,
@@ -68,7 +67,7 @@ const tamaguiTheme = (mode: keyof typeof semanticThemes) => {
     ...colors,
     // Theme entries are emitted as CSS custom properties on web. Tamagui does not
     // resolve one theme entry through another, so aliases here must be concrete
-    // values rather than strings such as "$surfaceCanvas". An unresolved alias also
+    // values rather than token names such as "surfaceCanvas". An unresolved alias also
     // poisons legacy declarations that consume the same custom-property name (for
     // example Tailwind's ring-offset shadow reads --background).
     background: colors.surfaceCanvas,
@@ -85,56 +84,9 @@ const tamaguiTheme = (mode: keyof typeof semanticThemes) => {
   };
 };
 
+// Colours live only in the themes. A colour token of the same name would win over the theme key
+// in Tamagui 3 ("contentPrimary" resolves tokens first) and pin every surface to the dark value.
 const tokens = createTokens({
-  color: {
-    surfaceCanvas: semanticColors.surface.canvas,
-    surfaceRaised: semanticColors.surface.raised,
-    surfaceElevated: semanticColors.surface.elevated,
-    surfaceOverlay: semanticColors.surface.overlay,
-    surfaceChrome: semanticColors.surface.chrome,
-    surfaceEntry: semanticColors.surface.entry,
-    surfaceIdentity: semanticColors.surface.identity,
-    surfaceFocus: semanticColors.surface.focus,
-    contentPrimary: semanticColors.content.primary,
-    contentSecondary: semanticColors.content.secondary,
-    contentMuted: semanticColors.content.muted,
-    contentInverse: semanticColors.content.inverse,
-    borderDecorative: semanticColors.border.decorative,
-    borderControl: semanticColors.border.control,
-    borderAiring: semanticColors.border.airing,
-    stateLive: semanticColors.state.live,
-    stateSuccess: semanticColors.state.success,
-    stateWarning: semanticColors.state.warning,
-    stateDanger: semanticColors.state.danger,
-    stateInfo: semanticColors.state.info,
-    stateLiveSurface: semanticColors.stateSurface.live,
-    stateSuccessSurface: semanticColors.stateSurface.success,
-    stateWarningSurface: semanticColors.stateSurface.warning,
-    stateDangerSurface: semanticColors.stateSurface.danger,
-    stateInfoSurface: semanticColors.stateSurface.info,
-    stateAiringSurface: semanticColors.stateSurface.airing,
-    actionPrimary: semanticColors.action.primary,
-    actionSecondary: semanticColors.action.secondary,
-    actionFocus: semanticColors.action.focus,
-    actionDisabled: semanticColors.action.disabled,
-    accentSuggest: semanticColors.accent.suggest,
-    artworkPlaceholder: semanticColors.artwork.placeholder,
-    artworkScrim: semanticColors.artwork.scrim,
-    artworkScrimStrong: semanticColors.artwork.scrimStrong,
-    artworkProgressTrack: semanticColors.artwork.progressTrack,
-    guideRowRule: semanticColors.guide.rowRule,
-    guideBlockAccent: semanticColors.guide.blockAccent,
-    guidePendingFill: semanticColors.guide.pendingFill,
-    guidePendingBorder: semanticColors.guide.pendingBorder,
-    guideBreakFill: semanticColors.guide.breakFill,
-    guideClipSignal: semanticColors.guide.clipSignal,
-    guideClipTune: semanticColors.guide.clipTune,
-    guideClipSuggest: semanticColors.guide.clipSuggest,
-    guideClipPlain: semanticColors.guide.clipPlain,
-    guideOnAir: semanticColors.guide.onAir,
-    guideReconciling: semanticColors.guide.reconciling,
-    transparent: "transparent",
-  },
   radius: {
     ...semanticRadius,
   },
@@ -202,8 +154,6 @@ const dataFont = createFont({
 });
 
 const loomarrConfig = createTamagui({
-  defaultTheme: "dark",
-  defaultFont: "body",
   fonts: {
     body: bodyFont,
     data: dataFont,
@@ -214,6 +164,7 @@ const loomarrConfig = createTamagui({
   },
   tokens,
   settings: {
+    defaultFont: "body",
     onlyAllowShorthands: false,
   },
 });

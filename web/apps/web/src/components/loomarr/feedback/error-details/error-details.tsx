@@ -19,13 +19,13 @@ const ErrorDetails = ({ message, showLabel, hideLabel, className }: ErrorDetails
   if (!message) return null;
   return (
     <details className={cn("group", className)}>
-      <summary className="cursor-pointer list-none text-onair-300 text-xs hover:underline">
+      <summary className="text-onair-300 cursor-pointer list-none text-xs hover:underline">
         <span className="group-open:hidden">{showLabel ?? "Show error"}</span>
         <span className="hidden group-open:inline">{hideLabel ?? "Hide error"}</span>
       </summary>
       {/* `whitespace-pre-wrap` keeps a multi-line error readable as written; `wrap-break-word`
           stops a long unbroken token (a URL, a stack frame) widening the whole container. */}
-      <pre className="wrap-break-word mt-1 max-w-prose overflow-x-auto whitespace-pre-wrap rounded border border-onair/30 bg-onair/5 p-2 font-mono text-2xs text-onair-300">
+      <pre className="border-onair/30 bg-onair/5 text-2xs text-onair-300 mt-1 max-w-prose overflow-x-auto rounded border p-2 font-mono wrap-break-word whitespace-pre-wrap">
         {message}
       </pre>
     </details>

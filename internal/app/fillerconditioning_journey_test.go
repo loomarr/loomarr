@@ -10,14 +10,15 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type conditioningRekeyCrashStore struct {
-	st         fillerstore.Store
+	st         records.Store
 	afterRekey bool
 	target     filler.StoreClip
 }
@@ -46,39 +47,39 @@ func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.
 	return errors.New("injected conditioning transaction failure")
 }
 
-func journeyConditioningMeasurement(lufs float64) mediatools.ConditioningMeasurement {
-	available := func(ms int64) mediatools.OptionalMilliseconds {
-		return mediatools.OptionalMilliseconds{Milliseconds: ms, Available: true}
+func journeyConditioningMeasurement(lufs float64) tools.ConditioningMeasurement {
+	available := func(ms int64) tools.OptionalMilliseconds {
+		return tools.OptionalMilliseconds{Milliseconds: ms, Available: true}
 	}
-	return mediatools.ConditioningMeasurement{
+	return tools.ConditioningMeasurement{
 		ContainerDurationMs: 30_000,
-		Streams: []mediatools.ConditioningStream{
-			{Kind: mediatools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000),
-				Cadence: &mediatools.Rational{Numerator: 30_000, Denominator: 1001}},
-			{Kind: mediatools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
+		Streams: []tools.ConditioningStream{
+			{Kind: tools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000),
+				Cadence: &tools.Rational{Numerator: 30_000, Denominator: 1001}},
+			{Kind: tools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
 		},
-		AVSkew: mediatools.ConditioningSkew{Start: available(120), End: available(0)},
-		Loudness: mediatools.ConditioningLoudness{
+		AVSkew: tools.ConditioningSkew{Start: available(120), End: available(0)},
+		Loudness: tools.ConditioningLoudness{
 			IntegratedLUFS: lufs, Available: true,
-			TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakFinite, DBTP: -2.1},
+			TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakFinite, DBTP: -2.1},
 		},
 		Quality: filler.MediaQuality{
-			EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-			Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+			EvidenceVersion: tools.MediaQualityEvidenceV1,
+			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
 		},
-		Cuts: []mediatools.ConditioningCutMeasurement{{Intended: mediatools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []mediatools.ConditioningCutStream{
-			{Kind: mediatools.StreamVideo, Index: 0, StartError: available(3), EndError: available(-4)},
-			{Kind: mediatools.StreamAudio, Index: 1, StartError: available(5), EndError: available(-2)},
+		Cuts: []tools.ConditioningCutMeasurement{{Intended: tools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []tools.ConditioningCutStream{
+			{Kind: tools.StreamVideo, Index: 0, StartError: available(3), EndError: available(-4)},
+			{Kind: tools.StreamAudio, Index: 1, StartError: available(5), EndError: available(-2)},
 		}}},
 	}
 }
 
 func TestFillerConditioningJourney_RestartDistinguishesPreAndPostRekeyPublication(t *testing.T) {
-	runFillerConditioningRestartJourney(t, func(t *testing.T) fillerstore.Store { return testkit.MigratedSQLiteStore(t) })
+	runFillerConditioningRestartJourney(t, func(t *testing.T) records.Store { return testkit.MigratedSQLiteStore(t) })
 }
 
-func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T) fillerstore.Store) {
+func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T) records.Store) {
 	for _, tc := range []struct {
 		name       string
 		afterRekey bool
@@ -122,7 +123,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				{Hash: parentHash, Path: filepath.Base(parentFull), Name: "Retained parent", IsComposite: true},
 				{Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child", Kind: filler.Commercial, ParentHash: parentHash},
 			} {
-				if err := st.UpsertClip(ctx, store.Clip{Clip: clip, UpdatedAt: now}); err != nil {
+				if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -136,17 +137,16 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			before := journeyConditioningMeasurement(-28.4)
 			after := journeyConditioningMeasurement(-23.1)
 			for i := range after.Cuts[0].Streams {
-				after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
-				after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].StartError = tools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].EndError = tools.OptionalMilliseconds{}
 			}
-			ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "conditioned target bytes "+fixtureSuffix,
-				"loudnorm=I=-23:TP=-1:LRA=11")
+			ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "conditioned target bytes "+fixtureSuffix)
 			crashStore := &conditioningRekeyCrashStore{st: st, afterRekey: tc.afterRekey}
 			newStage := func(clipStore filler.TranscodeClipStore) *filler.TranscodeStage {
 				stage := filler.NewTranscodeStage(clipStore, func(context.Context, string) (filler.Probed, error) {
 					return filler.Probed{DurationMs: 30_000, Height: 480}, nil
-				}, dir, mediatools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, func() time.Time { return now })
-				stage.WithConditioning(func(_ context.Context, req mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+				}, dir, tools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, func() time.Time { return now })
+				stage.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 					if filepath.Base(req.Path) == filepath.Base(req.ParentPath) {
 						t.Fatal("conditioning source and parent snapshots collapsed")
 					}
@@ -232,13 +232,13 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	if err := os.WriteFile(parentFull, []byte("compilation"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, store.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: filler.Clip{
 		Hash: compHash, Path: compPath, Name: "Compilation", Kind: filler.Commercial,
 		Source: "test-folder",
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
-	ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "mezzanine", "loudnorm=I=-23:TP=-1:LRA=11")
+	ffmpeg := testkit.CopyingMediaExecutable(t, "ffmpeg", "mezzanine")
 	parentProbeCalls := 0
 	probe := func(_ context.Context, path string) (filler.Probed, error) {
 		if filepath.Clean(path) == filepath.Clean(parentFull) {
@@ -251,7 +251,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	parentProbe := filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, drop, nil,
 		func() time.Duration { return 45 * time.Second }, time.Now)
 	parentTranscode := filler.NewTranscodeStage(fillerPipelineClipAdapter{st}, probe, drop,
-		mediatools.DefaultMezzanine(), func() string { parentTranscodeCalls++; return ffmpeg },
+		tools.DefaultMezzanine(), func() string { parentTranscodeCalls++; return ffmpeg },
 		func() float64 { return -23 }, time.Now)
 	parentPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{parentProbe, parentTranscode},
 		filler.Budget{}, nil, time.Now, slog.New(slog.DiscardHandler))
@@ -294,13 +294,13 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 	}
 
 	transcode := filler.NewTranscodeStage(
-		fillerPipelineClipAdapter{st}, probe, drop, mediatools.DefaultMezzanine(),
+		fillerPipelineClipAdapter{st}, probe, drop, tools.DefaultMezzanine(),
 		func() string { return ffmpeg }, func() float64 { return -23 }, time.Now,
 	)
-	var measured []mediatools.ConditioningRequest
+	var measured []tools.ConditioningRequest
 	var measuredParentBound bool
 	var beforeSourceHash string
-	transcode.WithConditioning(func(_ context.Context, req mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+	transcode.WithConditioning(func(_ context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
 		measured = append(measured, req)
 		if len(measured) == 1 {
 			parentID, parentErr := filler.ClipID(req.ParentPath)
@@ -333,11 +333,11 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatal(err)
 	}
 
-	clips, err := st.ListClips(ctx, store.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	clips, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var child store.Clip
+	var child catalogstore.Clip
 	for _, clip := range clips {
 		if clip.ParentHash == compHash {
 			child = clip
@@ -353,16 +353,15 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 			row, found, child.Held, child.Placement, err)
 	}
 	if len(measured) != 2 || !measuredParentBound || len(measured[0].IntendedCuts) != 1 ||
-		measured[0].IntendedCuts[0] != (mediatools.Interval{StartMs: 10_000, EndMs: 40_000}) {
+		measured[0].IntendedCuts[0] != (tools.Interval{StartMs: 10_000, EndMs: 40_000}) {
 		t.Fatalf("conditioning requests = %+v", measured)
 	}
 	tags, ok := filler.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
 	if !ok || tags.Conditioning == nil || tags.Conditioning.BeforeRewriteHash != beforeSourceHash ||
 		tags.Conditioning.BeforeRewrite.Loudness.IntegratedLUFS != -28.4 ||
 		tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS != -23.1 ||
-		tags.Conditioning.BeforeRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
-		tags.Conditioning.AfterRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
-		tags.NormalizedLUFS != -23 ||
+		tags.Conditioning.BeforeRewrite.Loudness.TruePeak.State != tools.TruePeakFinite ||
+		tags.Conditioning.AfterRewrite.Loudness.TruePeak.State != tools.TruePeakFinite ||
 		len(tags.Conditioning.DerivedParentEdgesAfterRewrite.Streams) != 2 {
 		t.Fatalf("conditioned sidecar = %+v, ok=%v", tags.Conditioning, ok)
 	}

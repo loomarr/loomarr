@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
 func (s *Server) registerDiscoveryQuality(api huma.API) {

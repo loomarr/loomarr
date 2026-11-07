@@ -3,13 +3,15 @@ export { AiReconnectBanner } from "./src/ai-reconnect-banner";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
 export type {
+  ChannelAudioOption,
+  ChannelAudioSectionProps,
   ChannelSeasonalFieldsProps,
   SeasonalHoliday,
   SeasonalMode,
   SeasonalOffSeason,
   SeasonalStrength,
 } from "./src/channels";
-export { ChannelSeasonalFields } from "./src/channels";
+export { ChannelAudioSection, ChannelSeasonalFields, seasonalModeLabel } from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";
@@ -19,8 +21,8 @@ export type { DeviceDisconnectActionProps } from "./src/device-disconnect";
 export { DeviceDisconnectAction } from "./src/device-disconnect";
 export type { DeviceSheetAccount, DeviceSheetProps } from "./src/device-sheet";
 export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
-export type { ClipSelectProps } from "./src/filler";
-export { ClipSelect, NeedsDetailsChip } from "./src/filler";
+export type { ClipSelectProps, DefectReviewProps } from "./src/filler";
+export { ClipSelect, DefectReview, NeedsDetailsChip } from "./src/filler";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
 export type {
   GuideArtworkRenderer,
@@ -52,6 +54,40 @@ export type {
   ProgrammeIdentityProps,
 } from "./src/identity";
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
+export type {
+  LibraryAuthority,
+  LibraryFilter,
+  LibraryFolder,
+  LibraryHealth,
+  LibraryHeldRemoval,
+  LibraryHook,
+  LibraryKind,
+  LibraryNeed,
+  LibraryNeedCandidate,
+  LibraryNeedSearch,
+  LibraryNeedsAnswers,
+  LibraryNeedsCardsProps,
+  LibraryNeedsStripProps,
+  LibraryPathMapping,
+  LibraryScan,
+  LibrarySettingsProps,
+  LibraryShelfProps,
+  LibraryShelfStatus,
+  LibraryShelfTitle,
+  LibraryTitleDetail,
+  LibraryTitleEpisode,
+  LibraryTitleFile,
+  LibraryTitleMatch,
+  LibraryTitleProps,
+  LibraryTitleSeason,
+} from "./src/library";
+export {
+  LibraryNeedsCards,
+  LibraryNeedsStrip,
+  LibrarySettings,
+  LibraryShelf,
+  LibraryTitle,
+} from "./src/library";
 export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,
@@ -127,6 +163,21 @@ export {
 } from "./src/surf-rail";
 export type {
   ChannelNumberEntry,
+  PlaybarBreak,
+  PlaybarProgramme,
+  PlaybarSegment,
+  PlaybarSpot,
+  PlaybarWindow,
+  PlayerBandData,
+  PlayerChromeProps,
+  PlayerCoverProps,
+  PlayerInfoData,
+  PlayerInfoProps,
+  PlayerLiveState,
+  PlayerSettingsProps,
+  PlayerSheetProps,
+  PlayerTransportProps,
+  WatchFrameProps,
   WatchingPanelData,
   WatchingPanelDataArgs,
   WatchingPanelProps,
@@ -135,6 +186,13 @@ export type {
   WatchingSurfaceProps,
 } from "./src/watching-surface";
 export {
+  PlayerChrome,
+  PlayerCover,
+  PlayerInfo,
+  PlayerSettings,
+  PlayerSheet,
+  playbarFromTimeline,
+  WatchFrame,
   WatchingPanel,
   WatchingSurface,
   watchingPanelFromGuide,

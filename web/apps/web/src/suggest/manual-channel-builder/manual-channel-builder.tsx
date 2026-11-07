@@ -143,10 +143,10 @@ const ManualChannelBuilder = ({
   return (
     <div className={cn("flex flex-col gap-5", className)}>
       <div>
-        <h2 className="font-semibold text-lg">
+        <h2 className="text-lg font-semibold">
           {fromIdea ? "Edit before you request" : isAdmin ? "Add a channel" : "Request a channel"}
         </h2>
-        <p className="mt-1 text-muted-foreground text-sm">
+        <p className="text-muted-foreground mt-1 text-sm">
           {fromIdea
             ? `Starting from the "${initialIdea.name}" idea. Everything below is already library-grounded — edit the lineup before requesting.`
             : "No AI service is connected yet, so Loomarr can't generate suggestions. Start from a template, build from your library below, or search for titles directly — you'll choose every title before anything is created."}
@@ -175,7 +175,7 @@ const ManualChannelBuilder = ({
 
       {!fromIdea && (
         <div>
-          <p className="font-medium text-sm">Starter templates</p>
+          <p className="text-sm font-medium">Starter templates</p>
           <ul className="mt-2 flex flex-col gap-2">
             {CHANNEL_TEMPLATES.map((template) => (
               <li key={template.id}>
@@ -183,14 +183,14 @@ const ManualChannelBuilder = ({
                   type="button"
                   onClick={() => applyTemplate(template.id)}
                   className={cn(
-                    "flex w-full items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-suggest",
+                    "border-border bg-card hover:border-suggest flex w-full items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
                     templateId === template.id && "border-suggest bg-suggest-tint-15",
                   )}
                 >
-                  <Sparkles className="mt-0.5 size-4 shrink-0 text-suggest" aria-hidden />
+                  <Sparkles className="text-suggest mt-0.5 size-4 shrink-0" aria-hidden />
                   <span className="min-w-0">
-                    <span className="block font-medium text-sm">{template.label}</span>
-                    <span className="block text-muted-foreground text-sm">{template.description}</span>
+                    <span className="block text-sm font-medium">{template.label}</span>
+                    <span className="text-muted-foreground block text-sm">{template.description}</span>
                   </span>
                 </button>
               </li>
@@ -201,8 +201,8 @@ const ManualChannelBuilder = ({
 
       {!fromIdea && (
         <div>
-          <p className="font-medium text-sm">Build from your library</p>
-          <p className="mt-1 text-muted-foreground text-xs">
+          <p className="text-sm font-medium">Build from your library</p>
+          <p className="text-muted-foreground mt-1 text-xs">
             Grounded in your library's genres, decades and the seasonal calendar — no AI involved.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -212,17 +212,17 @@ const ManualChannelBuilder = ({
                 type="button"
                 onClick={() => setActiveFacetId((current) => (current === idea.id ? undefined : idea.id))}
                 className={cn(
-                  "flex min-w-[150px] flex-col items-start gap-0.5 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors hover:border-tune",
+                  "border-border bg-card hover:border-tune flex min-w-[150px] flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
                   activeFacetId === idea.id && "border-tune bg-tune-tint-15",
                 )}
               >
-                <span className="font-medium text-sm">{idea.name}</span>
+                <span className="text-sm font-medium">{idea.name}</span>
                 <span className="text-muted-foreground text-xs">{ideaReason(idea, false, Date.now())}</span>
               </button>
             ))}
           </div>
           {activeFacet && (
-            <ul className="mt-2 rounded-md border border-border">
+            <ul className="border-border mt-2 rounded-md border">
               {activeFacet.titles
                 .filter((item) => {
                   const key = provisionKey(item);
@@ -231,7 +231,7 @@ const ManualChannelBuilder = ({
                 .map((item, index) => (
                   <li
                     key={provisionKey(item) || `${activeFacet.id}-${index}`}
-                    className="flex items-center gap-2 border-border border-b px-3 py-2 last:border-b-0"
+                    className="border-border flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
                   >
                     <span className="min-w-0 flex-1 text-sm">
                       {item.name} <span className="text-muted-foreground">{item.year}</span>
@@ -243,7 +243,7 @@ const ManualChannelBuilder = ({
                   </li>
                 ))}
               {activeFacet.titles.length === 0 && (
-                <li className="px-3 py-2 text-muted-foreground text-sm">
+                <li className="text-muted-foreground px-3 py-2 text-sm">
                   Every title here is already in your lineup.
                 </li>
               )}
@@ -253,7 +253,7 @@ const ManualChannelBuilder = ({
       )}
 
       <div>
-        <p className="font-medium text-sm">Search your library or request new titles</p>
+        <p className="text-sm font-medium">Search your library or request new titles</p>
         {adding ? (
           <div className="mt-2 flex flex-col gap-2">
             <SearchCommand
@@ -298,16 +298,16 @@ const ManualChannelBuilder = ({
 
       <div>
         <div className="flex items-center justify-between">
-          <p className="font-medium text-sm">Your lineup</p>
+          <p className="text-sm font-medium">Your lineup</p>
           {lineup.length > 0 && (
             <Button variant="ghost" size="sm" onClick={() => setLineup([])}>
               Clear
             </Button>
           )}
         </div>
-        <ul className="mt-2 rounded-md border border-border">
+        <ul className="border-border mt-2 rounded-md border">
           {lineup.length === 0 ? (
-            <li className="px-3 py-5 text-center text-muted-foreground text-sm">
+            <li className="text-muted-foreground px-3 py-5 text-center text-sm">
               No titles yet. Pick a facet above or search for one.
             </li>
           ) : (
@@ -316,7 +316,7 @@ const ManualChannelBuilder = ({
               return (
                 <li
                   key={key}
-                  className="flex items-center gap-2 border-border border-b px-3 py-2 last:border-b-0"
+                  className="border-border flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
                 >
                   <span className="min-w-0 flex-1 text-sm">
                     {item.name} <span className="text-muted-foreground">{item.year}</span>
@@ -343,7 +343,7 @@ const ManualChannelBuilder = ({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-border border-t pt-4">
+      <div className="border-border flex flex-wrap items-center justify-between gap-2 border-t pt-4">
         <span className="text-muted-foreground text-sm">{summary}</span>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onCancel}>

@@ -35,10 +35,10 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
   const rows = view.rows ?? [];
 
   return (
-    <section className={cn("overflow-hidden rounded-lg border border-border", className)}>
-      <div className="flex items-baseline gap-2.5 border-border border-b px-4 py-3.5">
-        <h2 className="font-medium text-sm">Services</h2>
-        <span className="ml-auto flex items-center gap-1.5 font-mono text-muted-foreground text-xs">
+    <section className={cn("border-border overflow-hidden rounded-lg border", className)}>
+      <div className="border-border flex items-baseline gap-2.5 border-b px-4 py-3.5">
+        <h2 className="text-sm font-medium">Services</h2>
+        <span className="text-muted-foreground ml-auto flex items-center gap-1.5 font-mono text-xs">
           {refreshing ? <Loader2 className="size-3 animate-spin" aria-hidden /> : null}
           checked every 30s · the same checks Settings runs
         </span>
@@ -54,7 +54,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
                 className={cn("size-1.5 shrink-0 rounded-full", row.ok ? "bg-lock" : "bg-onair")}
               />
               <span className="w-32 shrink-0 text-sm">{serviceLabel(row.name)}</span>
-              <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground text-xs">
+              <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
                 {/* An unconfigured integration has no target. Saying so beats an empty cell,
                     which reads as a rendering bug rather than an answer. */}
                 {row.target || "not configured"}
@@ -62,7 +62,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
               {/* The server's actionable detail ("connection refused"), under the row where a
                   failed check sits — the panel's job is to explain, not just to flag. */}
               {!row.ok && row.hint ? (
-                <p className="mt-1 basis-full pl-7.5 text-muted-foreground text-xs">{row.hint}</p>
+                <p className="text-muted-foreground mt-1 basis-full pl-7.5 text-xs">{row.hint}</p>
               ) : null}
             </PanelRow.Main>
             <PanelRow.Meta>

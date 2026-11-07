@@ -6,6 +6,7 @@ type SettingsRole = "all" | "admin";
 type SettingsStaticDestinationPath =
   | "/settings/access"
   | "/settings/connections"
+  | "/settings/library"
   | "/settings/ai"
   | "/settings/defaults"
   | "/settings/notifications"
@@ -55,6 +56,16 @@ const SETTINGS_DESTINATIONS = [
     browse: true,
   }),
   destination({
+    id: "library",
+    label: "Library",
+    description: "Choose the folders that hold your shows and movies.",
+    aliases: ["media folders", "scan", "mounts", "path mapping", "where is my media"],
+    group: "setup",
+    path: "/settings/library",
+    role: "admin",
+    browse: true,
+  }),
+  destination({
     id: "ai",
     owner: "settings.ai",
     label: "AI setup",
@@ -92,7 +103,7 @@ const SETTINGS_DESTINATIONS = [
     owner: "settings.location",
     label: "Your location",
     description: "Set the country and local area Loomarr uses for relevant content.",
-    aliases: ["where I live", "country", "city", "area", "market", "geography"],
+    aliases: ["where I live", "country", "city", "area", "radius", "local stations", "geography"],
     group: "setup",
     path: "/settings/access",
     role: "admin",

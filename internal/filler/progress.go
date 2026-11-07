@@ -2,7 +2,7 @@ package filler
 
 import "context"
 
-// Intra-stage progress reporting (§10 V51b) — a direct analogue of `internal/suggest/progress.go`,
+// Intra-stage progress reporting (§10 V51b) — a direct analogue of `internal/proposals/suggest/progress.go`,
 // and deliberately the same shape so the two read alike at their SSE bridges.
 
 // ProgressFunc receives progress WITHIN the running stage. It must not block: the publisher behind
@@ -37,6 +37,11 @@ func WithProgress(ctx context.Context, fn ProgressFunc) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, progressKey{}, fn)
+}
+
+// ReportProgress is reportProgress for a stage that lives outside this package.
+func ReportProgress(ctx context.Context, stage StageID, percent int) {
+	reportProgress(ctx, stage, percent)
 }
 
 // reportProgress fires the context's ProgressFunc if one is set.

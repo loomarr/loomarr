@@ -23,7 +23,7 @@ interface PanelRowProps {
 const PanelRow = ({ children, className }: PanelRowProps) => (
   <li
     className={cn(
-      "flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-border border-b px-4 py-3 last:border-b-0",
+      "border-border flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b px-4 py-3 last:border-b-0",
       className,
     )}
   >

@@ -119,7 +119,7 @@ func (e *eventEmitter) ChannelChanged(channelID, previousStatus, status string) 
 
 // JobChanged publishes a `job` frame whenever a scheduled job's state changes (running →
 // ok/error, Run-now) so the Settings → Tasks page updates live (§18.1). Satisfies
-// scheduler.Notifier. The page refetches GET /v1/jobs on this frame — the BE stays the single
+// jobs.Notifier. The page refetches GET /v1/jobs on this frame — the BE stays the single
 // source of timing truth. Best-effort like the other frames.
 func (e *eventEmitter) JobChanged(name string) {
 	e.bus.Publish(events.Event{Type: "job", Payload: api.JobEvent{Name: name}})
@@ -146,6 +146,12 @@ func (e *eventEmitter) ActivityRecorded() {
 // mutable report payload; GET /v1/diagnostics/health remains the source of truth.
 func (e *eventEmitter) HealthChanged() {
 	e.bus.Publish(events.Event{Type: "health", Payload: api.HealthEvent{}})
+}
+
+// SettingsChanged invalidates every client read derived from settings after a committed write. It
+// carries no payload; the GETs (settings list, setup status, AI provider status) own the shapes.
+func (e *eventEmitter) SettingsChanged() {
+	e.bus.Publish(events.Event{Type: "settings", Payload: api.SettingsEvent{}})
 }
 
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.
@@ -180,10 +186,10 @@ func (e *eventEmitter) FillerClipStage(p filler.ClipPipeline, c filler.StoreClip
 		e.forgetClipFrame(p.ClipHash)
 	}
 	// ⚠ The payload is composed INLINE rather than in a local, deliberately. The parity guard
-	// (`TestEveryPublishedEventIsInTheEventTypeMap`) reads these publish sites as SOURCE — there
-	// is no runtime seam that can see a frame which has not fired yet — and its regex matches
-	// `Type: "…", Payload: api.X{`. Hoisting the struct into a variable hides the frame from the
-	// guard, which then reports it as declared-but-never-published.
+	// (`TestEveryPublishedEventIsInTheEventTypeMap`) parses these publish sites — there is no
+	// runtime seam that can see a frame which has not fired yet — and matches an `events.Event`
+	// literal whose Payload is itself an `api.X{…}` literal. Hoisting the struct into a variable
+	// hides the frame from the guard, which then reports it as declared-but-never-published.
 	e.bus.Publish(events.Event{Type: "filler_clip", Payload: api.FillerClipEvent{
 		Hash: p.ClipHash, Stage: string(p.Stage), Status: string(p.Status),
 		Progress: p.Progress, Disposition: string(p.Disposition),

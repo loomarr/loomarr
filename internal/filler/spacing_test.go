@@ -12,7 +12,7 @@ import (
 // #1670: on a 1989–99 channel one ad aired twice in an evening 70 minutes apart, because the
 // install-wide 30 minute cooldown had long expired. A channel's own commercial spacing must make
 // the ladder reach for a widened-era clip before it repeats one inside that spacing.
-func spacingAdapter(clips []filler.Clip, records map[string]filler.ExposureRecord) *filler.PodAdapter {
+func spacingAdapter(clips []filler.Clip, records []filler.Airing) *filler.PodAdapter {
 	return filler.NewPodAdapter(stubCatalog{clips: clips}, &stubExposures{items: records}, func() filler.Policy {
 		return filler.Policy{PodMax: 1, BreakDurationMs: 30_000, Cooldown: 30 * time.Minute}
 	}, discardLogger())
@@ -33,9 +33,7 @@ func TestPodAdapter_ChannelSpacingPrefersWidenedEraOverARepeat(t *testing.T) {
 		{Hash: "exact", Path: "exact.mp4", Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000},
 		{Hash: "widened", Path: "widened.mp4", Kind: filler.Commercial, Era: 1984, Audience: filler.General, DurationMs: 30_000},
 	}
-	adapter := spacingAdapter(clips, map[string]filler.ExposureRecord{
-		"exact": {PlayCount: 3, LastPlayedAt: at.Add(-70 * time.Minute)},
-	})
+	adapter := spacingAdapter(clips, []filler.Airing{aired("exact", at.Add(-70*time.Minute))})
 	sel := filler.Selection{Era: filler.EraRange{From: 1989, To: 1999}, Audience: filler.General}
 
 	// Inheriting the 30 minute install default, the exact-era clip is rested and leads.
@@ -65,9 +63,7 @@ func TestPodAdapter_ChannelSpacingNeverEmptiesABreak(t *testing.T) {
 	clips := []filler.Clip{
 		{Hash: "only", Path: "only.mp4", Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000},
 	}
-	adapter := spacingAdapter(clips, map[string]filler.ExposureRecord{
-		"only": {PlayCount: 9, LastPlayedAt: at.Add(-10 * time.Minute)},
-	})
+	adapter := spacingAdapter(clips, []filler.Airing{aired("only", at.Add(-10*time.Minute))})
 	day := 24 * time.Hour
 	pod := spacingPod(t, adapter, filler.Selection{Audience: filler.General, Spacing: &day}, at)
 	if got := commercialIDs(pod); !reflect.DeepEqual(got, []string{"only"}) || !pod.CooldownRelaxed {

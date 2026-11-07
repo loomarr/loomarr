@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/fillerstructurewindowopenrouter"
+	"github.com/loomarr/loomarr/internal/filler/structure/window/openrouter"
 )
 
 func TestLoadWindowStructureDeploymentRequiresExactAuthorityAndRegularFile(t *testing.T) {
@@ -42,21 +42,21 @@ func TestLoadWindowStructureDeploymentRequiresExactAuthorityAndRegularFile(t *te
 	}
 }
 
-func appWindowStructureDeploymentFixture(authoritySHA string) fillerstructurewindowopenrouter.Deployment {
-	result := fillerstructurewindowopenrouter.Deployment{
-		SchemaVersion:   fillerstructurewindowopenrouter.DeploymentSchemaVersion,
-		ContractVersion: fillerstructurewindowopenrouter.DeploymentContractVersion,
+func appWindowStructureDeploymentFixture(authoritySHA string) openrouter.Deployment {
+	result := openrouter.Deployment{
+		SchemaVersion:   openrouter.DeploymentSchemaVersion,
+		ContractVersion: openrouter.DeploymentContractVersion,
 		AuthoritySHA256: authoritySHA, PerSourceBudgetNanoUSD: 6_000,
 		PerDayBudgetNanoUSD: 60_000, AutomaticAssessmentAllowed: true,
 	}
 	for _, pair := range [][2]string{{"assessor-a", "family-a"}, {"assessor-b", "family-b"}} {
-		result.Families = append(result.Families, fillerstructurewindowopenrouter.DeploymentFamily{
+		result.Families = append(result.Families, openrouter.DeploymentFamily{
 			AssessorID: pair[0], ModelFamily: pair[1], Model: "provider/model-" + pair[0],
 			UpstreamProvider: "Provider " + pair[0], UpstreamProviderSlug: "provider/" + pair[0],
-			ReasoningMode:      fillerstructurewindowopenrouter.ReasoningDisabled,
+			ReasoningMode:      openrouter.ReasoningDisabled,
 			MaximumInputTokens: 20_000, ReservationNanoUSD: 1_000,
 		})
 	}
-	result.SHA256 = fillerstructurewindowopenrouter.DeploymentSHA256(result)
+	result.SHA256 = openrouter.DeploymentSHA256(result)
 	return result
 }

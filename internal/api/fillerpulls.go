@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/settings"
 )
 
 // Filler pulls — the approval gate for filler acquisition (§10 V35).
@@ -195,11 +196,12 @@ func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) 
 }
 
 func (s *Server) fillerHomeGeography() filler.Geography {
-	if s.liveConfig == nil {
+	if s.liveSettings == nil {
 		return filler.Geography{}
 	}
 	return filler.Geography{
-		Country: s.liveConfig("filler.home_country"),
-		Market:  s.liveConfig("filler.home_market"),
+		Country:  settings.FillerHomeCountry.Get(s.liveSettings),
+		Place:    settings.FillerHomePlace.Get(s.liveSettings),
+		Fallback: settings.FillerRegionFallback.Joined(s.liveSettings),
 	}.Normalize()
 }

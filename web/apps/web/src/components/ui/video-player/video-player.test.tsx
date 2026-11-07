@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { useHoldControls } from "./internal/hold-controls-context";
 import { VideoPlayer } from "./video-player";
@@ -145,63 +145,104 @@ describe("VideoPlayer", () => {
         src={SRC}
         live
         onChannelStep={onChannelStep}
-        barControls={<button type="button">Menu</button>}
+        renderChrome={() => <button type="button">Menu</button>}
       />,
     );
     fireEvent.keyDown(screen.getByRole("button", { name: "Menu" }), { key: "ArrowUp" });
     expect(onChannelStep).not.toHaveBeenCalled();
   });
 
-  it("waits for replacement loadeddata before observing the frame that clears a held poster", () => {
-    const requestFrame = vi.fn(() => 1);
-    Object.defineProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback", {
-      configurable: true,
-      value: requestFrame,
+  // The live window (#2088 decision 2): ←/→ step 10 s from the frame on screen, L goes live.
+  it("moves a live channel through its window from the keys, through its live transport", () => {
+    const transport = (mode: "behind" | "live") => ({
+      state: { mode, lagSeconds: mode === "live" ? 0 : 40, viewerTimeMs: 1_000_000, noticeRevision: 0 },
+      play: vi.fn(),
+      pause: vi.fn(),
+      goLive: vi.fn(),
+      seek: vi.fn(),
     });
-    const firstAttach = vi.fn(() => () => undefined);
-    const replacementAttach = vi.fn(() => () => undefined);
-    const { container, rerender } = render(<VideoPlayer attach={firstAttach} live />);
+    const atLive = transport("live");
+    const { container, rerender } = render(
+      <VideoPlayer attach={() => () => undefined} live liveTransport={atLive} />,
+    );
     const video = container.querySelector("video") as HTMLVideoElement;
+    const frame = video.parentElement as HTMLElement;
 
-    expect(requestFrame).not.toHaveBeenCalled();
-    video.poster = "data:image/png;base64,held";
-    fireEvent.loadedData(video);
-    expect(video).not.toHaveAttribute("poster");
-    expect(requestFrame).not.toHaveBeenCalled();
+    fireEvent.keyDown(frame, { key: "ArrowLeft" });
+    expect(atLive.seek).toHaveBeenCalledExactlyOnceWith(990_000);
+    // Forward from live has nowhere to go.
+    fireEvent.keyDown(frame, { key: "ArrowRight" });
+    expect(atLive.seek).toHaveBeenCalledOnce();
 
-    rerender(<VideoPlayer attach={replacementAttach} live />);
-    video.poster = "data:image/png;base64,held";
-    expect(video).toHaveAttribute("poster");
-    fireEvent.loadedData(video);
-    expect(video).not.toHaveAttribute("poster");
-    expect(requestFrame).not.toHaveBeenCalled();
-
-    delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).requestVideoFrameCallback;
+    const behind = transport("behind");
+    rerender(<VideoPlayer attach={() => () => undefined} live liveTransport={behind} />);
+    fireEvent.keyDown(frame, { key: "ArrowRight" });
+    expect(behind.seek).toHaveBeenCalledExactlyOnceWith(1_010_000);
+    fireEvent.keyDown(frame, { key: "l" });
+    expect(behind.goLive).toHaveBeenCalledExactlyOnceWith();
   });
 
-  it("keeps behind-live context and Go Live together in the playback toolbar", () => {
-    const goLive = vi.fn();
+  // The live chrome's controls are RN-web Pressables, which render `div[role=button]`.
+  it("leaves Space and the arrows to a role=button child, as to a <button>", () => {
+    const onChannelStep = vi.fn();
     const { container } = render(
       <VideoPlayer
         src={SRC}
         live
-        topBar={<span>CH 42</span>}
-        liveTransport={{
-          state: { mode: "behind", lagSeconds: 23, viewerTimeMs: 1_000, noticeRevision: 0 },
-          play: vi.fn(),
-          pause: vi.fn(),
-          goLive,
-        }}
+        onChannelStep={onChannelStep}
+        renderChrome={() => (
+          // biome-ignore lint/a11y/useSemanticElements: stands in for an RN-web Pressable
+          <div role="button" tabIndex={0}>
+            Mute
+          </div>
+        )}
+      />,
+    );
+    const video = container.querySelector("video") as HTMLVideoElement;
+    const play = vi.fn(() => Promise.resolve());
+    video.play = play;
+    const control = screen.getByRole("button", { name: "Mute" });
+    fireEvent.keyDown(control, { key: " " });
+    fireEvent.keyDown(control, { key: "ArrowUp" });
+    expect(play).not.toHaveBeenCalled();
+    expect(onChannelStep).not.toHaveBeenCalled();
+  });
+
+  it("binds an attached transport to its own element once, and releases it on unmount", () => {
+    const release = vi.fn();
+    const attach = vi.fn(() => release);
+    const { container, rerender, unmount } = render(<VideoPlayer attach={attach} live />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+
+    rerender(<VideoPlayer attach={attach} live overlay={<p>tuning</p>} />);
+    expect(attach).toHaveBeenCalledExactlyOnceWith(video);
+    expect(release).not.toHaveBeenCalled();
+
+    unmount();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("draws a live player's controls from the caller's chrome, handing it the player's own state", () => {
+    const { container } = render(
+      <VideoPlayer
+        src={SRC}
+        live
+        renderChrome={(chrome) => (
+          <button type="button" aria-pressed={chrome.muted} onClick={() => chrome.setMuted(!chrome.muted)}>
+            Mute
+          </button>
+        )}
       />,
     );
 
-    const controls = screen.getByRole("group", { name: "Playback controls" });
-    expect(within(controls).getByText("23s behind")).toBeInTheDocument();
-    fireEvent.click(within(controls).getByRole("button", { name: "Go live" }));
-    expect(goLive).toHaveBeenCalledOnce();
-
-    const topBar = container.querySelector(".bg-linear-to-b") as HTMLElement;
-    expect(within(topBar).queryByRole("button", { name: "Go live" })).not.toBeInTheDocument();
+    // The player draws none of its own: no play toggle, no fullscreen, no seek bar.
+    expect(screen.queryByRole("group", { name: "Playback controls" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    // The chrome's mute acts on the element and reads back through the player's state.
+    const mute = screen.getByRole("button", { name: "Mute" });
+    fireEvent.click(mute);
+    expect((container.querySelector("video") as HTMLVideoElement).muted).toBe(true);
+    expect(mute).toHaveAttribute("aria-pressed", "true");
   });
 });
 
@@ -226,13 +267,15 @@ describe("VideoPlayer auto-hide", () => {
     fireEvent.play(container.querySelector("video") as HTMLVideoElement);
   };
 
-  it("keeps the controls shown while the pointer rests on the frame", () => {
+  it("hides the controls once the pointer has rested on the frame for the idle window", () => {
     const { container } = render(<VideoPlayer src={SRC} />);
     startPlaying(container);
 
-    // The idle window elapses, but the pointer is still on the frame ⇒ stays shown.
-    act(() => vi.advanceTimersByTime(3000));
+    act(() => vi.advanceTimersByTime(2000));
     expect(controlBar(container)).toHaveClass("opacity-100");
+    // Still on the frame, but still: the picture goes bare, as a full-bleed player's must.
+    act(() => vi.advanceTimersByTime(1000));
+    expect(controlBar(container)).toHaveClass("opacity-0");
   });
 
   it("hides the controls shortly after the pointer leaves the frame during playback", () => {
@@ -254,7 +297,7 @@ describe("VideoPlayer auto-hide", () => {
       hold = useHoldControls().hold;
       return null;
     };
-    const { container } = render(<VideoPlayer src={SRC} barControls={<Grabber />} />);
+    const { container } = render(<VideoPlayer src={SRC} leading={<Grabber />} />);
     startPlaying(container);
 
     // Pointer off the frame, but a menu is open (held) ⇒ stays shown past the grace window.

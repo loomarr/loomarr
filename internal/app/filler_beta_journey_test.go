@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -34,14 +35,14 @@ func TestFillerBetaJourney_QueuedSourceItemResumesAfterRestartAndBecomesPlayable
 		t.Fatal(err)
 	}
 	dsn := "sqlite://" + filepath.Join(root, "loomarr.db")
-	st, err := fillerstore.Open(ctx, dsn, true)
+	st, err := records.Open(ctx, dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	now := time.Date(2026, 9, 14, 20, 0, 0, 0, time.UTC)
 	clock := now
-	if err := st.UpsertFillerSource(ctx, fillerstore.FillerSource{
+	if err := st.UpsertFillerSource(ctx, records.FillerSource{
 		ID: "youtube:retro-toys", Kind: "youtube", URI: "https://youtube.com/@retro-toys/videos",
 		Label: "Retro toy commercials", Enabled: true, CreatedAt: now,
 	}); err != nil {
@@ -84,7 +85,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		}
 		return filler.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	newPipeline := func(database fillerstore.Store, probe filler.Prober) *filler.Pipeline {
+	newPipeline := func(database records.Store, probe filler.Prober) *filler.Pipeline {
 		clipStore := fillerPipelineClipAdapter{st: database}
 		return filler.NewPipeline(database, clipStore, []filler.Stage{
 			filler.NewProbeStage(probe, clipStore, layout.ClipDir(), func() int64 { return 10_000 }, nil, func() time.Time { return clock }),
@@ -104,11 +105,11 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if err != nil {
 		t.Fatal(err)
 	}
-	fetcher := clipfetch.New(clipfetch.NewYtDlpDownloader(ytdlp, "ffmpeg"), nil, layout.WatchDir(), nil).
+	fetcher := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, layout.WatchDir(), nil).
 		WithArtifactWriter(st).
 		WithStorageGovernor(governor)
 	adapter := fillerServiceAdapter{
-		fetcher: fetcher, acquisitions: st, sources: st,
+		fetcher: fetcher, acquisitions: st, sources: st, providers: testFillerProviders(),
 		newID:   func() string { return "acq-beta-journey" },
 		now:     func() time.Time { return now },
 		timeout: time.Minute,
@@ -122,7 +123,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		},
 	}
 
-	jobID, err := adapter.IngestSourceItems(ctx, "youtube:retro-toys", "youtube", []filler.DiscoveredRef{{
+	jobID, err := adapter.IngestSourceItems(ctx, "youtube:retro-toys", "youtube", []source.Item{{
 		ID: "retro-toy", URL: "https://youtube.com/watch?v=retro-toy",
 	}})
 	if err != nil {
@@ -133,7 +134,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 	waitForAcquisition(t, st, jobID, now, filler.AcquisitionSuccess)
 
-	held, err := st.ListClips(ctx, store.ClipFilter{IncludeHeld: true})
+	held, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +172,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Fatal(err)
 	}
 	clock = now.Add(6 * time.Minute)
-	reopened, err := fillerstore.Open(ctx, dsn, true)
+	reopened, err := records.Open(ctx, dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +222,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 }
 
-func waitForAcquisition(t *testing.T, st fillerstore.Store, id string, at time.Time, want filler.AcquisitionStatus) {
+func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want filler.AcquisitionStatus) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

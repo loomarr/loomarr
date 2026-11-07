@@ -17,9 +17,13 @@ func TestPlaybackLoudness_ReadsTheIngestMeasurementFromTheSidecar(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	got, ok := PlaybackLoudness(media)
+	got, peak, ok := PlaybackLoudness(media)
 	if !ok || got != -23.4 {
 		t.Fatalf("PlaybackLoudness = %v, %v; want -23.4, true", got, ok)
+	}
+	// The peak rides along so a boost can stop short of clipping (#2032).
+	if peak == nil || *peak != -2 {
+		t.Fatalf("true peak = %v, want -2 dBTP", peak)
 	}
 }
 
@@ -28,7 +32,7 @@ func TestPlaybackLoudness_ReadsTheIngestMeasurementFromTheSidecar(t *testing.T) 
 func TestPlaybackLoudness_UnmeasuredClipsReportNothing(t *testing.T) {
 	dir := t.TempDir()
 	bare := filepath.Join(dir, "bare.mp4")
-	if _, ok := PlaybackLoudness(bare); ok {
+	if _, _, ok := PlaybackLoudness(bare); ok {
 		t.Fatal("a clip with no sidecar reported a measurement")
 	}
 
@@ -38,7 +42,7 @@ func TestPlaybackLoudness_UnmeasuredClipsReportNothing(t *testing.T) {
 	if err := WriteSidecarTags(silent, SidecarTags{MediaAssets: &manifest}, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := PlaybackLoudness(silent); ok {
+	if _, _, ok := PlaybackLoudness(silent); ok {
 		t.Fatal("a clip with no audio measurement reported one")
 	}
 }

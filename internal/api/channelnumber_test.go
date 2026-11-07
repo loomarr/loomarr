@@ -9,12 +9,12 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-// fakeNumberSource stands in for Tunarr's channel list (binder.NumberSource).
+// fakeNumberSource stands in for Tunarr's channel list (approval.NumberSource).
 //
 // `err` models the case that matters most: Tunarr unreachable. The contract is best-effort —
 // numbering must fall back to Loomarr's store rather than refuse to create a channel — so a
@@ -36,7 +36,7 @@ func (f *fakeNumberSource) TakenChannelNumbers(context.Context) (map[int]bool, e
 
 // newServerWithNumbers is newServerWithScheduler plus a Tunarr number source, so the create
 // and renumber paths can be exercised against numbers that exist ONLY in Tunarr.
-func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Server, fillerstore.Store) {
+func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Server, records.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -47,7 +47,7 @@ func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Serve
 		Auth:     testAuthorizer{},
 		Log:      log,
 		Channels: chSvc,
-		Binder:   binder.New(st, chSvc, nil, log).WithChannelNumbers(nums),
+		Binder:   approval.New(st, chSvc, nil, log).WithChannelNumbers(nums),
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -132,5 +132,5 @@ func TestUpdateChannel_RejectsRenumberOntoANumberOnlyTunarrHolds(t *testing.T) {
 // NOTE: the `exceptChannelID` half of this rule is NOT reachable through HTTP — updateChannel
 // only runs the check when the number actually CHANGES (`*in.Body.Number != ch.Number`), so a
 // channel's own number is never queried against itself here. It is covered where it can be
-// exercised honestly, as a binder unit test (internal/binder/numberinuse_test.go), rather than
+// exercised honestly, as a binder unit test (internal/channels/approval/numberinuse_test.go), rather than
 // by an API test that would pass without the parameter existing.

@@ -8,21 +8,21 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -50,6 +50,8 @@ type cyclePreviewer interface {
 	// exactly as reconcile resolves them, so the resolver turns the window where reconcile will.
 	RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location)
 	CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error)
+	// Calendar is the holiday calendar the arrangement reads, so the cycle cache keys on it.
+	Calendar() schedule.Calendar
 }
 
 // titleReader is the one store method provenance needs.
@@ -64,9 +66,10 @@ type titleReader interface {
 // playoutResolver answers "what is airing now, and where does ffmpeg read it from".
 // clipPlayRecorder is the one-method slice of the store the resolver needs to count an
 // airing. `at` is the scheduled clip start, which makes repeated resolves of one airing
-// idempotent in the store. Narrow deliberately — the resolver has no other business writing.
+// idempotent in the store; `recordedAt` is the wall clock. Narrow deliberately — the resolver
+// has no other business writing.
 type clipPlayRecorder interface {
-	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) (bool, error)
+	RecordClipPlay(ctx context.Context, channelID, clipHash string, at, recordedAt time.Time) (bool, error)
 }
 
 // airingRecorder stamps that a PROGRAMME aired (§5, programming-design §3.1) — the recency
@@ -130,8 +133,7 @@ type playoutResolver struct {
 	pathMap func() library.PathMap
 	// probeFormat probes a source's codec/format for the direct-play copy decision (probe.go).
 	// Nil ⇒ treat as transcode-required (safe: correctness over speed when we cannot probe).
-	probeFormat    playout.FormatProber
-	probeCopyStart playout.CopyStartProber
+	probeFormat playout.FormatProber
 
 	// ffmpegPath is the binary the capability probe executes.
 	ffmpegPath func() string
@@ -192,7 +194,7 @@ type playoutResolver struct {
 	detectReady    atomic.Bool
 	detectedMu     sync.RWMutex
 	detectContext  context.Context
-	detected       playout.Encoder
+	detected       encode.Encoder
 	maxChannels    atomic.Int64
 	// encodeHostBytes is the capability probe's measured per-encode host memory (0 = unmeasured).
 	encodeHostBytes atomic.Int64
@@ -243,46 +245,9 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 		return airing, "", nil
 	}
 
-	// Record that this programme aired (§5, programming-design §3.1) — the memory the
-	// scheduler lacked, and the input recency-aware placement ranks on.
-	//
-	// ⚠ Stamped with the programme's START (`now - Offset`), not with `now`, and written on
-	// EVERY resolve rather than only at the start.
-	//
-	// The filler counter next door guards on `into == 0` because it is a COUNTER — counting a
-	// mid-clip re-resolve would inflate it. This is not a counter: the row is an upsert holding
-	// the last airing, so re-writing it is idempotent. Guarding on `Offset == 0` here was a
-	// real bug (caught only by tuning in live): a viewer arrives mid-programme, so Offset is
-	// however far the wall clock happens to be into the film — measured at 2075s on the first
-	// real tune-in. The guard would have fired only within ~1ms of a programme boundary, so
-	// history stayed empty and the whole recency signal silently did nothing.
-	//
-	// Using the START also makes the value mean what §3.1 needs: "when did this programme
-	// begin airing", which is stable no matter when anyone tuned in or how often ffmpeg
-	// re-requested the segment.
-	//
-	// The row is also stamped with when it was observed, because placement reads history as of
-	// a window's start (#1674). Never earlier than the programme's own start: the packager
-	// resolves up to its run-ahead early, and a programme that opens a window must not count
-	// toward that window's arrangement.
-	//
-	// ⚠ Telemetry, never correctness. A failed write is logged and the programme still airs —
-	// the same posture as RecordClipPlay, for the same reason: a channel must never go dark
-	// because a history table was unavailable.
-	if r.airings != nil && airing.Key != "" {
-		startedAt := now.Add(-airing.Offset)
-		recordedAt := r.now()
-		if startedAt.After(recordedAt) {
-			recordedAt = startedAt
-		}
-		if aerr := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt, recordedAt); aerr != nil && r.log != nil {
-			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", aerr)
-		}
-	}
-
 	// Resolve the input ffmpeg reads: the FILE directly (direct play, V47) when a path mapping
 	// resolves a readable local file, else the media server's HTTP stream (fallback). This is where
-	// direct play begins — reading the file lets the encoder `-c copy` it (playout.PlanCopy).
+	// direct play begins — reading the file lets the encoder `-c copy` it.
 	var pm library.PathMap
 	if r.pathMap != nil {
 		pm = r.pathMap()
@@ -296,6 +261,56 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
 	return airing, src.URL, nil
+}
+
+// RecordAiringServed records that a viewer received segments of an airing AiringAt resolved at
+// `resolvedAt`. It is the ONLY writer of airing history and of a filler clip's play count: every
+// resolve is a read (the admin Info page's /tracks, the packager's lookups for a neighbour warm),
+// and recording on a read rested ads on channels nobody watched.
+//
+// A programme is recorded under its provisioning key (§5, programming-design §3.1), the input
+// recency-aware placement ranks on. It is stamped with its START (`resolvedAt - Offset`), not with
+// the serve time, so the value means "when did this programme begin airing" however late anyone
+// tuned in. The row is an upsert holding the last airing, so the packager re-resolving after an
+// encoder restart is idempotent. It is also stamped with when it was observed, never earlier than
+// the start, because placement reads history as of a window's start (#1674): the packager resolves
+// up to its run-ahead early, and a programme that opens a window must not count toward that
+// window's arrangement.
+//
+// A filler clip is counted by HASH (`RecordClipPlay` is `WHERE hash = ?`; keyed by path every
+// counter stayed at zero) at its SCHEDULED start, which the store makes idempotent; an entry with
+// no hash, the generated bumper card, is not counted. Internal playout only: a Tunarr-backed
+// channel airs its filler through Tunarr, which never reports back, so those clips read "not
+// counted here", not "never played".
+//
+// Telemetry, never correctness: a failed write is logged and the airing carries on.
+func (r *playoutResolver) RecordAiringServed(ctx context.Context, channelID string, airing playout.Airing, resolvedAt time.Time) {
+	switch {
+	case airing.Kind == schedule.SlotFiller:
+		if airing.Identity == "" || r.clipPlays == nil {
+			return
+		}
+		recorded, err := r.clipPlays.RecordClipPlay(ctx, channelID, airing.Identity, airing.StartedAt, r.now())
+		if err != nil {
+			if r.log != nil {
+				// Debug: a pruned clip is an ordinary race.
+				r.log.Debug("playout: clip play not recorded", "channel", channelID, "clip", airing.Identity, "err", err)
+			}
+			return
+		}
+		if recorded && r.metrics != nil {
+			r.metrics.FillerRotationAired(airing.RecentRepeat, airing.RecentRepeat && !airing.RotationPinned, airing.RotationPinned)
+		}
+	case r.airings != nil && airing.Key != "":
+		startedAt := resolvedAt.Add(-airing.Offset)
+		recordedAt := r.now()
+		if startedAt.After(recordedAt) {
+			recordedAt = startedAt
+		}
+		if err := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt, recordedAt); err != nil && r.log != nil {
+			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", err)
+		}
+	}
 }
 
 // StillAiring is the cold-channel still's view of the schedule (playout.StillAiringResolver): the
@@ -358,9 +373,9 @@ func (r *playoutResolver) indexedKeyframe(ctx context.Context, input string, off
 	return time.Duration(keyframe.PTSMs) * time.Millisecond, true
 }
 
-// inventoryHDR reports whether the item's library source is HDR, from Loomarr's own inventory only
-// (never the media server, never ffprobe). Unknown is false: an untone-mapped still is dim, not
-// broken.
+// inventoryHDR reports whether the item's library source carries an HDR transfer (PQ/HLG), from
+// the inventory's stream facts (never ffprobe), importing the item when they are missing or stale.
+// Unknown is false: an untone-mapped still is dim, not broken.
 func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string) bool {
 	if r.inventory == nil || r.lib == nil {
 		return false
@@ -369,19 +384,8 @@ func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string
 	if err != nil {
 		return false
 	}
-	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
-		Item: inventory.ItemRef{Origin: &origin}, Kinds: []inventory.SourceKind{inventory.SourceLibraryOriginal},
-		RequiredCoverage: []string{"videoStreams"},
-	})
-	if err != nil || !ok {
-		return false
-	}
-	for _, stream := range source.Observation.Facts.Streams {
-		if stream.Kind == inventory.StreamVideo && stream.HDR {
-			return true
-		}
-	}
-	return false
+	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "streams")
+	return ok && playoutFormatOf(source.Observation.Facts).HDR()
 }
 
 // acceptedCycle is the broadcast commit boundary: the cycle the channel airs at `at` and the
@@ -529,6 +533,12 @@ func (r *playoutResolver) ChannelCodec(ctx context.Context, channelID string) st
 	return ch.BroadcastCodec
 }
 
+// inventoryFreshness is how long an imported library observation answers without asking the media
+// server again. A library file keeps its item id when it is replaced, and only the server can say
+// the file changed, so a read past this age re-imports the item; the import compares the source
+// revision (ETag, else content-derived) and drops the measurements of any revision that moved on.
+const inventoryFreshness = 24 * time.Hour
+
 // LineupFormats returns the stream facts of each distinct programme in the channel's cycle, the
 // input to playout.DeriveChannelFormats (#1512 G10). The facts come from Loomarr's inventory; an
 // item it has not observed yet is imported once from the library's own media information, never
@@ -561,24 +571,43 @@ func (r *playoutResolver) inventoryFormat(ctx context.Context, libraryItemID str
 	if err != nil {
 		return playout.MediaFormat{}
 	}
-	request := inventory.SourceRequest{Item: inventory.ItemRef{Origin: &origin}, RequiredCoverage: []string{"streams"}}
+	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "streams")
+	if !ok {
+		return playout.MediaFormat{}
+	}
+	return playoutFormatOf(source.Observation.Facts)
+}
+
+// freshLibrarySource is a library item's source facts from the inventory while they are within
+// inventoryFreshness, else from one re-import of the item. The import carries the file's current
+// revision, so a replaced file's old facts and measurements are dropped rather than served.
+func (r *playoutResolver) freshLibrarySource(
+	ctx context.Context, libraryItemID string, origin inventory.OriginKey, coverage string,
+) (inventory.ResolvedSource, bool) {
+	request := inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(), MaxAge: inventoryFreshness,
+		RequiredCoverage: []string{coverage},
+	}
 	if source, ok, err := r.inventory.ResolveSource(ctx, request); err == nil && ok {
-		return playoutFormatOf(source.Observation.Facts)
+		return source, true
 	}
 	snapshot, present, err := r.lib.InventorySnapshot(ctx, libraryItemID)
 	if err != nil || !present {
-		return playout.MediaFormat{}
+		if err != nil && r.log != nil {
+			r.log.Debug("playout: library media observation unavailable", "item", libraryItemID, "err", err)
+		}
+		return inventory.ResolvedSource{}, false
 	}
 	if _, err := r.inventory.ApplySnapshot(ctx, snapshot); err != nil {
 		if r.log != nil {
-			r.log.Debug("formats: library media observation not persisted", "item", libraryItemID, "err", err)
+			r.log.Debug("playout: library media observation not persisted", "item", libraryItemID, "err", err)
 		}
-		return playout.MediaFormat{}
+		return inventory.ResolvedSource{}, false
 	}
-	if source, ok, err := r.inventory.ResolveSource(ctx, request); err == nil && ok {
-		return playoutFormatOf(source.Observation.Facts)
-	}
-	return playout.MediaFormat{}
+	// The import just stamped these facts, so age no longer applies; coverage still does.
+	request.MaxAge = 0
+	source, ok, err := r.inventory.ResolveSource(ctx, request)
+	return source, err == nil && ok
 }
 
 // maxCodecProbes bounds how many program files ComputeChannelCodec probes to decide the majority.
@@ -709,7 +738,7 @@ func (r *playoutResolver) cycleAt(
 	// rolling-window index is added inside the cache), not the wall-clock — so a navigated window
 	// or a later visit reuses the work. See the cycle cache's header.
 	_, zone := r.engine.RollingWindow(ch.Policy, at)
-	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at, zone))
+	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at, r.engine.Calendar()))
 	if !ok {
 		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
 		return slots, window, cerr
@@ -1058,9 +1087,11 @@ func (r *playoutResolver) airingFiller(
 	// breaks play different adverts — and the guide's hover card, which calls the same
 	// method with the same start, lists exactly what will air here.
 	//
-	// gap.Offset is how far into the break we are, so the break began that long ago.
-	breakStart := now.Add(-gap.Offset).UnixMilli()
-	pod, err := r.pods.PreviewAt(ctx, channelID, breakStart)
+	// gap.Offset is how far into the break we are, so the break began that long ago, and a break is
+	// assembled to its own slot, never past it (a placeholder to the configured break length).
+	pod, err := r.pods.PreviewAt(ctx, channelID, filler.BreakSlot{
+		Start: time.UnixMilli(now.Add(-gap.Offset).UnixMilli()), Length: gap.BreakLength(),
+	})
 	if err != nil || len(pod.Entries) == 0 {
 		// No pool, or the assembler could not fill this break. Not an error: §10's ladder
 		// bottoms out at "nothing matched", and a channel must not fail to tune because it has
@@ -1087,45 +1118,19 @@ func (r *playoutResolver) airingFiller(
 			if perr != nil {
 				return gap, "", nil
 			}
-			// Count the airing (V28). THIS is the honest write point, and the two
-			// tempting alternatives are both wrong:
-			//   - pod ASSEMBLY re-runs on every 10m reconcile sweep, so it counts what was
-			//     scheduled, over and over, not what aired;
-			//   - counting every resolve as a new play would count viewer reconnects and child
-			//     retries rather than airings.
-			// Here the resolver passes the clip's SCHEDULED start on every resolve. The store
-			// makes that stable identity idempotent. Requiring `into == 0` instead lost every
-			// real transition: a finite encoder child asks for its successor milliseconds after
-			// the boundary, not at the exact nanosecond.
-			//
-			// ⚠ Internal playout only. A Tunarr-backed channel airs its filler through Tunarr,
-			// which never reports back, so those clips stay at zero — "not counted here", not
-			// "never played". The DTO says which.
-			//
-			// ⚠ Keyed by Hash, not Path. `RecordClipPlay` is `WHERE hash = ?`; this passed
-			// `e.Path` from V38c until V41 and every counter stayed at zero. The error below is
-			// swallowed by design, so the miss was silent — the guard is `PodEntry.Hash` now
-			// existing at all, plus the store's ClipKeyIsHashNotPath conformance test.
-			if e.Hash != "" && r.clipPlays != nil {
-				startedAt := now.Add(-into)
-				recorded, err := r.clipPlays.RecordClipPlay(ctx, channelID, e.Hash, startedAt)
-				if err != nil {
-					// Telemetry, never correctness: a failed count must not stop a break from
-					// airing. Logged at debug because a pruned clip is an ordinary race.
-					_ = err
-				} else if recorded && r.metrics != nil {
-					r.metrics.FillerRotationAired(e.RecentRepeat, e.RecentRepeat && !e.RotationPinned, e.RotationPinned)
-				}
-			}
+			// Resolving a clip does not count it: pod ASSEMBLY re-runs on every 10m reconcile
+			// sweep and any read of the channel resolves the airing, so counting here would count
+			// what was scheduled or looked at, not what aired. RecordAiringServed counts it when
+			// a viewer receives its segments.
 			remaining := d - into
 			if gap.Remaining > 0 && gap.Remaining < remaining {
 				remaining = gap.Remaining
 			}
 			// The loudness measured at ingest rides the airing so the channel packager can apply a
 			// static gain instead of a live loudnorm (#1512 G6). Absent ⇒ 0 dB.
-			var measured *float64
-			if lufs, ok := filler.PlaybackLoudness(full); ok {
-				measured = &lufs
+			var measured, truePeak *float64
+			if lufs, peak, ok := filler.PlaybackLoudness(full); ok {
+				measured, truePeak = &lufs, peak
 			}
 			return playout.Airing{
 				StartedAt:       now.Add(-into),
@@ -1134,11 +1139,14 @@ func (r *playoutResolver) airingFiller(
 				Kind:            schedule.SlotFiller,
 				// Source, not LibraryItemID: this is a local file, not a media-server item.
 				// Playable() checks Source for exactly this case.
-				Source:       full,
-				MeasuredLUFS: measured,
-				Title:        e.Name,
-				Offset:       into,
-				Remaining:    remaining,
+				Source:           full,
+				MeasuredLUFS:     measured,
+				MeasuredTruePeak: truePeak,
+				RecentRepeat:     e.RecentRepeat,
+				RotationPinned:   e.RotationPinned,
+				Title:            e.Name,
+				Offset:           into,
+				Remaining:        remaining,
 			}, full, nil
 		}
 		into -= d
@@ -1172,8 +1180,6 @@ func (r *playoutResolver) airingFiller(
 // One probe per PROGRAMME, not per request: the block supervisor asks for a new program at each
 // boundary, so this runs about as often as a film is long. That is what makes an exec on the
 // broadcast path affordable — and why it must not become per-segment.
-const inventoryAudioFreshness = 24 * time.Hour
-
 func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryItemID, streamURL string) int {
 	if r.audioLanguage == nil || streamURL == "" {
 		return 0
@@ -1272,27 +1278,11 @@ func (r *playoutResolver) inventoryAudioTracks(
 	if err != nil {
 		return nil, false
 	}
-	request := inventory.SourceRequest{
-		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(), MaxAge: inventoryAudioFreshness,
-		RequiredCoverage: []string{"audioStreams"},
+	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "audioStreams")
+	if !ok {
+		return nil, false
 	}
-	if source, ok, resolveErr := r.inventory.ResolveSource(ctx, request); resolveErr == nil && ok {
-		return playoutAudioTracks(source.Observation.Facts.Streams), true
-	}
-
-	snapshot, present, importErr := r.lib.InventorySnapshot(ctx, libraryItemID)
-	if importErr == nil && present {
-		if _, applyErr := r.inventory.ApplySnapshot(ctx, snapshot); applyErr == nil {
-			if source, ok, resolveErr := r.inventory.ResolveSource(ctx, request); resolveErr == nil && ok {
-				return playoutAudioTracks(source.Observation.Facts.Streams), true
-			}
-		} else if r.log != nil {
-			r.log.Debug("playout: library media observation not persisted", "err", applyErr)
-		}
-	} else if importErr != nil && r.log != nil {
-		r.log.Debug("playout: library media observation unavailable", "err", importErr)
-	}
-	return nil, false
+	return playoutAudioTracks(source.Observation.Facts.Streams), true
 }
 
 func (r *playoutResolver) recordSourceMeasurement(
@@ -1323,24 +1313,7 @@ func (r *playoutResolver) recordSourceMeasurement(
 	if err != nil || !ok {
 		return
 	}
-	facts := inventoryFactsOf(observed)
-	audioCoverage := inventory.CoverageEmpty
-	for _, stream := range facts.Streams {
-		if stream.Kind == inventory.StreamAudio {
-			audioCoverage = inventory.CoveragePresent
-			break
-		}
-	}
-	measurement := inventory.Measurement{
-		SourceID: source.ID, Revision: source.Revision,
-		Observation: inventory.Observation[inventory.SourceFacts]{
-			SchemaVersion: 1, ObservedAt: r.inventoryNow(),
-			Coverage: map[string]inventory.Coverage{
-				"streams": inventory.CoveragePresent, "audioStreams": audioCoverage,
-			},
-			Facts: facts,
-		},
-	}
+	measurement := inventory.NewFactsMeasurement(source.ID, source.Revision, r.inventoryNow(), inventoryFactsOf(observed))
 	if err := r.inventory.RecordMeasurement(ctx, measurement); err != nil && r.log != nil {
 		r.log.Debug("playout: measured audio observation not persisted", "err", err)
 	}
@@ -1476,7 +1449,7 @@ func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
 			format.VideoCodec = strings.ToLower(strings.TrimSpace(stream.Codec))
 			format.Width = stream.Width
 			format.Height = stream.Height
-			format.FrameRate = parseInventoryRational(stream.FrameRate)
+			format.FrameRate = playout.ParseFrameRate(stream.FrameRate)
 			format.PixelFormat = strings.ToLower(strings.TrimSpace(stream.PixelFormat))
 			format.ColorTransfer = strings.ToLower(strings.TrimSpace(stream.ColorTransfer))
 			format.Interlaced = stream.Interlaced
@@ -1490,20 +1463,6 @@ func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
 		}
 	}
 	return format
-}
-
-func parseInventoryRational(value string) float64 {
-	numerator, denominator, found := strings.Cut(strings.TrimSpace(value), "/")
-	if !found {
-		parsed, _ := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		return parsed
-	}
-	n, numeratorErr := strconv.ParseFloat(strings.TrimSpace(numerator), 64)
-	d, denominatorErr := strconv.ParseFloat(strings.TrimSpace(denominator), 64)
-	if numeratorErr != nil || denominatorErr != nil || d == 0 {
-		return 0
-	}
-	return n / d
 }
 
 func (r *playoutResolver) inventoryNow() time.Time {
@@ -1549,27 +1508,16 @@ func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout
 	return tracks, nil
 }
 
-// PlanFor decides the copy/transcode plan for an input against a target (§9.1 direct play, V47) —
-// probe the source, then PlanCopy. This is what makes a program direct-play: an h264 file to the
-// browser copies the video and transcodes at most the audio.
+// FormatOf probes an input once and returns everything the probe measured: geometry, framerate,
+// pixel format, colour transfer, audio shape, duration, bitrate (playout.MediaFormat).
 //
-// BEST-EFFORT, and it fails SAFE toward TRANSCODE: no prober wired, no input, or a probe error all
-// return the zero CopyPlan (copy nothing → transcode both). A copy of an unprobed source could ship
-// a codec the target cannot play — a black frame — whereas an unnecessary transcode is merely slow.
-// So when we cannot know, we transcode.
-//
-// It returns the PROBE ALONGSIDE THE PLAN, and that is the point of the second return value. This
-// function used to reduce a fully-parsed MediaFormat — geometry, framerate, pixel format, colour
-// transfer, duration, bitrate — to two booleans and discard the rest, which is why copyplan.go's
-// "Probe once, keep it all… so later features need no second ffprobe" was a promise nothing
-// collected on, and why its HDR() had no production caller. The zero MediaFormat travels with the
-// zero CopyPlan on every failure path, so an unprobed source reads as SDR/unknown rather than as
-// anything asserted.
-func (r *playoutResolver) PlanFor(
-	ctx context.Context, input string, target playout.EncodePlan,
-) (playout.CopyPlan, playout.MediaFormat) {
+// BEST-EFFORT, and it fails SAFE: no prober wired, no input, or a probe error all return the zero
+// MediaFormat, which reads as SDR/unknown rather than as anything asserted, so the item transcodes.
+// A copy of an unprobed source could ship a codec the output cannot play — a black frame — whereas
+// an unnecessary transcode is merely slow.
+func (r *playoutResolver) FormatOf(ctx context.Context, input string) playout.MediaFormat {
 	if input == "" {
-		return playout.CopyPlan{}, playout.MediaFormat{} // transcode both
+		return playout.MediaFormat{}
 	}
 	if r.inventory != nil {
 		if origin, ok := r.ensureLocalInventorySource(ctx, input); ok {
@@ -1581,35 +1529,28 @@ func (r *playoutResolver) PlanFor(
 				format := playoutFormatOf(source.Observation.Facts)
 				format.Active = r.activePicture(ctx, source.ID)
 				r.submitAnalysis(source.ID, source.Revision, input, source.Observation.Facts)
-				return playout.PlanCopy(format, target), format
+				return format
 			}
 			if format, ok := r.measureFirstPlay(ctx, origin, input); ok {
-				return playout.PlanCopy(format, target), format
+				return format
 			}
 		}
 	}
 	if r.probeFormat == nil {
-		return playout.CopyPlan{}, playout.MediaFormat{} // transcode both
+		return playout.MediaFormat{}
 	}
 	f, err := r.probeFormat(ctx, input)
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("playout: format not probed, transcoding", "input", library.RedactStreamURL(input), "err", err)
 		}
-		return playout.CopyPlan{}, playout.MediaFormat{}
+		return playout.MediaFormat{}
 	}
-	return playout.PlanCopy(f, target), f
-}
-
-func (r *playoutResolver) CopyVideoStart(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool) {
-	if r.probeCopyStart == nil {
-		return 0, false
-	}
-	return r.probeCopyStart(ctx, input, offset, limit, fps)
+	return f
 }
 
 func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile {
-	enc := playout.Encoder(r.encoder())
+	enc := encode.Encoder(r.encoder())
 	if enc == "" {
 		// A matching persisted result is available to this first tune after only its host fingerprint
 		// matches. Its real encoder validation runs asynchronously; a miss likewise starts the full
@@ -1623,7 +1564,7 @@ func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile
 		// hardware cannot actually run — the exact trap that took a live channel down: the
 		// host listed h264_vulkan, the container had no /dev/dri).
 		r.reuseEncoderEvidence(ctx)
-		enc = playout.EncoderSoftware
+		enc = encode.EncoderSoftware
 		if r.detectReady.Load() {
 			enc = r.publishedEncoder()
 		}
@@ -1676,7 +1617,7 @@ func (r *playoutResolver) warmEncoderDetection(fallback context.Context) {
 // everything after completion reads the result. A matching persisted hardware result substitutes
 // one short real TS encode, while an FFmpeg/GPU/profile mismatch or failed validation performs the
 // complete measurement and atomically replaces that evidence.
-func (r *playoutResolver) detectedEncoder(ctx context.Context) playout.Encoder {
+func (r *playoutResolver) detectedEncoder(ctx context.Context) encode.Encoder {
 	r.detectOnce.Do(func() {
 		bin, gpu, root := r.capabilityInputs()
 		cap, reused := playout.DetectObservedWithEvidence(
@@ -1728,10 +1669,24 @@ func (r *playoutResolver) publishDetectedCapacity(cap playout.Capacity, reused b
 	r.detectReady.Store(true)
 }
 
-func (r *playoutResolver) publishedEncoder() playout.Encoder {
+func (r *playoutResolver) publishedEncoder() encode.Encoder {
 	r.detectedMu.RLock()
 	defer r.detectedMu.RUnlock()
 	return r.detected
+}
+
+// fileEncodeHost is the hardware filler derivatives encode on (#2121), the channels' own: the
+// operator's pinned encoder, else the one detection published, and software until detection
+// settles. encode.FileFamily then keeps a family without a measured level in software.
+func (r *playoutResolver) fileEncodeHost(pinned encode.Encoder) encode.HostProfile {
+	enc := pinned
+	if enc == "" && r != nil && r.detectReady.Load() {
+		enc = r.publishedEncoder()
+	}
+	if enc == "" {
+		enc = encode.EncoderSoftware
+	}
+	return encode.HostFor(enc, false, encode.GPUFilters{})
 }
 
 // PublishedCapability returns only the encoder result already published by the asynchronous

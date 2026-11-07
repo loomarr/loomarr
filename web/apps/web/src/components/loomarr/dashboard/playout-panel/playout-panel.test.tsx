@@ -1,8 +1,9 @@
 import type { ChannelHealth, PlayoutStatus } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { render } from "@/test/render";
 import { PlayoutPanel } from "./playout-panel";
 
 // The channel-id affordance uses the app-wide Tooltip, whose provider is mounted at __root.tsx in

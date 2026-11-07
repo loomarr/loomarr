@@ -15,17 +15,19 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/reference"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-const releaseGateManifestPath = "testdata/planner-release-gate-v16.json"
+const releaseGateManifestPath = "testdata/planner-release-gate-v17.json"
 
 //go:embed testdata/planner-release-gate-v1.json testdata/planner-release-gate-v2.json testdata/planner-release-gate-v3.json testdata/planner-release-gate-v4.json testdata/planner-release-gate-v5.json testdata/planner-release-catalog-v1.json testdata/planner-release-sources-v1.json testdata/planner-release-gate-v6.json testdata/planner-release-gate-v7.json testdata/planner-release-gate-v8.json testdata/planner-release-gate-v9.json testdata/planner-release-gate-v10.json testdata/planner-release-gate-v11.json testdata/planner-release-gate-v12.json testdata/planner-release-gate-v13.json testdata/planner-release-gate-v14.json
 //go:embed testdata/planner-release-gate-v15.json
 //go:embed testdata/planner-release-gate-v16.json
+//go:embed testdata/planner-release-gate-v17.json
 var releaseGateFiles embed.FS
 
 var releaseGateModelCanaryCaseIDs = []string{
@@ -250,10 +252,10 @@ type releaseGateGenerator struct {
 	surfaced     int
 }
 
-func (g *releaseGateGenerator) Suggest(ctx context.Context, intent suggest.Intent) (suggest.Proposal, error) {
+func (g *releaseGateGenerator) Suggest(ctx context.Context, intent proposals.Intent) (proposals.Proposal, error) {
 	caseID, ok := g.caseByIntent[intent.Description]
 	if !ok {
-		return suggest.Proposal{}, fmt.Errorf("Intent is absent from the embedded release-gate corpus")
+		return proposals.Proposal{}, fmt.Errorf("Intent is absent from the embedded release-gate corpus")
 	}
 	g.fixture.selectCase(caseID)
 	proposal, err := g.inner.Suggest(ctx, intent)
@@ -324,7 +326,7 @@ func NewEmbeddedReleaseGateGenerator(provider llm.Provider) (Generator, Observer
 	if err != nil {
 		return nil, nil, err
 	}
-	references := &testkit.ReferenceResolver{ByURL: make(map[string]reference.Evidence)}
+	references := &testkit.ReferenceResolver{ByURL: make(map[string]webreference.Evidence)}
 	if err := json.Unmarshal(sourceBlob, &references.ByLabel); err != nil {
 		return nil, nil, fmt.Errorf("decode release source fixture: %w", err)
 	}
@@ -332,7 +334,7 @@ func NewEmbeddedReleaseGateGenerator(provider llm.Provider) (Generator, Observer
 	for _, c := range corpus.Cases {
 		caseByIntent[c.Description] = c.FixtureCase
 		if len(c.ReferenceTitles) > 0 {
-			references.ByURL[c.ReferenceURL] = reference.Evidence{URL: c.ReferenceURL, Title: "Frozen programming reference", Excerpt: "Synthetic release-gate evidence.", TitleAnchors: append([]string(nil), c.ReferenceTitles...)}
+			references.ByURL[c.ReferenceURL] = webreference.Evidence{URL: c.ReferenceURL, Title: "Frozen programming reference", Excerpt: "Synthetic release-gate evidence.", TitleAnchors: append([]string(nil), c.ReferenceTitles...)}
 		}
 	}
 	suggester := suggest.New(observed, cat, fixture, 10).WithRatings(fixture).WithReferences(references)

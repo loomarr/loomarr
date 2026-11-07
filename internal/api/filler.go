@@ -3,22 +3,21 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // registerFiller mounts /v1/filler* (§7/§10). List is visible to any
@@ -213,7 +212,7 @@ func (s *Server) registerFiller(api huma.API) {
 type rewindFillerClipInput struct {
 	Body struct {
 		Hash  string `json:"hash" minLength:"1"`
-		From  string `json:"from" enum:"probe,transcode,split,screen,language,transcribe,vision,score"`
+		From  string `json:"from" enum:"probe,transcode,split,screen,defects,language,transcribe,vision,score"`
 		Force bool   `json:"force,omitempty"`
 	}
 }
@@ -253,14 +252,15 @@ type ClipDTO struct {
 	// empty on an install with no Tunarr. NOT an identity — clients must key on Path.
 	TunarrProgramID string `json:"tunarrProgramId,omitempty"`
 	Name            string `json:"name"`
-	Kind            string `json:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial"`
+	Kind            string `json:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	Era             int    `json:"era,omitempty"`
 	Audience        string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
 	GeographicScope string `json:"geographicScope,omitempty" enum:"unknown,national,local"`
 	Country         string `json:"country,omitempty" doc:"ISO 3166-1 alpha-2 country when grounded"`
-	Market          string `json:"market,omitempty" doc:"Local broadcast market when geographicScope is local"`
 	Network         string `json:"network,omitempty"`
-	Station         string `json:"station,omitempty"`
+	Station         string `json:"station,omitempty" doc:"Broadcast station directory id (fcc:<facility> or wd:<item>); a local clip airs near it"`
+	StationCallSign string `json:"stationCallSign,omitempty" example:"WEWS" doc:"The station's call sign on the air date"`
+	StationLabel    string `json:"stationLabel,omitempty" example:"WEWS · Cleveland, OH" doc:"The station's call sign on the air date and its community of license"`
 	AirDate         string `json:"airDate,omitempty" doc:"Grounded broadcast date in YYYY-MM-DD form"`
 	GeoEvidence     string `json:"geographyEvidence,omitempty" doc:"Literal source evidence or operator attribution"`
 	// Category is the DERIVED product-leaf shadow of Tags (§10 V45a) — kept for readers that show a
@@ -411,7 +411,7 @@ type ClipContextSourceDTO struct {
 	URL   string `json:"url"`
 }
 
-func clipContextSuggestionDTO(report fillerresearch.Report, verifiedEra int, verifiedCountry string) *ClipContextSuggestionDTO {
+func clipContextSuggestionDTO(report research.Report, verifiedEra int, verifiedCountry string) *ClipContextSuggestionDTO {
 	suggestion := report.Suggestion
 	if verifiedEra > 0 {
 		suggestion.Year, suggestion.Decade = 0, 0
@@ -431,8 +431,8 @@ func clipContextSuggestionDTO(report fillerresearch.Report, verifiedEra int, ver
 	return detail
 }
 
-func clipEnrichmentDTO(states []fillerenrichment.State) *ClipEnrichmentDTO {
-	projection := fillerenrichment.ProjectDetails(states)
+func clipEnrichmentDTO(states []enrichment.State) *ClipEnrichmentDTO {
+	projection := enrichment.ProjectDetails(states)
 	detail := &ClipEnrichmentDTO{State: string(projection.State)}
 	if len(projection.Facts) > 0 {
 		detail.Facts = make([]ClipEnrichmentFactDTO, len(projection.Facts))
@@ -476,7 +476,7 @@ func (s *Server) clipPathByHash(ctx context.Context, hash string) (string, bool)
 // grid, and each tile has a still AND a hover loop, so a per-row lookup is two queries per tile:
 // a 200-clip page would be 400 round trips to render one screen. This is the same N+1 the channel
 // list already avoids, one surface over, and it matters more here because the page is bigger.
-func (s *Server) clipArtworkResolver(ctx context.Context, clips []store.Clip) func(string) *ImageDTO {
+func (s *Server) clipArtworkResolver(ctx context.Context, clips []catalogstore.Clip) func(string) *ImageDTO {
 	if s.images == nil || len(clips) == 0 {
 		return nil
 	}
@@ -499,11 +499,11 @@ func (s *Server) clipArtworkResolver(ctx context.Context, clips []store.Clip) fu
 // clipToDTO renders a clip for the wire. `img`, when non-nil, resolves an image hash to its
 // record — pre-resolved by the caller for the whole page, never looked up per clip (see
 // imageDTOsByHash: the catalog is a grid, so a per-row lookup is two queries per tile).
-func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) ClipDTO {
+func clipToDTO(c catalogstore.Clip, playsCounted bool, img func(string) *ImageDTO) ClipDTO {
 	d := ClipDTO{
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags, AssertedTags: c.AssertedTags,
-		GeographicScope: string(c.GeographicScope), Country: c.Country, Market: c.Market,
+		GeographicScope: string(c.GeographicScope), Country: c.Country,
 		Network: c.Network, Station: c.Station, AirDate: c.AirDate, GeoEvidence: c.GeoEvidence,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
@@ -549,6 +549,8 @@ func fillerSourceLabel(source string, labels map[string]string) string {
 		return "Media server library"
 	case "manual":
 		return "Manually added"
+	case filler.OpenSearchSourceID:
+		return "Search for nearby stations"
 	case "":
 		return ""
 	default:
@@ -557,13 +559,12 @@ func fillerSourceLabel(source string, labels map[string]string) string {
 }
 
 type listFillerInput struct {
-	Kind            string `query:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial"`
+	Kind            string `query:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	Era             int    `query:"era"`
 	Audience        string `query:"audience" enum:"kids,family,general,late_night"`
 	Category        string `query:"category"`
 	GeographicScope string `query:"geographicScope" enum:"unknown,national,local"`
 	Country         string `query:"country" minLength:"2" maxLength:"2"`
-	Market          string `query:"market"`
 	Taxon           string `query:"taxon" doc:"Match clips carrying this taxon directly or through a descendant rollup"`
 	Unclassified    bool   `query:"unclassified" doc:"Only playable clips with no directly asserted taxonomy tags on any axis"`
 	WithoutAxis     string `query:"withoutAxis" enum:"product,format,seasonal,audience-cue,presentation" doc:"Only playable clips without a directly asserted taxonomy tag on this axis; absence may be valid for sparse cue axes"`
@@ -632,14 +633,13 @@ type listFillerOutput struct {
 }
 
 func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFillerOutput, error) {
-	f := store.ClipFilter{
+	f := catalogstore.ClipFilter{
 		Kind:                filler.Kind(in.Kind),
 		Era:                 in.Era,
 		Audience:            filler.Audience(in.Audience),
 		Category:            in.Category,
 		GeographicScope:     filler.GeographicScope(in.GeographicScope),
 		Country:             in.Country,
-		Market:              in.Market,
 		Taxon:               in.Taxon,
 		WithoutTaxonomyTags: in.Unclassified,
 		WithoutTaxonomyAxis: taxonomy.Axis(in.WithoutAxis),
@@ -651,7 +651,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		TopLevelOnly:        in.TopLevel,
 		ParentHash:          in.ParentHash,
 		Hashes:              in.Hashes,
-		Sort:                store.ClipSort(in.Sort),
+		Sort:                catalogstore.ClipSort(in.Sort),
 		Desc:                in.Order == "desc",
 		Limit:               in.Limit,
 		Offset:              in.Offset,
@@ -661,7 +661,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		// ⚠ Defence in depth: huma's enum already rejects an unknown sort at validation, so this
 		// can only fire if the two vocabularies drift. It is a 422 rather than a 500 because it is
 		// the caller's value that is wrong — and never a silent fall-back to the default order.
-		if errors.Is(err, store.ErrUnknownClipSort) {
+		if errors.Is(err, catalogstore.ErrUnknownClipSort) {
 			return nil, huma.Error422UnprocessableEntity("unknown sort", err)
 		}
 		return nil, err
@@ -687,9 +687,11 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 	for _, source := range sources {
 		sourceLabels[source.ID] = source.Label
 	}
+	stations := s.labelStations(ctx)
 	for _, c := range clips {
 		d := clipToDTO(c, s.playsCounted(), img)
 		d.SourceLabel = fillerSourceLabel(c.Source, sourceLabels)
+		d.StationCallSign, d.StationLabel = stationNames(stations, c.Station, c.AirDate)
 		if len(in.Hashes) == 1 {
 			states, err := s.store.ListFillerEnrichment(ctx, c.Hash)
 			if err != nil {
@@ -756,7 +758,7 @@ type patchClipInput struct {
 		// kind drives pod ROLE (a bumper bookends a pod, a commercial fills it), so a
 		// wrong kind yields structurally wrong pods rather than just a mis-tagged clip.
 		// Empty means "leave it alone", so a tag-only edit never rewrites kind.
-		Kind string `json:"kind,omitempty" enum:"commercial,bumper,station_id,psa,trailer,interstitial,"`
+		Kind string `json:"kind,omitempty" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news,"`
 		// Geography is a complete, grounded replacement. Omit to leave it unchanged; use scope
 		// unknown to clear a bad classification. Operator edits are recorded as their own evidence.
 		Geography *ClipGeographyDTO `json:"geography,omitempty"`
@@ -766,9 +768,8 @@ type patchClipInput struct {
 type ClipGeographyDTO struct {
 	Scope   string `json:"scope" enum:"unknown,national,local"`
 	Country string `json:"country,omitempty" maxLength:"2"`
-	Market  string `json:"market,omitempty" maxLength:"120"`
 	Network string `json:"network,omitempty" maxLength:"120"`
-	Station string `json:"station,omitempty" maxLength:"120"`
+	Station string `json:"station,omitempty" maxLength:"120" doc:"A call sign (WEWS, WABC-TV) or station id; required for a local clip and resolved against the broadcast station directory on the air date"`
 	AirDate string `json:"airDate,omitempty" doc:"YYYY-MM-DD when known"`
 }
 type clipOutput struct{ Body ClipDTO }
@@ -776,8 +777,8 @@ type clipOutput struct{ Body ClipDTO }
 func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clipOutput, error) {
 	now := time.Now()
 	var operatorLeaves []string
-	var operatorTaxa []taxonomy.Taxon
-	var operatorGeography *fillerenrichment.Value
+	var operatorForest *taxonomy.Forest
+	var operatorGeography *enrichment.Value
 	if in.Body.Hash == "" {
 		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
 	}
@@ -801,6 +802,28 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		}
 		return nil, err
 	}
+	// ⚠ EVERY refusal is decided before the first write. The writes below are separate store calls,
+	// so a tag or station rejected after the rename used to leave the clip renamed and retagged
+	// behind a 422 — the operator saw "not saved" for an edit that had half-saved.
+	//
+	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
+	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
+	// grounded exactly as the tagger grounds the model — an unknown slug is a 422, never silently
+	// persisted. The store derives `category` from the accepted set in the same transaction, against
+	// its current graph; the client never supplies that compatibility shadow.
+	if in.Body.Tags != nil {
+		if operatorLeaves, operatorForest, err = s.groundOperatorTags(ctx, *in.Body.Tags); err != nil {
+			return nil, err
+		}
+	}
+	var geography *enrichment.Geography
+	if in.Body.Geography != nil {
+		g, err := s.resolveOperatorGeography(ctx, *in.Body.Geography)
+		if err != nil {
+			return nil, err
+		}
+		geography = &g
+	}
 	// The rename goes before every other write, so a sidecar that cannot be updated refuses the
 	// whole edit rather than saving half of it.
 	if name != "" {
@@ -813,49 +836,23 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 					"The clip's metadata file could not be updated, so nothing was changed. Try again.", err)
 			}
 		}
-		if err := s.store.RenameClip(ctx, clip.Hash, name, clipcatalog.NameFromCurated, now); err != nil {
+		if err := s.store.RenameClip(ctx, clip.Hash, name, clips.NameFromCurated, now); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
 			return nil, err
 		}
 	}
-	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
-	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
-	// grounded (forest.Resolve) exactly as the tagger grounds the model — an unknown slug is a 422,
-	// never silently persisted. The store derives `category` from the accepted set in the same
-	// transaction, against its current graph; the client never supplies that compatibility shadow.
 	if in.Body.Tags != nil {
-		taxa, err := s.store.ListTaxa(ctx)
-		if err != nil {
-			return nil, err
-		}
-		forest := taxonomy.New(taxa)
-		leaves := make([]string, 0, len(*in.Body.Tags))
-		seen := map[string]bool{}
-		for _, raw := range *in.Body.Tags {
-			slug, ok := forest.Resolve(raw)
-			if !ok {
-				return nil, errUnprocessable("Unknown tag",
-					fmt.Sprintf("The tag %q is not in the classification vocabulary. Add it under Filler → Advanced → Classification vocabulary first, or choose an existing tag.", raw))
-			}
-			if !seen[slug] {
-				seen[slug] = true
-				leaves = append(leaves, slug)
-			}
-		}
-		sort.Strings(leaves)
-		if err := s.store.SetClipTags(ctx, clip.Hash, leaves); err != nil {
+		if err := s.store.SetClipTags(ctx, clip.Hash, operatorLeaves); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
-			if errors.Is(err, store.ErrTaxonConflict) {
+			if errors.Is(err, catalogstore.ErrTaxonConflict) {
 				return nil, errConflict("Taxonomy changed", "The tag vocabulary changed while this clip was being edited. Review the tags and try again.")
 			}
 			return nil, err
 		}
-		operatorTaxa = taxa
-		operatorLeaves = append([]string(nil), leaves...)
 	}
 	// A manual edit clears the AI flag (a human tagged it). suggestedEra is 0 here —
 	// only the tagger writes suggestions — and the store's rule applies: setting era
@@ -878,41 +875,12 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			return nil, err
 		}
 	}
-	if in.Body.Geography != nil {
-		g := in.Body.Geography
-		scope := filler.GeographicScope(g.Scope)
-		geo := filler.Geography{Country: g.Country, Market: g.Market}.Normalize()
-		if err := geo.Validate(); err != nil {
-			return nil, errUnprocessable("Invalid geography", err.Error())
-		}
-		switch scope {
-		case filler.GeographicUnknown:
-			geo = filler.Geography{}
-		case filler.GeographicNational:
-			if geo.Country == "" || geo.Market != "" {
-				return nil, errUnprocessable("Invalid geography", "National clips require a country and cannot carry a local market.")
-			}
-		case filler.GeographicLocal:
-			if geo.Country == "" || geo.Market == "" {
-				return nil, errUnprocessable("Invalid geography", "Local clips require both a country and a local market.")
-			}
-		default:
-			return nil, errUnprocessable("Invalid geography", "Geographic scope must be unknown, national, or local.")
-		}
-		airDate := strings.TrimSpace(g.AirDate)
-		if airDate != "" {
-			if _, err := time.Parse(time.DateOnly, airDate); err != nil {
-				return nil, errUnprocessable("Invalid air date", "Air date must use YYYY-MM-DD.")
-			}
-		}
-		if err := s.store.UpdateClipGeography(ctx, clip.Hash, string(scope), geo.Country, geo.Market,
-			strings.TrimSpace(g.Network), strings.TrimSpace(g.Station), airDate, "operator", now); err != nil {
+	if geography != nil {
+		g := *geography
+		if err := s.store.UpdateClipGeography(ctx, clip.Hash, g.Scope, g.Country, g.Network, g.Station, g.AirDate, "operator", now); err != nil {
 			return nil, err
 		}
-		operatorGeography = &fillerenrichment.Value{Geography: fillerenrichment.Geography{
-			Scope: string(scope), Country: geo.Country, Market: geo.Market,
-			Network: strings.TrimSpace(g.Network), Station: strings.TrimSpace(g.Station), AirDate: airDate,
-		}}
+		operatorGeography = &enrichment.Value{Geography: g}
 	}
 	if in.Body.Brand != nil {
 		brand := strings.TrimSpace(*in.Body.Brand)
@@ -920,51 +888,31 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			return nil, err
 		}
 	}
-	record := func(axis fillerenrichment.Axis, value fillerenrichment.Value, taxonomyVersion string) error {
-		_, _, err := s.store.ApplyFillerEnrichment(ctx, fillerenrichment.State{
-			ClipHash: clip.Hash, Axis: axis, Status: fillerenrichment.StatusComplete, Value: value,
-			Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceOperator,
-				Reference: "operator.clip_edit", Confidence: 100, Producer: "operator",
-				ProducerVersion: "1", TaxonomyVersion: taxonomyVersion, ObservedAt: now.UTC()},
-		}, now)
-		return err
-	}
-	if err := record(fillerenrichment.AxisEra, fillerenrichment.Value{Year: in.Body.Era}, ""); err != nil {
+	evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.clip_edit", at: now}
+	if err := evidence.record(ctx, enrichment.AxisEra, enrichment.Value{Year: in.Body.Era}); err != nil {
 		return nil, err
 	}
-	if err := record(fillerenrichment.AxisAudience, fillerenrichment.Value{Text: in.Body.Audience}, ""); err != nil {
+	if err := evidence.record(ctx, enrichment.AxisAudience, enrichment.Value{Text: in.Body.Audience}); err != nil {
 		return nil, err
 	}
 	if in.Body.Kind != "" {
-		if err := record(fillerenrichment.AxisKind, fillerenrichment.Value{Text: in.Body.Kind}, ""); err != nil {
+		if err := evidence.record(ctx, enrichment.AxisKind, enrichment.Value{Text: in.Body.Kind}); err != nil {
 			return nil, err
 		}
 	}
 	if in.Body.Brand != nil {
-		if err := record(fillerenrichment.AxisBrand, fillerenrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}, ""); err != nil {
+		if err := evidence.record(ctx, enrichment.AxisBrand, enrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}); err != nil {
 			return nil, err
 		}
 	}
 	if operatorGeography != nil {
-		if err := record(fillerenrichment.AxisGeography, *operatorGeography, ""); err != nil {
+		if err := evidence.record(ctx, enrichment.AxisGeography, *operatorGeography); err != nil {
 			return nil, err
 		}
 	}
 	if in.Body.Tags != nil {
-		byAxis := make(map[fillerenrichment.Axis][]string)
-		forest := taxonomy.New(operatorTaxa)
-		for _, leaf := range operatorLeaves {
-			if taxon, ok := forest.Get(leaf); ok {
-				byAxis[fillerenrichment.Axis(taxon.Axis)] = append(byAxis[fillerenrichment.Axis(taxon.Axis)], leaf)
-			}
-		}
-		for _, axis := range []fillerenrichment.Axis{
-			fillerenrichment.AxisProduct, fillerenrichment.AxisFormat, fillerenrichment.AxisSeasonal,
-			fillerenrichment.AxisAudienceCue, fillerenrichment.AxisPresentation,
-		} {
-			if err := record(axis, fillerenrichment.Value{Tags: byAxis[axis]}, "operator-live"); err != nil {
-				return nil, err
-			}
+		if err := evidence.recordTags(ctx, operatorForest, operatorLeaves); err != nil {
+			return nil, err
 		}
 	}
 	c, err := s.store.GetClip(ctx, clip.Hash)
@@ -972,7 +920,10 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		return nil, err
 	}
 	s.reconcileChannelsForFillerChange(ctx, clip.Clip, c.Clip)
-	return &clipOutput{Body: clipToDTO(c, s.playsCounted(), s.clipArtworkResolver(ctx, []store.Clip{c}))}, nil
+	out := clipToDTO(c, s.playsCounted(), s.clipArtworkResolver(ctx, []catalogstore.Clip{c}))
+	stations := s.labelStations(ctx)
+	out.StationCallSign, out.StationLabel = stationNames(stations, c.Station, c.AirDate)
+	return &clipOutput{Body: out}, nil
 }
 
 type syncFillerOutput struct {
@@ -1126,6 +1077,9 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 	if out.Body.Items == nil {
 		out.Body.Items = []DiscoveredClip{}
 	}
+	for i := range out.Body.Items {
+		out.Body.Items[i].EmbedURL = s.embedURL("archive", out.Body.Items[i].URL)
+	}
 	out.Body.Total = total
 	out.Body.LicenceNote = "Licence information isn't available for most results. Check before reusing."
 	return out, nil
@@ -1228,7 +1182,7 @@ type ChannelFitDTO struct {
 	// ⚠ A CODE, never a sentence: the frontend owns the wording (the §11 refusal-code
 	// precedent), because a server sentence cannot be translated and cannot link to the setting
 	// that caused it.
-	Reason string `json:"reason,omitempty" enum:"kind,duration,quality,category,audience,excluded" doc:"Why the clip is not a candidate; absent when it is one"`
+	Reason string `json:"reason,omitempty" enum:"kind,duration,quality,category,audience,geography,excluded,season,language" doc:"Why the clip is not a candidate; absent when it is one"`
 	// Pinned / Excluded are the operator's explicit override for this clip on this channel.
 	//
 	// ⚠ Both can be true, and EXCLUDED WINS — assembly seeds excluded ids into the used-set
@@ -1349,11 +1303,16 @@ type SplitReviewSegmentDTO struct {
 // SplitReviewProposalDTO keeps detector state private while giving the review surface complete
 // image records in one read. Hashes and filesystem paths are not a frontend rendering contract.
 type SplitReviewProposalDTO struct {
-	ID                 string                          `json:"id"`
-	ClipHash           string                          `json:"clipHash"`
-	CreatedAt          time.Time                       `json:"createdAt"`
-	Segments           []SplitReviewSegmentDTO         `json:"segments"`
-	LanguagePreference string                          `json:"languagePreference,omitempty"`
+	ID        string                  `json:"id"`
+	ClipHash  string                  `json:"clipHash"`
+	CreatedAt time.Time               `json:"createdAt"`
+	Segments  []SplitReviewSegmentDTO `json:"segments"`
+	// CheckedLanguages is the set this proposal was checked against; empty when it was not checked.
+	CheckedLanguages []string `json:"checkedLanguages"`
+	// CurrentLanguages is what intake admits now, the channels' commercial languages (#2030
+	// decision 13); empty admits every language. Review offers a recheck when the two differ. When
+	// the channels cannot be read it repeats CheckedLanguages, so no recheck is offered on a guess.
+	CurrentLanguages   []string                        `json:"currentLanguages"`
 	LanguageExclusions []filler.SplitLanguageExclusion `json:"languageExclusions,omitempty"`
 }
 
@@ -1388,9 +1347,21 @@ func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*
 			Artwork:      byHash[segment.ArtworkImageHash],
 		})
 	}
+	// The current set only decides whether review offers a recheck, so a failed read must not make
+	// the proposal unreviewable. Unknown reads as unchanged: no recheck is offered on a guess.
+	current := p.LanguagePreference
+	if s.intakeLanguages != nil {
+		if read, err := s.intakeLanguages(ctx); err != nil {
+			s.log.Warn("split review: could not read the channels' commercial languages", "proposal", p.ID, "err", err)
+		} else {
+			current = read
+		}
+	}
 	return &getFillerSplitOutput{Body: SplitReviewProposalDTO{
 		ID: p.ID, ClipHash: p.ClipHash, CreatedAt: p.CreatedAt, Segments: segments,
-		LanguagePreference: p.LanguagePreference, LanguageExclusions: p.LanguageExclusions,
+		CheckedLanguages:   filler.LanguageList(p.LanguagePreference),
+		CurrentLanguages:   filler.LanguageList(current),
+		LanguageExclusions: p.LanguageExclusions,
 	}}, nil
 }
 

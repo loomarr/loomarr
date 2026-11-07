@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/secretprotection"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 type notificationAuthorizer struct{}
@@ -24,13 +24,13 @@ func (notificationAuthorizer) Authorize(r *http.Request) api.Role {
 	return role
 }
 
-func (notificationAuthorizer) AuthorizeUser(r *http.Request) (api.Role, *store.User) {
+func (notificationAuthorizer) AuthorizeUser(r *http.Request) (api.Role, *identitystore.User) {
 	switch strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") {
 	case adminToken:
-		user := store.User{ID: "admin-1", Name: "Admin", Role: store.RoleAdmin}
+		user := identitystore.User{ID: "admin-1", Name: "Admin", Role: identitystore.RoleAdmin}
 		return api.RoleAdmin, &user
 	case memberToken:
-		user := store.User{ID: "member-1", Name: "Member", Role: store.RoleMember}
+		user := identitystore.User{ID: "member-1", Name: "Member", Role: identitystore.RoleMember}
 		return api.RoleMember, &user
 	default:
 		return api.RoleAnonymous, nil
@@ -40,7 +40,7 @@ func (notificationAuthorizer) AuthorizeUser(r *http.Request) (api.Role, *store.U
 type acceptingDestinationValidator struct{ means notifications.Means }
 
 func (v acceptingDestinationValidator) Means() notifications.Means { return v.means }
-func (acceptingDestinationValidator) ValidateDestination(map[string]string, map[string]string) error {
+func (acceptingDestinationValidator) ValidateDestination(notifications.ProviderSettings) error {
 	return nil
 }
 
@@ -64,7 +64,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	repository := notifications.NewProtectedRepository(st, protection)
 	manager := notifications.NewDestinationManager(
 		repository, []notifications.DestinationValidator{acceptingDestinationValidator{means: notifications.MeansSlack}},
 		func() string { return "destination-1" }, func() time.Time { return now },
@@ -192,7 +192,7 @@ func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	repository := notifications.NewProtectedRepository(st, protection)
 	nextID := 0
 	manager := notifications.NewDestinationManager(repository, []notifications.DestinationValidator{
 		acceptingDestinationValidator{means: notifications.MeansWebPush},

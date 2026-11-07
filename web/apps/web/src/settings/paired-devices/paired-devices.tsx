@@ -68,15 +68,15 @@ const ApproveDevice = () => {
   };
 
   return (
-    <section className="rounded-lg border border-border p-4">
-      <h2 className="font-medium text-sm">Add a TV or streaming box</h2>
-      <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+    <section className="border-border rounded-lg border p-4">
+      <h2 className="text-sm font-medium">Add a TV or streaming box</h2>
+      <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
         Open Loomarr on the device. It will show a short code — type it here to let it sign in as you. The
         device acts with your access and role, and you can remove it at any time.
       </p>
       {/* The address to put ON the television. This panel is for an operator already in Settings;
           the device itself cannot direct anyone here, so it names the short route instead. */}
-      <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+      <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
         Your TV will point at <span className="font-mono">/pair</span> — that page does the same thing and is
         easier to reach from a phone.
       </p>
@@ -84,7 +84,7 @@ const ApproveDevice = () => {
         <Input
           aria-label="Code shown on the device"
           autoComplete="off"
-          className="w-44 font-mono uppercase tracking-widest"
+          className="w-44 font-mono tracking-widest uppercase"
           onChange={(event) => setCode(event.target.value)}
           placeholder="BCDF-GHJK"
           spellCheck={false}
@@ -95,7 +95,7 @@ const ApproveDevice = () => {
         </Button>
       </form>
       {approve.isError ? (
-        <p className="mt-2 text-destructive text-sm">
+        <p className="text-destructive mt-2 text-sm">
           That code is wrong or has expired. Codes last ten minutes — check the device and try again.
         </p>
       ) : null}
@@ -110,9 +110,9 @@ const ApproveDevice = () => {
 };
 
 const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () => void; busy: boolean }) => (
-  <li className="flex flex-wrap items-center justify-between gap-2 border-border border-b py-3 last:border-b-0">
+  <li className="border-border flex flex-wrap items-center justify-between gap-2 border-b py-3 last:border-b-0">
     <div className="min-w-0">
-      <p className="truncate font-medium text-sm">{device.deviceName || "Device"}</p>
+      <p className="truncate text-sm font-medium">{device.deviceName || "Device"}</p>
       <p className="text-muted-foreground text-xs">Last used {relativeAge(device.lastSeenAt)}</p>
     </div>
     <Button disabled={busy} onClick={onRevoke} size="sm" variant="outline">
@@ -138,9 +138,9 @@ const PairedDevices = () => {
   return (
     <>
       <ApproveDevice />
-      <section className="rounded-lg border border-border p-4">
-        <h2 className="font-medium text-sm">Your devices</h2>
-        <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+      <section className="border-border rounded-lg border p-4">
+        <h2 className="text-sm font-medium">Your devices</h2>
+        <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
           Devices signed in as you. Removing one signs it out immediately; your other devices keep working.
         </p>
         {query.isError ? <ErrorState error={query.error} /> : null}

@@ -20,10 +20,11 @@ test("split review opens one exact Sheet preview from mouse or keyboard", async 
 
   await clips.first().click();
   await expect(page.locator("video")).toHaveCount(1);
-  await expect(page.locator('button[aria-label="00:00 · Fizzbolt — Dude!"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  // The preview Sheet is modal, so Base UI hides the page behind it from assistive tech while it is
+  // open; the selected tile's state is still asserted, hence includeHidden.
+  await expect(
+    page.getByRole("button", { name: /^00:00 · .*Fizzbolt — Dude!/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
   await expect(page.getByRole("dialog", { name: "Fizzbolt — Dude!" })).toBeVisible();
 
   await page.getByRole("button", { name: "Close" }).click();
@@ -39,10 +40,9 @@ test("split review opens one exact Sheet preview from mouse or keyboard", async 
   await expect(page.getByRole("tooltip").filter({ hasText: "Rotoscoped tech spot" })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.locator("video")).toHaveCount(1);
-  await expect(page.locator('button[aria-label="00:30 · Rotoscoped tech spot"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await expect(
+    page.getByRole("button", { name: /^00:30 · .*Rotoscoped tech spot/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
   await expect(page.getByRole("dialog", { name: "Rotoscoped tech spot" })).toBeVisible();
 
   await page.getByRole("button", { name: "Close" }).click();
@@ -57,7 +57,7 @@ test("split review opens one exact Sheet preview from mouse or keyboard", async 
 
 test("split naming evidence stays quiet until requested and clears after an edit", async ({ page }) => {
   await page.goto(story("filler-splitrevieweditor--review"));
-  await page.getByRole("button", { name: "Open clip 1: Fizzbolt — Dude!" }).click();
+  await page.getByRole("button", { name: /^Open clip #1(?!\d).*Fizzbolt — Dude!/ }).click();
   const row = page.getByRole("region", { name: "Clip 1: Fizzbolt — Dude!" });
   const editFields = row.locator("details").filter({ hasText: "Rename or adjust timing" });
   const namingEvidence = row.getByText(/Name suggested from this clip/);
@@ -85,28 +85,26 @@ test("a 50-clip review stays compact and usable on a phone", async ({ page }) =>
   await expect(list.getByRole("listitem")).toHaveCount(50);
   await expect(page.locator("video")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Open clip 24: Commercial 24" }).click();
+  await page.getByRole("button", { name: /^Open clip #24(?!\d).*Commercial 24/ }).click();
   await expect(page.getByRole("dialog", { name: "Commercial 24" })).toBeVisible();
   await expect(page.locator("video")).toHaveCount(1);
   await page.getByRole("button", { name: "Next clip" }).click();
   await expect(page.getByRole("dialog", { name: "Commercial 25" })).toBeVisible();
   await expect(page.locator("video")).toHaveCount(1);
-  await expect(page.locator('button[aria-label="12:00 · Commercial 25"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-  await expect(page.locator('button[aria-label="Open clip 25: Commercial 25"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  // Both lists sit behind the modal Sheet, hidden from assistive tech while it is open.
+  await expect(
+    page.getByRole("button", { name: /^12:00 · .*Commercial 25/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(
+    page.getByRole("button", { name: /^Open clip #25(?!\d).*Commercial 25/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
 
   await page.getByRole("button", { name: "Previous clip" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "Commercial 24" })).toBeVisible();
-  await expect(page.locator('button[aria-label="11:30 · Commercial 24"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await expect(
+    page.getByRole("button", { name: /^11:30 · .*Commercial 24/, includeHidden: true }),
+  ).toHaveAttribute("aria-current", "true");
 
   const viewportOverflow = await page.locator("html").evaluate((root) => ({
     client: root.clientWidth,
@@ -138,7 +136,7 @@ test("split review reflows at a 200% zoom-equivalent width", async ({ page }) =>
   // reflow check for a 640px-wide window at 200%, without relying on browser-specific zoom APIs.
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto(story("filler-splitrevieweditor--fifty-clips"));
-  await page.getByRole("button", { name: "Open clip 13:", exact: false }).click();
+  await page.getByRole("button", { name: /^Open clip #13(?!\d)/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 
   const viewport = await page.locator("html").evaluate((root) => ({

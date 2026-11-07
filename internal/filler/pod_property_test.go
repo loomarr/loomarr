@@ -3,6 +3,7 @@ package filler_test
 import (
 	"math/rand"
 	"reflect"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -161,7 +162,8 @@ func TestProp_DeterminismNilVsEmptyUsed(t *testing.T) {
 
 // TestProp_NeverDeadAir asserts §10 "never dead air": every Pod has ≥1 entry, and
 // the terminal ladder rung is well-formed — when Assemble placed no commercial the
-// pod MUST be MatchBumperCard AND carry the embedded FallbackCard (pod.go:120-123).
+// pod MUST be MatchBumperCard, filled with station material or else the embedded
+// FallbackCard alone (#2036).
 // The random catalogs include ones with no commercials at all, wrong audience, or
 // duration-pruned-to-empty, which is exactly where this rung fires.
 func TestProp_NeverDeadAir(t *testing.T) {
@@ -182,8 +184,11 @@ func TestProp_NeverDeadAir(t *testing.T) {
 				t.Fatalf("iter %d: no commercials placed but MatchLevel=%s (want bumper_card)\n pod=%+v\n window=%+v",
 					i, p.MatchLevel, p, w)
 			}
-			if !hasFallbackCard(p) {
-				t.Fatalf("iter %d: no commercials placed and no FallbackCard — break would be dead air\n pod=%+v", i, p)
+			if hasFallbackCard(p) && len(p.Entries) != 1 {
+				t.Fatalf("iter %d: the FallbackCard shares a break with station material\n pod=%+v", i, p)
+			}
+			if !hasFallbackCard(p) && !slices.ContainsFunc(cat, filler.Clip.IsBumper) {
+				t.Fatalf("iter %d: no commercials, no station material and no FallbackCard — dead air\n pod=%+v", i, p)
 			}
 		}
 		// The fallback card is only added on the no-commercial path; when commercials

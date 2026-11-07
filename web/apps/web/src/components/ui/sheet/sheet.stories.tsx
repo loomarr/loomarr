@@ -6,7 +6,7 @@ const meta = {
   component: Sheet,
   render: () => (
     <Sheet swipeDirection="right">
-      <SheetTrigger className="rounded-md border border-input px-4 py-2">Open sheet</SheetTrigger>
+      <SheetTrigger className="border-input rounded-md border px-4 py-2">Open sheet</SheetTrigger>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>Person details</SheetTitle>

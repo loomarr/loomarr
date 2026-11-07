@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -26,6 +26,8 @@ type rotatingCycle struct {
 func (c *rotatingCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
 	return c.window, nil
 }
+
+func (c *rotatingCycle) Calendar() schedule.Calendar { return schedule.Calendar{} }
 
 func (c *rotatingCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return !c.tunarr, nil

@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -77,7 +78,7 @@ func TestBootstrap_OnceViaAPI(t *testing.T) {
 	}
 
 	// Second bootstrap → 409 (the door is closed).
-	resp = do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"other","password":"pw2"}`)
+	resp = do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"other","password":"other-pw-2"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("second bootstrap → %d, want 409", resp.StatusCode)
 	}
@@ -129,6 +130,18 @@ func TestBootstrap_Invalid(t *testing.T) {
 	resp := do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"","password":""}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("empty bootstrap → %d, want 422", resp.StatusCode)
+	}
+	// A password below auth.MinPasswordLen is refused, and the install stays unclaimed.
+	resp = do(t, srv, http.MethodPost, "/v1/setup/bootstrap", "", `{"username":"owner","password":"short"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("short-password bootstrap → %d, want 422", resp.StatusCode)
+	}
+	resp = do(t, srv, http.MethodGet, "/v1/setup/state", "", "")
+	var state struct {
+		Bootstrapped bool `json:"bootstrapped"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&state); err != nil || state.Bootstrapped {
+		t.Errorf("a refused bootstrap claimed the install: bootstrapped=%v (%v)", state.Bootstrapped, err)
 	}
 }
 
@@ -206,10 +219,10 @@ func TestImport_BulkMapsSourceRoles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get imported admin: %v", err)
 	}
-	if member.Role != store.RoleAdmin {
+	if member.Role != identitystore.RoleAdmin {
 		t.Fatalf("media-server admin initial role = %q, want admin", member.Role)
 	}
-	member.Role = store.RoleMember
+	member.Role = identitystore.RoleMember
 	member.Quota = 7
 	member.AutoApprove = true
 	if err := st.UpsertUser(context.Background(), member); err != nil {
@@ -224,7 +237,7 @@ func TestImport_BulkMapsSourceRoles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get re-imported admin: %v", err)
 	}
-	if preserved.Role != store.RoleMember || preserved.Quota != 7 || !preserved.AutoApprove {
+	if preserved.Role != identitystore.RoleMember || preserved.Quota != 7 || !preserved.AutoApprove {
 		t.Errorf("re-import overwrote Loomarr choices: role=%q quota=%d autoApprove=%v",
 			preserved.Role, preserved.Quota, preserved.AutoApprove)
 	}

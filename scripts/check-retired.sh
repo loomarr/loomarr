@@ -122,7 +122,7 @@ RETIRED=(
   # image. Both intermediate answers left instructions behind that read as current — a
   # Sources row literally labelled "ingest sidecar", and copy telling operators to switch to
   # an image tag that is not published. Exactly the docs/help failure this script exists for.
-  'loomarr-ingest|the ingest sidecar was folded into the core (internal/clipfetch); there is no separate service or image'
+  'loomarr-ingest|the ingest sidecar was folded into the core (internal/filler/fetch); there is no separate service or image'
   'loomarr:filler|the two-tag split was replaced by the SINGLE image (§16) — yt-dlp/ffmpeg always ship, so telling an operator to switch tags is a dead end'
   # V38b: clips arrive because you added a SOURCE, not because you pasted a URL. The panel was
   # the odd one out once Sources had registration, per-row search, pulls and auto-fetch — and
@@ -133,17 +133,22 @@ RETIRED=(
   # *-proposal siblings in the same file. The paths moved; this keeps the old ones from coming
   # back in help text an operator would follow to a 404.
   'v1/suggestions|renamed to /v1/proposals (V41) — CONTEXT.md defines the artifact as a Proposal and bans "suggestion"'
+  # The suggest worker had two job lifecycles: raw store.Job writes (runJob/failJob) when no workflow
+  # was wired, and the durable proposal workflow. Production only ever wired the workflow; the raw
+  # path was deleted and suggest.NewService now takes the workflow as a required argument.
+  'WithDurableWorkflow|the durable proposal workflow is a required suggest.NewService argument; the raw store.Job lifecycle path was deleted'
+  'func (s *Service) runJob|the suggest worker runs jobs only through the durable proposal workflow (runWorkflow)'
+  'func (s *Service) failJob|the suggest worker fails jobs only through the durable proposal workflow (failWorkflow)'
   # V47b: renamed the playout "doctor" to "playout status" — same read-only health projection,
   # clearer name. The old operation id and path must not survive in help text an operator would
   # follow to a 404.
   'get-playout-doctor|renamed to get-playout-status — same read-only playout health projection'
   'playout/doctor|renamed to /v1/playout/status — same read-only playout health projection'
-  # V48: the playout copy-audience query changed from ?target=browser|mediaserver to
-  # ?plan=baseline|hevc8|hevc10|full (a client DeviceProfile resolves to an EncodePlan). The VALUE
+  # The playout copy-audience query is retired: every client is served the same variant. The VALUE
   # tokens are the retired identifiers — the bare word "target" survives as the SessionStat/health
   # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
-  'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
-  'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
+  'target=browser|the playout copy-audience query is retired; every client gets the same variant'
+  'target=mediaserver|the playout copy-audience query is retired; every client gets the same variant'
   # The Go block supervisor owns finite Airing advancement and format acknowledgement. Restoring
   # either identifier recreates the anonymous media-tool sequencing seam that stalled at boundaries.
   '/v1/playout/playlist|retired: the block supervisor opens /v1/playout/program directly'
@@ -247,10 +252,13 @@ RETIRED=(
   'AdmissionControllable|source controls acquisition, not admission'
   'filler.autofile.enabled|retired: no confidence-to-publication switch'
   'filler.autofile.min_confidence|retired: classification confidence is diagnostic'
-  'filler.autofile.normalize_loudness|retired: use filler.conditioning.normalize_loudness'
+  'filler.autofile.normalize_loudness|retired: files are never levelled on disk; playout corrects at air time (#2032)'
+  'filler.conditioning.normalize_loudness|retired: files are never levelled on disk; playout corrects at air time (#2032)'
   'FILLER_AUTOFILE_ENABLED|retired: no confidence-to-publication switch'
   'FILLER_AUTOFILE_MIN_CONFIDENCE|retired: classification confidence is diagnostic'
-  'FILLER_AUTOFILE_NORMALIZE_LOUDNESS|retired: use FILLER_CONDITIONING_NORMALIZE_LOUDNESS'
+  'FILLER_AUTOFILE_NORMALIZE_LOUDNESS|retired: files are never levelled on disk (#2032)'
+  'FILLER_CONDITIONING_NORMALIZE_LOUDNESS|retired: files are never levelled on disk (#2032)'
+  'NormalizedLUFS|retired: the on-disk loudness marker went with on-disk levelling (#2032)'
   'TunePanel|retired: Sources owns acquisition policy; Incoming owns evidence review and terminal decisions'
   # Private-home filler keeps provider-declared licence text as passive metadata, but it has no
   # runtime legal authority. Restoring any of these identifiers would recreate the removed fifth
@@ -382,6 +390,69 @@ RETIRED=(
   'JOB_PLAYOUT_PREPARE_SCHEDULE|#1512 4: prepared media is retired; the job is gone'
   '"job.playout_prepare.schedule"|#1512 4: prepared media is retired; the job is gone'
   'LOOMARR_AGENT_PREPARED_DIR|#1512 4: prepared media is retired; lanes have no prepared library'
+  # Deno's development is ending (Cloudflare took on the Deno team); yt-dlp now runs YouTube's JS
+  # challenges on the Node binary copied from the pinned Node image, so no Deno is downloaded.
+  'DENO_VERSION|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image downloads no Deno'
+  'denoland/deno|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image downloads no Deno'
+  '/usr/local/bin/deno|yt-dlp uses Node (--js-runtimes node) from the node-runtime stage; the image ships no Deno'
+  # Creative identity (#2033) replaced aligned-prefix dHash dedup.
+  'GrayFrames(|retired: MediaTools.Fingerprint measures the creative'
+  'DupHashThreshold|retired: creative.Compare decides a copy'
+  'meanHamming(|retired: creative.Compare aligns over an edge-trim window instead of from frame 0'
+  # #2147 — settings are read through generated typed handles (`settings.X.Get(reader)`), not
+  # string-keyed accessors. The method names are specific enough to ban; the bare `.str(`/`.dur(`
+  # are too common elsewhere to grep for.
+  'LiveConfigBoolOn|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'LiveConfigInt|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'LiveConfigDuration|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'Options.LiveConfig|#2147: api.Options.LiveSettings (a settings.Reader) replaced the string-keyed LiveConfig func'
+  '.boolOn(|#2147: resolved.boolOn was deleted; read settings.X.Get(set), which answers the declared default when unanswerable'
+  '.boolv(|#2147: resolved.boolv was deleted; read settings.X.Get(set)'
+  '.intv(|#2147: resolved.intv was deleted; read settings.X.Get(set)'
+  'set.str(|#2147: resolved.str was deleted; read settings.X.Get(set) or .Joined(set) for a list'
+  'set.dur(|#2147: resolved.dur was deleted; read settings.X.Get(set)'
+  'dHashAlgorithm|retired: creative.Algorithm keys the fingerprint cache'
+  # The on-demand evaluation tools are subcommands of one cmd/eval binary.
+  'cmd/channel-recommend-cert|use go run ./cmd/eval recommend-cert (make channel-recommend-cert)'
+  'cmd/channel-recommend-compare|use go run ./cmd/eval recommend-compare (make channel-recommend-compare)'
+  'cmd/channel-recommend-diagnostic|use go run ./cmd/eval recommend-diagnostic (make channel-recommend-diagnostic)'
+  'cmd/planner-cert-compare|use go run -tags=eval ./cmd/eval planner-compare (make eval-planner-compare)'
+  'cmd/planner-reference-host|use go run ./cmd/eval planner-reference-host (make planner-reference-host)'
+  'cmd/planner-tool-diagnostic|use go run ./cmd/eval planner-tool-diagnostic (make planner-tool-diagnostic)'
+  # The blinded mood-review runner produced the frozen v1/v2 submissions once; CompileMoodReviewAuthority
+  # still verifies those artifacts, but no new review is run.
+  'cmd/query-mood-review|the mood-review runner is gone; the frozen mood-review artifacts are verified by internal/eval'
+  'RunMoodReview|the mood-review runner is gone; CompileMoodReviewAuthority verifies the frozen submissions'
+  # #2147 — POST /v1/channels makes hand-made channels only. Binding a channel to an approved
+  # proposal is approval's write (channels/approval), never a second route with its own copy of the rules.
+  'LineupFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'PolicyFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'RequestFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'ApprovedProposalForJob|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  # #2147: the whole-video structure assessment (one call over the complete source) was superseded
+  # by the structure-window pipeline, which plans, assesses and stitches windows. Its record,
+  # reservation ledger, operation publication, v9 prompt and ledger table are gone; the window
+  # call record, window ledger and window prompt own those jobs. Window code uses `directVideo*`
+  # names of its own, so only the whole-video symbols are listed.
+  'filler-temporal-structure-direct-video-v9|retired (#2147): the whole-video prompt is gone; the window pipeline owns fillerstructurewindow.DirectVideoPromptVersion'
+  'filler_structure_assessment_ledger|retired (#2147): the whole-video assessment ledger table was dropped; filler_structure_window_call_ledger is the structure ledger'
+  'NewAssessmentRecord|retired (#2147): the whole-video assessment record is gone; use fillerstructurewindow.NewRecordedAssessment'
+  'fillerstructure.RecordedAssessment|retired (#2147): the whole-video assessment record is gone; use fillerstructurewindow.RecordedAssessment'
+  'AssessmentLedgerEntry|retired (#2147): the whole-video assessment ledger is gone; use fillerstructurewindow.CallLedgerEntry'
+  'NewAssessmentReservation|retired (#2147): the whole-video assessment ledger is gone; use fillerstructurewindow.NewCallReservation'
+  'NewAssessmentPublication|retired (#2147): the whole-video assessment publication is gone; use fillerstructurewindow.NewCallPublication'
+  'ReserveStructureAssessment|retired (#2147): the whole-video assessment ledger is gone; use ReserveStructureWindowCall'
+  'SettleStructureAssessment|retired (#2147): the whole-video assessment ledger is gone; use SettleStructureWindowCall'
+  'PutStructureAssessmentEvidence|retired (#2147): the whole-video evidence store is gone; use PutStructureWindowAssessmentEvidence'
+  'FindStructureAssessmentEvidence|retired (#2147): the whole-video evidence store is gone; use FindStructureWindowAssessmentEvidence'
+  # #2147: nothing wrote an admission decision at runtime, so the ledger, its service and the Filler
+  # Manage Activity and Diagnostics panels that read it were deleted whole with their four tables.
+  'fillerdecision|#2147: the filler admission decision ledger and its service were deleted; readiness evidence is the terminal-ready event'
+  'v1/filler/decisions|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-overview|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-activity|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-diagnostics|#2147: the filler decision routes were deleted with their ledger'
+  'act-on-filler-diagnostic|#2147: the filler decision routes were deleted with their ledger'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
@@ -441,7 +512,7 @@ done
 # Raw model-tool/prompt schema properties are retired. Persisted/operator era
 # fields remain valid elsewhere, so keep this check limited to these two schema
 # surfaces. Map reads used to reject the property do not restore the schema.
-for path in internal/suggest/tools.go internal/suggest/prompt.go; do
+for path in internal/proposals/suggest/tools.go internal/proposals/suggest/prompt.go; do
   hits="$(grep -nF '"era":' "$path" 2>/dev/null || true)"
   if [[ -n "$hits" ]]; then
     fail=1
@@ -452,7 +523,7 @@ done
 [[ "$fail" -ne 0 ]] && exit 1
 # Separate provider IDs are retired only at the model-selection interface.
 # Public Proposal and Catalog DTOs retain their existing external-ID fields.
-for path in internal/suggest/parse.go internal/suggest/prompt.go; do
+for path in internal/proposals/suggest/parse.go internal/proposals/suggest/prompt.go; do
   for id in 'json:"tmdbId' 'json:"tvdbId' '"tmdbId":' '"tvdbId":'; do
     hits="$(grep -nF "$id" "$path" 2>/dev/null || true)"
     if [[ -n "$hits" ]]; then

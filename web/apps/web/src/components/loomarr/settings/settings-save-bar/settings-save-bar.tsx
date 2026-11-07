@@ -21,7 +21,7 @@ const SettingsSaveBar = ({
     <section
       aria-label="Unsaved changes"
       className={cn(
-        "sticky bottom-0 flex items-center gap-3 border-border border-t bg-card px-6 py-3",
+        "border-border bg-card sticky bottom-0 flex items-center gap-3 border-t px-6 py-3",
         className,
       )}
     >

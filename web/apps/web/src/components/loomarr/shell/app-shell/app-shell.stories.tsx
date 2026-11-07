@@ -6,8 +6,8 @@ const noop = () => {};
 
 const body = (
   <div className="p-6">
-    <h1 className="font-semibold text-xl">Channels</h1>
-    <p className="mt-1 text-muted-foreground text-sm">The broadcast console frame.</p>
+    <h1 className="text-xl font-semibold">Channels</h1>
+    <p className="text-muted-foreground mt-1 text-sm">The broadcast console frame.</p>
   </div>
 );
 

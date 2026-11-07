@@ -23,17 +23,17 @@ const RequestDoneRow = ({ channel, entry, nowMs, onOpen }: RequestDoneRowProps) 
       <Surface
         alignItems="center"
         flexDirection="row"
-        gap="$control"
-        level="raised"
+        gap="control"
         minHeight={48}
-        padding="$control"
+        padding="control"
+        level="raised"
       >
         {channel ? (
           <Text density="touch" textRole="title" tone="secondary">
             {channel.number}
           </Text>
         ) : null}
-        <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$inline">
+        <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap="inline">
           <Text density="touch" numberOfLines={2} textRole="title">
             {name}
           </Text>

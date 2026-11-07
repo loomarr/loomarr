@@ -15,14 +15,15 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/events"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/quality"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -30,28 +31,30 @@ import (
 // WHOLE intent survives the wire — the hand-mirrored body this replaced had silently
 // dropped RuntimeTgt, and nothing caught it.
 type fakeSuggest struct {
-	submits   int
-	refines   int
-	lastJobID string
-	last      suggest.Intent
+	submits       int
+	refines       int
+	lastChannelID string
+	lastRequester string
+	last          proposals.Intent
 }
 
-func (f *fakeSuggest) Submit(_ context.Context, intent suggest.Intent, _ string) (string, error) {
+func (f *fakeSuggest) Submit(_ context.Context, intent proposals.Intent, _ string) (string, error) {
 	f.submits++
 	f.last = intent
 	return "job-1", nil
 }
 
 // SubmitBuilt is unused by these routes; the channel-ideas tests run the real service.
-func (f *fakeSuggest) SubmitBuilt(context.Context, suggest.Intent, suggest.Proposal, string) (string, error) {
+func (f *fakeSuggest) SubmitBuilt(context.Context, proposals.Intent, proposals.Proposal, string) (string, error) {
 	return "", errors.New("fakeSuggest: SubmitBuilt is not part of the proposal routes")
 }
 
-func (f *fakeSuggest) Refine(_ context.Context, jobID string, intent suggest.Intent) (string, error) {
+func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent proposals.Intent, requestedBy string) (string, error) {
 	f.refines++
-	f.lastJobID = jobID
+	f.lastChannelID = channelID
+	f.lastRequester = requestedBy
 	f.last = intent
-	return jobID, nil // Refine re-runs the same job, so it returns the job id it was given
+	return "job-refine-1", nil // a refine is a new job, never the channel's origin job
 }
 
 type proposalHarnessConfig struct {
@@ -80,8 +83,8 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 		MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}}}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
-		workflow := proposalworkflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now)
+		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
+		flow := workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now)
 		return api.Router(defaults.Log, api.Options{
 			Store:            defaults.Store,
 			Auth:             defaults.Auth,
@@ -89,7 +92,7 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 			Suggest:          fs,
 			Search:           search,
 			Events:           events.NewBus(),
-			ProposalWorkflow: workflow,
+			ProposalWorkflow: flow,
 			DecisionQuality:  config.DecisionQuality,
 			// No Reconciler wired here (channels isn't under test) — mirrors the
 			// composition root's nil-guard: the bind still creates/patches the
@@ -102,6 +105,17 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 	return &proposalHarness{apiHarness: base, Suggest: fs}
 }
 
+// wireProposal reads a proposal fixture written in its wire JSON form, so a test states the
+// stored proposal in the shape clients and operators see.
+func wireProposal(t testing.TB, raw string) proposals.Proposal {
+	t.Helper()
+	var p proposals.Proposal
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		t.Fatalf("proposal fixture is not valid proposal JSON: %v", err)
+	}
+	return p
+}
+
 // seedProposal writes a submitted proposal with one acquisition (Quiet Engines).
 func seedProposal(t *testing.T, st store.Store, id string) {
 	seedProposalAt(t, st, id, time.Time{})
@@ -110,10 +124,11 @@ func seedProposal(t *testing.T, st store.Store, id string) {
 func seedProposalAt(t *testing.T, st store.Store, id string, created time.Time) {
 	t.Helper()
 	body := `{"acquisitions":[{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994}],"trace":{"version":1,"candidates":[{"key":"movie:tmdb:90000100","name":"Quiet Engines","ownership":"acquisition","rank":{"tieKey":"movie:tmdb:90000100"},"disposition":"selected","reason":"selected"}],"surfacedTotal":1,"recordedTotal":1,"truncated":false}}`
-	err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+	err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: id, JobID: "job-1", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body),
 		CreatedAt: created,
 	})
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,8 +144,8 @@ func TestApprove_InLibraryPickBecomesAvailable(t *testing.T) {
 	srv, st := harness.Server, harness.Store
 	// A proposal whose lineup has one in-library pick (Marigold Protocol) and no acquisitions.
 	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-lib", JobID: "job-lib", Status: "submitted", ProposalJSON: body,
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-lib", JobID: "job-lib", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +177,37 @@ func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
 	}
 	if fs.submits != 1 {
 		t.Errorf("submit not invoked: %d", fs.submits)
+	}
+}
+
+// The intent's bounds are the spec's, refused before any job exists: a description under
+// proposals.MinDescriptionLen (raw, or once trimmed), and an acquisition cap or runtime target
+// outside its declared range. Exactly the minimum, and a cap of 200, are accepted.
+func TestSubmit_RefusesAnIntentOutsideItsBounds(t *testing.T) {
+	harness := newProposalHarness(t)
+	srv, fs := harness.Server, harness.Suggest
+	for name, body := range map[string]string{
+		"short":            `{"description":"ab"}`,
+		"blank":            `{"description":"   "}`,
+		"padded short":     `{"description":"  ab  "}`,
+		"cap over":         `{"description":"90s action","maxAcquisitions":201}`,
+		"cap negative":     `{"description":"90s action","maxAcquisitions":-1}`,
+		"runtime negative": `{"description":"90s action","runtimeTargetMin":-5}`,
+	} {
+		resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s: submit → %d, want a 400/422 refusal", name, resp.StatusCode)
+		}
+	}
+	if fs.submits != 0 {
+		t.Fatalf("refused intents created %d jobs, want none", fs.submits)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken,
+		`{"description":"`+strings.Repeat("a", proposals.MinDescriptionLen)+`","maxAcquisitions":200}`)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || fs.submits != 1 {
+		t.Fatalf("an intent exactly at its bounds → %d (%d jobs), want 200 and one job", resp.StatusCode, fs.submits)
 	}
 }
 
@@ -251,7 +297,7 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 		t.Fatalf("response leaked private diagnostic: %s", body)
 	}
 	var got struct {
-		Intent  suggest.Intent `json:"intent"`
+		Intent  proposals.Intent `json:"intent"`
 		Failure struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
@@ -293,7 +339,7 @@ func TestGetProposalProjectsPersistedDecisionTraceForAuthorizedReader(t *testing
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"trace":{"version":1,"surfacedTotal":1,"recordedTotal":1,"truncated":false,"candidates":[{"key":"movie:tmdb:90000001","ownership":"library","disposition":"selected","reason":"selected"}]}}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{ID: "trace-proposal", JobID: "trace-job", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body)}); err != nil {
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodGet, "/v1/proposals/trace-proposal", adminToken, "")
@@ -314,7 +360,7 @@ func TestGetProposalPreservesUnassessedEraBalanceAsJSONNull(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	body := `{"scores":{"themeFit":1,"availabilityRatio":0.5,"eraBalance":null,"overall":0.7941176470588235}}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{ID: "era-proposal", JobID: "era-job", Status: "submitted", CreatedBy: "alice", ProposalJSON: body}); err != nil {
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{ID: "era-proposal", JobID: "era-job", Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body)}); err != nil {
 		t.Fatal(err)
 	}
 	resp := do(t, srv, http.MethodGet, "/v1/proposals/era-proposal", adminToken, "")
@@ -548,7 +594,7 @@ func TestEvents_RequiresAuth(t *testing.T) {
 
 // The WHOLE intent must survive the wire. This is the regression test for a real gap:
 // the submit body used to be a hand-mirrored struct that had drifted from
-// suggest.Intent — it omitted RuntimeTgt, so `runtimeTargetMin` was unreachable even
+// proposals.Intent — it omitted RuntimeTgt, so `runtimeTargetMin` was unreachable even
 // though the suggester feeds it to the LLM prompt and the scorer, and §13 lists a
 // runtime target among the constraints a user may set. Typing the body from the domain
 // fixed it; this keeps any future Intent field from going missing the same way.
@@ -596,8 +642,8 @@ func TestApprove_CreatesTheChannelTheIntentDescribes(t *testing.T) {
 	body := `{"intent":{"description":"90s Saturday morning cartoons for the kids"},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-ch", JobID: "job-ch", Status: "submitted", ProposalJSON: body,
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-ch", JobID: "job-ch", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -644,8 +690,8 @@ func TestApprove_PersistsProposalEpisodeSelectionToChannelLineup(t *testing.T) {
 		`"lineup":[{"mediaType":"series","tmdbId":90000456,"name":"Kettle Kids",` +
 		`"inLibrary":true,"libraryItemId":"lib-kettle-kids",` +
 		`"episodeSelection":{"mode":"highlights"}}],"acquisitions":[]}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-episodes", JobID: "job-episodes", Status: "submitted", ProposalJSON: body,
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-episodes", JobID: "job-episodes", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -700,8 +746,8 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 			body := fmt.Sprintf(`{"intent":{"description":%q},"lineup":[`+
 				`{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","inLibrary":true,"libraryItemId":"marigold"}],`+
 				`"acquisitions":[]}`, tt.intent)
-			if err := st.CreateProposal(context.Background(), store.Proposal{
-				ID: tt.proposalID, JobID: "job-" + tt.proposalID, Status: "submitted", ProposalJSON: body,
+			if err := createProposalWithJob(st, context.Background(), store.Proposal{
+				ID: tt.proposalID, JobID: "job-" + tt.proposalID, Status: "submitted", Body: wireProposal(t, body),
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -749,10 +795,7 @@ func TestApprove_RestampsSearchAddedSeriesFromOriginalIntent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var persisted suggest.Proposal
-			if err := json.Unmarshal([]byte(approved.ProposalJSON), &persisted); err != nil {
-				t.Fatal(err)
-			}
+			persisted := approved.Body
 			if len(persisted.Acquisitions) != 1 ||
 				persisted.Acquisitions[0].EpisodeSelection.Mode != tt.want.Mode ||
 				strings.Join(persisted.Acquisitions[0].EpisodeSelection.Holidays, ",") != strings.Join(tt.want.Holidays, ",") {
@@ -769,8 +812,8 @@ func TestApprove_ReplacesCraftedSeriesModeFromOriginalIntent(t *testing.T) {
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol",` +
 		`"inLibrary":true,"libraryItemId":"marigold"}],` +
 		`"acquisitions":[]}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-crafted-selection", JobID: "job-crafted-selection", Status: "submitted", ProposalJSON: body,
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-crafted-selection", JobID: "job-crafted-selection", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -827,8 +870,8 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 		`"episodeSelection":{"mode":"holiday","holidays":["christmas"]}},` +
 		`{"mediaType":"movie","tmdbId":90000100,"name":"Crafted Movie Mode","inLibrary":false,` +
 		`"episodeSelection":{"mode":"highlights"}}]}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-alternate-selection", JobID: "job-alternate-selection", Status: "submitted", ProposalJSON: body,
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-alternate-selection", JobID: "job-alternate-selection", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -842,10 +885,7 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var persisted suggest.Proposal
-	if err := json.Unmarshal([]byte(approved.ProposalJSON), &persisted); err != nil {
-		t.Fatal(err)
-	}
+	persisted := approved.Body
 	if len(persisted.Alternates) != 3 {
 		t.Fatalf("persisted alternates = %+v, want three", persisted.Alternates)
 	}
@@ -868,8 +908,8 @@ func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
 	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"era":{"from":1990,"to":1999}}},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-era", JobID: "job-era", Status: "submitted", ProposalJSON: body,
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-era", JobID: "job-era", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -902,8 +942,8 @@ func TestApprove_ReApprovalPatchesRatherThanDuplicating(t *testing.T) {
 		`"tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],` +
 		`"acquisitions":[]}`
 	seed := func(id, job string, created time.Time) {
-		if err := st.CreateProposal(context.Background(), store.Proposal{
-			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+		if err := createProposalWithJob(st, context.Background(), store.Proposal{
+			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -972,8 +1012,8 @@ func TestRefine_NewerApprovalPatchesChannel(t *testing.T) {
 		body := `{"intent":{"description":"90s action"},"lineup":[{"mediaType":"movie",` +
 			`"tmdbId":` + tmdb + `,"name":"` + name + `","year":1999,"inLibrary":true,` +
 			`"libraryItemId":"lib-` + tmdb + `"}],"acquisitions":[]}`
-		if err := st.CreateProposal(ctx, store.Proposal{
-			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+		if err := createProposalWithJob(st, ctx, store.Proposal{
+			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -1046,8 +1086,8 @@ func TestRefine_OlderProposalCannotRollBackNewerApproval(t *testing.T) {
 	mk := func(id, tmdb, name string, created time.Time) {
 		body := `{"intent":{"description":"90s action"},"lineup":[{"mediaType":"movie",` +
 			`"tmdbId":` + tmdb + `,"name":"` + name + `","inLibrary":true,"libraryItemId":"lib-` + tmdb + `"}]}`
-		if err := st.CreateProposal(ctx, store.Proposal{
-			ID: id, JobID: job, Status: "submitted", ProposalJSON: body, CreatedAt: created,
+		if err := createProposalWithJob(st, ctx, store.Proposal{
+			ID: id, JobID: job, Status: "submitted", Body: wireProposal(t, body), CreatedAt: created,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -1102,8 +1142,8 @@ func TestApprove_AllocatesTheLowestFreeChannelNumber(t *testing.T) {
 	}
 	body := `{"intent":{"description":"westerns"},"lineup":[{"mediaType":"movie","tmdbId":90000603,` +
 		`"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-n", JobID: "job-n", Status: "submitted", ProposalJSON: body,
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-n", JobID: "job-n", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1135,8 +1175,8 @@ func TestApprove_DroppedTitleIsNotEnqueued(t *testing.T) {
 	body := `{"acquisitions":[
 		{"mediaType":"movie","tmdbId":90000100,"name":"Quiet Engines","year":1994},
 		{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":false}]}`
-	if err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: "p-drop", JobID: "j", Status: "submitted", ProposalJSON: body,
+	if err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: "p-drop", JobID: "j", Status: "submitted", Body: wireProposal(t, body),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1207,10 +1247,7 @@ func TestApprove_PersistsTheAuditTrail(t *testing.T) {
 	if p.Status != "approved" {
 		t.Errorf("status = %q, want approved", p.Status)
 	}
-	var approved suggest.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
-		t.Fatal(err)
-	}
+	approved := p.Body
 	if len(approved.Trace.Candidates) != 1 || approved.Trace.Candidates[0].Key != "movie:tmdb:90000100" || approved.Trace.Candidates[0].Disposition != suggest.DispositionSelected {
 		t.Fatalf("approval edit rewrote original decision evidence: %+v", approved.Trace)
 	}
@@ -1232,11 +1269,8 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var approved suggest.Proposal
-	if err := json.Unmarshal([]byte(p.ProposalJSON), &approved); err != nil {
-		t.Fatal(err)
-	}
-	for _, items := range [][]suggest.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
+	approved := p.Body
+	for _, items := range [][]proposals.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
 		for _, item := range items {
 			if item.Name == "Quiet Engines" {
 				t.Errorf("the approved proposal still contains the dropped title: %+v", approved)
@@ -1283,8 +1317,8 @@ func TestApprove_UnmodifiedLeavesTheProposalUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.ProposalJSON != before.ProposalJSON {
-		t.Error("an unmodified approval rewrote the proposal JSON")
+	if !reflect.DeepEqual(after.Body, before.Body) {
+		t.Error("an unmodified approval changed the proposal")
 	}
 	if after.ModSummary != "" {
 		t.Errorf("modSummary = %q, want empty for an unmodified approval", after.ModSummary)
@@ -1596,10 +1630,42 @@ func seedProposalWithTMDB(t *testing.T, st store.Store, id string, tmdbID int, n
 	t.Helper()
 	body := fmt.Sprintf(
 		`{"acquisitions":[{"mediaType":"movie","tmdbId":%d,"name":%q,"year":1994}]}`, tmdbID, name)
-	err := st.CreateProposal(context.Background(), store.Proposal{
-		ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "alice", ProposalJSON: body,
+	err := createProposalWithJob(st, context.Background(), store.Proposal{
+		ID: id, JobID: "job-" + id, Status: "submitted", CreatedBy: "alice", Body: wireProposal(t, body),
 	})
+
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Housekeeping used to purge a done job while its proposal was still submitted, so a database may
+// hold proposals whose job is gone. Approving one cannot create its channel; that is a refusal the
+// admin can act on (deny it, ask again), never a 500.
+func TestApprove_ProposalWhoseJobWasPurgedIs422(t *testing.T) {
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
+	body := `{"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
+	// No job row: written straight to the store, as a purge left it.
+	if err := st.CreateProposal(context.Background(), store.Proposal{
+		ID: "p-old", JobID: "job-purged", Status: "submitted", Body: wireProposal(t, body),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/p-old/approve", adminToken, "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("approve with a purged job → %d, want 422", resp.StatusCode)
+	}
+	var problem struct{ Title, Detail string }
+	_ = json.NewDecoder(resp.Body).Decode(&problem)
+	if problem.Title != "This request is too old to approve" || !strings.Contains(problem.Detail, "Deny it") {
+		t.Errorf("problem = %+v, want the too-old title and a detail telling the admin to deny it", problem)
+	}
+	if p, _ := st.GetProposal(context.Background(), "p-old"); p.Status != "submitted" {
+		t.Errorf("proposal status = %q after a refused approval, want it left submitted so it can be denied", p.Status)
+	}
+	if chans, _ := st.ListChannels(context.Background()); len(chans) != 0 {
+		t.Errorf("a refused approval created %d channels", len(chans))
 	}
 }

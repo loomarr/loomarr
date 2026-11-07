@@ -1,21 +1,20 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
+import * as libraryApi from "@loomarr/api/endpoints/library";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useMatch, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { meQueryOptions } from "@/auth/me-query";
 import { needsBootstrap } from "@/auth/setup-state-query";
 import { useAuth } from "@/auth/use-auth";
 import { watchChannelId } from "@/channels/watch-channel-id";
 import { AppShell } from "@/components/loomarr/shell/app-shell";
-import { RestartOverlay } from "@/components/loomarr/shell/restart-overlay";
-import { RestartWatchProvider, useRestartWatchContext } from "@/dashboard/restart-watch-provider";
-import { HealthNotice } from "@/diagnostics";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
+import { HealthNotice } from "@/diagnostics/startup-notice";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { CommandPalette } from "@/palette/command-palette";
 import { useCommandShortcut } from "@/palette/use-command-shortcut";
@@ -29,24 +28,20 @@ import { useNeedsYouCount } from "@/queue/use-requests";
 // frames out to screens that need the payload itself, like the Suggest workspace's live
 // phases. Identity comes from useAuth (real name, admin-only nav), and logout clears the
 // query cache and drops back to /login.
-// The shell split in two so the overlay can read the restart state the provider holds —
-// a provider cannot consume its own context.
-const AuthedLayout = () => (
-  <RestartWatchProvider>
-    <AuthedFrame />
-  </RestartWatchProvider>
-);
-
-const AuthedFrame = () => {
+const AuthedLayout = () => {
   const [commandOpen, setCommandOpen] = useState(false);
   useCommandShortcut(setCommandOpen);
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const restartWatch = useRestartWatchContext();
+  const fullBleed = useMatch({ from: "/_authed/watch/$id", shouldThrow: false }) !== undefined;
   // The Requests nav badge: what is waiting on this viewer (approvals for an admin, failed
   // requests for anyone) — the same number as the Needs you tab.
   const needsYouCount = useNeedsYouCount();
+  // The Library nav badge (#2151 decision 27): the titles Loomarr can't tell what they are — the
+  // same number as the Needs you heading. Admin-only, like the Library.
+  const libraryStatus = libraryApi.useLibraryStatus({ query: { enabled: isAdmin, staleTime: 30_000 } });
+  const libraryNeedsYou = isAdmin ? (unwrap(libraryStatus.data)?.needsYou ?? 0) : 0;
   // Watch's target (#1817 item 3, #1659 Shell, decision X2), shared by the desktop rail and
   // PhoneBottomBar — one fetch, one selector, passed down as a single prop so neither shell
   // derives its own fallback chain.
@@ -82,26 +77,24 @@ const AuthedFrame = () => {
   return (
     <LoomarrEventsProvider>
       <HealthNotice enabled={isAdmin} />
-      <AppShell
-        isAdmin={isAdmin}
-        userName={user?.name ?? "…"}
-        serverVersion={serverVersion}
-        badges={{ "/requests": needsYouCount }}
-        onOpenCommand={() => setCommandOpen(true)}
-        onLogout={() => logout.mutate()}
-        watchChannelId={watchId}
-      >
+      {/* Watch is full-bleed (#2088): no rail, no bottom bar, the picture owns the window and the
+          player's ✕ leaves. Everything else in this frame (events, palette, restart) still applies. */}
+      {fullBleed ? (
         <Outlet />
-      </AppShell>
+      ) : (
+        <AppShell
+          isAdmin={isAdmin}
+          userName={user?.name ?? "…"}
+          serverVersion={serverVersion}
+          badges={{ "/requests": needsYouCount, "/library": libraryNeedsYou }}
+          onOpenCommand={() => setCommandOpen(true)}
+          onLogout={() => logout.mutate()}
+          watchChannelId={watchId}
+        >
+          <Outlet />
+        </AppShell>
+      )}
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
-      {/* ⚠ App-wide, not per page. The restart control lives on the Dashboard, but the
-          operator can navigate away the instant they click it — and every page is equally
-          dead while the server rebuilds. */}
-      <RestartOverlay
-        restarting={restartWatch.restarting}
-        justCameBack={restartWatch.justCameBack}
-        failed={restartWatch.failed}
-      />
     </LoomarrEventsProvider>
   );
 };

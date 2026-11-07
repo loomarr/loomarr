@@ -9,12 +9,12 @@
 # placeholder and serves a "not built" notice — the UI would be missing. Runs on
 # the BUILD platform (native), never emulated: the output is portable static assets.
 # codegen reads the committed api/openapi.yaml (orval) — no running server needed.
-# Node 22.23.2 satisfies the repository's >=22.5 <23 contract and includes the
+# Node 22.23.4 satisfies the repository's >=22.5 <23 contract and includes the
 # built-in `node:sqlite` pnpm 11.13 uses for its store index. Keep the image on the
 # same major CI and contributors certify; a release build is not the place to trial
 # the next Node line. Corepack is separately pinned because it is no longer bundled
 # in newer official Node images.
-FROM --platform=$BUILDPLATFORM node:22.23.2-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS fe
+FROM --platform=$BUILDPLATFORM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS fe
 RUN npm install -g corepack@0.36.0 && corepack enable
 WORKDIR /src
 COPY web ./web
@@ -26,11 +26,21 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     && pnpm --filter @loomarr/web build
 # vite outDir is ../../../internal/web/dist ⇒ /src/internal/web/dist
 
+# ---- node-runtime ----
+# The Node binary yt-dlp uses as its JavaScript runtime (YouTube player challenges). It is the SAME
+# digest-pinned official image as `fe` above, so there is no new download source or checksum to
+# keep: Renovate and the pin comment above govern both. Unlike `fe` this stage is deliberately NOT
+# --platform=$BUILDPLATFORM — the `node` binary is copied into the runtime image and must match
+# TARGETARCH (the digest is the multi-arch index, so each platform resolves its own binary).
+# Only /usr/local/bin/node is used; it is one dynamically linked executable whose libraries
+# (libc, libm, libstdc++, libgcc_s) debian:stable-slim already provides.
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS node-runtime
+
 # ---- build ----
 # Cross-compile the cgo-free binary on the BUILD platform for the TARGET arch —
 # far faster than compiling under QEMU emulation, and correct because the static
 # pure-Go build has no arch-specific C toolchain to satisfy.
-FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
 ARG TARGETARCH
 WORKDIR /src
 # Cache modules first.
@@ -55,7 +65,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Required image renderer (§14, §22). Build natively for each Buildx target so the bundled
 # libwebp and Rust standard library always match the runtime architecture.
-FROM rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS image-worker
+FROM rust:1.99-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS image-worker
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY rust ./rust
@@ -98,13 +108,17 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 #     PyInstaller — no system Python, so §14's all-Go rule holds).
 #   - ffmpeg: BtbN static GPL build. Needed so yt-dlp can merge separate
 #     video/audio streams; without it high-res sources fail or silently downgrade.
-#   - deno: a JS runtime yt-dlp REQUIRES for YouTube — modern yt-dlp deprecated
+#   - node: a JS runtime yt-dlp REQUIRES for YouTube — modern yt-dlp deprecated
 #     YouTube extraction without one ("No supported JavaScript runtime"), so the
-#     YouTube leg fails without it. Auto-detected on PATH. (Found the hard way by
-#     a live smoke: the YouTube fetch errored until deno was present.)
+#     YouTube leg fails without it. yt-dlp enables only Deno by default, so
+#     internal/filler/fetch passes `--js-runtimes node` explicitly; node is found on
+#     PATH at /usr/local/bin/node. It is copied from the digest-pinned `node-runtime`
+#     stage (the same official image as the web build), not downloaded. Deno was
+#     replaced because its development ends after Cloudflare took on the Deno team.
 # All three are version-pinned so a build cannot silently pull a changed binary.
 #
-# ARCHITECTURE: all three are fetched per TARGETARCH. The removed Dockerfile.ingest
+# ARCHITECTURE: yt-dlp and ffmpeg are fetched per TARGETARCH, and node comes from the TARGETARCH
+# variant of its image. The removed Dockerfile.ingest
 # hardcoded x86_64 URLs, so on an arm64 host it BUILT FINE and then failed at run
 # time with "rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2" —
 # a broken image that looks healthy until someone actually ingests. Keep these
@@ -116,27 +130,20 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 # integrity). To bump: `docker buildx imagetools inspect debian:stable-slim`, take the new
 # `Digest:`, and update the tag alongside it so the two never disagree. Same for the fe/build/
 # image-worker bases above.
-FROM debian:stable-slim@sha256:04634311a8d5fc442b6eb06d792293c4f3e2268652ca7634e00ce8ef5cc0a28a AS runtime
+FROM debian:stable-slim@sha256:a717a33469731894e77e912ea7d714e27c2dc38ee6554fd1a3102e92999cfc66 AS runtime
 ARG TARGETARCH
-# The Debian package layer is pinned to a snapshot.debian.org timestamp so `apt-get install` below
-# resolves the SAME package versions on every build — the digest-pinned base above fixes the root
-# filesystem, and this fixes what gets layered onto it. This is the value the pinned base's OWN
-# `debian.sources` records in a comment (`# http://snapshot.debian.org/archive/debian/<ts>`); keep
-# the two aligned. snapshot.debian.org never removes old versions, so unlike a per-package `=version`
-# pin this does not rot when trixie drops a package on a point release. To bump: move the base-image
-# digest and this timestamp together to a newer snapshot, then rerun the image build + `make test-ffmpeg`.
-ARG DEBIAN_SNAPSHOT=20260824T000000Z
-ARG YTDLP_VERSION=2026.08.19
-ARG DENO_VERSION=v2.9.6
+# The Debian packages layered onto the digest-pinned base come from the base image's own
+# `debian.sources` (deb.debian.org, Debian stable), so they follow stable's point releases rather
+# than a fixed snapshot. snapshot.debian.org shed load with 503 "No healthy backends" for days
+# (2026-11), failing image builds, so the image does not depend on it.
+ARG YTDLP_VERSION=2026.10.26
 # Release-asset digests were copied from the upstream GitHub release records. Some
 # upstream records are mutable, so the committed checksums — not the record itself —
 # are the fail-closed identity. Keep both architectures explicit: a version tag alone
 # does not stop an asset from being replaced, and one architecture must never inherit
 # the other's checksum.
-ARG YTDLP_AMD64_SHA256=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a
-ARG YTDLP_ARM64_SHA256=b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc
-ARG DENO_AMD64_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
-ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c712721c046e
+ARG YTDLP_AMD64_SHA256=767ba9dce7052aa196f8b12652f433d76de128ba168966fa84b6394d5e6c6795
+ARG YTDLP_ARM64_SHA256=e87e9533e89fe5889abaa21f5114dfe7756d6aa6219b83551add04d48b18e483
 # ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AND THE PICTURE CHECKS AGAINST THE NEW BUILD.
 #
 # A GPU filter that silently produces nothing is fast and exits 0 (#1516: tonemap_vaapi aired black;
@@ -149,26 +156,33 @@ ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c71272
 # and pipes, never a concat of HTTP entries), so nothing in playout depends on that behaviour now.
 # n9 is also what fixes overlay_cuda after NVDEC, so the NVENC watermark self-check passes (#1549).
 #
-# ffmpeg is pinned to a RETAINED MONTHLY BtbN release + per-arch SHA256, exactly like yt-dlp, deno,
-# and whisper below — a redistributed image must be reproducible and its GPL corresponding-source
-# must identify EXACT bytes, which `latest` (a mutable release whose assets are overwritten) cannot.
-# BtbN prunes all but the latest 14 ordinary autobuilds; only one release per month is retained for
-# 24 months. An arbitrary dated release is therefore NOT immutable. The evidence manifest binds the
-# pin to the exact upstream pruning-policy revision that classifies this archive as monthly-retained.
+# ffmpeg tracks BtbN's NEWEST release-series GPL build, pinned by exact build id + per-arch SHA256
+# like yt-dlp and whisper — a redistributed image must be reproducible and its GPL
+# corresponding source must identify EXACT bytes, which `latest` (overwritten in place) cannot.
 #
-# This pin is `n9.0.1-11-ge47273f4d9`, the n9.0 GPL build in the retained monthly release below (the
-# same release that carried the previous n8.1 pin). To bump: choose BtbN's retained monthly release
-# for a completed month (normally its final autobuild), confirm the pinned `util/prunetags.sh` policy
-# still keeps it, take its exact GPL asset filename for the series, download both architecture
-# archives, and update FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s + redistribution evidence
-# together — never choose an ordinary daily archive or point any value at `latest`.
-ARG FFMPEG_RELEASE=autobuild-2026-08-31-13-27
-ARG FFMPEG_BUILD_ID=n9.0.1-11-ge47273f4d9
-ARG FFMPEG_AMD64_SHA256=182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a
-ARG FFMPEG_ARM64_SHA256=e2dd447c8a47849c5812d87e54a47b20ae0f3603d38989440f4a5fe1af8755b1
-ARG WHISPER_VERSION=v1.9.1
-ARG WHISPER_AMD64_SHA256=f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5
-ARG WHISPER_ARM64_SHA256=e0b66cd551ff6f2a28fabe3c6e89691eea037bb76833493abb9a71ca788994b3
+# ⚠ The archive downloads from LOOMARR'S OWN source release (FFMPEG_MIRROR_RELEASE), never from BtbN:
+# BtbN keeps only its newest 14 autobuilds (plus one per month), so a daily's URL 404s within weeks.
+# That release mirrors both binary archives together with their corresponding source — the FFmpeg
+# commit, BtbN's recipe, and the run's original dependency download cache, which BtbN deletes after
+# 14 days. FFMPEG_RELEASE records which BtbN autobuild the bytes came from.
+#
+# Never edit these five values by hand: `scripts/ffmpeg-pin-refresh.sh` (and the weekly
+# `FFmpeg pin refresh` workflow) captures the build, publishes the source release, and rewrites the
+# pins, the redistribution manifest and the per-pin evidence together. See docs/contributing/releasing.md.
+ARG FFMPEG_RELEASE=autobuild-2026-10-26-14-25
+ARG FFMPEG_MIRROR_RELEASE=third-party-sources-2026-10-27
+ARG FFMPEG_BUILD_ID=n9.0.2-36-g6882969ce9
+ARG FFMPEG_AMD64_SHA256=79095572fe46ccc5eff689bc4a272ef331024a8264226e97856e3f155371af2b
+ARG FFMPEG_ARM64_SHA256=f03f848bf52ec6e011c9349ffbf2f5afeeb6c12ddb0f69b203a7e99ef8f14a1f
+# ⚠ Since v1.9.3 whisper.cpp's version releases carry NO binaries: the Ubuntu archives are attached
+# to the ggml-style build release cut from the SAME commit, which the version release links as its
+# "Nightly build". WHISPER_VERSION is the human version; WHISPER_BUILD is the release the archives
+# download from. To bump: take the new version's linked build tag, confirm both tags resolve to one
+# commit, and recompute both SHA256s from the downloaded archives.
+ARG WHISPER_VERSION=v1.9.5
+ARG WHISPER_BUILD=b5454
+ARG WHISPER_AMD64_SHA256=a72becf15d7917f990f6313867a52638b82b7f9ef237fb0c980dac56a135781c
+ARG WHISPER_ARM64_SHA256=6b95ebfc60447df48e70ef00a73bdc3f41679ed2d01ef465827206a2ff325149
 # The model is pinned by REVISION + SHA256, not by a floating branch name: a model file
 # that silently changes content changes transcription, and transcription decides where
 # clips get cut. Same reasoning as the version pins above, higher stakes.
@@ -211,30 +225,30 @@ ARG INTEL_IGC_CORE_SHA256=0a6e64a663ae65a0fa02d6912ae3b6b37cf85b90c21cc423fd9fef
 ARG INTEL_IGC_OPENCL_SHA256=779e1b9e88098eb25711e9a8f67c2752665bad22f134aa40ed5649f6e1b87058
 ARG INTEL_OPENCL_ICD_SHA256=61712caaddeba3d38e4f79e2a0fb23fea25596ca2d72c3144c6eea2331ec4301
 ARG INTEL_GMMLIB_SHA256=6031a63d6e8a12ce61c14efc15f2c8e727061286e3820b8594e6d00615e04d54
+# yt-dlp's JavaScript runtime (see the `node` note above). Copied before the RUN so its build-time
+# self-check can prove yt-dlp finds it.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 RUN set -eux; \
     case "$TARGETARCH" in \
-      amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; DENO_ARCH=x86_64;  DENO_SHA256="$DENO_AMD64_SHA256"; FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"; WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
-      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256="$YTDLP_ARM64_SHA256"; DENO_ARCH=aarch64; DENO_SHA256="$DENO_ARM64_SHA256"; FFMPEG_ARCH=linuxarm64; FFMPEG_SHA256="$FFMPEG_ARM64_SHA256"; WHISPER_ARCH=arm64; WHISPER_SHA256="$WHISPER_ARM64_SHA256" ;; \
+      amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"; WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
+      arm64) YTDLP_ASSET=yt-dlp_linux_aarch64; YTDLP_SHA256="$YTDLP_ARM64_SHA256"; FFMPEG_ARCH=linuxarm64; FFMPEG_SHA256="$FFMPEG_ARM64_SHA256"; WHISPER_ARCH=arm64; WHISPER_SHA256="$WHISPER_ARM64_SHA256" ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     # BtbN's immutable asset name embeds the build id and repeats the version series in the SUFFIX
-    # (ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz — build id `n9.0.1-11-ge47273f4d9`,
+    # (ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz — build id `n9.0.2-17-g2a571b6068`,
     # suffix `9.0`). The suffix is the MAJOR.MINOR of the build id, DERIVED so a bump changes
     # FFMPEG_BUILD_ID in ONE place; a mismatch 404s at build time instead of fetching a different
-    # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (9, 0).
+    # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (9, 0); the second
+    # stops at `-` because a series' first build has no patch number (`n9.1-3-g…`).
     FFMPEG_VER="${FFMPEG_BUILD_ID#n}"; \
-    FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2)"; \
+    FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2 | cut -d- -f1)"; \
     FFMPEG_BUILD="ffmpeg-${FFMPEG_BUILD_ID}-${FFMPEG_ARCH}-gpl-${FFMPEG_SUFFIX}"; \
-    # Repoint apt at the pinned snapshot (see the DEBIAN_SNAPSHOT note above) so every install below
-    # is reproducible. deb822 `debian.sources`; both the archive and security suites. `http://`, not
-    # https, is deliberate and matches the base image's own recorded snapshot comment: this stage runs
-    # BEFORE `ca-certificates` is installed (it is one of the packages being fetched), so TLS would
-    # fail its own cert check — and repo integrity comes from the GPG `Signed-By` keyring, not the
-    # transport. Snapshots carry an old `Valid-Until`, so updates use `Check-Valid-Until=false`.
-    printf 'Types: deb\nURIs: http://snapshot.debian.org/archive/debian/%s\nSuites: stable stable-updates\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n\nTypes: deb\nURIs: http://snapshot.debian.org/archive/debian-security/%s\nSuites: stable-security\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.pgp\n' \
-      "$DEBIAN_SNAPSHOT" "$DEBIAN_SNAPSHOT" > /etc/apt/sources.list.d/debian.sources; \
-    apt-get -o Acquire::Check-Valid-Until=false update; \
-    apt-get install -y --no-install-recommends ca-certificates curl xz-utils unzip; \
+    # Every apt fetch in this stage retries with backoff, so one refused request from a mirror does
+    # not fail the image build. Repo integrity comes from the base image's GPG keyring, not the
+    # transport (its sources are `http://`; `ca-certificates` is among the packages fetched here).
+    printf 'Acquire::Retries "8";\nAcquire::Retries::Delay::Maximum "60";\n' > /etc/apt/apt.conf.d/80-retries; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl xz-utils; \
     # HARDWARE-ENCODE DRIVER LIBRARIES (§9.1). ffmpeg dlopen()s these at runtime, so
     # without them EVERY hardware family fails the capability probe on EVERY host —
     # measured, not assumed: the probe reported "Unable to open the libvulkan library",
@@ -325,15 +339,8 @@ RUN set -eux; \
     echo "${YTDLP_SHA256}  /usr/local/bin/yt-dlp" | sha256sum -c -; \
     chmod +x /usr/local/bin/yt-dlp; \
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
-      -o /tmp/deno.zip \
-      "https://github.com/denoland/deno/releases/download/${DENO_VERSION}/deno-${DENO_ARCH}-unknown-linux-gnu.zip"; \
-    echo "${DENO_SHA256}  /tmp/deno.zip" | sha256sum -c -; \
-    unzip -q /tmp/deno.zip -d /usr/local/bin; \
-    chmod +x /usr/local/bin/deno; \
-    rm -f /tmp/deno.zip; \
-    curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
       -o /tmp/ffmpeg.tar.xz \
-      "https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
+      "https://github.com/loomarr/loomarr/releases/download/${FFMPEG_MIRROR_RELEASE}/${FFMPEG_BUILD}.tar.xz"; \
     echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
     tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
     # ffmpeg AND ffprobe (revised, §9.1). ffprobe was excluded to save ~99MB on the
@@ -366,7 +373,7 @@ RUN set -eux; \
     # at load with "libgomp.so.1: cannot open shared object file".
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
       -o /tmp/whisper.tar.gz \
-      "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
+      "https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_BUILD}/whisper-bin-ubuntu-${WHISPER_ARCH}.tar.gz"; \
     echo "${WHISPER_SHA256}  /tmp/whisper.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/whisper.tar.gz -C /tmp; \
     install -d /usr/local/lib/whisper; \
@@ -407,7 +414,7 @@ RUN set -eux; \
       -o /usr/local/share/whisper/ggml-tiny.bin \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/${WHISPER_MODEL_REV}/ggml-tiny.bin"; \
     echo "${WHISPER_LANG_MODEL_SHA256}  /usr/local/share/whisper/ggml-tiny.bin" | sha256sum -c -; \
-    apt-get purge -y curl xz-utils unzip; \
+    apt-get purge -y curl xz-utils; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*; \
     # Prove the tooling actually runs on THIS arch, at build time. Without this the
@@ -415,7 +422,11 @@ RUN set -eux; \
     /usr/local/bin/yt-dlp --version; \
     /usr/local/bin/ffmpeg -version | head -1; \
     /usr/local/bin/ffprobe -version | head -1; \
-    /usr/local/bin/deno --version | head -1; \
+    /usr/local/bin/node --version; \
+    # ...and yt-dlp must actually pick node up as its JS runtime, enabled exactly as internal/filler/fetch
+    # enables it. Offline: with no URL it prints its debug header (`JS runtimes: node-22.x`, or
+    # `none` when node is missing) and exits nonzero for the missing URL, hence `|| true`.
+    { /usr/local/bin/yt-dlp --no-config -v --js-runtimes node 2>&1 || true; } | grep -E 'JS runtimes: node-'; \
     # ⚠ whisper is NOT proved by `--help`: it returns 0 without ever initialising a compute
     # backend, and did so on arm64 in a layout where the first real transcription aborted
     # with "GGML_ASSERT(device) failed". What actually has to be proved is that ggml can
@@ -444,6 +455,8 @@ ARG VERSION=""
 COPY --from=build /out/loomarr /loomarr
 COPY --from=image-worker /src/target/release/loomarr-image /usr/local/bin/loomarr-image
 COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/loomarr/
+# Node's license file carries the notices of the components it bundles (V8, OpenSSL, ICU, ...).
+COPY --from=node-runtime /usr/local/LICENSE /usr/share/doc/loomarr/node-LICENSE
 RUN contract="$(/usr/local/bin/loomarr-image capabilities --protocol 1 --self-test)"; \
     echo "$contract" | grep -q '"selfTest":true'; \
     echo "$contract" | grep -q "\"release\":\"${VERSION:-dev}\""

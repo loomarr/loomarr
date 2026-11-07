@@ -23,3 +23,11 @@ the row nor the file.
 - A bulk backfill is always something a human saw and agreed to.
 - A removed clip stays removed across rescans, and restoring it is the same write reversed.
 - Loomarr never deletes operator media to implement removal.
+
+## Amendment (2026-10-27, #2035)
+
+**Enabling a source is the consent.** An enabled source fetches on its own toward the pool's target
+and stops when it is met ([0015](0015-sources-fetch-on-their-own.md)), so the human's agreement is
+the switch, not a plan per batch. Curated sources arrive switched off for that reason
+([0045](0045-loomarr-recommends-curated-youtube-channels.md)). Pulls remain for one-off plans, and
+disabling a source still stops everything from it at once.

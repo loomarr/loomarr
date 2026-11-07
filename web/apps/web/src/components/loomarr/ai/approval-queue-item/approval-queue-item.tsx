@@ -1,10 +1,11 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
+import { Card, Surface, Text } from "@loomarr/design-system";
 import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { episodeSelectionLabel } from "../episode-selection-label";
@@ -22,6 +23,26 @@ const seasonWindowLabel = (min?: number, max?: number): string | null => {
   return `Through season ${hi}`;
 };
 
+// regionName is a country code's English name ("GB" → "United Kingdom"), or the code itself.
+const regionName = (country: string): string => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(country) ?? country;
+  } catch {
+    return country;
+  }
+};
+
+// seasonNotKeptLabel says which holidays aren't on the household's holiday calendar (#2030 decision
+// 38). It names the calendar, not "your country": a country Loomarr has no holidays for reads the
+// US calendar, and an undated holiday is on no calendar at all.
+const seasonNotKeptLabel = ({ country, holidays }: SeasonNotKept): string => {
+  const names = new Intl.ListFormat("en", { type: "conjunction" }).format(holidays);
+  const one = holidays.length === 1;
+  return `${names} ${one ? "isn't" : "aren't"} on your holiday calendar (${regionName(country)}), so this channel won't follow ${
+    one ? "its season" : "their seasons"
+  }.`;
+};
+
 const PickRow = ({
   item,
   kind,
@@ -33,9 +54,9 @@ const PickRow = ({
 }) => {
   const window = seasonWindowLabel(item.seasonMin, item.seasonMax);
   return (
-    <li className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm">
+    <li className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
       <span className="font-medium">{item.name}</span>
-      {item.year ? <span className="font-mono text-static-400 text-xs">{item.year}</span> : null}
+      {item.year ? <span className="text-static-400 font-mono text-xs">{item.year}</span> : null}
       <Badge variant={kind === "lineup" ? "lock" : "tune"}>
         {kind === "lineup" ? "In library" : "Will acquire"}
       </Badge>
@@ -65,13 +86,14 @@ const ApprovalQueueItem = ({
   alternates,
   episodeSelectionPreview,
   refused,
+  seasonNotKept,
   edit,
   onEdit,
   renderFeedback,
   onApprove,
   onDeny,
   error,
-  className,
+  flat = false,
 }: ApprovalQueueItemProps) => {
   const busy = status === "approving";
   const denied = status === "denied";
@@ -82,7 +104,7 @@ const ApprovalQueueItem = ({
   const hasPicks = (lineup?.length ?? 0) + (acquisitionItems?.length ?? 0) > 0;
 
   return (
-    <Card className={cn("flex flex-col gap-3 p-4", className)}>
+    <Card gap={12} {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}>
       {/* On a phone the actions go under the pitch; beside it they left it a word per line (#1785). */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
         <div className="min-w-0 flex-1">
@@ -95,11 +117,11 @@ const ApprovalQueueItem = ({
             {edit && <Badge variant="suggest">Edited</Badge>}
             {denied && <Badge variant="onair">Denied</Badge>}
           </div>
-          {summary && <p className="mt-1 text-muted-foreground text-sm">{summary}</p>}
+          {summary && <p className="text-muted-foreground mt-1 text-sm">{summary}</p>}
           {requestedBy && (
-            <p className="mt-1 font-mono text-static-400 text-xs">{`Requested by ${requestedBy}`}</p>
+            <p className="text-static-400 mt-1 font-mono text-xs">{`Requested by ${requestedBy}`}</p>
           )}
-          {denied && denyReason && <p className="mt-1 text-onair-300 text-sm">{denyReason}</p>}
+          {denied && denyReason && <p className="text-onair-300 mt-1 text-sm">{denyReason}</p>}
         </div>
 
         {!denied && !denying && (
@@ -124,7 +146,7 @@ const ApprovalQueueItem = ({
           requiring one would turn every decline into a chore — but offering it is what
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
-        <div className="flex flex-col gap-2 border-border border-t pt-2">
+        <div className="border-border flex flex-col gap-2 border-t pt-2">
           <label className="text-muted-foreground text-sm" htmlFor={reasonId}>
             Why not? Optional: the requester sees this.
           </label>
@@ -168,9 +190,9 @@ const ApprovalQueueItem = ({
           changes the meaning of the button is not detail behind a toggle. */}
       {refused && refused.length > 0 && (
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
-        <div className="flex flex-col gap-1.5 rounded-md border border-caution-tint-40 bg-caution-tint-8 px-3 py-2">
+        <div className="border-caution-tint-40 bg-caution-tint-8 flex flex-col gap-1.5 rounded-md border px-3 py-2">
           <p className="flex items-center gap-1.5 text-sm">
-            <ShieldAlert className="size-4 shrink-0 text-caution" aria-hidden />
+            <ShieldAlert className="text-caution size-4 shrink-0" aria-hidden />
             <span className="font-medium">
               {refused.length} {refused.length === 1 ? "title" : "titles"} won't be included
             </span>
@@ -195,13 +217,27 @@ const ApprovalQueueItem = ({
         </div>
       )}
 
+      {/* Beside the refusals for the same reason: approving gets a channel that doesn't follow the
+          season that was asked for (#2030 decision 38). */}
+      {seasonNotKept && seasonNotKept.holidays.length > 0 && (
+        <Surface
+          backgroundColor="stateWarningSurface"
+          borderColor="stateWarning"
+          borderRadius="control"
+          borderWidth={1}
+          padding={12}
+        >
+          <Text textRole="hint">{seasonNotKeptLabel(seasonNotKept)}</Text>
+        </Surface>
+      )}
+
       {outlook?.(() => setOpen(true))}
 
       {hasPicks && (
         <div className="border-border border-t pt-2">
           <button
             type="button"
-            className="flex items-center gap-1 text-muted-foreground text-sm hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
             // One line of 14 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
             data-touch-target
             onClick={() => setOpen((v) => !v)}

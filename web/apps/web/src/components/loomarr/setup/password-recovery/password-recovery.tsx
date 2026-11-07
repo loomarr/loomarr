@@ -1,9 +1,8 @@
+import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
 import { CheckCircle2, KeyRound, Loader2, Mail } from "lucide-react";
-import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
 
 const SignInLink = () => (
@@ -18,15 +17,18 @@ const PasswordRecoveryRequest = ({
   error,
   onSubmit,
 }: PasswordRecoveryRequestProps) => {
-  const [username, setUsername] = useState("");
-  const [validation, setValidation] = useState<string>();
+  const form = useAppForm({
+    defaultValues: { username: "" },
+    validators: { onSubmit: passwordRecoveryRequestSchema },
+    onSubmit: ({ value }) => onSubmit(passwordRecoveryRequestSchema.parse(value).username),
+  });
 
   if (sent) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <CheckCircle2 className="mx-auto size-10 text-signal" aria-hidden />
+        <CheckCircle2 className="text-signal mx-auto size-10" aria-hidden />
         <div className="space-y-2">
-          <h1 className="font-display font-semibold text-2xl">Check your email</h1>
+          <h1 className="font-display text-2xl font-semibold">Check your email</h1>
           <p className="text-muted-foreground text-sm">
             If that account can be recovered here, Loomarr sent a reset link to its verified address.
           </p>
@@ -42,18 +44,12 @@ const PasswordRecoveryRequest = ({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        const value = username.trim();
-        if (value === "") {
-          setValidation("Enter your username.");
-          return;
-        }
-        setValidation(undefined);
-        onSubmit(value);
+        void form.handleSubmit();
       }}
     >
       <div className="space-y-2 text-center">
-        <Mail className="mx-auto size-8 text-signal" aria-hidden />
-        <h1 className="font-display font-semibold text-2xl">Forgot your password?</h1>
+        <Mail className="text-signal mx-auto size-8" aria-hidden />
+        <h1 className="font-display text-2xl font-semibold">Forgot your password?</h1>
         <p className="text-muted-foreground text-sm">
           Enter your Loomarr username. We’ll email a reset link when this local account has a verified
           address.
@@ -62,28 +58,16 @@ const PasswordRecoveryRequest = ({
 
       {error ? <ErrorState error={error} /> : null}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="recovery-username">Username</Label>
-        <Input
-          id="recovery-username"
-          autoComplete="username"
-          value={username}
-          aria-invalid={validation ? "true" : undefined}
-          onChange={(event) => setUsername(event.target.value)}
-        />
-        {validation ? (
-          <p className="text-onair-300 text-sm" role="alert">
-            {validation}
-          </p>
-        ) : null}
-      </div>
+      <form.AppField name="username">
+        {(field) => <field.TextField autoComplete="username" id="recovery-username" label="Username" />}
+      </form.AppField>
 
       <Button type="submit" disabled={isPending}>
         {isPending ? <Loader2 className="animate-spin" aria-hidden /> : <Mail aria-hidden />}
         {isPending ? "Requesting…" : "Email reset link"}
       </Button>
 
-      <div className="space-y-2 border-border border-t pt-4 text-center">
+      <div className="border-border space-y-2 border-t pt-4 text-center">
         <p className="text-muted-foreground text-xs">
           Emby or Jellyfin owns imported-account passwords. Change yours there, then sign in here once to
           refresh Loomarr’s offline verifier.
@@ -102,13 +86,15 @@ const PasswordRecoveryReset = ({
   error,
   onRedeem,
 }: PasswordRecoveryResetProps) => {
-  const [password, setPassword] = useState("");
-  const [confirmation, setConfirmation] = useState("");
-  const [validation, setValidation] = useState<string>();
+  const form = useAppForm({
+    defaultValues: { password: "", confirm: "" },
+    validators: { onSubmit: passwordRecoveryResetSchema },
+    onSubmit: ({ value }) => onRedeem(value.password),
+  });
 
   if (isLoading) {
     return (
-      <div className="flex min-h-48 items-center justify-center gap-2 text-muted-foreground" role="status">
+      <div className="text-muted-foreground flex min-h-48 items-center justify-center gap-2" role="status">
         <Loader2 className="size-4 animate-spin" aria-hidden />
         Checking reset link…
       </div>
@@ -117,9 +103,9 @@ const PasswordRecoveryReset = ({
   if (succeeded) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <CheckCircle2 className="mx-auto size-10 text-signal" aria-hidden />
+        <CheckCircle2 className="text-signal mx-auto size-10" aria-hidden />
         <div className="space-y-2">
-          <h1 className="font-display font-semibold text-2xl">Password reset</h1>
+          <h1 className="font-display text-2xl font-semibold">Password reset</h1>
           <p className="text-muted-foreground text-sm">
             Your new Loomarr password is ready. Every existing session has been signed out.
           </p>
@@ -133,7 +119,7 @@ const PasswordRecoveryReset = ({
       <ErrorState error={error} />
     ) : (
       <div className="space-y-3 text-center">
-        <h1 className="font-display font-semibold text-2xl">Reset link unavailable</h1>
+        <h1 className="font-display text-2xl font-semibold">Reset link unavailable</h1>
         <p className="text-muted-foreground text-sm">
           This link is missing, expired, revoked, or already used. Request a new one from the sign-in page.
         </p>
@@ -151,52 +137,37 @@ const PasswordRecoveryReset = ({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        if (password.length < 8) {
-          setValidation("Use at least 8 characters.");
-          return;
-        }
-        if (password !== confirmation) {
-          setValidation("Passwords need to match.");
-          return;
-        }
-        setValidation(undefined);
-        onRedeem(password);
+        void form.handleSubmit();
       }}
     >
       <div className="space-y-2 text-center">
-        <KeyRound className="mx-auto size-8 text-signal" aria-hidden />
-        <h1 className="font-display font-semibold text-2xl">Create a new password</h1>
+        <KeyRound className="text-signal mx-auto size-8" aria-hidden />
+        <h1 className="font-display text-2xl font-semibold">Create a new password</h1>
         <p className="text-muted-foreground text-sm">This reset link expires {expiry}.</p>
       </div>
 
       {error ? <ErrorState error={error} /> : null}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="recovery-password">New password</Label>
-        <Input
-          id="recovery-password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="recovery-confirm">Confirm new password</Label>
-        <Input
-          id="recovery-confirm"
-          type="password"
-          autoComplete="new-password"
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-        />
-      </div>
-
-      {validation ? (
-        <p className="text-onair-300 text-sm" role="alert">
-          {validation}
-        </p>
-      ) : null}
+      <form.AppField name="password">
+        {(field) => (
+          <field.TextField
+            autoComplete="new-password"
+            id="recovery-password"
+            label="New password"
+            type="password"
+          />
+        )}
+      </form.AppField>
+      <form.AppField name="confirm">
+        {(field) => (
+          <field.TextField
+            autoComplete="new-password"
+            id="recovery-confirm"
+            label="Confirm new password"
+            type="password"
+          />
+        )}
+      </form.AppField>
 
       <Button type="submit" disabled={isRedeeming}>
         {isRedeeming ? <Loader2 className="animate-spin" aria-hidden /> : <KeyRound aria-hidden />}

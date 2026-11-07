@@ -17,13 +17,14 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media"
-	"github.com/loomarr/loomarr/internal/mediameasure"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -56,7 +57,7 @@ type playoutDeps struct {
 	events                *events.Bus
 	layout                filler.Layout
 	channels              *channels.Engine
-	liveTVConnector       *setup.LiveTVConnector
+	liveTVConnector       *livetvpublish.LiveTVConnector
 	backendView           backendtransition.CheckpointView
 	resolveDesiredBackend func(context.Context) (string, error)
 	// programmer is the SAME Tunarr adapter instance buildChannels built (not an override-aware
@@ -115,7 +116,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		if residentVRAM != nil {
 			residentGiB, _ = residentVRAM(rootCtx)
 		}
-		return playout.EffectiveCapacity(measured, set.intv("playout.max_channels"), residentGiB)
+		return playout.EffectiveCapacity(measured, settings.PlayoutMaxChannels.Get(set), residentGiB)
 	}
 	playoutBudget := func() int {
 		measured := 0
@@ -129,10 +130,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// allowance settings, and the measured capacity above (operator cap and VRAM shading included).
 	resourceBudget := playout.NewResourceBudget(func() playout.BudgetFacts {
 		hardware := playoutRes != nil && playoutRes.detectReady.Load() &&
-			!playout.IsSoftwareEncoder(playoutRes.publishedEncoder())
+			!encode.IsSoftware(playoutRes.publishedEncoder())
 		var costs *playout.MeasuredCosts
 		if playoutRes != nil {
-			enc := playout.Encoder(set.str("playout.encoder"))
+			enc := encode.Encoder(settings.PlayoutEncoder.Get(set))
 			if enc == "" {
 				enc = playoutRes.publishedEncoder()
 			}
@@ -140,8 +141,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		}
 		facts := playoutBudgetFacts(
 			playout.ReadHostCPU(os.DirFS("/"), runtime.NumCPU()), hardware, playoutBudget(), costs,
-			effectivePlayoutCapacity, playout.TierFor(set.str("playout.quality_tier")),
-			set.intv("playout.gpu_cpu_millicores"), set.intv("playout.app_reserve_millicores"),
+			effectivePlayoutCapacity, playout.TierFor(settings.PlayoutQualityTier.Get(set)),
+			settings.PlayoutGPUCPUMillicores.Get(set), settings.PlayoutAppReserveMillicores.Get(set),
 		)
 		facts.ToneCurve = playoutRes.ToneCurve() // HDR capacity follows the operator's curve
 		return facts
@@ -153,7 +154,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// re-benchmarking. The prepared library's setting is retired (phase 4), so the move reads its
 	// default home, <data dir>/prepared, the sibling of the default state directory; a custom
 	// state_dir finds nothing there and measures again.
-	stateDir := set.str("playout.state_dir")
+	stateDir := settings.PlayoutStateDir.Get(set)
 	legacyPrepared := filepath.Join(filepath.Dir(filepath.Clean(stateDir)), "prepared")
 	if moved, merr := playout.MigrateCapabilityEvidence(legacyPrepared, stateDir); merr != nil {
 		log.Warn("playout: could not move the encoder measurement to the state directory; it will be re-measured", "err", merr)
@@ -199,10 +200,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// (§9.1 V50): persist the majority broadcast codec measured from the channel's content.
 		codecs:  st,
 		cycles:  newCycleCache(time.Now),
-		tier:    func() string { return set.str("playout.quality_tier") },
-		encoder: func() string { return set.str("playout.encoder") },
+		tier:    func() string { return settings.PlayoutQualityTier.Get(set) },
+		encoder: func() string { return settings.PlayoutEncoder.Get(set) },
 		// The operator's HDR curve: the probe measures it and the budget prices HDR by it.
-		toneCurve: func() string { return set.str("playout.tone_curve") },
+		toneCurve: func() string { return settings.PlayoutToneCurve.Get(set) },
 		// fillerDir belongs to the immutable generation layout. Changing storage roots
 		// is applied only after the generation drains and rebuilds (§10); `pods` is
 		// assigned after the pod adapter is built further down.
@@ -210,7 +211,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// The capability probe runs lazily on the first program that needs it, when
 		// playout.encoder is unset — so a box with a working GPU uses it instead of
 		// silently falling back to software.
-		ffmpegPath:     func() string { return set.str("playout.ffmpeg_path") },
+		ffmpegPath:     func() string { return settings.PlayoutFFmpegPath.Get(set) },
 		capabilityRoot: func() string { return stateDir },
 		// GPU name for the encoder chooser's vendor-native hint (Detect). Read via the LLM
 		// package's thin nvidia-smi wrapper — the same GPU signal the rest of the app probes —
@@ -225,24 +226,23 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// Preferred audio language (§9.1), read live so a Settings change applies to the
 		// next programme rather than the next restart. The prober derives ffprobe from the
 		// ffmpeg path — the two ship together, so an operator who moved one moved both.
-		audioLanguage:      func() string { return set.str("playout.audio_language") },
+		audioLanguage:      func() string { return settings.PlayoutAudioLanguage.Get(set) },
 		inventory:          inventory.New(st),
-		probeSource:        playout.FFprobeSourceNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
-		probeTracks:        playout.FFprobeTracksNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
-		probeFormat:        playout.FFprobeFormatNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
-		probeCopyStart:     playout.FFprobeCopyStartNextTo(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		probeSource:        playout.FFprobeSourceNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
+		probeTracks:        playout.FFprobeTracksNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
+		probeFormat:        playout.FFprobeFormatNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
 		processDiagnostics: deps.processDiagnostics,
 		// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
 		// applies without a restart — the same hot-apply posture as audioLanguage.
-		pathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
+		pathMap: func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) },
 		log:     log,
 	}
 	// Loomarr measures each source itself, once per revision, so playout never asks the media
 	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to
 	// the app's lifetime; sources are read directly through the path map, never through Emby.
-	ffmpegBin := set.str("playout.ffmpeg_path")
+	ffmpegBin := settings.PlayoutFFmpegPath.Get(set)
 	measurer := playoutRes.newMeasurer(
-		mediameasure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
+		measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
 	playoutRes.measurer = measurer
 	playoutRes.analyses = st
 	go measurer.Run(rootCtx)
@@ -281,8 +281,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 
 	resourceBudget.WithMemoryGate(encodeMemoryGate(
 		media.HostMemAvailable,
-		func() int { return set.intv("playout.memory_reserve_mb") },
-		func() int { return set.intv("playout.encode_memory_mb") },
+		func() int { return settings.PlayoutMemoryReserveMb.Get(set) },
+		func() int { return settings.PlayoutEncodeMemoryMb.Get(set) },
 		playoutRes.EncodeHostBytes,
 	))
 
@@ -311,7 +311,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	durablePlayoutEligibility := func(ctx context.Context, channelID string) (bool, error) {
 		return durableInternalTransportPlayable(ctx, st, backendView, channelID)
 	}
-	if store.DialectOf(st) == store.DialectPostgres {
+	if store.PublishesInvalidations(store.DialectOf(st)) {
 		lifecycleGate = &playoutAdmissionGate{}
 	}
 	// Live playout is the channel packager (#1512 phase 2): one encoder per scheduled item,
@@ -322,16 +322,16 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// There is no boot warm-up of the output profile (the encoder evidence and four
 	// `ffmpeg -filters` probes, ~0.2 s of the first tune after a restart): idle channels start no
 	// FFmpeg, and those probes are FFmpeg runs.
-	tonemap, gpuFilters := playout.TonemapperFor(set.str("playout.ffmpeg_path")), playout.GPUFiltersFor(set.str("playout.ffmpeg_path"))
+	tonemap, gpuFilters := playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)), playout.GPUFiltersFor(settings.PlayoutFFmpegPath.Get(set))
 	if pk, perr := playout.NewPackagerHLS(packagerSource{
 		res:     playoutRes,
 		tonemap: tonemap,
 		gpu:     gpuFilters,
 		// Filler loudness (#1512 G6), read live so a changed target applies at the next clip.
-		targetLUFS: func() string { return set.str("filler.target_lufs") },
+		targetLUFS: func() string { return settings.FillerTargetLufs.Get(set) },
 		watermark:  deps.watermarks.For,
 		log:        log,
-	}, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"), playout.DefaultGrace, log); perr != nil {
+	}, settings.PlayoutFFmpegPath.Get(set), settings.PlayoutHLSDir.Get(set), playout.DefaultGrace, log); perr != nil {
 		log.Warn("internal playout: channel packager unavailable — live playout disabled", "err", perr)
 	} else {
 		// One lease per running channel packager in the ResourceBudget ledger (#1520).
@@ -357,11 +357,11 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			return lifecycleGate == nil || lifecycleGate.Available()
 		},
 		Eligible: durablePlayoutEligibility,
-		Still:    playout.FFmpegStill(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		Still:    playout.FFmpegStill(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
 		// A cold channel's still: one frame of the airing on now, decoded from its source (#1512).
 		StillAiring: playoutRes.StillAiring,
-		SourceStill: playout.FFmpegSourceStill(set.str("playout.ffmpeg_path"),
-			playout.TonemapperFor(set.str("playout.ffmpeg_path")), deps.processDiagnostics),
+		SourceStill: playout.FFmpegSourceStill(settings.PlayoutFFmpegPath.Get(set),
+			playout.TonemapperFor(settings.PlayoutFFmpegPath.Get(set)), deps.processDiagnostics),
 	})
 	owner.addQuiesce(func(context.Context) error {
 		origin.Quiesce()
@@ -372,12 +372,12 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// The durable backend checkpoint is initialized synchronously before any request can
 	// observe its runtime gates. Initialize performs store I/O only; fleet and media-server
 	// work is retried by settings writes and channel maintenance.
-	backendURLs := func(ctx context.Context, target string) (setup.LiveTVURLs, error) {
+	backendURLs := func(ctx context.Context, target string) (tunarr.LiveTVURLs, error) {
 		tok, err := readGeneratedSecret(ctx, settings.SecretPlayout)
 		if err != nil {
-			return setup.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
+			return tunarr.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
 		}
-		return liveTVURLsFor(deps.programmer, target, set.str("server.public_url"), tok, log), nil
+		return liveTVURLsFor(deps.programmer, target, settings.ServerPublicURL.Get(set), tok, log), nil
 	}
 	builtBackendController, err := buildBackendTransition(rootCtx, backendTransitionDependencies{
 		store: st, fleet: channelEngine,
@@ -393,7 +393,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		lifecycle := &postgresPlayoutLifecycle{
 			store: st, checkpoint: backendView, origin: origin, gate: lifecycleGate, log: log,
 		}
-		if err := lifecycle.StartTracked(rootCtx, owner); err != nil {
+		if err := lifecycle.Start(rootCtx, owner); err != nil {
 			return playoutBuild{}, fmt.Errorf("start postgres playout lifecycle: %w", err)
 		}
 	}
@@ -405,7 +405,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	capturePlayoutResolver(playoutRes)
 	playoutGuideSvc = playoutRes
 	log.Info("internal playout registered",
-		"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels_cap", set.intv("playout.max_channels"))
+		"ffmpeg", settings.PlayoutFFmpegPath.Get(set), "max_channels_cap", settings.PlayoutMaxChannels.Get(set))
 
 	// server.public_url is the base a media client dials for HLS segments. Internal playout
 	// is the default backend, and an unset public URL makes channels appear in the guide but
@@ -413,7 +413,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// but an env-only, restored-DB, or API-driven install bypasses the wizard entirely and
 	// otherwise gets no signal until a viewer hits the dead channel. Warn at boot so the
 	// operator sees it in the logs, not in a support ticket. (§9.1; beta-readiness D-4.)
-	if internalPlayoutNeedsPublicURL(set.str("server.public_url")) {
+	if internalPlayoutNeedsPublicURL(settings.ServerPublicURL.Get(set)) {
 		log.Warn("internal playout: server.public_url is unset — in-app playback still works, but a media server or Tunarr cannot fetch channel streams; set SERVER_PUBLIC_URL (or server.public_url) to this instance's reachable base URL")
 	}
 

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 const (
@@ -56,8 +56,8 @@ func NewSegmentScreeningSubject(catalogHash string, tags SidecarTags) (SegmentSc
 	if catalogHash != playback.Asset.ClipHash {
 		return SegmentScreeningSubject{}, fmt.Errorf("segment screening subject catalog identity does not match playback")
 	}
-	if mediatools.ValidateMediaQualityEvidence(evidence.Quality) != nil || evidence.Quality.DurationMs != evidence.DurationMs ||
-		mediatools.ValidateMediaQualityEvidence(playback.Quality) != nil || playback.Quality.DurationMs != playback.DurationMs {
+	if tools.ValidateMediaQualityEvidence(evidence.Quality) != nil || evidence.Quality.DurationMs != evidence.DurationMs ||
+		tools.ValidateMediaQualityEvidence(playback.Quality) != nil || playback.Quality.DurationMs != playback.DurationMs {
 		return SegmentScreeningSubject{}, fmt.Errorf("segment screening subject media-quality evidence is invalid")
 	}
 	subject := SegmentScreeningSubject{
@@ -92,9 +92,9 @@ func NewSegmentScreeningSubject(catalogHash string, tags SidecarTags) (SegmentSc
 
 func ValidateSegmentScreeningSubject(subject SegmentScreeningSubject) error {
 	if subject.SchemaVersion != SegmentScreeningSubjectSchemaVersion || subject.ContractVersion != SegmentScreeningSubjectContractVersion ||
-		!isContentHash(subject.CatalogHash) || !isContentHash(subject.SourceMasterHash) || !isContentHash(subject.SourceMasterSHA256) || subject.SourceMasterBytes <= 0 || subject.SourceMasterBytes > mediatools.ConditioningMaxSnapshotBytes ||
-		!isContentHash(subject.EvidenceHash) || !isContentHash(subject.EvidenceSHA256) || subject.EvidenceBytes <= 0 || subject.EvidenceBytes > mediatools.ConditioningMaxSnapshotBytes || subject.EvidenceDurationMs <= 0 ||
-		!isContentHash(subject.PlaybackSHA256) || subject.PlaybackBytes <= 0 || subject.PlaybackBytes > mediatools.ConditioningMaxSnapshotBytes || subject.PlaybackDurationMs <= 0 || !isContentHash(subject.MediaManifestSHA256) ||
+		!isContentHash(subject.CatalogHash) || !isContentHash(subject.SourceMasterHash) || !isContentHash(subject.SourceMasterSHA256) || subject.SourceMasterBytes <= 0 || subject.SourceMasterBytes > tools.ConditioningMaxSnapshotBytes ||
+		!isContentHash(subject.EvidenceHash) || !isContentHash(subject.EvidenceSHA256) || subject.EvidenceBytes <= 0 || subject.EvidenceBytes > tools.ConditioningMaxSnapshotBytes || subject.EvidenceDurationMs <= 0 ||
+		!isContentHash(subject.PlaybackSHA256) || subject.PlaybackBytes <= 0 || subject.PlaybackBytes > tools.ConditioningMaxSnapshotBytes || subject.PlaybackDurationMs <= 0 || !isContentHash(subject.MediaManifestSHA256) ||
 		!validScreeningSubjectID(subject.SourceID) || !validScreeningSubjectID(subject.AcquisitionID) {
 		return fmt.Errorf("segment screening subject identity is invalid")
 	}
@@ -135,7 +135,13 @@ func SegmentScreeningSubjectSHA256(subject SegmentScreeningSubject) string {
 	if err != nil {
 		return ""
 	}
-	return screeningBytesSHA256(raw)
+	return ScreeningBytesSHA256(raw)
+}
+
+// ScreeningBytesSHA256 is the lowercase hex SHA-256 every screening identity is built from.
+func ScreeningBytesSHA256(raw []byte) string {
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
 }
 
 // MediaAssetManifestAuthoritySHA256 binds recipes, tools, probes, QC, and byte identities while
@@ -169,7 +175,7 @@ func ConditioningEvidenceSHA256(evidence ConditioningEvidence) string {
 	if err != nil {
 		return ""
 	}
-	return screeningBytesSHA256(raw)
+	return ScreeningBytesSHA256(raw)
 }
 
 func validScreeningSubjectID(value string) bool {

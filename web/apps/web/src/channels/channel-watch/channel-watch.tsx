@@ -1,169 +1,93 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
-import type { GuideAiring } from "@loomarr/api/models/guideAiring";
-import type { TrackDTO } from "@loomarr/api/models/trackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { type SurfChannelData, WatchingPanel, type WatchingScheduleData } from "@loomarr/ui";
-import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
+import { formatGuideTime } from "@loomarr/core/guide";
+import { ThemeScope } from "@loomarr/design-system";
+import {
+  PlayerChrome,
+  PlayerCover,
+  PlayerInfo,
+  PlayerSettings,
+  PlayerSheet,
+  playbarFromTimeline,
+  WatchingPanel,
+} from "@loomarr/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
-import { useHlsPlayer } from "@/channels/use-hls-player";
-import { useNumberEntry } from "@/channels/use-number-entry";
+import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
+import { ChannelDrawer } from "@/channels/channel-drawer";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
-import { Button } from "@/components/ui/button";
-import { VideoPlayer } from "@/components/ui/video-player";
-import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
-import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
-import { clientDiagnostics } from "@/diagnostics/client-reporter";
+import { VideoPlayer, type VideoPlayerChrome } from "@/components/ui/video-player";
+import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
-import { type SwitchSound, startChannelSwitchSound } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
-import type { TuneAttempt } from "../tuner-timing";
-import type { TuneDirection } from "../use-channel-tuner";
-import { useSwitchSoundPreference } from "../use-switch-sound-preference";
-import { languageLabel } from "./language-label";
+import { useSwitchSound } from "../use-switch-sound";
+import type { WatchChannels } from "../use-watch-channels";
+import type { WatchPlayer } from "../use-watch-player";
+import { useWatchShortcuts } from "../use-watch-shortcuts";
+import { useWatchTelemetry } from "../use-watch-telemetry";
 
-// ChannelWatch — the Watch sub-section: play a channel live in the browser (§9.1, V46).
+// ChannelWatch — the full-bleed `/watch/$id` player: play a channel live in the browser (§9, #2088).
 //
-// The player itself is the shared VideoPlayer primitive in `live` mode (no video seek — a live
-// channel has nothing to seek to) with hls.js bound through its `attach` seam (useHlsPlayer). In
-// place of a seek bar it passes VideoPlayer a `scrubber`: the mini-guide timeline (ChannelTimeline,
-// §9.1 V47), so the control bar shows where you are in the schedule. This component owns the
-// surrounding SURFACE: the idle "▶ Watch live" poster, the full-frame theater, the channel controls.
+// The player itself is the shared VideoPlayer primitive in `live` mode with the shared player
+// controller's browser transport bound through its `attach` seam (useWatchPlayer, owned by the route).
+// Its controls are the §9 player chrome from `@loomarr/ui` (PlayerChrome: the lower third, the preview
+// playbar and the transport), drawn through VideoPlayer's `renderChrome` so they share its auto-hide
+// and go fullscreen with it. This component owns what the chrome is fed: the channel's timeline, the
+// one right-hand sheet, and the ✕ that leaves.
 //
-// ⚠ Audio is CHANNEL-WIDE and admin-only, not per-viewer (§9.1). Internal playout
-// is one encoder per channel fanned to every viewer, so a per-viewer track would fork the encode —
-// the one thing that model forbids. So these pickers write `policy.playout.*` for the whole
-// channel; a member sees the current values read-only. Quality is the ONLY per-viewer control, and
-// it is handled inside the player (the client adapts live), not here.
+// ⚠ Settings only SHOWS the channel's default audio language. An admin sets it on the channel's info
+// page (#2088); the per-viewer choice between renditions comes with the alternate-audio step.
 
 interface ChannelWatchProps {
   channel: ChannelDTO;
   isAdmin: boolean;
-  /** Save a whole policy (channel-level audio override). */
-  onSavePolicy: (policy: ChannelPolicy) => void;
-  /** Media-server name for the "Open in …" hand-off; defaults to "your media server". */
-  mediaServerName?: string;
-  /**
-   * Media-server base URL (`library.url`) for the "Open in …" hand-off. Loomarr can only reach the
-   * media server's front door, not a per-channel Live TV deep link — Emby/Jellyfin don't expose one
-   * — so the hand-off opens the media server and the viewer navigates to Live TV. Absent/empty ⇒ the
-   * button is hidden rather than doing nothing.
-   */
-  mediaServerUrl?: string;
-  tuner?: {
-    canSurf: boolean;
-    requestedChannel?: ChannelDTO;
-    currentTitle?: string;
-    attempt?: TuneAttempt;
-    acknowledging?: boolean;
-    ready: (channelId: string) => void;
-    step: (direction: TuneDirection) => void;
-    tune: (channelId: string) => void;
-    retry: () => void;
-  };
-  // The channels drawer's data (#1659 W1): every channel read from the guide, and the viewer's own
-  // favourites and recent channels. Also the list a typed number is looked up in.
-  drawer?: {
-    channels: DrawerChannel[];
-    favourites: string[];
-    recent: string[];
-    nowPercent: number;
-    onFavourite: (channelId: string, favourite: boolean) => void;
-  };
-  // A tune has settled on this channel (its first frame played): the viewer's recents record it.
-  onTuneSettled?: (channelId: string) => void;
-  // What a portrait phone shows under the picture (#1785, native mock 5e), read from the guide: the
-  // tuned channel's now and next, the viewer's favourites, the channel Previous returns to, and the
-  // wall clock.
-  phone?: {
-    schedule?: WatchingScheduleData;
-    favourites: readonly SurfChannelData[];
-    previousId?: string;
-    clockLabel?: string;
-  };
+  /** Leave the player (its ✕): back where the viewer came from. */
+  onLeave: () => void;
+  /** The player and its tuner: what plays, what the viewer asked of it, and its controls. */
+  player: WatchPlayer;
+  /** The channels around this one: the drawer, the phone panel, and the recents record. */
+  channels?: WatchChannels;
 }
 
-// withSaved keeps the currently-saved value present in an options list even when the airing does
-// not carry that track — so the menu always shows the channel's real selection (see the call site).
-const withSaved = (options: { value: string; label: string }[], value: string) =>
-  value && !options.some((o) => o.value === value)
-    ? [...options, { value, label: value.toUpperCase() }]
-    : options;
+// The chrome's ⟲/⟳ step, the same as ←/→ (#2088 decision 2).
+const SEEK_STEP_MS = 10_000;
 
-// AUTO_SENTINEL is the "follow the channel/global default" choice. Radix Select forbids an
-// empty-string item value, so the picker carries this named sentinel and lowers it back to "" on
-// the wire — the same shape channel-seasonal/ordering use for their "" defaults.
-const AUTO_SENTINEL = "auto";
-const PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000;
+// The station-ID card's time on screen after a settled tune (playback-clients: Station ID).
+const IDENT_MS = 5_000;
 
-// audioOptions builds the Audio picker's choices from the REAL audio tracks of what's airing
-// (§9.1, V46) — never a hardcoded list. Always leads with "Auto", then one entry per distinct track
-// language the airing media carries. Labels come from Intl (languageLabel), not a hand-written
-// language table.
-const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] => {
-  const seen = new Set<string>();
-  const opts: { value: string; label: string }[] = [{ value: AUTO_SENTINEL, label: "Auto (default)" }];
-  for (const t of tracks) {
-    const lang = t.language ?? "";
-    if (!lang || seen.has(lang)) continue;
-    seen.add(lang);
-    opts.push({ value: lang, label: t.title ? `${languageLabel(lang)} · ${t.title}` : languageLabel(lang) });
-  }
-  return opts;
+// HoldWhile keeps the player's controls shown while `on`: VideoPlayer's hold is a count, so each
+// hold(true) is paired with exactly one hold(false), here by the effect's cleanup.
+const HoldWhile = ({ hold, on }: { hold: VideoPlayerChrome["hold"]; on: boolean }) => {
+  useEffect(() => {
+    if (!on) return;
+    hold(true);
+    return () => hold(false);
+  }, [hold, on]);
+  return null;
 };
 
-// clock renders ms-into-a-programme as m:ss (the mock's {elapsed} / {total} format).
-const clock = (ms: number): string => {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+// HideForIdent clears the controls as the station-ID card arrives, so the card stands alone as the
+// mock draws it; moving the pointer brings the controls back in its place.
+const HideForIdent = ({ hide, ident }: { hide: VideoPlayerChrome["hide"]; ident: boolean }) => {
+  useEffect(() => {
+    if (ident) hide();
+  }, [hide, ident]);
+  return null;
 };
 
-// programmeTime renders the controls-row time for the programme airing NOW (the mock's
-// "{elapsed} / {total}   {remaining}"): how far into the current show, the show's length, and the
-// time left — all PROGRAMME time from the schedule, not video time. null when nothing is airing at
-// this instant (the player omits the time). Rendered as a node so the "/ total" is dimmed like the
-// mock and the "left" reads grey beside it.
-const programmeTime = (airings: GuideAiring[], now: number): React.ReactNode => {
-  const current = airings.find((a) => now >= a.startMs && now < a.stopMs);
-  if (!current) return null;
-  const elapsed = now - current.startMs;
-  const total = current.stopMs - current.startMs;
-  const leftMin = Math.max(0, Math.round((current.stopMs - now) / 60_000));
-  return (
-    <span className="flex items-center gap-2">
-      <span>
-        {clock(elapsed)} <span className="text-muted-foreground">/ {clock(total)}</span>
-      </span>
-      <span className="text-muted-foreground">{leftMin}m left</span>
-    </span>
-  );
-};
-
-const ChannelWatch = ({
-  channel,
-  isAdmin,
-  onSavePolicy,
-  mediaServerName = "your media server",
-  mediaServerUrl,
-  tuner,
-  drawer,
-  onTuneSettled,
-  phone,
-}: ChannelWatchProps) => {
+const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWatchProps) => {
+  const drawer = channels?.drawer;
+  const phone = channels?.phone;
+  const onTuneSettled = channels?.onTuneSettled;
   // A portrait phone (#1785, native mock 5e, decision N5): the picture edge to edge with nothing
-  // drawn on it, and the controls, what's next and the favourites under it. Wider keeps the frame
-  // with the overlay controls, the channels drawer and the keyboard hints.
+  // drawn on it, and the controls, what's next and the favourites under it. Wider draws the §9
+  // chrome over the picture; its portrait form comes with the phone step (#2088 step 10).
   const onPhone = usePhoneWidth() && phone !== undefined;
-  const tunerReady = tuner?.ready;
-  // The tuner warms this Channel's neighbours once its own manifest has arrived, not before: the
-  // warm requests would otherwise share the browser's per-host connections with the target's
-  // manifest and first segments (#1484). It is still well ahead of the first frame.
-  const onManifest = useCallback(() => tunerReady?.(channel.id), [channel.id, tunerReady]);
-  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest);
+  // A finger gets the chrome's touch form: larger targets, no hover card, no tooltips (§9.5).
+  const touch = useCoarsePointer();
+  const density = touch ? "touch" : "pointer";
   // The player's own <video>, caught at the attach seam, so the channel-change sound can follow the
   // player's volume and mute without VideoPlayer knowing about it.
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -185,20 +109,6 @@ const ChannelWatch = ({
     expiryNoticeRef.current.revision = revision;
     toast.info("That paused point is no longer available, so you're back live.");
   }, [channel.id, player.liveTransport.state.noticeRevision]);
-  // `active` gates the idle poster vs the live player, and it now starts TRUE: opening Watch tunes
-  // in (§9.1 V54). Watch is the first section a channel opens on, and a player that sits behind a
-  // second click makes "open the channel" a two-step act to do the obvious thing.
-  //
-  // ⚠ **This does NOT guarantee the video starts, and that is a browser rule, not a bug.** Autoplay
-  // with sound requires user activation. Reaching here by CLICKING a channel keeps the document's
-  // sticky activation, so it plays; arriving by a pasted link or a reload has no activation and the
-  // browser will hold the first frame with the controls showing. Mounting the player either way is
-  // still the right call — a paused player with a play button is one click from playing, which is
-  // exactly where the old poster left you, and every other visit skips the click entirely.
-  //
-  // The poster is kept for the paused/off-air case below, which is a different claim: nothing to
-  // play at all, rather than something waiting for permission to start.
-  const [active, setActive] = useState(true);
 
   // Whether the player holds a picture: once any channel has played here, a switch leaves its last
   // frame held in the <video> while the next one loads (VideoPlayer's held poster), and the tuner's
@@ -220,19 +130,18 @@ const ChannelWatch = ({
 
   const paused = channel.status === "paused" || channel.status === "detached";
 
-  // The pickers' options are the tracks the airing programme actually carries — fetched, never
+  // Settings' audio list is the tracks the airing programme actually carries — fetched, never
   // hardcoded. `enabled` gates the probe on a playing channel (a paused one has nothing to probe).
   const tracks = channelsApi.useChannelTracks(channel.id, {
     query: { enabled: !paused && player.status === "playing", retry: false },
   });
   const tracksBody = unwrap(tracks.data);
 
-  // The mini-guide scrubber's data — the channel's schedule strip (now + next few + the commercial
-  // breaks between them, each with episode detail + a TMDB still). Only while active (a poster needs
-  // no timeline) and unpaused. Refetched on an interval so the live playhead and "what's next" stay
-  // current as programmes roll.
+  // The chrome's data — the channel's schedule strip (programmes and the breaks between them, each
+  // with its stills and every spot in a break). Refetched on an interval so the live edge and what's
+  // coming stay current as programmes roll.
   const timeline = channelsApi.useChannelTimeline(channel.id, undefined, {
-    query: { enabled: active && !paused, retry: false, refetchInterval: 30_000 },
+    query: { enabled: !paused, retry: false, refetchInterval: 30_000 },
   });
   const timelineBody = unwrap(timeline.data);
   const airings = timelineBody?.airings ?? [];
@@ -242,155 +151,84 @@ const ChannelWatch = ({
       ? undefined
       : serverAtProjection + Math.max(0, Date.now() - timeline.dataUpdatedAt);
   const viewerTimeMs = player.liveTransport.state.viewerTimeMs;
-  const diagnosticAiring = airings.find(
-    (airing) => !airing.nominal && viewerTimeMs >= airing.startMs && viewerTimeMs < airing.stopMs,
-  );
-  const scheduleBlockId = diagnosticAiring?.scheduleBlockId;
-  const previousBlockRef = useRef<{ channelId: string; scheduleBlockId?: string }>({ channelId: channel.id });
-  const driftedBlockRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (previousBlockRef.current.channelId !== channel.id) {
-      previousBlockRef.current = { channelId: channel.id };
-      driftedBlockRef.current = undefined;
-    }
-    if (!diagnosticAiring || !scheduleBlockId || serverNowMs === undefined) return;
-    if (previousBlockRef.current.scheduleBlockId === scheduleBlockId) return;
-    clientDiagnostics.record({
-      event: "player.schedule_block_changed",
-      playbackSessionId: player.playbackSessionId,
-      channelId: channel.id,
-      scheduleBlockId,
-      previousScheduleBlockId: previousBlockRef.current.scheduleBlockId,
-      blockKind:
-        diagnosticAiring.kind === "program" || diagnosticAiring.kind === "filler"
-          ? diagnosticAiring.kind
-          : "flex",
-      viewerTimeMs: Math.round(viewerTimeMs),
-      serverTimeMs: Math.round(serverNowMs),
-    });
-    previousBlockRef.current.scheduleBlockId = scheduleBlockId;
-  }, [channel.id, diagnosticAiring, player.playbackSessionId, scheduleBlockId, serverNowMs, viewerTimeMs]);
-  useEffect(() => {
-    if (!scheduleBlockId || serverNowMs === undefined || driftedBlockRef.current === scheduleBlockId) return;
-    const driftMs = Math.round(viewerTimeMs - serverNowMs);
-    if (Math.abs(driftMs) < PLAYHEAD_DRIFT_THRESHOLD_MS) return;
-    clientDiagnostics.record({
-      event: "player.playhead_drift",
-      playbackSessionId: player.playbackSessionId,
-      channelId: channel.id,
-      viewerTimeMs: Math.round(viewerTimeMs),
-      serverTimeMs: Math.round(serverNowMs),
-      driftMs,
-    });
-    driftedBlockRef.current = scheduleBlockId;
-  }, [channel.id, player.playbackSessionId, scheduleBlockId, serverNowMs, viewerTimeMs]);
+  useWatchTelemetry({
+    channelId: channel.id,
+    playbackSessionId: player.playbackSessionId,
+    airings,
+    viewerTimeMs,
+    serverNowMs,
+  });
   const audioValue = channel.policy?.playout?.audioLanguage ?? "";
 
   // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
-  // but this film is English-only). Keep that selection VISIBLE in the menu rather than dropping it —
-  // the preference still applies when a programme with that track airs. So the saved value is
-  // appended to the media-derived options when absent, labelled by its raw code. (Ported from the
-  // old footer PolicyPicker.)
-  const audioOpts = withSaved(audioOptions(tracksBody?.audio ?? []), audioValue || AUTO_SENTINEL);
+  // but this film is English-only). Keep that selection VISIBLE in Settings rather than dropping it:
+  // the preference still applies when a programme with that track airs (withSaved).
+  const selectedAudio = audioValue || AUTO_SENTINEL;
+  const audio = withSaved(audioOptions(tracksBody?.audio ?? []), selectedAudio).map((option) => ({
+    label: option.label,
+    selected: option.value === selectedAudio,
+    value: option.value,
+  }));
 
-  const savePlayout = (patch: { audioLanguage?: string }) => {
-    const next: ChannelPolicy = {
-      ...channel.policy,
-      playout: { ...channel.policy?.playout, ...patch },
-    };
-    onSavePolicy(next);
-    toast.success("Channel updated — applies on the next segment.");
-  };
-
-  // Real hand-off (§9.1): open the media server's front door in a new tab so the viewer can reach
-  // Live TV in their usual client. Loomarr has no per-channel deep link — Emby/Jellyfin don't expose
-  // one — so this is the media-server root, not this channel. `noopener,noreferrer` keeps the new tab
-  // from reaching back into this app. The button is only rendered when a URL exists (see below), so
-  // this is not called without one.
-  const openInMediaServer = () => {
-    if (!mediaServerUrl) return;
-    window.open(mediaServerUrl, "_blank", "noopener,noreferrer");
-  };
-
-  // The mini-guide scrubber (§9.1 V47) fills the player's full-width `scrubber` slot. Shown once we
-  // have a timeline and the stream is healthy; otherwise the player's control bar has no scrubber row.
-  const scrubber =
-    airings.length > 0 && player.status !== "error" ? (
-      <TimelineScrubber airings={airings} nowMs={player.liveTransport.state.viewerTimeMs} />
-    ) : undefined;
-
-  // The controls-row time (mock): elapsed / total + "N min left" for the programme airing now, from
-  // the schedule (the player has no source for programme time, so channel-watch derives it).
-  const timeLeft = programmeTime(airings, player.liveTransport.state.viewerTimeMs);
-  const osdChannel = tuner?.requestedChannel ?? channel;
+  // The channel on the OSD is the one asked for, from the moment the controller starts its tune.
+  const osdChannel = channel;
   const tuning = player.status === "loading";
+  const channelLabel = `CH ${osdChannel.number} · ${osdChannel.name}`;
 
-  // The channel-change sound (#1620), a dial set: a clunk, then static until the new channel's first
-  // frame, cut at lock. It starts as the tuned channel changes — the moment the viewer asks, not when
-  // transport catches up — and only once a picture has played here: a cold start is not a channel
-  // change, and an autoplayed first tune has had no gesture. The module owns the rest of the gate
-  // (the viewer's preference, the player's mute and volume, the page's user activation).
-  //
-  // While the static plays, the programme's own audio is muted, as a set's is; it comes back at lock.
-  // That is a mute of the element alone: the player's own mute state is untouched, so its button
-  // still shows the viewer's choice, and the element is only unmuted again if the static muted it.
-  const [switchSoundOn, setSwitchSoundOn] = useSwitchSoundPreference();
-  const soundedChannelRef = useRef(osdChannel.id);
-  const switchSoundRef = useRef<{ sound: SwitchSound; programmeMuted: boolean } | undefined>(undefined);
-  const endSwitchSound = useCallback(() => {
-    const running = switchSoundRef.current;
-    if (!running) return;
-    switchSoundRef.current = undefined;
-    running.sound.lock();
-    if (videoRef.current?.muted) videoRef.current.muted = running.programmeMuted;
-  }, []);
-  useEffect(() => {
-    if (soundedChannelRef.current === osdChannel.id) return;
-    soundedChannelRef.current = osdChannel.id;
-    const video = videoRef.current;
-    if (!heldFrame || !video) return;
-    // Surfing on while the static still runs: that one ends, and the new clunk takes over.
-    endSwitchSound();
-    const sound = startChannelSwitchSound(video, { enabled: switchSoundOn });
-    if (!sound) return;
-    switchSoundRef.current = { sound, programmeMuted: video.muted };
-    video.muted = true;
-  }, [osdChannel.id, heldFrame, switchSoundOn, endSwitchSound]);
-  // Lock: the first frame has decoded (or the tune failed), so the static cuts off.
-  useEffect(() => {
-    if (!tuning) endSwitchSound();
-  }, [tuning, endSwitchSound]);
-  useEffect(() => endSwitchSound, [endSwitchSound]);
+  // The lower third and the playbar, read from the timeline the way every client reads it (§9). The
+  // live edge is the server's clock, projected forward since the read; until the first read it is
+  // this machine's.
+  const filler = osdChannel.policy?.filler;
+  const chromeData = playbarFromTimeline({
+    airings,
+    channel: {
+      era: filler?.era,
+      name: osdChannel.name,
+      number: String(osdChannel.number),
+      place: filler?.geography?.place,
+    },
+    live: player.liveTransport.state,
+    nowMs: serverNowMs ?? Date.now(),
+    playheadMs: viewerTimeMs,
+  });
+  const { info, startOverMs } = chromeData;
 
-  // The channels drawer and 0-9 direct tune (#1659 W1, from the console mock). G opens and closes
-  // the drawer; digits open a number entry; Enter tunes it at once. Closing the drawer hands focus
-  // back to the button that opened it.
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const drawerButtonRef = useRef<HTMLButtonElement>(null);
-  const tunerTune = tuner?.tune;
-  const directTune = useCallback((channelId: string) => tunerTune?.(channelId), [tunerTune]);
-  const entry = useNumberEntry({ channels: drawer?.channels ?? [], onTune: directTune });
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false);
-    drawerButtonRef.current?.focus({ preventScroll: true });
-  }, []);
-  const onShortcut = (key: string): boolean => {
-    if (!tuner || !drawer) return false;
-    if (entry.press(key)) return true;
-    if (key === "Enter") return entry.commit();
-    if (key === "g" || key === "G") {
-      setDrawerOpen((open) => !open);
-      return true;
-    }
-    return false;
-  };
+  // The station-ID card (§9.1): every settled tune shows it for five seconds, while the controls are
+  // hidden. A retune drops it until the new channel settles, then shows it afresh.
+  // A retune hides it by derivation: a state change here would render this tree a second time
+  // inside the press, holding up the tuning overlay.
+  const settled = !tuning && player.status === "playing";
+  const [identUp, setIdentUp] = useState(false);
+  useEffect(() => {
+    if (!settled) return;
+    setIdentUp(true);
+    const timer = window.setTimeout(() => setIdentUp(false), IDENT_MS);
+    return () => window.clearTimeout(timer);
+  }, [settled]);
+  const ident = settled && identUp;
+
+  const [switchSoundOn, setSwitchSoundOn] = useSwitchSound({
+    channelId: osdChannel.id,
+    heldFrame,
+    tuning,
+    video: videoRef,
+  });
+
+  const { sheet, toggleSheet, closeSheet, entry, onShortcut } = useWatchShortcuts({
+    hasInfo: info !== undefined,
+    channels: drawer?.channels,
+    onTune: player.tune,
+    viewerPaused: player.liveTransport.state.mode === "paused",
+  });
+  // A preview card is open on the playbar: the controls stay shown under it.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // The number readout, top right of the frame (the console mock): the digits so far, dashed out
   // to the longest channel number, over "ENTER CHANNEL" or, for a number no channel has, "NO SUCH
   // CHANNEL".
   const numberReadout = entry.digits ? (
     <div className="absolute top-14 right-7 text-right" role="status">
-      <div className="font-mono font-semibold text-[52px] text-signal tracking-[.1em] [text-shadow:0_0_18px_rgb(255_176_32/.5)]">
+      <div className="text-signal font-mono text-[52px] font-semibold tracking-[.1em] [text-shadow:0_0_18px_rgb(255_176_32/.5)]">
         {entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–")}
       </div>
       <div
@@ -404,94 +242,128 @@ const ChannelWatch = ({
     </div>
   ) : undefined;
 
-  // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
-  // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
-  // fetched here; the channel identity is what a viewer needs.
-  const topBar = (
+  // The open sheet, over the dimmed picture. Channels is still the console drawer (#1659 W1) until it
+  // is rebuilt on the sheet.
+  const openSheet =
+    sheet === "settings" ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density={density}
+        icon="settings"
+        onClose={closeSheet}
+        title="Settings"
+      >
+        <PlayerSettings
+          audio={audio}
+          density={density}
+          onSwitchSound={setSwitchSoundOn}
+          switchSound={switchSoundOn}
+        />
+      </PlayerSheet>
+    ) : sheet === "info" && info ? (
+      <PlayerSheet
+        channelLabel={channelLabel}
+        density={density}
+        icon="info"
+        onClose={closeSheet}
+        title="Info"
+      >
+        <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />
+      </PlayerSheet>
+    ) : sheet === "channels" && drawer ? (
+      <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
+        <ChannelDrawer
+          channels={drawer.channels}
+          tunedId={osdChannel.id}
+          favourites={drawer.favourites}
+          recent={drawer.recent}
+          nowPercent={drawer.nowPercent}
+          onTune={player.tune}
+          onFavourite={drawer.onFavourite}
+          onClose={closeSheet}
+        />
+      </div>
+    ) : undefined;
+
+  // A stream that stopped has nothing for the playbar to stand on, so Retry and the way out take the
+  // frame in the chrome's place — and on a portrait phone, which draws no chrome, over the picture.
+  const errorCover =
+    player.status === "error" ? (
+      <ThemeScope theme="dark">
+        <PlayerCover
+          channelLabel={channelLabel}
+          density={density}
+          kind="error"
+          onLeave={onLeave}
+          onRetry={player.retry}
+          title="The stream stopped."
+        />
+      </ThemeScope>
+    ) : undefined;
+
+  // The chrome over the picture (§9), or the error cover in its place.
+  const renderChrome = (chrome: VideoPlayerChrome) => (
     <>
-      <span className="shrink-0 font-mono text-static-300 text-xs">CH {channel.number}</span>
-      <span className="min-w-0 truncate text-static-200 text-xs">{channel.name}</span>
+      <HoldWhile hold={chrome.hold} on={previewOpen || sheet !== undefined} />
+      <HideForIdent hide={chrome.hide} ident={ident} />
+      {errorCover ?? (
+        <PlayerChrome
+          band={chromeData.band}
+          density={density}
+          formatTime={formatGuideTime}
+          ident={ident}
+          onPreviewChange={setPreviewOpen}
+          playbar={
+            airings.length > 0
+              ? {
+                  onSeek: chrome.seekTo,
+                  playheadMs: viewerTimeMs,
+                  segments: chromeData.segments,
+                  window: chromeData.window,
+                }
+              : undefined
+          }
+          sheet={openSheet}
+          transport={{
+            channelsOpen: drawer ? sheet === "channels" : undefined,
+            density,
+            fullscreen: chrome.fullscreen,
+            infoOpen: sheet === "info",
+            live: player.liveTransport.state,
+            muted: chrome.muted,
+            onChannels: drawer ? () => toggleSheet("channels") : undefined,
+            onFullscreen: chrome.toggleFullscreen,
+            onGoLive: chrome.goLive,
+            onInfo: info ? () => toggleSheet("info") : undefined,
+            onLeave,
+            onSeekBack: () => chrome.seekBy(-SEEK_STEP_MS),
+            onSeekForward: () => chrome.seekBy(SEEK_STEP_MS),
+            onSettings: () => toggleSheet("settings"),
+            onStartOver: startOverMs === undefined ? undefined : () => chrome.seekTo(startOverMs),
+            onTogglePlay: chrome.toggle,
+            onToggleMute: () => chrome.setMuted(!chrome.muted),
+            onVolume: chrome.setVolume,
+            playing: chrome.playing,
+            pointer: !touch,
+            settingsOpen: sheet === "settings",
+            volume: chrome.volume,
+          }}
+          visible={chrome.controlsShown && !tuning}
+        />
+      )}
     </>
   );
 
-  // Audio control IN the player bar (§9.1 V47), beside fullscreen — the maintainer's
-  // move off the old footer pickers. Same channel-wide, admin-scoped semantics: a member sees the
-  // current track (readOnly) but cannot change it. Options are the airing's real tracks (fetched).
-  const barControls = (
-    <>
-      {tuner && (
-        <fieldset className="flex min-w-0 items-center gap-0.5 border-0 p-0">
-          <legend className="sr-only">Channel navigation</legend>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 text-static-200 hover:bg-static-700 hover:text-static-50"
-            aria-label="Channel down"
-            disabled={!tuner.canSurf}
-            onClick={() => tuner.step(-1)}
-          >
-            <ChevronDown className="size-4" aria-hidden />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 text-static-200 hover:bg-static-700 hover:text-static-50"
-            aria-label="Channel up"
-            disabled={!tuner.canSurf}
-            onClick={() => tuner.step(1)}
-          >
-            <ChevronUp className="size-4" aria-hidden />
-          </Button>
-        </fieldset>
-      )}
-      {tuner && drawer && (
-        <button
-          ref={drawerButtonRef}
-          type="button"
-          aria-expanded={drawerOpen}
-          onClick={() => setDrawerOpen((open) => !open)}
-          className={cn(
-            "flex h-9 shrink-0 items-center gap-[7px] rounded-lg border px-[13px] text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
-            drawerOpen
-              ? "border-foreground bg-static-800 font-semibold text-foreground"
-              : "border-static-0/14 bg-static-0/6 text-foreground hover:bg-static-0/12",
-          )}
-        >
-          <span aria-hidden>☰</span> Channels
-        </button>
-      )}
-      <TrackSelectMenu
-        icon={Volume2}
-        label="Audio"
-        options={audioOpts}
-        value={audioValue || AUTO_SENTINEL}
-        onChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
-        readOnly={!isAdmin}
-        toggles={[
-          { label: "Channel-change sound", checked: switchSoundOn, onCheckedChange: setSwitchSoundOn },
-        ]}
-      />
-    </>
-  );
-
-  // The player. `live` = no seek; `scrubber` = full-width mini-guide; `topBar`/`timeLeft` = the live
-  // chrome; `barControls` = the audio menu beside fullscreen; `attach` binds hls.js. Fullscreen
-  // is the player's OWN control. Rendered only when active so the stream is not requested until asked.
+  // The player. `live` = no seek bar of its own; `renderChrome` = the §9 chrome; `attach` binds
+  // hls.js. Fullscreen is the player's OWN state, handed to the chrome.
   const playerEl = (
     <VideoPlayer
       live
       liveTransport={player.liveTransport}
-      scrubber={scrubber}
-      // While the wash is up its readout names the channel; the title returns with the picture.
-      topBar={tuning ? undefined : topBar}
-      timeLeft={timeLeft}
-      barControls={barControls}
+      renderChrome={onPhone ? undefined : renderChrome}
       // The tuner "acquiring signal" overlay covers the warm-up beat (cold encoder, first segment
       // not cut yet) so the viewer sees a channel tuning in, not a black frame. Only while loading —
-      // an error shows its own message below, and a playing stream needs no overlay.
+      // an error draws its own cover, and a playing stream needs no overlay.
       // Under it, the tuned channel's still (decoded on demand for a cold channel) replaces the
       // previous channel's held frame, so the picture already belongs to the channel being tuned.
       // The loader's wash covers both (#1620): it drains a held frame on a switch, and a still that
@@ -507,46 +379,20 @@ const ChannelWatch = ({
           </>
         ) : undefined
       }
-      panel={
-        drawerOpen && tuner && drawer ? (
-          <ChannelDrawer
-            channels={drawer.channels}
-            tunedId={osdChannel.id}
-            favourites={drawer.favourites}
-            recent={drawer.recent}
-            nowPercent={drawer.nowPercent}
-            onTune={tuner.tune}
-            onFavourite={drawer.onFavourite}
-            onClose={closeDrawer}
-          />
-        ) : undefined
-      }
-      hints={
-        tuner && drawer ? (
-          <p className="hidden justify-center font-mono text-[11px] text-muted-foreground tracking-[.08em] lg:flex">
-            0–9 TUNE DIRECT · ⌃⌄ CHANNEL · SPACE PAUSE · G CHANNELS · M MUTE
-          </p>
-        ) : undefined
-      }
       onShortcut={onShortcut}
       attach={attach}
-      onChannelStep={tuner?.step}
-      chrome={!onPhone}
-      className={cn("bg-black", !onPhone && "overflow-hidden rounded-xl border border-border")}
+      onChannelStep={player.step}
+      // Wider than a portrait phone, the picture fills the window (letterboxed by the <video>); a
+      // portrait phone keeps its 16:9 picture over the panel.
+      className={cn("bg-black", !onPhone && "aspect-auto h-full")}
     />
   );
 
-  // The phone's controls act on the player's own <video> through the live transport, as the overlay's
-  // play toggle and live indicator do.
-  const withVideo = (act: (video: HTMLVideoElement) => unknown) => {
-    const video = videoRef.current;
-    if (video) void act(video);
-  };
   // The star in the panel's channel line pins the tuned channel, as the drawer's star does on wider
   // screens and the iPhone's does (#1816). Without it a phone had no way to fill Favorites.
   const isFavourite = drawer?.favourites.includes(osdChannel.id) ?? false;
   const phonePanel =
-    onPhone && phone && tuner ? (
+    onPhone && phone ? (
       <WatchingPanel
         density="touch"
         channel={{ name: osdChannel.name, number: String(osdChannel.number) }}
@@ -554,120 +400,63 @@ const ChannelWatch = ({
         clockLabel={phone.clockLabel}
         live={player.liveTransport.state}
         canPrevious={phone.previousId !== undefined}
-        canSurf={tuner.canSurf}
-        onPrevious={() => phone.previousId && tuner.tune(phone.previousId)}
-        onChannelDown={() => tuner.step(-1)}
-        onChannelUp={() => tuner.step(1)}
-        onPause={() => withVideo((video) => player.liveTransport.pause(video))}
-        onPlay={() => withVideo((video) => player.liveTransport.play(video))}
-        onGoLive={() => withVideo((video) => player.liveTransport.goLive(video))}
+        canSurf={player.canSurf}
+        onPrevious={() => phone.previousId && player.tune(phone.previousId)}
+        onChannelDown={() => player.step(-1)}
+        onChannelUp={() => player.step(1)}
+        onPause={() => player.liveTransport.pause()}
+        onPlay={() => void player.liveTransport.play()}
+        onGoLive={() => void player.liveTransport.goLive()}
+        onLeave={onLeave}
         favourites={phone.favourites}
         isFavourite={isFavourite}
         onToggleFavourite={drawer ? () => drawer.onFavourite(osdChannel.id, !isFavourite) : undefined}
-        onTune={tuner.tune}
+        onTune={player.tune}
       />
     ) : undefined;
 
-  return (
-    <div className="flex flex-col gap-4">
-      {/* On a phone the section drops its card and cancels the page's gutter, so the picture runs
-          edge to edge under the tabs (the channel page pads its content by 24 px). */}
-      <section
-        className={onPhone ? "-mx-6 -mt-6" : "overflow-hidden rounded-xl border border-border bg-card"}
-      >
-        {paused ? (
-          <IdleFrame
-            title={`${channel.name} is off air`}
+  if (paused) {
+    return (
+      <section className="relative flex min-h-0 flex-1 flex-col">
+        <ThemeScope theme="dark">
+          <PlayerCover
+            channelLabel={channelLabel}
+            density={density}
+            kind="off-air"
             // The web mock's words; the way back is an admin's, so members get the first sentence.
-            sub={
+            message={
               isAdmin
                 ? "This channel is paused, so there's nothing to watch. Resume it under Danger zone."
                 : "This channel is paused, so there's nothing to watch."
             }
+            onLeave={onLeave}
+            title={`${channel.name} is off air`}
           />
-        ) : active ? (
-          <div className={cn("flex flex-col", !onPhone && "gap-3 p-3")}>
-            <div className="relative">
-              {playerEl}
-              {/* While the wash is up, its centred channel line is the visible readout, so the OSD
-                  card would only repeat it; it stays as the screen-reader announcement. */}
-              {(tuning || tuner?.acknowledging) && tuner && (
-                <TunerOSD
-                  number={osdChannel.number}
-                  name={osdChannel.name}
-                  currentTitle={tuner.currentTitle}
-                  className={tuning ? "sr-only" : "absolute top-4 left-4 z-[2]"}
-                />
-              )}
-            </div>
-
-            {/* Loading/error needs prose outside the frame. Once media is ready, the compact live
-                control in the playback bar owns live/paused/behind state without duplicating it in
-                a second status line below the picture. */}
-            {player.status !== "playing" && (
-              <p className={cn("text-muted-foreground text-xs", onPhone ? "px-4 pt-3" : "px-1")}>
-                {player.status === "error" ? (player.error ?? "The stream stopped.") : "Tuning in…"}
-              </p>
-            )}
-            {player.status === "error" && tuner && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={tuner.retry}
-                className={cn("self-start", onPhone && "mx-4 mt-3")}
-              >
-                Retry channel
-              </Button>
-            )}
-            {phonePanel}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setActive(true)}
-            className="group relative flex aspect-video w-full cursor-pointer flex-col items-center justify-center gap-3 bg-radial from-static-800 to-black text-center"
-            aria-label={`Watch ${channel.name} live`}
-          >
-            <span className="flex size-14 items-center justify-center rounded-full bg-signal/90 text-black shadow-lg transition-transform group-hover:scale-105">
-              <Play className="size-6 translate-x-0.5 fill-current" aria-hidden />
-            </span>
-            <span className="flex flex-col gap-1">
-              <span className="font-semibold text-lg">Watch live</span>
-              <span className="text-muted-foreground text-sm">Join {channel.name} mid-programme.</span>
-            </span>
-          </button>
-        )}
-
-        {/* Footer: the "open in your media server" hand-off. Audio lives in the player's
-            control bar (§9.1 V47); an admin note explains the channel-wide scoping. */}
-        <div className="flex items-center justify-between gap-4 border-border border-t bg-static-900/40 p-4">
-          {isAdmin ? (
-            <p className="text-muted-foreground text-xs">
-              The audio language you pick applies to everyone watching this channel.
-            </p>
-          ) : (
-            <span />
-          )}
-          {mediaServerUrl ? (
-            <Button variant="outline" size="sm" onClick={openInMediaServer} className="shrink-0">
-              Open in {mediaServerName}
-            </Button>
-          ) : (
-            <span />
-          )}
-        </div>
+        </ThemeScope>
       </section>
-    </div>
+    );
+  }
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className={cn("relative", !onPhone && "min-h-0 flex-1")}>
+        {playerEl}
+        {onPhone && errorCover}
+        {/* While the wash is up, its centred channel line is the visible readout, so the OSD card
+            would only repeat it; it stays as the screen-reader announcement. */}
+        {tuning && (
+          <TunerOSD
+            number={osdChannel.number}
+            name={osdChannel.name}
+            currentTitle={player.currentTitle}
+            className="sr-only"
+          />
+        )}
+      </div>
+      {phonePanel}
+    </section>
   );
 };
-
-// IdleFrame is the poster shown when there is nothing to play (paused/off air).
-const IdleFrame = ({ title, sub }: { title: string; sub: string }) => (
-  <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-radial from-static-800 to-black px-12 text-center">
-    <p className="font-semibold text-lg">{title}</p>
-    <p className="text-muted-foreground text-sm">{sub}</p>
-  </div>
-);
 
 export type { ChannelWatchProps };
 export { ChannelWatch };

@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // #1534: seedLibraryChannels (SEED_LIBRARY_PICKS) hit the same bug as the
@@ -27,12 +28,12 @@ func TestSeedLibraryChannelsProposalJobsAreListableThroughTheProposalWorkflow(t 
 	t.Cleanup(func() { _ = st.Close() })
 
 	now := time.Now()
-	admin := store.User{ID: "admin-test", Name: "admin", Role: store.RoleAdmin, CreatedAt: now, UpdatedAt: now}
+	admin := identitystore.User{ID: "admin-test", Name: "admin", Role: identitystore.RoleAdmin, CreatedAt: now, UpdatedAt: now}
 	if err := st.UpsertUser(ctx, admin); err != nil {
 		t.Fatal(err)
 	}
 
-	picks := []suggest.ProposalItem{{
+	picks := []proposals.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000101, Name: "Library Pick One", Year: 1991,
 		InLibrary: true, LibraryItemID: "lib-item-1",
 	}}
@@ -49,15 +50,15 @@ func TestSeedLibraryChannelsProposalJobsAreListableThroughTheProposalWorkflow(t 
 		t.Fatal(err)
 	}
 
-	workflow := proposalworkflow.New(st, func() string { return "unused" }, time.Now)
-	journeys, err := workflow.List(ctx, proposalworkflow.Viewer{UserID: admin.ID, Admin: true}, proposalworkflow.ListOptions{})
+	jobs := workflow.New(st, func() string { return "unused" }, time.Now)
+	journeys, err := jobs.List(ctx, workflow.Viewer{UserID: admin.ID, Admin: true}, workflow.ListOptions{})
 	if err != nil {
 		t.Fatalf("List seeded library Proposal Jobs through the workflow: %v", err)
 	}
 	if len(journeys) != 1 {
 		t.Fatalf("Journeys = %d, want 1", len(journeys))
 	}
-	if journeys[0].Milestone != proposalworkflow.MilestoneBuilding {
-		t.Fatalf("Milestone = %q, want %q", journeys[0].Milestone, proposalworkflow.MilestoneBuilding)
+	if journeys[0].Milestone != workflow.MilestoneBuilding {
+		t.Fatalf("Milestone = %q, want %q", journeys[0].Milestone, workflow.MilestoneBuilding)
 	}
 }

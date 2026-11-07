@@ -68,7 +68,7 @@ indexes are partial (`WHERE col <> ''`), and low-selectivity columns are not ind
 
 ## Client diagnostics
 
-`POST /v1/diagnostics/client-events` takes 1–20 observations from `web` or `android_tv`, from a closed
+`POST /v1/diagnostics/client-events` takes 1–20 observations from `web`, `android_tv`, `apple_tv`, `ios` or `android`, from a closed
 vocabulary: `client.error_boundary`, `client.unhandled_error`, `client.api_failed`,
 `player.attached`, `player.detached`, `player.ready`, `player.source_replaced`,
 `player.buffering_started`, `player.buffering_ended`, `player.seeking`, `player.seeked`,
@@ -78,6 +78,12 @@ derives `actor_id` and owns severity. Any invalid field rejects the whole batch.
 return `202` after enqueue. The limit is 120 observations a minute per actor with a burst of 30.
 Clients keep a 100-observation memory queue, send at most 20 every two seconds, drop routine events
 before errors, and never block playback or keep a second log.
+
+The batch's `platform` must belong to its `source`: `web` takes the browsers, `android_tv` takes
+`android_tv`, `shield_tv` and `unknown_android_tv`, and `apple_tv`, `ios` and `android` each take their
+own name. Both native apps derive their pair from the platform they run on (`createNativeApp`), and
+the observation's `transport` names the player that played: `native_hls` (AVPlayer) on Apple
+platforms, `media3` on Android.
 
 ## Client crash reports
 
@@ -111,6 +117,15 @@ message and a stack, so it is a separate table and contract, not a client-diagno
 - **Retention** is fixed product policy, applied by the daily housekeeping pass: 30 days or the
   newest 1000 reports, whichever is fewer. The diagnostics byte budget does not count these rows;
   the row cap bounds them instead.
+- **Capture on the phone.** React Native's global error handler writes each JS error to an on-disk
+  queue synchronously, before a fatal one ends the app, then hands it on. iOS native crashes come
+  from Apple's MetricKit on the next launch, one report per crash, carrying the crashed build's
+  identity. The queue keeps the newest 20 (`@loomarr/core/crash-reports`). Once paired, the app
+  sends pending reports at launch, on returning to the foreground, after a non-fatal error and when
+  MetricKit delivers. A report is deleted only after a `2xx`, or after a `400`/`413`/`422` that would
+  never succeed; `401`, `429`, `5xx` or no network keeps it for the next attempt. Breadcrumbs are the
+  last 50 navigation, request (method, path, status) and lifecycle events. Android captures JS errors
+  only; its native analogue, `ApplicationExitInfo`, is not built.
 
 ## Current Health
 

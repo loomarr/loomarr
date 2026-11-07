@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
 func sourceReq(t *testing.T, method, url, body, token string) *http.Response {
@@ -44,7 +46,7 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
-		`{"kind":"archive","uri":"https://archive.org/details/classic_tv_commercials","country":"us","market":" New   York "}`, adminToken)
+		`{"kind":"archive","uri":"https://archive.org/details/classic_tv_commercials","country":"us"}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -79,20 +81,8 @@ func TestAddFillerSource_RegistersEnabledAndDownloadsNothing(t *testing.T) {
 	if !got[0].Enabled {
 		t.Error("persisted source is disabled")
 	}
-	if got[0].Geography != (filler.Geography{Country: "US", Market: "New York"}) {
+	if got[0].Geography != (filler.Geography{Country: "US"}) {
 		t.Errorf("persisted geography = %+v", got[0].Geography)
-	}
-}
-
-func TestAddFillerSource_RejectsMarketWithoutCountry(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
-	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/sources",
-		`{"kind":"archive","uri":"classic_tv_commercials","market":"New York"}`, adminToken)
-	if res.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("status = %d, want 422", res.StatusCode)
-	}
-	if got := registeredSources(t, st); len(got) != 0 {
-		t.Errorf("stored %d sources with an invalid geography", len(got))
 	}
 }
 
@@ -103,13 +93,13 @@ func TestAddFillerSource_RejectsMarketWithoutCountry(t *testing.T) {
 // ⚠ Since V38c an operator can ADD folders and libraries too (§10), so this no longer means
 // "everything the operator added". A test about those kinds must read the whole table; see
 // TestAddFillerSource_AcceptsFoldersAndLibraries.
-func registeredSources(t *testing.T, st fillerstore.Store) []fillerstore.FillerSource {
+func registeredSources(t *testing.T, st records.Store) []records.FillerSource {
 	t.Helper()
 	all, err := st.ListFillerSources(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	var out []fillerstore.FillerSource
+	var out []records.FillerSource
 	for _, s := range all {
 		if s.Kind != "folder" && s.Kind != "library" {
 			out = append(out, s)
@@ -263,7 +253,7 @@ func TestAddFillerSource_RefusesUnusableFolderPaths(t *testing.T) {
 func TestSetFillerSourceEnabled_DisablingKeepsTheClips(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
-	if err := st.UpsertFillerSource(ctx, fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+	if err := st.UpsertFillerSource(ctx, records.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 	seedClip(t, st, "classic/ad.mp4", "commercial", 1992, "kids", "toys")
@@ -325,13 +315,13 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 		return ""
 	})
 	ctx := context.Background()
-	source := fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
+	source := records.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
 	source.Geography.Country = "US"
 	if err := st.UpsertFillerSource(ctx, source); err != nil {
 		t.Fatal(err)
 	}
 
-	sourceByID := func(id string) fillerstore.FillerSource {
+	sourceByID := func(id string) records.FillerSource {
 		t.Helper()
 		all, err := st.ListFillerSources(ctx)
 		if err != nil {
@@ -343,7 +333,7 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 			}
 		}
 		t.Fatalf("source %q not found", id)
-		return fillerstore.FillerSource{}
+		return records.FillerSource{}
 	}
 
 	// 1. A custom policy — poll this source on its own schedule.
@@ -443,7 +433,7 @@ func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
 	if err := st.UpsertFillerSource(ctx,
-		fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		records.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -455,14 +445,10 @@ func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 }
 
 func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		if key == "filler.home_country" {
-			return "US"
-		}
-		return ""
-	})
+	// The fetch cadence is unanswered, so it reads the declared default of 6h.
+	srv, st, _ := newFillerServerWithRuntimeConfig(t, nil, mapSettings{"filler.home_country": "US"}, nil)
 	ctx := t.Context()
-	src := fillerstore.NewFillerSource("retrying", "archive", "retrying", "Retrying", time.Now().UTC())
+	src := records.NewFillerSource("retrying", "archive", "retrying", "Retrying", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +480,7 @@ func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testin
 func TestDeleteFillerSource_ForgetsTheSourceNotTheClips(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
-	if err := st.UpsertFillerSource(ctx, fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+	if err := st.UpsertFillerSource(ctx, records.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 	seedClip(t, st, "classic/ad.mp4", "commercial", 1992, "kids", "toys")
@@ -631,13 +617,13 @@ func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
 	ctx := context.Background()
 
 	// A YouTube row with no playlist yet — exactly how migration 00034 seeds it.
-	unconfigured := fillerstore.NewFillerSource("youtube", "youtube", "", "YouTube", time.Now().UTC())
+	unconfigured := records.NewFillerSource("youtube", "youtube", "", "YouTube", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, unconfigured); err != nil {
 		t.Fatal(err)
 	}
 	// And one that IS configured, so this test cannot pass by reporting false for everything.
 	if err := st.UpsertFillerSource(ctx,
-		fillerstore.NewFillerSource("youtube:PL1", "youtube", "https://www.youtube.com/playlist?list=PL1",
+		records.NewFillerSource("youtube:PL1", "youtube", "https://www.youtube.com/playlist?list=PL1",
 			"My playlist", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
@@ -667,15 +653,15 @@ func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
 
 func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
+		return map[string]string{"filler.home_country": "US", "filler.home_place": "4560349"}[key]
 	})
 	ctx := context.Background()
 
-	inherited := fillerstore.NewFillerSource("archive:inherited", "archive", "inherited", "Inherited", time.Now().UTC())
+	inherited := records.NewFillerSource("archive:inherited", "archive", "inherited", "Inherited", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, inherited); err != nil {
 		t.Fatal(err)
 	}
-	overridden := fillerstore.NewFillerSource("archive:canada", "archive", "canada", "Canada", time.Now().UTC())
+	overridden := records.NewFillerSource("archive:canada", "archive", "canada", "Canada", time.Now().UTC())
 	overridden.Geography = filler.Geography{Country: "CA"}
 	if err := st.UpsertFillerSource(ctx, overridden); err != nil {
 		t.Fatal(err)
@@ -689,7 +675,6 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 			Ready            bool     `json:"ready"`
 			LocationSource   string   `json:"locationSource"`
 			EffectiveCountry string   `json:"effectiveCountry"`
-			EffectiveMarket  string   `json:"effectiveMarket"`
 			Actions          []string `json:"actions"`
 		} `json:"sources"`
 	}
@@ -697,24 +682,73 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	byID := map[string]struct {
-		readiness, source, country, market string
-		ready                              bool
-		actions                            []string
+		readiness, source, country string
+		ready                      bool
+		actions                    []string
 	}{}
 	for _, row := range body.Sources {
 		byID[row.ID] = struct {
-			readiness, source, country, market string
-			ready                              bool
-			actions                            []string
-		}{row.Readiness, row.LocationSource, row.EffectiveCountry, row.EffectiveMarket, row.Ready, row.Actions}
+			readiness, source, country string
+			ready                      bool
+			actions                    []string
+		}{row.Readiness, row.LocationSource, row.EffectiveCountry, row.Ready, row.Actions}
 	}
+	// A source inherits the installation country; the household's place is not a source's.
 	got := byID["archive:inherited"]
 	if !got.ready || got.readiness != "ready" || got.source != "installation" ||
-		got.country != "US" || got.market != "New York" || !slices.Contains(got.actions, "fetch") {
+		got.country != "US" || !slices.Contains(got.actions, "fetch") {
 		t.Fatalf("inherited source projection = %+v", got)
 	}
 	got = byID["archive:canada"]
 	if got.ready || got.readiness != "out_of_area" || got.source != "source" {
 		t.Fatalf("overridden source projection = %+v", got)
+	}
+}
+
+// pinnedFolderSettings refuses every write the way an environment-pinned key does.
+type pinnedFolderSettings struct{ *fakeSettings }
+
+func (pinnedFolderSettings) Patch(_ context.Context, edits map[string]string, _ string) []api.SettingResult {
+	out := make([]api.SettingResult, 0, len(edits))
+	for key := range edits {
+		out = append(out, api.SettingResult{Key: key, Status: "pinned"})
+	}
+	return out
+}
+
+// A refused edit saves nothing. The drop-folder's switch is a setting, and the environment can pin
+// it; the PATCH then answers 409. It used to write the coverage first, so the operator was told
+// "that switch is set by the environment" about an edit that had in fact changed the source's
+// country, and nothing on the page said so.
+func TestSetFillerSourceEnabled_RefusedFolderSwitchLeavesTheCoverageAlone(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/pinned.db")
+	t.Cleanup(func() { _ = st.Close() })
+	clearSeededSources(t, st)
+	ctx := context.Background()
+	if err := st.UpsertFillerSource(ctx, records.NewFillerSource("folder", "folder", "/data/filler", "Drop folder", time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetFillerSourceGeography(ctx, "folder", filler.Geography{Country: "US"}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
+		Store:    st,
+		Auth:     testAuthorizer{},
+		Log:      slog.New(slog.DiscardHandler),
+		Settings: pinnedFolderSettings{&fakeSettings{}},
+	}))
+	t.Cleanup(srv.Close)
+
+	res := sourceReq(t, http.MethodPatch, srv.URL+"/v1/filler/sources/folder",
+		`{"enabled":false,"geography":{"country":"CA"}}`, adminToken)
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 for an environment-pinned switch", res.StatusCode)
+	}
+	got, err := st.ListFillerSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Geography.Country != "US" {
+		t.Fatalf("sources after a refused edit = %+v, want the country still US", got)
 	}
 }

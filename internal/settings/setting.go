@@ -28,6 +28,11 @@ const (
 	KindCron       Kind = "cron" // a 6-field seconds-leading cron expr (job schedules, §18.1)
 )
 
+// Kinds is the closed set, in declaration order, for the wire schema.
+func Kinds() []Kind {
+	return []Kind{KindString, KindInt, KindBool, KindDuration, KindURL, KindEnum, KindSecret, KindStringList, KindCron}
+}
+
 // Presentation describes how a valid stored value should be edited and explained.
 // Kind owns validation; Presentation owns the human control. Keeping those separate lets an
 // integer remain an integer on the wire while the UI edits it as bytes or megabytes.
@@ -42,6 +47,23 @@ const (
 	// PresentationFillerDownloadSchedule keeps the stored value a duration while offering the
 	// common household choices first and revealing the numeric duration only for Custom.
 	PresentationFillerDownloadSchedule Presentation = "filler_download_schedule"
+)
+
+// Presentations is the closed set of non-default editors, in declaration order, for the wire
+// schema. The default is absent on the wire, so it is not a member.
+func Presentations() []Presentation {
+	return []Presentation{PresentationBytes, PresentationPath, PresentationLanguage, PresentationSwitch, PresentationFillerDownloadSchedule}
+}
+
+// Unit names what a plain number setting counts, shown beside its input. The key's suffix says it
+// too (`_gb`, `_mb`, `_pct`), but a person reads the label and the box, never the key.
+type Unit string
+
+const (
+	UnitNone    Unit = ""
+	UnitGiB     Unit = "GiB"
+	UnitMiB     Unit = "MiB"
+	UnitPercent Unit = "%"
 )
 
 // ApplyTiming says when a persisted setting becomes the running value. The zero
@@ -159,6 +181,18 @@ type EnumOption struct {
 // opt is a terse constructor for the registry declarations: opt("ollama", "Ollama").
 func opt(value, label string) EnumOption { return EnumOption{Value: value, Label: label} }
 
+// Preset is a common choice for an open-ended setting, offered ahead of a custom value. Unlike an
+// EnumOption it does not close the set: any value the Kind and Validate accept still saves. The
+// registry stores Value in canonical form (ValueString of the parsed value), so it compares
+// equal to a resolved value on the wire.
+type Preset struct {
+	Value string
+	Label string
+}
+
+// preset is a terse constructor for the registry declarations: preset("24h", "Daily").
+func preset(value, label string) Preset { return Preset{Value: value, Label: label} }
+
 // Setting declares one app-managed configuration key (config-design §2). Declared
 // exactly once, in the registry; nothing constructs a Setting elsewhere.
 type Setting struct {
@@ -169,12 +203,14 @@ type Setting struct {
 	Owner        Owner // one stable editing task; frontend presentation and paths stay out of the registry
 	Kind         Kind
 	Presentation Presentation // optional richer editor semantics beyond Kind
+	Unit         Unit         // a KindInt's unit, shown beside its input; empty for a bare count
 	Apply        ApplyTiming  // empty/live = next read; restart = next app generation
 	Default      any          // zero value of the Kind if a key has no default (e.g. a secret)
 	// DataSubdir, for a storage directory, derives the default as <data dir>/<DataSubdir>: the
 	// database's own directory, so a bare-metal install needs no /data. Replaces Default.
 	DataSubdir string
 	Enum       []EnumOption // Kind == KindEnum: the closed set, each with a display label
+	Presets    []Preset     // common choices offered before a custom value; each must parse as Kind
 	Advanced   bool         // hidden behind the per-page "Show advanced" toggle (§5)
 	// MigrationOnly retains a former setting solely long enough to import it into its successor.
 	// It is resolvable by the migration, but absent from every settings read/write and docs surface.

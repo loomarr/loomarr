@@ -27,9 +27,10 @@ interface DisclosureTriggerProps {
 }
 
 interface DisclosureSectionTriggerProps {
-  /** Short accessible command describing what opening the section does. */
-  label: string;
   title: string;
+  /** Words the surrounding layout implies but the header doesn't show (e.g. "from Night Signal");
+   * read after the title by assistive tech only. The visible header always stays in the name. */
+  context?: string;
   description?: string;
   className?: string;
 }

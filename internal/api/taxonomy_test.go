@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 )
 
 // The taxonomy CRUD API (§10 V45a): read the graph, and let an ADMIN edit it — every write reindexing

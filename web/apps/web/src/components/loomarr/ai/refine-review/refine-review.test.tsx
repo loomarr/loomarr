@@ -1,7 +1,8 @@
 import type { ChannelPolicy, ProposalItem } from "@loomarr/api";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { eraDates } from "@/lib/era-dates";
+import { render } from "@/test/render";
 import { RefineReview } from "./refine-review";
 import type { CurrentLineupItem } from "./refine-review.type";
 
@@ -248,6 +249,37 @@ describe("RefineReview", () => {
     expect(screen.getByText("No-repeat · movies")).toBeInTheDocument();
     expect(screen.getByText(/168h/)).toBeInTheDocument();
     expect(screen.getByText(/24h/)).toBeInTheDocument();
+  });
+
+  it("names ordering and seasonal changes the way the editor's controls do", () => {
+    render(
+      <RefineReview
+        proposed={[cartographer]}
+        current={[currentCartographer]}
+        currentPolicy={{ seasonal: { mode: "auto" } } as ChannelPolicy}
+        proposedPolicy={{ ordering: "shuffle", seasonal: { mode: "exclusive" } } as ChannelPolicy}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Use channel strategy")).toBeInTheDocument();
+    expect(screen.getByText("Shuffled")).toBeInTheDocument();
+    expect(screen.getByText("Use built-in seasonal rotation")).toBeInTheDocument();
+    expect(screen.getByText("Holiday-only channel")).toBeInTheDocument();
+  });
+
+  it("does not report a seasonal delta between the default and its explicit twin", () => {
+    render(
+      <RefineReview
+        proposed={[cartographer]}
+        current={[currentCartographer]}
+        currentPolicy={{ seasonal: { mode: "" } } as ChannelPolicy}
+        proposedPolicy={{ seasonal: { mode: "auto" } } as ChannelPolicy}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Seasonal")).not.toBeInTheDocument();
   });
 
   it("does not report a separation delta when the backend just pads zero units", () => {

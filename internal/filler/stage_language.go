@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// The LANGUAGE stage (§10 V51b): what language is the speech in, and is it the one this install
-// asked for?
+// The LANGUAGE stage (§10 V51b): what language is the speech in, and does some channel air it
+// (#2030 decision 13)?
 //
 // The logic is V40's `LanguageJob` unchanged — same detector seam, same `LanguageSpan` window,
 // same `LanguageRejects` verdict. What changes is everything around it: the job's own work list,
@@ -31,15 +31,16 @@ type LanguageStage struct {
 	detector LanguageDetector
 	store    LanguageClipStore
 	clipDir  string
-	// want is the language filler is expected to be in, read live so a settings change applies on
-	// the next pass. Empty ⇒ the gate is off and the stage does not apply.
-	want func() string
+	// want is the set of languages filler may be in (IntakeLanguages), read live so a new channel
+	// or a settings change applies on the next pass. Empty ⇒ the gate is off and the stage does not
+	// apply. It reads the channels, so it can fail.
+	want func(context.Context) (string, error)
 	now  func() time.Time
 }
 
 // NewLanguageStage builds the stage. A nil detector or an empty `want` makes it permanently
 // inapplicable, so an install that has not opted in pays nothing and its ladder says why.
-func NewLanguageStage(detector LanguageDetector, store LanguageClipStore, clipDir string, want func() string, now func() time.Time) *LanguageStage {
+func NewLanguageStage(detector LanguageDetector, store LanguageClipStore, clipDir string, want func(context.Context) (string, error), now func() time.Time) *LanguageStage {
 	if now == nil {
 		now = time.Now
 	}
@@ -53,11 +54,16 @@ func (s *LanguageStage) ID() StageID { return StageLanguage }
 func (s *LanguageStage) Cost() StageCost { return CostWhisper }
 
 // Applies when the gate is on and this clip has not been heard yet.
-func (s *LanguageStage) Applies(_ context.Context, c StoreClip) (bool, string) {
+func (s *LanguageStage) Applies(ctx context.Context, c StoreClip) (bool, string) {
 	if s.detector == nil {
 		return false, "no language backend is configured"
 	}
-	if s.want == nil || s.want() == "" {
+	if s.want == nil {
+		return false, "the language gate is off"
+	}
+	// ⚠ A failed read is not "off": an inapplicable rung is skipped for good, so the clip would
+	// never be heard. It applies, and Run meets the same failure and retries with backoff.
+	if want, err := s.want(ctx); err == nil && want == "" {
 		return false, "the language gate is off"
 	}
 	// ⚠ `""` is the ONLY value meaning "not yet". `none` is a final answer — the clip was heard
@@ -76,7 +82,10 @@ func (s *LanguageStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 func (s *LanguageStage) Run(ctx context.Context, c StoreClip) (StageResult, error) {
 	want := ""
 	if s.want != nil {
-		want = s.want()
+		var err error
+		if want, err = s.want(ctx); err != nil {
+			return StageResult{}, fmt.Errorf("read the channels' commercial languages: %w", err)
+		}
 	}
 	start, end := LanguageSpan(c.DurationMs)
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
@@ -120,8 +129,8 @@ func (s *LanguageStage) Run(ctx context.Context, c StoreClip) (StageResult, erro
 	if LanguageRejects(detected, want) {
 		return StageResult{
 			Clip: updated, Verdict: VerdictReject, Reason: ReasonLanguage,
-			Detail: fmt.Sprintf("heard %s; this install wants %s",
-				NormalizeLanguage(detected), NormalizeLanguage(want)),
+			Detail: fmt.Sprintf("heard %s; the channels air %s",
+				NormalizeLanguage(detected), languageNames(want)),
 		}, nil
 	}
 	return StageResult{Clip: updated, Verdict: VerdictContinue}, nil

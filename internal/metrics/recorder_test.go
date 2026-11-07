@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -220,6 +220,19 @@ func TestRecorderConcurrentScrapesSynchronizeSuccessfulSnapshots(t *testing.T) {
 	}
 }
 
+func TestRecorderLabelsRetryOfUnlistedTransientStatus(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	recorder.OutboundRetried("tmdb", metrics.OutboundRetryStatusOther)
+	body := scrape(t, recorder)
+	if want := `loomarr_outbound_retries_total{reason="other_status",target="tmdb"} 1`; !strings.Contains(body, want) {
+		t.Errorf("scrape does not contain %q", want)
+	}
+	// The reason is pre-registered so a dashboard sees a zero before the first retry.
+	if want := `loomarr_outbound_retries_total{reason="other_status",target="tunarr"} 0`; !strings.Contains(body, want) {
+		t.Errorf("scrape does not contain %q", want)
+	}
+}
+
 func TestRecorderBoundsOutboundTargetAndRetryReason(t *testing.T) {
 	recorder := metrics.New(metrics.Options{})
 	hostile := "https://user@example.invalid/private/title/123"
@@ -254,7 +267,7 @@ func TestRecorderBoundsOutboundTargetAndRetryReason(t *testing.T) {
 
 func TestRecorderUsesBoundedNotificationOutboundTarget(t *testing.T) {
 	recorder := metrics.New(metrics.Options{})
-	transport := recorder.InstrumentTransport("notification-provider", roundTripFunc(func(*http.Request) (*http.Response, error) {
+	transport := recorder.InstrumentTransport("notifications", roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusNoContent,
 			Body:       io.NopCloser(strings.NewReader("")),

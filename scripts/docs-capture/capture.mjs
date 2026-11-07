@@ -25,7 +25,7 @@ const SHOTS = [
   { name: "settings-playback", path: "/settings/system/playback", ready: "Playback" },
   // 2h: the demo episodes are 22 minutes, and a block too narrow for its title shows none.
   { name: "guide", path: "/guide", ready: seed.channels[0].name, click: "2h" },
-  { name: "channel-watch", path: `/channels/${watermarked.id}/watch`, settle: "video" },
+  { name: "channel-watch", path: `/watch/${watermarked.id}`, settle: "video" },
 ];
 
 const browser = await chromium.launch();

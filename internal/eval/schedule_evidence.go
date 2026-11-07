@@ -13,10 +13,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/episodeevidence"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -66,7 +67,7 @@ func (e ScheduleEpisodeEvidence) resolvedProgram() schedule.ResolvedProgram {
 	return schedule.ResolvedProgram{
 		LibraryItemID: e.LibraryItemID, Title: e.Title, DurationMs: e.DurationMs,
 		Season: e.Season, Episode: e.Episode, EpisodeEnd: e.EpisodeEnd, Year: e.Year,
-		OfficialRating:  schedule.NormalizeRating(e.OfficialRating),
+		OfficialRating:  rating.Normalize(e.OfficialRating),
 		CommunityRating: evidence.CommunityRating, Overview: evidence.Overview, Tags: evidence.Tags,
 	}
 }

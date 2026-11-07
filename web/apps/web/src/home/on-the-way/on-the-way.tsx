@@ -74,7 +74,7 @@ const requestAction = ({ journey, status }: RequestEntry) => {
       <Button
         size="sm"
         variant="outline"
-        render={<Link to="/channels/$id/watch" params={{ id: journey.channel.id }} />}
+        render={<Link to="/watch/$id" params={{ id: journey.channel.id }} />}
       >
         Watch
       </Button>

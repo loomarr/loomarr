@@ -25,31 +25,34 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // Fixed credentials + seeds so a seeded dev install is predictable (and so the
 // scheduler output is byte-stable run to run — determinism, §10).
 const (
 	adminUser = "admin"
-	adminPass = "loomarr"
-	chanSeed  = 42 // channel shuffle/ordering seed; any constant → reproducible slots
+	adminPass = "loomarr-dev" // at least auth.MinPasswordLen: bootstrap refuses a shorter one
+	chanSeed  = 42            // channel shuffle/ordering seed; any constant → reproducible slots
 )
 
 func main() {
@@ -66,7 +69,7 @@ func main() {
 		log.Printf("seed: DATABASE_URL unset — using %s", cfg.DatabaseURL)
 	}
 
-	st, err := fillerstore.Open(ctx, cfg.DatabaseURL, true) // autoMigrate: a fresh DB gets its schema
+	st, err := records.Open(ctx, cfg.DatabaseURL, true) // autoMigrate: a fresh DB gets its schema
 	if err != nil {
 		log.Fatalf("seed: open store %q: %v", cfg.DatabaseURL, err)
 	}
@@ -106,7 +109,7 @@ func main() {
 // seedAdmin creates the first local admin through the sanctioned bootstrap path
 // (Argon2id-hashed, Loomarr-owned id). If an admin already exists the bootstrap door
 // is closed — we surface that and reuse it rather than forging a second one.
-func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (store.User, error) {
+func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (identitystore.User, error) {
 	// lib=nil: import is unavailable offline; seed only needs the bootstrap path.
 	p := auth.NewProvisioner(st, nil, usrID, time.Now)
 	admin, err := p.Bootstrap(ctx, adminUser, adminPass)
@@ -118,7 +121,7 @@ func seedAdmin(ctx context.Context, st store.Store, usrID func() string) (store.
 	// of the seed (which needs an admin id for audit) still runs, and warn loudly.
 	existing, gerr := st.GetUserByName(ctx, adminUser)
 	if gerr != nil {
-		return store.User{}, fmt.Errorf("bootstrap failed (%w) and no existing %q admin to reuse: %v", err, adminUser, gerr)
+		return identitystore.User{}, fmt.Errorf("bootstrap failed (%w) and no existing %q admin to reuse: %v", err, adminUser, gerr)
 	}
 	log.Printf("seed: admin already exists (%v) — reusing %q; delete the DB to reseed from scratch", err, adminUser)
 	return existing, nil
@@ -134,10 +137,10 @@ func seedMember(ctx context.Context, st store.Store, usrID func() string) error 
 		return nil
 	}
 	now := time.Now()
-	m := store.User{
+	m := identitystore.User{
 		ID:        usrID(),
 		Name:      "casey",
-		Role:      store.RoleMember,
+		Role:      identitystore.RoleMember,
 		Quota:     5, // pending-acquisition cap
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -179,7 +182,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		libPick("demo-film-27", 7440000), // 124m
 	}
 	lineup := items(picks)
-	acquisitions := []suggest.ProposalItem{
+	acquisitions := []proposals.ProposalItem{
 		acqItem("demo-film-08"),
 		acqItem("demo-film-26"),
 		acqItem("demo-film-29"),
@@ -210,15 +213,11 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		},
 	}
 
-	prop := suggest.Proposal{
-		Intent:       suggest.Intent{Description: "90s movie night — mysteries, comedies and a little sci-fi", Era: "1990s"},
+	prop := proposals.Proposal{
+		Intent:       proposals.Intent{Description: "90s movie night — mysteries, comedies and a little sci-fi", Era: "1990s"},
 		Lineup:       lineup,
 		Acquisitions: acquisitions,
 		Policy:       policy,
-	}
-	propJSON, err := json.Marshal(prop)
-	if err != nil {
-		return fmt.Errorf("marshal proposal: %w", err)
 	}
 	propID := newID("prop")()
 	// CreateSuggestionResult (built for #1720's no-generation proposals) writes the done
@@ -236,13 +235,13 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}, store.Proposal{
-		ID:           propID,
-		JobID:        jobID,
-		Status:       "submitted",
-		CreatedBy:    adminID,
-		ProposalJSON: string(propJSON),
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:        propID,
+		JobID:     jobID,
+		Status:    "submitted",
+		CreatedBy: adminID,
+		Body:      prop,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}
@@ -254,7 +253,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	}
 	// nil edit: seed approves the proposal as generated. It goes through the real gate rather
 	// than writing `available` rows directly — AGENTS.md's do-not list names that explicitly.
-	channelPlanner := binder.New(st, nil, nil, slog.New(slog.DiscardHandler))
+	channelPlanner := approval.New(st, nil, nil, slog.New(slog.DiscardHandler))
 	approver := suggest.NewApprover(st, channelPlanner, time.Now)
 	approved, err := approver.Approve(ctx, stored, nil, adminID)
 	if err != nil {
@@ -282,7 +281,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 // domain event via provision.Apply, then persists it. Grabbed needs a fresh
 // downloading deadline; LibraryConfirmed carries the library id. This is the honest
 // way to reach a later state — it walks the machine rather than forging the target.
-func advance(ctx context.Context, st store.Store, item suggest.ProposalItem, kind provision.EventKind, libID string) error {
+func advance(ctx context.Context, st store.Store, item proposals.ProposalItem, kind provision.EventKind, libID string) error {
 	key, err := item.Key()
 	if err != nil {
 		return fmt.Errorf("key for %q: %w", item.Name, err)
@@ -346,7 +345,7 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 			entries[i].Title = it.Name
 			entries[i].DurationMs = p.durMs
 			entries[i].Year = it.Year
-			entries[i].OfficialRating = schedule.Rating(p.rating)
+			entries[i].OfficialRating = rating.Rating(p.rating)
 		}
 		avail[key] = resolved{libID: it.LibraryItemID, dur: p.durMs, title: it.Name}
 	}
@@ -394,7 +393,7 @@ func seedClips(ctx context.Context, st store.Store) error {
 	}
 	now := time.Now()
 	for _, seeded := range clips {
-		if err := st.UpsertClip(ctx, store.Clip{Clip: seeded.clip, UpdatedAt: now}); err != nil {
+		if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: seeded.clip, UpdatedAt: now}); err != nil {
 			return fmt.Errorf("upsert clip %q: %w", seeded.clip.Name, err)
 		}
 		if err := st.SetClipTags(ctx, seeded.clip.Hash, seeded.tags); err != nil {
@@ -433,14 +432,14 @@ func (a seedAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolut
 // pick pairs an in-library ProposalItem with its runtime, which ProposalItem itself
 // doesn't carry — the channel's slots need a real duration (Tunarr rejects <= 0).
 type pick struct {
-	item   suggest.ProposalItem
+	item   proposals.ProposalItem
 	durMs  int64
 	rating string
 }
 
 // items projects the proposal-item view out of the picks (for the proposal body).
-func items(ps []pick) []suggest.ProposalItem {
-	out := make([]suggest.ProposalItem, len(ps))
+func items(ps []pick) []proposals.ProposalItem {
+	out := make([]proposals.ProposalItem, len(ps))
 	for i, p := range ps {
 		out[i] = p.item
 	}
@@ -459,15 +458,15 @@ func demoFilm(id string) demolibrary.Title {
 
 func libPick(id string, durMs int64) pick {
 	t := demoFilm(id)
-	return pick{item: suggest.ProposalItem{
+	return pick{item: proposals.ProposalItem{
 		MediaType: provision.Movie, TMDBID: t.ProviderID(), Name: t.Name, Year: t.Year,
 		InLibrary: true, LibraryItemID: t.ID(),
 	}, durMs: durMs, rating: t.Rating}
 }
 
-func acqItem(id string) suggest.ProposalItem {
+func acqItem(id string) proposals.ProposalItem {
 	t := demoFilm(id)
-	return suggest.ProposalItem{
+	return proposals.ProposalItem{
 		MediaType: provision.Movie, TMDBID: t.ProviderID(), Name: t.Name, Year: t.Year,
 		InLibrary: false,
 	}

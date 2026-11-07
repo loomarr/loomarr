@@ -9,17 +9,18 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func newIconsServer(t *testing.T) (*httptest.Server, fillerstore.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsServer(t *testing.T) (*httptest.Server, records.Store, *testkit.IconService[api.IconSuggestion]) {
 	return newIconsServerWithConfig(t, nil)
 }
 
-func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, fillerstore.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, records.Store, *testkit.IconService[api.IconSuggestion]) {
 	t.Helper()
 	handler, st, fi := newIconsHandlerWithConfig(t, cfg)
 	srv := httptest.NewServer(handler)
@@ -27,7 +28,7 @@ func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Se
 	return srv, st, fi
 }
 
-func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, fillerstore.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, records.Store, *testkit.IconService[api.IconSuggestion]) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -37,16 +38,16 @@ func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handle
 		t.Fatal(err)
 	}
 	fi := &testkit.IconService[api.IconSuggestion]{}
-	var liveConfig func(string) string
+	var liveSettings settings.Reader
 	if cfg != nil {
-		liveConfig = func(key string) string { return cfg[key] }
+		liveSettings = stringSettings(func(key string) string { return cfg[key] })
 	}
 	handler := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:      st,
-		Auth:       testAuthorizer{},
-		Log:        slog.New(slog.DiscardHandler),
-		Icons:      fi,
-		LiveConfig: liveConfig,
+		Store:        st,
+		Auth:         testAuthorizer{},
+		Log:          slog.New(slog.DiscardHandler),
+		Icons:        fi,
+		LiveSettings: liveSettings,
 	})
 	return handler, st, fi
 }

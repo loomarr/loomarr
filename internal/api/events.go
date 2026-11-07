@@ -36,9 +36,9 @@ type EventSource interface {
 
 // TitleEvent is a provisioning state change (§4).
 type TitleEvent struct {
-	Key   string `json:"key" example:"movie:tmdb:1111867"`
+	Key   string `json:"key" example:"movie:tmdb:91111867"`
 	State string `json:"state" enum:"wanted,requested,downloading,available,unavailable"`
-	Name  string `json:"name,omitempty" example:"In Flames"`
+	Name  string `json:"name,omitempty" example:"Ashgrove Anomaly"`
 }
 
 // SuggestionEvent is one generation-progress frame (§8) so the workspace's progress strip
@@ -85,6 +85,12 @@ type ActivityEvent struct{}
 // refetch the typed health endpoint so a dropped SSE frame cannot create partial client truth.
 type HealthEvent struct{}
 
+// SettingsEvent announces that a settings write was committed (a save, a clear, or taking a key
+// back from the environment). The payload is intentionally empty: everything a setting
+// influences — the settings list, the setup checklist, the AI provider status — is read from its
+// own GET, so a client invalidates those reads rather than patching state from the frame.
+type SettingsEvent struct{}
+
 // FillerIngestEvent tracks a clip-fetch job (§10 V38b).
 type FillerIngestEvent struct {
 	JobID   string `json:"jobId"`
@@ -123,7 +129,7 @@ type FillerSplitEvent struct {
 // and GET /v1/filler/incoming is the truth on reconnect.
 type FillerClipEvent struct {
 	Hash  string `json:"hash"`
-	Stage string `json:"stage" enum:"probe,transcode,split,screen,language,transcribe,tag,vision,score"`
+	Stage string `json:"stage" enum:"probe,transcode,split,screen,defects,language,transcribe,tag,vision,score"`
 	// Status is how the CURRENT stage is going. `skipped` means the stage does not apply to this
 	// clip in this install — a different fact from `done`, and re-evaluated on every pass.
 	Status string `json:"status" enum:"queued,running,done,failed,skipped"`
@@ -198,6 +204,7 @@ func eventTypeMap() map[string]any {
 		"job":           JobEvent{},
 		"activity":      ActivityEvent{},
 		"health":        HealthEvent{},
+		"settings":      SettingsEvent{},
 		"filler_ingest": FillerIngestEvent{},
 		"filler_split":  FillerSplitEvent{},
 		"filler_clip":   FillerClipEvent{},

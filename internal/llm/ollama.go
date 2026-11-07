@@ -37,7 +37,7 @@ type Ollama struct {
 func (o *Ollama) WithMetrics(recorder *metrics.Recorder) *Ollama {
 	o.metrics = recorder
 	if recorder != nil {
-		o.http = httpx.NewLLMNamed("llm", httpx.TimeoutLLM, recorder)
+		o.http = httpx.NewLLMNamed(httpx.TargetLLM, httpx.TimeoutLLM, recorder)
 	}
 	return o
 }
@@ -53,7 +53,7 @@ func NewOllama(baseURL, model string) *Ollama {
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		model:        model,
 		guessedModel: guessed,
-		http:         httpx.NewLLMNamed("llm", httpx.TimeoutLLM, nil),
+		http:         httpx.NewLLMNamed(httpx.TargetLLM, httpx.TimeoutLLM, nil),
 	}
 }
 
@@ -66,6 +66,9 @@ func (o *Ollama) WithKeepAlive(d string) *Ollama {
 }
 
 func (o *Ollama) Name() string { return "ollama" }
+
+// SelfHosted is always true: Ollama is an operator-run server.
+func (o *Ollama) SelfHosted() bool { return true }
 
 // --- wire types (pinned to the capture) ---
 
@@ -173,8 +176,8 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		return Response{}, fmt.Errorf("ollama chat: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Response{}, fmt.Errorf("ollama chat: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama chat"); err != nil {
+		return Response{}, err
 	}
 	var out ollamaChatResp
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -248,8 +251,8 @@ func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 		return Response{}, fmt.Errorf("ollama vision: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Response{}, fmt.Errorf("ollama vision: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama vision"); err != nil {
+		return Response{}, err
 	}
 	var out ollamaChatResp
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -383,8 +386,8 @@ func (o *Ollama) Warm(ctx context.Context) error {
 		return fmt.Errorf("ollama warm: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("ollama warm: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama warm"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -423,8 +426,8 @@ func (o *Ollama) Evict(ctx context.Context) error {
 		return fmt.Errorf("ollama evict: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("ollama evict: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama evict"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -462,8 +465,8 @@ func (o *Ollama) ListResident(ctx context.Context) ([]ResidentModel, error) {
 		return nil, fmt.Errorf("ollama ps: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("ollama ps: status %d", resp.StatusCode)
+	if err := checkStatus(resp, "ollama ps"); err != nil {
+		return nil, err
 	}
 	var ps ollamaPSResp
 	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {

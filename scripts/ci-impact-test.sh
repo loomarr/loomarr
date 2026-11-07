@@ -48,16 +48,17 @@ if ! grep -q 'web/(apps/tv/' <<<"$legacy_android_filter"; then
 fi
 
 clients_workflow="$(<"$ROOT/.github/workflows/ci-clients.yml")"
-if ! grep -q 'run: make fe-codegen' <<<"$clients_workflow" ||
-  ! grep -q 'run: make clients' <<<"$clients_workflow"; then
+if ! grep -q 'run: make clients-checks' <<<"$clients_workflow" ||
+  ! grep -q 'run: make clients-bundles' <<<"$clients_workflow" ||
+  ! grep -Eq '^clients-bundles:.* fe-codegen( |$)' "$ROOT/mk/frontend.mk"; then
   echo 'ci-impact-test: shared-client gate no longer regenerates and verifies OpenAPI consumers' >&2
   exit 1
 fi
 
 # knip spans the whole web/ workspace, so every gate the classifier picks for a web/ path must run
-# it (#1838): `make fe` for web, `make clients` (via its knip prerequisite) for clients, and the
-# local verify web step. Selecting a gate that does not run knip lets an unused file merge green.
-if ! grep -Eq '^clients:.* knip( |$)' "$ROOT/mk/frontend.mk" ||
+# it (#1838): `make fe` for web, `make clients-checks` (via its knip prerequisite) for clients, and
+# the local verify web step. Selecting a gate that does not run knip lets an unused file merge green.
+if ! grep -Eq '^clients-checks:.* knip( |$)' "$ROOT/mk/frontend.mk" ||
   ! grep -q 'pnpm codegen && pnpm knip' "$ROOT/mk/frontend.mk" ||
   ! grep -q 'pnpm lint && pnpm knip' "$ROOT/mk/frontend.mk" ||
   ! grep -q 'pnpm lint && pnpm knip' "$ROOT/scripts/agent.sh"; then
@@ -93,7 +94,7 @@ for unknown_path in unexpected/new-runtime/file.xyz scripts/unclassified-helper.
   fi
 done
 
-stdin_output="$(printf '%s\n' internal/suggest/score.go docs/contributing/testing.md | "$CLASSIFIER")"
+stdin_output="$(printf '%s\n' internal/proposals/suggest/score.go docs/contributing/testing.md | "$CLASSIFIER")"
 stdin_selected="$(awk -F= '$2 == "true" { if (selected != "") selected = selected ","; selected = selected $1 } END { print selected }' <<<"$stdin_output")"
 if [[ "$stdin_selected" != 'contracts,go,postgres,image,docs' ]]; then
   printf 'ci-impact-test: stdin paths: got %s, want contracts,go,postgres,image,docs\n' "$stdin_selected" >&2
@@ -107,7 +108,7 @@ while IFS= read -r decision; do
     exit 1
   }
 done <<<"$all_output"
-if "$CLASSIFIER" --all internal/suggest/ground.go >/dev/null 2>&1; then
+if "$CLASSIFIER" --all internal/proposals/suggest/ground.go >/dev/null 2>&1; then
   echo 'ci-impact-test: --all unexpectedly accepted a path' >&2
   exit 1
 fi

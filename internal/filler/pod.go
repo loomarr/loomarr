@@ -5,39 +5,53 @@ import (
 	"sort"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
-// Exposure is one clip's durable actual-airing history on a channel (§10 V58).
-// It is an aggregate rather than an event log: rotation needs recency and whether a clip is new,
-// while the existing global Clip counters remain the operator-facing all-channel totals.
+// Exposure is one clip's watched-airing history across the household, as one break sees it (§10
+// rotation): how many of its stored airings count, and the latest. Rotation needs recency and
+// whether a clip is new; the global Clip counters remain the operator-facing totals.
 type Exposure struct {
 	PlayCount    int64
 	LastPlayedAt time.Time
 }
 
-// ExposureRecord is one clip's stored aggregate on a channel, which playout writes through the core
-// store (see clipcatalog.ExposureRecord).
-type ExposureRecord = clipcatalog.ExposureRecord
+// Airing is one watched airing of a clip on any channel (see clipcatalog.Airing).
+type Airing = clips.Airing
 
-// ExposuresBefore is the history strictly before `before`, cut from the stored aggregates. A zero
-// cutoff returns all history. The strict boundary keeps a break's snapshot immutable while that
-// break airs, so a rebuild cannot reshuffle its tail.
+// AiringHistory is the household's stored airings and how long one takes to settle: an airing
+// recorded less than Settle before a break starts may have been recorded after that break's first
+// clip was resolved, so the break does not count it.
+type AiringHistory struct {
+	Airings []Airing
+	Settle  time.Duration
+}
+
+// ExposuresBefore is the history a break starting at `before` ranks by: every airing that aired
+// strictly before it and was recorded at least Settle before it. A zero cutoff counts all history.
 //
-// ⚠ Pure and in the domain (#1420) so one read of the records can serve every break of a guide
+// ⚠ Both cuts keep a break's snapshot fixed while the break airs, which a rebuild relies on: the
+// pod is assembled again at every clip's resolve, and a changed snapshot would reshuffle its tail.
+// An airing at or after the break's start is the break's own (or later). An airing recorded after
+// the break's first clip was resolved can come from ANOTHER channel with an earlier start: a viewer
+// who tunes in there mid-clip records that clip, aired minutes ago, now. Playout resolves a break's
+// first clip no earlier than its run-ahead before the break, which Settle covers.
+//
+// ⚠ Pure and in the domain (#1420) so one read of the history can serve every break of a guide
 // window: the cut used to live in the store query, which forced one query per break.
-func ExposuresBefore(records map[string]ExposureRecord, before time.Time) map[string]Exposure {
-	out := make(map[string]Exposure, len(records))
-	for hash, r := range records {
-		count, last := r.PlayCount, r.LastPlayedAt
-		if !before.IsZero() && !last.Before(before) {
-			count--
-			last = r.PreviousPlayedAt
-		}
-		if count <= 0 || last.IsZero() {
+func ExposuresBefore(h AiringHistory, before time.Time) map[string]Exposure {
+	out := map[string]Exposure{}
+	for _, a := range h.Airings {
+		if !before.IsZero() && (!a.AiredAt.Before(before) || !a.RecordedAt.Before(before.Add(-h.Settle))) {
 			continue
 		}
-		out[hash] = Exposure{PlayCount: count, LastPlayedAt: last}
+		e := out[a.ClipHash]
+		e.PlayCount++
+		if a.AiredAt.After(e.LastPlayedAt) {
+			e.LastPlayedAt = a.AiredAt
+		}
+		out[a.ClipHash] = e
 	}
 	return out
 }
@@ -83,7 +97,7 @@ type PodEntry struct {
 	Name            string
 	// NameSource is the catalogue provenance of Name (#1988): viewer routes show Name only when
 	// it is not a filename (ViewerName).
-	NameSource     clipcatalog.NameSource
+	NameSource     clips.NameSource
 	Kind           Kind
 	DurationMs     int64
 	IsFallbackCard bool // the embedded default bumper card (bottom of the ladder)
@@ -106,6 +120,11 @@ type PodEntry struct {
 	// RotationPinned distinguishes an intentional operator override from pool-pressure relaxation.
 	RecentRepeat   bool
 	RotationPinned bool
+	// variants are the clip's other versions (Clip.Variants), reserved with it so a break never
+	// carries two versions of one ad. Unexported: assembly state, not part of what a break shows.
+	variants []string
+	// stationSegment marks a station's own material, which a break holds at most one of (#2065).
+	stationSegment bool
 }
 
 // MatchLevel records how the pod was filled — the fallback ladder rung reached
@@ -117,7 +136,7 @@ const (
 	MatchExact      MatchLevel = "exact"       // exact-era + audience matches filled the pod
 	MatchWidened    MatchLevel = "widened"     // era widened to the decade / any-era to fill
 	MatchAudience   MatchLevel = "audience"    // any appropriate-audience clip, era ignored
-	MatchBumperCard MatchLevel = "bumper_card" // only the embedded fallback card — never dead air
+	MatchBumperCard MatchLevel = "bumper_card" // no ad fits: station material, else the embedded card — never dead air
 )
 
 // Window describes the break to fill (§10). It carries the deterministic seed
@@ -133,6 +152,8 @@ type Window struct {
 	EraWindows []EraRange
 	Audience   Audience
 	Geography  Geography
+	// Language is the channel's commercial language; "" inherits Policy.Language (language_boundary.go).
+	Language string
 	// GapMs is the flex gap to fill.
 	GapMs int64
 	// BreaksMax caps clips per pod (FILLER_POD_MAX, §15).
@@ -149,16 +170,25 @@ type Window struct {
 	Kinds      []string
 	Pinned     []string
 	Excluded   []string
-	// Exposures is the durable per-channel snapshot strictly before SnapshotAt (§10 V58).
+	// Exposures is the household's snapshot before SnapshotAt (§10 rotation, ExposuresBefore).
 	// SnapshotAt is the break start, not wall-clock planning time, so a rebuild is deterministic.
 	Exposures  map[string]Exposure
 	SnapshotAt time.Time
+	// Season is the household calendar at the break's start (season.go). The zero value names no
+	// holiday, so every clip is year-round.
+	Season schedule.HolidaySeason
 }
 
 // Policy tunes assembly (from §15 FILLER_* + per-channel pod policy).
 type Policy struct {
 	// Geography is the live Installation default. Empty preserves legacy behaviour.
 	Geography Geography
+	// Language is the household's commercial language (`filler.language`), every channel's default.
+	// Empty is no language boundary on a channel that names none.
+	Language string
+	// LocalStations resolves a place to the broadcast stations within the local radius
+	// (`filler.local_radius_km`). Nil means no clip is local anywhere.
+	LocalStations LocalStations
 	// MinClipMs/MaxClipMs bound which clips are eligible (density, §10) — wired from
 	// `filler.min_clip_seconds`/`filler.max_clip_seconds` (§15, V51f).
 	//
@@ -194,6 +224,9 @@ type Policy struct {
 	// Cooldown is a preference, never permission to leave a break empty. Rotation ranks new clips,
 	// then least-recently played clips outside this interval, then deterministically relaxes it.
 	Cooldown time.Duration
+	// Calendar is the household's holiday calendar, the one programming reads (#2030): it dates
+	// each break's Window.Season.
+	Calendar schedule.Calendar
 }
 
 // FallbackCard is the embedded default bumper-card asset (§10): Loomarr ships one
@@ -201,7 +234,7 @@ type Policy struct {
 // ladder exists on day one. Operators can replace it per channel.
 var FallbackCard = PodEntry{
 	Name:           "Loomarr — We'll be right back",
-	NameSource:     clipcatalog.NameFromCurated, // product copy, written by a person
+	NameSource:     clips.NameFromCurated, // product copy, written by a person
 	Kind:           Bumper,
 	DurationMs:     5000, // 5s card
 	IsFallbackCard: true,
@@ -225,7 +258,7 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	rng := rand.New(rand.NewSource(w.Seed))
 
 	// The outer boundary: no pin or relaxed ladder rung may bypass geography.
-	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
+	catalog = filterGeography(catalog, policy.area(w.Geography))
 
 	// Per-channel selection (§10), all no-ops when unset:
 	//  - EXCLUDE: seed the no-repeat set with the excluded ids. Because `used` is
@@ -237,10 +270,13 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	}
 	//  - KINDS: narrow the catalog to the selected kinds before anything picks from
 	//    it, so the choice shapes bumpers (pickBumper) as well as the commercial fill.
-	catalog = filterKinds(catalog, w.Kinds)
+	catalog = filterKinds(catalog, w.Kinds, policy.area(w.Geography).Stations)
 
 	// Intro bumper (best-effort — a matched bumper if we have one).
-	intro, hasIntro := pickBumper(catalog, w, policy, used, rng)
+	// A station segment closes a break, before the programme returns; it never opens one (#2065).
+	introUsed := cloneSet(used)
+	introUsed[stationSegmentKey] = true
+	intro, hasIntro := pickBumper(catalog, w, policy, introUsed, rng)
 	if hasIntro && intro.DurationMs > w.GapMs {
 		hasIntro = false
 	}
@@ -284,8 +320,18 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 		}
 	}
 
-	// Bottom of the ladder: nothing content-bearing fits (no pins, no commercials), so the pod is
-	// just the embedded card and the break is never empty (§10 never dead air).
+	// No ad fits, so the break is the channel's own station material, resting or not (#2036). It
+	// still reports bumper_card, since no ad matched, but it plays: the card has no file.
+	trial := cloneSet(used)
+	if pod, ok := stationBreak(catalog, w, policy, trial, rng); ok {
+		for id := range trial {
+			used[id] = true
+		}
+		return pod
+	}
+
+	// Bottom of the ladder: nothing at all fits, so the pod is just the embedded card and the
+	// break is never empty (§10 never dead air).
 	pod := Pod{MatchLevel: MatchBumperCard}
 	pod.append(FallbackCard, used)
 	return pod
@@ -323,10 +369,18 @@ func cloneSet(in map[string]bool) map[string]bool {
 	return out
 }
 
-// reserve keeps a clip out of every later pick. "" is not an identity (the same guard append has).
+// reserve keeps a clip, and every other version of its ad, out of every later pick. "" is not an
+// identity.
 func reserve(used map[string]bool, e PodEntry) {
-	if e.Hash != "" {
-		used[e.Hash] = true
+	if e.Hash == "" {
+		return
+	}
+	used[e.Hash] = true
+	for _, v := range e.variants {
+		used[v] = true
+	}
+	if e.stationSegment {
+		used[stationSegmentKey] = true
 	}
 }
 
@@ -351,10 +405,12 @@ func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool
 	pinWindow := w
 	pinWindow.GapMs -= pod.TotalMs + returnMs
 	pinned := pickPinned(catalog, pinWindow, policy, used)
+	var share seasonShare
 	for _, c := range pinned {
 		e := clipToEntry(c, w, policy)
 		e.RotationPinned = true
 		pod.append(e, used)
+		share.add(c, w)
 	}
 
 	// Fill the rest with matched commercials from the tightest non-empty pool,
@@ -370,7 +426,7 @@ func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool
 	pools := candidatePools(catalog, remaining, policy)
 	if remainMax := w.PodMax - len(pinned); remainMax > 0 {
 		remaining.PodMax = remainMax
-		level, commercials = fillCommercials(pools, remaining, policy, used, rng)
+		level, commercials = fillCommercials(pools, remaining, policy, used, rng, &share)
 		if level != "" {
 			pod.MatchLevel = level
 		}
@@ -392,7 +448,8 @@ func assembleBreak(catalog []Clip, w Window, policy Policy, used map[string]bool
 
 	// Spend what the ads left. A break is a slot of fixed length, and the card/flex that filled
 	// whatever the ads could not was the "commercial breaks feel short" complaint.
-	pod.fillTail(catalog, pools, w, policy, used, rng, w.GapMs-pod.TotalMs-returnMs, len(pinned)+len(commercials))
+	pod.fillTail(catalog, pools, w, policy, used, rng, w.GapMs-pod.TotalMs-returnMs, len(pinned)+len(commercials), &share)
+	pod.stationSegmentLast()
 
 	if ret != nil {
 		pod.append(*ret, used)
@@ -426,7 +483,7 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 			break
 		}
 		c, ok := byID[id]
-		if !ok || used[id] || !durationEligible(c, policy) {
+		if !ok || taken(used, c) || !durationEligible(c, policy) {
 			continue
 		}
 		if totalMs+c.DurationMs > budget {
@@ -434,9 +491,21 @@ func pickPinned(catalog []Clip, w Window, policy Policy, used map[string]bool) [
 		}
 		out = append(out, c)
 		totalMs += c.DurationMs
-		used[id] = true // reserve so the ladder fill + return bumper don't reuse it
+		// Reserve (with its variants) so later pins, the ladder fill and the return bumper skip it.
+		reserve(used, PodEntry{Hash: id, variants: c.Variants})
 	}
 	return out
+}
+
+// stationSegmentLast moves the break's one station segment to the end of its body, so it airs last
+// before the return bumper (#2065). A station segment that is itself the return bumper is already there.
+func (p *Pod) stationSegmentLast() {
+	for i, e := range p.Entries {
+		if e.stationSegment {
+			p.Entries = append(append(p.Entries[:i:i], p.Entries[i+1:]...), e)
+			return
+		}
+	}
 }
 
 func (p *Pod) append(e PodEntry, used map[string]bool) {
@@ -448,9 +517,7 @@ func (p *Pod) append(e PodEntry, used map[string]bool) {
 	// ⚠ Reserve by HASH — the identity `used` is keyed on everywhere (pinned/excluded seed it with
 	// hashes). PodEntry carries both; keying on Path here let a clip pinned/excluded by hash slip the
 	// reservation (it never matched), so no-repeat and exclusion were both silently broken (§10 V45a).
-	if e.Hash != "" {
-		used[e.Hash] = true
-	}
+	reserve(used, e)
 }
 
 func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
@@ -462,16 +529,18 @@ func clipToEntry(c Clip, w Window, policy Policy) PodEntry {
 		// a clip cannot reach the hover card with its metadata mysteriously absent.
 		Era: c.Era, Quality: c.Quality,
 		Brand: c.Brand, Audience: c.Audience, Category: c.Category, VisibleText: c.VisibleText,
-		RecentRepeat: tier == rotationRecent,
+		RecentRepeat:   tier == rotationRecent,
+		variants:       c.Variants,
+		stationSegment: isStationSegment(c),
 	}
 }
 
-// bookendCandidates is every unused bumper/station-id the window may draw on: the era-matching
-// ones when there are any, else all of them.
-func bookendCandidates(catalog []Clip, w Window, used map[string]bool) []Clip {
+// bookendCandidates is every unused, in-season-or-year-round bumper/station-id in the channel's
+// language the window may draw on: the era-matching ones when there are any, else all of them.
+func bookendCandidates(catalog []Clip, w Window, policy Policy, used map[string]bool) []Clip {
 	var bumpers []Clip
 	for _, c := range catalog {
-		if c.IsBumper() && !used[c.ID()] {
+		if c.IsBumper() && !taken(used, c) && !outOfSeason(c, w) && speaksTheChannelsLanguage(c, w, policy) {
 			bumpers = append(bumpers, c)
 		}
 	}
@@ -484,7 +553,7 @@ func bookendCandidates(catalog []Clip, w Window, used map[string]bool) []Clip {
 // pickBumper chooses a bumper/station-id for a pod bookend, preferring era match,
 // avoiding no-repeat, deterministic under rng. Returns ok=false if none exist.
 func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (PodEntry, bool) {
-	bumpers := bookendCandidates(catalog, w, used)
+	bumpers := bookendCandidates(catalog, w, policy, used)
 	if len(bumpers) == 0 {
 		return PodEntry{}, false
 	}
@@ -502,4 +571,27 @@ func pickBumper(catalog []Clip, w Window, policy Policy, used map[string]bool, r
 		best++
 	}
 	return clipToEntry(bumpers[rng.Intn(best)], w, policy), true
+}
+
+// stationBreak fills a break that has no ad with bumpers and idents, in rotation order: never
+// aired, then least recently aired, resting ones last but still placed. A short pool is what puts
+// a break here (#2036), and a repeated ident is better than the card. It reports false when no
+// station clip fits.
+func stationBreak(catalog []Clip, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (Pod, bool) {
+	cands := sortByID(bookendCandidates(catalog, w, policy, used))
+	rng.Shuffle(len(cands), func(i, j int) { cands[i], cands[j] = cands[j], cands[i] })
+	sort.SliceStable(cands, func(i, j int) bool { return rotationLess(cands[i], cands[j], w, policy) })
+	pod := Pod{MatchLevel: MatchBumperCard}
+	remainingMs := w.GapMs
+	for _, c := range cands {
+		if len(pod.Entries) >= maxTailClips {
+			break
+		}
+		if used[c.ID()] || c.DurationMs <= 0 || c.DurationMs > remainingMs {
+			continue
+		}
+		pod.append(clipToEntry(c, w, policy), used)
+		remainingMs -= c.DurationMs
+	}
+	return pod, len(pod.Entries) > 0
 }

@@ -23,13 +23,13 @@ const OverlayWorkshop = ({
 }: OverlayWorkshopProps) => {
   const [visible, setVisible] = useState(initialVisible);
   return (
-    <Screen density={density} gap="$section">
+    <Screen density={density} gap="section">
       <Surface
-        backgroundColor="$surfaceElevated"
+        backgroundColor="surfaceElevated"
         flex={1}
-        gap="$section"
+        gap="section"
         justifyContent="center"
-        padding="$section"
+        padding="section"
       >
         <Text density={density} textRole="metadata" tone="live">
           PLAYBACK REMAINS MOUNTED

@@ -1,10 +1,10 @@
 import { pluralize } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { PullCardProps } from "./pull-card.type";
@@ -27,7 +27,7 @@ const PullCard = ({
   onEditedChange,
   deciding,
   error,
-  className,
+  flat = false,
 }: PullCardProps) => {
   // Which rows the operator has struck out, held locally until they commit. ⚠ Not sent as they
   // click: a pull is decided in one act, and a per-click PATCH would make "half-approved" a
@@ -60,12 +60,17 @@ const PullCard = ({
   return (
     // A named group so a screen reader announces which pull it has entered — several cards share
     // identical "Not now" / "Approve pull" buttons, and the title is the only thing telling them apart.
-    <Card role="group" aria-labelledby={titleId} className={cn("flex flex-col gap-3 p-4", className)}>
+    <Card
+      aria-labelledby={titleId}
+      gap={12}
+      role="group"
+      {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}
+    >
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="lock">Filler pull</Badge>
-            <span id={titleId} className="font-semibold text-sm">
+            <span id={titleId} className="text-sm font-semibold">
               {pull.title}
             </span>
             {edited && <Badge variant="suggest">Edited</Badge>}
@@ -99,7 +104,7 @@ const PullCard = ({
 
       {/* Why this pull exists. "Approve this" without a reason is a button, not a decision. */}
       {pull.reason && (
-        <p className="rounded-md bg-muted/40 p-3 text-muted-foreground text-sm">{pull.reason}</p>
+        <p className="bg-muted/40 text-muted-foreground rounded-md p-3 text-sm">{pull.reason}</p>
       )}
 
       <ul className="flex flex-col gap-2">
@@ -124,7 +129,7 @@ const PullCard = ({
                 size="sm"
                 disabled={deciding}
                 onClick={() => toggleDropped(id)}
-                aria-label={isDropped ? `Put ${row.name} back` : `Leave ${row.name} out`}
+                aria-label={isDropped ? `Put back ${row.name}` : `Leave out ${row.name}`}
               >
                 {isDropped ? "Put back" : "Leave out"}
               </Button>
@@ -134,8 +139,8 @@ const PullCard = ({
       </ul>
 
       {(pull.rejected?.length ?? 0) > 0 && (
-        <details className="rounded-md border border-border px-3 py-2 text-sm">
-          <summary className="cursor-pointer text-muted-foreground">
+        <details className="border-border rounded-md border px-3 py-2 text-sm">
+          <summary className="text-muted-foreground cursor-pointer">
             {pluralize(pull.rejected?.length ?? 0, "other candidate")} considered and excluded
           </summary>
           <ul className="mt-2 flex flex-col gap-1">
@@ -152,8 +157,8 @@ const PullCard = ({
       )}
 
       {skippedSources.length > 0 && (
-        <details className="rounded-md border border-border px-3 py-2 text-sm">
-          <summary className="cursor-pointer text-muted-foreground">
+        <details className="border-border rounded-md border px-3 py-2 text-sm">
+          <summary className="text-muted-foreground cursor-pointer">
             {pluralize(skippedSources.length, "registered source")} not searched
           </summary>
           <ul className="mt-2 flex flex-col gap-1">

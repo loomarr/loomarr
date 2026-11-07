@@ -2,13 +2,6 @@ import type { CreateInvitationInputBodyKind } from "@loomarr/api/models/createIn
 import type { CreateInvitationInputBodyRole } from "@loomarr/api/models/createInvitationInputBodyRole";
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueInvitationGrantOutputBody";
-import { QrCode } from "@loomarr/design-system/qr-code-web";
-import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
-import { useId, useRef, useState } from "react";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -18,7 +11,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { QrCode } from "@loomarr/design-system/qr-code-web";
+import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -173,14 +173,13 @@ const InvitationDialog = ({
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       {controlledOpen === undefined && (
-        <DialogTrigger render={<Button />}>
-          <UserPlus aria-hidden /> Invite person
+        <DialogTrigger>
+          <Button>
+            <UserPlus aria-hidden /> Invite person
+          </Button>
         </DialogTrigger>
       )}
-      <DialogContent
-        portalContainer={portalContainer}
-        className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-auto"
-      >
+      <DialogContent portalContainer={portalContainer} size="form">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
@@ -192,8 +191,8 @@ const InvitationDialog = ({
         {!invitation ? (
           <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)}>
             <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="mb-2 font-medium text-sm">Credential path</legend>
-              <Label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border p-3">
+              <legend className="mb-2 text-sm font-medium">Credential path</legend>
+              <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
                 <input
                   type="radio"
                   name="invitation-kind"
@@ -204,7 +203,7 @@ const InvitationDialog = ({
                 />
                 Local Loomarr account
               </Label>
-              <Label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border p-3">
+              <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
                 <input
                   type="radio"
                   name="invitation-kind"
@@ -299,7 +298,7 @@ const InvitationDialog = ({
                 />
                 <span>
                   <span className="block font-medium">Also send by email</span>
-                  <span className="block text-muted-foreground text-xs">
+                  <span className="text-muted-foreground block text-xs">
                     QR and copy remain available even if email is disabled or fails.
                   </span>
                 </span>
@@ -308,8 +307,10 @@ const InvitationDialog = ({
 
             {problem != null && <ErrorState error={problem} className="p-4" />}
             <DialogFooter>
-              <DialogClose render={<Button type="button" variant="outline" disabled={busy} />}>
-                Cancel
+              <DialogClose>
+                <Button type="button" variant="outline" disabled={busy}>
+                  Cancel
+                </Button>
               </DialogClose>
               <Button type="submit" disabled={busy}>
                 {busy ? "Creating…" : "Create invitation"}
@@ -318,16 +319,18 @@ const InvitationDialog = ({
           </form>
         ) : terminal ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-border bg-static-900 p-5">
+            <div className="border-border bg-static-900 rounded-lg border p-5">
               <p className="font-medium">
                 Invitation {invitation.status === "revoked" ? "revoked" : invitation.status}
               </p>
-              <p className="mt-1 text-muted-foreground text-sm">
+              <p className="text-muted-foreground mt-1 text-sm">
                 This invitation can no longer issue a QR code or copied link.
               </p>
             </div>
             <DialogFooter>
-              <DialogClose render={<Button type="button" />}>Done</DialogClose>
+              <DialogClose>
+                <Button type="button">Done</Button>
+              </DialogClose>
             </DialogFooter>
           </div>
         ) : grant ? (
@@ -357,13 +360,13 @@ const InvitationDialog = ({
             </div>
 
             {emailProblem && (
-              <p role="alert" className="rounded-lg border border-destructive/50 p-3 text-sm">
+              <p role="alert" className="border-destructive/50 rounded-lg border p-3 text-sm">
                 The invitation is ready, but email could not be queued. Share this QR code or copied link.
               </p>
             )}
             {problem != null && <ErrorState error={problem} className="p-4" />}
 
-            <DialogFooter className="flex-wrap justify-between">
+            <DialogFooter spread>
               <Button type="button" variant="destructive" disabled={busy} onClick={() => void revoke()}>
                 <Trash2 aria-hidden /> Revoke invitation
               </Button>
@@ -379,7 +382,7 @@ const InvitationDialog = ({
                 <Button
                   type="button"
                   disabled={busy}
-                  aria-label={copied ? "Copied" : "Copy invitation link"}
+                  aria-label={copied ? "Copied" : "Copy link to this invitation"}
                   onClick={async () => {
                     setProblem(undefined);
                     try {
@@ -400,9 +403,9 @@ const InvitationDialog = ({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-lg border border-border bg-static-900 p-5">
+            <div className="border-border bg-static-900 rounded-lg border p-5">
               <p className="font-medium">{busy ? "Preparing a private link…" : "Ready to share"}</p>
-              <p className="mt-1 text-muted-foreground text-sm">
+              <p className="text-muted-foreground mt-1 text-sm">
                 Generating a new link invalidates every earlier copied, QR, or email link for this invitation.
               </p>
             </div>

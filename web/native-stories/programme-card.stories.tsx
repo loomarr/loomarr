@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from "@storybook/react-native";
 const Artwork = () => (
   <Surface
     alignItems="center"
-    backgroundColor="$surfaceElevated"
+    backgroundColor="surfaceElevated"
     borderWidth={0}
     flex={1}
     justifyContent="center"

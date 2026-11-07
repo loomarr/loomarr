@@ -29,7 +29,7 @@ services:
   # so installation and publication cannot drift into different definitions of
   # an exact beta version.
   loomarr-version-check:
-    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+    image: busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
     command:
       - sh
       - /check-release-tag.sh
@@ -44,7 +44,7 @@ services:
   # topology until shared jobs, schedulers, playout, and file state pass the scale
   # investigation in project/plans/multi-replica-readiness.md.
   traefik:
-    image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
+    image: traefik:v3.7.16@sha256:1336e85aaed293bd63d005086e0dd013b04078b26aaeb1c18b26a2f928af7e65
     command:
       - --api.dashboard=false
       - --entrypoints.web.address=:8080
@@ -78,7 +78,7 @@ services:
   # A new named volume is root-owned; the Debian nonroot binary can't create
   # /data/loomarr.db without this one-shot chown. sqlite-only (postgres has no /data).
   loomarr-init:
-    image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+    image: busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
     profiles: ["sqlite"]
     command: ["sh", "-c", "chown -R 65532:65532 /data"]
     volumes: ["loomarr-data:/data"]
@@ -213,7 +213,7 @@ services:
 
   # ---- postgres profile ----
   postgres:
-    image: postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
     profiles: ["postgres"]
     environment:
       POSTGRES_DB: loomarr

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   channelNumber,
+  formatAgo,
   formatClipDuration,
   formatCompactCount,
   formatDuration,
@@ -13,11 +14,49 @@ import {
   formatRuntime,
   formatUntil,
   formatUptime,
+  goDurationMinutes,
   humanizeRelaxation,
   humanizeSettingKey,
+  languageLabel,
   parseMmSs,
   pluralize,
+  tidyGoDuration,
 } from "./format";
+
+describe("Go-duration wire strings", () => {
+  it("drops the zero units Go's Duration.String() writes", () => {
+    expect(tidyGoDuration("30h0m0s")).toBe("30h");
+    expect(tidyGoDuration("1h30m0s")).toBe("1h30m");
+    expect(tidyGoDuration("168h")).toBe("168h");
+  });
+
+  it("reads a zero or absent duration as empty, for the caller to name", () => {
+    expect(tidyGoDuration(undefined)).toBe("");
+    expect(tidyGoDuration("0s")).toBe("");
+    expect(tidyGoDuration("0h0m0s")).toBe("");
+  });
+
+  it("leaves text that is not a duration visible", () => {
+    expect(tidyGoDuration("a week")).toBe("a week");
+  });
+
+  it("counts minutes in the long and short forms", () => {
+    expect(goDurationMinutes("4h0m0s")).toBe(240);
+    expect(goDurationMinutes("1h30m0s")).toBe(90);
+    expect(goDurationMinutes("2m")).toBe(2);
+    expect(goDurationMinutes("1.5h")).toBe(90);
+    expect(goDurationMinutes("90s")).toBe(1.5);
+    expect(goDurationMinutes(" 4h ")).toBe(240);
+    expect(goDurationMinutes("0")).toBe(0);
+    expect(goDurationMinutes("0s")).toBe(0);
+  });
+
+  it("refuses anything else rather than guessing", () => {
+    expect(goDurationMinutes(undefined)).toBeUndefined();
+    expect(goDurationMinutes("")).toBeUndefined();
+    expect(goDurationMinutes("4 hours")).toBeUndefined();
+  });
+});
 
 describe("formatters", () => {
   it("formats durations", () => {
@@ -63,6 +102,15 @@ describe("formatters", () => {
     expect(formatRelative("2026-07-17T11:57:00Z", now)).toBe("3m ago");
     expect(formatRelative("2026-07-17T10:00:00Z", now)).toBe("2h ago");
     expect(formatRelative("2026-07-12T12:00:00Z", now)).toBe("5d ago");
+  });
+
+  it("formats relative time in whole words for household copy", () => {
+    const now = new Date("2026-07-17T12:00:00Z").getTime();
+    expect(formatAgo("2026-07-17T11:59:30Z", now)).toBe("just now");
+    expect(formatAgo("2026-07-17T11:59:00Z", now)).toBe("1 minute ago");
+    expect(formatAgo("2026-07-17T11:48:00Z", now)).toBe("12 minutes ago");
+    expect(formatAgo("2026-07-17T11:00:00Z", now)).toBe("1 hour ago");
+    expect(formatAgo("2026-07-12T12:00:00Z", now)).toBe("5 days ago");
   });
 
   it("humanizes settings keys, upper-casing acronyms", () => {
@@ -234,5 +282,22 @@ describe("humanizeRelaxation", () => {
       from: "5m",
       to: "none",
     });
+  });
+});
+
+describe("languageLabel", () => {
+  it("resolves a language code to a human name via Intl (not a hardcoded table)", () => {
+    expect(languageLabel("en")).toBe("English");
+    expect(languageLabel("eng")).toBe("English");
+  });
+
+  it("falls back to the upper-cased code when Intl can't resolve it", () => {
+    // A made-up tag Intl cannot map — better to show the raw code than crash or blank.
+    expect(languageLabel("zzx")).toBe("ZZX");
+  });
+
+  it("renders 'Unknown' for an untagged (empty) track", () => {
+    expect(languageLabel("")).toBe("Unknown");
+    expect(languageLabel("   ")).toBe("Unknown");
   });
 });

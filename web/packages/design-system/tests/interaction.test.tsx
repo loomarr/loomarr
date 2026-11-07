@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { Action, ChoiceGroup, Field, FieldHint, LoomarrProvider, semanticColors, Toggle } from "../index";
+import { declarationsOf, tagBefore } from "./support/atomic-css";
 
 describe("shared interaction controls", () => {
   it("publishes selected and disabled action state without corrupting its label", () => {
@@ -86,12 +87,13 @@ describe("shared interaction controls", () => {
     );
 
     for (const text of ["One episode a day.", "Spread across the day."]) {
-      const tag = markup.match(new RegExp(`<[^>]*>(?=${text.replace(".", "\\.")})`))?.[0] ?? "";
+      const tag = tagBefore(markup, text);
+      const styles = declarationsOf(markup, tag);
       expect(tag).toContain("font_body");
       expect(tag).not.toContain("font_data");
-      expect(tag).toContain("_fs-12px");
-      expect(tag).toContain("_fw-400");
-      expect(tag).toContain("_lh-16px");
+      expect(styles).toContain("font-size:12px");
+      expect(styles).toContain("font-weight:400");
+      expect(styles).toContain("line-height:16px");
     }
   });
 

@@ -4,15 +4,15 @@ import {
   getChannelTracksMockHandler,
   getChannelUpcomingMockHandler,
   getDiscoverFillerMockHandler,
-  getFillerDecisionActivityMockHandler,
-  getFillerDecisionDiagnosticsMockHandler,
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetFillerSplitMockHandler,
+  getGetLibraryItemMockHandler,
   getGetPlayoutStatusMockHandler,
   getGetProgrammingVocabularyMockHandler,
   getGetProposalJobMockHandler,
   getImportCandidatesMockHandler,
+  getLibraryStatusMockHandler,
   getListChannelsMockHandler,
   getListDiagnosticEventsMockHandler,
   getListDiscoveryFeedbackMockHandler,
@@ -21,6 +21,9 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListLibraryCollectionsMockHandler,
+  getListLibraryItemsMockHandler,
+  getListLibraryNeedsMockHandler,
+  getListLibraryRootsMockHandler,
   getListTaxonomyMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
@@ -43,6 +46,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
+import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { libraryStatus } from "@/test/fixtures/library";
 import { setting } from "@/test/fixtures/settings";
 import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -126,6 +131,8 @@ const stubReachable = () => {
       id: "sp-1",
       clipHash: "comp-hash",
       createdAt: "2026-07-25T20:00:00Z",
+      checkedLanguages: [],
+      currentLanguages: [],
       segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
     }),
     getDiscoverFillerMockHandler({
@@ -181,19 +188,6 @@ const stubReachable = () => {
       },
       recentlyReady: { rows: [], total: 0 },
     } as never),
-    getFillerDecisionActivityMockHandler({
-      rows: [
-        {
-          id: "automatic-admit-event",
-          decisionId: "automatic-admit-decision",
-          clipHash: "auto-hash",
-          kind: "automatic_admit",
-          createdAt: "2026-08-25T12:00:00Z",
-        },
-      ],
-      total: 1,
-    }),
-    getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
     // Both catalog shapes, not an empty catalog: Split belongs to the composite source reel,
     // while pinning belongs to an airable clip. A composite is deliberately excluded from pods,
     // so using one row to assert both doors would require the UI to offer an action that cannot
@@ -281,7 +275,10 @@ const stubReachable = () => {
       level: "exact",
       total: 4,
       rungs: [{ level: "exact", clips: 4 }],
-      geography: { country: "", market: "" },
+      geography: { country: "", place: "" },
+      language: "",
+      undeterminedLanguage: 0,
+      defaultKinds: DEFAULT_KINDS,
       // The per-setting breakdown (V51f). Nothing at zero: this suite is about REACHING screens,
       // not diagnosing a catalog, so the meter should render its ordinary healthy shape.
       criteria: [
@@ -296,6 +293,46 @@ const stubReachable = () => {
     getChannelUpcomingMockHandler({ upcoming: [] }),
     getListFillerPullsMockHandler({ pulls: [], total: 0 }),
     getListLibraryCollectionsMockHandler({ collections: [] }),
+    // Settings → Library: one folder in use, so the page renders its folder card rather than
+    // auto-running a discovery pass.
+    getListLibraryRootsMockHandler({
+      roots: [
+        {
+          path: "/media/movies",
+          inUse: true,
+          readable: true,
+          addedByHand: false,
+          checkedAt: "2026-07-25T19:55:00Z",
+          foundIn: [{ authority: "radarr", path: "/media/movies" }],
+        },
+      ],
+      pathMap: [],
+    }),
+    getLibraryStatusMockHandler(libraryStatus()),
+    // Library and a title's page: one movie, served under any id.
+    getListLibraryItemsMockHandler({
+      items: [{ id: "ch-1", kind: "movie", name: "Paper Kites", year: 1996, files: 1, ready: true }],
+      total: 1,
+    }),
+    // Needs you: one file nothing identifies, with no guess.
+    getListLibraryNeedsMockHandler({
+      needs: [
+        {
+          item: { id: "ch-2", kind: "movie", name: "title_t01", files: 1, ready: false },
+          files: [{ path: "/media/movies/disc2/title_t01.mkv", size: 1, ready: false }],
+          candidates: [],
+          searched: true,
+        },
+      ],
+    }),
+    getGetLibraryItemMockHandler({
+      item: { id: "ch-1", kind: "movie", name: "Paper Kites", year: 1996, files: 1, ready: true },
+      genres: [],
+      files: [],
+      seasons: [],
+      match: { by: "app", app: "radarr", page: "http://radarr.invalid/movie/paper-kites" },
+      detailsFrom: {},
+    }),
     getGetPlayoutStatusMockHandler({
       running: false,
       capability: { encoder: "", hardware: false, maxChannels: 0 },
@@ -346,7 +383,16 @@ const stubReachable = () => {
       totalMs: 0,
       matchLevel: "exact",
       // The draft preview answers with its own coverage since V51f — same selection, one response.
-      coverage: { level: "exact", total: 0, rungs: [], criteria: [], geography: { country: "", market: "" } },
+      coverage: {
+        level: "exact",
+        total: 0,
+        rungs: [],
+        criteria: [],
+        geography: { country: "", place: "" },
+        language: "",
+        undeterminedLanguage: 0,
+        defaultKinds: DEFAULT_KINDS,
+      },
     }),
     // The watch route's audio/subtitle picker (V46) — channel-level tracks, media-derived.
     getChannelTracksMockHandler({ audio: [], subtitles: [] }),
@@ -461,9 +507,6 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
     ["/filler/incoming", /where should this compilation be split/i, "the genuine Incoming choice"],
-    // Automatic outcomes remain visible as plain activity without exposing the runtime mode that
-    // produced them. Keeping this route-level assertion prevents unattended work from disappearing.
-    ["/filler/manage", /added automatically/i, "automatic filler activity"],
     // ⚠ And Incoming itself must be reachable FROM Filler's own navigation, or the assertions
     // above only prove a deep link works. This is the V1/V17a/V23 failure in tab form. The web
     // mock moved it off the tab bar into the Manage hub (#1659), so its entry point is there.
@@ -518,8 +561,8 @@ describe("feature-gated panels mount when their flag is on", () => {
   it("/filler/sources opens an archive source workspace onto its downloads-nothing promise", async () => {
     stubReachable();
     renderAt("/filler/sources");
-    await userEvent.click(await screen.findByRole("button", { name: /^Manage Classic TV Commercials$/i }));
-    await userEvent.click(screen.getByRole("button", { name: /finding a specific clip/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Manage Classic TV Commercials/i }));
+    await userEvent.click(screen.getByRole("button", { name: /find a specific clip/i }));
     const found = await screen.findAllByText(/searching doesn’t download anything/i, undefined, {
       timeout: 3000,
     });
@@ -545,9 +588,9 @@ describe("feature-gated panels mount when their flag is on", () => {
   });
 
   // An admin's bar has every section and marks the one on screen (#1987 changed only what a
-  // member's bar marks on a section it doesn't list; that half is in app-router.test.tsx).
+  // member's bar marks on a section it doesn't list; that half is in app-router.test.tsx). Watch is
+  // not a section since #2088: it is the header's button to its own route.
   it.each([
-    ["watch", "Watch"],
     ["info", "Channel info"],
     ["programming", "Programming"],
     ["filler", "Filler"],
@@ -556,7 +599,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     stubReachable();
     renderAt(`/channels/ch-1/${section}`);
     const sectionBar = await screen.findByRole("navigation", { name: /channel sections/i });
-    await waitFor(() => expect(within(sectionBar).getAllByRole("link")).toHaveLength(5));
+    await waitFor(() => expect(within(sectionBar).getAllByRole("link")).toHaveLength(4));
     expect(within(sectionBar).getAllByRole("link", { current: "page" })).toHaveLength(1);
     expect(within(sectionBar).getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
   });
@@ -597,22 +640,45 @@ describe("feature-gated panels mount when their flag is on", () => {
   // exactly the blind spot this suite exists for.
   it("/channels/ch-1 reaches the channel icon field on the info panel", async () => {
     stubReachable();
-    // ⚠ The INFO path explicitly. The bare `/channels/ch-1` used to land here; since §9.1 V54 it
-    // redirects to Watch, so pointing this at the bare route would silently stop testing the icon
-    // field — it would assert against a player instead, which is how a reachability test quietly
-    // stops covering the thing it is named for. The bare route's own landing is asserted below.
+    // ⚠ The INFO path explicitly, though the bare `/channels/ch-1` lands here too: a reachability
+    // test pinned to a redirect quietly stops covering its field the day the landing moves (it did
+    // once, to Watch, in §9.1 V54). The bare route's own landing is asserted below.
     renderAt("/channels/ch-1/info");
     expect(await screen.findByText("Channel icon")).toBeInTheDocument();
   });
 
-  // ⚠ Opening a channel lands on WATCH (§9.1 V54) — the redirect the bare route performs. Asserted
-  // because the default landing section is a routing DECISION: without this, flipping it back (or
-  // to any other section) breaks nothing, and the guide's channel rows all go through this hop.
-  it("/channels/ch-1 lands on Watch", async () => {
+  // ⚠ Opening a channel lands on CHANNEL INFO (#2088): Watch is its own full-bleed route now.
+  // Asserted because the default landing section is a routing DECISION: without this, flipping it
+  // (or to any other section) breaks nothing, and the guide's channel rows all go through this hop.
+  it("/channels/ch-1 lands on Channel info", async () => {
     stubReachable();
     const router = renderAt("/channels/ch-1");
-    await screen.findByRole("heading", { name: /Watch/i });
-    await waitFor(() => expect(at(router)).toContain("/channels/ch-1/watch"));
+    expect(await screen.findByText("Channel icon")).toBeInTheDocument();
+    await waitFor(() => expect(at(router)).toContain("/channels/ch-1/info"));
+  });
+
+  // The channel header carries Watch and the media-server hand-off (#2088), which replaced the Watch
+  // tab and its footer. The hand-off opens the configured front door in a new tab.
+  it("/channels/ch-1 offers Watch and the media-server hand-off in its header", async () => {
+    stubReachable();
+    renderAt("/channels/ch-1/info");
+    // By text, not role: a role query walks this page's whole accessibility tree on every retry.
+    const handOff = (await screen.findByText("Open in your media server")).closest("a");
+    expect(handOff).toHaveAttribute("href", "http://emby:8096");
+    expect(handOff).toHaveAttribute("target", "_blank");
+    // Beside it in the header (the rail has a Watch link of its own).
+    const header = handOff?.parentElement as HTMLElement;
+    expect(within(header).getByText("Watch").closest("a")).toHaveAttribute("href", "/watch/ch-1");
+  });
+
+  // The full-bleed player (#2088): reached from the channel header's Watch button, and from an old
+  // `/channels/:id/watch` bookmark, which redirects. The app shell steps aside: no Primary nav.
+  it("/channels/ch-1/watch reaches the full-bleed player at /watch/ch-1", async () => {
+    stubReachable();
+    const router = renderAt("/channels/ch-1/watch");
+    expect(await screen.findByRole("heading", { name: /Watch/i, level: 1 })).toBeInTheDocument();
+    await waitFor(() => expect(at(router)).toContain("/watch/ch-1"));
+    expect(screen.queryByRole("navigation", { name: "Primary" })).not.toBeInTheDocument();
   });
 
   // The ninth instance, and the one this suite failed to prevent: V7 shipped

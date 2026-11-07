@@ -183,7 +183,7 @@ const SignalLoader = ({
         </Text>
       )}
       {detail ? (
-        <Text marginTop="$inline" density={density} textRole="metadata">
+        <Text marginTop="inline" density={density} textRole="metadata">
           {detail}
         </Text>
       ) : null}

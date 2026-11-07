@@ -102,8 +102,9 @@ _Avoid_: test set, holdout, certification corpus
 **Proposal Job**:
 One caller-owned durable execution of an Intent. Its id is the correlation spine for generation,
 the optional Proposal it produces, and the intent-bound Channel created on approval. A Proposal Job
-may have multiple execution Attempts after worker-loss recovery or a channel Refine, but it is never
-the Proposal itself.
+may have multiple execution Attempts after worker-loss recovery or an admin's edit of the pending
+Proposal, but it is never the Proposal itself. A channel Refine or re-curation is a new Proposal Job
+that names the Channel, never a re-run of the Job that created it.
 _Avoid_: request, suggestion, generation job, Proposal
 
 **Proposal Job Attempt**:
@@ -134,7 +135,7 @@ glossary. `scripts/check-retired.sh` now guards the old path.
 persisted `kind` is `"suggest"` (renaming it is a data migration, and the job is not the
 proposal), and the SSE frame `"suggestion"` reports that job's PHASE — its Go→TS handler pairing
 has no drift guard, so churning it is real risk for no glossary gain. The banned noun is the name
-for the artifact; `internal/suggest` remains the package that produces one.
+for the artifact; `internal/proposals/suggest` remains the package that produces one.
 
 **Grounding**:
 The rule that the model may only pick from candidates a Catalog operation actually returned this
@@ -147,15 +148,17 @@ on approval, never on suggestion (§7).
 _Avoid_: review, confirmation
 
 **Refine**:
-Re-running the Suggester against a stored Intent *plus* the channel's current lineup, to
-adjust rather than replace it (§7, §8.2).
+Re-running the Suggester against the Intent the Channel owns *plus* the channel's current
+lineup, to adjust rather than replace it (§7, §8.2). It is a new Proposal Job that names the Channel.
 _Avoid_: regenerate, retry
 
 ### Channels and programming
 
 **Channel**:
 A Loomarr-owned channel definition — identity, Lineup, and Policy — whose desired state is
-materialized locally and, when Tunarr is selected, projected into a Tunarr channel.
+materialized locally and, when Tunarr is selected, projected into a Tunarr channel. A Channel made
+from a request owns that request's approved Intent and its requester, so neither depends on the
+Proposal Job that produced it.
 _Avoid_: station, feed
 
 **Lineup**:
@@ -213,6 +216,13 @@ _Avoid_: compilation, reel, source clip
 **Segment**:
 A Clip produced by splitting a Composite, carrying lineage back to its parent (§10 V45).
 _Avoid_: cut, chunk, part
+
+**Structure disposition**:
+What the structure decision says about one interval of a Composite: `filler_candidate`,
+`non_filler` or `unresolved`. It decides whether the span may become a Segment, never which kind
+of filler it is. The exact role (commercial, PSA, …) belongs to the final Segment
+(`docs/design/filler-structure.md`, #1069).
+_Avoid_: role, kind (for this coarse answer)
 
 **Taxon** (and **Tag**):
 The clip vocabulary is a **forest of taxa on independent axes** — product, format, seasonal,
@@ -444,24 +454,32 @@ _Avoid_: allocation, downloaded size
 ### Filler geography
 
 **Installation geography**:
-The instance-wide viewer location: a home country and optional local market that constrain automated filler use and supply the default for Channels and Sources without their own geography.
+The instance-wide viewer location: a home country and an optional Place that constrain automated filler use and supply the default for Channels and Sources without their own geography.
 _Avoid_: guide timezone, locale, server location
 
 **Channel geography**:
-The country and optional local market whose viewers a Channel is programmed for. It inherits Installation geography; a Channel may choose a market but cannot escape a configured Installation country.
+The country and optional Place whose viewers a Channel is programmed for. It inherits Installation geography; a Channel may pick its own Place but cannot escape a configured Installation country.
 _Avoid_: station location, timezone, region
 
 **Source geography**:
-The asserted country and optional local market served by a registered filler Source. It constrains acquisition before discovery or download; an unknown Source is ineligible once Installation country is configured.
+The country a registered filler Source asserts it serves. It constrains acquisition before discovery or download; an unknown Source is ineligible once Installation country is configured.
 _Avoid_: provider location, uploader location, inferred locale
 
 **Geographic scope**:
-Whether a Clip is applicable throughout its country (`national`), only inside one named market (`local`), or is not yet known (`unknown`).
+Whether a Clip is applicable throughout its country (`national`), only near one Broadcast station (`local`), or is not yet known (`unknown`).
 _Avoid_: region, location type, reach
 
-**Market**:
-An operator-visible local broadcast area within one country, such as New York or Seattle. It is an explicit identity, never inferred from a timezone.
-_Avoid_: timezone, city (a Market may cover more than one city), region
+**Place**:
+A city or municipality picked from Loomarr's embedded location index, identified by its index id and located by its coordinates. A `local` Clip airs where its Broadcast station's community of license lies within the local radius (`filler.local_radius_km`) of the Place.
+_Avoid_: market (retired: a typed local-area name), DMA, timezone, region
+
+**Broadcast station**:
+An over-the-air TV station from the shipped station directory (#2059), identified by its FCC facility and located at its community of license. Station material recorded off one is local to it. It is never a Loomarr Channel.
+_Avoid_: station (alone; it means a Channel's own idents elsewhere), affiliate, network
+
+**Call sign**:
+The base letters a Broadcast station held for a dated span (WOR until 1987, then WWOR), without licensing suffixes such as -TV. One station holds a call sign at a time; where the directory still shows two at once, a clip naming it resolves to no station rather than a guess.
+_Avoid_: callsign handle, station name, branding
 
 ### People and access
 

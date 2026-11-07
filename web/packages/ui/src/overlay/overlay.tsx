@@ -7,6 +7,7 @@ import {
   Text,
   useReducedMotionPreference,
   useResolvedViewportInsets,
+  ViewportStage,
 } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Modal, View } from "react-native";
@@ -32,13 +33,13 @@ const OverlayActions = ({
   actions?.length ? (
     <Surface
       alignItems="stretch"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       // A phone stacks full-width buttons, as an iOS alert does. Wrapping the column would size every
       // button to the widest label instead.
       flexDirection={density === "touch" ? "column" : "row"}
       flexWrap={density === "touch" ? "nowrap" : "wrap"}
-      gap="$control"
+      gap="control"
     >
       {actions.map((action) => (
         <Action
@@ -68,17 +69,19 @@ const OverlayPanel = ({
   title,
 }: OverlayPanelProps) => (
   <Surface
-    gap="$control"
-    level="overlay"
+    gap="control"
     maxWidth={modal ? (density === "tv" ? 880 : 600) : undefined}
-    padding={density === "tv" ? 32 : "$section"}
+    padding={density === "tv" ? 32 : "section"}
     paddingBottom={contentInsets?.bottom}
     paddingLeft={contentInsets?.left}
     paddingRight={contentInsets?.right}
     paddingTop={contentInsets?.top}
-    borderRadius={edgeToEdge ? 0 : undefined}
+    // Spread, not `borderRadius={… : undefined}`: Tamagui 3 reads an explicit undefined at the call
+    // site as "remove this style", which strips the overlay level's own radius.
+    {...(edgeToEdge ? { borderRadius: 0 } : {})}
     width="100%"
     zIndex={modal ? 1 : undefined}
+    level="overlay"
   >
     {eyebrow ? (
       <Text density={density} textRole="metadata" tone="info">
@@ -123,35 +126,38 @@ const ModalOverlay = ({
       transparent
       visible={visible}
     >
-      <Surface
-        alignItems="center"
-        backgroundColor="$transparent"
-        borderRadius={0}
-        borderWidth={0}
-        flex={1}
-        justifyContent="center"
-        padding="$section"
-      >
-        <View
-          accessibilityElementsHidden
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-          onResponderRelease={dismissible ? onDismiss : undefined}
-          onStartShouldSetResponder={() => dismissible}
-          style={{
-            bottom: 0,
-            left: 0,
-            position: "absolute",
-            right: 0,
-            top: 0,
-          }}
+      {/* A native modal is a root of its own, outside the app's viewport stage. */}
+      <ViewportStage>
+        <Surface
+          alignItems="center"
+          backgroundColor="transparent"
+          borderRadius={0}
+          borderWidth={0}
+          flex={1}
+          justifyContent="center"
+          padding="section"
         >
-          <Surface backgroundColor="$artworkScrim" borderRadius={0} borderWidth={0} flex={1} />
-        </View>
-        <ModalLayer visible={visible}>
-          <OverlayPanel {...content} modal />
-        </ModalLayer>
-      </Surface>
+          <View
+            accessibilityElementsHidden
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            onResponderRelease={dismissible ? onDismiss : undefined}
+            onStartShouldSetResponder={() => dismissible}
+            style={{
+              bottom: 0,
+              left: 0,
+              position: "absolute",
+              right: 0,
+              top: 0,
+            }}
+          >
+            <Surface backgroundColor="artworkScrim" borderRadius={0} borderWidth={0} flex={1} />
+          </View>
+          <ModalLayer visible={visible}>
+            <OverlayPanel {...content} modal />
+          </ModalLayer>
+        </Surface>
+      </ViewportStage>
     </Modal>
   );
 };
@@ -220,14 +226,14 @@ const TransientOverlay = ({
       }}
     >
       <Surface
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderRadius={0}
         borderWidth={0}
+        pointerEvents="box-none"
         onBlur={() => setInteracting(false)}
         onFocus={() => setInteracting(true)}
         onTouchEnd={() => setInteracting(false)}
         onTouchStart={() => setInteracting(true)}
-        pointerEvents="box-none"
       >
         <OverlayPanel
           {...content}

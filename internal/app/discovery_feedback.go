@@ -3,13 +3,14 @@ package app
 import (
 	"context"
 
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 type discoveryFeedbackSource struct{ store store.DiscoveryFeedbackStore }
 
-func (s discoveryFeedbackSource) Signals(ctx context.Context, intent suggest.Intent) ([]suggest.FeedbackSignal, error) {
+func (s discoveryFeedbackSource) Signals(ctx context.Context, intent proposals.Intent) ([]suggest.FeedbackSignal, error) {
 	household, err := s.store.ListDiscoveryFeedback(ctx, store.FeedbackFilter{Scope: store.FeedbackHousehold})
 	if err != nil {
 		return nil, err

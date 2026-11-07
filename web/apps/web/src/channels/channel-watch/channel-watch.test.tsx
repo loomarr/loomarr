@@ -6,21 +6,25 @@ import {
 } from "@loomarr/api/msw";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import type { LivePlaybackState } from "@/components/ui/video-player";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
-import { ChannelWatch } from "./channel-watch";
+import type { WatchPlayer } from "../use-watch-player";
+import { type ChannelWatchProps, ChannelWatch as WatchSurface } from "./channel-watch";
 
+// The player the route hands in (useWatchPlayer), as a test double: what it reports is set per test.
 const hls = vi.hoisted(() => ({
-  status: "playing",
-  onManifest: undefined as (() => void) | undefined,
+  status: "playing" as "loading" | "playing" | "error",
   attach: vi.fn(() => () => undefined),
+  retry: vi.fn(),
+  step: vi.fn(),
+  tune: vi.fn(),
   liveTransport: {
     state: {
       mode: "live",
@@ -31,21 +35,31 @@ const hls = vi.hoisted(() => ({
     play: vi.fn(),
     pause: vi.fn(),
     goLive: vi.fn(),
+    seek: vi.fn(),
   },
 }));
 const diagnosticsRecord = vi.hoisted(() => vi.fn());
 
-vi.mock("../use-hls-player", () => ({
-  useHlsPlayer: (_channelId: string, _attempt?: unknown, onManifest?: () => void) => {
-    hls.onManifest = onManifest;
-    return {
-      status: hls.status,
-      playbackSessionId: "playback_1",
-      attach: hls.attach,
-      liveTransport: hls.liveTransport,
-    };
-  },
-}));
+const watchPlayer = (overrides: Partial<WatchPlayer> = {}): WatchPlayer => ({
+  attach: hls.attach,
+  canSurf: true,
+  liveTransport: hls.liveTransport,
+  playbackSessionId: "playback_1",
+  retry: hls.retry,
+  status: hls.status,
+  step: hls.step,
+  tune: hls.tune,
+  ...overrides,
+});
+
+// Reads the double when it renders, so a rerender sees what the test has changed since.
+const ChannelWatch = ({
+  player,
+  ...props
+}: Omit<ChannelWatchProps, "player"> & { player?: Partial<WatchPlayer> }) => (
+  <WatchSurface {...props} player={watchPlayer(player)} />
+);
+
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: diagnosticsRecord } }));
 const staticLock = vi.hoisted(() => vi.fn());
 const switchSound = vi.hoisted(() =>
@@ -59,11 +73,24 @@ const makeWrapper = () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // The player chrome is the shared @loomarr/ui one, which main.tsx themes app-wide.
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <TooltipProvider>{children}</TooltipProvider>
+      <LoomarrProvider theme="dark">
+        <TooltipProvider>{children}</TooltipProvider>
+      </LoomarrProvider>
     </QueryClientProvider>
   );
+};
+
+// The tuner's wash: up while a channel is tuning in, under the chrome.
+const wash = () => document.querySelector<HTMLElement>("[data-wash]");
+const tuningIn = () => waitFor(() => expect(wash()).not.toBeNull());
+
+// The Settings sheet, opened from the transport's ⚙.
+const openSettings = async () => {
+  await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  return screen.getByRole("dialog", { name: "Settings" });
 };
 
 // stubTracks makes GET /v1/channels/:id/tracks return the given media tracks, and
@@ -113,34 +140,27 @@ describe("ChannelWatch pickers", () => {
       noticeRevision: 0,
     };
   });
-  // The audio control lives IN the player's bar (V47), so the player must be running
-  // before they render.
-  //
-  // ⚠ **No click any more: Watch tunes in on mount (§9.1 V54).** This used to press the
-  // "Watch live" poster, which no longer exists for a playing channel — the poster is now reserved
-  // for paused/off-air, where there genuinely is nothing to play. Asserting the player is present
-  // instead of clicking to summon it keeps the test on the behaviour rather than on the affordance
-  // that used to precede it.
+  // Watch tunes in on mount (§9.1 V54): the chrome's transport is there once the player is.
   const startWatching = async () => {
-    expect(await screen.findByRole("button", { name: "Audio" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
   };
 
   it("does not probe the network-mounted source until the first frame is playing", async () => {
     const { wasProbed } = stubTracks();
     hls.status = "loading";
 
-    const { rerender } = render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, {
+    const { rerender } = render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
-    expect(await screen.findByText("Tuning in…")).toBeInTheDocument();
+    await tuningIn();
     expect(wasProbed()).toBe(false);
     hls.status = "playing";
-    rerender(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />);
+    rerender(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />);
     await waitFor(() => expect(wasProbed()).toBe(true));
   });
 
-  it("builds the Audio menu from the AIRING media's tracks, not a hardcoded list", async () => {
+  it("lists Settings' audio from the AIRING media's tracks, not a hardcoded list", async () => {
     // The airing programme carries English + Russian audio — so those, and only those (plus Auto),
     // are the choices. A hardcoded list would show French/Spanish/Japanese, which this asserts absent.
     stubTracks({
@@ -150,24 +170,28 @@ describe("ChannelWatch pickers", () => {
       ],
     });
 
-    render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await startWatching();
 
-    // Open the Audio menu (an icon button in the player bar). Its items are menuitemcheckboxes.
-    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: /English/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: /Russian/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: /Auto/ })).toBeInTheDocument();
-    // Nothing the media does not carry.
-    expect(
-      screen.queryByRole("menuitemcheckbox", { name: /French|Spanish|Japanese/ }),
-    ).not.toBeInTheDocument();
+    const settings = await openSettings();
+    const languages = within(settings).getByRole("list", { name: "Audio language" });
+    await waitFor(() => expect(within(languages).getAllByRole("listitem")).toHaveLength(3));
+    const items = within(languages)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent);
+    expect(items).toEqual([
+      expect.stringMatching(/Auto/),
+      expect.stringMatching(/English/),
+      expect.stringMatching(/Russian/),
+    ]);
+    // The channel's own choice (Auto, unset) is the one marked.
+    expect(within(languages).getAllByRole("listitem")[0]).toHaveAttribute("aria-current", "true");
   });
 
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {
     const { wasProbed } = stubTracks();
 
-    render(<ChannelWatch channel={channel({ status: "paused" })} isAdmin onSavePolicy={vi.fn()} />, {
+    render(<ChannelWatch channel={channel({ status: "paused" })} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
@@ -179,28 +203,81 @@ describe("ChannelWatch pickers", () => {
     expect(wasProbed()).toBe(false);
   });
 
-  it("renders accessible Channel Up/Down controls that share the tuner step action", async () => {
+  it("steps channels from the arrow keys through the player", async () => {
     stubTracks();
-    const step = vi.fn();
-    const ready = vi.fn();
-    render(
-      <ChannelWatch
-        channel={live}
-        isAdmin
-        onSavePolicy={vi.fn()}
-        tuner={{ canSurf: true, ready, step, tune: vi.fn(), retry: vi.fn() }}
-      />,
-      { wrapper: makeWrapper() },
-    );
+    hls.step.mockClear();
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await startWatching();
-    // A playing player alone is not the signal: neighbours warm when the target's manifest arrives.
-    expect(ready).not.toHaveBeenCalled();
-    act(() => hls.onManifest?.());
-    expect(ready).toHaveBeenCalledWith("ch-1");
 
-    await userEvent.click(screen.getByRole("button", { name: "Channel up" }));
-    await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
-    expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+    // The live player takes focus on mount, so the arrows reach it without a click.
+    await userEvent.keyboard("{ArrowUp}{ArrowDown}");
+    expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+  });
+
+  // Seeking the window (#2088 decision 2). The timeline's clock is the server's: live is 1_060_000.
+  describe("seeking the window", () => {
+    const programmeFrom = (startMs: number) =>
+      getChannelTimelineMockHandler({
+        serverNowMs: 1_060_000,
+        airings: [
+          { kind: "program", scheduleBlockId: "now", title: "Airing Programme", startMs, stopMs: 4_000_000 },
+        ],
+      });
+
+    beforeEach(() => hls.liveTransport.seek.mockClear());
+
+    it("steps 10 s back from ⟲ and forward from ⟳ once behind", async () => {
+      stubTracks();
+      hls.liveTransport.state = {
+        mode: "behind",
+        lagSeconds: 60,
+        viewerTimeMs: 1_000_000,
+        noticeRevision: 0,
+      };
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Back 10 seconds" }));
+      await userEvent.click(screen.getByRole("button", { name: "Forward 10 seconds" }));
+      expect(hls.liveTransport.seek.mock.calls.map(([at]) => at)).toEqual([990_000, 1_010_000]);
+    });
+
+    it("offers no forward from live", async () => {
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+      expect(await screen.findByRole("button", { name: "Forward 10 seconds" })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    });
+
+    it("starts over at the programme's start while the window still holds it", async () => {
+      stubTracks();
+      server.use(programmeFrom(500_000));
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Start over" }));
+      expect(hls.liveTransport.seek).toHaveBeenCalledWith(500_000);
+    });
+
+    it("has no Start over for a programme that began before the window", async () => {
+      stubTracks();
+      // Live is 1_060_000; the window reaches back fifteen minutes, to 160_000.
+      server.use(programmeFrom(100_000));
+      render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      expect(await screen.findByText("Airing Programme")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Start over" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("goes live from the chrome when the viewer is behind", async () => {
+    stubTracks();
+    hls.liveTransport.state = { mode: "behind", lagSeconds: 23, viewerTimeMs: 977_000, noticeRevision: 0 };
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText("23s behind")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Go live" }));
+    expect(hls.liveTransport.goLive).toHaveBeenCalledOnce();
   });
 
   it("keeps programme context on the viewer's paused broadcast time", async () => {
@@ -226,10 +303,11 @@ describe("ChannelWatch pickers", () => {
       }),
     );
 
-    render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
-    expect(await screen.findByText("0:30")).toBeInTheDocument();
-    expect(screen.getByText("1m left")).toBeInTheDocument();
+    // The lower third reads the programme under the paused playhead, and how far behind live it is.
+    expect(await screen.findByText("Paused Programme")).toBeInTheDocument();
+    expect(screen.getByText(/m in · 30s behind$/)).toBeInTheDocument();
     await waitFor(() =>
       expect(diagnosticsRecord).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -249,12 +327,12 @@ describe("ChannelWatch pickers", () => {
   it("explains when an expired paused point returns the viewer live", async () => {
     stubTracks();
     const notice = vi.spyOn(toast, "info");
-    const { rerender } = render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, {
+    const { rerender } = render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
     hls.liveTransport.state = { ...hls.liveTransport.state, noticeRevision: 1 };
 
-    rerender(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />);
+    rerender(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />);
 
     await waitFor(() =>
       expect(notice).toHaveBeenCalledWith("That paused point is no longer available, so you're back live."),
@@ -262,37 +340,187 @@ describe("ChannelWatch pickers", () => {
   });
 });
 
-describe("ChannelWatch — Open in media server hand-off", () => {
+// Full-bleed (#2088): the route has no app nav, so the player's ✕ is the only way out, and the
+// channel's audio is set on its info page, not here.
+describe("ChannelWatch — full-bleed route", () => {
   beforeEach(() => {
     hls.status = "playing";
   });
 
-  it("opens the media server's URL in a new tab (a real hand-off, not a toast)", async () => {
+  it("leaves from the player's ✕", async () => {
     stubTracks();
-    const open = vi.spyOn(window, "open").mockReturnValue(null);
-    render(
-      <ChannelWatch
-        channel={live}
-        isAdmin
-        onSavePolicy={vi.fn()}
-        mediaServerName="Emby"
-        mediaServerUrl="http://emby.home:8096"
-      />,
-      { wrapper: makeWrapper() },
-    );
+    const onLeave = vi.fn();
+    render(<ChannelWatch channel={live} isAdmin onLeave={onLeave} />, { wrapper: makeWrapper() });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Open in Emby" }));
-
-    expect(open).toHaveBeenCalledWith("http://emby.home:8096", "_blank", "noopener,noreferrer");
-    open.mockRestore();
+    await userEvent.click(await screen.findByRole("button", { name: "Leave Watch" }));
+    expect(onLeave).toHaveBeenCalledOnce();
   });
 
-  it("hides the button when no media-server URL is configured (no dead affordance)", async () => {
+  it("still offers the way out on an off-air channel, where no player is drawn", async () => {
     stubTracks();
-    render(<ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} />, { wrapper: makeWrapper() });
+    const onLeave = vi.fn();
+    render(<ChannelWatch channel={channel({ status: "paused" })} isAdmin={false} onLeave={onLeave} />, {
+      wrapper: makeWrapper(),
+    });
 
-    await screen.findByRole("button", { name: "Audio" });
-    expect(screen.queryByRole("button", { name: /Open in/ })).not.toBeInTheDocument();
+    expect(await screen.findByText(/is off air$/)).toBeInTheDocument();
+    expect(screen.getByText("This channel is paused, so there's nothing to watch.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Leave" }));
+    expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it("shows the channel's audio read-only, even to an admin", async () => {
+    stubTracks({ audio: [{ index: 0, language: "eng" }] });
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    const settings = await openSettings();
+    // A list to read, not a choice to make: nothing in it is a control.
+    expect(within(settings).getByRole("list", { name: "Audio language" })).toBeInTheDocument();
+    expect(within(settings).queryByRole("radio")).not.toBeInTheDocument();
+    expect(within(settings).getByText(/An admin sets it on the channel’s page/)).toBeInTheDocument();
+  });
+
+  it("closes Settings from its ✕ and from Escape, handing focus back to ⚙", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    await openSettings();
+    await userEvent.click(screen.getByRole("button", { name: "Close Settings" }));
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+
+    await openSettings();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
+  });
+
+  // Info (#2088 decision 9): the programme on air and the next one, from ⓘ or I.
+  describe("Info and the station-ID card", () => {
+    const withProgramme = () =>
+      server.use(
+        getChannelTimelineMockHandler({
+          serverNowMs: 1_060_000,
+          airings: [
+            {
+              kind: "program",
+              scheduleBlockId: "now",
+              title: "Airing Programme",
+              description: "A storm cuts the island off.",
+              year: 1994,
+              rating: "TV-PG",
+              startMs: 1_000_000,
+              stopMs: 4_000_000,
+            },
+            {
+              kind: "program",
+              scheduleBlockId: "next",
+              title: "Next Programme",
+              startMs: 4_000_000,
+              stopMs: 5_000_000,
+            },
+          ],
+        }),
+      );
+
+    afterEach(() => vi.useRealTimers());
+
+    it("opens Info from ⓘ and from I, reading the programme and what is up next", async () => {
+      stubTracks();
+      withProgramme();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Info" }));
+      const info = screen.getByRole("dialog", { name: "Info" });
+      expect(within(info).getByText("A storm cuts the island off.")).toBeInTheDocument();
+      expect(within(info).getByText("1994 · TV-PG")).toBeInTheDocument();
+      expect(within(info).getByText(/^Up next · .+ · Next Programme$/)).toBeInTheDocument();
+
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
+      await userEvent.keyboard("i");
+      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+    });
+
+    it("has no Info while nothing is known to be airing", async () => {
+      stubTracks();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      expect(await screen.findByRole("button", { name: "Settings" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Info" })).not.toBeInTheDocument();
+    });
+
+    it("closes Info by itself after eight seconds while the channel plays", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      stubTracks();
+      withProgramme();
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Info" }));
+      act(() => vi.advanceTimersByTime(7_000));
+      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(1_500));
+      expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
+    });
+
+    it("keeps Info open while the viewer is paused", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      stubTracks();
+      withProgramme();
+      hls.liveTransport.state = {
+        mode: "paused",
+        lagSeconds: 30,
+        viewerTimeMs: 1_030_000,
+        noticeRevision: 0,
+      };
+      render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+      await userEvent.click(await screen.findByRole("button", { name: "Info" }));
+      act(() => vi.advanceTimersByTime(20_000));
+      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+    });
+
+    it("names the station's era and place on the card a settled tune shows, for five seconds", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      stubTracks();
+      const coast = channel({
+        id: "ch-1",
+        name: "Coast 90s",
+        number: 7,
+        status: "live",
+        policy: {
+          filler: { era: { from: 1990, to: 1999 }, geography: { country: "US", place: "Portland, ME" } },
+        },
+      });
+      render(<ChannelWatch channel={coast} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+      // The picture plays: the card clears the controls, which only a playing player may hide.
+      await screen.findByRole("button", { name: "Settings" });
+      fireEvent.play(document.querySelector("video") as HTMLVideoElement);
+
+      expect(await screen.findByText("CH 7 · Coast 90s · 1990s · Portland, ME")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(5_500));
+      expect(screen.queryByText("CH 7 · Coast 90s · 1990s · Portland, ME")).not.toBeInTheDocument();
+    });
+  });
+
+  it("covers the picture when the stream stops, with Retry and the way out", async () => {
+    stubTracks();
+    hls.status = "error";
+    const retry = vi.fn();
+    const onLeave = vi.fn();
+    render(<ChannelWatch channel={live} isAdmin onLeave={onLeave} player={{ retry }} />, {
+      wrapper: makeWrapper(),
+    });
+
+    const cover = await screen.findByRole("alert");
+    expect(cover).toHaveTextContent("The stream stopped.");
+    expect(cover).toHaveTextContent("CH 42 · Late Night Noir");
+    // The cover takes the chrome's place: no playbar or transport over a stream that stopped.
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    await userEvent.click(within(cover).getByRole("button", { name: "Retry channel" }));
+    expect(retry).toHaveBeenCalledOnce();
+    await userEvent.click(within(cover).getByRole("button", { name: "Leave" }));
+    expect(onLeave).toHaveBeenCalledOnce();
   });
 });
 
@@ -300,33 +528,22 @@ describe("ChannelWatch — Open in media server hand-off", () => {
 // the previous channel's held frame. A cold start has nothing to drain.
 describe("ChannelWatch switch readout", () => {
   const next = channel({ id: "ch-2", name: "Saturday Cartoons", number: 12, status: "live" });
-  const tunerFor = (requestedChannel?: typeof next) => ({
-    canSurf: true,
-    requestedChannel,
-    ready: vi.fn(),
-    step: vi.fn(),
-    tune: vi.fn(),
-    retry: vi.fn(),
-  });
-  const wash = () => document.querySelector<HTMLElement>("[data-wash]");
-  // Every VISIBLE place the channel is named: not the decorative readout, not the SR-only OSD.
+  // Every VISIBLE place the channel is named: not the decorative readout, not the SR-only OSD, not
+  // the chrome while it is hidden under the wash.
   const visibleNames = (name: string) =>
     screen
-      .queryAllByText(name)
+      .queryAllByText(
+        (_, el) => el?.childNodes[0]?.nodeType === Node.TEXT_NODE && (el.textContent ?? "").includes(name),
+      )
       .filter((el) => !el.closest("[aria-hidden='true']") && !el.closest("[role='status']"));
   const switchTo = async (target: typeof next) => {
     hls.status = "playing";
-    const view = render(
-      <ChannelWatch channel={live} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />,
-      {
-        wrapper: makeWrapper(),
-      },
-    );
-    await screen.findByRole("button", { name: "Audio" });
+    const view = render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+    await screen.findByRole("button", { name: "Settings" });
     hls.status = "loading";
-    view.rerender(
-      <ChannelWatch channel={target} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor(target)} />,
-    );
+    view.rerender(<ChannelWatch channel={target} isAdmin={false} onLeave={vi.fn()} />);
     await waitFor(() => expect(wash()).not.toBeNull());
     return view;
   };
@@ -343,7 +560,7 @@ describe("ChannelWatch switch readout", () => {
     expect(visibleNames("Saturday Cartoons")).toEqual([]);
 
     hls.status = "playing";
-    view.rerender(<ChannelWatch channel={next} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />);
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
     await waitFor(() => expect(visibleNames("Saturday Cartoons")).toHaveLength(1));
   });
 
@@ -360,7 +577,7 @@ describe("ChannelWatch switch readout", () => {
     expect(staticLock).not.toHaveBeenCalled();
 
     hls.status = "playing";
-    view.rerender(<ChannelWatch channel={next} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />);
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onLeave={vi.fn()} />);
     await waitFor(() => expect(staticLock).toHaveBeenCalledTimes(1));
     expect(video.muted).toBe(false);
   });
@@ -374,22 +591,22 @@ describe("ChannelWatch switch readout", () => {
 
   it("stays silent on a cold start", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
-    await screen.findByText("Tuning in…");
+    await tuningIn();
     expect(switchSound).not.toHaveBeenCalled();
   });
 
-  it("lets any viewer turn the sound off from the Audio menu, and remembers it", async () => {
+  it("lets any viewer turn the sound off from Settings, and remembers it", async () => {
     hls.status = "playing";
-    render(<ChannelWatch channel={live} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />, {
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
-    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
-    const toggle = await screen.findByRole("menuitemcheckbox", { name: "Channel-change sound" });
-    expect(toggle).toHaveAttribute("aria-checked", "true");
-    expect(toggle).not.toHaveAttribute("aria-disabled", "true");
+    const settings = await openSettings();
+    const toggle = within(settings).getByRole("switch", { name: "Channel-change sound" });
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeEnabled();
     await userEvent.click(toggle);
     expect(localStorage.getItem("loomarr.player.channel-change-sound")).toBe("off");
   });
@@ -402,31 +619,30 @@ describe("ChannelWatch switch readout", () => {
 
   it("drains the held frame when switching from a channel that played", async () => {
     hls.status = "playing";
-    const { rerender } = render(
-      <ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor()} />,
-      { wrapper: makeWrapper() },
-    );
-    await screen.findByRole("button", { name: "Audio" });
+    const { rerender } = render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+    await screen.findByRole("button", { name: "Settings" });
 
     hls.status = "loading";
-    rerender(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />);
+    rerender(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />);
 
     await waitFor(() => expect(wash()).toHaveAttribute("data-wash", "draining"));
   });
 
   it("does not drain on a cold start, where no frame is held", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
-    await screen.findByText("Tuning in…");
+    await tuningIn();
     expect(wash()).toHaveAttribute("data-wash", "rest");
   });
 
   it("names the channel in the readout and keeps the OSD for screen readers only", async () => {
     hls.status = "loading";
-    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+    render(<ChannelWatch channel={next} isAdmin onLeave={vi.fn()} />, {
       wrapper: makeWrapper(),
     });
 
@@ -449,10 +665,12 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
       <ChannelWatch
         channel={live}
         isAdmin={false}
-        onSavePolicy={vi.fn()}
-        tuner={{ canSurf: true, ready: vi.fn(), step: vi.fn(), tune, retry: vi.fn() }}
-        drawer={{ channels: rows, favourites: ["ch-2"], recent: [], nowPercent: 17, onFavourite }}
-        onTuneSettled={onTuneSettled}
+        onLeave={vi.fn()}
+        player={{ tune }}
+        channels={{
+          drawer: { channels: rows, favourites: ["ch-2"], recent: [], nowPercent: 17, onFavourite },
+          onTuneSettled,
+        }}
       />,
       { wrapper: makeWrapper() },
     );
@@ -462,7 +680,7 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
   it("records the tune once its first frame plays", async () => {
     stubTracks();
     const { onTuneSettled } = renderWatch();
-    await screen.findByRole("button", { name: "Audio" });
+    await screen.findByRole("button", { name: "Settings" });
     expect(onTuneSettled).toHaveBeenCalledTimes(1);
     expect(onTuneSettled).toHaveBeenCalledWith("ch-1");
   });
@@ -500,7 +718,7 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
   it("tunes a typed channel number, and names a number no channel has", async () => {
     stubTracks();
     const { tune } = renderWatch();
-    await screen.findByRole("button", { name: "Audio" });
+    await screen.findByRole("button", { name: "Settings" });
     await userEvent.keyboard("7{Enter}");
     expect(tune).toHaveBeenCalledWith("ch-2");
 
@@ -531,17 +749,17 @@ describe("ChannelWatch at phone width", () => {
     const tune = vi.fn();
     const onFavourite = vi.fn();
     render(
-      // The panel under the picture is the shared @loomarr/ui one, which main.tsx themes app-wide.
-      <LoomarrProvider theme="dark">
-        <ChannelWatch
-          channel={live}
-          isAdmin={false}
-          onSavePolicy={vi.fn()}
-          tuner={{ canSurf: true, ready: vi.fn(), step, tune, retry: vi.fn() }}
-          drawer={{ channels: [], favourites, recent: [], nowPercent: 0, onFavourite }}
-          phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}
-        />
-      </LoomarrProvider>,
+      <ChannelWatch
+        channel={live}
+        isAdmin={false}
+        onLeave={vi.fn()}
+        player={{ step, tune }}
+        channels={{
+          drawer: { channels: [], favourites, recent: [], nowPercent: 0, onFavourite },
+          phone: { favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" },
+          onTuneSettled: vi.fn(),
+        }}
+      />,
       { wrapper: makeWrapper() },
     );
     return { onFavourite, step, tune };
@@ -577,6 +795,6 @@ describe("ChannelWatch at phone width", () => {
     await userEvent.click(screen.getByRole("button", { name: "Pause" }));
     expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
     expect(tune).toHaveBeenCalledWith("ch-9");
-    expect(hls.liveTransport.pause).toHaveBeenCalledWith(expect.any(HTMLVideoElement));
+    expect(hls.liveTransport.pause).toHaveBeenCalledOnce();
   });
 });

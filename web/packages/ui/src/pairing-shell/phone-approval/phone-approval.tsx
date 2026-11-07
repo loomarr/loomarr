@@ -17,7 +17,7 @@ const PhoneApproval = ({
   urgent,
 }: PhoneApprovalProps) => (
   <>
-    <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+    <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
       <Text density="touch" textRole="title">
         Approve this phone
       </Text>
@@ -28,11 +28,16 @@ const PhoneApproval = ({
     <Action density="touch" onPress={onApprove}>
       {`Approve in ${browserName}`}
     </Action>
-    <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+    <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
       <Text density="touch" textRole="metadata" tone="muted">
         {`On another device? Go to ${state.verificationUri} and enter`}
       </Text>
-      <Text accessibilityLabel={`Pairing code ${state.userCode}`} density="touch" selectable textRole="time">
+      <Text
+        accessibilityLabel={`Pairing code ${state.userCode}`}
+        density="touch"
+        textRole="time"
+        userSelect="text"
+      >
         {state.userCode}
       </Text>
       {state.refreshedFromExpired ? (
@@ -43,7 +48,7 @@ const PhoneApproval = ({
     </Surface>
     <Surface
       alignItems="center"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       flexDirection="row"
       justifyContent="space-between"

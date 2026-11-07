@@ -11,7 +11,6 @@ export {
   TvFocusRegistry,
 } from "./src/focus-registry";
 export type {
-  TvGuideActivation,
   TvGuideFilterOption,
   TvGuideFocus,
   TvGuideMoveResult,
@@ -19,24 +18,14 @@ export type {
   TvGuideRowWindow,
 } from "./src/guide-navigation";
 export {
-  activateTvGuideFocus,
   moveTvGuideFocus,
-  restoreTvGuideFocus,
   tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
 } from "./src/guide-navigation";
-export type {
-  TvSurfActivation,
-  TvSurfDirection,
-  TvSurfMoveResult,
-} from "./src/surf-navigation";
-export {
-  activateTvSurfSelection,
-  moveTvSurfSelection,
-  restoreTvSurfSelection,
-  tvSurfFavouriteChannel,
-} from "./src/surf-navigation";
+export { restoreTvSurfSelection, tvSurfFavouriteChannel } from "./src/surf-navigation";
+export type { TvRemote, TvRemoteClock, TvRemoteOptions, TvRemoteOutcome } from "./src/tv-remote";
+export { createTvRemote } from "./src/tv-remote";
 export type {
   TvNumberEntryPresentation,
   TvNumberedChannel,

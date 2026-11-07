@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/bgexec"
-	"github.com/loomarr/loomarr/internal/clipcatalog"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -73,7 +73,7 @@ func QualityFromHeight(h int) string {
 // will contain junk, a half-copied file, or something with no video stream; refusing to build
 // a catalog because one file is bad would mean one stray download silently costs a channel all
 // of its commercials. What is skipped is reported so the caller can log a count.
-func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int64) (clips []RawClip, skipped int, err error) {
+func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int64) (found []RawClip, skipped int, err error) {
 	if dir == "" {
 		return nil, 0, nil
 	}
@@ -193,8 +193,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			name = tags.DisplayName // derived from grounded evidence (#1452), or a segment's name
 		}
 		// An operator's rename (#1990) outranks the source title it replaced.
-		if title := SidecarTitle(path); title != "" && nameSource != clipcatalog.NameFromCurated {
-			name, nameSource = title, clipcatalog.NameFromSidecar
+		if title := SidecarTitle(path); title != "" && nameSource != clips.NameFromCurated {
+			name, nameSource = title, clips.NameFromSidecar
 		}
 		// Identity from the bytes. A file we cannot hash cannot be catalogued — it has no id —
 		// which is the same call the probe above makes about a file with no duration.
@@ -217,7 +217,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 				} else {
 					lineageInvalid = tags.Conditioning == nil || tags.MediaQuality == nil ||
 						validateConditioningPair(*tags.Conditioning, tags.ConditioningLineage.ChildHash, id) != nil ||
-						mediatools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
+						tools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
 						!reflect.DeepEqual(*tags.MediaQuality, tags.Conditioning.AfterRewrite.Quality)
 				}
 			}
@@ -227,7 +227,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		if tags.Kind != "" && validKind(Kind(tags.Kind)) {
 			kind = Kind(tags.Kind)
 		}
-		clips = append(clips, RawClip{
+		found = append(found, RawClip{
 			ID:               id,
 			Path:             rel,
 			Name:             name,
@@ -246,7 +246,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			Kind:            kind,
 			Era:             EraFromName(heuristicName),
 			GeographicScope: GeographicScope(tags.GeographicScope),
-			Country:         tags.Country, Market: tags.Market, Network: tags.Network,
+			Country:         tags.Country, Network: tags.Network,
 			Station: tags.Station, AirDate: tags.AirDate, GeoEvidence: tags.GeoEvidence,
 			DurationMs: pr.DurationMs,
 			// Quality is DERIVED, not probed: a clip with no video stream (or an
@@ -270,7 +270,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		// would present as "filler mysteriously does nothing".
 		return nil, skipped, fmt.Errorf("scan filler dir %s: %w", dir, walkErr)
 	}
-	return clips, skipped, nil
+	return found, skipped, nil
 }
 
 // scannedNameSource is the provenance of the name the scan takes from Loomarr's own sidecar or the
@@ -283,22 +283,22 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 // of unrecorded origin), or are a split segment cut before #1988: the splitter put the segment's
 // name in originalName without saying whether a chapter, a model, an operator or the fallback
 // produced it. Both stay unknown rather than guessed.
-func scannedNameSource(tags SidecarTags, state SidecarReadState) clipcatalog.NameSource {
+func scannedNameSource(tags SidecarTags, state SidecarReadState) clips.NameSource {
 	if state != SidecarValid {
-		return clipcatalog.NameFromFilename
+		return clips.NameFromFilename
 	}
-	recorded := clipcatalog.NameSource(tags.NameProvenance)
+	recorded := clips.NameSource(tags.NameProvenance)
 	switch {
 	case tags.DisplayName != "" && recorded.Known():
 		return recorded
 	case tags.DisplayName != "":
-		return clipcatalog.NameFromGrounded
-	case recorded == clipcatalog.NameFromFilename, recorded == clipcatalog.NameFromUnknown:
+		return clips.NameFromGrounded
+	case recorded == clips.NameFromFilename, recorded == clips.NameFromUnknown:
 		return recorded
 	case tags.SplitPublicationToken != "":
-		return clipcatalog.NameFromUnknown
+		return clips.NameFromUnknown
 	default:
-		return clipcatalog.NameFromFilename
+		return clips.NameFromFilename
 	}
 }
 
@@ -307,15 +307,15 @@ func scannedNameSource(tags SidecarTags, state SidecarReadState) clipcatalog.Nam
 // A viewer-visible name goes to displayName beside its provenance; an info-JSON title needs
 // nothing, since it travels in the same file; an unrecorded one is marked unknown. A sidecar
 // that already names the clip keeps its own record.
-func carryNameProvenance(tags *SidecarTags, name string, source clipcatalog.NameSource) {
+func carryNameProvenance(tags *SidecarTags, name string, source clips.NameSource) {
 	if tags.DisplayName != "" || tags.NameProvenance != "" {
 		return
 	}
 	switch {
-	case source.ShownToViewers() && source != clipcatalog.NameFromSidecar:
+	case source.ShownToViewers() && source != clips.NameFromSidecar:
 		tags.DisplayName, tags.NameProvenance = name, string(source)
 	case !source.Known():
-		tags.NameProvenance = string(clipcatalog.NameFromUnknown)
+		tags.NameProvenance = string(clips.NameFromUnknown)
 	}
 }
 
@@ -323,7 +323,7 @@ func carryNameProvenance(tags *SidecarTags, name string, source clipcatalog.Name
 // with curated provenance, so the next scan restores it ahead of the filename and a source title.
 func WriteCuratedName(mediaPath, name string) error {
 	return WriteSidecarTags(mediaPath, SidecarTags{
-		DisplayName: name, NameProvenance: string(clipcatalog.NameFromCurated),
+		DisplayName: name, NameProvenance: string(clips.NameFromCurated),
 	}, false)
 }
 
@@ -363,7 +363,7 @@ func FFprobeNextTo(ffmpegPath string) Prober {
 // ffprobe directly, which is why the derivation is exported rather than buried
 // in the prober above.
 func FFprobePathNextTo(ffmpegPath string) string {
-	return mediatools.FFprobePathNextTo(ffmpegPath)
+	return tools.FFprobePathNextTo(ffmpegPath)
 }
 
 func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {

@@ -1,7 +1,8 @@
 import { View } from "@tamagui/core";
-import { type ComponentProps, createContext, type ReactNode, useContext, useRef, useState } from "react";
+import { type ComponentProps, createContext, type ReactNode, useContext, useRef } from "react";
 import { Pressable } from "react-native";
 
+import { useFocusLook } from "../../focus-look";
 import { Surface } from "../../primitives";
 
 type Focusable = { focus?: () => void };
@@ -56,7 +57,7 @@ const KEY_STEP: Record<string, 1 | -1> = { ArrowDown: 1, ArrowLeft: -1, ArrowRig
 const RadioItem = ({ children, disabled = false, label, ringRadius = 6, style, value }: RadioItemProps) => {
   const group = useContext(RadioScope);
   if (!group) throw new Error("RadioItem must be rendered inside a RadioGroup");
-  const [focused, setFocused] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook();
   const checked = group.value === value;
   const tabStop = group.values.includes(group.value ?? "") ? group.value : group.values[0];
 
@@ -75,8 +76,7 @@ const RadioItem = ({ children, disabled = false, label, ringRadius = 6, style, v
       accessibilityState={{ checked, disabled }}
       aria-checked={checked}
       disabled={disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
+      {...focusHandlers}
       onPress={() => group.select(value)}
       ref={(node) => {
         if (node) group.items.set(value, node as unknown as Focusable);
@@ -98,7 +98,7 @@ const RadioItem = ({ children, disabled = false, label, ringRadius = 6, style, v
         {children({ checked, focused })}
         {focused ? (
           <View
-            borderColor="$actionFocus"
+            borderColor="actionFocus"
             borderRadius={ringRadius + 3}
             borderWidth={2}
             bottom={-3}

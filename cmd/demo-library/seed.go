@@ -18,13 +18,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/demolibrary"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // The demo admin, created only when the store has no admin yet. The docs capture signs in as it.
@@ -79,7 +82,7 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 		return fmt.Errorf("the stand-in media server is not answering at %s (run `make demo-library` first): %w", cfg.libraryURL, err)
 	}
 
-	st, err := fillerstore.Open(ctx, cfg.databaseURL, true)
+	st, err := records.Open(ctx, cfg.databaseURL, true)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
@@ -96,8 +99,8 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 	// backend has no speech engine: left on, the filler pipeline fails every clip at that stage
 	// ("whisper not configured") and none ever reaches a break.
 	if err := api.expectOK(ctx, http.MethodPatch, "/v1/settings", map[string]any{"edits": map[string]string{
-		"library.flavor": "emby", "library.url": cfg.libraryURL, "library.token": DemoToken,
-		"filler.transcribe.enabled": "false",
+		settings.LibraryFlavor.Key(): "emby", settings.LibraryURL.Key(): cfg.libraryURL, settings.LibraryToken.Key(): DemoToken,
+		settings.FillerTranscribeEnabled.Key(): "false",
 	}}, nil); err != nil {
 		return fmt.Errorf("point the backend at the demo library: %w", err)
 	}
@@ -107,7 +110,7 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 	if created || admin.Name == demoAdminUser {
 		out.AdminPassword = demoAdminPassword
 	}
-	approver := suggest.NewApprover(st, binder.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
+	approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 	for _, c := range demolibrary.Channels {
 		id, err := ensureChannel(ctx, st, approver, admin.ID, c)
 		if err != nil {
@@ -147,13 +150,13 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 }
 
 // ensureAdmin returns the store's admin, bootstrapping the demo admin on an empty store.
-func ensureAdmin(ctx context.Context, st store.Store) (store.User, bool, error) {
+func ensureAdmin(ctx context.Context, st store.Store) (identitystore.User, bool, error) {
 	users, err := st.ListUsers(ctx)
 	if err != nil {
-		return store.User{}, false, err
+		return identitystore.User{}, false, err
 	}
 	for _, u := range users {
-		if u.Role == store.RoleAdmin {
+		if u.Role == identitystore.RoleAdmin {
 			return u, false, nil
 		}
 	}
@@ -192,14 +195,14 @@ func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approv
 }
 
 func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID string, c demolibrary.Channel) error {
-	intent := suggest.Intent{Description: c.Name}
-	var lineup []suggest.ProposalItem
+	intent := proposals.Intent{Description: c.Name}
+	var lineup []proposals.ProposalItem
 	for _, id := range c.Titles {
 		t, ok := demolibrary.ByID(id)
 		if !ok {
 			return fmt.Errorf("unknown demo title %q", id)
 		}
-		item := suggest.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
+		item := proposals.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
 		if t.Kind == demolibrary.Series {
 			item.MediaType, item.TVDBID = provision.Series, t.ProviderID()
 		} else {
@@ -211,10 +214,6 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 	if err != nil {
 		return err
 	}
-	propJSON, err := json.Marshal(suggest.Proposal{Intent: intent, Lineup: lineup})
-	if err != nil {
-		return err
-	}
 	now := time.Now()
 	// CreateSuggestionResult writes the done Job, its succeeded Attempt 1 and the submitted
 	// Proposal in one transaction, the shape the real suggester worker leaves behind. A raw
@@ -223,7 +222,7 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 	if err := st.CreateSuggestionResult(ctx, store.Job{ID: jobID, Kind: "suggest", Status: "done",
 		IntentJSON: string(intentJSON), IntentHash: "demo-" + jobID, CreatedBy: adminID, CreatedAt: now, UpdatedAt: now,
 	}, store.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
-		ProposalJSON: string(propJSON), CreatedAt: now, UpdatedAt: now}); err != nil {
+		Body: proposals.Proposal{Intent: intent, Lineup: lineup}, CreatedAt: now, UpdatedAt: now}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}
 	return nil

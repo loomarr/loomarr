@@ -1,7 +1,8 @@
 import type { SplitReviewProposalDTO, SplitSegment } from "@loomarr/api";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { SplitReviewEditor } from "./split-review-editor";
 
 // Two ordinary segments plus one carrying every flag the review must surface (§10 V34):
@@ -18,6 +19,8 @@ const proposal: SplitReviewProposalDTO = {
   id: "sp-1",
   clipHash: "comp-hash",
   createdAt: "2026-07-25T20:00:00Z",
+  checkedLanguages: [],
+  currentLanguages: [],
   segments: [
     seg({
       index: 0,
@@ -80,7 +83,7 @@ describe("SplitReviewEditor", () => {
     const user = userEvent.setup();
     renderEditor();
 
-    const firstTrigger = screen.getByRole("button", { name: /open clip 1: first ad/i });
+    const firstTrigger = screen.getByRole("button", { name: /open clip .*#1.*first ad/i });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
 
@@ -354,6 +357,8 @@ describe("SplitReviewEditor — sub-second cuts", () => {
     id: "sp-sub",
     clipHash: "comp-hash",
     createdAt: "2026-07-25T20:00:00Z",
+    checkedLanguages: [],
+    currentLanguages: [],
     segments: [
       seg({ index: 0, startMs: 1_500, endMs: 30_499, name: "First ad" }),
       seg({ index: 1, startMs: 30_499, endMs: 61_750, name: "Second ad" }),
@@ -401,7 +406,7 @@ describe("SplitReviewEditor — sub-second cuts", () => {
   it("keeps at most one preview mounted while traversing the reel", async () => {
     render(<SplitReviewEditor proposal={proposal} onConfirm={vi.fn()} onBack={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /open clip 1: first ad/i }));
+    await userEvent.click(screen.getByRole("button", { name: /open clip .*#1.*first ad/i }));
     expect(document.body.querySelectorAll("video")).toHaveLength(1);
     const firstPlayer = document.body.querySelector("video");
 

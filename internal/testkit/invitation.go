@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/people/invitation"
 )
 
 // LibraryAccountResolver is the shared in-memory adapter for Invitation account selection.

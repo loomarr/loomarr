@@ -11,16 +11,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/images"
-	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // The image service's store bridge (§22, V52).
 //
-// `internal/images` declares the persistence it needs with its OWN types (images.Store), and no
+// `internal/media/images` declares the persistence it needs with its OWN types (images.Store), and no
 // domain package in this codebase imports internal/store. This file is the whole cost of that
 // rule: a type-for-type translation, in the composition root, where the two vocabularies are
 // allowed to meet.
@@ -75,9 +78,9 @@ func newImageService(
 		return nil, err
 	}
 	return images.New(images.Config{
-		Dir:            set.str("images.dir"),
-		MaxUploadBytes: func() int64 { return int64(set.intv("images.max_upload_bytes")) },
-		PublicBaseURL:  func() string { return set.str("server.public_url") },
+		Dir:            settings.ImagesDir.Get(set),
+		MaxUploadBytes: func() int64 { return int64(settings.ImagesMaxUploadBytes.Get(set)) },
+		PublicBaseURL:  func() string { return settings.ServerPublicURL.Get(set) },
 		Observer: images.Observer{
 			QueueWait: recorder.ImageWorkerQueueWait,
 			InFlight:  recorder.ImageWorkerInFlight,
@@ -90,7 +93,7 @@ func resolveImageWorker(explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
 	}
-	if configured := os.Getenv("LOOMARR_IMAGE_WORKER"); configured != "" {
+	if configured, _ := config.LookupEnv("LOOMARR_IMAGE_WORKER"); configured != "" {
 		return configured, nil
 	}
 	if self, err := os.Executable(); err == nil {
@@ -150,7 +153,7 @@ func (a imageStore) TouchImage(ctx context.Context, hash string, at time.Time) e
 }
 
 func (a imageStore) PutRef(ctx context.Context, ref images.Ref) error {
-	return a.st.PutImageRef(ctx, store.ImageRef{
+	return a.st.PutImageRef(ctx, catalogstore.ImageRef{
 		ImageHash: ref.ImageHash,
 		OwnerKind: ref.OwnerKind,
 		OwnerID:   ref.OwnerID,
@@ -159,7 +162,7 @@ func (a imageStore) PutRef(ctx context.Context, ref images.Ref) error {
 }
 
 func (a imageStore) PutDerivative(ctx context.Context, d images.Derivative) error {
-	return a.st.PutImageDerivative(ctx, store.ImageDerivative{
+	return a.st.PutImageDerivative(ctx, catalogstore.ImageDerivative{
 		ImageHash:  d.ImageHash,
 		Recipe:     d.Recipe,
 		Format:     string(d.Format),
@@ -173,9 +176,9 @@ func (a imageStore) PutDerivative(ctx context.Context, d images.Derivative) erro
 }
 
 func (a imageStore) PutDerivatives(ctx context.Context, derivatives []images.Derivative) error {
-	rows := make([]store.ImageDerivative, 0, len(derivatives))
+	rows := make([]catalogstore.ImageDerivative, 0, len(derivatives))
 	for _, d := range derivatives {
-		rows = append(rows, store.ImageDerivative{
+		rows = append(rows, catalogstore.ImageDerivative{
 			ImageHash: d.ImageHash, Recipe: d.Recipe, Format: string(d.Format), Width: d.Width,
 			Bytes: d.Bytes, OutputHash: d.OutputHash, Path: d.Path, Animated: d.Animated,
 			CreatedAt: d.CreatedAt,
@@ -197,7 +200,7 @@ func (a imageStore) ListDerivatives(ctx context.Context, hash string) ([]images.
 // ⚠ The domain names these methods for what they DO to images (ListOrphans, ListExpiredBefore)
 // while the store names them for the table (ListOrphanImages, ListImagesExpiredBefore), and the
 // rename happens here rather than in either package. That is the same translation the type
-// conversions above perform, one level up: `internal/images` reads as a subsystem talking about
+// conversions above perform, one level up: `internal/media/images` reads as a subsystem talking about
 // its own subject, and `internal/store` reads as a schema, because neither had to compromise to
 // match the other.
 
@@ -259,7 +262,7 @@ func (a imageStore) RepointRefs(ctx context.Context, from, to string) error {
 	return a.st.RepointImageRefs(ctx, from, to)
 }
 
-func fromStoreDerivatives(rows []store.ImageDerivative) []images.Derivative {
+func fromStoreDerivatives(rows []catalogstore.ImageDerivative) []images.Derivative {
 	out := make([]images.Derivative, 0, len(rows))
 	for _, d := range rows {
 		out = append(out, images.Derivative{
@@ -277,7 +280,7 @@ func fromStoreDerivatives(rows []store.ImageDerivative) []images.Derivative {
 	return out
 }
 
-func fromStoreImages(rows []store.Image) []images.Image {
+func fromStoreImages(rows []catalogstore.Image) []images.Image {
 	out := make([]images.Image, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, fromStoreImage(r))
@@ -301,8 +304,8 @@ func mapImageErr(err error) error {
 	return err
 }
 
-func toStoreImage(img images.Image) store.Image {
-	return store.Image{
+func toStoreImage(img images.Image) catalogstore.Image {
+	return catalogstore.Image{
 		Hash:            img.Hash,
 		Origin:          string(img.Origin),
 		SourceURL:       img.SourceURL,
@@ -326,7 +329,7 @@ func toStoreImage(img images.Image) store.Image {
 	}
 }
 
-func fromStoreImage(rec store.Image) images.Image {
+func fromStoreImage(rec catalogstore.Image) images.Image {
 	return images.Image{
 		Hash:            rec.Hash,
 		Origin:          images.Origin(rec.Origin),
@@ -356,7 +359,7 @@ func fromStoreImage(rec store.Image) images.Image {
 // ⚠ **Resolving the artwork cache path is THIS layer's job, and that is why the store returns
 // relative paths.** `internal/store` must not know where FILLER_DIR is — a query that joined a
 // filesystem location onto a row would make the same SQL wrong the moment an operator moved the
-// folder. `internal/images` must not know either; it takes absolute paths and never asks what
+// folder. `internal/media/images` must not know either; it takes absolute paths and never asks what
 // produced them. The two vocabularies meet here, like every other translation in this file.
 type artworkAdoptStore struct {
 	st        store.Store

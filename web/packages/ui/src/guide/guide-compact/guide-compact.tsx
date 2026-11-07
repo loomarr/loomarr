@@ -142,8 +142,8 @@ const GuideCompact = ({
             >
               <Surface
                 alignItems="center"
-                backgroundColor={selected ? "$contentPrimary" : "$transparent"}
-                borderColor="$borderDecorative"
+                backgroundColor={selected ? "contentPrimary" : "transparent"}
+                borderColor="borderDecorative"
                 borderRadius={8}
                 borderWidth={selected ? 0 : 1}
                 height={32}
@@ -179,14 +179,14 @@ const GuideCompact = ({
           )}
           {nowRatio === undefined ? null : (
             <Surface
-              backgroundColor="$guideOnAir"
+              backgroundColor="guideOnAir"
               borderRadius={4}
               borderWidth={0}
               left={`${nowRatio * 100}%`}
               paddingHorizontal={5}
               position="absolute"
-              style={{ transform: [{ translateX: "-50%" }] }}
               top={0}
+              style={{ transform: [{ translateX: "-50%" }] }}
             >
               <Text density={density} textRole="guideIdent" tone="inverse">
                 {formatGuideTime(nowMs, layout.timezone)}
@@ -265,14 +265,10 @@ const GuideCompact = ({
                         >
                           <Surface
                             backgroundColor={
-                              selected
-                                ? "$surfaceFocus"
-                                : airing.isOnNow
-                                  ? "$surfaceElevated"
-                                  : "$surfaceRaised"
+                              selected ? "surfaceFocus" : airing.isOnNow ? "surfaceElevated" : "surfaceRaised"
                             }
                             // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
-                            borderColor={selected ? "$contentPrimary" : "$transparent"}
+                            borderColor={selected ? "contentPrimary" : "transparent"}
                             borderRadius={4}
                             borderWidth={2}
                             flex={1}
@@ -305,7 +301,7 @@ const GuideCompact = ({
               style={{ bottom: 0, left: NUMBER_COLUMN, position: "absolute", right: 0, top: 0 }}
             >
               <Surface
-                backgroundColor="$guideOnAir"
+                backgroundColor="guideOnAir"
                 borderWidth={0}
                 bottom={0}
                 left={`${nowRatio * 100}%`}
@@ -328,7 +324,7 @@ const GuideCompact = ({
             <View style={{ flexDirection: "row", gap: 12 }}>
               {renderArtwork ? (
                 <Surface
-                  backgroundColor="$surfaceElevated"
+                  backgroundColor="surfaceElevated"
                   borderRadius={6}
                   borderWidth={0}
                   height={63}
@@ -367,7 +363,7 @@ const GuideCompact = ({
       ) : selectedChannel && selectedAiring ? (
         <Surface
           alignItems="center"
-          backgroundColor="$surfaceRaised"
+          backgroundColor="surfaceRaised"
           borderBottomLeftRadius={0}
           borderBottomRightRadius={0}
           borderRadius={12}
@@ -380,7 +376,7 @@ const GuideCompact = ({
         >
           {renderArtwork ? (
             <Surface
-              backgroundColor="$surfaceElevated"
+              backgroundColor="surfaceElevated"
               borderRadius={4}
               borderWidth={0}
               height={54}

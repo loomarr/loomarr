@@ -1,6 +1,4 @@
-// Where review was opened: Incoming's "Needs your help" card, or a Library card's "Split into
-// clips". Back returns there (#1817, decided on #1908).
-type SplitReviewOrigin = "incoming" | "library";
+import type { SplitReviewOrigin } from "../split-review-search";
 
 interface SplitReviewPageProps {
   // The persisted proposal id — from the route param. The proposal outlives the
@@ -11,4 +9,4 @@ interface SplitReviewPageProps {
   from: SplitReviewOrigin;
 }
 
-export type { SplitReviewOrigin, SplitReviewPageProps };
+export type { SplitReviewPageProps };

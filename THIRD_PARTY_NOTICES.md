@@ -65,7 +65,7 @@ Geist files are the same fonts under the same licence.
 
 ## Rust dependencies (compiled into the image worker)
 
-The image-processing worker (`internal/images/rustgen` → the `loomarr-image` crate) is compiled
+The image-processing worker (`internal/media/images/rustgen` → the `loomarr-image` crate) is compiled
 during the image build and its binary ships in the image. Its dependency tree is **confined to an
 explicit permissive allow-list, enforced on every build** by `cargo-deny` via [`deny.toml`](deny.toml)
 and the `make rust-audit` gate: MIT, Apache-2.0 (incl. the LLVM exception), the BSD family, ISC,
@@ -76,7 +76,7 @@ the release SBOM.
 
 ## Compose deployment companion (not in the Loomarr image)
 
-The supported Docker Compose topology starts the official `traefik:v3.7.1` image as its HTTP edge,
+The supported Docker Compose topology starts the official `traefik:v3.7.16` image as its HTTP edge,
 pinned by multi-architecture manifest digest in `docker/compose.yaml`. Traefik is MIT-licensed. It
 is pulled separately and is not part of Loomarr's OCI image or Loomarr's BuildKit SBOM.
 
@@ -116,15 +116,18 @@ binds the pinned FFmpeg and yt-dlp asset identities to upstream release, source/
 references. It is traceability evidence only: it does not retain corresponding source or provide
 source-retention, distribution, or legal clearance.
 
-The pinned FFmpeg and yt-dlp source materials are available without authentication or charge in two
-Loomarr source releases. The [n9.0 source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-09-27)
-carries the shipped FFmpeg's exact source, BtbN build recipe and original dependency download cache.
+The shipped FFmpeg's binaries and corresponding source are available without authentication or charge
+in the Loomarr source release named under [GPL source distribution (ffmpeg)](#gpl-source-distribution-ffmpeg)
+below. Earlier releases stay published for the earlier pins: the
+[n9.0.1 source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-09-27)
+carries the `n9.0.1-11-ge47273f4d9` build's exact source, BtbN build recipe and original dependency
+download cache.
 The [August source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-08-31)
 carries yt-dlp, the retained dependency and runtime sources and license texts: download
 `source-materials.tar.gz` and `ffmpeg-original-download-cache.zip`. Verify every download against its
 release's `SHA256SUMS`. Each `README.txt` explains the contents; the August
 `source-package-inventory.json` records all 490 source/license file hashes. The distribution records
-([n9.0](project/evidence/source-distribution-2026-09-27.json),
+(the current pin's, named below; [n9.0.1](project/evidence/source-distribution-2026-09-27.json),
 [August](project/evidence/source-distribution-2026-08-31.json)) bind public asset URLs, sizes
 and SHA256 digests to the accepted dependency pins. These directions
 ship in the image at `/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md`. Application release notes link
@@ -135,8 +138,8 @@ the same source location alongside the image and bind the exact application comm
 | `yt-dlp` standalone executable | https://github.com/yt-dlp/yt-dlp | **GPL-3.0-or-later** for the combined executable | The source project is primarily Unlicense, but upstream states that official PyInstaller executables bundle GPLv3+ dependencies and the combined work is GPLv3+. Loomarr ships `yt-dlp_linux` / `yt-dlp_linux_aarch64`, so the executable terms apply. See upstream's [license section](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#license) and [third-party license inventory](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt). |
 | `ffmpeg` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0-or-later** (the BtbN `-gpl-` build enables GPL and version 3) | Serves both yt-dlp stream merging (§10) and the playout encoder (§9.1). Source materials and build recipes are linked above. |
 | `ffprobe` | https://github.com/BtbN/FFmpeg-Builds | **GPL-3.0-or-later** (same build) | Added with internal playout (§9.1). It shares ffmpeg's source materials and build recipes above. |
-| `deno` | https://github.com/denoland/deno | MIT | JS runtime yt-dlp requires for YouTube extraction. |
-| `whisper-cli`, `libwhisper`, `libggml` | https://github.com/ggml-org/whisper.cpp | MIT | Pinned `v1.9.1` binary and runtime-selected shared libraries used for compilation splitting and language identification. |
+| `node` | https://github.com/nodejs/node | MIT (the Node.js binary also bundles V8, OpenSSL, ICU, libuv, zlib and other components under their own permissive licenses) | JS runtime yt-dlp requires for YouTube extraction; `internal/filler/fetch` enables it with `--js-runtimes node`. It is the `/usr/local/bin/node` of the digest-pinned official `node:22.23.4-bookworm-slim` image (also the web build's base), copied unmodified. Node's complete license file, which lists every bundled component, ships in the image at `/usr/share/doc/loomarr/node-LICENSE`. Replaces Deno. |
+| `whisper-cli`, `libwhisper`, `libggml` | https://github.com/ggml-org/whisper.cpp | MIT | Pinned `v1.9.5` binary and runtime-selected shared libraries used for compilation splitting and language identification. |
 | `ggml-small.en.bin`, `ggml-tiny.bin` | https://huggingface.co/ggerganov/whisper.cpp | MIT | Revision- and SHA256-pinned Whisper model data; `small.en` transcribes and `tiny` identifies language. |
 | Intel OpenCL runtime (`intel-opencl-icd`, `intel-igc-core-2`, `intel-igc-opencl-2`, `libigdgmm12`; amd64 only) | https://github.com/intel/compute-runtime, https://github.com/intel/intel-graphics-compiler, https://github.com/intel/gmmlib | MIT (IGC also carries the third-party components its package documents) | Version- and SHA256-pinned Intel release packages that let `tonemap_opencl` tone-map HDR on Intel GPUs (#1516). They are shared libraries loaded by the OpenCL loader inside ffmpeg, not executables Loomarr runs. Each package's license and notices ship under its `/usr/share/doc/` directory in the image. |
 | `DejaVuSans.ttf` (Debian `fonts-dejavu-core`) | https://dejavu-fonts.github.io | Bitstream Vera Fonts (MIT-style) + public-domain DejaVu changes | The single font the "no signal"/dead-air playout card renders (§16); `debian:stable-slim` ships none, so `fonts-dejavu-core` is installed for it. Permissive and redistributable; the one condition is that the copyright + permission notice accompany the fonts — satisfied by the package's own `/usr/share/doc/fonts-dejavu-core/copyright` in the image. See [Font license](#dejavu-font-license-bitstream-vera) below. |
@@ -162,15 +165,22 @@ in the public domain. The image satisfies the license's notice condition by reta
 
 ### GPL source distribution (ffmpeg)
 
-The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n9.0` series. The
-[`Dockerfile`](Dockerfile) pins it to a **retained monthly** archive — release
-`autobuild-2026-08-31-13-27`, build `n9.0.1-11-ge47273f4d9`, verified by per-architecture SHA256
-(`FFMPEG_AMD64_SHA256` / `FFMPEG_ARM64_SHA256`) exactly as yt-dlp, deno, and whisper are — so the
-bytes in the image are now identified by digest rather than by BtbN's mutable `latest` release.
-The evidence manifest also binds BtbN's pruning policy at the release commit: ordinary daily
-archives expire after the newest 14, while one archive per month is retained for 24 months.
+<!-- ffmpeg-pin:begin -->
+The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build. The [`Dockerfile`](Dockerfile) pins BtbN
+autobuild `autobuild-2026-10-26-14-25`, build `n9.0.2-36-g6882969ce9`, by per-architecture SHA256, and downloads both archives from
+Loomarr's own source release [`third-party-sources-2026-10-27`](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-10-27). That release also carries the exact FFmpeg source
+(`6882969ce9fd2aa6aa1d0008b2bfe1c838aac11d`), BtbN's build recipe (`937868360a21d711ec94a33f5591d345ad9b7754`) and the build's original dependency download
+cache. [`source-distribution-2026-10-27.json`](project/evidence/source-distribution-2026-10-27.json) binds
+each asset's URL, size and SHA256, and the [pin record](project/evidence/ffmpeg-pin-2026-10-27.md) gives the
+provenance.
+<!-- ffmpeg-pin:end -->
 
-The August build replaces July because its original upstream dependency download cache and build
+Since beta.9 the pin follows BtbN's newest release-series build rather than a retained monthly one.
+BtbN prunes daily releases, so Loomarr mirrors the binary archives in its own source release and the
+image downloads them from there; each source release also carries the build's original dependency
+download cache, which BtbN keeps for only 14 days. The paragraphs below record the earlier pins.
+
+The August build replaced July because its original upstream dependency download cache and build
 logs were retained before expiry. The [retention record](project/evidence/ffmpeg-august-source-retention.md)
 binds those archives to the new pins and records the remaining distribution and validation work.
 The n9.0 build (#1549) comes from the same release, the same BtbN build scripts and the same
@@ -214,10 +224,10 @@ document source distribution mechanics for that image using the public source re
   refuses to sign an index unless both platform images carry a non-empty SPDX SBOM and a build
   provenance naming this repository at the tagged commit);
 - ~~pin the runtime and build base images by digest~~ (done — all four `FROM` bases in
-  [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) ~~and make the Debian
-  package input reproducible~~ (done — the runtime stage repoints apt at a fixed
-  `snapshot.debian.org` timestamp (`DEBIAN_SNAPSHOT`) matching the base image's own build snapshot, so
-  every `apt-get install` resolves the same package versions on every build);
+  [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag). The Debian packages
+  layered onto the runtime base come from Debian stable (`deb.debian.org`) and follow its point
+  releases: a fixed `snapshot.debian.org` timestamp was tried and dropped in 2026-11, when that service
+  refused requests for days and failed every image build;
 - ~~include the required DejaVu font license~~ (done — the Bitstream Vera grant is reproduced above,
   and the image retains the package's own `copyright`) ~~and complete the frontend/Rust transitive
   license-text inventory~~ (done — the Frontend and Rust dependency sections above state the shipped

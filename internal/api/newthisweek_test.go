@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // Home's New this week (#1663): titles that arrived since a time, with the channels they now play
@@ -35,15 +36,12 @@ func TestNewThisWeekOverHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := h.Store.UpsertUser(ctx, store.User{ID: "u-member", Name: "Member One", Role: store.RoleMember}); err != nil {
+	if err := h.Store.UpsertUser(ctx, identitystore.User{ID: "u-member", Name: "Member One", Role: identitystore.RoleMember}); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.Store.CreateJob(ctx, store.Job{ID: "job-1", Kind: "suggest", Status: "done", CreatedBy: "u-member"}); err != nil {
-		t.Fatal(err)
-	}
-	channel := func(id string, number int, intentRef string, created time.Time, status schedule.ChannelStatus, keys ...provision.Key) {
+	channel := func(id string, number int, intentRef, requestedBy string, created time.Time, status schedule.ChannelStatus, keys ...provision.Key) {
 		ch := store.Channel{Channel: schedule.Channel{ID: id, Name: "Channel " + id, Number: number, IntentRef: intentRef,
-			Strategy: schedule.Shuffle, Status: status}, CreatedAt: created}
+			Strategy: schedule.Shuffle, Status: status}, CreatedAt: created, RequestedBy: requestedBy}
 		for _, k := range keys {
 			ch.Lineup = append(ch.Lineup, schedule.LineupEntry{Key: k})
 		}
@@ -51,9 +49,10 @@ func TestNewThisWeekOverHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	channel("ch-old", 4, "", days(30), schedule.StatusLive, arrived.Key)
-	channel("ch-new", 2, "job-1", time.Time{}, schedule.StatusLive, arrived.Key, picked.Key)
-	channel("ch-gone", 6, "", days(30), schedule.StatusDetached, arrived.Key)
+	// The requester is the channel's own, so it reads the same with no job row behind it.
+	channel("ch-old", 4, "", "", days(30), schedule.StatusLive, arrived.Key)
+	channel("ch-new", 2, "job-1", "u-member", time.Time{}, schedule.StatusLive, arrived.Key, picked.Key)
+	channel("ch-gone", 6, "", "", days(30), schedule.StatusDetached, arrived.Key)
 
 	var titles struct {
 		Titles []struct {

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // fakeXMLTVGuide answers programme timelines without a store or a scheduler.
@@ -87,7 +87,7 @@ func newPlayoutGuideHarness(t *testing.T, guide api.PlayoutGuide) *playoutGuideH
 			Log:           defaults.Log,
 			PlayoutSecret: func() string { return playoutToken },
 			PlayoutGuide:  guide,
-			LiveConfig:    func(key string) string { return cfg[key] },
+			LiveSettings:  stringSettings(func(key string) string { return cfg[key] }),
 		})
 	})
 	return &playoutGuideHarness{apiHarness: base}

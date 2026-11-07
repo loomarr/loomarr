@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // guideConcurrency bounds how many channel timelines resolve at once. The work is CPU-bound
@@ -164,10 +166,10 @@ const (
 // nonsensical: a zero or negative retention would pin the guide to "now" and leave the grid
 // unable to show the programme currently airing, which needs its real start.
 func (s *Server) guideLookback() time.Duration {
-	if s.liveConfigInt == nil {
+	if s.liveSettings == nil {
 		return guideMaxLookback
 	}
-	if h := s.liveConfigInt("guide.retention_hours"); h > 0 {
+	if h := settings.GuideRetentionHours.Get(s.liveSettings); h > 0 {
 		return time.Duration(h) * time.Hour
 	}
 	return guideMaxLookback
@@ -205,8 +207,8 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 	}
 	out.Body.FromMs = from.UnixMilli()
 	out.Body.ToMs = to.UnixMilli()
-	if s.liveConfig != nil {
-		out.Body.Timezone = strings.TrimSpace(s.liveConfig("guide.timezone"))
+	if s.liveSettings != nil {
+		out.Body.Timezone = strings.TrimSpace(settings.GuideTimezone.Get(s.liveSettings))
 	}
 
 	if s.playoutGuide == nil {
@@ -279,15 +281,15 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			podAt := map[int]filler.Pod{}
 			if s.pods != nil {
 				var idx []int
-				var starts []int64
+				var slots []filler.BreakSlot
 				for i, b := range bs {
 					if b.Kind == schedule.SlotFiller {
 						idx = append(idx, i)
-						starts = append(starts, b.Start.UnixMilli())
+						slots = append(slots, filler.BreakSlot{Start: b.Start, Length: b.BreakLength()})
 					}
 				}
-				if len(starts) > 0 {
-					if pods, perr := s.pods.PreviewAtMany(ctx, ch.ID, starts); perr == nil {
+				if len(slots) > 0 {
+					if pods, perr := s.pods.PreviewAtMany(ctx, ch.ID, slots); perr == nil {
 						for j, pod := range pods {
 							podAt[idx[j]] = pod
 						}
@@ -363,9 +365,9 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			}
 		}
 	}
-	clipsByHash := map[string]store.Clip{}
+	clipsByHash := map[string]catalogstore.Clip{}
 	if s.images != nil && len(clipHashes) > 0 {
-		clips, clipErr := s.store.ListClips(ctx, store.ClipFilter{Hashes: clipHashes})
+		clips, clipErr := s.store.ListClips(ctx, catalogstore.ClipFilter{Hashes: clipHashes})
 		if clipErr != nil {
 			s.log.Warn("guide: filler artwork lookup failed", "err", clipErr)
 		} else {

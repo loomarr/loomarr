@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 )
@@ -30,12 +30,13 @@ const (
 // internal/playout; here the question is what the HTTP layer does with it.
 type fakePlayoutSessions struct {
 	mu sync.Mutex
-	// attached records each Attach as (channel, target) so a test can assert the tuner attaches as
-	// PlanFull (§9.1 V47) — the identity that keeps HEVC a copy for a media server.
-	attached []attachRecord
+	// attached records the channel of each Attach, in order.
+	attached []string
 	err      error
 	chunks   chan []byte
-	streams  map[playout.EncodePlan]chan []byte
+	// attempts hands the Nth Attach its own stream, so a test can make the first attempt silent and
+	// the second produce transport. Attaches past the list fall back to chunks.
+	attempts []chan []byte
 	detached int
 	// V16 telemetry: what the handlers reported, and what Stats hands back.
 	stats      []playout.SessionStat
@@ -49,12 +50,6 @@ type fakePlayoutSessions struct {
 	stillOK    bool
 	stillErr   error
 	stillAsked []string
-}
-
-// attachRecord is one Attach call — its channel and codec target.
-type attachRecord struct {
-	channelID string
-	target    playout.EncodePlan
 }
 
 func (f *fakePlayoutSessions) Stats(time.Time) []playout.SessionStat {
@@ -71,14 +66,16 @@ func (f *fakePlayoutSessions) Capacity() int {
 
 func (f *fakePlayoutSessions) Budget() playout.BudgetSnapshot { return playout.BudgetSnapshot{} }
 
-func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target playout.EncodePlan) (<-chan []byte, func(), error) {
+func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string) (<-chan []byte, func(), error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
 		return nil, nil, f.err
 	}
-	f.attached = append(f.attached, attachRecord{channelID: channelID, target: target})
-	if chunks := f.streams[target]; chunks != nil {
+	attempt := len(f.attached)
+	f.attached = append(f.attached, channelID)
+	if attempt < len(f.attempts) {
+		chunks := f.attempts[attempt]
 		return chunks, func() {
 			f.mu.Lock()
 			defer f.mu.Unlock()
@@ -95,21 +92,21 @@ func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target
 	}, nil
 }
 
-func (f *fakePlayoutSessions) attachments() []attachRecord {
+func (f *fakePlayoutSessions) attachments() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]attachRecord(nil), f.attached...)
+	return append([]string(nil), f.attached...)
 }
 
 func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error) {
 	f.mu.Lock()
 	f.tunes++
 	f.mu.Unlock()
-	chunks, release, err := f.Attach(ctx, request.ChannelID, request.Plan)
+	chunks, release, err := f.Attach(ctx, request.ChannelID)
 	return playout.Presentation{Stream: playoutstreamfixture.Channel{Chunks: chunks}, Release: release}, err
 }
 
-func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, _ playout.EncodePlan, rel string, speculative bool) (playout.Asset, bool, error) {
+func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, rel string, speculative bool) (playout.Asset, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.opened = rel
@@ -158,10 +155,10 @@ func newPlayoutHarness(t *testing.T, config playoutHarnessConfig) *playoutHarnes
 			"playout.backend":   config.Backend,
 		}
 		opts := api.Options{
-			Store:      defaults.Store,
-			Auth:       api.NewTokenAuthorizer(adminToken),
-			Log:        defaults.Log,
-			LiveConfig: func(key string) string { return cfg[key] },
+			Store:        defaults.Store,
+			Auth:         api.NewTokenAuthorizer(adminToken),
+			Log:          defaults.Log,
+			LiveSettings: stringSettings(func(key string) string { return cfg[key] }),
 		}
 		if config.Sessions != nil {
 			opts.Playout = config.Sessions
@@ -231,6 +228,32 @@ func TestChannelPlayURLCarriesAuthoritativeServerClock(t *testing.T) {
 	}
 	if body.ServerTime < before || body.ServerTime > after {
 		t.Fatalf("serverTimeMs = %d, want request interval %d..%d", body.ServerTime, before, after)
+	}
+}
+
+// A client built before the device-capability body was removed still posts one. The op ignores it:
+// the mint succeeds and neither URL names a codec audience.
+func TestChannelPlayURLIgnoresALegacyDeviceBody(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{})
+	seedChannel(t, harness.Store, "ch1", "Channel One", 1, "internal")
+
+	resp := do(t, harness.Server, http.MethodPost, "/v1/channels/ch1/play-url", adminToken,
+		`{"video":["hevc"],"audio":["eac3"],"video10bit":true,"maxResolution":2160}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("play URL status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		RelativeURL      string `json:"relativeUrl"`
+		RelativeStillURL string `json:"relativeStillUrl"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []string{body.RelativeURL, body.RelativeStillURL} {
+		if u == "" || strings.Contains(u, "plan=") {
+			t.Fatalf("minted URL %q, want a signed URL with no plan selector", u)
+		}
 	}
 }
 
@@ -570,19 +593,15 @@ func TestPlayoutStream_SessionClosingBeforeFirstChunkFailsBeforeCommitting(t *te
 	}
 }
 
-// The full tuner plan may select a native HEVC broadcast that this machine cannot encode. A
-// zero-byte full presentation is not terminal when the known-playable H.264/AAC baseline can
-// produce transport: release the failed presentation, tune the baseline session, and commit 200
-// only after its first real chunk arrives.
-func TestPlayoutStream_FullPlanWithoutTransportFallsBackToBaseline(t *testing.T) {
-	full := make(chan []byte)
-	close(full)
-	baseline := make(chan []byte, 1)
-	baseline <- []byte("baseline-ts")
-	close(baseline)
-	f := &fakePlayoutSessions{streams: map[playout.EncodePlan]chan []byte{
-		playout.PlanFull: full, playout.PlanBaseline: baseline,
-	}}
+// A zero-byte first presentation is not terminal: release it, tune the channel again, and commit
+// 200 only after the second presentation's first real chunk arrives.
+func TestPlayoutStream_PresentationWithoutTransportRetunesOnce(t *testing.T) {
+	silent := make(chan []byte)
+	close(silent)
+	second := make(chan []byte, 1)
+	second <- []byte("second-ts")
+	close(second)
+	f := &fakePlayoutSessions{attempts: []chan []byte{silent, second}}
 	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
 	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
@@ -593,15 +612,12 @@ func TestPlayoutStream_FullPlanWithoutTransportFallsBackToBaseline(t *testing.T)
 		t.Fatal(err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want baseline transport 200", resp.StatusCode)
+		t.Fatalf("status = %d, want second-attempt transport 200", resp.StatusCode)
 	}
-	if string(body) != "baseline-ts" {
-		t.Fatalf("body = %q, want baseline transport", body)
+	if string(body) != "second-ts" {
+		t.Fatalf("body = %q, want the second attempt's transport", body)
 	}
-	if got, want := f.attachments(), []attachRecord{
-		{channelID: "ch1", target: playout.PlanFull},
-		{channelID: "ch1", target: playout.PlanBaseline},
-	}; !slices.Equal(got, want) {
+	if got, want := f.attachments(), []string{"ch1", "ch1"}; !slices.Equal(got, want) {
 		t.Fatalf("tunes = %+v, want %+v", got, want)
 	}
 	if got := f.detachCount(); got != 2 {
@@ -863,7 +879,7 @@ func TestPlayoutTuner_QuotesInChannelNamesDoNotBreakTheM3U(t *testing.T) {
 }
 
 // Still returns the configured frame, satisfying api.StillProvider.
-func (f *fakePlayoutSessions) Still(_ context.Context, channelID string, _ playout.EncodePlan) (playout.Still, bool, error) {
+func (f *fakePlayoutSessions) Still(_ context.Context, channelID string) (playout.Still, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stillAsked = append(f.stillAsked, channelID)

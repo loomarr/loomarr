@@ -17,7 +17,7 @@
 //
 // A generated callsign bug comes in four styles (Style, #1617): the Plate, and Text, Outline and
 // Small Plate drawn on the Plate's canvas. The look's values come from the channel's policy and
-// the install settings; internal/schedule (watermark_policy.go) and the settings registry own the
+// the install settings; internal/channels/schedule (watermark_policy.go) and the settings registry own the
 // defaults, so this package holds none.
 package watermark
 

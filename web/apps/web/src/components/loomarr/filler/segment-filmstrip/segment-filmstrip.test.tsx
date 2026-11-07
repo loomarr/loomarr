@@ -39,10 +39,10 @@ describe("SegmentFilmstrip", () => {
 
     const list = screen.getByRole("list", { name: /detected clips/i });
     const buttons = within(list).getAllByRole("button");
-    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
-      "00:00 · First",
-      "00:30 · Second",
-    ]);
+    // Named from content, so the name holds every visible word (WCAG 2.5.3) behind the start time.
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toHaveAccessibleName(/^00:00 · .*First/);
+    expect(buttons[1]).toHaveAccessibleName(/^00:30 · .*Second/);
     expect((buttons[0] as HTMLElement).querySelector("img")).toHaveAttribute("src", artwork.src);
     expect(within(buttons[1] as HTMLElement).getByText("Preview unavailable")).toBeInTheDocument();
 
@@ -105,7 +105,7 @@ describe("SegmentFilmstrip", () => {
       />,
     );
 
-    const clip = screen.getByRole("button", { name: "01:05 · Toy ad" });
+    const clip = screen.getByRole("button", { name: /^01:05 · .*Toy ad/ });
     await userEvent.hover(clip);
     const descriptionId = clip.getAttribute("aria-describedby");
     expect(descriptionId).toBeTruthy();

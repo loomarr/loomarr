@@ -55,6 +55,11 @@ A channel can restrict some content to a window of the year, so Halloween episod
 October. An empty seasonal policy still varies with the calendar — the default is automatic,
 not off.
 
+A channel follows a holiday only where your country keeps it. Ask for a Thanksgiving channel in
+Britain and you still get the Thanksgiving episodes, but the channel plays them all year, since
+that season never comes; the proposal says so before you approve it. The model is offered only
+the holidays your country keeps.
+
 ## When the pool runs dry
 
 A small library plus a tight scope plus a long no-repeat window can leave nothing eligible.
@@ -80,12 +85,12 @@ Matching a clip to a channel needs several separate facts:
   clip may play.
 - **Era** and **audience:** scheduling facts, each checked on its own.
 - **Brand:** shown only when the clip's own text or picture supports it.
-- **Geography:** national or local, with a country and an optional market. Unknown means it
-  still needs review; it never means local.
+- **Geography:** national or local, with a country. A local clip also names the TV station it
+  aired on. Unknown means it still needs review; it never means local.
 - **Tags:** what the clip is about (products and topics, format, seasonal and audience cues),
   from the vocabulary under **Filler → Manage**.
 
-A tag describes; it doesn't change where a clip may play. Tags form a hierarchy, so picking a
+A tag describes; apart from a holiday tag (below), it doesn't change where a clip may play. Tags form a hierarchy, so picking a
 broad tag such as Food also matches clips tagged Cereal. A clip stores only the tags chosen for
 it, so reshaping the hierarchy later never rewrites old decisions.
 
@@ -101,7 +106,29 @@ likely era and place in public sources; [Privacy](privacy.md) lists what that se
   matching its era and audience: a kids channel starts from kids-safe filler, and any other
   channel from general-audience filler. Loomarr doesn't guess product categories from the
   shows' genres.
-- **Geography is never loosened.** A channel set to a US market takes US-national clips and that
-  market's local clips. Clips from other countries or markets stay in the library but never
-  enter that channel's pool, whatever the fallback. The guide's time zone only changes how times
-  are shown; it never sets a country.
+- **Geography is never loosened.** A channel set to a US city takes US-national clips and the
+  local clips of stations within the local radius of that city, plus the national clips of any
+  country in your region preference. Clips from other countries or other cities' stations stay
+  in the library but never enter that channel's pool, whatever the fallback. A channel follows
+  your household's location unless you give it its own, which may be another country: a channel
+  of British shows can take British commercials, and British station clips once you give it a
+  British city. Loomarr never works a location out from the shows, and the guide's time zone
+  only changes how times are shown; it never sets a country.
+- **Language is never loosened either.** Each channel has a commercial language, your household's
+  unless you give it its own, and it is separate from the channel's audio language: an anime
+  channel can play Japanese audio with English commercials. A break plays clips in that language
+  and clips with no speech; when those run out, the channel's card plays instead. A clip whose
+  language Loomarr couldn't work out plays only on channels using your household's language.
+  New clips are kept when they're in a language one of your channels uses, so adding a Spanish
+  channel starts keeping Spanish commercials without changing a setting.
+
+### Holidays
+
+A clip tagged with a holiday, such as Christmas or Halloween, plays only in that holiday's season
+as your country keeps it, on your guide's time zone. Out of season it stays in the library but
+never plays, bumpers and station IDs included. In season, a break includes a holiday
+commercial when one that fits hasn't aired recently, and holiday commercials fill at most half of
+a break while other commercials can fill the rest, so the season doesn't crowd out everything else.
+When nothing else fits, holiday commercials fill the break rather than leaving it to the channel's
+card. A holiday tag with no dates yet is just
+a tag: its clips play all year. A clip you pin to a channel plays whatever the season or its language.

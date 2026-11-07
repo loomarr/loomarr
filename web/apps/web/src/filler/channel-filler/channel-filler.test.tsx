@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
+import { DEFAULT_KINDS } from "@/test/fixtures/filler";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
@@ -44,7 +45,12 @@ const renderSection = (ui: ReactNode) => {
 
 // ⚠ Every coverage payload carries the per-setting breakdown since V51f. Nothing at zero, so the
 // diagnosis panel stays hidden and these tests keep asserting what they were written to assert.
-const NO_LIMIT: CoverageDTO["geography"] = { country: "", market: "" };
+const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage" | "defaultKinds"> = {
+  geography: { country: "", place: "" },
+  language: "",
+  undeterminedLanguage: 0,
+  defaultKinds: DEFAULT_KINDS,
+};
 
 const HEALTHY: CoverageDTO["criteria"] = [
   { criterion: "era", clips: 4 },
@@ -63,7 +69,7 @@ const previewBody: PreviewDraftPodsOutputBody = {
     total: 4,
     rungs: [{ level: "exact", clips: 4 }],
     criteria: HEALTHY,
-    geography: NO_LIMIT,
+    ...NO_LIMIT,
   },
   entries: [
     {
@@ -152,7 +158,10 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[]; revision?: number } = {}) 
       total: 4,
       rungs: [{ level: "exact", clips: 4 }],
       criteria: HEALTHY,
-      geography: { country: "US", market: "" },
+      geography: { country: "US", place: "" },
+      language: "en",
+      undeterminedLanguage: 0,
+      defaultKinds: DEFAULT_KINDS,
     }),
   );
 
@@ -465,7 +474,7 @@ describe("ChannelFiller", () => {
         total: 0,
         rungs: [],
         criteria: HEALTHY,
-        geography: NO_LIMIT,
+        ...NO_LIMIT,
       }),
       // This test builds its own handler set rather than using `stubChannelFiller`, so it needs
       // the inherited-default settings read too.

@@ -217,7 +217,7 @@ func TestDrainScanSources_OneBadSourceDoesNotStopTheRest(t *testing.T) {
 		}},
 		libraries: NewLibraryScanner(lister, nil),
 	}
-	s.drainScanSources(context.Background())
+	s.drainScanSources(context.Background(), nil)
 
 	// The loop reached the SECOND library after the first one failed.
 	if len(lister.seen) != 2 {
@@ -256,7 +256,7 @@ func TestDrainScanSources_RegisteredFolderIsDrainedNotScannedInPlace(t *testing.
 		watch:       filepath.Join(clipDir, WatchDirName),
 		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:extra", Kind: "folder", URI: extra}}},
 	}
-	s.drainScanSources(context.Background())
+	s.drainScanSources(context.Background(), nil)
 
 	// It was filed into the CLIP folder under its hash, and the registered folder drained.
 	var filed []string
@@ -298,7 +298,7 @@ func TestDrainScanSources_SkipsTheClipFolderItself(t *testing.T) {
 		watch:       filepath.Join(clipDir, WatchDirName),
 		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:self", Kind: "folder", URI: clipDir}}},
 	}
-	s.drainScanSources(context.Background())
+	s.drainScanSources(context.Background(), nil)
 
 	if _, err := os.Stat(filepath.Join(clipDir, "already-here.mp4")); err != nil {
 		t.Errorf("the clip folder was drained into itself — the whole catalog would re-file "+
@@ -374,7 +374,7 @@ func TestDrainScanSources_SkipsEveryAliasAndOverlapOfTheClipLibrary(t *testing.T
 				watch:       layout.WatchDir(),
 				scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:overlap", Kind: "folder", URI: source}}},
 			}
-			s.drainScanSources(context.Background())
+			s.drainScanSources(context.Background(), nil)
 
 			if _, err := os.Stat(filed); err != nil {
 				t.Errorf("registered overlap removed the live catalog clip: %v", err)
@@ -405,7 +405,7 @@ func TestDrainScanSources_NoMediaServerStillDrainsFolders(t *testing.T) {
 		}},
 		libraries: nil, // no media server configured
 	}
-	s.drainScanSources(context.Background())
+	s.drainScanSources(context.Background(), nil)
 
 	if left, _ := os.ReadDir(extra); len(left) != 0 {
 		t.Error("a library row with no media server stopped the folder rows from draining")
@@ -416,5 +416,5 @@ func TestDrainScanSources_NoMediaServerStillDrainsFolders(t *testing.T) {
 // construction must keep working without opting in.
 func TestDrainScanSources_UnwiredIsANoOp(t *testing.T) {
 	s := &Syncer{dir: t.TempDir()}
-	s.drainScanSources(context.Background()) // must not panic
+	s.drainScanSources(context.Background(), nil) // must not panic
 }

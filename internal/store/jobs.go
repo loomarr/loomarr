@@ -3,22 +3,29 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // Job is a persisted suggester generation task (§8). The worker pool claims
-// queued jobs via ClaimDueJobs and runs them; IntentJSON/ProposalJSON blobs
-// carry the suggest.Intent / suggest.Proposal so the store stays domain-neutral
-// (like titles.title_json). IntentHash is the cache key.
+// queued jobs via ClaimDueJobs and runs them; the IntentJSON blob carries the
+// proposals.Intent (like titles.title_json). IntentHash is the cache key.
 type Job struct {
-	ID               string
-	Kind             string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
-	Status           string // queued | running | done | failed
-	IntentJSON       string
-	IntentHash       string
-	CreatedBy        string
+	ID         string
+	Kind       string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
+	Status     string // queued | running | done | failed
+	IntentJSON string
+	IntentHash string
+	CreatedBy  string
+	// ChannelID names the channel a refine or re-curation job re-curates; its approval changes
+	// that channel instead of creating one. Empty for a job that originates a channel, which the
+	// channel's `intent_ref` binds.
+	ChannelID        string
 	LastError        string
 	FailureCode      string
 	FailureTraceJSON string
@@ -56,7 +63,7 @@ type ProposalJob struct {
 
 // Proposal is a persisted suggester output (§8). Status drives the approval queue
 // (submitted → approved/denied); CreatedBy powers My proposals (§12); ApprovedBy
-// records the admin (§8 audit). ProposalJSON carries the suggest.Proposal.
+// records the admin (§8 audit). Body is the proposals.Proposal, persisted as one JSON column.
 type Proposal struct {
 	ID         string
 	JobID      string
@@ -71,8 +78,10 @@ type Proposal struct {
 	// Note is the approver's message to whoever requested it ("swapped Con Air for
 	// Face/Off — we already have that one"). It is why a request coming back altered is
 	// explicable rather than mysterious.
-	Note         string
-	ProposalJSON string
+	Note string
+	// Body is the proposal itself. The store encodes it on write and decodes it once on read,
+	// so nothing above the store handles the stored JSON.
+	Body proposals.Proposal
 	// ApprovedAt is WHEN the gate let this through — the audit rows' ordering key (§7, V27).
 	// Zero = never approved. Deliberately not `UpdatedAt`: three callers write that (approve,
 	// deny, recurate), so a re-curation would silently move an approval's timestamp.
@@ -86,11 +95,11 @@ type Proposal struct {
 func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-			workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		j.ID, j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
 		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, epoch(j.Deadline), j.Attempts,
-		epoch(j.CreatedAt), epoch(j.UpdatedAt), j.FailureTraceJSON)
+		epoch(j.CreatedAt), epoch(j.UpdatedAt), j.FailureTraceJSON, j.ChannelID)
 	if err != nil {
 		return fmt.Errorf("create job %s: %w", j.ID, err)
 	}
@@ -98,7 +107,7 @@ func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 }
 
 const jobSelect = `SELECT id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-	workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json FROM jobs`
+	workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id FROM jobs`
 
 func (s *sqlStore) GetJob(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, s.ph(jobSelect+` WHERE id = ?`), id))
@@ -153,6 +162,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	row := tx.QueryRowContext(ctx, s.ph(
 		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error, j.failure_code,
 		        j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at, j.failure_trace_json,
+		        j.channel_id,
 		        p.id, p.job_id, p.status, p.created_by, p.approved_by, p.deny_reason,
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
 		   FROM jobs j
@@ -179,6 +189,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 		&out.Job.ID, &out.Job.Kind, &out.Job.Status, &out.Job.IntentJSON, &out.Job.IntentHash,
 		&out.Job.CreatedBy, &out.Job.LastError, &out.Job.FailureCode, &out.Job.WorkflowVersion, &out.Job.ReachedLive,
 		&deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt, &out.Job.FailureTraceJSON,
+		&out.Job.ChannelID,
 		&pID, &pJobID, &pStatus, &pCreatedBy, &pApprovedBy, &pDenyReason,
 		&pModSummary, &pNote, &pJSON, &pApprovedAt, &pCreatedAt, &pUpdatedAt,
 	)
@@ -192,10 +203,14 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	out.Job.CreatedAt = fromEpoch(jobCreatedAt)
 	out.Job.UpdatedAt = fromEpoch(jobUpdatedAt)
 	if pID.Valid {
+		body, err := decodeProposalBody(pID.String, pJSON.String)
+		if err != nil {
+			return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
+		}
 		out.Proposal = &Proposal{
 			ID: pID.String, JobID: pJobID.String, Status: pStatus.String, CreatedBy: pCreatedBy.String,
 			ApprovedBy: pApprovedBy.String, DenyReason: pDenyReason.String, ModSummary: pModSummary.String,
-			Note: pNote.String, ProposalJSON: pJSON.String,
+			Note: pNote.String, Body: body,
 			ApprovedAt: fromEpoch(pApprovedAt.Int64), CreatedAt: fromEpoch(pCreatedAt.Int64),
 			UpdatedAt: fromEpoch(pUpdatedAt.Int64),
 		}
@@ -204,10 +219,10 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	if err != nil {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
 	}
-	channel, channelErr := scanChannel(tx.QueryRowContext(ctx, s.ph(channelSelect+` WHERE intent_ref = ?`), id))
+	channel, channelErr := channelForJob(ctx, tx, s.ph, id)
 	if channelErr == nil {
 		out.Channel = &channel
-	} else if !errors.Is(channelErr, ErrNotFound) {
+	} else if !errors.Is(channelErr, ErrNotFound) && !errors.Is(channelErr, ErrJobChannelGone) {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s Channel: %w", id, channelErr)
 	}
 	if err := tx.Commit(); err != nil {
@@ -240,11 +255,8 @@ func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.D
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	query := jobSelect + ` WHERE status IN ('queued', 'running') AND deadline <= ? AND deadline > 0
-		ORDER BY deadline LIMIT ?`
-	if s.dialect == DialectPostgres {
-		query += ` FOR UPDATE SKIP LOCKED`
-	}
+	query := storedb.LockRowsSkipLocked(s.dialect, jobSelect+` WHERE status IN ('queued', 'running') AND deadline <= ? AND deadline > 0
+		ORDER BY deadline LIMIT ?`)
 	rows, err := tx.QueryContext(ctx, s.ph(query), epoch(now), limit)
 	if err != nil {
 		return nil, fmt.Errorf("claim due jobs: select: %w", err)
@@ -365,7 +377,7 @@ func scanJob(sc scannable) (Job, error) {
 		deadline, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
-		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, &j.FailureTraceJSON)
+		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, &j.FailureTraceJSON, &j.ChannelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -400,15 +412,42 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 // --- proposals ---
 
 func (s *sqlStore) CreateProposal(ctx context.Context, p Proposal) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+	body, err := encodeProposalBody(p)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		p.ProposalJSON, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
+		body, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)
 	}
 	return nil
+}
+
+// encodeProposalBody is the one place a proposal becomes its stored JSON.
+func encodeProposalBody(p Proposal) (string, error) {
+	raw, err := json.Marshal(p.Body)
+	if err != nil {
+		return "", fmt.Errorf("encode proposal %s: %w", p.ID, err)
+	}
+	return string(raw), nil
+}
+
+// decodeProposalBody is the one place stored proposal JSON becomes a proposals.Proposal. An empty
+// column is the zero proposal. Malformed JSON is an error: a caller must never act on a proposal it
+// could not read.
+func decodeProposalBody(id, raw string) (proposals.Proposal, error) {
+	var body proposals.Proposal
+	if raw == "" {
+		return body, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		return proposals.Proposal{}, fmt.Errorf("decode proposal %s: %w", id, err)
+	}
+	return body, nil
 }
 
 const proposalSelect = `SELECT id, job_id, status, created_by, approved_by, deny_reason,
@@ -428,7 +467,7 @@ func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]
 }
 
 // NewestProposalByStatusForJob returns the most recent proposal for one job in one status —
-// the binder's "which approved proposal does this channel bind to?" query.
+// approval's "which approved proposal does this job's channel bind to?" query.
 //
 // ⚠ NEWEST wins, and that is load-bearing rather than a tiebreak. A job legitimately accrues
 // SEVERAL approved proposals over its life: a refine re-runs the channel's own job, and the
@@ -459,14 +498,18 @@ func (s *sqlStore) ListProposalsByCreator(ctx context.Context, userID string) ([
 func scanProposal(sc scannable) (Proposal, error) {
 	var (
 		p                                Proposal
+		bodyJSON                         string
 		approvedAt, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&p.ID, &p.JobID, &p.Status, &p.CreatedBy, &p.ApprovedBy, &p.DenyReason,
-		&p.ModSummary, &p.Note, &p.ProposalJSON, &approvedAt, &createdAt, &updatedAt)
+		&p.ModSummary, &p.Note, &bodyJSON, &approvedAt, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Proposal{}, ErrNotFound
 	}
 	if err != nil {
+		return Proposal{}, err
+	}
+	if p.Body, err = decodeProposalBody(p.ID, bodyJSON); err != nil {
 		return Proposal{}, err
 	}
 	p.ApprovedAt = fromEpoch(approvedAt)

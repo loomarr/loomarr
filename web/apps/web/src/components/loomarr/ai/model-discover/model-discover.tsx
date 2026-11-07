@@ -38,14 +38,14 @@ const ModelDiscover = ({
   return (
     <div className={cn("flex flex-col gap-2.5", className)}>
       <div>
-        <p className="font-medium text-muted-foreground text-sm">Need a different model?</p>
-        <p className="mt-0.5 text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-sm font-medium">Need a different model?</p>
+        <p className="text-muted-foreground mt-0.5 text-xs">
           These fit your hardware and can generate lineups. Download one to add it to the list above.
         </p>
       </div>
 
       {loading && (
-        <p className="flex items-center gap-2 text-muted-foreground text-xs">
+        <p className="text-muted-foreground flex items-center gap-2 text-xs">
           <Loader2 className="size-3.5 animate-spin" aria-hidden />
           Finding compatible models…
         </p>
@@ -70,7 +70,7 @@ const ModelDiscover = ({
       )}
 
       {visible && visible.length > 0 && (
-        <ul className="flex flex-col divide-y divide-border/60 rounded-md border border-border/60">
+        <ul className="divide-border/60 border-border/60 flex flex-col divide-y rounded-md border">
           {visible.map((m: DiscoverModelView) => {
             const isPulling = pulling?.tag === m.pullRef;
             const progress = isPulling ? pulling?.percent : undefined;
@@ -78,7 +78,7 @@ const ModelDiscover = ({
               <li key={m.id} className="flex items-center gap-3 px-3 py-2">
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2">
-                    <span className="truncate font-medium text-sm" title={m.id}>
+                    <span className="truncate text-sm font-medium" title={m.id}>
                       {m.label}
                     </span>
                     {m.recommended && (
@@ -89,7 +89,7 @@ const ModelDiscover = ({
                   </p>
                   {/* The note carries the fit in plain words ("fits comfortably" /
                       "fits, but tight on VRAM"), so no separate fit badge is needed. */}
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground text-xs">
+                  <p className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                     <span>{m.note}</span>
                     <span aria-hidden className="text-static-400">
                       ·
@@ -108,7 +108,7 @@ const ModelDiscover = ({
                   size="sm"
                   disabled={isPulling}
                   onClick={() => onPull(m.pullRef)}
-                  className="shrink-0 text-muted-foreground"
+                  className="text-muted-foreground shrink-0"
                 >
                   {isPulling ? (
                     <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -127,7 +127,7 @@ const ModelDiscover = ({
         <Button
           variant="ghost"
           size="sm"
-          className="self-start text-muted-foreground text-xs"
+          className="text-muted-foreground self-start text-xs"
           onClick={() => setExpanded(true)}
         >
           Show {hiddenCount} more
@@ -137,7 +137,7 @@ const ModelDiscover = ({
         <Button
           variant="ghost"
           size="sm"
-          className="self-start text-muted-foreground text-xs"
+          className="text-muted-foreground self-start text-xs"
           onClick={() => setExpanded(false)}
         >
           Show fewer

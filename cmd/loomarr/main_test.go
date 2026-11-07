@@ -41,7 +41,9 @@ func TestDrainGenerationQuiescesActiveStreamBeforeHTTPWait(t *testing.T) {
 	t.Cleanup(func() {
 		releaseOnce.Do(func() { close(release) })
 		_ = server.Close()
-		<-serveDone
+		if err := <-serveDone; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("serve: %v", err)
+		}
 	})
 
 	requestDone := make(chan error, 1)

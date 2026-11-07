@@ -102,12 +102,12 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
   if (slot.kind === "break") {
     return (
       <li
-        className="flex items-center gap-2 py-1.5 text-muted-foreground text-xs"
+        className="text-muted-foreground flex items-center gap-2 py-1.5 text-xs"
         aria-label="Commercial break"
       >
-        <div className="h-px flex-1 bg-border" />
-        <span className="uppercase tracking-wide">Commercial break</span>
-        <div className="h-px flex-1 bg-border" />
+        <div className="bg-border h-px flex-1" />
+        <span className="tracking-wide uppercase">Commercial break</span>
+        <div className="bg-border h-px flex-1" />
       </li>
     );
   }
@@ -120,15 +120,15 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
   return (
     <li
       className={cn(
-        "flex items-center gap-3 rounded-md border border-border px-3 py-2",
+        "border-border flex items-center gap-3 rounded-md border px-3 py-2",
         pending ? "border-dashed bg-transparent" : "bg-card",
       )}
     >
-      <span className="w-6 shrink-0 text-right font-mono text-muted-foreground text-xs">{index + 1}</span>
+      <span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs">{index + 1}</span>
       {pending ? (
-        <Clock className="size-4 shrink-0 text-static-400" aria-hidden />
+        <Clock className="text-static-400 size-4 shrink-0" aria-hidden />
       ) : (
-        <Tv className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <Tv className="text-muted-foreground size-4 shrink-0" aria-hidden />
       )}
       <span
         className={cn(
@@ -137,10 +137,10 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
         )}
       >
         {showPrefix ? <span className="shrink-0 font-medium">{showPrefix}</span> : null}
-        {se ? <span className="shrink-0 font-mono text-muted-foreground text-xs">{se}</span> : null}
+        {se ? <span className="text-muted-foreground shrink-0 font-mono text-xs">{se}</span> : null}
         {/* The em dash separates the show/SxxExx from the episode title, only when there's a
             show prefix to separate from — a movie (title == its own name) just shows its title. */}
-        {showPrefix ? <span className="shrink-0 text-muted-foreground">—</span> : null}
+        {showPrefix ? <span className="text-muted-foreground shrink-0">—</span> : null}
         <span className="truncate">{episodeTitle}</span>
         {pending ? <span className="shrink-0"> (coming soon)</span> : null}
       </span>
@@ -186,7 +186,7 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
 
   const safety = excluded.overCeiling + excluded.unrated;
   return (
-    <Disclosure className="rounded-md border border-border">
+    <Disclosure className="border-border rounded-md border">
       <div className="flex items-center gap-2 px-3 py-2">
         <ShieldAlert
           className={cn("size-4 shrink-0", safety > 0 ? "text-caution" : "text-muted-foreground")}
@@ -209,7 +209,7 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             and the panel must not run off the page. tabIndex + aria-label keep the region
             keyboard-reachable (WCAG 2.1.1) — the rows are non-focusable text. */}
         <ul
-          className="scroll-thin flex max-h-64 flex-col divide-y divide-border overflow-y-auto"
+          className="scroll-thin divide-border flex max-h-64 flex-col divide-y overflow-y-auto"
           // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive — see the slot list's note
           tabIndex={0}
           aria-label="Titles not airing"
@@ -272,9 +272,9 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
   if (trace.recordedTotal === 0 && !trace.truncated) return null;
   const omitted = Math.max(0, trace.factTotal - trace.recordedTotal);
   return (
-    <Disclosure className="rounded-md border border-border">
+    <Disclosure className="border-border rounded-md border">
       <div className="flex items-center gap-2 px-3 py-2">
-        <ListTree className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <ListTree className="text-muted-foreground size-4 shrink-0" aria-hidden />
         <p className="text-sm">
           <span className="font-medium">
             {trace.recordedTotal} recorded {trace.recordedTotal === 1 ? "decision" : "decisions"}
@@ -287,12 +287,12 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
       </div>
       <Disclosure.Panel className="border-border border-t">
         {omitted > 0 ? (
-          <p className="border-border border-b px-3 py-2 text-muted-foreground text-xs">
+          <p className="border-border text-muted-foreground border-b px-3 py-2 text-xs">
             {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
           </p>
         ) : null}
         <ul
-          className="scroll-thin flex max-h-72 flex-col divide-y divide-border overflow-y-auto"
+          className="scroll-thin divide-border flex max-h-72 flex-col divide-y overflow-y-auto"
           // biome-ignore lint/a11y/noNoninteractiveTabindex: bounded trace is a keyboard-scrollable region
           tabIndex={0}
           aria-label="Scheduler decisions"
@@ -364,7 +364,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
     <section className={cn("flex flex-col gap-3", className)}>
       <div>
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-base">Preview what airs</h3>
+          <h3 className="text-base font-semibold">Preview what airs</h3>
           {/* ⚠ Says WHICH schedule is on screen. Without it, a draft preview and a saved one
               are indistinguishable — and an author who has just edited a rule would have no
               way to tell whether they are looking at their change or at what is live. */}
@@ -419,8 +419,8 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
         />
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5">
-            <Clapperboard className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-3 py-2.5">
+            <Clapperboard className="text-muted-foreground size-4 shrink-0" aria-hidden />
             {body.activeRule.matched ? (
               <p className="text-sm">
                 Active rule: <span className="font-medium">{body.activeRule.label}</span>{" "}
@@ -429,7 +429,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             ) : (
               <p className="text-muted-foreground text-sm">No rule active: base policy</p>
             )}
-            <span className="ml-auto font-mono text-muted-foreground text-xs">
+            <span className="text-muted-foreground ml-auto font-mono text-xs">
               {humanWindow(body.windowMs)}
             </span>
           </div>

@@ -18,15 +18,19 @@ type stubCatalog struct {
 }
 
 type stubExposures struct {
-	items   map[string]filler.ExposureRecord
-	channel string
-	reads   int
+	items  []filler.Airing
+	settle time.Duration
+	reads  int
 }
 
-func (s *stubExposures) FillerExposureRecords(_ context.Context, channelID string) (map[string]filler.ExposureRecord, error) {
-	s.channel = channelID
+func (s *stubExposures) FillerAirings(context.Context) (filler.AiringHistory, error) {
 	s.reads++
-	return s.items, nil
+	return filler.AiringHistory{Airings: s.items, Settle: s.settle}, nil
+}
+
+// aired is a settled airing: recorded well before it aired, as playout's run-ahead records one.
+func aired(hash string, at time.Time) filler.Airing {
+	return filler.Airing{ClipHash: hash, AiredAt: at, RecordedAt: at.Add(-time.Minute)}
 }
 
 func (s stubCatalog) AllClips(context.Context) ([]filler.Clip, error) {
@@ -46,19 +50,13 @@ func TestPreviewAtUsesBreakScopedExposureSnapshot(t *testing.T) {
 	}
 	// "new" first aired AT this break's start: that play belongs to the break itself, so the
 	// snapshot must not see it, or the clip would reshuffle the break it is airing in.
-	history := &stubExposures{items: map[string]filler.ExposureRecord{
-		"recent": {PlayCount: 1, LastPlayedAt: start.Add(-time.Minute)},
-		"new":    {PlayCount: 1, LastPlayedAt: start},
-	}}
+	history := &stubExposures{items: []filler.Airing{aired("recent", start.Add(-time.Minute)), aired("new", start)}}
 	adapter := filler.NewPodAdapter(stubCatalog{clips: cat}, history, func() filler.Policy {
 		return filler.Policy{PodMax: 2, Cooldown: time.Hour}
 	}, discardLogger())
 	pod, err := adapter.PreviewAt(context.Background(), "channel-7", 42, filler.Selection{}, start)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if history.channel != "channel-7" {
-		t.Fatalf("history read for %q, want the break's channel", history.channel)
 	}
 	if len(pod.Entries) < 2 || pod.Entries[0].Hash != "new" || pod.Entries[1].Hash != "recent" {
 		t.Fatalf("rotation entries = %+v, want new before recent", pod.Entries)
@@ -75,9 +73,8 @@ func TestPreviewAtManyReadsOnceAndMatchesPreviewAt(t *testing.T) {
 		cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Kind: filler.Commercial, DurationMs: 30_000})
 	}
 	// "a" aired in the second break: breaks before it must not see that play, breaks after must.
-	records := map[string]filler.ExposureRecord{
-		"a": {PlayCount: 2, LastPlayedAt: start.Add(30 * time.Minute), PreviousPlayedAt: start.Add(-3 * time.Hour)},
-		"b": {PlayCount: 1, LastPlayedAt: start.Add(-10 * time.Minute)},
+	records := []filler.Airing{
+		aired("a", start.Add(30*time.Minute)), aired("a", start.Add(-3*time.Hour)), aired("b", start.Add(-10*time.Minute)),
 	}
 	policy := func() filler.Policy { return filler.Policy{PodMax: 3, Cooldown: time.Hour} }
 	reads := 0
@@ -107,23 +104,32 @@ func TestPreviewAtManyReadsOnceAndMatchesPreviewAt(t *testing.T) {
 	}
 }
 
-// The cut itself: history strictly before the cutoff, reconstructed from the one predecessor.
-func TestExposuresBeforeCutsAtTheBreakStart(t *testing.T) {
+// The cut itself: what aired strictly before the break, and only what was recorded a settle before
+// it. A tune-in on another channel records a clip that aired minutes ago at the moment of the
+// tune-in; once the break is on air, that airing must not join its snapshot and reshuffle it.
+func TestExposuresBeforeCutsAtTheBreakStartAndTheSettle(t *testing.T) {
 	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
-	records := map[string]filler.ExposureRecord{
-		"twice": {PlayCount: 2, LastPlayedAt: at, PreviousPlayedAt: at.Add(-time.Hour)},
-		"once":  {PlayCount: 1, LastPlayedAt: at.Add(time.Minute)},
-		"old":   {PlayCount: 3, LastPlayedAt: at.Add(-time.Minute), PreviousPlayedAt: at.Add(-2 * time.Hour)},
-	}
-	got := filler.ExposuresBefore(records, at)
+	const settle = 15 * time.Second
+	h := filler.AiringHistory{Settle: settle, Airings: []filler.Airing{
+		aired("twice", at), aired("twice", at.Add(-time.Hour)), // the break's own airing, and one before
+		aired("once", at.Add(time.Minute)), // after the break
+		aired("old", at.Add(-time.Minute)), aired("old", at.Add(-2*time.Hour)),
+		// Aired before the break, recorded by a tune-in on another channel as the break airs.
+		{ClipHash: "late", AiredAt: at.Add(-3 * time.Minute), RecordedAt: at.Add(20 * time.Second)},
+		// Recorded inside the settle: possibly after the break's first clip was resolved.
+		{ClipHash: "unsettled", AiredAt: at.Add(-time.Second), RecordedAt: at.Add(-settle + time.Millisecond)},
+		{ClipHash: "settled", AiredAt: at.Add(-time.Second), RecordedAt: at.Add(-settle - time.Millisecond)},
+	}}
+	got := filler.ExposuresBefore(h, at)
 	want := map[string]filler.Exposure{
-		"twice": {PlayCount: 1, LastPlayedAt: at.Add(-time.Hour)},
-		"old":   {PlayCount: 3, LastPlayedAt: at.Add(-time.Minute)},
+		"twice":   {PlayCount: 1, LastPlayedAt: at.Add(-time.Hour)},
+		"old":     {PlayCount: 2, LastPlayedAt: at.Add(-time.Minute)},
+		"settled": {PlayCount: 1, LastPlayedAt: at.Add(-time.Second)},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("snapshot = %+v, want %+v", got, want)
 	}
-	if all := filler.ExposuresBefore(records, time.Time{}); len(all) != 3 || all["twice"].PlayCount != 2 {
+	if all := filler.ExposuresBefore(h, time.Time{}); len(all) != 6 || all["twice"].PlayCount != 2 {
 		t.Fatalf("zero cutoff = %+v, want all history", all)
 	}
 }

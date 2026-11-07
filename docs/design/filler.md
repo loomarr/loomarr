@@ -66,6 +66,16 @@ A clip is identified by a hash of its bytes; its path is where it lives (decisio
 - **A file changed outside Loomarr is a new clip.** A transform Loomarr performs inside the
   pipeline files the new bytes at their own hash and atomically re-keys the row, tags, pipeline
   state and lineage. The old hash never names bytes it no longer identifies.
+- **A re-key accounts for every column that names a clip** (#2121). Each one is listed with what
+  the re-key does to it. Screening verdicts, enrichment, research, cost ledgers and the Ready
+  event judge the content, so they move: a Ready clip re-encoded from its master keeps its
+  history. Fingerprints and the defect record measured the old bytes, so they are dropped and
+  measured again. A clip re-encoded while it airs brings a record measured on its new bytes into
+  the same transaction ([the library re-encode](filler-pipeline.md#the-library-re-encode)). The
+  identities of a copy that lost a merge stay, so intake keeps skipping them. A schema test fails
+  on a `clip_hash` column the list does not name. The web-research attempts are the one reference
+  with a real foreign key, which has no `ON UPDATE`, so they step out of the table while the row
+  is re-keyed and come back under the new hash in the same transaction.
 - **Legacy hash-named files repair themselves at sync.** A file whose stem is an old
   machine-generated hash but whose bytes hash differently is refiled at its canonical path without
   overwriting, and a hash-shaped display name is replaced from the durable catalog name, then from
@@ -74,6 +84,39 @@ A clip is identified by a hash of its bytes; its path is where it lives (decisio
 - **An identity change drops the catalog** with a forward-only migration (`00033` did this), since
   filler is a synced cache. Sidecars restore tags; play counts and pins do not survive, and the app
   says so.
+
+**Creative identity: one copy of each ad (#2033).** The byte hash says two files are the same
+bytes. It cannot say they are the same advert. `internal/media/creative` answers that from a
+fingerprint of picture and sound (`creative-v1-video4fps-gray9x8-audio8k-hk15`): a 64-bit
+difference hash per video frame at 4 fps, and a 15-bit band-energy hash per 64 ms of 8 kHz mono
+audio, which a gain change does not move.
+
+- **Same** means a duration gap of at most 2.5 s, at least 85% of aligned, informative frames within
+  20 bits at some offset within ±1.5 s (mean at most 12), and an audio bit-error rate of at most
+  0.30 when both clips have sound. A re-encode, a resize, a trimmed head or tail and a silent copy
+  are the same ad.
+- **Variant** means not the same, but at least half the frames of a shorter clip (at least 5 s)
+  appear in the longer one within 16 bits. A cut-down, an alternate ending, and the same picture
+  under another voiceover are variants.
+- Solid frames (fades, slates) are ignored. Too little evidence (fewer than 8 frames or 32 audio
+  hops) is never a match.
+- The hourly `filler-identity` job (`job.filler_identity.schedule`) fingerprints published clips
+  it has not measured and caches each fingerprint by algorithm. It also groups the copies of each
+  ad and keeps the best copy: higher resolution first, then the copy needing less air-time loudness
+  correction (within 1 dB is a tie), then the longer edit, then the earlier arrival. #2034 adds
+  measured defects ahead of these. A copy merges only into a survivor it matches directly. Same
+  tolerates a few seconds of difference, so a chain of matches is not one ad.
+- **A transform that files new bytes** (transcode, conditioning) carries the ad's airings, variant
+  links and the copies that lost to it onto the new hash, in the same transaction as the re-key.
+- **Merging an inferior copy is one transaction.** The survivor gains its play count, later
+  last-played time and airings, inherits a curated name when its own is machine-derived, and takes
+  over its pins, exclusions and variant links. Then the inferior copy's media, sidecar and
+  unshared source assets are deleted. The inferior hash and its source hash are recorded
+  (`filler_inferior_copies`), so sync and intake skip those bytes instead of importing them again.
+  The same bytes dropped again into a watched folder are left there, never imported or deleted.
+- **Variants stay separate clips, linked** (`filler_clip_variants`). A break never carries two
+  versions of one ad, and an airing of any version rests them all in household rotation.
+- Split dedup uses the same `Same` verdict, so a reel's repeated spot is discarded by the same rule.
 
 **A clip's name records where it came from** (`name_source`, #1988). The scan takes the
 source's info-JSON `title` (`sidecar`), else the sidecar's derived `displayName` with its
@@ -117,9 +160,24 @@ the application persists it before the file is eligible for intake.
 
 Each clip carries the metadata that lets the scheduler place it:
 
-- `kind`: `unclassified`, `commercial`, `bumper`, `station_id`, `psa`, `trailer` or
-  `interstitial`. `unclassified` means no exact role is established; it is descriptive, not a
-  lifecycle state, and an unknown filename defaults to it, never to `commercial`.
+- `kind`: `unclassified`, `commercial`, `bumper`, `station_id`, `psa`, `trailer`,
+  `interstitial`, `political` or `news`. `unclassified` means no exact role is established; it is
+  descriptive, not a lifecycle state, and an unknown filename defaults to it, never to `commercial`.
+- **Political ads and news are opt-in** (#2037). `political` is a campaign or issue ad; `news` is a
+  news or weather segment, whose format tag sits under `interstitial`. Both download and pass the
+  defect floor like any clip, so opting in is instant, but a channel that chose no kinds airs every
+  kind except these two, and only a channel that names one airs it. A station's own news is the
+  exception: it is station material, so it airs wherever that station's idents air, and only within
+  the channel's radius. The coverage answer carries the default set, so the channel page shows it
+  ticked without a copy of the rule.
+- Sources file campaign ads and weather reports as commercials. The free pass reads the item's
+  wording (sponsor and stand-by-your-ad disclaimers, ballot asks, news and weather segment names) and
+  that answer replaces a generic `commercial` or `interstitial`, never a specific role such as a PSA.
+  Its rules are scored on a committed labelled corpus (`kind-corpus-v1`): neither may make a false
+  call. Within the generic and opt-in kinds a newer accepted answer replaces an older one, so a
+  corrected rule takes back a wrong label. The text model knows the two kinds but only answers a
+  kind no source or rule recorded, and its precision is not measured; a campaign ad whose wording
+  names no sponsor or office stays a commercial until an operator marks it.
 - `era` (decade or year), `audience` (`kids`, `family`, `general`, `late_night`), `category`,
   and `brand` (free text, grounded).
 - `duration` from Loomarr's own `ffprobe` scan, `rating`, `source`, and a persisted `transcript`.
@@ -165,8 +223,32 @@ fetchable and operator-removable.
   with a blank target and a `not configured` badge, because that answers "why is my catalog empty?".
 - **A fresh install seeds sources but downloads nothing.** Three Archive.org collections seed with
   targets verified against the live API (`classic_tv_commercials`, `vhscommercials`, `tv_ads`),
-  each with a human-readable label. The YouTube row seeds empty: Loomarr never recommends YouTube
-  content itself. `packs` is not a kind until a real pack index exists.
+  each with a human-readable label. The `youtube` row seeds empty, a prompt to bring your own
+  channel or playlist. `packs` is not a kind until a real pack index exists.
+- **Curated sources** (#2035, decision
+  [0045](decisions/0045-loomarr-recommends-curated-youtube-channels.md)).
+  `internal/filler/curated/sources.json` is a versioned list of vetted archive.org collections and
+  YouTube channels, each with a label, era range, region and notes.
+  - **Offered once, switched off.** Each boot offers the entries this install has not been offered
+    (`filler_curated_offers`), as sources switched off. Enabling one is the consent to fetch from
+    it.
+  - **Except a source for a nearby station** (#2059 decision 10; #2066). An entry may list the
+    broadcast stations whose material it mostly holds (`stations`, station ids), stored on its
+    offer and refreshed by every list version. Setting a place is the consent for its local
+    sources. Before each fetch pass, an entry covering a station within the radius of the
+    installation's or a channel's place is switched on. It is switched back off when no place is
+    near any more. One the operator already had on is theirs and is never touched. One the
+    operator switched off after Loomarr switched it on stays off (`local_state`: `on`, `operator`,
+    `off`). Sources shows "For your area" on such a row. Coverage only chooses where to look: each
+    clip's locality is still decided on arrival.
+  - **Operator rows are never overwritten.** A source the operator already added by hand keeps its
+    label, switch and geography, since the curated id is the one adding it by hand would give. One
+    they deleted is not offered again.
+  - **Checked weekly.** The `curated-sources` workflow (`scripts/check-curated-sources.sh`) checks
+    each entry weekly, and on any change to the list. An archive.org entry must still be a
+    collection with items; a YouTube entry must list at least one video through the yt-dlp
+    version the image pins. A removed or renamed entry fails the job. On an install, a dead source
+    is reported by the ordinary source-health checks.
 - **A disabled source is not scanned, fetched or searched, and cannot enter a pull**, re-checked at
   approval. Its clips stay. The switch is enforced at the scan and fetch sites, not by dimming a
   row. It does not bind an admin's deliberate one-item actions (global discover search, a typed
@@ -181,8 +263,43 @@ fetchable and operator-removable.
 - **Licence metadata is passive provenance.** It is recorded when the provider supplies it; absence
   means "not provided", never public domain. It never ranks, filters, holds, rejects or admits, and
   it stays off the Sources UI.
+- **Region preference** (#2035). `filler.region_fallback` is an ordered list of countries after
+  `filler.home_country`, for example `GB, CA, AU`. A listed country's **national** commercials
+  pass the hard geography boundary and its country-wide sources may fetch; its local ones, and
+  every unlisted country's, never do.
+  - Within a ladder rung the home country's clips rank first, then each listed country's in
+    order. Region yields to era: a GB ad from the channel's own era outranks a US ad from a
+    widened one, which is what "when US supply for an era runs thin" means.
+  - An unattended pass asks home sources first, then each listed country's.
+  - A channel inherits the list, a channel in another country too (#2030 decision 16), less that
+    channel's own country. A language no channel uses is still rejected by the language check.
+  - The list is edited under Filler › Settings › Automatic downloads.
+- **Local means near a broadcast station** (#2059 decisions 2, 7, 8; #2062). The Installation picks
+  a place from the embedded location index (`filler.home_place`, an index id; the country stays
+  `filler.home_country`), and `filler.local_radius_km` (default 100) sets how far its stations
+  reach. A Channel may pick its own place; without one it inherits the Installation's, but only
+  in the Installation's country, so a channel set to another country airs no local clips until it
+  names a place there. A `local` clip is eligible only when its broadcast station's community of license is within
+  the radius of the effective place, so a station with no place, a clip with no station and a place
+  outside the country all fail closed. A `national` clip needs only the country. There is no typed
+  market anywhere: the free-text `filler.home_market`, channel market, source market and clip
+  market are gone, because a name like "New York" could not be matched against a station.
+- **A clip no current place can air is removed** (#2059 decision 14; #2064). After each
+  enrichment and research pass, a clip whose geography is settled is checked against every current
+  place: the Installation's area and each Channel's. It is removed when none can air it: a `local`
+  clip whose station is outside every place's radius, or a `national` clip from another country.
+  "Settled" means a `national` or `local` answer on evidence stronger than an inference; unknown or
+  inferred geography is never a reason to remove a clip. Removal is the ordinary catalog tombstone,
+  so the clip's hash stays known and fetching never pulls it again. Nothing restores it when a place
+  changes later.
+- **A break holds at most one station segment, last** (#2059 decision 12; #2065). A station
+  segment is a `local` clip that is not a commercial: the station's news, weather, ID or promo. Once
+  a break has one, no other is picked, and it moves to the end of the break body so it airs right
+  before the return bumper (or is that bumper). It never opens a break. Local clips have no quota,
+  and a local advertiser's commercial is an ordinary ad. Spacing and household rotation apply as
+  to any clip.
 - **Geography is inherited.** A source without explicit coverage uses the Installation geography,
-  live. An explicit country and market is an Advanced override. The read model reports the
+  live. An explicit country is an Advanced override. The read model reports the
   effective geography, whether it is inherited, and one readiness state (`ready`, `off`,
   `needs_location`, `not_configured`, `out_of_area`). Candidate geography stays a hard acquisition
   constraint, and Installation or inherited geography is never copied into a clip's location:
@@ -190,6 +307,20 @@ fetchable and operator-removable.
   source itself declares is clip evidence (`registered_source:<id>`). An undeclared source
   contributes nothing, so its clips stay unknown and a household country excludes them (#1670:
   British archive ads aired as "US" when enrichment copied the inheritance).
+- **The broadcast station directory is shipped data in the database** (#2059, #2060). Every US
+  full-power and Class A TV station (`broadcast_stations`) has its community of license and the
+  dated base call signs it held (`broadcast_station_call_signs`; WOR 1949-1987 then WWOR). It is the
+  only source of a station's location: "local" means a station within the household's radius, and
+  a call sign from any evidence step must resolve here or it carries no location. `cmd/station-data`
+  builds it from the frozen FCC CDBS files plus a committed Wikidata snapshot for history CDBS never
+  recorded (Cleveland's KYW 1956-1965). Its rules: CDBS's first row opens a tenure rather than
+  dating it; a later row dated earlier corrects the rows it predates; an open start ends where
+  another station's dated tenure of the same call sign ended; a full-power station keeps a call
+  sign it shares with a Class A one (WWNY-TV over WWNY-CD); a Wikidata item without an FCC id joins
+  the one FCC station holding its call signs over the same years. Pairs still shown holding a call
+  sign at once are counted by the generator and resolve to no station. Boot applies the newest
+  unapplied seed revision by replacing every row; nothing else writes it. Canada and call-sign
+  changes after October 2023 are known gaps.
 - **Attribution gap.** The folder scan writes `Source = "filler-dir"` for every clip and the
   sidecar does not record which remote source fetched it, so per-source clip counts are sums of
   what children claim. Per-source attribution is an intake change, tracked separately.
@@ -243,6 +374,46 @@ An enabled source is checked on its effective policy and new items download with
   never download automatically. Reset clears both overrides. Filler → Manage presents the global
   policy as **Automatic downloads** (Never, 6 h, 12 h, daily, weekly, custom) and states the
   consequence ("3 sources means at most 30 new clips per check").
+- **Fetching works toward a pool target and stops when it is met** (#2035). The target is
+  per decade window a channel's era uses: enough commercials for the household's longest viewing
+  evening with no repeat.
+  - An evening is a run of watched airings (rotation's history, #2017) with no silence over two
+    hours, across every channel, since an ad rests household-wide. Each decade takes the most
+    airings any evening of the last eight weeks drew from it. An airing on a channel spanning
+    several decades is shared between them, and the channel needs each decade it draws from.
+  - No channel takes fewer than the rotation-spacing minimum: the household's
+    `filler.cooldown_seconds` at about 13 ads an hour, 54 at the default 4 h. A per-channel
+    `commercialSpacing` does not raise it.
+  - Until the household has four weeks of history, every decade takes a default six-hour
+    evening, about 80 ads. After that, a decade nobody watched adds nothing of its own.
+  - A channel is short while its **exact** rung holds fewer clips than its target. Its era then
+    steers the pass, which takes no more than the largest channel shortfall, while still listing
+    as far as an uncapped pass. When no channel is short and no role is missing, an unattended
+    pass asks no source, reports `stoppedBy: target`, and reads the target again after 15
+    minutes. **Look for new clips** is not held to the target.
+  - Clips queued but not yet through the pipeline do not count toward the target. A pass
+    six hours later can queue the same shortfall again, so a slow pipeline can overshoot by up
+    to one pass.
+  - To serve this, airings are kept whole for eight weeks (`clips.AiringHistoryAge`), not
+    one day; beyond that a clip keeps its newest four.
+  - A short pass also **searches each enabled archive.org source for nearby stations** (#2066).
+    The search covers the call signs of stations in a place's radius that were held during a short
+    channel's era. A pass asks at most four of them, rotating hourly. Hits rank ahead of the
+    listing, with the gap key `station:<CALL>`. A hit only says where to look: each clip's locality
+    is still decided on arrival. Nearby call signs never make a target unmet. YouTube sources are
+    not searched.
+  - **Open search** (#2067) comes after the sources. Only a pass they left short, and only one with
+    nearby stations in a short era, searches all of archive.org. It looks for two of those call
+    signs a pass, also rotating hourly, and takes no more than the remaining shortfall. A hit is
+    from nowhere vetted, so a deterministic listing gate (`filler.ListingGate`) reads its title
+    before anything is downloaded. The title must:
+    - carry no word from the safety list;
+    - name no language, and use no script, that no channel airs;
+    - give a year, with every year it gives inside a short era;
+    - name a station near some current place, under the call sign it held that year.
+
+    The gate asks no model. A hit that passes is acquired under `search:archive`, a source id no
+    row has, and then runs the whole pipeline, which decides its locality afresh.
 
 Unattended fetching can fill a disk, so it is bounded by limits that fail toward doing less:
 
@@ -269,6 +440,22 @@ Unattended fetching can fill a disk, so it is bounded by limits that fail toward
   too long, live, upcoming, private, unavailable, incomplete).
 - **Archive.org and YouTube are peers.** Each registered remote is enumerated by its stored `kind`
   (Archive's bounded collection API; yt-dlp flat-playlist listing) through enumeration and download.
+  Listing belongs to the provider (`internal/filler/source`: its window, cursor, duration-cut
+  choice, station searches and metadata screen); the fetch pass owns the budget, lease, shared
+  rejection, dedupe, selection and queueing. A source whose provider is not registered is inert:
+  a scheduled pass skips it, a manual check refuses it, and the row is kept. The folder and the
+  library are registered as scanned providers, never fetched. The registry also answers what the
+  API and the Sources page need to know about a kind: its label and address hint, how an operator's
+  address is read (`Addresser`), how sources are suggested and verified (`Finder`), whether a
+  source can be searched in place (`Searcher`), and what is shown under its rows.
+  `GET /v1/filler/providers` publishes each registered provider with its capabilities and the
+  words the Sources page shows for it (heading blurb, source noun, finder copy and minimum
+  query, address label and hint), so a provider added to the registry reaches the client without
+  a client change. The web names no provider: provider ids on the wire are plain strings checked
+  against the registry, a source row carries its provider's page (`pageUrl`) and each example its
+  player (`embedUrl`), and the suggestions route answers an address with the one source it names
+  (`exact`) because only the provider (`Recognizer`) can tell an address from words to search for.
+  A web test fails on an `"archive"` or `"youtube"` literal in production source.
   URL inference is kept only for a URL an admin typed. Both share the same bounds, governor,
   acquisition record, held lifecycle, sidecar and admission authority.
 - **Look for new clips** runs one bounded fetch pass for the selected source and then scans local
@@ -306,12 +493,22 @@ reservations and the operator-facing decision.
   before queueing, revalidated before execution, charged as output grows and released on success,
   cancellation or failure. Writes have a byte ceiling, so a dishonest provider length cannot
   overrun.
+- **A pause is never a verdict on the clip** (#2031). A pipeline rung that the governor turns away
+  waits on its rung without spending an attempt, records the pause reason on the ladder, and asks
+  again later. It never reaches the fatal-rung rule, so lack of room can't reject a clip as
+  `unplayable`.
 - An acquisition lease covers its staging ceiling, `source + max(source/4, 32 MiB)`. Transcode,
   split and artwork reserve their own peaks when they run. Leases are per item and
   released as each download ends. An unsizable item is planned from its duration and height, else a
   512 MiB cap.
 - Reservations group by filesystem, not path. The hard reserve aggregates every domain on the
   device; soft budgets stay per domain. A cross-filesystem move reserves the full copy first.
+- **Managed usage is a running total, never walked under the lock.** Each filesystem and domain
+  is walked once on first use; leases then add the bytes they report written, and a background
+  re-walk every 10 minutes replaces the total to correct drift from writes the governor never saw
+  (a released lease's abandoned staging stays counted until then). Reservations and snapshots read
+  only the in-memory total and the live capacity probe, so a large library does not slow them.
+  Repointing a live managed root discards its total and walks the new tree.
 - Restart forgets leases but not bytes. Automatic cleanup removes only cancelled or incomplete
   private staging, superseded temporary output and unreferenced generated artifacts under a
   retention contract; never admitted clips, pinned media, review evidence, source masters, symlinks
@@ -361,7 +558,8 @@ date never becomes an era.
   unknown or mismatched era, duration, quality, role, audience or taxonomy, or ranked below the
   limit). Ranking is deterministic: fitness, representation quality, diversity, then identity.
 - Approval revalidates each candidate's source, policy and novelty, then hands the **candidate
-  URLs**, never the collection URL, to the manifest-backed ingest path.
+  URLs**, never the collection URL, to the manifest-backed ingest path. It applies the fetcher's
+  source rule (`ServesHome`), so an installation with no location approves nothing.
 - Scheduled acquisition adopts this selector only after parity tests; there must not be two ranking
   algorithms. Intent chooses promising evidence; it does not certify it.
 
@@ -386,8 +584,8 @@ queueing one item. It is captured when the clip enters the conveyor, so disablin
 stops future work without rewriting outcomes. Nobody is asked for per-clip approval because an
 optional classifier could not name the role.
 
-**Role and placement are separate.** A commercial, promo, PSA, trailer or interstitial places in the
-break body; a bumper or station ID places as a bookend. Enrollment grounds break-body placement for
+**Role and placement are separate.** A commercial, promo, PSA, trailer, interstitial, political ad
+or news segment places in the break body; a bumper or station ID places as a bookend. Enrollment grounds break-body placement for
 an unclassified clip without relabelling it. Composites and programme excerpts are not playable. An
 explicit channel kind filter still narrows to known roles.
 
@@ -400,8 +598,8 @@ within `filler.incoming.ready_window`, default `24h`, one hour to 30 days, hot-a
 window is returned with the projection). Each group is counted by the predicate that returns its
 rows, and row arrays are capped at 100 with separately counted totals. Ready clips age out of
 Incoming but stay in the Library. Rejections, retries, provider failures and optional enrichment
-belong in Activity or Diagnostics. Bumpers, station IDs and compilations are never "add tags"
-tasks.
+stay in the preparing group's processing details. Bumpers, station IDs and compilations are never
+"add tags" tasks.
 
 A row carries one server-owned sentence. Its panel may reveal **Processing details**: the server's
 ordered stages, each with a name, outcome, time and safe explanation, routine skipped stages behind
@@ -419,8 +617,8 @@ video stream.
 
 **The transcode pass inspects what it already decodes.** `blackdetect`, `silencedetect` and
 `freezedetect` ride the mezzanine encode's filter chains and their intervals go into the sidecar.
-An older mezzanine without a report gets one bounded inspection-only pass (the marker stops a
-re-encode), within the ordinary transcode budget.
+The encode writes the profile marker and the report together; a sidecar with the marker but no
+report is not a finished encode, so the rung encodes it again.
 
 - At least 90% black or 90% silent is a hard reject, recorded with its coverage.
 - A black or silent span of at least 5 s, or a frozen span of at least 10 s, goes to review.
@@ -430,11 +628,19 @@ re-encode), within the ordinary transcode budget.
 - Intervals are unioned and clamped to the probed duration; an open trailing event closes at the
   duration.
 
-**Loudness is measured at ingest and applied at playout**, target `filler.target_lufs` (−23 LUFS).
-Normalisation at playout is the default: reversible, one filter on a stream already being encoded.
-On-file normalisation is an opt-in (`filler.conditioning.normalize_loudness`, default off) that
-writes the playback derivative with `loudnorm` at the **same** target and records `normalizedLufs`
-in the sidecar so it is never repeated. Playout still normalises, so older clips stay consistent.
+**Loudness is measured at ingest and corrected at playout**, target `filler.target_lufs`
+(−23 LUFS), by one rule in `internal/media/loudness` (#2032). Files are never levelled on disk.
+
+- The playback derivative's integrated loudness and true peak are measured at ingest. Derivative
+  verification refuses a clip with audio but no valid measurement, so every new clip is measured.
+- At air time a clip gets one static gain, `min(target − measured, −1 dBTP − truePeak)`. A boost is
+  at most +6 dB, and a cut at most −20 dB, which only guards against a broken measurement.
+- A clip needing more than the +6 dB boost limit is refused at the transcode rung as `too_quiet`.
+  Raising it further would raise its hiss too. The limit is calibrated in #2034. The floor ignores
+  the peak ceiling: a clip the ceiling holds short of the target airs slightly quiet, not clipped.
+- The old on-disk levelling switch under `filler.conditioning` is removed. A saved value is ignored.
+- Clips published before measurement existed are re-processed through the app (rewind or a fresh
+  download); there is no compatibility path that airs them uncorrected on purpose.
 
 **Brightness is measured by nothing and fixed by nothing.** A dim VHS transfer is what the source
 looks like, and unlike loudness a correction could not be undone at playout.
@@ -461,6 +667,165 @@ arm64.
 - The seam is `MediaTools.Transcribe(ctx, file, startMs, endMs)`; hosted is a second implementation
   behind it.
 
+## The defect floor (#2034)
+
+The floor judges what a clip actually shows and sounds like, against a bar set by its era. A
+1985 ad is held to good tape and a 2015 ad to real HD. Stated resolution and bitrate are never
+inputs. Its verdicts are enforced at admission and on every re-check (see
+[Enforcement](#enforcement-2036) below).
+
+- **One bounded pass per clip** (`tools.MeasureDefects` in `internal/media/tools`) measures the file that airs. It is
+  a pass of its own rather than a branch of the playback transcode. Re-checks have no transcode
+  to ride, and `cropdetect` logs every sampled frame, which in the transcode's bounded log would
+  push out the black and freeze evidence the publish gate reads.
+- **The picture is measured inside its active area.** A first, 2 fps pass runs `cropdetect` over
+  the clip and takes the union of the non-black picture (`defects.ParseActiveArea`). Black borders
+  aligned to the coding blocks read as block edges, and letterboxed widescreen is common in SD-era
+  ads, so measuring the whole frame failed good clips. A box under 32 pixels on a side falls back
+  to the whole frame.
+- **Picture detectors sample the active area at 4 fps:**
+  - `blockdetect` for compression blocks;
+  - `blurdetect`;
+  - `signalstats` temporal outliers for tape dropouts and sparkle;
+  - two upscale scores: luma SSIM of each frame against itself shrunk and enlarged again, once by
+    half and once by a quarter.
+- **`idet` reads every frame.** Interlace is measured as how far one field order leads the other.
+  Woven fields keep one order, while fine detail fools `idet` evenly both ways.
+- **Sound is measured by `astats` over 16-bit samples**, so a clipped track flattens at full
+  scale.
+- **Eras fall into three bands:** tape (before 1995), SD (1995–2009, and any unknown era) and HD
+  (2010 on).
+  - Blocks, combing, windowboxing and clipping are rip damage, so one bar holds in every era.
+  - Softness and dropouts are era texture, so their bars relax with age.
+  - Upscaling is judged on the half-size score in the HD era. Good tape and SD have no detail at
+    half size, so older eras are judged on the quarter-size score, where only a tiny source
+    enlarged reads close to 1.
+  - Letterbox and pillarbox are an aspect ratio. Windowboxing needs a border on both axes.
+- **Each picture check has two bars.** Below the lower bar is a pass, above the upper bar a fail,
+  and between them borderline. The worst finding is the clip's outcome. Too little picture (under
+  two seconds of samples) is undecided, never a pass. Clipping has one bar: the judge sees stills
+  and cannot hear, so sound is settled by the detector alone.
+- **The bars are provisional** (`floor-v3-provisional`), fitted to a committed synthetic corpus
+  (`defects.CorpusVersion`). Each case is an invented clip damaged in a known way at a known
+  severity (`testkit.FillerDefectClip`), labelled pass or fail per era by how it was made, before
+  anything was measured. `TestDefectCorpus_ScoresEachEraBand` scores every era band: no clip
+  labelled pass may fail, and at least 90% of those labelled fail must fail or go to the judge.
+  - A corpus version is immutable. A disagreement is a bar to recalibrate, never a label to change;
+    new cases need a new version.
+  - The corpus proves the direction of each bar and catches regressions. Absolute readings depend
+    on content, so the household labelling report recalibrates the bars on real clips that never
+    leave the machine.
+- **A vision model rules on the borderline band** (`filler.VisionDefectJudge`). It sees six stills
+  spread across the clip, the names of the borderline checks, and what a fair bar is for the era.
+  It answers pass, fail or abstain with a reason (`defects.JudgeVersion`). The record keeps the
+  ruling and a final verdict (`defects.Decide`):
+  - pass, fail or undecided straight from the detectors outside the band;
+  - the judge's pass or fail inside it;
+  - **fail when the judge abstains, or when no vision model is configured**, each with a reason that
+    says so. A "no judge" record is put to the judge once one is configured; an abstention only to
+    a different model (provider and model), since the same one would answer the same;
+  - **pending** when no ruling came back. The next pass asks again (#548).
+
+  The judge is asked after every clip is measured, at most six times a pass, clips with the fewest
+  failed asks first. A failure of the judge itself (an outage, a spent budget) ends the asking for
+  the pass. A failure that belongs to the clip (stills that cannot be read, a garbled reply, no
+  known length) is counted against the clip and the next one is asked, so a clip the judge keeps
+  failing on waits behind the rest instead of taking every turn. A garbled reply is not an
+  abstention: the model did not decline. The model's reason is stored as valid UTF-8 with no
+  control characters, cut to 200 runes.
+
+  The judge is the vision rung's model (`filler.vision.*`), so it needs vision switched on, and a
+  ruling names the model the endpoint actually serves. Each hosted look is reserved in the filler
+  inference ledger (#551) at `filler.defects.judge_look_cents` before the call and settled outside
+  the pass's context, so a shutdown does not lose a paid answer. A reported charge is recorded
+  even on a failed call; a hosted call that reported none counts at its reservation, failed or
+  not, since a provider may bill a call that timed out. The per-look ceiling is what is reserved,
+  not a hard cap: a charge above it is recorded and counts toward the day. A look waits once the
+  day's metered filler spend would pass `filler.defects.judge_daily_cents`. An operator-run
+  endpoint (Ollama, or an OpenAI-compatible server on the operator's network) reserves nothing,
+  whatever its provider is called. A ruling survives a re-assessment that asks the same question
+  (the same band and borderline checks), so a recalibration that moves no clip in or out of the
+  band costs no new look.
+- **Records are versioned** (`filler_clip_defects`). The `filler-defects` job runs every five
+  minutes (`job.filler_defects.schedule`) and handles each kind of staleness differently:
+  - no record, or one under an older measurement version: measured, within a bounded decode
+    budget, held clips first since admission waits on them;
+  - a newer floor version or a corrected era: judged again from the stored readings, with no
+    decode.
+
+  A re-key drops the record, because it describes the old bytes, and so does merging a copy into
+  its survivor.
+- **A clip that cannot be measured is recorded as undecided, with the reason** (no picture, a
+  stream the decoder rejects). It is not retried every hour, where it would keep spending the
+  budget ahead of healthy clips. A new measurement version measures it again. A failed read of the
+  records stops the pass rather than treating every clip as unmeasured.
+- **The pass runs with `-noautorotate`.** ffprobe reports the coded frame size, and a rotated
+  phone clip decoded upright would not match it.
+- **The household report** (`filler.DefectReports`, `GET /v1/filler/defects`, admin only) shows
+  what the floor would retire on this install and every measured clip's findings, worst first.
+  - The maintainer labels a measured clip pass or fail (`PUT`/`DELETE
+    /v1/filler/defects/{clipId}/label`). The label is stored on the clip's record, in the same
+    statement that stamps it with the era the record was judged against. Measuring again keeps it;
+    a re-key or merge drops it with the record.
+  - The report scores the stored records against the labels per era band (`defects.Score`), the
+    judge's rulings included. A label for an era band the clip is no longer judged in is shown but
+    not scored.
+  - Labels and real clips stay in the install's database: the repository is public, and only the
+    synthetic corpus is committed.
+
+### Enforcement (#2036)
+
+- **Admission waits for a verdict.** The `defects` rung runs after screening and before
+  enrichment, so a copy that fails costs no transcription or hosted look. It measures nothing
+  itself: it waits, spending no attempt, until the floor job has a current record for the clip's
+  bytes and era. The floor measures a held clip only once its conveyor reaches this rung, so the
+  bytes are the transcoded ones that air and a whole break is judged through its cuts, never as
+  one ad. Then the rung admits a pass or an undecided clip and refuses a fail as `defect`, with
+  each failing check against its bar as the detail. A `defect` refusal is hard: there is no
+  override.
+- **Only a fail that stands is acted on.** That is the detectors' own fail or the judge's fail
+  ruling. A borderline clip failed only because no judge could rule (none configured, or it
+  abstained) goes to review with its findings: nothing automatic would settle it, so it is the
+  operator's call. An admitted ad in that state keeps airing and keeps its file; the floor rules
+  on it again once a judge can.
+- **A failing copy on air is retired.** A held copy is refused at the rung, which settles its
+  conveyor row; the floor retires only published copies. Each pass retires every one whose verdict
+  fails and stands. In order:
+  1. The copy is fingerprinted, if it never was. A copy that cannot be
+     fingerprinted waits for a later pass, because deleting it would lose the ad rather than ask
+     for a better copy.
+  2. The row is tombstoned and reaped in one write (`RetireDefectiveCopy`), so nothing airs it and
+     a sync that no longer finds its file keeps the row.
+  3. Its playback file, sidecar, and the master and evidence copy only it names are deleted, as in
+     a creative-identity merge. References are counted over every clip, removed ones too, since a
+     removed clip can be restored. A copy identity merged away mid-pass is skipped.
+
+  Bulk restore, review restore and pipeline retry all skip a reaped row, since its file is gone.
+- **The retired rows are the "wanted: better copy" list** (`ListWantedCopies`). Each keeps its
+  fingerprint, its defect record and its airings. Every newly published copy from any source meets
+  the list in the creative-identity pass. A copy that is the same ad as a wanted one takes its
+  place through the ordinary merge: the wanted row's airings, plays and pins move to it, so the
+  ad returns to rotation where it left, and leaves the list.
+- **The best copy is the cleanest.** Creative identity ranks copies of one ad by their defect
+  findings first: fewer checks near or past their bar wins, then resolution and the rest of the
+  ladder. A cleaner copy of an ad already on air replaces it the same way, keeping its history.
+- **An admitted clip keeps its source master and its playback copy.** The floor's next pass drops
+  its evidence copy: the sidecar stops naming it first, then the file goes once no sidecar names
+  it. Screening and split read evidence before admission, and every later check reads the
+  playback file. A rewind to split or screening on such a clip starts at the transcode instead,
+  which rebuilds the evidence copy from the master.
+- **Breaks hold up while the pool refills.** A purge shrinks the pool below its target, and the
+  fetcher fetches toward the target again. Meanwhile pod assembly fills a break in this order:
+  1. a rested ad;
+  2. an ad still resting, least recently aired first, never twice in one break and never beside
+     another version of itself;
+  3. the channel's station material (bumpers and idents, resting or not);
+  4. the embedded card, which has no file.
+
+  As the pool reaches target, rested ads fill every break and the lower rungs go unused. The lower
+  rungs only fill breaks: a channel with no ad that fits at all, such as a Christmas-only catalog
+  in July, has no pool and gets no breaks.
+
 ## Source evidence and playable media
 
 A convenient rendition is not source evidence, so every clip that reaches transcode has three media
@@ -470,7 +835,7 @@ roles (decision [0028](decisions/0028-source-evidence-and-playable-media.md)):
 | --- | --- | --- |
 | **source master** | exact acquired or supplied bytes; provenance, reprocessing, recovery | immutable, identified by full SHA-256 and byte length, never replaced |
 | **evidence derivative** | inspection, segmentation, OCR, transcription, model input | reproducible from the master under one versioned recipe; no loudness or cosmetic change |
-| **playback derivative** | what Tunarr or internal playout reads | H.264/yuv420p, AAC stereo 48 kHz, fast-start, bounded GOP; optional loudness policy lives here |
+| **playback derivative** | what Tunarr or internal playout reads | H.264/yuv420p, AAC stereo 48 kHz, fast-start, bounded GOP; its measured loudness drives the air-time gain |
 
 - The master is copied and hashed into `.loomarr-media/masters/<sha[0:2]>/<sha[2:4]>/<sha><ext>`
   under the filler filesystem before any derivative publishes; the scan never treats it as
@@ -490,8 +855,10 @@ roles (decision [0028](decisions/0028-source-evidence-and-playable-media.md)):
   its own recorded recipe and measurement. Both derivatives are built from the master, staged,
   fully decoded and checked, then atomically named; a failed check holds the clip and keeps the
   master.
-- There is no automatic master garbage collection; masters stay until a complete ownership graph
-  can prove one unreferenced and regenerable.
+- A master is deleted only with the one clip whose sidecar names it: an inferior copy merged into
+  its survivor (#2033) or a defective copy retired (#2036). Otherwise masters stay. An admitted
+  clip's evidence copy is dropped and rebuilt from its master on demand (see
+  [Enforcement](#enforcement-2036)).
 
 ## Conditioning evidence for split children
 
@@ -530,7 +897,7 @@ Split children are measured, not trusted (V64, V65). Structure decisions are in
   edge available. Post-rewrite parent edges are derived by checked integer arithmetic in media-tools
   (`derivedParentEdgesAfterRewrite`), because re-encoded packets cannot be matched to the parent.
   Anything missing holds the child for review; cancellation is checked at every boundary and
-  follows the same path. `normalizedLufs` is only a target marker, never loudness evidence.
+  follows the same path.
 - **The sidecar is the restart record**: a child with complete valid evidence is not decoded again;
   damaged or incomplete evidence holds.
 

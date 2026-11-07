@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // HostedLanguage detects with the configured speech-recognition service. Language identification
@@ -29,7 +29,7 @@ type HostedLanguage struct {
 	//
 	// Returning nil ⇒ LangUndetermined, so an install that selected `hosted` without configuring
 	// a service URL is inert rather than broken. A key is optional for Custom endpoints.
-	Client func() mediatools.AudioTranscriptionClient
+	Client func() tools.AudioTranscriptionClient
 	// Model is read per call for the same reason.
 	Model func() string
 	// FFmpegPath extracts the span; the wire format is 16kHz mono wav for the same reason whisper
@@ -43,7 +43,7 @@ type HostedLanguage struct {
 // ⚠ `asker` and `model` are FUNCS, resolved per call — see the field comments. Either may be nil
 // or return a zero value; the result reports LangUndetermined rather than erroring, because
 // "we cannot tell" is an answer the gate already knows how to handle.
-func NewHostedLanguage(client func() mediatools.AudioTranscriptionClient, model func() string, ffmpegPath, tmpDir string) *HostedLanguage {
+func NewHostedLanguage(client func() tools.AudioTranscriptionClient, model func() string, ffmpegPath, tmpDir string) *HostedLanguage {
 	return &HostedLanguage{Client: client, Model: model, FFmpegPath: ffmpegPath, tmpDir: tmpDir}
 }
 
@@ -81,8 +81,8 @@ func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startM
 
 	// Shared with the local whisper backend (`extractSpanWAV`): both feed a model that requires
 	// 16 kHz mono, so the extraction is the same job whoever runs the inference.
-	wav := mediatools.SpanWAVPath(dir)
-	if err := mediatools.ExtractSpanWAV(ctx, h.FFmpegPath, file, startMs, endMs, wav); err != nil {
+	wav := tools.SpanWAVPath(dir)
+	if err := tools.ExtractSpanWAV(ctx, h.FFmpegPath, file, startMs, endMs, wav); err != nil {
 		return LangUndetermined, err
 	}
 	audio, err := os.ReadFile(wav)

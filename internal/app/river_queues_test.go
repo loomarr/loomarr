@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -41,11 +41,11 @@ func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
 
 	// Far-future crons: only an explicit Trigger runs these, so no periodic insert can confound
 	// which job occupied which slot.
-	reg := scheduler.NewRegistry().
-		Add(scheduler.Job{
-			Name: "hog", Group: scheduler.GroupSystem, Title: "Hog", Description: "a long media job.",
+	reg := jobs.NewRegistry().
+		Add(jobs.Job{
+			Name: "hog", Group: jobs.GroupSystem, Title: "Hog", Description: "a long media job.",
 			DefaultCron: "0 0 5 1 1 *",
-			Timeout:     scheduler.LongJobTimeout,
+			Timeout:     jobs.LongJobTimeout,
 			Run: func(ctx context.Context) error {
 				close(started)
 				select {
@@ -55,8 +55,8 @@ func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
 				return nil
 			},
 		}).
-		Add(scheduler.Job{
-			Name: "cheap", Group: scheduler.GroupSystem, Title: "Cheap", Description: "a cheap sweep.",
+		Add(jobs.Job{
+			Name: "cheap", Group: jobs.GroupSystem, Title: "Cheap", Description: "a cheap sweep.",
 			DefaultCron: "0 0 5 1 1 *",
 			// A short explicit ceiling must preserve cancellation without putting health-like work
 			// behind the long media queue.
@@ -65,7 +65,7 @@ func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
 		})
 
 	log := slog.New(slog.DiscardHandler)
-	s := scheduler.New(st, reg, nil, time.Now, log)
+	s := jobs.New(st, reg, nil, time.Now, log)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s.SeedRegistry(ctx)
@@ -94,5 +94,5 @@ func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
 	}
 }
 
-// The routing invariant is pinned in `internal/scheduler` (queues_test.go), where `queueFor` and
+// The routing invariant is pinned in `internal/jobs` (queues_test.go), where `queueFor` and
 // `riverQueues` live — test-only exports would be a worse trade than an internal test.

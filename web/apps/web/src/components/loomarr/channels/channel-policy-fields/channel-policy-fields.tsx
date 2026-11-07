@@ -1,4 +1,5 @@
 import type { Range } from "@loomarr/api/models/range";
+import { tidyGoDuration } from "@loomarr/core/format";
 import { Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraDates, eraOf } from "@/lib/era-dates";
-import { describePlayOrder } from "@/lib/play-order-copy";
+import { describePlayOrder, INHERIT_PLAY_ORDER_LABEL, PLAY_ORDER_LABEL } from "@/lib/play-order-copy";
 import {
   datesMode,
   isOverridden,
@@ -155,7 +156,7 @@ const DateAxisEditor = ({
     onChange([...ranges, { from, to }]);
   };
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+    <div className="border-border flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-3">
         <Label className="text-sm">{label}</Label>
       </div>
@@ -196,7 +197,7 @@ const DateAxisEditor = ({
             placeholder="To"
           />
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add ${label} range`}>
+        <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add range for ${label}`}>
           Add range
         </Button>
       </div>
@@ -256,18 +257,6 @@ const PolicyField = ({
 // of what the scheduler had to ease, not a setting an operator edits. A field left blank
 // clears the authored override; its effective behavior is field-specific and named below.
 
-// A no-repeat window is a Go-duration STRING on the wire ("168h", "30h0m0s"). For display
-// we tidy the zero units the backend's Duration.String() emits: "30h0m0s" → "30h", "0s" →
-// "" (no restriction). Non-duration text is left as-typed so a bad value is visible, not
-// silently dropped.
-const tidyDuration = (v: string | undefined): string => {
-  if (!v || v === "0s") return "";
-  const m = v.match(/^(\d+h)?(\d+m)?(\d+s)?$/);
-  if (!m || (!m[1] && !m[2] && !m[3])) return v;
-  const trimmed = [m[1], m[2], m[3]].filter((u) => u && !/^0[hms]$/.test(u)).join("");
-  return trimmed || v;
-};
-
 // On save: pass the typed duration straight through (the backend accepts "24h"/"168h"),
 // or undefined for blank — undefined returns to Loomarr's built-in spacing. Whitespace-only
 // is treated as blank.
@@ -311,12 +300,10 @@ const orderingOptions = (strategy?: string): { value: string; label: string }[] 
   {
     value: "inherit",
     label: strategy
-      ? `Use channel strategy (${STRATEGY_LABELS[strategy] ?? strategy})`
-      : "Use channel strategy",
+      ? `${INHERIT_PLAY_ORDER_LABEL} (${STRATEGY_LABELS[strategy] ?? strategy})`
+      : INHERIT_PLAY_ORDER_LABEL,
   },
-  { value: "sequential", label: "In order" },
-  { value: "shuffle", label: "Shuffled" },
-  { value: "syndication", label: "Syndication" },
+  ...Object.entries(PLAY_ORDER_LABEL).map(([value, label]) => ({ value, label })),
 ];
 
 // The rating ladder, mirroring schedule/policy.go's `ladderRank`. Mirrored ONLY so the
@@ -690,11 +677,11 @@ const ChannelPolicyFields = ({
               key={separation?.[field] ?? ""}
               id={id}
               className="w-28"
-              defaultValue={tidyDuration(separation?.[field])}
+              defaultValue={tidyGoDuration(separation?.[field])}
               placeholder="Use built-in"
               onBlur={(e) => {
                 const next = durationOrUndefined(e.target.value);
-                if (next === tidyDuration(separation?.[field]) || next === separation?.[field]) return;
+                if (next === tidyGoDuration(separation?.[field]) || next === separation?.[field]) return;
                 onChange({ ...policy, separation: { ...separation, [field]: next } });
               }}
             />

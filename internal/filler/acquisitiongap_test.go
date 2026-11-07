@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
 // #749: acquisition steers toward the eras of channels that cannot fill their breaks from their
@@ -91,10 +92,40 @@ func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 		channel(filler.MatchWidened, filler.EraRange{From: 2010, To: 2012}),
 	}}
 	pool.Bookends = 3
-	got := filler.CoverageGapsFrom(pool)
+	got := filler.CoverageGapsFrom(pool, filler.PoolTargets{}, 2026)
 	want := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}, {From: 2010, To: 2012}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("gaps = %+v, want %+v", got, want)
+	}
+}
+
+// A channel can fill every break from its own era and still be short of an evening (#2035): its
+// era is a gap until the exact rung reaches the target, and Short is the largest shortfall.
+func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
+	exact := func(clips int, era filler.EraRange) filler.ChannelCoverage {
+		return filler.ChannelCoverage{Report: filler.CoverageReport{
+			Level: filler.MatchExact, EraWindows: []filler.EraRange{era},
+			Rungs: []filler.RungCoverage{{Level: filler.MatchExact, Clips: clips}, {Level: filler.MatchWidened, Clips: clips + 40}},
+		}}
+	}
+	targets := filler.PoolTargets{Decade: 50, PerDecade: map[int]float64{1980: 80}}
+	pool := filler.PoolReport{Bookends: 2, Channels: []filler.ChannelCoverage{
+		exact(30, filler.EraRange{From: 1980, To: 1989}), // 80 wanted: 50 short
+		exact(60, filler.EraRange{From: 1990, To: 1999}), // the default, 50: met
+		exact(90, filler.EraRange{From: 2000, To: 2019}), // two decades at the default, 100: 10 short
+	}}
+	got := filler.CoverageGapsFrom(pool, targets, 2026)
+	want := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}, {From: 2000, To: 2019}}, Short: 50}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("gaps = %+v, want %+v", got, want)
+	}
+	if got.Met() {
+		t.Fatal("a short pool reads as met")
+	}
+	pool.Channels[0] = exact(80, filler.EraRange{From: 1980, To: 1989})
+	pool.Channels[2] = exact(100, filler.EraRange{From: 2000, To: 2019})
+	if got := filler.CoverageGapsFrom(pool, targets, 2026); !got.Met() {
+		t.Fatalf("a pool at its target = %+v, want met", got)
 	}
 }
 
@@ -103,14 +134,14 @@ func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 func TestCoverageGapsFrom_NoBookendIsARoleGap(t *testing.T) {
 	live := filler.PoolReport{Channels: []filler.ChannelCoverage{{Report: filler.CoverageReport{Level: filler.MatchExact}}}}
 	want := []filler.Kind{filler.Bumper, filler.StationID}
-	if got := filler.CoverageGapsFrom(live).Roles; !reflect.DeepEqual(got, want) {
+	if got := filler.CoverageGapsFrom(live, filler.PoolTargets{}, 2026).Roles; !reflect.DeepEqual(got, want) {
 		t.Fatalf("role gaps with no bookends = %v, want %v", got, want)
 	}
 	live.Bookends = 1
-	if got := filler.CoverageGapsFrom(live).Roles; got != nil {
+	if got := filler.CoverageGapsFrom(live, filler.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with a bookend = %v, want none", got)
 	}
-	if got := filler.CoverageGapsFrom(filler.PoolReport{}).Roles; got != nil {
+	if got := filler.CoverageGapsFrom(filler.PoolReport{}, filler.PoolTargets{}, 2026).Roles; got != nil {
 		t.Fatalf("role gaps with no live channel = %v, want none: nothing is airing", got)
 	}
 }
@@ -145,7 +176,7 @@ func TestCoverageReportsTheEraTargetItRead(t *testing.T) {
 func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
-		offers: []filler.DiscoveredRef{
+		offers: []source.Item{
 			{ID: "modern-hd", URL: "https://archive.org/details/modern-hd", Height: 1080, ObservedYear: 2015},
 			{ID: "nineties", URL: "https://archive.org/details/nineties", Height: 480, ObservedYear: 1996},
 		},
@@ -161,6 +192,174 @@ func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 	}
 	if !reflect.DeepEqual(stub.queuedGaps, []string{"era:1990-1999"}) {
 		t.Fatalf("queued gaps %q, want the download tagged with the gap it was for", stub.queuedGaps)
+	}
+}
+
+// searchingStub also searches inside a source, as the archive enumerator does.
+type searchingStub struct {
+	*fetchStub
+	hits     map[string][]source.Item
+	searched []string
+}
+
+func (s *searchingStub) search(source filler.FetchSource, query string, _ int) ([]source.Item, error) {
+	s.searched = append(s.searched, source.URI+"?"+query)
+	return s.hits[query], nil
+}
+
+// #2059 decision 9: a short pass searches each archive source for the in-radius call signs and takes
+// a station hit ahead of a better-looking listed item; a pass at target searches nothing.
+func TestFetch_AShortPassSearchesSourcesForNearbyStations(t *testing.T) {
+	stub := &searchingStub{
+		fetchStub: &fetchStub{
+			sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+			offers:  []source.Item{{ID: "listed-hd", URL: "https://archive.org/details/listed-hd", Height: 1080}},
+		},
+		hits: map[string][]source.Item{
+			"WAAA": {{ID: "waaa-news", URL: "https://archive.org/details/waaa-news", Title: "WAAA news update 1991", Height: 360}},
+		},
+	}
+	gaps := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}, Short: 5, Stations: []string{"WAAA", "WBBB"}}
+	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{
+		fetchStub:        stub.fetchStub,
+		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) { return nil, nil },
+	}, providersOver(t, stub.list, stub.search), stub.fetchStub, limits(1, 2000), discardLog()).
+		WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return gaps, nil })
+	if _, err := fetcher.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(stub.searched, []string{"coll?WAAA", "coll?WBBB"}) &&
+		!reflect.DeepEqual(stub.searched, []string{"coll?WBBB", "coll?WAAA"}) {
+		t.Fatalf("searched %v, want each nearby call sign inside the source", stub.searched)
+	}
+	if len(stub.queuedIDs) != 1 || stub.queuedIDs[0] != "waaa-news" {
+		t.Fatalf("queued %v, want the station hit ahead of the listed item", stub.queuedIDs)
+	}
+	if !reflect.DeepEqual(stub.queuedGaps, []string{"station:WAAA"}) {
+		t.Fatalf("queued gaps %q, want the download tagged with the station search that found it", stub.queuedGaps)
+	}
+	// Local material is a flavour, not a quota: nearby stations alone never make a target unmet.
+	if !(filler.CoverageGaps{Stations: []string{"WAAA"}}).Met() {
+		t.Fatal("station searches made a met target unmet")
+	}
+}
+
+type openSearchStub struct {
+	hits     map[string][]source.Item
+	searched []string
+}
+
+func (o *openSearchStub) Provider() source.ID { return "archive" }
+
+func (o *openSearchStub) OpenSearch(_ context.Context, query string, _ int) ([]source.Item, error) {
+	o.searched = append(o.searched, query)
+	return o.hits[query], nil
+}
+
+func (o *openSearchStub) Gate(context.Context) (filler.ListingGate, error) {
+	return filler.ListingGate{Languages: "en", Station: func(title string) (string, bool) {
+		if strings.Contains(title, "WAAA") {
+			return "WAAA", true
+		}
+		return "", false
+	}}, nil
+}
+
+// Open search (#2059 decisions 10 and 11) asks the whole provider only once the sources have left
+// the pass short, and downloads only the hits its listing gate admits, under no registered source.
+func TestFetch_OpenSearchRunsOnlyWhenTheSourcesLeaveThePassShort(t *testing.T) {
+	open := &openSearchStub{hits: map[string][]source.Item{"WAAA": {
+		{ID: "waaa-1984", URL: "https://archive.org/details/waaa-1984", Title: "WAAA-TV station ID 1984"},
+		{ID: "waaa-undated", URL: "https://archive.org/details/waaa-undated", Title: "WAAA-TV station ID"},
+		{ID: "wzzz-1984", URL: "https://archive.org/details/wzzz-1984", Title: "WZZZ-TV station ID 1984"},
+	}}}
+	gaps := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}}, Short: 5, Stations: []string{"WAAA"}}
+	stub := &fetchStub{sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}}
+	fetcher := newFetcher(t, stub, limits(10, 2000)).
+		WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return gaps, nil }).
+		WithOpenSearch(open)
+	if _, err := fetcher.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(open.searched, []string{"WAAA"}) {
+		t.Fatalf("searched %v, want the nearby call sign across the provider", open.searched)
+	}
+	if !reflect.DeepEqual(stub.queuedIDs, []string{"waaa-1984"}) || stub.sourceID != filler.OpenSearchSourceID ||
+		!reflect.DeepEqual(stub.queuedGaps, []string{"station:WAAA"}) {
+		t.Fatalf("queued %v from %q for %q, want only the dated nearby hit, under open search", stub.queuedIDs,
+			stub.sourceID, stub.queuedGaps)
+	}
+
+	for name, c := range map[string]struct {
+		offers []source.Item
+		gaps   filler.CoverageGaps
+	}{
+		"the sources fill the shortfall": {refs("a", "b"), filler.CoverageGaps{Eras: gaps.Eras, Short: 2, Stations: gaps.Stations}},
+		"no era is short":                {nil, filler.CoverageGaps{Short: 5, Stations: gaps.Stations}},
+		"no station is near":             {nil, filler.CoverageGaps{Eras: gaps.Eras, Short: 5}},
+	} {
+		open.searched = nil
+		stub := &fetchStub{sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}}, offers: c.offers}
+		fetcher := newFetcher(t, stub, limits(10, 2000)).
+			WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) { return c.gaps, nil }).
+			WithOpenSearch(open)
+		if _, err := fetcher.Run(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if len(open.searched) != 0 {
+			t.Errorf("%s: open search asked for %v", name, open.searched)
+		}
+	}
+}
+
+// After a purge (#2035), an undersized pool refills unattended, without a pull or an approval: each
+// pass fetches what the pool is short, however many sources are due, and the pass after the target
+// is met fetches nothing.
+func TestFetch_AnUndersizedPoolRefillsToItsTargetThenStops(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "s1", Kind: "archive", URI: "one", Enabled: true},
+			{ID: "s2", Kind: "archive", URI: "two", Enabled: true},
+		},
+		offers: refs("a", "b", "c", "d", "e"),
+	}
+	short := 3
+	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
+		return filler.CoverageGaps{Eras: []filler.EraRange{{From: 1980, To: 1989}}, Short: short}, nil
+	})
+	res, err := fetcher.Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Queued != 3 {
+		t.Fatalf("pass = %+v queued %v, want the three the pool is short", res, stub.queuedIDs)
+	}
+	// The source capped to the last one still over-lists as far as an uncapped one.
+	if want := []int{8, 8}; !reflect.DeepEqual(stub.listLimits, want) {
+		t.Fatalf("listed %v, want %v: the shortfall caps what is taken, not what is looked at", stub.listLimits, want)
+	}
+
+	stub.queuedIDs = nil
+	reads := 0
+	fetcher = newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
+		reads++
+		return filler.CoverageGaps{}, nil
+	})
+	for range 2 {
+		res, err = fetcher.Run(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Queued != 0 || res.SourcesPolled != 0 || res.StoppedBy != "target" {
+			t.Fatalf("pass at target = %+v, want no source asked", res)
+		}
+	}
+	if reads != 1 {
+		t.Fatalf("two passes at target read the pool %d times, want once until the recheck", reads)
+	}
+	// The operator's click is not held to the target.
+	if res, err := fetcher.RunSource(t.Context(), "s1"); err != nil || res.Queued == 0 {
+		t.Fatalf("a manual check at target = %+v, %v; want it to fetch", res, err)
 	}
 }
 

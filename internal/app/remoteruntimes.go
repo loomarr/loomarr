@@ -10,7 +10,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 )
 
 // remoteRuntimesFile is the runtime cache's file inside the filler folder. Dot-prefixed like the
@@ -127,15 +128,15 @@ func (c *remoteRuntimeCache) save() error {
 // cachedArchiveCatalog reads each Archive.org item's runtime once (#1773): remembered items are
 // filled from the cache and only the rest are asked of Archive.org.
 type cachedArchiveCatalog struct {
-	archiveCatalog
+	archiveprovider.Catalog
 	runtimes *remoteRuntimeCache
 }
 
-func (c cachedArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.DiscoveredItem) {
-	var unknown []clipfetch.DiscoveredItem
+func (c cachedArchiveCatalog) Enrich(ctx context.Context, items []fetch.DiscoveredItem) {
+	var unknown []fetch.DiscoveredItem
 	var at []int
 	for i := range items {
-		if r, ok := c.runtimes.lookup("archive", items[i].ID); ok {
+		if r, ok := c.runtimes.lookup(string(archiveprovider.ID), items[i].ID); ok {
 			items[i].DurationMS, items[i].Height = r.DurationMS, r.Height
 			continue
 		}
@@ -145,11 +146,11 @@ func (c cachedArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.Disc
 	if len(unknown) == 0 {
 		return
 	}
-	c.archiveCatalog.Enrich(ctx, unknown)
+	c.Catalog.Enrich(ctx, unknown)
 	learned := make(map[string]remoteRuntime, len(unknown))
 	for j, item := range unknown {
 		items[at[j]].DurationMS, items[at[j]].Height = item.DurationMS, item.Height
 		learned[item.ID] = remoteRuntime{DurationMS: item.DurationMS, Height: item.Height}
 	}
-	c.runtimes.remember("archive", learned)
+	c.runtimes.remember(string(archiveprovider.ID), learned)
 }

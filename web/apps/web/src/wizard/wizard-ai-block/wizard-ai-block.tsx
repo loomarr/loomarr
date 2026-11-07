@@ -1,7 +1,9 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import * as systemApi from "@loomarr/api/endpoints/system";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -39,11 +41,7 @@ const WizardAiBlock = () => {
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() }),
-        ]);
+        await invalidateSettings(queryClient);
         setEdits({});
       },
     },
@@ -57,8 +55,11 @@ const WizardAiBlock = () => {
   // The LIVE provider: an unsaved dropdown edit wins over the resolved value, so the picker
   // surface flips the instant you switch to OpenAI-compatible — before Save.
   const liveProvider =
-    edits["llm.provider"] ?? aiEntries.find((e) => e.key === "llm.provider")?.value ?? status?.provider;
-  const liveBaseUrl = edits["llm.url"] ?? aiEntries.find((e) => e.key === "llm.url")?.value ?? "";
+    edits[SettingKey.LLMProvider] ??
+    aiEntries.find((e) => e.key === SettingKey.LLMProvider)?.value ??
+    status?.provider;
+  const liveBaseUrl =
+    edits[SettingKey.LLMURL] ?? aiEntries.find((e) => e.key === SettingKey.LLMURL)?.value ?? "";
 
   // A model became active (or provider saved): flip the wizard's `llm` checklist dot green.
   const refreshSetupStatus = () =>
@@ -93,12 +94,12 @@ const WizardAiBlock = () => {
       {/* Auto-detect header — only meaningful on the local (Ollama) branch. */}
       {liveProvider !== "openai" &&
         (llm.isLoading ? (
-          <p className="flex items-center gap-2 text-muted-foreground text-sm">
+          <p className="text-muted-foreground flex items-center gap-2 text-sm">
             <Loader2 className="size-4 animate-spin" aria-hidden />
             Looking for a local AI model…
           </p>
         ) : status?.reachable ? (
-          <p className="flex items-center gap-2 text-lock text-sm">
+          <p className="text-lock flex items-center gap-2 text-sm">
             <CheckCircle2 className="size-4" aria-hidden />
             {status.model
               ? `Ollama detected: using ${status.model}.`
@@ -113,12 +114,7 @@ const WizardAiBlock = () => {
 
       {/* The real picker: local installed/download list, OR the hosted model picker — chosen
           by the LIVE provider. onModelChange flips the wizard's green dot when a model is set. */}
-      <AiModelSettings
-        provider={liveProvider}
-        baseUrl={liveBaseUrl}
-        onBaseUrlChange={(value) => setEdits((current) => ({ ...current, "llm.url": value }))}
-        onModelChange={refreshSetupStatus}
-      />
+      <AiModelSettings provider={liveProvider} baseUrl={liveBaseUrl} onModelChange={refreshSetupStatus} />
     </div>
   );
 };

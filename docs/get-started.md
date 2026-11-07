@@ -95,7 +95,7 @@ Loomarr's own **Guide** shows every channel and what's on now. Pick a channel th
 
 ![Loomarr's Guide: six channels in rows, each block a program with its series and episode title, and a red line marking now](images/screenshots/guide-dark.webp)
 
-![A channel playing on its Watch tab, with the channel's logo in the top-right corner of the picture](images/screenshots/channel-watch-dark.webp)
+![A channel playing in Watch, with the channel's logo in the top-right corner of the picture](images/screenshots/channel-watch-dark.webp)
 
 ## What's next
 

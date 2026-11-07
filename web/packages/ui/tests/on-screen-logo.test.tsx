@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
 import { OnScreenLogoSection, type OnScreenLogoSectionProps } from "../index";
+import { declarationsOfTree } from "./support/atomic-css";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -200,7 +201,9 @@ describe("OnScreenLogoSection", () => {
   });
 
   // Selection is neutral-pressed and amber is focus (#1909, #1983). Tamagui's atomic classes name
-  // the token (`_btc-contentPrim…` is a $contentPrimary top border), so these read tokens, not hex.
+  // the token only through hashed classes, so these resolve each class to its declarations and read
+  // tokens (`border-color:var(--contentPrimary)`), not hex.
+  const styles = (n: Node) => declarationsOfTree(n as unknown as Element);
   const html = (n: Node) => (n as unknown as { outerHTML: string }).outerHTML;
 
   it.each([
@@ -212,18 +215,18 @@ describe("OnScreenLogoSection", () => {
     const { radio, unmount } = render({ policy });
     const chosen = radio(name);
     expect(chosen.getAttribute("aria-checked")).toBe("true");
-    expect(html(chosen)).toMatch(/_btc-contentPrim/);
-    expect(html(chosen)).not.toMatch(/actionPrim/);
+    expect(styles(chosen)).toMatch(/(?<![-\w])border(?:-top)?-color:var\(--contentPrimary\)/);
+    expect(styles(chosen)).not.toMatch(/actionPrim/);
     unmount();
   });
 
   it("puts the amber focus ring outside a chosen position, and keeps its foreground border", () => {
     const { radio, unmount } = render();
     const chosen = radio("Top right") as unknown as Node & { focus(): void };
-    expect(html(chosen)).not.toMatch(/actionFocu/);
+    expect(styles(chosen)).not.toMatch(/actionFocus/);
     act(() => chosen.focus());
-    expect(html(chosen)).toMatch(/_btc-actionFocu/);
-    expect(html(chosen)).toMatch(/_btc-contentPrim/);
+    expect(styles(chosen)).toMatch(/(?<![-\w])border(?:-top)?-color:var\(--actionFocus\)/);
+    expect(styles(chosen)).toMatch(/(?<![-\w])border(?:-top)?-color:var\(--contentPrimary\)/);
     unmount();
   });
 
@@ -233,9 +236,9 @@ describe("OnScreenLogoSection", () => {
       (n) => n.textContent === "Channel override" && html(n).startsWith("<div"),
     );
     if (!badge) throw new Error("missing override badge");
-    expect(html(badge)).toMatch(/_btc-borderCont/);
-    expect(html(badge)).toMatch(/_col-contentPrim/);
-    expect(html(badge)).not.toMatch(/actionPrim|rgba\(255,176,32/);
+    expect(styles(badge)).toMatch(/(?<![-\w])border(?:-top)?-color:var\(--borderControl\)/);
+    expect(styles(badge)).toMatch(/(?<![-\w])color:var\(--contentPrimary\)/);
+    expect(`${html(badge)}${styles(badge)}`).not.toMatch(/actionPrim|rgba\(255,\s*176,\s*32/);
     unmount();
   });
 

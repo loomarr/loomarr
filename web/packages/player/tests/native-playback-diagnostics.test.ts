@@ -1,17 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({
   createVideoPlayer: vi.fn(),
   VideoView: vi.fn(),
 }));
 
-const { createNativePlaybackDiagnostics } = await import("@loomarr/player/native");
+const { createNativePlaybackDiagnostics, nativeTransportOf } = await import("@loomarr/player/native");
+
+describe("native transport label", () => {
+  it("names AVPlayer's HLS on Apple platforms and Media3 on Android platforms", () => {
+    expect(nativeTransportOf("ios")).toBe("native_hls");
+    expect(nativeTransportOf("apple_tv")).toBe("native_hls");
+    expect(nativeTransportOf("android")).toBe("media3");
+    expect(nativeTransportOf("android_tv")).toBe("media3");
+    expect(nativeTransportOf("shield_tv")).toBe("media3");
+  });
+
+  it("stamps every observation with the transport it was given", () => {
+    const reporter = { flush: vi.fn(async () => undefined), record: vi.fn() };
+    const diagnostics = createNativePlaybackDiagnostics(reporter, "native-1", "media3");
+    diagnostics.channelChanged("seven");
+    diagnostics.transportEvent({ attemptId: 1, type: "first-frame" });
+    diagnostics.playerError({ attempt: 1, channelId: "seven", elapsedMs: 0, error: "x", fatal: true });
+    diagnostics.dispose();
+    const transports = reporter.record.mock.calls.map(([event]) => event.transport);
+    expect(transports).toEqual(["media3", "media3", "media3", "media3"]);
+  });
+});
 
 describe("native playback diagnostics", () => {
   it("records the closed lifecycle vocabulary without retaining native error prose", () => {
     const reporter = { flush: vi.fn(async () => undefined), record: vi.fn() };
-    const diagnostics = createNativePlaybackDiagnostics(reporter, "native-1");
+    const diagnostics = createNativePlaybackDiagnostics(reporter, "native-1", "native_hls");
 
     diagnostics.transportEvent({ attemptId: 1, type: "first-frame" });
     diagnostics.channelChanged(undefined);
@@ -73,7 +93,7 @@ describe("native playback diagnostics", () => {
 
   it("codes a refused start by its HTTP status, not the server's sentence", () => {
     const reporter = { flush: vi.fn(async () => undefined), record: vi.fn() };
-    const diagnostics = createNativePlaybackDiagnostics(reporter, "native-1");
+    const diagnostics = createNativePlaybackDiagnostics(reporter, "native-1", "native_hls");
 
     diagnostics.playerError({
       attempt: 1,
@@ -91,7 +111,9 @@ describe("native playback diagnostics", () => {
 
   it("rejects an unbounded client-authored playback session identity", () => {
     const reporter = { flush: vi.fn(async () => undefined), record: vi.fn() };
-    expect(() => createNativePlaybackDiagnostics(reporter, "")).toThrow("1-128 characters");
-    expect(() => createNativePlaybackDiagnostics(reporter, "x".repeat(129))).toThrow("1-128 characters");
+    expect(() => createNativePlaybackDiagnostics(reporter, "", "native_hls")).toThrow("1-128 characters");
+    expect(() => createNativePlaybackDiagnostics(reporter, "x".repeat(129), "native_hls")).toThrow(
+      "1-128 characters",
+    );
   });
 });

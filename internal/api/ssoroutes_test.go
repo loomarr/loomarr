@@ -9,19 +9,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // fakeSSO scripts the credential path so the ROUTES can be tested without an OIDC provider.
-// The flow itself is covered against a real signing IdP in internal/auth.
+// The flow itself is covered against a real signing IdP in internal/people/auth.
 type fakeSSO struct {
 	available bool
 	authURL   string
 	startErr  error
 
 	exchangeErr error
-	user        store.User
+	user        identitystore.User
 	claims      auth.SSOClaims
 	returnTo    string
 
@@ -38,9 +38,9 @@ func (f *fakeSSO) Start(_ context.Context, returnTo string) (string, string, err
 	return f.authURL, "state-1", nil
 }
 
-func (f *fakeSSO) Exchange(_ context.Context, _, _ string) (string, time.Time, store.User, auth.SSOClaims, string, error) {
+func (f *fakeSSO) Exchange(_ context.Context, _, _ string) (string, time.Time, identitystore.User, auth.SSOClaims, string, error) {
 	if f.exchangeErr != nil {
-		return "", time.Time{}, store.User{}, f.claims, f.returnTo, f.exchangeErr
+		return "", time.Time{}, identitystore.User{}, f.claims, f.returnTo, f.exchangeErr
 	}
 	return "session-token", time.Now().Add(time.Hour), f.user, f.claims, f.returnTo, nil
 }
@@ -212,7 +212,7 @@ func TestSSOStart_KeepsASameAppReturnPath(t *testing.T) {
 func TestSSOCallback_IssuesTheSessionAndReturns(t *testing.T) {
 	srv := newSSOHarness(t, &fakeSSO{
 		available: true,
-		user:      store.User{ID: "u-sam", Name: "sam", Role: "member"},
+		user:      identitystore.User{ID: "u-sam", Name: "sam", Role: "member"},
 		claims:    auth.SSOClaims{PreferredUsername: "sam"},
 		returnTo:  "/guide",
 	}).Server
@@ -250,7 +250,7 @@ func TestSSOCallback_RefusesACallbackFromAnotherBrowser(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newSSOHarness(t, &fakeSSO{
 				available: true,
-				user:      store.User{ID: "u-sam", Name: "sam", Role: "member"},
+				user:      identitystore.User{ID: "u-sam", Name: "sam", Role: "member"},
 				returnTo:  "/guide",
 			}).Server
 
@@ -282,7 +282,7 @@ func TestSSOCallback_RefusesACallbackFromAnotherBrowser(t *testing.T) {
 func TestSSOCallback_ClearsTheStateCookie(t *testing.T) {
 	srv := newSSOHarness(t, &fakeSSO{
 		available: true,
-		user:      store.User{ID: "u-sam", Name: "sam"},
+		user:      identitystore.User{ID: "u-sam", Name: "sam"},
 	}).Server
 
 	resp := startThenCallback(t, srv, "state=state-1&code=abc")
@@ -371,7 +371,7 @@ func TestSSOCallback_WillNotRedirectOffSiteEvenIfHandedOne(t *testing.T) {
 		t.Run(returnTo, func(t *testing.T) {
 			srv := newSSOHarness(t, &fakeSSO{
 				available: true,
-				user:      store.User{ID: "u-sam", Name: "sam"},
+				user:      identitystore.User{ID: "u-sam", Name: "sam"},
 				returnTo:  returnTo,
 			}).Server
 

@@ -18,11 +18,6 @@ const countryName = (country: string) => {
   }
 };
 
-const locationLabel = (country: string, market: string) => {
-  const name = countryName(country);
-  return market ? `${market}, ${name || country}` : name || country;
-};
-
 // One location control for setup, settings, and source-specific exceptions. Search result
 // behavior and optional device/network detection stay behind this interface so every caller gets
 // the same keyboard, loading, and error behavior.
@@ -34,16 +29,28 @@ const LocationPicker = ({
   locked = false,
   lockedLabel,
   error,
+  restrictCountry,
 }: LocationPickerProps) => {
   const listID = useId();
-  const selectedLabel = locationLabel(value.country, value.market ?? "");
+  const place = value.place ?? "";
+  const [evidence, setEvidence] = useState<LocationDTO>();
+  // A saved place is an opaque id; its label is fetched. A place just picked here already
+  // carries its label, and a country-only value labels itself.
+  const pickedLabel = evidence && (evidence.place ?? "") === place ? evidence.label : undefined;
+  const savedPlace = settingsApi.useLocationsGet(place, {
+    query: { enabled: Boolean(place) && pickedLabel === undefined, retry: false },
+  });
+  const savedLabel = unwrap(savedPlace.data, (body) => body.location)?.label;
+  const countryLabel = countryName(value.country);
+  const selectedLabel = place
+    ? (pickedLabel ?? savedLabel ?? (savedPlace.isError ? countryLabel : ""))
+    : countryLabel;
   const [query, setQuery] = useState(selectedLabel);
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [detecting, setDetecting] = useState(false);
   const [locationError, setLocationError] = useState<string>();
-  const [evidence, setEvidence] = useState<LocationDTO>();
 
   useEffect(() => setQuery(selectedLabel), [selectedLabel]);
 
@@ -67,7 +74,10 @@ const LocationPicker = ({
       },
     },
   );
-  const locations = unwrap(search.data, (body) => body.locations) ?? [];
+  const found = unwrap(search.data, (body) => body.locations) ?? [];
+  const locations = restrictCountry
+    ? found.filter((candidate) => candidate.country === restrictCountry)
+    : found;
   const trimmedQuery = query.trim();
   const showResults = !locked && open && trimmedQuery.length >= 2 && query !== selectedLabel;
   const waitingForQuery = debouncedQuery !== trimmedQuery;
@@ -75,12 +85,12 @@ const LocationPicker = ({
   const searching = waitingForQuery || search.isFetching;
   const resolve = settingsApi.useLocationsResolve();
 
-  const choose = (place: LocationDTO) => {
-    setQuery(place.label);
-    setEvidence(place);
+  const choose = (picked: LocationDTO) => {
+    setQuery(picked.label);
+    setEvidence(picked);
     setLocationError(undefined);
     setOpen(false);
-    onChange(place);
+    onChange(picked);
   };
 
   const approximateSuggestion = async () => {
@@ -107,9 +117,9 @@ const LocationPicker = ({
           const response = await resolve.mutateAsync({
             data: { latitude: position.coords.latitude, longitude: position.coords.longitude },
           });
-          const place = unwrap(response, (body) => body.location);
-          if (place) {
-            choose(place);
+          const located = unwrap(response, (body) => body.location);
+          if (located) {
+            choose(located);
             return;
           }
         } catch {
@@ -131,11 +141,11 @@ const LocationPicker = ({
   return (
     <div className="max-w-2xl">
       <div className="mb-1.5 flex items-center gap-2">
-        <label htmlFor={`${listID}-input`} className="font-medium text-sm">
+        <label htmlFor={`${listID}-input`} className="text-sm font-medium">
           Location
         </label>
         {locked && lockedLabel && (
-          <span className="inline-flex items-center gap-1 rounded-sm bg-static-800 px-1.5 py-0.5 font-mono text-2xs text-static-400 uppercase tracking-wide">
+          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono tracking-wide uppercase">
             <Lock className="size-3" aria-hidden /> {lockedLabel}
           </span>
         )}
@@ -180,20 +190,20 @@ const LocationPicker = ({
           {showResults && (
             <div
               id={listID}
-              className="relative z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-lg sm:absolute"
+              className="border-border bg-popover text-popover-foreground relative z-20 mt-1 w-full overflow-hidden rounded-md border shadow-lg sm:absolute"
             >
               {locations.length > 0 && (
                 <div
                   role="listbox"
                   className={cn("max-h-64 overflow-auto p-1", !choicesReady && "opacity-50")}
                 >
-                  {locations.map((place, index) => (
+                  {locations.map((candidate, index) => (
                     <button
                       type="button"
                       id={`${listID}-${index}`}
-                      key={place.id}
+                      key={candidate.id}
                       role="option"
-                      aria-label={place.label}
+                      aria-label={candidate.label}
                       tabIndex={-1}
                       aria-selected={index === active}
                       disabled={!choicesReady}
@@ -202,17 +212,17 @@ const LocationPicker = ({
                         index === active ? "bg-accent text-accent-foreground" : "hover:bg-accent/70",
                       )}
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => choose(place)}
+                      onClick={() => choose(candidate)}
                     >
                       <span className="flex min-w-0 flex-col">
-                        <span className="truncate">{place.market || place.label}</span>
-                        {place.market && (
-                          <span className="truncate text-muted-foreground text-xs">
-                            {[place.region, countryName(place.country)].filter(Boolean).join(", ")}
+                        <span className="truncate">{candidate.city || candidate.label}</span>
+                        {candidate.city && (
+                          <span className="text-muted-foreground truncate text-xs">
+                            {[candidate.region, countryName(candidate.country)].filter(Boolean).join(", ")}
                           </span>
                         )}
                       </span>
-                      {place.country === value.country && (place.market ?? "") === (value.market ?? "") && (
+                      {candidate.country === value.country && (candidate.place ?? "") === place && (
                         <Check className="ml-3 size-4 shrink-0" aria-hidden />
                       )}
                     </button>
@@ -221,7 +231,7 @@ const LocationPicker = ({
               )}
               {searching && (
                 <div
-                  className="flex items-center gap-2 border-border border-t px-3 py-2 text-muted-foreground text-xs"
+                  className="border-border text-muted-foreground flex items-center gap-2 border-t px-3 py-2 text-xs"
                   role="status"
                 >
                   <Loader2 className="size-3.5 animate-spin" aria-hidden />
@@ -229,12 +239,12 @@ const LocationPicker = ({
                 </div>
               )}
               {!searching && locations.length === 0 && !search.isError && (
-                <p className="px-3 py-3 text-muted-foreground text-sm">
+                <p className="text-muted-foreground px-3 py-3 text-sm">
                   No locations found. Try a nearby city or country.
                 </p>
               )}
               {!searching && search.isError && (
-                <p className="px-3 py-3 text-destructive text-sm" role="alert">
+                <p className="text-destructive px-3 py-3 text-sm" role="alert">
                   Location search is unavailable. Try again.
                 </p>
               )}
@@ -254,7 +264,7 @@ const LocationPicker = ({
         )}
       </div>
       {evidence?.approximate && (
-        <p className="mt-2 text-muted-foreground text-sm">
+        <p className="text-muted-foreground mt-2 text-sm">
           Approximate location from your network. You can choose a more specific place above.
           {evidence.attribution && (
             <>
@@ -267,11 +277,11 @@ const LocationPicker = ({
         </p>
       )}
       {visibleError && (
-        <p className="mt-2 text-destructive text-sm" role="alert">
+        <p className="text-destructive mt-2 text-sm" role="alert">
           {visibleError}
         </p>
       )}
-      {!value.country && !visibleError && <p className="mt-2 text-muted-foreground text-sm">{emptyHint}</p>}
+      {!value.country && !visibleError && <p className="text-muted-foreground mt-2 text-sm">{emptyHint}</p>}
     </div>
   );
 };

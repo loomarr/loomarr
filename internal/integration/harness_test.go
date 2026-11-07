@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/app"
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
@@ -30,7 +30,7 @@ import (
 type harness struct {
 	t          *testing.T
 	srv        *httptest.Server
-	store      fillerstore.Store
+	store      records.Store
 	ms         *testkit.MediaServer
 	seerr      *testkit.Seerr
 	tmdb       *testkit.TMDB
@@ -84,8 +84,11 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	// dev shell (a sourced .env) would poison the seeded settings. Neutralize the
 	// Loomarr keys for the duration of the test.
 	clearLoomarrEnv(t)
+	// The break-glass token lets the harness write protected settings through the API
+	// without spending the tests' one admin bootstrap.
+	t.Setenv("API_TOKEN", harnessAPIToken)
 
-	st, err := fillerstore.Open(context.Background(), "sqlite://"+t.TempDir()+"/e2e.db", true)
+	st, err := records.Open(context.Background(), "sqlite://"+t.TempDir()+"/e2e.db", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,13 +149,44 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	})
 	h.srv = httptest.NewServer(application.Handler())
 	t.Cleanup(h.srv.Close)
+	if cfg.connections {
+		h.seedSecrets()
+	}
 	return h
 }
 
+const harnessAPIToken = "integration-harness-token"
+
+// seedSecrets writes the protected connection settings through PATCH /v1/settings,
+// the path that seals them; a raw store row would be plaintext, which boot refuses.
+func (h *harness) seedSecrets() {
+	edits := map[string]string{
+		"library.token": h.ms.AdminToken,
+		"tmdb.api_key":  "test-key",
+	}
+	if h.seerr != nil {
+		edits["seerr.api_key"] = "seerr-key"
+	}
+	body, _ := json.Marshal(map[string]any{"edits": edits})
+	req, _ := http.NewRequest(http.MethodPatch, h.srv.URL+"/v1/settings", strings.NewReader(string(body)))
+	req.Header.Set("Authorization", "Bearer "+harnessAPIToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Loomarr-Csrf", "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.t.Fatalf("seed protected settings → %d, want 200", resp.StatusCode)
+	}
+}
+
 // seedConnections writes the settings rows that point the real adapters at the
-// testkit doubles — the same table bootSettings reads (§3). Large runner intervals
-// keep periodic ticks from racing the assertions; the suggester worker pool is a
-// queue consumer, not a ticker, so it stays live.
+// testkit doubles — the same table bootSettings reads (§3). Protected settings are
+// sealed after boot by seedSecrets. Large runner intervals keep periodic ticks from
+// racing the assertions; the suggester worker pool is a queue consumer, not a
+// ticker, so it stays live.
 func (h *harness) seedConnections(cfg harnessConfig) {
 	set := func(k, v string) {
 		if err := h.store.SetSetting(context.Background(), k, v); err != nil {
@@ -161,8 +195,6 @@ func (h *harness) seedConnections(cfg harnessConfig) {
 	}
 	set("library.flavor", "emby")
 	set("library.url", h.ms.URL)
-	set("library.token", h.ms.AdminToken)
-	set("tmdb.api_key", "test-key")
 	set("llm.provider", "ollama")
 	set("llm.url", h.ollama.URL)
 	set("llm.model", "qwen3:8b")
@@ -178,7 +210,6 @@ func (h *harness) seedConnections(cfg harnessConfig) {
 	}
 	if h.seerr != nil {
 		set("seerr.url", h.seerr.URL)
-		set("seerr.api_key", "seerr-key")
 	}
 }
 
@@ -353,11 +384,16 @@ func (h *harness) patchSettings(admin *http.Cookie, edits map[string]string) int
 
 // ---- pipeline helpers ---------------------------------------------------------
 
+// workerWait bounds how long a test polls for a River worker's result. Polls return as soon as the
+// result lands, so the bound only matters on failure; it is wide because the race-enabled CI
+// runner can take several seconds to schedule a job.
+const workerWait = 30 * time.Second
+
 // awaitProposal polls the submitted queue until the job's proposal appears (the
 // worker ran) or the deadline passes; a worker failure surfaces the job's error.
-func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, suggest.Proposal) {
+func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, proposals.Proposal) {
 	h.t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
 		var list struct {
 			Proposals []struct {
@@ -369,7 +405,7 @@ func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, sugg
 		h.getJSON("/v1/proposals?status=submitted", cookie, &list)
 		for _, p := range list.Proposals {
 			if p.JobID == jobID {
-				var prop suggest.Proposal
+				var prop proposals.Proposal
 				if err := json.Unmarshal(p.Proposal, &prop); err != nil {
 					h.t.Fatalf("decode proposal: %v", err)
 				}
@@ -382,5 +418,5 @@ func (h *harness) awaitProposal(cookie *http.Cookie, jobID string) (string, sugg
 		h.t.Fatalf("proposal never appeared for job %s (status=%s, err=%q)", jobID, job.Status, job.LastError)
 	}
 	h.t.Fatalf("proposal never appeared for job %s", jobID)
-	return "", suggest.Proposal{}
+	return "", proposals.Proposal{}
 }

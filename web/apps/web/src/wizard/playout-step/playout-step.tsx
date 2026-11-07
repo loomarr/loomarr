@@ -1,7 +1,9 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useState } from "react";
@@ -62,19 +64,19 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+        await invalidateSettings(queryClient);
       },
     },
   });
 
   const choose = (next: PlayoutBackend) => {
     if (next === value || pinnedBy) return;
-    patch.mutate({ data: { edits: { "playout.backend": next } } });
+    patch.mutate({ data: { edits: { [SettingKey.PlayoutBackend]: next } } });
   };
 
   // --- Tunarr's own connection form, shown inline once Tunarr is chosen ---
   const entries = useSettingsEntries();
-  const publicURLEntries = entries.filter((e) => e.key === "server.public_url");
+  const publicURLEntries = entries.filter((e) => e.key === SettingKey.ServerPublicURL);
   // Essentials only, exactly as the checklist does it (§6): advanced keys live in Settings.
   const tunarrEntries = entries.filter((e) => e.group === "connections.tunarr" && !e.advanced);
   const status = setupApi.useSetupStatus();
@@ -162,12 +164,12 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                     value={option.value}
                     checked={selected}
                     onChange={() => choose(option.value)}
-                    className="size-4 shrink-0 accent-tune"
+                    className="accent-tune size-4 shrink-0"
                   />
                   <span className="font-medium">{option.title}</span>
                 </span>
                 <span className="text-muted-foreground text-sm">{option.tagline}</span>
-                <ul className="flex flex-col gap-1 text-muted-foreground text-sm">
+                <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
                   {option.points.map((point) => (
                     <li key={point}>{point}</li>
                   ))}
@@ -179,7 +181,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
       </fieldset>
 
       {pinnedBy && (
-        <p className="flex items-center gap-2 text-muted-foreground text-sm">
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
           <Badge className="gap-1">
             <Lock className="size-3" aria-hidden />
             set via environment
@@ -194,15 +196,15 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           It belongs beside the backend choice because selecting Loomarr without supplying its
           machine-reachable address is not a complete answer to "who plays the channel?". */}
       {value === PLAYOUT_INTERNAL && (
-        <div className="rounded-lg border border-input p-4">
+        <div className="border-input rounded-lg border p-4">
           <SettingsFields
             entries={publicURLEntries}
             values={publicURLEdits}
             onChange={(key, v) => setPublicURLEdits((previous) => ({ ...previous, [key]: v }))}
             results={patchResults}
-            descriptionIds={{ "server.public_url": "server-public-url-requirement" }}
+            descriptionIds={{ [SettingKey.ServerPublicURL]: "server-public-url-requirement" }}
           />
-          <p id="server-public-url-requirement" className="mt-3 text-muted-foreground text-sm">
+          <p id="server-public-url-requirement" className="text-muted-foreground mt-3 text-sm">
             Required for Loomarr playback. Your media server must be able to reach this address to fetch the
             guide and every channel stream.
           </p>

@@ -8,11 +8,12 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/backendtransition"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
@@ -60,22 +61,22 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 	primary := testkit.NewLiveTV()
 	rotated := testkit.NewLiveTV()
 	librarySnapshots := 0
-	connector := setup.NewLiveTVConnector(func() library.LiveTV {
+	connector := livetvpublish.NewLiveTVConnector(func() library.LiveTV {
 		librarySnapshots++
 		if librarySnapshots == 1 {
 			return primary
 		}
 		return rotated
-	}, setup.LiveTVURLs{})
+	}, tunarr.LiveTVURLs{})
 	resolves := 0
 	publisher := &backendPublisher{
 		connector: connector,
-		urls: func(context.Context, string) (setup.LiveTVURLs, error) {
+		urls: func(context.Context, string) (tunarr.LiveTVURLs, error) {
 			resolves++
 			if resolves == 1 {
-				return setup.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}, nil
+				return tunarr.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}, nil
 			}
-			return setup.LiveTVURLs{M3U: "http://b/playout/tuner.m3u", XMLTV: "http://b/playout/guide.xml"}, nil
+			return tunarr.LiveTVURLs{M3U: "http://b/playout/tuner.m3u", XMLTV: "http://b/playout/guide.xml"}, nil
 		},
 	}
 	ctx := context.Background()
@@ -106,12 +107,12 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 
 func TestTransportTunerRescannerUsesPublishedTarget(t *testing.T) {
 	liveTV := testkit.NewLiveTV()
-	connector := setup.NewLiveTVConnectorFixed(liveTV,
-		setup.TunarrURLsFrom("http://applied-tunarr:8000"))
-	target := setup.InternalPlayoutURLs("http://prepared-loomarr:8080", "device-token")
+	connector := livetvpublish.NewLiveTVConnectorFixed(liveTV,
+		tunarr.LiveTVURLsAt("http://applied-tunarr:8000"))
+	target := livetvpublish.InternalPlayoutURLs("http://prepared-loomarr:8080", "device-token")
 	rescanner := transportTunerRescanner{
 		c: connector,
-		urls: func(context.Context) (setup.LiveTVURLs, error) {
+		urls: func(context.Context) (tunarr.LiveTVURLs, error) {
 			return target, nil
 		},
 	}
@@ -184,22 +185,11 @@ func TestBuildInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransi
 	}
 }
 
-func TestTunerPublishingDisabledReadsAgentEnvFlag(t *testing.T) {
-	t.Setenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER", "")
-	if tunerPublishingDisabled() {
-		t.Fatal("unset env flag must default to false (production behaviour unchanged)")
-	}
-	t.Setenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER", "1")
-	if !tunerPublishingDisabled() {
-		t.Fatal("set env flag must disable tuner publishing")
-	}
-}
-
 // #1555: an agent dev lane's library.* settings can drift onto the household media server, and
 // completing them must never add or retire its Live TV tuner/listing. Both the settings-save
 // transition (MutateAndApplyCurrent) and the channel-maintenance repair tick (ApplyCurrent) route
 // through the SAME steady-state repair path (Controller.applyLocked -> repairPublished -> the real
-// backendPublisher -> setup.LiveTVConnector), so exercising both against one disabled connector
+// backendPublisher -> livetvpublish.LiveTVConnector), so exercising both against one disabled connector
 // proves every current caller of AddTuner/RemoveTuner/AddListingProvider/RemoveListingProvider.
 func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T) {
 	run := func(t *testing.T, disabled bool) *testkit.LiveTV {
@@ -208,12 +198,12 @@ func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T)
 		lib := testkit.NewLiveTV()
 		// A stale Loomarr-owned tuner at a DIFFERENT url: if retirement ran, it would be removed.
 		lib.SeedTuner("http://stale-tuner.invalid/old.m3u", "loomarr")
-		urls := setup.LiveTVURLs{M3U: "http://lane.invalid/tuner.m3u", XMLTV: "http://lane.invalid/guide.xml"}
-		connector := setup.NewLiveTVConnectorFixed(lib, urls).
+		urls := tunarr.LiveTVURLs{M3U: "http://lane.invalid/tuner.m3u", XMLTV: "http://lane.invalid/guide.xml"}
+		connector := livetvpublish.NewLiveTVConnectorFixed(lib, urls).
 			WithTunerPublishingDisabled(disabled, slog.New(slog.DiscardHandler))
 		publisher := &backendPublisher{
 			connector: connector,
-			urls:      func(context.Context, string) (setup.LiveTVURLs, error) { return urls, nil },
+			urls:      func(context.Context, string) (tunarr.LiveTVURLs, error) { return urls, nil },
 		}
 		fleet := testkit.NewBackendTransitionPhaseProbe()
 		controller := backendtransition.NewController(st, fleet, publisher, nil)
@@ -273,12 +263,12 @@ func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T)
 // publisher's other phases from running on later ticks.
 func TestBackendPublisherRefreshLogsTransientCauseOnce(t *testing.T) {
 	lib := testkit.NewLiveTV()
-	urls := setup.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}
-	lib.RescanErr = setup.NewTransientError("server-error", 3, errors.New("POST /LiveTv/TunerHosts: status 500: ServiceUnavailable"))
+	urls := tunarr.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}
+	lib.RescanErr = livetvpublish.NewTransientError("server-error", 3, errors.New("POST /LiveTv/TunerHosts: status 500: ServiceUnavailable"))
 	var logs strings.Builder
 	publisher := &backendPublisher{
-		connector: setup.NewLiveTVConnectorFixed(lib, urls),
-		urls:      func(context.Context, string) (setup.LiveTVURLs, error) { return urls, nil },
+		connector: livetvpublish.NewLiveTVConnectorFixed(lib, urls),
+		urls:      func(context.Context, string) (tunarr.LiveTVURLs, error) { return urls, nil },
 		log:       slog.New(slog.NewTextHandler(&logs, nil)),
 	}
 	ctx := context.Background()

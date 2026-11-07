@@ -1,5 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DEFAULT_APPLICATION_FILTERS, DiagnosticsPage, type DiagnosticsSearch } from "@/diagnostics";
+// The search defaults come from their own module: this route's config loads with the app, and the
+// diagnostics barrel would bring the whole page (and its dialogs) along with it.
+import { DiagnosticsPage, type DiagnosticsSearch } from "@/diagnostics";
+import { DEFAULT_APPLICATION_FILTERS, eventSources } from "@/diagnostics/application-filters";
 import { PlayoutDiagnostics } from "@/diagnostics/playout-diagnostics";
 import { ServerStatus } from "@/diagnostics/server-status";
 
@@ -20,11 +23,7 @@ const validateSearch = (raw: Record<string, unknown>): Partial<DiagnosticsSearch
     ["all", "debug", "info", "warn", "error"] as const,
     DEFAULT_APPLICATION_FILTERS.level,
   ),
-  source: oneOf(
-    raw.source,
-    ["all", "server", "web", "android_tv"] as const,
-    DEFAULT_APPLICATION_FILTERS.source,
-  ),
+  source: oneOf(raw.source, ["all", ...eventSources] as const, DEFAULT_APPLICATION_FILTERS.source),
   subsystem: typeof raw.subsystem === "string" ? raw.subsystem.slice(0, 128) : "",
   text: typeof raw.text === "string" ? raw.text.slice(0, 256) : "",
   ...(typeof raw.requestId === "string" ? { requestId: raw.requestId.slice(0, 128) } : {}),

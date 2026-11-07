@@ -1,10 +1,10 @@
 import { getGetDiagnosticProcessMockHandler, getListDiagnosticProcessesMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import type { DiagnosticsSearch } from "../diagnostics-page";
 import { PlayoutDiagnostics } from "./playout-diagnostics";
@@ -36,6 +36,16 @@ const initial: DiagnosticsSearch = {
   processJobId: "",
 };
 
+// ⚠ A running process's output is polled. The test ended with a poll in flight, which reached the
+// server after its handlers were reset and failed the NEXT test as an unhandled request (about one
+// run in four). Each test waits for its client to go quiet and unmounts in the same tick, before
+// the next poll can start, as app-router.test.tsx does since #2049.
+const clients: QueryClient[] = [];
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((c) => vi.waitFor(() => expect(c.isFetching()).toBe(0))));
+  cleanup();
+});
+
 describe("PlayoutDiagnostics", () => {
   it("shows live progress, searches bounded output, and updates shareable filters", async () => {
     const onFiltersChange = vi.fn();
@@ -63,6 +73,7 @@ describe("PlayoutDiagnostics", () => {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    clients.push(client);
     const Harness = () => {
       const [filters, setFilters] = useState(initial);
       return (
@@ -116,6 +127,7 @@ describe("PlayoutDiagnostics", () => {
       }),
     );
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    clients.push(client);
     render(
       <QueryClientProvider client={client}>
         <PlayoutDiagnostics filters={initial} onFiltersChange={vi.fn()} />

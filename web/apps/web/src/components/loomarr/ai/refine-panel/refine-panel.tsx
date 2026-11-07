@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import { suggestionFailureCopy } from "@/suggest/suggestion-failure-copy";
 import { useChannelRefine } from "@/suggest/use-channel-refine";
@@ -31,22 +32,38 @@ const RefinePanel = ({
   className,
 }: RefinePanelProps) => {
   const [state, setState] = useState<PanelState>("idle");
-  const [change, setChange] = useState("");
   const headingId = useId();
 
   const refine = useChannelRefine();
   const elapsed = useElapsed(refine.isRunning);
 
+  const form = useAppForm({
+    defaultValues: { change: "" },
+    onSubmit: ({ value }) => {
+      const text = value.change.trim();
+      if (!text) return;
+      setState("running");
+      refine.start(channelId, text);
+    },
+  });
+
   useEffect(() => {
+    // A refused request (422 no stored intent, 409 already running) never starts a job, so
+    // `refine.channelId` is never set and nothing below can fire: the request error alone
+    // returns a submitted form to "open", where the error shows and Suggest changes retries.
+    if (refine.error != null) {
+      setState((s) => (s === "running" ? "open" : s));
+      return;
+    }
     if (refine.channelId !== channelId) return;
     if (refine.proposal) setState("landed");
     else if (refine.isRunning) setState("running");
     else if (refine.phase === "failed") setState("open");
-  }, [channelId, refine.channelId, refine.isRunning, refine.phase, refine.proposal]);
+  }, [channelId, refine.channelId, refine.error, refine.isRunning, refine.phase, refine.proposal]);
 
   const close = () => {
     setState("idle");
-    setChange("");
+    form.reset();
     refine.reset();
   };
 
@@ -61,13 +78,6 @@ const RefinePanel = ({
     },
   });
 
-  const submit = () => {
-    const text = change.trim();
-    if (!text) return;
-    setState("running");
-    refine.start(channelId, text);
-  };
-
   const landed = state === "landed" ? refine.proposal : undefined;
   // Show the generation-failed notice on the form whenever the last run ended in `failed`
   // and nothing was applied. (`refine.error` below covers the separate case where the
@@ -80,14 +90,14 @@ const RefinePanel = ({
     // review states below are today's; the mock draws neither.
     <section
       aria-labelledby={headingId}
-      className={cn("flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4", className)}
+      className={cn("border-border bg-card flex flex-col gap-2.5 rounded-lg border p-4", className)}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Sparkles className="size-4 shrink-0 text-suggest-300" aria-hidden />
-        <h3 id={headingId} className="font-medium text-sm">
+        <Sparkles className="text-suggest-300 size-4 shrink-0" aria-hidden />
+        <h3 id={headingId} className="text-sm font-medium">
           Refine with AI
         </h3>
-        <span className="ml-auto text-muted-foreground text-xs">
+        <span className="text-muted-foreground ml-auto text-xs">
           Describe what to change. You'll see the result before anything is saved.
         </span>
       </div>
@@ -97,7 +107,7 @@ const RefinePanel = ({
           {generationFailed && (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-lg border border-onair-tint-15 bg-onair-tint-10 px-3 py-2 text-onair-300 text-sm"
+              className="border-onair-tint-15 bg-onair-tint-10 text-onair-300 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
             >
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
               {failureCopy ? (
@@ -117,19 +127,25 @@ const RefinePanel = ({
             className="flex gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              submit();
+              void form.handleSubmit();
             }}
           >
-            <Input
-              value={change}
-              onChange={(e) => setChange(e.target.value)}
-              placeholder="e.g. More 90s sci-fi, fewer movies after midnight"
-              aria-label={`What to change on ${channelName}`}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={change.trim().length === 0}>
-              Suggest changes
-            </Button>
+            <form.Field name="change">
+              {(field) => (
+                <>
+                  <Input
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="e.g. More 90s sci-fi, fewer movies after midnight"
+                    aria-label={`What to change on ${channelName}`}
+                    className="flex-1"
+                  />
+                  <Button type="submit" disabled={field.state.value.trim().length === 0}>
+                    Suggest changes
+                  </Button>
+                </>
+              )}
+            </form.Field>
           </form>
           {refine.error != null && <ErrorState error={refine.error} />}
         </div>
@@ -145,8 +161,8 @@ const RefinePanel = ({
               progress={refine.progress}
             />
           ) : (
-            <p className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="size-4 animate-spin text-suggest-300" aria-hidden />
+            <p className="text-muted-foreground flex items-center gap-2 text-sm">
+              <Loader2 className="text-suggest-300 size-4 animate-spin" aria-hidden />
               Starting…
             </p>
           )}

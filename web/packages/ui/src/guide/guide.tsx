@@ -83,7 +83,7 @@ const GuideSurface = ({
     : layout.channels;
 
   const grid = (
-    <Surface gap="$inline" overflow="hidden" padding="$control" width="100%">
+    <Surface gap="inline" overflow="hidden" padding="control" width="100%">
       <View accessibilityLabel="Guide filters" role="toolbar" style={{ flexDirection: "row", gap: 8 }}>
         {filters.map((option) => {
           const { accessibilityLabel, text } = guideFilterText(option);

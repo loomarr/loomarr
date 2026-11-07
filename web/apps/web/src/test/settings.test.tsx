@@ -12,10 +12,12 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { HttpResponse, http } from "msw";
+import { afterEach, describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { setting } from "@/test/fixtures/settings";
 import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -459,15 +461,37 @@ describe("Settings — the save bar spans tabs (V9)", () => {
 // A pull that fails must SAY so. Before this, an "error" frame cleared the progress and
 // refreshed — indistinguishable from success, leaving the operator to eventually notice
 // the row still said "Download". The frame carries the reason; it belongs on screen.
+describe("AI model discover", () => {
+  it("shows the problem when the downloadable-model list fails to load", async () => {
+    server.use(
+      getMeMockHandler(me()),
+      getSystemLlmStatusMockHandler({
+        local: true,
+        reachable: true,
+        provider: "ollama",
+        model: "",
+        catalog: [],
+        hosted: [],
+      }),
+      http.get("*/v1/system/llm/discover", () =>
+        HttpResponse.json(
+          { title: "Model catalog unavailable", detail: "The catalog request was refused." },
+          { status: 500 },
+        ),
+      ),
+      getSettingsListMockHandler({ features: {}, settings: SETTINGS }),
+      ...appHandlers(),
+    );
+
+    renderAt("/settings/ai");
+
+    expect(await screen.findByText("Model catalog unavailable")).toBeInTheDocument();
+    expect(screen.getByText("The catalog request was refused.")).toBeInTheDocument();
+  });
+});
+
 describe("AI model pull", () => {
-  // ⚠ EventSource is stubbed GLOBALLY in src/test/setup.ts; this test replaces it to capture the
-  // listener so it can push a frame. `unstubAllGlobals` puts the shared one back — without it the
-  // capture leaks into whichever test runs next.
-  afterEach(() => vi.unstubAllGlobals());
-
   it("surfaces a failed download instead of silently clearing it", async () => {
-    let emit: ((e: MessageEvent) => void) | undefined;
-
     server.use(
       getMeMockHandler(me()),
       getSystemLlmStatusMockHandler({
@@ -514,29 +538,16 @@ describe("AI model pull", () => {
       ...appHandlers(),
     );
 
-    vi.stubGlobal(
-      "EventSource",
-      class {
-        addEventListener(type: string, cb: (e: MessageEvent) => void) {
-          if (type === "llm_pull") emit = cb;
-        }
-        removeEventListener() {}
-        close() {}
-      },
-    );
-
     renderAt("/settings/ai");
     await userEvent.click(await screen.findByRole("button", { name: /download/i }));
 
     // The BE reports failure with a reason and percent -1 (a sentinel, not a percentage).
-    emit?.({
-      data: JSON.stringify({
-        model: "qwen3:8b",
-        status: "error",
-        percent: -1,
-        error: "no space left on device",
-      }),
-    } as MessageEvent);
+    FakeEventSource.broadcast("llm_pull", {
+      model: "qwen3:8b",
+      status: "error",
+      percent: -1,
+      error: "no space left on device",
+    });
 
     expect(await screen.findByText(/no space left on device/i)).toBeInTheDocument();
   });
@@ -620,7 +631,7 @@ describe("Settings progressive disclosure", () => {
 });
 
 describe("Settings honesty", () => {
-  it("prefills the backend-owned OpenRouter API base instead of asking the operator to guess", async () => {
+  it("shows the stored AI service address without staging an edit of its own", async () => {
     server.use(
       getMeMockHandler(me()),
       getSettingsListMockHandler({
@@ -694,13 +705,13 @@ describe("Settings honesty", () => {
 
     renderAt("/settings/ai");
 
-    await waitFor(() =>
-      expect(screen.getByLabelText("AI service address")).toHaveValue("https://openrouter.ai/api/v1"),
-    );
-    expect(screen.getByRole("button", { name: "Save & check AI setup" })).toBeInTheDocument();
+    // The form is clean on load: the page renders what the backend reports and stages nothing, so
+    // there is nothing for Discard to clear and the check button is not a save.
+    expect(await screen.findByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("AI service address")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Check AI setup" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /unsaved changes/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("1 unsaved change");
-    expect(screen.getByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
     expect(screen.getByText("TMDB grounding is still needed")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Connect TMDB" })).toHaveAttribute(
@@ -819,7 +830,8 @@ describe("Settings honesty", () => {
     expect(screen.queryByRole("region", { name: "Transcription" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Speech recognition" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("combobox", { name: "Speech recognition" }));
-    await userEvent.click(screen.getByRole("option", { name: "Connected speech service" }));
+    // The listbox mounts after the popup opens; on a loaded runner that is after the click resolves.
+    await userEvent.click(await screen.findByRole("option", { name: "Connected speech service" }));
     await userEvent.click(screen.getByRole("button", { name: "Show advanced (3)" }));
     expect(screen.getByLabelText("Speech service address")).toBeInTheDocument();
     expect(screen.getByLabelText("Speech model")).toBeInTheDocument();

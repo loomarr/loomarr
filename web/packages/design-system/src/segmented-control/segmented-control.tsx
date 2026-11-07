@@ -1,6 +1,8 @@
-import { Text as TamaguiText, View } from "@tamagui/core";
+import { View } from "@tamagui/core";
 import { useState } from "react";
 import { View as NativeView, Platform, Pressable } from "react-native";
+
+import { TamaguiText } from "../text-base";
 
 type SegmentOption<Value extends string> = {
   /** What the segment counts, shown beside its label and read with it; omitted draws and says nothing. */
@@ -51,9 +53,9 @@ const SegmentedControl = <Value extends string>({
       style={{ width: "100%" }}
     >
       <View
-        backgroundColor="$surfaceRaised"
-        borderColor="$borderDecorative"
-        borderRadius="$control"
+        backgroundColor="surfaceRaised"
+        borderColor="borderDecorative"
+        borderRadius="control"
         borderWidth={1}
         flexDirection="row"
         gap={TRACK_PADDING}
@@ -77,8 +79,8 @@ const SegmentedControl = <Value extends string>({
             >
               <View
                 alignItems="center"
-                backgroundColor={selected ? "$borderDecorative" : "$transparent"}
-                borderColor={focused === option.value ? "$actionFocus" : "$transparent"}
+                backgroundColor={selected ? "borderDecorative" : "transparent"}
+                borderColor={focused === option.value ? "actionFocus" : "transparent"}
                 borderRadius={8}
                 borderWidth={2}
                 flex={1}
@@ -90,8 +92,8 @@ const SegmentedControl = <Value extends string>({
                 paddingHorizontal={4}
               >
                 <TamaguiText
-                  color={selected ? "$contentPrimary" : "$contentSecondary"}
-                  fontFamily="$body"
+                  color={selected ? "contentPrimary" : "contentSecondary"}
+                  fontFamily="body"
                   fontSize={13}
                   fontWeight={selected ? "600" : "500"}
                   numberOfLines={1}
@@ -100,8 +102,8 @@ const SegmentedControl = <Value extends string>({
                 </TamaguiText>
                 {option.count === undefined ? null : (
                   <TamaguiText
-                    color={selected ? "$contentPrimary" : "$contentSecondary"}
-                    fontFamily="$body"
+                    color={selected ? "contentPrimary" : "contentSecondary"}
+                    fontFamily="body"
                     fontSize={13}
                     fontWeight="500"
                   >

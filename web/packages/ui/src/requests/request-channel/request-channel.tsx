@@ -47,7 +47,7 @@ const IdeaCard = ({
   onHide: () => void;
   onRequest: () => void;
 }) => (
-  <Surface gap="$inline" level="raised" padding="$control" role="group">
+  <Surface gap="inline" padding="control" level="raised" role="group">
     <Text density="touch" textRole="caption" tone="secondary">
       {ideaReason(idea, false, nowMs)}
     </Text>
@@ -65,7 +65,7 @@ const IdeaCard = ({
         Waiting for an admin
       </Badge>
     ) : (
-      <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
+      <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="inline">
         <Action
           accessibilityLabel={`Not for me: ${idea.name}`}
           accessibilityRole="button"
@@ -118,9 +118,9 @@ const ChannelIdeas = ({
         <Surface
           alignItems="center"
           flexDirection="row"
-          gap="$control"
+          gap="control"
           justifyContent="space-between"
-          padding="$control"
+          padding="control"
         >
           <Text density="touch" textRole="caption" tone="secondary">{`Hid ${hiddenIdea.name}`}</Text>
           <Action accessibilityRole="button" density="touch" onPress={onUndoHide} tone="secondary">
@@ -207,7 +207,7 @@ const RequestChannel = ({
   };
 
   return (
-    <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$control">
+    <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap="control">
       <RequestsBack onPress={onBack} />
       {/* The keyboard insets the page rather than covering Suggest titles; a drag puts it away. */}
       <ScrollFrame automaticallyAdjustKeyboardInsets density="touch" keyboardDismissMode="interactive">
@@ -235,7 +235,7 @@ const RequestChannel = ({
           submitBehavior="blurAndSubmit"
           value={description}
         />
-        <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline" role="group">
+        <Surface backgroundColor="transparent" borderWidth={0} gap="inline" role="group">
           <Text density="touch" textRole="caption" tone="secondary">
             Start from a template
           </Text>

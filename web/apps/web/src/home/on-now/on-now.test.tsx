@@ -46,16 +46,16 @@ describe("OnNow — up to six channels in number order (#1822 evidence)", () => 
     await renderOnNow([live("c1", 7)]);
     expect(screen.getByRole("heading", { name: "On now" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Full guide" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Watch Channel c1 live" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Channel c1\b.*Watch live$/ })).toBeInTheDocument();
   });
 
   it("orders by channel number and caps at six", async () => {
     const channels = Array.from({ length: 9 }, (_, i) => live(`c${i}`, 90 - i));
     await renderOnNow(channels);
-    const links = screen.getAllByRole("link", { name: /^Watch / });
+    const links = screen.getAllByRole("link", { name: /Watch live$/ });
     expect(links).toHaveLength(6);
     // Numbers 82..90 reversed by construction: lowest six numbers are 82-87.
-    expect(links[0]).toHaveAccessibleName("Watch Channel c8 live");
+    expect(links[0]).toHaveAccessibleName(/Channel c8\b.*Watch live$/);
   });
 
   it("falls back to Your channels, with actual lifecycle wording, when nothing has a current block", async () => {

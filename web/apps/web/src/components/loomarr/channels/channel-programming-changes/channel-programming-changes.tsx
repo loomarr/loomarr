@@ -37,8 +37,8 @@ const sideLabel = (side: ProgrammingChangeSideDTO | undefined): string => {
 // three columns would squeeze the titles to a word per line, so the change drops to its own
 // full-width line under the time and rule.
 const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZone?: string }) => (
-  <li className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-border border-b py-1.5 text-sm last:border-b-0">
-    <span className="w-28 shrink-0 font-mono text-muted-foreground">
+  <li className="border-border flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-b py-1.5 text-sm last:border-b-0">
+    <span className="text-muted-foreground w-28 shrink-0 font-mono">
       {formatSlotTime(change.startMs, timeZone)}
     </span>
     <span className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1">
@@ -50,7 +50,7 @@ const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZon
       <span>{sideLabel(change.after)}</span>
     </span>
     {change.after ? (
-      <span className="ml-auto text-muted-foreground text-xs">{change.after.rule.label}</span>
+      <span className="text-muted-foreground ml-auto text-xs">{change.after.rule.label}</span>
     ) : null}
   </li>
 );
@@ -144,7 +144,7 @@ const ChannelProgrammingChanges = ({
 
   return (
     <section aria-labelledby="programming-changes-heading" className={cn("flex flex-col gap-2", className)}>
-      <h3 id="programming-changes-heading" className="font-semibold text-base">
+      <h3 id="programming-changes-heading" className="text-base font-semibold">
         What changes
       </h3>
       {content}

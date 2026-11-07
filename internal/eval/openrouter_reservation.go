@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
 const (

@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 type calmIncomingBody struct {
@@ -22,9 +23,9 @@ type calmIncomingBody struct {
 		Rows []struct {
 			ClipHash, Name, StatusLabel string
 			Processing                  struct {
-				Attempts                   int
-				NextTryAt, DiagnosticsHref string
-				Stages                     []struct {
+				Attempts  int
+				NextTryAt string
+				Stages    []struct {
 					Label, Outcome, OutcomeLabel, Note, At string
 					Progress                               *int
 				} `json:"stages"`
@@ -71,7 +72,7 @@ func putClip(t *testing.T, st store.Store, clip filler.Clip) {
 	if clip.Hash == "" {
 		clip.Hash = clipHashFor(clip.Path)
 	}
-	if err := st.UpsertClip(context.Background(), store.Clip{Clip: clip, UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: clip, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -147,9 +148,6 @@ func TestFillerIncoming_ProjectsSafeOrderedProcessingDetailsAndMeasuredCurrentSt
 		t.Fatalf("Incoming = status %d, preparing %+v", res.StatusCode, body.Preparing)
 	}
 	processing := body.Preparing.Rows[0].Processing
-	if processing.DiagnosticsHref != "/filler/manage#diagnostics" {
-		t.Fatalf("diagnostics href = %q, want existing owner", processing.DiagnosticsHref)
-	}
 	if len(processing.Stages) != 4 {
 		t.Fatalf("stages = %+v, want all three stored occurrences plus current", processing.Stages)
 	}

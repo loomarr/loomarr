@@ -1,7 +1,7 @@
 # Multi-replica readiness
 
 - Status: investigation required; **one Loomarr replica is the beta support boundary**
-- Edge: Traefik 3.7.1
+- Edge: Traefik 3.7.16
 - Database under test: Postgres only
 
 Traefik gives the Docker deployment a health-aware load-balancer seam. It does not make Loomarr's
@@ -26,9 +26,9 @@ stickiness cannot serialize jobs, settings, bootstrap, quotas, or capacity.
 | Routing | Requests reach both replicas; an unhealthy or killed replica is removed; recovery needs no Traefik restart. | Traefik runtime routing is proven for one replica. Two-backend distribution remains to be automated. |
 | Database | Concurrent title, channel, approval, and job claims commit exactly once. | Postgres job claims use `FOR UPDATE SKIP LOCKED`; SQLite remains single-replica only. |
 | Sessions | Login on A, authenticate/revoke/disable on B, and observe the change immediately on A. | Expected to pass because sessions and users are resolved from shared rows per request; not yet proven as a cluster test. |
-| OIDC | Begin on A; callback on B succeeds once; replay fails. | **Blocked:** state, nonce, and PKCE verifier are process-local in `internal/auth/sso.go`. |
+| OIDC | Begin on A; callback on B succeeds once; replay fails. | **Blocked:** state, nonce, and PKCE verifier are process-local in `internal/people/auth/sso.go`. |
 | Login limits | Attempts split across A/B enforce one aggregate limit. | **Blocked:** the limiter is process-local, so capacity multiplies with replica count. |
-| Bootstrap | Two synchronized first-admin requests yield exactly one success and one admin. | **Blocked:** `internal/auth/bootstrap.go` uses a check-then-create sequence that permits two winners. |
+| Bootstrap | Two synchronized first-admin requests yield exactly one success and one admin. | **Blocked:** `internal/people/auth/bootstrap.go` uses a check-then-create sequence that permits two winners. |
 | Migrations | Two replicas start from the prior schema; killing the migrator still converges to one exact history. | Unproven; `internal/store/migrate.go` has no explicit application migration leader. |
 | Settings | A write on one replica immediately changes runtime settings, cron, and pause state on the other. | **Blocked:** `internal/settings/service.go` keeps process snapshots refreshed by local writes. |
 | Suggestion jobs | A claims then dies; B reclaims and produces one terminal result. | PR #453 added versioned Attempts, expired-lease recovery, and stale-attempt compare-and-swap with shared SQLite/Postgres conformance. The required two-process Postgres kill/reclaim proof remains unrecorded, so this row is implemented but not yet cluster-certified. |

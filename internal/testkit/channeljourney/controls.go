@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // EligibilityControls changes a relevant fact or explicit season limit on fresh

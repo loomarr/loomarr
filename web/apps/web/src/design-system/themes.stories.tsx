@@ -14,8 +14,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 
 const ThemePanel = ({ mode }: { mode: "dark" | "light" }) => (
   <LoomarrProvider theme={mode}>
-    <Screen density="pointer" gap="$section">
-      <Surface backgroundColor="$transparent" borderWidth={0} gap={4}>
+    <Screen density="pointer" gap="section">
+      <Surface backgroundColor="transparent" borderWidth={0} gap={4}>
         <Text textRole="metadata">{mode.toUpperCase()} THEME</Text>
         <Text textRole="display">Broadcast clarity, any time.</Text>
         <Text textRole="body">
@@ -23,7 +23,7 @@ const ThemePanel = ({ mode }: { mode: "dark" | "light" }) => (
         </Text>
       </Surface>
 
-      <Surface gap="$control" padding="$section">
+      <Surface gap="control" padding="section">
         <Text textRole="title">Ordinary surface</Text>
         <Text textRole="body">
           Primary copy carries the programme. Secondary copy recedes without becoming illegible.
@@ -32,13 +32,13 @@ const ThemePanel = ({ mode }: { mode: "dark" | "light" }) => (
         <ProgressTrack percent={62} width="100%" />
       </Surface>
 
-      <FocusSurface focused gap="$control" padding="$section">
+      <FocusSurface focused gap="control" padding="section">
         <Surface
           alignItems="center"
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
           flexDirection="row"
-          gap="$inline"
+          gap="inline"
         >
           <Icon accessibilityLabel="Play" glyph={icons.play} tone="primary" />
           <Text textRole="title">Focused action</Text>
@@ -48,13 +48,7 @@ const ThemePanel = ({ mode }: { mode: "dark" | "light" }) => (
         </Text>
       </FocusSurface>
 
-      <Surface
-        backgroundColor="$transparent"
-        borderWidth={0}
-        flexDirection="row"
-        flexWrap="wrap"
-        gap="$inline"
-      >
+      <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" flexWrap="wrap" gap="inline">
         <Badge tone="live">ON NOW</Badge>
         <Badge tone="success">SIGNAL LOCKED</Badge>
         <Badge tone="warning">SCHEDULE DRIFT</Badge>

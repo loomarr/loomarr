@@ -20,6 +20,14 @@ const reactNativeWeb = fileURLToPath(new URL("./node_modules/react-native-web", 
 const reactNativeSvgWeb = fileURLToPath(
   new URL("./node_modules/react-native-svg/lib/module/elements.web.js", import.meta.url),
 );
+// react-native-svg's web build needs two React Native modules react-native-web lacks: the asset
+// registry package React Native 0.88 no longer installs, and an Android-only TurboModule.
+const reactNativeWebAssetRegistry = fileURLToPath(
+  new URL("./node_modules/react-native-web/dist/modules/AssetRegistry/index.js", import.meta.url),
+);
+const reactNativeSvgSoundModule = fileURLToPath(
+  new URL("../../react-native-svg-sound-module.web.js", import.meta.url),
+);
 const proxied = [
   // /v1 covers the whole versioned surface INCLUDING /v1/playout (§9.1 V47: the playout streaming
   // routes moved under /v1, so the in-app HLS player's same-origin /v1/playout/hls/... URLs are
@@ -61,9 +69,10 @@ const keepEmbedDir = (): Plugin => ({
 // Only the app's index.html: Storybook's iframe.html goes through this config too, and its
 // baselines are framed on their own backgrounds.
 const firstPaintCanvas = (): Plugin => {
-  const theme = readFileSync(fileURLToPath(import.meta.resolve("@loomarr/tokens/theme.css")), "utf8");
+  const theme = readFileSync(fileURLToPath(import.meta.resolve("@loomarr/design-system/theme.css")), "utf8");
   const canvas = /--color-static-950:\s*(#[0-9A-Fa-f]{6});/.exec(theme)?.[1];
-  if (!canvas) throw new Error("vite.config: --color-static-950 is missing from @loomarr/tokens/theme.css");
+  if (!canvas)
+    throw new Error("vite.config: --color-static-950 is missing from @loomarr/design-system/theme.css");
   return {
     name: "loomarr-first-paint-canvas",
     transformIndexHtml: (_html, ctx) =>
@@ -100,6 +109,8 @@ export default defineConfig({
       { find: /^react-dom$/, replacement: webReactDOM },
       { find: /^react-native$/, replacement: reactNativeWeb },
       { find: /^react-native-svg$/, replacement: reactNativeSvgWeb },
+      { find: /^@react-native\/assets-registry\/registry$/, replacement: reactNativeWebAssetRegistry },
+      { find: /^\.\.\/fabric\/NativeSvgSoundModule$/, replacement: reactNativeSvgSoundModule },
     ],
     dedupe: ["react", "react-dom", "react-native"],
     extensions: [".web.mjs", ".web.js", ".web.ts", ".web.tsx", ".mjs", ".js", ".ts", ".tsx", ".json"],
@@ -128,12 +139,6 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    // The shared browser-player adapter loads hls.js dynamically from its owning package. Alias the
-    // transport explicitly so production-wrapper tests exercise the public adapter with a bounded
-    // MediaSource controller even when pnpm resolves the dependency from that package.
-    alias: {
-      "hls.js": fileURLToPath(new URL("./src/test/hls.mock.ts", import.meta.url)),
-    },
     // The Guide renders ui/guide, whose design-system icons come from lucide-react-native. Left
     // external, Node requires its `react-native` directly and meets the Flow source; inlined, the
     // react-native-web alias above applies, as in vitest.universal.config.ts.

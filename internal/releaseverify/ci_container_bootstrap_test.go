@@ -31,6 +31,9 @@ func TestVerifyCIContainerDownloadsRequiresDirectCIBootstrap(t *testing.T) {
 				"      - name: Repository policy bootstrap outside Make\n        run: go run ./cmd/releaseverify -root .\n",
 				"      - run: make release-verify\n      - name: Repository policy bootstrap outside Make\n        run: go run ./cmd/releaseverify -root .\n", 1)
 		},
+		"foreign Go cache": func(workflow string) string {
+			return strings.Replace(workflow, "key: merge-gate-go-${{ runner.os }}-", "key: go-contracts-${{ runner.os }}-", 1)
+		},
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -191,7 +194,7 @@ ensure-postgres-test-image:
 rust-dev-build:
 	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 test-pg: rust-dev-build ensure-postgres-test-image
-	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m $(if $(TEST_PG_SUITE),./internal/$(TEST_PG_SUITE)/,./internal/store/ ./internal/backendtransition/ ./internal/app/ ./internal/fillerstore/)
+	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m $(if $(TEST_PG_SUITE),./internal/$(TEST_PG_SUITE)/,./internal/store/ ./internal/backendtransition/ ./internal/app/ ./internal/filler/records/)
 `)
 	_, source, _, _ := runtime.Caller(0)
 	workflowEntries, err := os.ReadDir(filepath.Join(filepath.Dir(source), "..", "..", ".github", "workflows"))

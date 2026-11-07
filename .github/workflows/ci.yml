@@ -45,10 +45,9 @@ permissions:
 
 # A newer push to the same ref cancels the older in-flight run.
 #
-# ⚠ NEVER cancel a merge-queue run. `merge_group` refs are unique per batch so collisions are
-# unlikely, but a cancelled queue run reports a non-success conclusion, which ejects the whole
-# batch from the queue — turning a harmless double-push into a merge that silently does not
-# happen. Only PR and branch runs are cancellable.
+# Merge-group runs are `CI assurance`, not the required check (merge-gate.yml is). Each has its own
+# ref and is never cancelled: a run selects gates from its own PR's diff, so a later run cannot stand
+# in for a dropped one.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
@@ -155,7 +154,7 @@ jobs:
           #
           # The embedded help set (`docs/get-started.md`, `docs/guides/`, `docs/explanation/`,
           # frozen links in `docs/testdata/`) was `docs/help/` until #1572.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|^observability/|^docs/(get-started\.md|guides/|explanation/|testdata/|reference/)|^docs/design\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/filler/location/|^internal/filler/station/|^cmd/station-data/|^observability/|^docs/(get-started\.md|guides/|explanation/|testdata/|reference/)|^docs/design\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
@@ -231,7 +230,7 @@ jobs:
           # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
           # frontend, or embedded-help change to reach a tag before the production image
           # containing it had ever been built.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|\.go$|^go\.(mod|sum)$|^docs/(get-started\.md|guides/|explanation/)|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|tsconfig\.depcruise\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/filler/location/|^internal/filler/station/|^cmd/station-data/|\.go$|^go\.(mod|sum)$|^docs/(get-started\.md|guides/|explanation/)|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|tsconfig\.depcruise\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"
@@ -340,12 +339,21 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      - name: Restore Go caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: merge-gate-go-${{ runner.os }}-
+          restore-keys: |
+            merge-gate-go-${{ runner.os }}-
       - name: Repository policy bootstrap outside Make
         run: go run ./cmd/releaseverify -root .
-      - name: Workflow and publication policy
-        run: make ci-lint release-verify
-      - name: Agent harness and shell policy
-        run: make agent-harness-test shellcheck
+      # Mostly single-threaded shell self-tests, so they run side by side: one after the other they
+      # took 2 minutes and set PR time.
+      - name: Workflow, publication, agent harness, and shell policy
+        run: make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck
       - name: Documentation contracts read by Go
         run: go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify
   rust-contracts:
@@ -415,7 +423,7 @@ jobs:
   expo-android-mobile:
     name: Expo Android mobile — native build
     needs: changes
-    if: needs.changes.outputs.impact_expo_android_mobile == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_expo_android_mobile == 'true'
     uses: ./.github/workflows/ci-expo-android-mobile.yml
 
   playwright:
@@ -457,7 +465,7 @@ jobs:
   android:
     name: Android TV — React Native Play bundle
     needs: changes
-    if: needs.changes.outputs.impact_android == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_android == 'true'
     uses: ./.github/workflows/ci-android.yml
 
   # The single required check. ALWAYS runs, so branch protection has one status that is
@@ -465,17 +473,18 @@ jobs:
   #
   # ⚠ It must inspect `needs.*.result` explicitly. A skipped dependency does NOT fail a job by
   # default, but neither does a FAILED one when `if: always()` is set — so a naive aggregate
-  # would report success while a real job was red. `success` and `skipped` pass; `cancelled` is
-  # tolerated (a superseded run or fail-fast collateral — the real failure still reports
-  # `failure`); anything else (notably `failure`) fails the gate.
+  # would report success while a real job was red. `success` and `skipped` pass; `cancelled`
+  # passes only on a pull request, where a newer push superseded the run; anything else fails
+  # the gate.
   ci-ok:
-    name: CI
+    name: ${{ github.event_name == 'merge_group' && 'CI assurance' || 'CI' }}
     if: always()
     needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, expo-android-mobile, playwright, tuner, image, docs, android, playout-bench]
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
+      issues: write
     steps:
       - name: Every job that ran must have passed
         run: |
@@ -485,15 +494,19 @@ jobs:
           for r in $results; do
             case "$r" in
               success|skipped) ;;
-              # `cancelled` is NOT a failure. It means one of two things, and neither is a defect
-              # in this commit: (1) a newer push/merge superseded this run via `cancel-in-progress`
-              # (the newer run is authoritative), or (2) a sibling job genuinely FAILED and
-              # fail-fast cancelled the rest — but that real failure surfaces as `failure` on the
-              # actual job, which the wildcard below still catches. Treating `cancelled` as red is
-              # what left main showing a false red on every rapid merge (see the concurrency note
-              # at the top of this file). A real regression always reports `failure`, never
-              # `cancelled`, so accepting it here loses no coverage.
-              cancelled) echo "note: a job was cancelled (superseded or fail-fast collateral) — not a failure" ;;
+              # On a pull request `cancelled` means a newer push superseded this run through
+              # `cancel-in-progress`, and the newer run is authoritative.
+              #
+              # ⚠ Everywhere else `cancelled` is unverified, never passed. A job that crosses its
+              # `timeout-minutes` reports `cancelled`, not `failure`, with its tests unfinished,
+              # so accepting it here would merge a change a lane never finished proving.
+              cancelled)
+                if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+                  echo "::error::a required job was cancelled or timed out, so it verified nothing"
+                  exit 1
+                fi
+                echo "note: a job was cancelled by a newer push — not a failure"
+                ;;
               *) echo "::error::a required job reported '$r'"; exit 1 ;;
             esac
           done
@@ -510,3 +523,8 @@ jobs:
           if ! ./scripts/ci-run-metrics.sh >> "$GITHUB_STEP_SUMMARY"; then
             echo "::warning::CI timing summary was unavailable; verification results are unchanged"
           fi
+      - name: File an issue when a merged commit fails assurance
+        if: failure() && github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/ci-assurance-alert.sh

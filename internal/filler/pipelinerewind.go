@@ -60,13 +60,6 @@ var ErrTranscodeNeedsForce = errors.New("re-encoding loses a generation of quali
 // override. API callers map it to a conflict after reloading the authoritative row.
 var ErrPipelineNotRetryable = errors.New("pipeline row does not have a retryable execution failure")
 
-// DiagnosticRetryStatus is the small admission-recovery view of pipeline ownership. Automatic
-// always carries the exact time at which the persisted row becomes eligible again.
-type DiagnosticRetryStatus struct {
-	Automatic bool
-	RetryAt   time.Time
-}
-
 // WithRewind attaches the invalidation seam. Without it, `Rewind` still resets the ladder but
 // cannot clear derived data — so it refuses rather than producing a rewind that silently
 // self-skips.
@@ -111,7 +104,6 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	if clip.Path == "" {
 		return fmt.Errorf("clip %s has no playable path", hash)
 	}
-
 	// A Ready clip is unheld. Restarting only its conveyor makes it simultaneously playable and
 	// "preparing", and the terminal Ready transaction then rejects it forever because publication
 	// requires the current catalog row to be held. Hold first, before invalidating any derived
@@ -124,6 +116,14 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 		return fmt.Errorf("hold clip for pipeline restart: clip %s changed before restart", hash)
 	}
 	clip.Held = true
+
+	// An admitted clip's evidence copy is released (#2036), and split and screening read it. The
+	// transcode rebuilds it from the source master, so the re-run starts there. The cost is the
+	// one the operator asked for: re-checking with evidence the clip no longer keeps. Checked after
+	// the hold, because the defect floor releases evidence only from an unheld clip.
+	if (from == StageSplit || from == StageScreen) && p.evidenceReleased(clip) {
+		from, idx = StageTranscode, StageIndex(StageTranscode)
+	}
 
 	if err := p.invalidate(ctx, clip, idx); err != nil {
 		return err
@@ -150,6 +150,17 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	}
 	p.publish(row, clip)
 	return nil
+}
+
+// evidenceReleased reports whether the clip keeps a source master but no evidence copy: admitted,
+// with its evidence dropped.
+func (p *Pipeline) evidenceReleased(clip StoreClip) bool {
+	full, err := ClipPath(p.clipDir, clip.Path, filepath.Ext(clip.Path))
+	if err != nil {
+		return false
+	}
+	tags, ok := ReadSidecarTags(full)
+	return ok && tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.Path != "" && tags.MediaAssets.Evidence == nil
 }
 
 // RetryFailure retries exactly the failed rung the lifecycle projection permits. It is narrower
@@ -190,24 +201,6 @@ func (p *Pipeline) RetryFailure(ctx context.Context, hash string) error {
 	}
 	p.publish(row, clip)
 	return nil
-}
-
-// DiagnosticRetryStatus reports whether the conveyor already owns retrying a held clip. It does
-// not expose stages to fillerdecision or mutate the row.
-func (p *Pipeline) DiagnosticRetryStatus(ctx context.Context, hash string) (DiagnosticRetryStatus, error) {
-	row, found, err := p.store.GetClipPipeline(ctx, hash)
-	if err != nil || !found {
-		return DiagnosticRetryStatus{}, err
-	}
-	now := p.now().UTC()
-	if row.Disposition != DispositionRunning {
-		return DiagnosticRetryStatus{}, nil
-	}
-	retryAt := row.NextRun.UTC()
-	if retryAt.IsZero() || !retryAt.After(now) {
-		retryAt = now
-	}
-	return DiagnosticRetryStatus{Automatic: true, RetryAt: retryAt}, nil
 }
 
 func resetPipelineRow(row ClipPipeline, from StageID, now time.Time) ClipPipeline {
@@ -289,12 +282,11 @@ func (p *Pipeline) invalidate(ctx context.Context, clip StoreClip, idx int) erro
 	at := func(id StageID) bool { return StageIndex(id) >= idx }
 
 	if at(StageTranscode) {
-		// The loudness marker, so the re-encode normalises again rather than reading its own
-		// previous work as "already at target". The `mezzanine` marker goes with it — it is the
-		// gate that would otherwise make the rung skip itself immediately.
+		// The `mezzanine` marker is the gate that would otherwise make the rung skip itself
+		// immediately.
 		full := filepath.Join(p.clipDir, filepath.FromSlash(clip.Path))
 		if tags, ok := ReadSidecarTags(full); ok {
-			tags.NormalizedLUFS, tags.Mezzanine = 0, ""
+			tags.Mezzanine = ""
 			if err := WriteSidecarTags(full, tags, false); err != nil {
 				return fmt.Errorf("rewind %s: clearing the encode marker: %w", clip.Path, err)
 			}

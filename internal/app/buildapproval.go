@@ -6,16 +6,17 @@ import (
 
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 type approvalBuild struct {
-	binder          *binder.Binder
+	binder          *approval.Binder
 	approver        *suggest.Approver
 	decisionQuality *quality.ProposalDecisionRecorder
 }
@@ -25,23 +26,24 @@ func buildApproval(
 	channelService api.ChannelService,
 	playoutResolver *playoutResolver,
 	activityRecorder *activity.Recorder,
-	channelNumbers binder.NumberSource,
+	channelNumbers approval.NumberSource,
 	notifier suggest.ProposalNotifier,
 	libraryClient *library.Client,
+	holidays holidayvocab.Source,
 	log *slog.Logger,
 ) approvalBuild {
 	if st == nil {
 		return approvalBuild{}
 	}
-	var reconciler binder.Reconciler
+	var reconciler approval.Reconciler
 	if channelService != nil {
 		reconciler = channelService
 	}
-	var codec binder.CodecComputer
+	var codec approval.CodecComputer
 	if playoutResolver != nil {
 		codec = playoutResolver
 	}
-	channelBinder := binder.New(st, reconciler, codec, log)
+	channelBinder := approval.New(st, reconciler, codec, log)
 	if activityRecorder != nil {
 		channelBinder = channelBinder.WithActivity(activityRecorder)
 	}
@@ -51,7 +53,8 @@ func buildApproval(
 	decisionQuality := quality.NewProposalDecisionRecorder(st, log)
 	approver := suggest.NewApprover(st, channelBinder, time.Now).
 		WithProposalNotifier(notifier).
-		WithDecisionQuality(decisionQuality)
+		WithDecisionQuality(decisionQuality).
+		WithHolidays(holidays)
 	if libraryClient != nil {
 		approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
 			return libraryPresence{lib: libraryClient.Snapshot()}

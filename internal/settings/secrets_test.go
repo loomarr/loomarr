@@ -230,8 +230,8 @@ func TestSecrets_FeedRedactor(t *testing.T) {
 		t.Fatal(err)
 	}
 	vals := s.RedactionValues()
-	if len(vals) != len(allGenerated())+1 {
-		t.Fatalf("expected %d generated secret values, got %d", len(allGenerated())+1, len(vals))
+	if len(vals) != len(allGenerated())+2 {
+		t.Fatalf("expected %d generated secret values, got %d", len(allGenerated())+2, len(vals))
 	}
 	var buf bytes.Buffer
 	r := NewRedactor()
@@ -239,8 +239,10 @@ func TestSecrets_FeedRedactor(t *testing.T) {
 	log := slog.New(r.Handler(slog.NewTextHandler(&buf, nil)))
 	log.Info("token is " + s.Value(SecretAPI))
 	log.Info("VAPID key is " + s.WebPushIdentity().PrivateKey)
+	log.Info("arr webhook password is " + s.ArrWebhookSecret())
 	if strings.Contains(buf.String(), s.Value(SecretAPI)) ||
-		strings.Contains(buf.String(), s.WebPushIdentity().PrivateKey) {
+		strings.Contains(buf.String(), s.WebPushIdentity().PrivateKey) ||
+		strings.Contains(buf.String(), s.ArrWebhookSecret()) {
 		t.Fatalf("generated secret leaked:\n%s", buf.String())
 	}
 }

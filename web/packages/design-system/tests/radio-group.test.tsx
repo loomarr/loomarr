@@ -68,8 +68,22 @@ describe("RadioGroup", () => {
 
   it("draws a focus ring only while an item has focus", () => {
     act(() => root.render(<Harness initial="a" />));
-    // The ring is drawn in the $actionFocus token, which Tamagui names in its atomic class.
-    const ring = () => host.querySelectorAll('[class*="_btc-actionFocu"]').length;
+    // The ring is drawn in the actionFocus colour. Tamagui hashes each atomic class, so find the
+    // rules that carry that colour and count the elements wearing one of their classes.
+    const focusRules = () => {
+      const css = [
+        ...[...document.styleSheets].flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText)),
+        ...[...document.querySelectorAll("style")].map((style) => style.textContent ?? ""),
+      ].join("\n");
+      return [...css.matchAll(/\.(_[\w-]+)[^{}]*\{[^}]*var\(--actionFocus\)[^}]*\}/g)].map((m) => m[1]);
+    };
+    const ring = () => {
+      const names = focusRules();
+      expect(names.length).toBeGreaterThan(0);
+      return [...host.querySelectorAll("[class]")].filter((el) =>
+        names.some((name) => el.classList.contains(name ?? "")),
+      ).length;
+    };
     const before = ring();
     act(() => radios()[0]?.focus());
     expect(ring()).toBeGreaterThan(before);

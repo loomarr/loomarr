@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/creative"
 )
 
 // The transcribe rung (§10 V44's job, V51b's stage). Its whole risk is COST: Whisper is ~341s a
@@ -57,8 +58,8 @@ func (s *scriptedTools) Chapters(context.Context, string) ([]filler.Chapter, err
 func (s *scriptedTools) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
 	return nil, nil, nil
 }
-func (s *scriptedTools) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {
-	return nil, nil
+func (s *scriptedTools) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
+	return creative.Fingerprint{}, nil
 }
 func (s *scriptedTools) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
 	return nil, nil

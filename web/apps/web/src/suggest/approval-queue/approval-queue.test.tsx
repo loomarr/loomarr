@@ -664,7 +664,7 @@ describe("ApprovalQueue — bulk approve per group with a consequence summary", 
       within(filler).getByRole("checkbox", { name: "Select Top up the 1990s for bulk approve" }),
     );
     await userEvent.click(
-      within(filler).getAllByRole("button", { name: "Leave Classic ads out" })[0] as HTMLElement,
+      within(filler).getAllByRole("button", { name: "Leave out Classic ads" })[0] as HTMLElement,
     );
 
     expect(

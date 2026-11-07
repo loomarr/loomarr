@@ -1,4 +1,7 @@
 import { toProblem } from "@loomarr/api/mutator";
+import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
+import { FieldHint } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { KeyRound, Mail, Server } from "lucide-react";
 import { useId, useState } from "react";
 import { SessionList } from "@/components/loomarr/people/session-list";
@@ -8,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAppForm } from "@/lib/app-form";
 import type { PersonDetailProps } from "./person-detail.type";
 
 const PersonDetail = ({
@@ -30,60 +34,51 @@ const PersonDetail = ({
   const roleId = useId();
   const quotaId = useId();
   const autoId = useId();
-  const passwordId = useId();
-  const contactId = useId();
   const [resetOpen, setResetOpen] = useState(false);
-  const [password, setPassword] = useState("");
   const [resetError, setResetError] = useState("");
-  const [resetting, setResetting] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
-  const [contactEmail, setContactEmail] = useState("");
   const [contactError, setContactError] = useState("");
   const [contactSaving, setContactSaving] = useState(false);
 
-  const submitReset = async () => {
-    if (!onResetPassword) return;
-    if (password.length < 8) {
-      setResetError("Use at least 8 characters.");
-      return;
-    }
-    setResetError("");
-    setResetting(true);
-    try {
-      await onResetPassword(password);
-      setPassword("");
-      setResetOpen(false);
-    } catch (error) {
-      setResetError(toProblem(error).detail ?? "Couldn't reset that password.");
-    } finally {
-      setResetting(false);
-    }
-  };
+  const resetForm = useAppForm({
+    defaultValues: { next: "" },
+    validators: { onSubmit: resetUserPasswordSchema },
+    onSubmit: async ({ value }) => {
+      if (!onResetPassword) return;
+      setResetError("");
+      try {
+        await onResetPassword(value.next);
+        resetForm.reset();
+        setResetOpen(false);
+      } catch (error) {
+        setResetError(toProblem(error).detail ?? "Couldn't reset that password.");
+      }
+    },
+  });
+  const resetting = useStore(resetForm.store, (state) => state.isSubmitting);
+
+  const contactForm = useAppForm({
+    defaultValues: { email: "" },
+    validators: { onSubmit: contactAddressSchema },
+    onSubmit: async ({ value }) => {
+      if (!onSetContactAddress) return;
+      setContactError("");
+      setContactSaving(true);
+      try {
+        await onSetContactAddress(contactAddressSchema.parse(value).email);
+        setContactOpen(false);
+      } catch (error) {
+        setContactError(toProblem(error).detail ?? "Couldn't save that contact email.");
+      } finally {
+        setContactSaving(false);
+      }
+    },
+  });
 
   const openContact = () => {
-    setContactEmail(user.contactReplacement?.email ?? user.contactAddress?.email ?? "");
+    contactForm.reset({ email: user.contactReplacement?.email ?? user.contactAddress?.email ?? "" });
     setContactError("");
     setContactOpen(true);
-  };
-
-  const submitContact = async () => {
-    if (!onSetContactAddress) return;
-    const email = contactEmail.trim();
-    if (!email.includes("@") || email.startsWith("@") || email.endsWith("@")) {
-      setContactError("Enter one complete email address.");
-      return;
-    }
-    setContactError("");
-    setContactSaving(true);
-    try {
-      await onSetContactAddress(email);
-      setContactEmail("");
-      setContactOpen(false);
-    } catch (error) {
-      setContactError(toProblem(error).detail ?? "Couldn't save that contact email.");
-    } finally {
-      setContactSaving(false);
-    }
   };
 
   const runContactAction = async (action: (() => Promise<void>) | undefined) => {
@@ -109,7 +104,7 @@ const PersonDetail = ({
           {isSelf && <Badge variant="tune">You</Badge>}
           {user.disabled && <Badge variant="onair">Disabled</Badge>}
         </div>
-        <p className="flex items-center gap-2 text-muted-foreground text-sm">
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
           {user.local ? (
             <KeyRound className="size-4" aria-hidden />
           ) : (
@@ -125,7 +120,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-contact"
-        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-3 border-t pt-6"
       >
         <div>
           <h3 id="person-contact" className="font-semibold">
@@ -137,10 +132,10 @@ const PersonDetail = ({
         </div>
 
         {user.contactAddress ? (
-          <div className="flex flex-col gap-2 rounded-md border border-static-800 p-3">
+          <div className="border-static-800 flex flex-col gap-2 rounded-md border p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Mail className="size-4 text-muted-foreground" aria-hidden />
-              <span className="break-all text-sm">{user.contactAddress.email}</span>
+              <Mail className="text-muted-foreground size-4" aria-hidden />
+              <span className="text-sm break-all">{user.contactAddress.email}</span>
               <Badge variant={user.contactAddress.status === "verified" ? "lock" : "neutral"}>
                 {user.contactAddress.status === "verified" ? "Verified" : "Unverified"}
               </Badge>
@@ -158,9 +153,9 @@ const PersonDetail = ({
         )}
 
         {user.contactReplacement && (
-          <div className="flex flex-col gap-2 rounded-md border border-suggest-700/50 bg-suggest-950/20 p-3">
+          <div className="border-suggest-700/50 bg-suggest-950/20 flex flex-col gap-2 rounded-md border p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="break-all text-sm">{user.contactReplacement.email}</span>
+              <span className="text-sm break-all">{user.contactReplacement.email}</span>
               <Badge variant="suggest">Pending replacement</Badge>
             </div>
             <p className="text-muted-foreground text-xs">
@@ -178,41 +173,42 @@ const PersonDetail = ({
         )}
 
         {contactOpen ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={contactId}>Contact email</Label>
-              <Input
-                id={contactId}
-                type="email"
-                autoComplete="off"
-                value={contactEmail}
-                onChange={(event) => setContactEmail(event.target.value)}
-              />
-            </div>
+          <form
+            className="flex flex-col gap-3"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              void contactForm.handleSubmit();
+            }}
+          >
+            <contactForm.AppField name="email">
+              {(field) => <field.TextField autoComplete="off" label="Contact email" type="email" />}
+            </contactForm.AppField>
             <p className="text-muted-foreground text-xs">
               Saving creates an unverified address. Invitation or verification delivery will prove possession.
             </p>
             {contactError && (
-              <p className="text-onair-300 text-sm" role="alert">
+              <FieldHint role="alert" tone="error">
                 {contactError}
-              </p>
+              </FieldHint>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => void submitContact()} disabled={contactSaving}>
+              <Button type="submit" disabled={contactSaving}>
                 Save email
               </Button>
               <Button
+                type="button"
                 variant="ghost"
                 onClick={() => {
                   setContactOpen(false);
-                  setContactEmail("");
+                  contactForm.reset({ email: "" });
                   setContactError("");
                 }}
               >
                 Cancel
               </Button>
             </div>
-          </div>
+          </form>
         ) : (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={openContact} disabled={contactSaving}>
@@ -231,15 +227,15 @@ const PersonDetail = ({
           </div>
         )}
         {!contactOpen && contactError && (
-          <p className="text-onair-300 text-sm" role="alert">
+          <FieldHint role="alert" tone="error">
             {contactError}
-          </p>
+          </FieldHint>
         )}
       </section>
 
       <section
         aria-labelledby="person-access"
-        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-3 border-t pt-6"
       >
         <div>
           <h3 id="person-access" className="font-semibold">
@@ -268,7 +264,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-requests"
-        className="flex flex-col gap-4 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-4 border-t pt-6"
       >
         <div>
           <h3 id="person-requests" className="font-semibold">
@@ -281,7 +277,7 @@ const PersonDetail = ({
         <div className="grid grid-cols-[minmax(0,1fr)_7rem] items-end gap-4">
           <div>
             <p className="text-sm">Pending acquisitions</p>
-            <p className="font-mono text-muted-foreground text-sm tabular-nums">{`${user.pendingAcquisitions} of ${user.effectiveQuota}`}</p>
+            <p className="text-muted-foreground font-mono text-sm tabular-nums">{`${user.pendingAcquisitions} of ${user.effectiveQuota}`}</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={quotaId}>Quota</Label>
@@ -313,7 +309,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-sessions"
-        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-3 border-t pt-6"
       >
         <div>
           <h3 id="person-sessions" className="font-semibold">
@@ -332,7 +328,7 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-password"
-        className="flex flex-col gap-3 border-static-800 border-t pt-6"
+        className="border-static-800 flex flex-col gap-3 border-t pt-6"
       >
         <div>
           <h3 id="person-password" className="font-semibold">
@@ -347,37 +343,41 @@ const PersonDetail = ({
         {user.local &&
           onResetPassword &&
           (resetOpen ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={passwordId}>New password</Label>
-                <Input
-                  id={passwordId}
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </div>
+            <form
+              className="flex flex-col gap-3"
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void resetForm.handleSubmit();
+              }}
+            >
+              <resetForm.AppField name="next">
+                {(field) => (
+                  <field.TextField autoComplete="new-password" label="New password" type="password" />
+                )}
+              </resetForm.AppField>
               {resetError && (
-                <p className="text-onair-300 text-sm" role="alert">
+                <FieldHint role="alert" tone="error">
                   {resetError}
-                </p>
+                </FieldHint>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void submitReset()} disabled={resetting}>
+                <Button type="submit" disabled={resetting}>
                   Set new password
                 </Button>
                 <Button
+                  type="button"
                   variant="ghost"
                   onClick={() => {
                     setResetOpen(false);
-                    setPassword("");
+                    resetForm.reset();
                     setResetError("");
                   }}
                 >
                   Cancel
                 </Button>
               </div>
-            </div>
+            </form>
           ) : (
             <Button variant="outline" className="self-start" onClick={() => setResetOpen(true)}>
               <KeyRound aria-hidden />
@@ -388,10 +388,10 @@ const PersonDetail = ({
 
       <section
         aria-labelledby="person-danger"
-        className="flex flex-col gap-3 rounded-lg border border-onair-700 bg-onair-950/20 p-4"
+        className="border-onair-700 bg-onair-950/20 flex flex-col gap-3 rounded-lg border p-4"
       >
         <div>
-          <h3 id="person-danger" className="font-semibold text-onair-300">
+          <h3 id="person-danger" className="text-onair-300 font-semibold">
             Danger zone
           </h3>
           <p className="text-muted-foreground text-sm">

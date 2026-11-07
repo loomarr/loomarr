@@ -11,11 +11,12 @@ import {
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearAccountActionGrant } from "@/auth/account-action-grant";
+import { RouteError } from "@/components/loomarr/feedback/route-error";
 import { routeTree } from "@/routeTree.gen";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -64,12 +65,23 @@ const stubAuth = (startAuthed: boolean, identity: MeBody = ADMIN) => {
   return { logins };
 };
 
+// ⚠ A test can pass while the page it opened is still fetching (a negative assertion is true at
+// once). Cleanup then unmounts and cancels those queries, and the CancelledError surfaces as an
+// unhandled rejection attributed to whichever test runs next. Each test waits for its own client
+// to go quiet before it ends, as guide-page.test.tsx does.
+const clients: QueryClient[] = [];
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((c) => vi.waitFor(() => expect(c.isFetching()).toBe(0))));
+});
+
 const renderApp = (initialPath: string) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  clients.push(queryClient);
   const router = createRouter({
     routeTree,
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [initialPath] }),
+    defaultErrorComponent: RouteError,
   });
   // LoomarrProvider as main.tsx mounts it: AdminOnly's state comes from @loomarr/ui.
   render(
@@ -285,8 +297,9 @@ describe("post-login redirect", () => {
 
 // ⚠ A SERVER HICCUP IS NOT A LOGOUT. The guard used to be a bare `catch {}` over a query with
 // retry:false, so ANY failure — a 500, a proxy blip, this app's own self-restart — reported a
-// valid session as signed out and bounced the user to /login. RestartWatchProvider is wired into
-// that very layout, so an operator restarting from the Dashboard hit it every time.
+// valid session as signed out and bounced the user to /login, and an operator restarting from the
+// Dashboard hit it every time. Now the failing route's error boundary shows the problem with a
+// retry, under the root's restart overlay.
 describe("_authed guard distinguishes a failure from a logout", () => {
   const at = (router: ReturnType<typeof renderApp>) => router.state.location.href;
 
@@ -300,6 +313,26 @@ describe("_authed guard distinguishes a failure from a logout", () => {
     // Give the guard time to resolve and any redirect to commit before asserting the negative.
     await waitFor(() => expect(at(router)).not.toBe("/login"));
     expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+  });
+
+  it("shows the failure in the app's words and recovers when the server answers again", async () => {
+    let failing = true;
+    server.use(
+      ...appHandlers(),
+      http.get("*/v1/auth/me", () =>
+        failing
+          ? HttpResponse.json({ title: "Server is restarting" }, { status: 503 })
+          : HttpResponse.json(ADMIN),
+      ),
+    );
+    renderApp("/guide");
+
+    expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
+    expect(screen.getByText("Server is restarting")).toBeInTheDocument();
+    failing = false;
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(screen.queryByText("Server is restarting")).not.toBeInTheDocument();
   });
 });
 
@@ -491,36 +524,29 @@ describe("admin-only routes", () => {
   });
 });
 
-// #1987: a member's channel tab bar is Watch and Channel info, and marks the section being shown.
-// On an admin-only section it marks nothing: it used to light Channel info through a fallback,
-// claiming a page they weren't on. The admin half is in reachability.test.tsx.
-describe("a member's channel tab bar", () => {
-  const channelTabs = async () => within(await screen.findByRole("navigation", { name: "Channel sections" }));
-
-  it.each(["programming", "filler", "danger"])("at /channels/ch-1/%s has no current tab", async (section) => {
+// #1987, #2088: a member's only channel section is Channel info, so they get no tab bar (a lone tab
+// is chrome, not navigation), and Watch is the header's button to the full-bleed player. On an
+// admin-only section they see "Admins only" and still no bar: no tab claims a page they aren't on.
+// The admin half is in reachability.test.tsx.
+describe("a member's channel page", () => {
+  it.each(["programming", "filler", "danger"])("at /channels/ch-1/%s has no tab bar", async (section) => {
     stubAuth(true, MEMBER);
     renderApp(`/channels/ch-1/${section}`);
 
     expect(await screen.findByText("Admins only")).toBeInTheDocument();
-    const tabs = await channelTabs();
-    expect(tabs.getAllByRole("link").map((link) => link.textContent)).toEqual(["Watch", "Channel info"]);
-    expect(tabs.queryAllByRole("link", { current: "page" })).toHaveLength(0);
+    expect(screen.queryByRole("navigation", { name: "Channel sections" })).not.toBeInTheDocument();
   });
 
-  it.each([
-    ["watch", "Watch"],
-    ["info", "Channel info"],
-  ])("at /channels/ch-1/%s has %s current", async (section, label) => {
+  it("at /channels/ch-1/info has no tab bar, and Watch opens the player", async () => {
     stubAuth(true, MEMBER);
     // Channel info's own reads, which the shared baseline doesn't answer.
     server.use(
       getChannelUpcomingMockHandler({ upcoming: [] }),
       getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
     );
-    renderApp(`/channels/ch-1/${section}`);
+    renderApp("/channels/ch-1/info");
 
-    const tabs = await channelTabs();
-    expect(tabs.getAllByRole("link", { current: "page" })).toHaveLength(1);
-    expect(tabs.getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByRole("link", { name: "Watch" })).toHaveAttribute("href", "/watch/ch-1");
+    expect(screen.queryByRole("navigation", { name: "Channel sections" })).not.toBeInTheDocument();
   });
 });

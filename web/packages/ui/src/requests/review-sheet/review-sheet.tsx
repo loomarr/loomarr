@@ -10,7 +10,7 @@ import type { ReviewSheetProps } from "./review-sheet.type";
 const groupLabel: Record<ReviewGroup, string> = { filler: "Filler downloads", requests: "Channel requests" };
 
 const Buttons = ({ children }: { children: React.ReactNode }) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
+  <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="inline">
     {children}
   </Surface>
 );
@@ -156,7 +156,7 @@ const DenySheet = ({
 };
 
 const ResultRows = ({ rows }: { rows: readonly ReviewRow[] }) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+  <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
     {rows.map((row) => (
       <Text density="touch" key={row.id} textRole="body" tone={row.ok ? "success" : "danger"}>
         {`${row.ok ? "✓" : "✕"} ${row.title}${row.error ? ` — ${row.error}` : ""}`}

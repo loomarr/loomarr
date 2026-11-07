@@ -7,45 +7,49 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 type mediaDerivativeRequest struct {
-	ClipDir     string
-	Source      MediaAssetIdentity
-	Input       Probed
-	Recipe      mediatools.DerivativeRecipe
-	Tool        mediatools.MediaToolIdentity
+	ClipDir string
+	Source  MediaAssetIdentity
+	Input   Probed
+	Recipe  tools.DerivativeRecipe
+	// Host is the hardware profile a hardware recipe opens (its VAAPI render node).
+	Host        encode.HostProfile
+	Tool        tools.MediaToolIdentity
 	FFmpegPath  string
 	Probe       Prober
 	Diagnostics *diagnostics.ProcessManager
-	Transcode   func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
-	Verify      func(context.Context, string, string, int64, int, bool, float64) (mediatools.DerivativeQC, error)
+	Transcode   func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error)
+	Verify      func(context.Context, string, string, int64, int, bool, float64) (tools.DerivativeQC, error)
 	OnProgress  func(int)
-	Storage     *storageWriteTracker
+	Storage     *storagegovernor.WriteTracker
 }
 
-func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source MediaAssetIdentity, input Probed, ffmpeg string, storage *storageWriteTracker) (*MediaDerivativeLineage, mediatools.MediaToolIdentity, error) {
+func (s *TranscodeStage) prepareEvidenceDerivative(ctx context.Context, source MediaAssetIdentity, input Probed, ffmpeg string, enc encodeTarget, storage *storagegovernor.WriteTracker) (*MediaDerivativeLineage, tools.MediaToolIdentity, error) {
 	if s.evidenceTranscode == nil {
-		return nil, mediatools.MediaToolIdentity{}, nil
+		return nil, tools.MediaToolIdentity{}, nil
 	}
 	if s.identifyFFmpeg == nil {
-		return nil, mediatools.MediaToolIdentity{}, fmt.Errorf("media tool identity is unavailable")
+		return nil, tools.MediaToolIdentity{}, fmt.Errorf("media tool identity is unavailable")
 	}
 	tool, err := s.identifyFFmpeg(ctx, ffmpeg)
 	if err != nil {
-		return nil, mediatools.MediaToolIdentity{}, err
+		return nil, tools.MediaToolIdentity{}, err
 	}
 	built, err := buildMediaDerivative(ctx, mediaDerivativeRequest{
 		ClipDir: s.clipDir, Source: source, Input: input,
-		Recipe: mediatools.EvidenceDerivativeRecipe(), Tool: tool,
+		Recipe: tools.EvidenceDerivativeRecipe(enc.profile), Host: enc.host, Tool: tool,
 		FFmpegPath: ffmpeg, Probe: s.probe, Diagnostics: s.diagnostics,
 		Transcode: s.evidenceTranscode, Verify: s.verifyDerivative,
 		OnProgress: func(percent int) { reportProgress(ctx, StageTranscode, percent*40/100) },
 		Storage:    storage,
 	})
 	if err != nil {
-		return nil, mediatools.MediaToolIdentity{}, err
+		return nil, tools.MediaToolIdentity{}, err
 	}
 	return &built, tool, nil
 }
@@ -57,7 +61,7 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 	if err := request.Recipe.Validate(); err != nil {
 		return MediaDerivativeLineage{}, err
 	}
-	if request.Recipe.Role != mediatools.DerivativeEvidence {
+	if request.Recipe.Role != tools.DerivativeEvidence {
 		return MediaDerivativeLineage{}, fmt.Errorf("build media derivative: role %q is not evidence", request.Recipe.Role)
 	}
 	if err := request.Tool.Validate(); err != nil {
@@ -90,10 +94,10 @@ func buildMediaDerivative(ctx context.Context, request mediaDerivativeRequest) (
 		_ = os.Remove(sidecarPathFor(stagePath))
 	}()
 	writeCtx, finishStorage := request.Storage.Monitor(ctx, stagePath)
-	quality, err := request.Transcode(writeCtx, mediatools.TranscodeRequest{
+	quality, err := request.Transcode(writeCtx, tools.TranscodeRequest{
 		In: sourcePath, Out: stagePath, DurationMs: request.Input.DurationMs, HadAudio: !request.Input.Silent,
 		InputProbe: &request.Input,
-		TargetLUFS: request.Recipe.TargetLUFS, Profile: request.Recipe.Profile(), FFmpegPath: request.FFmpegPath,
+		TargetLUFS: request.Recipe.TargetLUFS, Profile: request.Recipe.Profile(), Host: request.Host, FFmpegPath: request.FFmpegPath,
 		Probe: request.Probe, Diagnostics: request.Diagnostics,
 	}, request.OnProgress)
 	if err != nil {

@@ -20,7 +20,7 @@ import (
 // The image service's wiring test (§22, V52).
 //
 // ⚠ This exists because of a specific failure mode this repo keeps hitting: a component that is
-// built, unit-tested and green, and that NOTHING IMPORTS. `internal/images` and its three routes
+// built, unit-tested and green, and that NOTHING IMPORTS. `internal/media/images` and its three routes
 // both shipped and passed their own tests while `Server.images` stayed nil, so every one of those
 // routes 404'd in a running instance. PROGRESS.md records the same shape against V1, V17a and V23.
 //

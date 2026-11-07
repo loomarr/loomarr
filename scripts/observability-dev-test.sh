@@ -37,8 +37,10 @@ jq -e '
   (.services.grafana.volumes | any(.type == "volume" and .target == "/var/lib/grafana" and .read_only != true))
 ' <<<"$rendered" >/dev/null
 
-make -C "$repo_root" -n observability-dev | grep -q 'scripts/observability-dev.sh up'
-make -C "$repo_root" -n observability-dev-down | grep -q 'scripts/observability-dev.sh down'
-make -C "$repo_root" -n observability-dev-test | grep -q 'scripts/observability-dev-runtime-test.sh'
+# Capture the dry run before matching: `make … | grep -q` lets grep exit on its first match while
+# make is still writing, and pipefail turns make's "write error: stdout" into a failed check.
+grep -q 'scripts/observability-dev.sh up' <<<"$(make -C "$repo_root" -n observability-dev)"
+grep -q 'scripts/observability-dev.sh down' <<<"$(make -C "$repo_root" -n observability-dev-down)"
+grep -q 'scripts/observability-dev-runtime-test.sh' <<<"$(make -C "$repo_root" -n observability-dev-test)"
 
 echo 'observability-dev-test: isolated Compose topology is wired'

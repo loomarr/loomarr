@@ -3,7 +3,7 @@ import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 // A static rule authoring vocabulary for STORIES + UNIT TESTS — the runtime rules editor gets
 // the real one from GET /v1/programming/vocabulary (ChannelProgramming passes it as a prop),
 // so this is deterministic test scaffolding, not a runtime source (the byte-for-byte runtime
-// mirror of internal/schedule/presets.go is gone). Values match presets.go so a story's
+// mirror of internal/channels/schedule/presets.go is gone). Values match presets.go so a story's
 // picker renders exactly as it does live.
 const ruleVocabularyFixture: Vocabulary = {
   when: [

@@ -1,8 +1,10 @@
 package filler_test
 
 import (
+	"slices"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
 )
@@ -229,6 +231,42 @@ func TestAssemble_KindsSelectionBumpersOnly(t *testing.T) {
 		if e.Kind == filler.Commercial {
 			t.Errorf("a bumpers-only selection still placed a commercial: %q", e.Path)
 		}
+	}
+}
+
+// #2036: a break with no ad to place is the channel's station material, even idents still
+// resting, before the card. The card has no file, so it switches the channel's breaks off.
+func TestAssemble_NoAdsFillsWithStationMaterialBeforeTheCard(t *testing.T) {
+	at := time.Date(2026, 10, 27, 20, 0, 0, 0, time.UTC)
+	idents := []filler.Clip{
+		{Hash: "id1", Path: "id1.mp4", Kind: filler.StationID, Era: 1992, Audience: filler.Kids, DurationMs: 10_000},
+		{Hash: "id2", Path: "id2.mp4", Kind: filler.StationID, Era: 1992, Audience: filler.Kids, DurationMs: 10_000},
+	}
+	w := kidsWindow(7)
+	w.GapMs = 25_000
+	w.SnapshotAt = at
+	w.Exposures = map[string]filler.Exposure{
+		"id1": {PlayCount: 3, LastPlayedAt: at.Add(-10 * time.Minute)},
+		"id2": {PlayCount: 3, LastPlayedAt: at.Add(-5 * time.Minute)},
+	}
+	p := filler.Assemble(idents, w, filler.Policy{Cooldown: 6 * time.Hour}, nil)
+	if p.MatchLevel != filler.MatchBumperCard {
+		t.Errorf("level = %s, want bumper_card: no ad matched", p.MatchLevel)
+	}
+	var got []string
+	for _, e := range p.Entries {
+		if e.IsFallbackCard {
+			t.Fatalf("the card played with station material available: %+v", p.Entries)
+		}
+		got = append(got, e.Hash)
+	}
+	if !slices.Equal(got, []string{"id1", "id2"}) {
+		t.Errorf("station break = %v, want both resting idents, the one aired longest ago first", got)
+	}
+
+	if p := filler.Assemble([]filler.Clip{{Hash: "long", Path: "long.mp4", Kind: filler.StationID,
+		Era: 1992, Audience: filler.Kids, DurationMs: 60_000}}, w, filler.Policy{}, nil); !hasFallbackCard(p) {
+		t.Errorf("with no station clip that fits, the break = %+v, want the card", p.Entries)
 	}
 }
 

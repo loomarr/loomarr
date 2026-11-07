@@ -24,7 +24,9 @@ func postgresWorkflowActionAuthorities() map[string]map[string]struct{} {
 // is also the default in test-pg's protected recipe (#1570).
 const postgresTestCommand = "make test-pg TEST_PG_SUITE=${{ matrix.lane }}"
 
-func postgresSuites() []string { return []string{"store", "backendtransition", "app", "fillerstore"} }
+func postgresSuites() []string {
+	return []string{"store", "backendtransition", "app", "filler/records"}
+}
 
 func postgresWorkflowRunAuthorities() map[string]struct{} {
 	return map[string]struct{}{

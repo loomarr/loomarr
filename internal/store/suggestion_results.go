@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // CommitSuggestionSuccess is the generation-success persistence boundary. A
@@ -107,41 +109,6 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	return nil
 }
 
-// RequeueSuggestionJob replaces only a terminal execution the caller actually
-// observed. It never rewrites attempts, requester identity, or creation time.
-func (s *sqlStore) RequeueSuggestionJob(
-	ctx context.Context,
-	jobID string,
-	expectedAttempt int,
-	kind, intentJSON, intentHash string,
-	deadline, updatedAt time.Time,
-) error {
-	result, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE jobs
-			SET kind=?, status='queued', intent_json=?, intent_hash=?, last_error='', failure_code='', failure_trace_json='', deadline=?, updated_at=?
-		  WHERE id=? AND status IN ('done', 'failed') AND attempts=?`),
-		kind, intentJSON, intentHash, epoch(deadline), epoch(updatedAt), jobID, expectedAttempt)
-	if err != nil {
-		return fmt.Errorf("requeue suggestion job %s: transition: %w", jobID, err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("requeue suggestion job %s: transition count: %w", jobID, err)
-	}
-	if affected == 1 {
-		return nil
-	}
-	var status string
-	err = s.db.QueryRowContext(ctx, s.ph(`SELECT status FROM jobs WHERE id = ?`), jobID).Scan(&status)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("requeue suggestion job %s: read status: %w", jobID, err)
-	}
-	return fmt.Errorf("%w: job %s has status %s or a newer attempt", ErrJobNotTerminal, jobID, status)
-}
-
 // ReviseSubmittedProposal starts a replacement generation without making the
 // current review disappear. The exact newest submitted proposal and the terminal
 // execution are one compare-and-swap, so approval, another revision, or a newer
@@ -159,10 +126,7 @@ func (s *sqlStore) ReviseSubmittedProposal(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lockQuery := `SELECT status FROM jobs WHERE id = ?`
-	if s.dialect == DialectPostgres {
-		lockQuery += ` FOR UPDATE`
-	}
+	lockQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
 	var status string
 	if err := tx.QueryRowContext(ctx, s.ph(lockQuery), jobID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -357,9 +321,13 @@ func (s *sqlStore) CloneSuggestionSuccess(
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: read source result: %w", job.ID, err)
 	}
 
+	body, err := decodeProposalBody(proposalID, proposalJSON)
+	if err != nil {
+		return Proposal{}, fmt.Errorf("clone suggestion job %s: %w", job.ID, err)
+	}
 	p := Proposal{
 		ID: proposalID, JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		ProposalJSON: proposalJSON, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
+		Body: body, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
 	}
 	if err := insertProposalTx(ctx, tx, s, p); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: %w", job.ID, err)
@@ -383,11 +351,15 @@ func (s *sqlStore) CloneSuggestionSuccess(
 }
 
 func insertProposalTx(ctx context.Context, tx *sql.Tx, s *sqlStore, p Proposal) error {
-	_, err := tx.ExecContext(ctx, s.ph(
+	body, err := encodeProposalBody(p)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, s.ph(
 		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		p.ProposalJSON, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
+		body, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)
 	}

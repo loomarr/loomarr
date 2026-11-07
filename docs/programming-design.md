@@ -112,8 +112,14 @@ Observed on the dev "1980s Action Heroes": `operatorSet: ["ordering", "scope"]` 
 A refine that says "add Christmas specials during the holiday window" changes those LLM-authored
 rules, not the channel's whole seasonal identity: the base policy remains year-round and the
 `holiday:christmas` rule activates its narrower slice on the calendar clock. "Turn this into a
-Christmas channel" is the distinct identity operation and grounds to seasonal `exclusive`. The same
-distinction applies to dayparts: morning/primetime/late-night curation is persisted policy evaluated
+Christmas channel" is the distinct identity operation and grounds to seasonal `exclusive`. Grounding
+holds `exclusive` to the holidays the household's country keeps (`filler.home_country`, #2030
+decision 38): a holiday kept elsewhere is dropped from the subset, and a channel left with none plays
+year-round, with `seasonNotKept` naming what was dropped for the approval card. The model's holiday
+ids are read loosely ("Christmas" is `christmas`) and an id no holiday has, or a group's, is dropped
+first, so the card only ever names a real holiday. Holiday episode
+selection still honours the named holiday. The planner prompt lists that country's holiday ids from
+the loaded definitions (decision 39). The same distinction applies to dayparts: morning/primetime/late-night curation is persisted policy evaluated
 by the scheduler for both newly proposed and existing channels, not a request to invoke the model at
 every clock boundary.
 
@@ -331,7 +337,7 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 
 Two symmetric behaviors, because knowing what October wants implies knowing what July doesn't:
 
-- **Detection is a judgment of what a title is *about*, with a deterministic floor** (#1670). Built-in calendar v1: Halloween (Oct 1–31), Thanksgiving-US (Nov 15–30), Christmas/holidays (Dec 1–26), New Year (Dec 27–Jan 2), Valentine's (Feb 1–14). Windows and vocabulary ship as data, not code; custom holidays/regions are future work.
+- **Detection is a judgment of what a title is *about*, with a deterministic floor** (#1670). The calendar is the household country's (`filler.home_country`; empty, or a country no definition names, keeps the US calendar every household had before countries; #2030): each holiday is one definition in `internal/holidayvocab` (its words and, per country, a day rule and the window around it), evaluated on `guide.timezone`, and programming, the on-screen logo and filler read the same one. The US keeps Halloween (Oct 1–31), Thanksgiving (Nov 15–30), Christmas (Dec 1–26), New Year (Dec 27–Jan 2), Valentine's (Feb 1–14), Easter, Mother's and Father's Day, St Patrick's, Independence Day, Memorial Day and back-to-school; Canada, Britain, Ireland, Australia and New Zealand keep their own set and dates (Canada's Thanksgiving in October, Mothering Sunday three weeks before Easter, Boxing Day inside Christmas, back-to-school in the southern summer). A holiday added after v1 benches an out-of-season title only on evidence beyond its name (an in-window premiere or corroborating genres), since "Easter" or "Independence Day" in a title says less than "Halloween". Definitions are data in the `holidays` table: boot stores the shipped ones once per seed revision, never over an operator's edit or retirement, and each holiday owns the seasonal taxon of its id (the taxonomy editor adds an undated holiday with a new seasonal taxon and retires it with the taxon, but refuses to retire a dated or group holiday). A seasonal taxon from before holidays were data becomes an undated holiday whose clips air year-round. The server reads one validated snapshot, reloaded after its own edits and every 30 seconds for the other replicas, and keeps the last good snapshot if stored rows fail validation. `GET /v1/holidays` serves the definitions with this year's season for the household country. Editing holidays in the app is #2030's later work.
   - **Verdict vocabulary.** For one (title or episode, holiday) pair the answer is closed: `about` (the holiday is its subject or setting), `adjacent` (it fits the holiday's mood without being about it — a haunted-house horror film for Halloween), or `not`. Each verdict carries a short reason code that clients word ("Halloween in the title", "Halloween keyword", "a haunted-house horror film"). One owner, `internal/holidayvocab`, judges; the scheduler, Channel ideas and the suggester all call it.
   - **The floor** (always on; the only judge while the LLM is off, unavailable or undecided). Each holiday has *name* aliases (the holiday itself: "halloween"; "christmas", "xmas", "santa"; …) and *mood* aliases ("ghost", "haunted", "witch", "spooky", "horror"). A name alias in the title, the overview or media-server tags, or a TMDB keyword naming the holiday (Halloween keyword 3335), is `about`. A mood alias in the title or keywords is `adjacent` only when the genres corroborate the mood — Halloween: Horror, or a family genre (Family, Children, Kids, Animation) together with Fantasy, which keeps a teenage-witch sitcom or a friendly-ghost cartoon; a bare mood word never counts alone. So *Ghost World* (Comedy, Drama), *Mission: Impossible – Ghost Protocol* (Action) and *Ghost* (Fantasy, Romance — no family genre) are `not`, while *The Witch* (Horror) is `adjacent`. A name alias inside a known look-alike is not the holiday: *Santa's Little Helper*, *Santa Clarita* and other Santa place names, *Bill Nye*.
   - **Episodes: the original air date.** Episodes carry no genres, but broadcast holiday episodes premiere near the holiday, and the media server's `PremiereDate` is cached per episode (`AirDate`). An episode whose original air date falls in the holiday's broadcast window **and** that has a mood alias in its title or overview is `about` — an animated sitcom's annual Halloween anthology whose overviews never say "Halloween" is proved by its late-October premieres. A mood alias in an *episode's* title with no air date in the window is `adjacent` (an episode title describes that one episode, unlike a film title such as *Ghost World*); a mood alias only in an ordinary overview is `not`. An air date alone is never evidence: plenty of ordinary episodes air in late October. Broadcast windows: Halloween Oct 15–Nov 7, Thanksgiving the seven days before the fourth Thursday of November through the Sunday after, Christmas Dec 1–Jan 2, New Year Dec 26–Jan 7, Valentine's Feb 7–21 (only Halloween has mood aliases today, so only its window decides anything yet). Cached episode lists written before the date was kept simply lack it — judged as "no date" — until the library refresh repopulates them. With the LLM off, the floor alone builds the holiday's Channel idea, and it is not offered below its minimum title count. Genres corroborate a mood word; a genre alone is never evidence (the correction below still holds).
@@ -529,7 +535,7 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     When `sameAs` is non-empty or `capped` is true the line says so plainly ("at this pool size
     Featured and Heavy play the same"). The line is the backend's numbers, never a client-side
     estimate.
-- **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop).
+- **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop). A holiday puts the channel in window only when the channel has something for it — a title that fits, or a series with an episode that does (#2030) — so a Halloween channel with every holiday chosen runs its fallback through back-to-school rather than emptying. A series whose episodes cannot be judged (stale editorial evidence) counts as having something, as before.
 - **`mode: "off"`:** no detection, no bench — for channels where a Halloween Simpsons episode in March is fine.
 - Evaluation uses the reconcile instant's date on the guide time zone (`guide.timezone`, the clock
   the rolling window turns on). The holiday-episode feature above reads the calendar dates of the
@@ -551,9 +557,9 @@ duplication) and `exclusive` mode has an `offSeason` fallback ladder (loop / dar
 rule's intersect-only `What` and ordering-only `How` cannot express boost-by-duplication or
 "bench items seasonal for a *different* holiday" without bloating the rule model. So the
 seasonal *mechanism* (`applySeasonal`) stays intact, and the unification is that **the
-holiday `When` predicate and the seasonal engine share ONE calendar** (`builtinCalendar`):
+holiday `When` predicate and the seasonal engine share ONE calendar** (`schedule.Calendar`):
 `When{Holiday:"christmas"}` is active *exactly* when the seasonal engine considers christmas
-in-window — proven across every day of the year by a cross-consistency test, so the two can
+in-window — proven across every day of the year, in every shipped country, by a cross-consistency test, so the two can
 never silently diverge. In `ComputeDesiredAt` they **compose**: a rule's `What` narrows the
 pool first, then seasonal bench/boost runs on the narrowed set (so "a December holiday rule"
 and seasonal `auto` reinforce rather than contradict). This keeps the seasonal regression
@@ -693,7 +699,7 @@ lowers them, **drops unknown tokens**, and clamps. This is the exhaustive v1 tab
 | `primetime` | hours 20–23 | 40 |
 | `late-night` | hours 23–2 (wraps) | 40 |
 | `overnight` / `graveyard` | hours 2–6 | 40 |
-| `holiday:<id>` | the §6 calendar window for `<id>` (christmas/halloween/thanksgiving/newyear/valentines) | 60 |
+| `holiday:<id>` | the §6 calendar window for `<id>` in the household's country (christmas/halloween/easter/…; the vocabulary offers only the holidays the country keeps, and one it doesn't never matches) | 60 |
 | `weekend-mornings` etc. | AND of the two (weekend ∧ mornings) | max of the two + 5 |
 
 Priorities encode a real programmer's precedence: **holiday (60) > daypart-hours (30–40) > weekend/weekday (20) > base (0)**. A token with no match falls through to the base policy. Ties break by list order (§6.5).
@@ -776,16 +782,16 @@ A channel built from an intent shouldn't be frozen at build time — as the libr
 
 **It is a composition over existing parts, not a new engine.** The suggester already (a) re-runs against a stored intent + the current lineup as context (the *refine* path, §7), (b) splits picks into **in-library** (free, instant) vs **acquisition** (must request), (c) scores theme-first (§8.1 suggester), and (d) re-validates acquisitions vs TMDB. Re-curation just *schedules* a refine and lets the results flow through the same approve → bind → reconcile pipeline. The genuinely new pieces are a scheduled job, a per-channel opt-in, and a channel-scoped auto-approve grant.
 
-- **A scheduled job `channel-recurate`** (default **weekly**, `job.recurate.schedule`; Run-now-triggerable like every §18.1 job; LLM-cost-bearing so infrequent). For each **live, intent-backed, auto-curate-opted-in** channel (`IntentRef != "" ∧ AutoCurate ∧ status live/building`; hand-made / paused / detached / opted-out channels are skipped) it triggers a **refresh refine** — the channel's own `IntentRef` job re-run against its stored intent + current lineup, with no operator `RefineText` (the "change" is simply "re-evaluate against what's in the library now").
-  The re-queued job is durably marked `kind=recurate`; the worker uses that server-owned marker
+- **A scheduled job `channel-recurate`** (default **weekly**, `job.recurate.schedule`; Run-now-triggerable like every §18.1 job; LLM-cost-bearing so infrequent). For each **live, intent-backed, auto-curate-opted-in** channel (`IntentRef != "" ∧ AutoCurate ∧ status live/building`; hand-made / paused / detached / opted-out channels are skipped) it triggers a **refresh refine** — a new job seeded from the intent the channel owns (`channels.intent_json`) + its current lineup, with no operator `RefineText` (the "change" is simply "re-evaluate against what's in the library now"). A channel with no stored intent is skipped with a logged reason.
+  The new job names the channel (`jobs.channel_id`), has no requester, and is durably marked `kind=recurate`; the worker uses that server-owned marker
   to select the channel-scoped grant. It skips the requester's ordinary auto-approve grant for
   this run, and ordinary/manual refine jobs never reach the auto-curate grant. Without that
   discriminator, a requester grant could bypass the channel quality/cap thresholds, while a
   human refine on an opted-in channel could be silently treated as unattended work.
   Discovery-feedback scope follows the same durable authority: immediately before generation the
-  worker resolves the one current Channel whose unique non-empty `intent_ref` equals the trusted
-  claimed Job id and attaches that Channel id only to the in-memory Intent. The serializer never
-  persists this execution field. Missing, detached, unreadable, empty, or mismatched ownership
+  worker resolves the Channel the trusted claimed Job names (`jobs.channel_id`) and attaches that
+  Channel id only to the in-memory Intent. The serializer never
+  persists this execution field. Missing, removed, detached, unreadable or empty ownership
   fails the Attempt before catalog or provider access; fresh suggestions and manual refines use
   household feedback only. An admin may name a Channel when recording an editorial feedback event,
   but that event field is not execution authority.

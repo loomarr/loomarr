@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // sessionAuthorizer resolves a request to a role via the session cookie first
@@ -46,7 +46,7 @@ func (a *sessionAuthorizer) Authorize(r *http.Request) Role {
 
 // AuthorizeUser resolves the role AND the authenticated user (when a session
 // cookie identifies one). The API_TOKEN path has no user (machine/break-glass).
-func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *store.User) {
+func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *identitystore.User) {
 	identity := a.authorizeIdentity(r)
 	return identity.role, identity.user
 }
@@ -54,7 +54,7 @@ func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *store.User) {
 type requestIdentity struct {
 	deviceID string
 	role     Role
-	user     *store.User
+	user     *identitystore.User
 }
 
 type identityAuthorizer interface {
@@ -128,11 +128,11 @@ func hasBearer(r *http.Request) bool {
 // identity for /v1/auth/me etc.
 type UserAuthorizer interface {
 	Authorizer
-	AuthorizeUser(r *http.Request) (Role, *store.User)
+	AuthorizeUser(r *http.Request) (Role, *identitystore.User)
 }
 
-func roleOf(u store.User) Role {
-	if u.Role == store.RoleAdmin {
+func roleOf(u identitystore.User) Role {
+	if u.Role == identitystore.RoleAdmin {
 		return RoleAdmin
 	}
 	return RoleMember
@@ -142,8 +142,8 @@ func roleOf(u store.User) Role {
 // identity (e.g. /v1/auth/me). It is stored by the middleware via huma.WithValue.
 type userCtxKey struct{}
 
-func userFrom(ctx context.Context) (store.User, bool) {
-	u, ok := ctx.Value(userCtxKey{}).(store.User)
+func userFrom(ctx context.Context) (identitystore.User, bool) {
+	u, ok := ctx.Value(userCtxKey{}).(identitystore.User)
 	return u, ok
 }
 

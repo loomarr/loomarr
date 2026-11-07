@@ -23,7 +23,7 @@ const ApprovalHistoryRow = ({ proposal, className }: ApprovalHistoryRowProps) =>
   return (
     <li
       className={cn(
-        "flex flex-col gap-1 rounded-md border border-border bg-card px-3 py-2.5 text-sm",
+        "border-border bg-card flex flex-col gap-1 rounded-md border px-3 py-2.5 text-sm",
         className,
       )}
     >
@@ -44,7 +44,7 @@ const ApprovalHistoryRow = ({ proposal, className }: ApprovalHistoryRowProps) =>
       {(proposal.approvedByName || changed) && (
         <p className="text-muted-foreground text-xs">
           {proposal.approvedByName && (
-            <span className="font-mono text-2xs uppercase tracking-wide">
+            <span className="text-2xs font-mono tracking-wide uppercase">
               {`Approved by ${proposal.approvedByName}`}
             </span>
           )}

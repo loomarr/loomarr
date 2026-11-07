@@ -78,7 +78,7 @@ const StorySurface = ({ state }: { state: State }) => {
   const client = useMemo(() => new QueryClient({ defaultOptions: { queries: { retry: false } } }), []);
   return (
     <QueryClientProvider client={client}>
-      <div className="min-h-screen bg-background p-6 text-foreground">
+      <div className="bg-background text-foreground min-h-screen p-6">
         <div className="mx-auto max-w-3xl">
           <NotificationDestinationsPanel />
         </div>

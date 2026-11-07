@@ -16,10 +16,10 @@ const HomeStrip = ({ state, count, isAdmin, onRetry }: HomeStripProps) => {
   if (state === "loading") {
     return (
       <section aria-busy="true">
-        <p className="m-0 text-sm text-static-400">Loading your channels…</p>
+        <p className="text-static-400 m-0 text-sm">Loading your channels…</p>
         <div aria-hidden className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="aspect-video w-full animate-pulse rounded-md bg-static-800" />
+            <div key={i} className="bg-static-800 aspect-video w-full animate-pulse rounded-md" />
           ))}
         </div>
       </section>
@@ -29,7 +29,7 @@ const HomeStrip = ({ state, count, isAdmin, onRetry }: HomeStripProps) => {
   if (state === "error") {
     return (
       <section className="flex max-w-[460px] flex-col items-start gap-4 py-10">
-        <h2 className="m-0 font-semibold text-lg">Couldn’t load your channels.</h2>
+        <h2 className="m-0 text-lg font-semibold">Couldn’t load your channels.</h2>
         <Button onClick={onRetry}>Try again</Button>
       </section>
     );
@@ -38,8 +38,8 @@ const HomeStrip = ({ state, count, isAdmin, onRetry }: HomeStripProps) => {
   if (state === "empty") {
     return (
       <section className="flex max-w-[460px] flex-col items-start gap-4 py-10">
-        <h2 className="m-0 font-semibold text-lg">Your first channel starts here</h2>
-        <p className="m-0 text-static-400">{isAdmin ? "Create" : "Request"} a channel to start watching.</p>
+        <h2 className="m-0 text-lg font-semibold">Your first channel starts here</h2>
+        <p className="text-static-400 m-0">{isAdmin ? "Create" : "Request"} a channel to start watching.</p>
         <Button render={<Link to="/guide" search={{ new: "1" }} />}>
           {isAdmin ? "Add your first channel" : "Request a channel"}
         </Button>

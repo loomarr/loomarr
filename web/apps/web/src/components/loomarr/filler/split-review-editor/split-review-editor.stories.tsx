@@ -38,7 +38,9 @@ const SelectedClip: Story = {
   args: { proposal: reviewProposal, onConfirm: noop, onBack: noop },
   tags: ["portal"],
   play: async ({ canvas, canvasElement, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("button", { name: "Open clip 1: Fizzbolt — Dude!" }));
+    await userEvent.click(
+      await canvas.findByRole("button", { name: /^Open clip #1(?!\d).*Fizzbolt — Dude!/ }),
+    );
     await pauseStoryVideo(canvasElement.ownerDocument.body);
   },
 };

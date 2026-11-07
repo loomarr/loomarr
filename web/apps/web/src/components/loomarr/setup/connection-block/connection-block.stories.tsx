@@ -19,7 +19,7 @@ type Story = StoryObj<typeof meta>;
 // Stand-in for a SettingsFields group — the block is presentational, so the story doesn't
 // need the real field controls, just something in the body to prove the reveal.
 const fields = (
-  <div className="flex flex-col gap-3 text-muted-foreground text-sm">
+  <div className="text-muted-foreground flex flex-col gap-3 text-sm">
     <p>Library URL, token, and flavor render here (a SettingsFields group).</p>
   </div>
 );

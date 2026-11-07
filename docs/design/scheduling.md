@@ -99,7 +99,7 @@ reshuffle on each pass, so it holds whether or not the shuffle reseeds per pass.
   are named in the status filter, never encoded as a magic deadline. A failed first reconcile is
   logged at ERROR and written to `activity`.
 - **Channel numbers must be free in Tunarr too.** Every path that assigns a number (approval, create,
-  renumber) asks `binder.NumberInUse`, which unions the store with Tunarr's channel list. On a
+  renumber) asks `approval.Binder.NumberInUse`, which unions the store with Tunarr's channel list. On a
   collision Loomarr renumbers its own channel, never the occupant, and reports the move. An
   unreachable Tunarr falls back to store-only numbering.
 - **Ownership:** Loomarr is authoritative for local desired state and, on Tunarr channels, for the
@@ -178,13 +178,16 @@ same channel with no history.
 
 A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper, sized to the gap.
 
-- **Matching:** country and local market first, then era to the block, audience to the channel, and
-  category variety within a pod.
+- **Matching:** country and place first (a `local` clip's broadcast station within
+  `filler.local_radius_km` of the channel's place), then era to the block, audience to the channel,
+  and category variety within a pod.
 - **Per-channel selection (`policy.filler`, `FillerSelection`)** narrows `era`, `audience`,
   `categories`, `kinds`, `pinned` and `excluded`. `era` has three states: unset inherits the era
   `policy.scope.dates` implies, `{0,0}` is explicitly any, and a range matches both bounds. Exclusion wins
-  over a pin. Optional `geography` may choose a market but never change the installation country,
-  and is applied before pins. On first approval of a generated channel, one pure function seeds the
+  over a pin. Optional `geography` replaces the installation's, another country included (#2030
+  decision 16), and is applied before pins. An empty place inherits the installation's only in
+  the installation's country (#2059 decision 8). Optional `language` is the channel's commercial
+  language (below). On first approval of a generated channel, one pure function seeds the
   selection from the Proposal (the era its scope dates imply; `TV-Y`/`TV-Y7` → `kids`, `G`…`TV-PG` → `family`, anything
   else → `general`); after that the operator owns it and refine or re-curation never overwrite it.
 - **Derived context.** Where the operator left audience or era unset, `schedule.DeriveFiller`
@@ -199,7 +202,11 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   `policy.breakDuration` per channel,
   minimum 30 s because Tunarr clamps smaller flex gaps). `policy.breaksPerHour = 0` is the only off
   switch. On internal playout the break length is a ceiling: a break slot is capped at its pod's
-  playable duration, so the programme resumes when the clips end. **One function owns the length**
+  playable duration, so the programme resumes when the clips end. That pod is sized from the
+  catalog, the selection and the policy alone, **never the play history**: sized from the live
+  rotation, every commercial that aired re-sized every break, and the timeline walked from the
+  anchor moved by tens of seconds to minutes at each reconcile (2026-10-24). Each break that airs
+  is then assembled to its own slot's length, which is its hard budget. **One function owns the length**
   (`filler.ResolveBreakDurationMs`): the channel's value when it is at least 30 s, else the install
   setting, else 2 minutes. The scheduler cuts the slot with it and the pod is assembled to it, so
   the two cannot disagree. **The break is a hard budget:** the intro bumper, the ads and the return
@@ -218,22 +225,57 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   so a break ends within the shortest unused clip of its slot, not 18 s early. `FILLER_POD_MAX` is
   a floor, never the reason a fitting clip is left out: the adapter sizes the clip ceiling from the
   break length over the shortest eligible clip (at most 64). Time, not count, bounds the pod.
+- **A re-size never moves what is on air.** Every airing is found by walking the accepted cycle
+  from its anchor, so a break that has aired keeps its length. On a reconcile that re-sizes breaks
+  (the catalog changed), each break that has aired or starts within `channels.MidRollFreezeHorizon`
+  keeps its accepted length, and only later breaks take the new one (`playout.KeepAcceptedBreaks`).
+  The hold runs up to the first slot whose timing changed (a programme added, removed or
+  re-timed), so what airs before an edit stays put; a change that moves nothing (a re-identified
+  file, a healed title) does not end it. It never outlasts the break length: a shorter
+  `breakDuration` is an edit and applies to every break at once, aired ones included, so it can
+  move what is on air and restart the stream once. A smaller catalog stays held,
+  and those breaks air what fits, then the card. A placeholder (a keyed filler slot at a missing
+  programme's runtime) is not a break: its pod keeps the configured break length.
+- **A schedule change restarts a stream only when it changes what is on air.** The packager reads
+  the accepted cycle at every item boundary, so a change from its next lookup on reaches the stream
+  by itself. Reconcile stops a channel's packager only when the new cycle airs something different
+  over the packager's run-ahead (`playout.OnAirChanged`), and Postgres peer replicas apply the same
+  rule to each committed version. A rolling-window turn keeps stop-on-change.
 - **Previews are the break that airs.** The saved preview, the guide's per-break cards and both
   draft previews (`pods/preview`, `programming/preview`) build their selection through
   `channels.SelectionForPolicy`, which carries the policy's `breakDuration` and
-  `commercialSpacing`. A draft that does not carry spacing uses the channel's saved value.
+  `commercialSpacing`. A draft that does not carry spacing uses the channel's saved value. The
+  guide's card for a break is assembled to that break's slot, exactly as playout assembles it.
 - **Placement** walks program durations and inserts a break after the program that crosses each
   `60 / breaksPerHour` minute threshold. Breaks are inserted only when a filler pool exists; with
   none, programmes play back to back and the next reconcile re-inserts breaks once clips land.
   Positions are deterministic for a lineup and seed.
-- **Rotation (V58).** One bounded row per `(channel, clip)` holds play count and the latest airing.
-  Internal playout writes it when the channel encoder resolves the clip, keyed by scheduled start, so
-  tune-ins and rebuilds cannot inflate it; preview and reconcile never write it. Assembly reads a
-  snapshot cut off before the break starts and ranks within each rung: never aired, then least
-  recently aired outside the channel's commercial spacing. A clip inside its spacing ranks behind
-  every rested clip on any rung, so the ladder widens era before a clip repeats, and spacing relaxes
-  only when the whole ladder is resting (the pod records `CooldownRelaxed`). Spacing never causes
-  dead air. Pins come first and may repeat. **Spacing is per channel (#1670):**
+- **Rotation (V58, household-wide since #2017).** The history is the household's, not a channel's:
+  a commercial seen on any channel rests on every channel. One row per watched airing
+  (`filler_airings`: channel, clip, scheduled start, recorded at) keeps every airing younger than a
+  day and each clip's newest four beyond that, so it stays bounded. Internal playout writes it when
+  a viewer receives the clip's segments (`playoutResolver.RecordAiringServed`, called once per item
+  from the packager's segment serve path), keyed by scheduled start, so tune-ins and rebuilds cannot
+  inflate it; resolving the airing is a read, so preview, reconcile, the guide and the Watch
+  pickers' `/tracks` never write it. Programme airing history is written at the same point.
+  **Only served airings count:** a packager a neighbour warm keeps ready for a channel switch encodes
+  to nobody, and nobody fetches its segments. A viewer who switches to a warm channel counts the clip
+  they are served. Per-channel history let one TV switching channels
+  see the same clips in the same order on two channels within the hour, and warm neighbours rested
+  clips nobody saw.
+
+  Assembly reads a snapshot of airings that aired before the break starts **and** were recorded at
+  least a settle (`OnAirLookahead` + 3 s) before it. The second cut keeps a break fixed while it
+  airs across channels: a viewer tuning in mid-clip elsewhere records an airing that started
+  minutes earlier, at that moment, and the break's pod is assembled again at every clip's resolve.
+  Playout resolves a break's first clip no earlier than its run-ahead before the break, so every
+  airing a break counts was stored before its first clip was assembled. Within each rung it ranks:
+  never aired, then least recently aired outside the channel's commercial spacing. The end-of-break
+  top-up ranks the same way, the longer clip winning only among equals. A clip inside its spacing
+  ranks behind every rested clip on any rung, so the ladder widens era before a clip repeats, and
+  spacing relaxes only when the whole ladder is resting (the pod records `CooldownRelaxed`).
+  Spacing never causes dead air. Pins come first and may repeat. **Each channel sets its own
+  spacing (#1670), measured against the household's airings:**
   `policy.commercialSpacing` ("Repeat spacing · same commercial" in the channel's Filler section);
   nil inherits `filler.cooldown_seconds`, which defaults to 4 hours, and a present `0` lets a clip
   repeat in any later break. On Tunarr channels Tunarr owns rotation; Loomarr writes the channel's
@@ -244,9 +286,42 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   flex. A larger list earns a longer spacing. Loomarr's own playout ranks by recency instead, so it
   honours the full spacing and relaxes it only when the whole ladder is resting.
 - **Fallback ladder:** exact era → era widened by a decade → any audience-appropriate clip → clips
-  with an ungrounded audience → the channel's bumper card. Never dead air. A pod fills from the
+  with an ungrounded audience → the channel's station material (bumpers and idents, resting or not,
+  #2036) → the channel's bumper card. Never dead air. A pod fills from the
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
   instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
+- **Holidays (#2030).** A clip is seasonal when a tag names a holiday with dates; a holiday is its
+  seasonal tag. Out of season it never airs, bumpers and station IDs included. In season, at most
+  half of a break's commercials are in-season clips, and at least one when a rested one fits: the
+  best rested in-season commercial that fits is placed first, then takes a seeded spot among the
+  commercials that keeps category variety. The half yields only to the card: once no other clip
+  fits, the end-of-break top-up adds in-season commercials past it. A tag counts only where the clip
+  asserts it, never through a rollup ancestor. The season is the household calendar programming
+  reads (`filler.home_country`, the stored holidays, `guide.timezone`), dated at the break's start;
+  a question asked without one (the pool check, coverage, a clip's fit, a Tunarr filler list) is
+  dated now, and the sweep rolls it with the date. A Tunarr list written before midnight on a
+  season's last day can therefore air its clips until the next sweep. A break's length is sized
+  with no seasons, as it is without play history, so a season opening never re-sizes the
+  timeline. A holiday with no dates is not a season: its clips air year-round. Pins skip both
+  rules, and an in-season pin counts toward the half. A clip's fit reports `season` out of season.
+- **Commercial language (#2030).** Each channel has a commercial language (`policy.filler.language`, any ISO 639 form, mapped onto the detector's codes); empty inherits the
+  household setting `filler.language`. It is independent of the channel's audio language. A
+  break airs clips in that language plus wordless (`none`) ones, bumpers and station IDs included;
+  when they run out the card airs. A clip whose language is undetermined airs only where the
+  channel's language is the household default. Pins skip the rule. Coverage names the language,
+  counts it as a criterion and reports the undetermined commercials; a clip's fit reports
+  `language`.
+- **Intake follows the channels (#2030 decision 13).** The language rung and the splitter's
+  per-segment check admit the union of the channels' commercial languages
+  (`filler.IntakeLanguages`), read live: adding a channel in a new language admits it with no
+  settings change, and removing the last such channel stops new admissions without touching clips
+  already catalogued. A detached channel does not count; a paused one does. A channel with no
+  language at all turns the gate off. A split proposal snapshots the set, and review offers a
+  recheck when the channels' set has changed since.
+- **Location.** A channel's own country and market replace the household's, another country
+  included, so a channel of British shows can opt into British commercials. It is never inferred
+  from the shows. The region preference stays the household's: the channel inherits it, less its
+  own country.
 
 **Audience is an allowlist and never weakens** (a kids and teen guardrail):
 
@@ -290,5 +365,7 @@ Formerly `design.md` §19.
   `available` and is re-pushed; `unavailable` substitutes). Dropping the availability event entirely
   still backfills through the periodic sweep. One leader per channel under concurrency.
 - **Pods** are seeded-deterministic (seed = channel + window) and respect era and audience matching,
-  category variety, density and no-repeat-in-window; the fallback ladder degrades to a bumper card;
+  category variety, density, no-repeat-in-window, the holiday season and half
+  (`internal/filler/season_test.go`) and the commercial language and location
+  (`language_boundary_test.go`, `geography_test.go`); the fallback ladder degrades to a bumper card;
   filler never appears as a lineup programme; only real catalog clips are placed.

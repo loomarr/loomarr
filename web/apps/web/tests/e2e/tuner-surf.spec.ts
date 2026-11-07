@@ -264,12 +264,12 @@ const tuneInApp = async (page: Page, id: string): Promise<{ duration: number; tr
       },
       { once: true },
     );
-  }, `/channels/${id}/watch`);
+  }, `/watch/${id}`);
   await page.keyboard.press("x");
   const started = await page.evaluate(
     () => (window as Window & { __loomarrTuneInputAt?: number }).__loomarrTuneInputAt ?? performance.now(),
   );
-  await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
+  await expect(page).toHaveURL(new RegExp(`/watch/${id}$`));
   try {
     await page.waitForFunction(
       ({ channel, count }) =>
@@ -346,13 +346,14 @@ const latestWarmAt = (page: Page, number: number) =>
     adjacentWarmMarkName(channelId(number)),
   );
 
+// The player's frame: the surface the channel keys land on (↑/↓, PgUp/PgDn, a remote's CH±).
+const playerFrame = (page: Page) => page.locator("video").locator("..");
+
 const channelUp = async (page: Page) => {
-  // Keep the real focusable control as the input seam, but activate it the way a keyboard/remote
-  // does. Pointer activation can race the player's auto-hidden control bar in slow WebKit; focus
-  // holds the chrome open and Enter is the same button action a TV remote will deliver.
-  const button = page.getByRole("button", { name: "Channel up" });
-  await button.focus();
-  await page.keyboard.press("Enter");
+  // The §9 chrome has no channel buttons on a pointer screen: ↑ on the player is the control, as a
+  // remote's CH+ is. Focus the frame first so the key cannot land on a chrome button instead.
+  await playerFrame(page).focus();
+  await page.keyboard.press("ArrowUp");
 };
 
 const waitForAdjacentWarm = async (
@@ -438,7 +439,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // Prove the engine can cold-start and decode the representative H.264 stream, but keep decoder
   // bootstrap out of the surf percentile. The real-runtime gate owns cold boot timing; this gate
   // owns an already-running tuner and never retries a black start.
-  await page.goto(`/channels/${channelId(1)}/watch`);
+  await page.goto(`/watch/${channelId(1)}`);
   await waitForDecodedFrame(page, "cold ended-source bootstrap");
   await expect(page.locator("video")).toHaveCount(1);
   await expect.poll(() => page.locator("video").evaluate((element) => element.ended)).toBe(true);
@@ -474,7 +475,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   // Start the adjacent run from the middle of the catalog and prove speculative work is a bounded
   // warm (mode=warm), never a foreground tune.
   const probeStart = backend.state.warmProbes.length;
-  await page.goto(`/channels/${channelId(50)}/watch`);
+  await page.goto(`/watch/${channelId(50)}`);
   await waitForDecodedFrame(page, "adjacent-run bootstrap");
   await expect
     .poll(() => backend.state.warmProbes.slice(probeStart))
@@ -499,7 +500,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
 
   // Reset to the middle so the measured adjacent run remains the same 50 → 70 sample.
   const resetWarmCounts = await adjacentWarmCounts(page, 50);
-  await page.goto(`/channels/${channelId(50)}/watch`);
+  await page.goto(`/watch/${channelId(50)}`);
   await waitForDecodedFrame(page, "post-held-frame reset");
   // Warm proof uses an absolute timestamp, so this full-document reset cannot make a new mark look
   // older merely because performance.startTime restarted from zero.
@@ -525,7 +526,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     );
     const started = await page.evaluate(() => performance.now());
     await channelUp(page);
-    await expect(page).toHaveURL(new RegExp(`/channels/${id}/watch$`));
+    await expect(page).toHaveURL(new RegExp(`/watch/${id}$`));
     try {
       await page.waitForFunction(
         (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,
@@ -613,7 +614,14 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     current = target;
   }
 
-  expect(p95(osd), `OSD p95: ${p95(osd).toFixed(1)}ms`).toBeLessThan(100);
+  // With 20 presses the p95 is the slowest press or close to it, so the evidence carries every
+  // sample and its phase trace: one stalled press and a uniformly slow tuner need different fixes.
+  expect(
+    p95(osd),
+    `OSD p95: ${p95(osd).toFixed(1)}ms; samples: ${osd
+      .map((sample) => sample.toFixed(1))
+      .join(", ")}; traces: ${adjacentTraces.join(" | ")}`,
+  ).toBeLessThan(100);
   const adjacentP95 = p95(adjacentFrames);
   const adjacentEvidence = `warmed adjacent first-frame p95: ${adjacentP95.toFixed(
     1,
@@ -657,15 +665,15 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     started: performance.now(),
   }));
   await channelUp(page);
-  await page.evaluate((remaining) => {
+  await playerFrame(page).evaluate((frame, remaining) => {
     for (const direction of remaining) {
-      const label = direction > 0 ? "Channel up" : "Channel down";
-      (document.querySelector(`[aria-label="${label}"]`) as HTMLButtonElement | null)?.click();
+      const key = direction > 0 ? "ArrowUp" : "ArrowDown";
+      frame.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
     }
   }, directions.slice(1));
 
   const finalId = channelId(expected);
-  await expect(page).toHaveURL(new RegExp(`/channels/${finalId}/watch$`));
+  await expect(page).toHaveURL(new RegExp(`/watch/${finalId}$`));
   try {
     await page.waitForFunction(
       (count) => performance.getEntriesByName("loomarr:tune:request-to-first-frame").length > count,

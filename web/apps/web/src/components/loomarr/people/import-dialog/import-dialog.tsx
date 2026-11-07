@@ -1,10 +1,3 @@
-import { Search, Server, ShieldCheck } from "lucide-react";
-import { useId, useMemo, useState } from "react";
-import { EmptyState } from "@/components/loomarr/feedback/empty-state";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +6,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { Search, Server, ShieldCheck } from "lucide-react";
+import { useId, useMemo, useState } from "react";
+import { EmptyState } from "@/components/loomarr/feedback/empty-state";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -97,15 +97,14 @@ const ImportDialog = ({
 
   return (
     <Dialog defaultOpen={defaultOpen}>
-      <DialogTrigger render={<Button />}>
-        <Server aria-hidden />
-        Import from Emby/Jellyfin
+      <DialogTrigger>
+        <Button>
+          <Server aria-hidden />
+          Import from Emby/Jellyfin
+        </Button>
       </DialogTrigger>
-      <DialogContent
-        portalContainer={portalContainer}
-        className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-hidden p-0 sm:w-[calc(100%-2rem)]"
-      >
-        <DialogHeader className="border-static-800 border-b px-6 pt-6 pr-12 pb-4">
+      <DialogContent layout="sectioned" portalContainer={portalContainer} size="reading">
+        <DialogHeader>
           <DialogTitle>Import from Emby/Jellyfin</DialogTitle>
           <DialogDescription>
             Choose which media-server accounts may sign in to Loomarr. Nothing is provisioned unless you
@@ -115,9 +114,9 @@ const ImportDialog = ({
 
         {!available ? (
           <div className="flex flex-col items-start gap-4 overflow-auto px-6 pb-6">
-            <div className="rounded-lg border border-border bg-static-900 p-4">
+            <div className="border-border bg-static-900 rounded-lg border p-4">
               <p className="font-medium">Connect a media server first</p>
-              <p className="mt-1 text-muted-foreground text-sm">
+              <p className="text-muted-foreground mt-1 text-sm">
                 Add Emby or Jellyfin under Connections. Once Loomarr can reach it, its accounts will be
                 available here for explicit import.
               </p>
@@ -134,7 +133,7 @@ const ImportDialog = ({
                   <Label htmlFor={searchId}>Search accounts</Label>
                   <div className="relative">
                     <Search
-                      className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground"
+                      className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 size-4"
                       aria-hidden
                     />
                     <Input
@@ -170,7 +169,7 @@ const ImportDialog = ({
               ) : candidates === undefined ? (
                 <div className="grid gap-2" role="status" aria-label="Loading media-server accounts">
                   {[0, 1, 2].map((item) => (
-                    <div key={item} className="h-16 animate-pulse rounded-lg border border-border bg-card" />
+                    <div key={item} className="border-border bg-card h-16 animate-pulse rounded-lg border" />
                   ))}
                 </div>
               ) : candidates.length === 0 ? (
@@ -179,13 +178,13 @@ const ImportDialog = ({
                   description="Emby/Jellyfin did not return any accounts to import."
                 />
               ) : visible.length === 0 ? (
-                <div className="rounded-lg border border-border bg-card p-6 text-center">
+                <div className="border-border bg-card rounded-lg border p-6 text-center">
                   <p className="font-medium">No matching accounts</p>
                   <p className="text-muted-foreground text-sm">Try another name or account filter.</p>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-border bg-card">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-static-800 border-b px-4 py-2">
+                <div className="border-border bg-card overflow-hidden rounded-lg border">
+                  <div className="border-static-800 flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
                     <p aria-live="polite" className="text-muted-foreground text-sm">
                       {selectedIds.length} selected · {visibleImportable.length} importable shown
                     </p>
@@ -222,7 +221,7 @@ const ImportDialog = ({
                                 {candidate.disabled && <Badge variant="onair">Disabled on server</Badge>}
                                 {candidate.isAdmin && <Badge variant="tune">Server admin</Badge>}
                               </span>
-                              <span className="mt-1 block text-static-400 text-xs">
+                              <span className="text-static-400 mt-1 block text-xs">
                                 Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
                               </span>
                             </span>
@@ -234,13 +233,13 @@ const ImportDialog = ({
                 </div>
               )}
 
-              <div className="grid gap-3 rounded-lg border border-border bg-static-900 p-4 text-sm sm:grid-cols-2">
+              <div className="border-border bg-static-900 grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
                 <div>
                   <p className="flex items-center gap-2 font-medium">
-                    <ShieldCheck className="size-4 text-lock" aria-hidden />
+                    <ShieldCheck className="text-lock size-4" aria-hidden />
                     Passwords stay private
                   </p>
-                  <p className="mt-1 text-muted-foreground">
+                  <p className="text-muted-foreground mt-1">
                     Emby/Jellyfin validates the password. After a successful sign-in, Loomarr stores only a
                     non-reversible Argon2id verifier for outage access and refreshes it after later provider
                     sign-ins.
@@ -248,7 +247,7 @@ const ImportDialog = ({
                 </div>
                 <div>
                   <p className="font-medium">Sync existing accounts</p>
-                  <p className="mt-1 text-muted-foreground">
+                  <p className="text-muted-foreground mt-1">
                     Refresh imported names and disabled state. Sync never provisions an unselected account.
                   </p>
                   <Button
@@ -265,7 +264,7 @@ const ImportDialog = ({
               </div>
             </div>
 
-            <DialogFooter className="border-static-800 border-t px-6 py-4">
+            <DialogFooter>
               <Button
                 type="button"
                 disabled={selectedIds.length === 0 || importing || syncing}

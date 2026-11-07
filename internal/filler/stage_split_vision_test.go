@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/media/creative"
 )
 
 // The auto-confirm gate has had NO data source since V51g removed the text classifier, so
@@ -40,8 +41,8 @@ func (s *spanTools) Boundaries(context.Context, string, int64, int64) ([]Interva
 func (s *spanTools) Transcribe(context.Context, string, int64, int64) ([]TranscriptSegment, error) {
 	return nil, nil
 }
-func (s *spanTools) GrayFrames(context.Context, string, int64, int64) ([][]byte, error) {
-	return nil, nil
+func (s *spanTools) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
+	return creative.Fingerprint{}, nil
 }
 func (s *spanTools) Cut(context.Context, string, int64, int64, string) error { return nil }
 

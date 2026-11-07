@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // stubCycle returns a fixed lineup: one program then a break gap.
@@ -26,13 +27,16 @@ func (stubCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration
 	return 0, nil
 }
 
+func (stubCycle) Calendar() schedule.Calendar { return schedule.Calendar{} }
+
 func (stubCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return true, nil
 }
 
 type stubPods struct {
-	pod filler.Pod
-	err error
+	pod   filler.Pod
+	err   error
+	asked *[]filler.BreakSlot // when set, records each break slot PreviewAt received
 }
 
 func (s stubPods) Preview(context.Context, string) (filler.Pod, error) { return s.pod, s.err }
@@ -40,12 +44,15 @@ func (s stubPods) PreviewDraft(context.Context, string, filler.Selection) (fille
 	return s.pod, s.err
 }
 
-func (s stubPods) PreviewAt(context.Context, string, int64) (filler.Pod, error) {
+func (s stubPods) PreviewAt(_ context.Context, _ string, slot filler.BreakSlot) (filler.Pod, error) {
+	if s.asked != nil {
+		*s.asked = append(*s.asked, slot)
+	}
 	return s.pod, s.err
 }
 
-func (s stubPods) PreviewAtMany(_ context.Context, _ string, starts []int64) ([]filler.Pod, error) {
-	pods := make([]filler.Pod, len(starts))
+func (s stubPods) PreviewAtMany(_ context.Context, _ string, slots []filler.BreakSlot) ([]filler.Pod, error) {
+	pods := make([]filler.Pod, len(slots))
 	for i := range pods {
 		pods[i] = s.pod
 	}
@@ -254,6 +261,53 @@ func TestAiringNow_FillerCannotCrossTheScheduledBreakBoundary(t *testing.T) {
 	}
 }
 
+// The pod that airs is assembled to the break's own slot (its start, and Offset+Remaining), so a
+// slot reconcile cut shorter than the configured break is never overrun by its last ad.
+func TestAiringNow_BreakIsAssembledToItsSlot(t *testing.T) {
+	t.Parallel()
+	var asked []filler.BreakSlot
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.pods = stubPods{pod: filler.Pod{Entries: []filler.PodEntry{
+		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
+	}}, asked: &asked}
+	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
+		{Kind: schedule.SlotFiller, DurationMs: 113_366},
+		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
+	}
+	base := testPlayoutAnchor()
+	r.now = func() time.Time { return base.Add(40 * time.Second) }
+
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	want := filler.BreakSlot{Start: base, Length: 113_366 * time.Millisecond}
+	if len(asked) != 1 || !asked[0].Start.Equal(want.Start) || asked[0].Length != want.Length {
+		t.Fatalf("pod asked for %+v, want the break's own slot %+v", asked, want)
+	}
+}
+
+// A keyed filler slot stands in for a programme that has not landed, at that programme's runtime:
+// it is not a break, so its pod keeps the configured break length rather than a 90 minute budget
+// that would draw (and record as aired) most of the catalog.
+func TestAiringNow_PlaceholderIsNotABreakSlot(t *testing.T) {
+	t.Parallel()
+	var asked []filler.BreakSlot
+	r := fillerResolver(t, t.TempDir(), filler.Pod{})
+	r.pods = stubPods{pod: filler.Pod{Entries: []filler.PodEntry{
+		{Path: clipAt("ad.mp4"), Name: "ad", DurationMs: 30_000},
+	}}, asked: &asked}
+	r.channels.(*stubChannels).ch.Desired = []schedule.Slot{
+		{Kind: schedule.SlotFiller, Key: "movie:tmdb:90000009", DurationMs: (90 * time.Minute).Milliseconds()},
+		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
+	}
+	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 || asked[0].Length != 0 {
+		t.Fatalf("placeholder pod asked for %+v, want the configured break length (Length 0)", asked)
+	}
+}
+
 // No pool ⇒ the offline card, not an error. A channel with no commercials must still tune.
 func TestAiringNow_BreakWithNoPodIsNotAnError(t *testing.T) {
 	t.Parallel()
@@ -346,7 +400,7 @@ func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
 
 	_ = r.detectedEncoder(context.Background())
 	p := r.Profile(context.Background(), 0)
-	if p.Encoder != playout.EncoderSoftware {
+	if p.Encoder != encode.EncoderSoftware {
 		t.Errorf("encoder = %q, want the software fallback when nothing probes clean", p.Encoder)
 	}
 }
@@ -373,7 +427,7 @@ func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
 	if elapsed := time.Since(before); elapsed > 100*time.Millisecond {
 		t.Errorf("Profile waited %s for capability detection", elapsed)
 	}
-	if p.Encoder != playout.EncoderSoftware {
+	if p.Encoder != encode.EncoderSoftware {
 		t.Errorf("encoder = %q, want immediate software while capability detection warms", p.Encoder)
 	}
 	select {
@@ -406,153 +460,37 @@ type recordingPlays struct {
 	calls    []string
 	channels []string
 	at       []time.Time
+	recorded []time.Time
 	err      error
 }
 
-func (r *recordingPlays) RecordClipPlay(_ context.Context, channelID, clipHash string, at time.Time) (bool, error) {
+func (r *recordingPlays) RecordClipPlay(_ context.Context, channelID, clipHash string, at, recordedAt time.Time) (bool, error) {
 	r.calls = append(r.calls, clipHash)
 	r.channels = append(r.channels, channelID)
 	r.at = append(r.at, at)
+	r.recorded = append(r.recorded, recordedAt)
 	return r.err == nil, r.err
 }
 
-// V28: a clip that AIRS is counted. V41: the count identifies the clip by its HASH.
-//
-// ⚠ This test asserted the catalog PATH from V28 until V41, and it was right when written —
-// identity was the path then. V38c moved identity to the hash and never revisited this
-// assertion, so the test went on pinning the pre-V38c contract and kept `RecordClipPlay`'s
-// path argument looking correct while every counter in production stayed at zero
-// (`RecordClipPlay` is keyed `WHERE hash = ?`). A test that outlives the model it encodes
-// stops being a guard and becomes a reason not to look.
-func TestAiringNow_CountsTheClipThatAirs(t *testing.T) {
+// Counting is telemetry, and a recorder is optional (Tunarr-backed, or telemetry off): neither a
+// store failure nor no recorder at all may break serving the airing.
+func TestRecordAiringServed_ACountingFailureOrNoRecorderIsHarmless(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	pod := filler.Pod{Entries: []filler.PodEntry{
 		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
 	}}
 	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatal(err)
-	}
-	// ⚠ The HASH, not the path and not the absolute file. The counter keys on identity, so
-	// anything else counts against a clip that does not exist — silently, because the caller
-	// swallows the error as telemetry.
-	if len(plays.calls) != 1 || plays.calls[0] != "hash-toys" {
-		t.Fatalf("recorded %v, want one play of the clip HASH", plays.calls)
-	}
-	if len(plays.channels) != 1 || plays.channels[0] != "ch1" {
-		t.Fatalf("recorded channels %v, want the airing channel", plays.channels)
-	}
-}
-
-// A finite ffmpeg child asks for the next clip after the previous child exits. That request
-// arrives slightly after the scheduled boundary (roughly 80-250ms on the live stack), never at
-// the exact nanosecond. The exposure write must identify the scheduled clip start so later
-// re-resolves can be made idempotent without requiring an impossible `into == 0` coincidence.
-func TestAiringNow_RecordsClipStartWhenResolverArrivesLate(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	base := testPlayoutAnchor()
-	r.now = func() time.Time { return base.Add(100 * time.Millisecond) }
-
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(plays.calls) != 1 {
-		t.Fatalf("recorded %d plays, want the clip that started 100ms ago recorded once", len(plays.calls))
-	}
-	if got := plays.at[0]; !got.Equal(base) {
-		t.Fatalf("recorded at %v, want scheduled clip start %v", got, base)
-	}
-}
-
-// ⚠ The bumper card has no catalog row, so it has no hash — and must not be counted. Without
-// the `e.Hash != ""` guard this records a play against the empty string, which is not merely
-// useless: it is an UPDATE with an attacker-independent but wrong key, and the swallowed error
-// means it would never be noticed.
-func TestAiringNow_DoesNotCountAnEntryWithNoHash(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Name: "no-hash", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(plays.calls) != 0 {
-		t.Errorf("recorded %v for an entry with no hash, want no play counted", plays.calls)
-	}
-}
-
-// A mid-clip re-resolve reports the SAME scheduled start. The durable recorder owns
-// idempotency, because process-local suppression would be lost on restart or another replica.
-func TestAiringNow_MidClipResolveUsesTheScheduledStart(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Hash: "hash-toys", Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	plays := &recordingPlays{}
-	r.clipPlays = plays
-
-	// Three seconds into the break: the clip is already rolling.
-	base := testPlayoutAnchor()
-	r.now = func() time.Time { return base.Add(3 * time.Second) }
-
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(plays.calls) != 1 {
-		t.Fatalf("a mid-clip resolve recorded %v calls, want one idempotent observation", plays.calls)
-	}
-	if got := plays.at[0]; !got.Equal(base) {
-		t.Errorf("mid-clip resolve recorded at %v, want scheduled start %v", got, base)
-	}
-}
-
-// Counting is telemetry: a store failure must never stop a break from airing.
-func TestAiringNow_ACountingFailureStillAirsTheBreak(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod)
-	r.clipPlays = &recordingPlays{err: errors.New("database is gone")}
-
-	airing, src, err := r.AiringNow(context.Background(), "ch1")
+	airing, _, err := r.AiringNow(context.Background(), "ch1")
 	if err != nil {
-		t.Fatalf("a counting failure became a playout error: %v", err)
+		t.Fatal(err)
 	}
-	if !airing.Playable() || src == "" {
-		t.Errorf("the break must still air: %+v src=%q", airing, src)
+	failing := &recordingPlays{err: errors.New("database is gone")}
+	r.clipPlays = failing
+	r.RecordAiringServed(context.Background(), "ch1", airing, r.now())
+	if len(failing.calls) != 1 {
+		t.Fatalf("attempted %d writes, want the one that failed", len(failing.calls))
 	}
-}
-
-// No recorder wired (Tunarr-backed, or telemetry off) is a supported configuration.
-func TestAiringNow_NoRecorderIsFine(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	pod := filler.Pod{Entries: []filler.PodEntry{
-		{Path: clipAt("1994/toys.mp4"), Name: "toys", DurationMs: 8000},
-	}}
-	r := fillerResolver(t, dir, pod) // clipPlays left nil
-	if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
-		t.Fatalf("a nil recorder must not break playout: %v", err)
-	}
+	r.clipPlays = nil
+	r.RecordAiringServed(context.Background(), "ch1", airing, r.now())
 }

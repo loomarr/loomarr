@@ -5,12 +5,13 @@ import {
   getUpdateChannelMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
+import { DEFAULT_KINDS } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { canonicalize, PREVIEW_DEBOUNCE_MS, useChannelFillerDraft } from "./use-channel-filler-draft";
 
@@ -28,7 +29,10 @@ const previewBody: PreviewDraftPodsOutputBody = {
     level: "exact",
     total: 1,
     rungs: [{ level: "exact", clips: 1 }],
-    geography: { country: "", market: "" },
+    geography: { country: "", place: "" },
+    language: "",
+    undeterminedLanguage: 0,
+    defaultKinds: DEFAULT_KINDS,
     criteria: [
       { criterion: "era", clips: 1 },
       { criterion: "audience", clips: 1 },
@@ -97,6 +101,9 @@ const policy = (
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
 afterEach(() => {
+  // Unmount BEFORE flushing timers: a hook a synchronous test left mounted would otherwise fire
+  // its debounced preview here, and that request would land in the NEXT test's handlers.
+  cleanup();
   vi.runOnlyPendingTimers();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -216,14 +223,14 @@ describe("useChannelFillerDraft", () => {
         { from: 2005, to: 2009 },
         { from: 1990, to: 1999 },
       ],
-      geography: { country: "US", market: "New York" },
+      geography: { country: "US", place: "5128581" },
     };
     const selection = {
       eraWindows: [
         { from: 1990, to: 1999 },
         { from: 2005, to: 2009 },
       ],
-      geography: { country: "US", market: "New York" },
+      geography: { country: "US", place: "5128581" },
     };
     const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), {
       wrapper: makeWrapper(),

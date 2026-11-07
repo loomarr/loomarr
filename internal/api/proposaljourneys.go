@@ -8,17 +8,18 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // ProposalWorkflow is the sole authoritative read seam for the first-channel
 // journey. HTTP handlers never join raw Job, Proposal, and Channel records.
 type ProposalWorkflow interface {
-	Inspect(context.Context, proposalworkflow.Viewer, string) (proposalworkflow.Journey, error)
-	List(context.Context, proposalworkflow.Viewer, proposalworkflow.ListOptions) ([]proposalworkflow.Journey, error)
-	Revise(context.Context, proposalworkflow.Viewer, string, suggest.Intent) error
+	Inspect(context.Context, workflow.Viewer, string) (workflow.Journey, error)
+	List(context.Context, workflow.Viewer, workflow.ListOptions) ([]workflow.Journey, error)
+	Revise(context.Context, workflow.Viewer, string, proposals.Intent) error
 }
 
 // ProposalProgress reads the live snapshot of a generation that is running on this process.
@@ -55,7 +56,7 @@ type ProposalJourneyDTO struct {
 	Version   int                         `json:"version" doc:"Current First-channel Journey schema version"`
 	JobID     string                      `json:"jobId"`
 	Milestone string                      `json:"milestone" enum:"generating,awaiting_approval,denied,building,live,failed"`
-	Intent    suggest.Intent              `json:"intent"`
+	Intent    proposals.Intent            `json:"intent"`
 	Attempts  []ProposalJobAttemptDTO     `json:"attempts"`
 	Failure   *ProposalJourneyFailureDTO  `json:"failure,omitempty"`
 	Progress  *ProposalJourneyProgressDTO `json:"progress,omitempty" doc:"Live generation progress; present only while generating and running on this server"`
@@ -76,24 +77,24 @@ type ProposalJobAttemptDTO struct {
 }
 
 type ProposalJourneyFailureDTO struct {
-	Code           string                `json:"code" enum:"no_grounded_titles,selection_empty,budget_exhausted,generation_failed"`
-	Reason         string                `json:"reason" enum:"retrieval_unavailable,reference_unreadable,no_catalog_match,named_set_unproven,constraints_conflict,date_semantics_unclear,invalid_tool_calls,provider_timeout,provider_unavailable,provider_response_invalid,discovery_budget_exhausted,generation_failed"`
-	RecoveryAction string                `json:"recoveryAction" enum:"edit_reference,broaden_request,provide_examples,resolve_constraints,clarify_dates,simplify_request,retry_later"`
-	Message        string                `json:"message"`
-	Guidance       string                `json:"guidance"`
-	Trace          suggest.DecisionTrace `json:"trace,omitempty"`
+	Code           string                  `json:"code" enum:"no_grounded_titles,selection_empty,budget_exhausted,generation_failed"`
+	Reason         string                  `json:"reason" enum:"retrieval_unavailable,reference_unreadable,no_catalog_match,named_set_unproven,constraints_conflict,date_semantics_unclear,invalid_tool_calls,provider_timeout,provider_unavailable,provider_response_invalid,discovery_budget_exhausted,generation_failed"`
+	RecoveryAction string                  `json:"recoveryAction" enum:"edit_reference,broaden_request,provide_examples,resolve_constraints,clarify_dates,simplify_request,retry_later"`
+	Message        string                  `json:"message"`
+	Guidance       string                  `json:"guidance"`
+	Trace          proposals.DecisionTrace `json:"trace,omitempty"`
 }
 
 type ProposalJourneyProposalDTO struct {
-	ID             string           `json:"id"`
-	Status         string           `json:"status" enum:"submitted,approved,denied,superseded"`
-	ApprovedBy     string           `json:"approvedBy,omitempty"`
-	ApprovedByName string           `json:"approvedByName,omitempty" doc:"Display name of the approver, or Automatic for an auto-approval; empty if unknown"`
-	ApprovedAt     string           `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
-	DenyReason     string           `json:"denyReason,omitempty"`
-	ModSummary     string           `json:"modSummary,omitempty"`
-	Note           string           `json:"note,omitempty"`
-	Proposal       suggest.Proposal `json:"proposal"`
+	ID             string             `json:"id"`
+	Status         string             `json:"status" enum:"submitted,approved,denied,superseded"`
+	ApprovedBy     string             `json:"approvedBy,omitempty"`
+	ApprovedByName string             `json:"approvedByName,omitempty" doc:"Display name of the approver, or Automatic for an auto-approval; empty if unknown"`
+	ApprovedAt     string             `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
+	DenyReason     string             `json:"denyReason,omitempty"`
+	ModSummary     string             `json:"modSummary,omitempty"`
+	Note           string             `json:"note,omitempty"`
+	Proposal       proposals.Proposal `json:"proposal"`
 }
 
 type ProposalJourneyChannelDTO struct {
@@ -137,14 +138,14 @@ func (s *Server) listProposalJourneys(ctx context.Context, in *proposalJourneyLi
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
-	viewer := proposalworkflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
+	viewer := workflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
 	if user, ok := userFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
-	journeys, err := s.proposalWorkflow.List(ctx, viewer, proposalworkflow.ListOptions{
-		Mine: in.Mine, Milestone: proposalworkflow.Milestone(in.Status),
+	journeys, err := s.proposalWorkflow.List(ctx, viewer, workflow.ListOptions{
+		Mine: in.Mine, Milestone: workflow.Milestone(in.Status),
 	})
-	if errors.Is(err, proposalworkflow.ErrInvalidState) {
+	if errors.Is(err, workflow.ErrInvalidState) {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't restore channel requests",
 			"Loomarr found inconsistent saved workflow state and stopped rather than guessing. Check the server logs.", err)
 	}
@@ -177,7 +178,7 @@ type proposalJourneyOutput struct {
 
 type reviseProposalJourneyInput struct {
 	JobID string `path:"jobId"`
-	Body  suggest.Intent
+	Body  proposals.Intent
 }
 
 type reviseProposalJourneyOutput struct {
@@ -196,10 +197,10 @@ func (s *Server) reviseProposalJourney(
 	if err := s.suggestionConfigurationError(ctx); err != nil {
 		return nil, err
 	}
-	if in.Body.Description == "" {
-		return nil, errBadRequest("Description required", "Describe the channel you want in a sentence.")
+	if err := checkDescription(in.Body.Description); err != nil {
+		return nil, err
 	}
-	viewer := proposalworkflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
+	viewer := workflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
 	if user, ok := userFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
@@ -207,12 +208,12 @@ func (s *Server) reviseProposalJourney(
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return nil, errNotFound("Channel request not found", "That channel request doesn't exist or has expired.")
-	case errors.Is(err, proposalworkflow.ErrForbidden):
+	case errors.Is(err, workflow.ErrForbidden):
 		return nil, apiErr(http.StatusForbidden, "Channel request unavailable",
 			"You can only revise channel requests submitted by your account.")
-	case errors.Is(err, proposalworkflow.ErrNotRevisable):
+	case errors.Is(err, workflow.ErrNotRevisable):
 		return nil, errConflict("Suggestions changed", "Reload the channel request before editing it again.")
-	case errors.Is(err, proposalworkflow.ErrInvalidState):
+	case errors.Is(err, workflow.ErrInvalidState):
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't revise the channel request",
 			"Loomarr found inconsistent saved workflow state and stopped rather than guessing. Check the server logs.", err)
 	case err != nil:
@@ -228,7 +229,7 @@ func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInpu
 	if s.proposalWorkflow == nil {
 		return nil, huma.Error501NotImplemented("Proposal workflow is not configured")
 	}
-	viewer := proposalworkflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
+	viewer := workflow.Viewer{Admin: roleFrom(ctx) == RoleAdmin}
 	if user, ok := userFrom(ctx); ok {
 		viewer.UserID = user.ID
 	}
@@ -236,10 +237,10 @@ func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInpu
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return nil, errNotFound("Channel request not found", "That channel request doesn't exist or has expired.")
-	case errors.Is(err, proposalworkflow.ErrForbidden):
+	case errors.Is(err, workflow.ErrForbidden):
 		return nil, apiErr(http.StatusForbidden, "Channel request unavailable",
 			"You can only view channel requests submitted by your account.")
-	case errors.Is(err, proposalworkflow.ErrInvalidState):
+	case errors.Is(err, workflow.ErrInvalidState):
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't restore the channel request",
 			"Loomarr found inconsistent saved workflow state and stopped rather than guessing. Check the server logs.", err)
 	case err != nil:
@@ -265,7 +266,7 @@ func (s *Server) journeyPersonNames(ctx context.Context) (personNames, error) {
 	return s.personNames(ctx)
 }
 
-func proposalJourneyDTO(journey proposalworkflow.Journey, names personNames) ProposalJourneyDTO {
+func proposalJourneyDTO(journey workflow.Journey, names personNames) ProposalJourneyDTO {
 	dto := ProposalJourneyDTO{
 		Version: journey.Version, JobID: journey.JobID, Milestone: string(journey.Milestone),
 		Intent: journey.Intent, Attempts: make([]ProposalJobAttemptDTO, 0, len(journey.Attempts)),
@@ -297,16 +298,16 @@ func proposalJourneyDTO(journey proposalworkflow.Journey, names personNames) Pro
 	return dto
 }
 
-func proposalJourneyFailureDTO(failure *proposalworkflow.Failure) *ProposalJourneyFailureDTO {
+func proposalJourneyFailureDTO(failure *workflow.Failure) *ProposalJourneyFailureDTO {
 	if failure == nil {
 		return nil
 	}
-	return &ProposalJourneyFailureDTO{Code: string(failure.Code), Reason: string(failure.Reason), RecoveryAction: string(failure.RecoveryAction), Message: failure.Message, Guidance: failure.Guidance, Trace: proposalworkflow.PublicFailureTrace(failure.Trace)}
+	return &ProposalJourneyFailureDTO{Code: string(failure.Code), Reason: string(failure.Reason), RecoveryAction: string(failure.RecoveryAction), Message: failure.Message, Guidance: failure.Guidance, Trace: workflow.PublicFailureTrace(failure.Trace)}
 }
 
 // journeyProgress attaches the live snapshot to a generating Journey only.
-func (s *Server) journeyProgress(journey proposalworkflow.Journey) *ProposalJourneyProgressDTO {
-	if s.proposalProgress == nil || journey.Milestone != proposalworkflow.MilestoneGenerating {
+func (s *Server) journeyProgress(journey workflow.Journey) *ProposalJourneyProgressDTO {
+	if s.proposalProgress == nil || journey.Milestone != workflow.MilestoneGenerating {
 		return nil
 	}
 	snap, ok := s.proposalProgress.Progress(journey.JobID)

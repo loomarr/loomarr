@@ -5,6 +5,7 @@ import type { ExcludedDTO } from "@loomarr/api/models/excludedDTO";
 import type { IconSuggestionsOutputBody } from "@loomarr/api/models/iconSuggestionsOutputBody";
 import type { ListFillerOutputBody } from "@loomarr/api/models/listFillerOutputBody";
 import type { ListTaxonomyOutputBody } from "@loomarr/api/models/listTaxonomyOutputBody";
+import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import type { PodPoolDTO } from "@loomarr/api/models/podPoolDTO";
 import type { PreviewCycleOutputBody } from "@loomarr/api/models/previewCycleOutputBody";
 import type { PreviewProgrammingChangesOutputBody } from "@loomarr/api/models/previewProgrammingChangesOutputBody";
@@ -17,7 +18,66 @@ import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 import { requestFixtures } from "@loomarr/fixtures";
 import type { Page, Route } from "@playwright/test";
 import { channel } from "../../src/test/fixtures/channels";
+import { fillerProviders } from "../../src/test/fixtures/filler";
 import { outlook } from "../../src/test/fixtures/outlook";
+
+// What a provider answers for the one source an address names, with the player the provider builds
+// for each example.
+const ARCHIVE_RESOLVED = {
+  provider: "archive",
+  targetType: "collection",
+  canonicalId: "classic_tv_commercials",
+  canonicalUrl: "https://archive.org/details/classic_tv_commercials",
+  title: "Classic TV Commercials",
+  itemCount: 8457,
+  alreadyAdded: false,
+  previewItems: [
+    {
+      title: "1970s station break",
+      url: "https://archive.org/details/station_break_1978",
+      embedUrl: "https://archive.org/embed/station_break_1978?autoplay=1",
+      durationMs: 31500,
+    },
+    {
+      title: "Local weather bumper",
+      url: "https://archive.org/details/weather_bumper",
+      embedUrl: "https://archive.org/embed/weather_bumper?autoplay=1",
+    },
+    {
+      title: "Saturday morning promo",
+      url: "https://archive.org/details/saturday_promo",
+      embedUrl: "https://archive.org/embed/saturday_promo?autoplay=1",
+    },
+  ],
+};
+
+const YOUTUBE_RESOLVED = {
+  provider: "youtube",
+  targetType: "channel",
+  canonicalId: "UC-retro-reels",
+  canonicalUrl: "https://www.youtube.com/channel/UC-retro-reels/videos",
+  title: "Retro Reels",
+  itemCount: 24,
+  alreadyAdded: false,
+  previewItems: [
+    {
+      title: "An hour of vintage station breaks",
+      url: "https://www.youtube.com/watch?v=retro-breaks",
+      embedUrl: "https://www.youtube-nocookie.com/embed/retro-breaks?autoplay=1&playsinline=1",
+      durationMs: 3600000,
+    },
+    {
+      title: "Classic local commercials",
+      url: "https://www.youtube.com/watch?v=local-commercials",
+      embedUrl: "https://www.youtube-nocookie.com/embed/local-commercials?autoplay=1&playsinline=1",
+    },
+    {
+      title: "Network IDs from 1982",
+      url: "https://www.youtube.com/watch?v=network-ids",
+      embedUrl: "https://www.youtube-nocookie.com/embed/network-ids?autoplay=1&playsinline=1",
+    },
+  ],
+};
 
 // Invented channel ideas for the built requests (#1785): the fixture's one live journey, renamed.
 const LIVE_REQUEST_IDEAS = [
@@ -96,7 +156,9 @@ const channelSectionBodies: [RegExp, () => unknown][] = [
       criteria: [],
       level: "exact",
       total: 0,
-      geography: { country: "US", market: "" },
+      geography: { country: "US", place: "" },
+      // Without it the Clip kinds checklist stays disabled, waiting for the default (#2037).
+      defaultKinds: ["commercial", "bumper", "station_id", "psa", "trailer", "interstitial"],
     }),
   ],
   [/^\/v1\/filler$/, (): ListFillerOutputBody => ({ clips: [], total: 0 })],
@@ -223,6 +285,27 @@ interface MockBackend {
     };
   };
 }
+
+// The location index slice the specs search and read back by id (`place` is the saved setting value).
+const MOCK_LOCATIONS: LocationDTO[] = [
+  {
+    id: "5128581",
+    label: "New York City, United States",
+    country: "US",
+    place: "5128581",
+    city: "New York City",
+  },
+  {
+    id: "5129061",
+    label: "North Greenbush, United States",
+    country: "US",
+    place: "5129061",
+    city: "North Greenbush",
+    region: "New York",
+  },
+  { id: "country-US", label: "United States", country: "US" },
+  { id: "2643743", label: "London, United Kingdom", country: "GB", place: "2643743", city: "London" },
+];
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -869,6 +952,12 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       });
     }
 
+    // The provider registry is fixed server data, answered whether or not the filler shell is
+    // configured: a spec that mocks the filler pages itself still reads the real registry.
+    if (path === "/v1/filler/providers" && method === "GET") {
+      return json(route, { providers: fillerProviders });
+    }
+
     // --- configured Filler shell -------------------------------------------------
     // Page-level browser contracts need complete empty DTOs, not a loose `{}`: the real
     // client deliberately trusts generated response shapes once the capability is enabled.
@@ -883,10 +972,27 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           held: 0,
         });
       }
-      if (path === "/v1/filler/decisions/activity") return json(route, { rows: [], total: 0 });
-      if (path === "/v1/filler/decisions/diagnostics") return json(route, { rows: [], total: 0 });
-      if (path === "/v1/filler/providers/archive/suggestions" && method === "GET") {
+      // Manage › Quality reads the defect floor's report (#2034); the `{}` fallback would throw on `verdicts`.
+      if (path === "/v1/filler/defects") {
         return json(route, {
+          floorVersion: "floor-v3-provisional",
+          clips: 0,
+          unmeasured: 0,
+          labelled: 0,
+          verdicts: { pass: 0, fail: 0, undecided: 0, pending: 0 },
+          scores: [],
+          total: 0,
+          rows: [],
+        });
+      }
+      // The provider tells an address from words: an address comes back as the one source it names,
+      // already checked.
+      if (path === "/v1/filler/providers/archive/suggestions" && method === "GET") {
+        if (/archive\.org\/details\//.test(url.searchParams.get("q") ?? "")) {
+          return json(route, { exact: true, suggestions: [ARCHIVE_RESOLVED] });
+        }
+        return json(route, {
+          exact: false,
           suggestions: [
             {
               provider: "archive",
@@ -902,33 +1008,14 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         });
       }
       if (path === "/v1/filler/providers/archive/resolve" && method === "POST") {
-        return json(route, {
-          provider: "archive",
-          targetType: "collection",
-          canonicalId: "classic_tv_commercials",
-          canonicalUrl: "https://archive.org/details/classic_tv_commercials",
-          title: "Classic TV Commercials",
-          itemCount: 8457,
-          alreadyAdded: false,
-          previewItems: [
-            {
-              title: "1970s station break",
-              url: "https://archive.org/details/station_break_1978",
-              durationMs: 31500,
-            },
-            {
-              title: "Local weather bumper",
-              url: "https://archive.org/details/weather_bumper",
-            },
-            {
-              title: "Saturday morning promo",
-              url: "https://archive.org/details/saturday_promo",
-            },
-          ],
-        });
+        return json(route, ARCHIVE_RESOLVED);
       }
       if (path === "/v1/filler/providers/youtube/suggestions" && method === "GET") {
+        if (/youtube\.com\//.test(url.searchParams.get("q") ?? "")) {
+          return json(route, { exact: true, suggestions: [YOUTUBE_RESOLVED] });
+        }
         return json(route, {
+          exact: false,
           suggestions: [
             {
               provider: "youtube",
@@ -952,30 +1039,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         });
       }
       if (path === "/v1/filler/providers/youtube/resolve" && method === "POST") {
-        return json(route, {
-          provider: "youtube",
-          targetType: "channel",
-          canonicalId: "UC-retro-reels",
-          canonicalUrl: "https://www.youtube.com/channel/UC-retro-reels/videos",
-          title: "Retro Reels",
-          itemCount: 24,
-          alreadyAdded: false,
-          previewItems: [
-            {
-              title: "An hour of vintage station breaks",
-              url: "https://www.youtube.com/watch?v=retro-breaks",
-              durationMs: 3600000,
-            },
-            {
-              title: "Classic local commercials",
-              url: "https://www.youtube.com/watch?v=local-commercials",
-            },
-            {
-              title: "Network IDs from 1982",
-              url: "https://www.youtube.com/watch?v=network-ids",
-            },
-          ],
-        });
+        return json(route, YOUTUBE_RESOLVED);
       }
       if (path === "/v1/filler/sources/fetch" && method === "POST") {
         const sourceId = url.searchParams.get("id") ?? "";
@@ -997,6 +1061,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           id: `clip-${index + 1}`,
           title: `Found clip ${index + 1}`,
           url: `https://archive.org/details/clip-${index + 1}`,
+          embedUrl: `https://archive.org/embed/clip-${index + 1}?autoplay=1`,
           date: "1978-01-01",
         }));
         return json(route, { items, total: items.length, licenceNote: "Check each item's licence." });
@@ -1131,6 +1196,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             {
               id: "archive:long",
               uri: "classic_tv_commercials",
+              pageUrl: "https://archive.org/details/classic_tv_commercials",
               kind: "archive",
               target: "Classic television commercials from a deliberately long collection name",
               detail: "an archive.org collection",
@@ -1166,21 +1232,6 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           preparing: { rows: [], total: 0 },
           needsHelp: { rows: [], total: 0 },
           recentlyReady: { rows: [], total: 0 },
-        });
-      }
-      if (path === "/v1/filler/decisions/overview") {
-        return json(route, {
-          healthy: true,
-          nextAction: "none",
-          actionCount: 0,
-          counts: {
-            admitted: 0,
-            rejected: 0,
-            reviews: 0,
-            unresolvedReviews: 0,
-            operational: 0,
-            retryable: 0,
-          },
         });
       }
       if (path === "/v1/filler/readiness") {
@@ -1261,18 +1312,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     }
     if (path === "/v1/locations" && method === "GET") {
       const query = (url.searchParams.get("q") ?? "").toLowerCase();
-      const locations = [
-        { id: "5128581", label: "New York City, United States", country: "US", market: "New York City" },
-        {
-          id: "5129061",
-          label: "North Greenbush, United States",
-          country: "US",
-          market: "North Greenbush",
-          region: "New York",
-        },
-        { id: "country-US", label: "United States", country: "US" },
-        { id: "2643743", label: "London, United Kingdom", country: "GB", market: "London" },
-      ].filter((location) => location.label.toLowerCase().includes(query));
+      const locations = MOCK_LOCATIONS.filter((location) => location.label.toLowerCase().includes(query));
       return json(route, { locations });
     }
     if (path === "/v1/locations/resolve" && method === "POST") {
@@ -1281,7 +1321,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           id: "5128581",
           label: "New York City, United States",
           country: "US",
-          market: "New York City",
+          place: "5128581",
           source: "device",
         },
       });
@@ -1296,6 +1336,13 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           approximate: true,
         },
       });
+    }
+    const savedLocation = path.match(/^\/v1\/locations\/([^/]+)$/);
+    if (savedLocation && method === "GET") {
+      const location = MOCK_LOCATIONS.find((candidate) => candidate.id === savedLocation[1]);
+      return location
+        ? json(route, { location })
+        : json(route, { title: "Not Found", status: 404, detail: "Unknown place." }, 404);
     }
     if (path === "/v1/settings") {
       // A field per connection group so the Connections step (config-design §6) renders its
@@ -1375,16 +1422,28 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             value: state.edits["filler.home_country"] ?? "",
           },
           {
-            key: "filler.home_market",
+            key: "filler.home_place",
             label: "Local area",
             group: "filler",
             kind: "string",
-            doc: "Local area where the channels are watched.",
+            doc: "City whose nearby TV stations count as local.",
             advanced: false,
             secret: false,
-            set: Boolean(state.edits["filler.home_market"]),
+            set: Boolean(state.edits["filler.home_place"]),
             provenance: "db",
-            value: state.edits["filler.home_market"] ?? "",
+            value: state.edits["filler.home_place"] ?? "",
+          },
+          {
+            key: "filler.local_radius_km",
+            label: "Local station radius",
+            group: "filler",
+            kind: "int",
+            doc: "How far from your city a TV station can be and still count as local, in kilometres.",
+            advanced: false,
+            secret: false,
+            set: Boolean(state.edits["filler.local_radius_km"]),
+            provenance: "db",
+            value: state.edits["filler.local_radius_km"] ?? "100",
           },
           ...(opts.fillerEnabled
             ? [
@@ -1406,6 +1465,13 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   group: "filler",
                   kind: "duration",
                   presentation: "filler_download_schedule",
+                  presets: [
+                    { value: "0s", label: "Never" },
+                    { value: "6h0m0s", label: "Every 6 hours" },
+                    { value: "12h0m0s", label: "Every 12 hours" },
+                    { value: "24h0m0s", label: "Daily" },
+                    { value: "168h0m0s", label: "Weekly" },
+                  ],
                   doc: "How often Loomarr checks enabled sources for new clips.",
                   advanced: false,
                   secret: false,

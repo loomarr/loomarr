@@ -1,9 +1,12 @@
 package filler_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -11,12 +14,16 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 )
 
 type fetchStub struct {
 	sources     []filler.FetchSource
 	paths       []string
-	offers      []filler.DiscoveredRef
+	offers      []source.Item
 	queued      []string
 	queuedIDs   []string
 	queuedGaps  []string
@@ -45,12 +52,15 @@ func (f *fetchStub) CatalogPaths(context.Context) ([]string, error) {
 	f.catalogCalls++
 	return f.paths, nil
 }
-func (f *fetchStub) Enumerate(_ context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
+
+// list is the raw listing the stub's providers read: what the source offers, however its provider
+// then walks it.
+func (f *fetchStub) list(source filler.FetchSource, limit int) ([]source.Item, error) {
 	f.calls++
 	f.listed = append(f.listed, source.URI)
 	f.listedKinds = append(f.listedKinds, source.Kind)
 	f.listLimits = append(f.listLimits, limit)
-	return f.offers, len(f.offers), f.enumErr
+	return f.offers, f.enumErr
 }
 func (f *fetchStub) IngestSource(_ context.Context, sourceID, sourceKind string, urls []string) (string, error) {
 	f.sourceID = sourceID
@@ -61,7 +71,7 @@ func (f *fetchStub) IngestSource(_ context.Context, sourceID, sourceKind string,
 	f.queued = append(f.queued, urls...)
 	return "job-1", nil
 }
-func (f *fetchStub) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []filler.DiscoveredRef) (string, error) {
+func (f *fetchStub) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []source.Item) (string, error) {
 	urls := make([]string, 0, len(items))
 	for _, item := range items {
 		f.queuedIDs = append(f.queuedIDs, item.ID)
@@ -112,10 +122,10 @@ func (f *fetchStub) FailCheck(_ context.Context, id string, _ time.Time, retryAt
 	return nil
 }
 
-func refs(ids ...string) []filler.DiscoveredRef {
-	out := make([]filler.DiscoveredRef, len(ids))
+func refs(ids ...string) []source.Item {
+	out := make([]source.Item, len(ids))
 	for i, id := range ids {
-		out[i] = filler.DiscoveredRef{ID: id, URL: "https://archive.org/details/" + id}
+		out[i] = source.Item{ID: id, URL: "https://archive.org/details/" + id}
 	}
 	return out
 }
@@ -156,18 +166,77 @@ func newFetcherWithRemoteStates(t *testing.T, stub *fetchStub, l filler.FetchLim
 		listRemoteStates: func(context.Context) (map[string]filler.ExistingRemoteState, error) {
 			return states, nil
 		},
-	}, stub, stub, l, discardLog())
+	}, providersOver(t, stub.list, nil), stub, l, discardLog())
 }
 
-type sourceEnum func(filler.FetchSource) []filler.DiscoveredRef
-
-func (e sourceEnum) Enumerate(_ context.Context, source filler.FetchSource, _ int) ([]filler.DiscoveredRef, int, error) {
-	items := e(source)
-	return items, len(items), nil
+// providersOver is the registry the fetch tests run on: the real YouTube and archive.org
+// providers reading what list returns for each source, and the scanned folder and library beside
+// them. list receives only what the provider's own call carries, so a source is identified by its
+// Kind and URI. search is nil for a catalog that cannot search.
+func providersOver(
+	t *testing.T,
+	list func(source filler.FetchSource, limit int) ([]source.Item, error),
+	search func(source filler.FetchSource, query string, limit int) ([]source.Item, error),
+) *source.Registry {
+	t.Helper()
+	providers, err := source.NewRegistry(
+		youtubeprovider.New(func(_ context.Context, target string, limit int) ([]source.Item, int, error) {
+			items, err := list(filler.FetchSource{Kind: "youtube", URI: target}, limit)
+			return items, len(items), err
+		}),
+		archiveprovider.New(archiveprovider.Config{
+			Catalog: archiveCatalogOver{list: list, search: search}, Log: discardLog(),
+		}),
+		source.Scanned("folder", "Folder", ""),
+		source.Scanned("library", "Media library", ""),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return providers
 }
 
-func youtubeRef(id string, duration time.Duration) filler.DiscoveredRef {
-	return filler.DiscoveredRef{
+// archiveCatalogOver is an archive.org catalog over listings of provider items. archive.org lists
+// an item by its id, so an item's URL is its details page.
+type archiveCatalogOver struct {
+	list   func(source filler.FetchSource, limit int) ([]source.Item, error)
+	search func(source filler.FetchSource, query string, limit int) ([]source.Item, error)
+}
+
+func discovered(items []source.Item) fetch.DiscoveryResult {
+	res := fetch.DiscoveryResult{Total: len(items)}
+	for _, item := range items {
+		res.Items = append(res.Items, fetch.DiscoveredItem{
+			ID: item.ID, Title: item.Title, License: item.License, Year: item.ObservedYear,
+			Date: item.PublishedAt, DurationMS: item.DurationMS, Height: item.Height,
+		})
+	}
+	return res
+}
+
+func (c archiveCatalogOver) EnumerateCollection(_ context.Context, ref string, limit int) (fetch.DiscoveryResult, error) {
+	items, err := c.list(filler.FetchSource{Kind: "archive", URI: ref}, limit)
+	return discovered(items), err
+}
+
+func (c archiveCatalogOver) SearchCollection(_ context.Context, ref, query string, limit int) (fetch.DiscoveryResult, error) {
+	if c.search == nil {
+		return fetch.DiscoveryResult{}, nil
+	}
+	items, err := c.search(filler.FetchSource{Kind: "archive", URI: ref}, query, limit)
+	return discovered(items), err
+}
+
+func (archiveCatalogOver) Enrich(context.Context, []fetch.DiscoveredItem) {}
+
+type sourceEnum func(filler.FetchSource) []source.Item
+
+func (e sourceEnum) list(source filler.FetchSource, _ int) ([]source.Item, error) {
+	return e(source), nil
+}
+
+func youtubeRef(id string, duration time.Duration) source.Item {
+	return source.Item{
 		ID: id, URL: "https://youtube.com/watch?v=" + id,
 		DurationMS: int(duration.Milliseconds()), DurationKnown: true,
 	}
@@ -178,7 +247,7 @@ func TestFetch_YouTubeRejectsUnusableMediaBeforeQueueing(t *testing.T) {
 		sources: []filler.FetchSource{{
 			ID: "youtube:bounded", Kind: "youtube", URI: "https://youtube.com/@bounded/videos", Enabled: true,
 		}},
-		offers: []filler.DiscoveredRef{
+		offers: []source.Item{
 			youtubeRef("eligible", 30*time.Second),
 			youtubeRef("short", 9*time.Second),
 			youtubeRef("long", 121*time.Second),
@@ -198,11 +267,11 @@ func TestFetch_YouTubeRejectsUnusableMediaBeforeQueueing(t *testing.T) {
 	if res.Queued != 1 || !reflect.DeepEqual(stub.queuedIDs, []string{"eligible"}) {
 		t.Fatalf("queued = %d/%v, want only the eligible short video", res.Queued, stub.queuedIDs)
 	}
-	want := filler.SourceCheckSummary{
-		filler.SourceOutcomeQueued: 1, filler.SourceOutcomeTooShort: 1,
-		filler.SourceOutcomeTooLong: 1, filler.SourceOutcomeMetadataIncomplete: 2,
-		filler.SourceOutcomeLive: 1, filler.SourceOutcomeUpcoming: 1,
-		filler.SourceOutcomePrivate: 1, filler.SourceOutcomeUnavailable: 1,
+	want := source.Outcomes{
+		source.OutcomeQueued: 1, source.OutcomeTooShort: 1,
+		source.OutcomeTooLong: 1, source.OutcomeMetadataIncomplete: 2,
+		source.OutcomeLive: 1, source.OutcomeUpcoming: 1,
+		source.OutcomePrivate: 1, source.OutcomeUnavailable: 1,
 	}
 	if got := stub.completions["youtube:bounded"].Outcomes; !reflect.DeepEqual(got, want) {
 		t.Fatalf("outcomes = %#v, want %#v", got, want)
@@ -215,7 +284,7 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 		sources: []filler.FetchSource{{
 			ID: sourceID, Kind: "youtube", URI: "https://youtube.com/@resume/videos", Enabled: true,
 		}},
-		offers: []filler.DiscoveredRef{
+		offers: []source.Item{
 			youtubeRef("video-1", 30*time.Second), youtubeRef("video-2", 30*time.Second),
 			youtubeRef("video-3", 30*time.Second), youtubeRef("video-4", 30*time.Second),
 		},
@@ -229,8 +298,8 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 	}
 	firstCompletion := stub.completions[sourceID]
 	if first.Queued != 2 || !reflect.DeepEqual(stub.queuedIDs, []string{"video-1", "video-2"}) ||
-		firstCompletion.Checkpoint != (filler.SourceScanCheckpoint{Cursor: "video-2", PendingWatermark: "video-1"}) ||
-		!firstCompletion.ReplaceOutcomes || len(stub.listLimits) != 1 || stub.listLimits[0] != filler.YouTubeInitialLookback {
+		firstCompletion.Checkpoint != (source.Checkpoint{Cursor: "video-2", PendingWatermark: "video-1"}) ||
+		!firstCompletion.ReplaceOutcomes || len(stub.listLimits) != 1 || stub.listLimits[0] != youtubeprovider.InitialLookback {
 		t.Fatalf("first pass = %+v, ids=%v, completion=%+v", first, stub.queuedIDs, firstCompletion)
 	}
 	for _, id := range stub.queuedIDs {
@@ -246,7 +315,7 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 	}
 	secondCompletion := stub.completions[sourceID]
 	if second.Queued != 2 || !reflect.DeepEqual(stub.queuedIDs, []string{"video-3", "video-4"}) ||
-		secondCompletion.Checkpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) ||
+		secondCompletion.Checkpoint != (source.Checkpoint{Watermark: "video-1"}) ||
 		secondCompletion.ReplaceOutcomes {
 		t.Fatalf("second pass = %+v, ids=%v, completion=%+v", second, stub.queuedIDs, secondCompletion)
 	}
@@ -255,7 +324,7 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 		states[identity.Key()] = filler.RemoteQueued
 	}
 	stub.sources[0].ScanCheckpoint = secondCompletion.Checkpoint
-	stub.offers = append([]filler.DiscoveredRef{youtubeRef("new-video", 30*time.Second)}, stub.offers...)
+	stub.offers = append([]source.Item{youtubeRef("new-video", 30*time.Second)}, stub.offers...)
 	stub.queuedIDs = nil
 
 	third, err := fetcher.RunSource(t.Context(), sourceID)
@@ -264,7 +333,7 @@ func TestFetch_YouTubeResumesPastTheLastExaminedItemAcrossChecks(t *testing.T) {
 	}
 	thirdCompletion := stub.completions[sourceID]
 	if third.Queued != 1 || !reflect.DeepEqual(stub.queuedIDs, []string{"new-video"}) ||
-		thirdCompletion.Checkpoint != (filler.SourceScanCheckpoint{Watermark: "new-video"}) ||
+		thirdCompletion.Checkpoint != (source.Checkpoint{Watermark: "new-video"}) ||
 		!thirdCompletion.ReplaceOutcomes {
 		t.Fatalf("refresh pass = %+v, ids=%v, completion=%+v", third, stub.queuedIDs, thirdCompletion)
 	}
@@ -276,16 +345,16 @@ func TestFetch_ScheduledPassCapsAllSourcesFromOneProvider(t *testing.T) {
 		{ID: "youtube:two", Kind: "youtube", URI: "two", Enabled: true, MaxPerRun: 3},
 		{ID: "youtube:three", Kind: "youtube", URI: "three", Enabled: true, MaxPerRun: 3},
 	}}
-	enum := sourceEnum(func(source filler.FetchSource) []filler.DiscoveredRef {
-		return []filler.DiscoveredRef{
-			youtubeRef(source.ID+":1", 30*time.Second),
-			youtubeRef(source.ID+":2", 30*time.Second),
-			youtubeRef(source.ID+":3", 30*time.Second),
+	enum := sourceEnum(func(src filler.FetchSource) []source.Item {
+		return []source.Item{
+			youtubeRef(src.URI+":1", 30*time.Second),
+			youtubeRef(src.URI+":2", 30*time.Second),
+			youtubeRef(src.URI+":3", 30*time.Second),
 		}
 	})
 	l := limits(3, 2000)
 	l.MaxProviderPerRun = func() int { return 5 }
-	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, enum, stub, l, discardLog())
+	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, enum.list, nil), stub, l, discardLog())
 
 	res, err := fetcher.Run(t.Context())
 	if err != nil {
@@ -310,7 +379,7 @@ func TestFetch_YouTubePrefersDifferentCampaignsOverShortAndLongCuts(t *testing.T
 		sources: []filler.FetchSource{{
 			ID: "youtube:hoagie-hut", Kind: "youtube", URI: "https://youtube.com/@hoagiehut/videos", Enabled: true,
 		}},
-		offers: []filler.DiscoveredRef{short, long, other},
+		offers: []source.Item{short, long, other},
 	}
 
 	res, err := newFetcher(t, stub, limits(2, 2000)).RunSource(t.Context(), "youtube:hoagie-hut")
@@ -336,7 +405,7 @@ func TestFetch_YouTubeDurationVariantsDoNotReturnOnTheNextCheck(t *testing.T) {
 		sources: []filler.FetchSource{{
 			ID: sourceID, Kind: "youtube", URI: "https://youtube.com/@hoagiehut/videos", Enabled: true,
 		}},
-		offers: []filler.DiscoveredRef{short, firstOther, secondOther, long},
+		offers: []source.Item{short, firstOther, secondOther, long},
 	}
 	states := map[string]filler.ExistingRemoteState{}
 	fetcher := newFetcherWithRemoteStates(t, stub, limits(2, 2000), states)
@@ -363,7 +432,7 @@ func TestFetch_YouTubeDurationVariantsDoNotReturnOnTheNextCheck(t *testing.T) {
 }
 
 func TestFetch_ManualCheckRetainsTheProviderPassCap(t *testing.T) {
-	items := make([]filler.DiscoveredRef, 60)
+	items := make([]source.Item, 60)
 	for i := range items {
 		items[i] = youtubeRef(fmt.Sprintf("video-%02d", i), 30*time.Second)
 	}
@@ -388,9 +457,9 @@ func TestFetch_QueueFailureDoesNotAdvanceTheYouTubeCheckpoint(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{
 			ID: "youtube:retry", Kind: "youtube", URI: "retry", Enabled: true,
-			ScanCheckpoint: filler.SourceScanCheckpoint{Watermark: "prior"},
+			ScanCheckpoint: source.Checkpoint{Watermark: "prior"},
 		}},
-		offers:    []filler.DiscoveredRef{youtubeRef("new-video", 30*time.Second)},
+		offers:    []source.Item{youtubeRef("new-video", 30*time.Second)},
 		ingestErr: errors.New("temporary queue failure"),
 	}
 
@@ -434,7 +503,7 @@ func TestFetch_StopsAtMaxPerRun(t *testing.T) {
 // on. An item of unknown length can't be judged before download, so it is still taken; probe
 // marks it a compilation if it is one.
 func TestFetch_CompilationsWaitUntilTheSettingTakesThem(t *testing.T) {
-	offers := []filler.DiscoveredRef{
+	offers := []source.Item{
 		{ID: "reel", URL: "https://archive.org/details/reel", DurationMS: 30 * 60 * 1000},
 		{ID: "spot", URL: "https://archive.org/details/spot", DurationMS: 45 * 1000},
 		{ID: "unknown", URL: "https://archive.org/details/unknown"},
@@ -465,17 +534,69 @@ func TestFetch_CompilationsWaitUntilTheSettingTakesThem(t *testing.T) {
 			t.Errorf("compilations taken=%v: queued %v, want %v", tc.take, got, tc.want)
 		}
 		if !tc.take {
-			if n := stub.completions["s1"].Outcomes[filler.SourceOutcomeTooLong]; n != 1 {
+			if n := stub.completions["s1"].Outcomes[source.OutcomeTooLong]; n != 1 {
 				t.Errorf("compilations off: too_long outcomes = %d, want the reel counted once", n)
 			}
 		}
 	}
 }
 
+// The pass result explains what every source it checked saw, summed: it is what a manual run
+// reports, so a source's outcomes stored but not added to the pass would leave the operator with
+// "nothing happened".
+func TestFetch_ResultSumsEachSourcesOutcomes(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "s1", Kind: "archive", URI: "coll-1", Enabled: true},
+			{ID: "s2", Kind: "archive", URI: "coll-2", Enabled: true},
+		},
+		offers: []source.Item{
+			{ID: "reel", URL: "https://archive.org/details/reel", DurationMS: 30 * 60 * 1000},
+			{ID: "spot", URL: "https://archive.org/details/spot", DurationMS: 45 * 1000},
+		},
+	}
+	l := limits(10, 2000)
+	l.Compilations = filler.CompilationGate{
+		Take: func() bool { return false },
+		Over: func() time.Duration { return 2 * time.Minute },
+	}
+	res, err := newFetcher(t, stub, l).Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := source.Outcomes{source.OutcomeTooLong: 2, source.OutcomeQueued: 2}
+	if !maps.Equal(res.Outcomes, want) {
+		t.Fatalf("pass outcomes = %v, want %v — one reel held back and one spot queued per source", res.Outcomes, want)
+	}
+}
+
+// Choosing one duration cut per campaign is YouTube's: its cursor can split one listing across
+// checks. Another provider has no preferred cut, so a title that names its length ("30 second
+// spot") is an ordinary item, not one already known. Until this was scoped, every such archive.org
+// item was skipped as already_known, and never fetched (#1375 to here).
+func TestFetch_ANonYouTubeTitleThatNamesItsLengthIsStillTaken(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+		offers: []source.Item{
+			{ID: "cola", URL: "https://archive.org/details/cola", Title: "Acme Cola 30 second spot", DurationMS: 30 * 1000},
+			{ID: "plain", URL: "https://archive.org/details/plain", Title: "Acme Cola spot", DurationMS: 30 * 1000},
+		},
+	}
+	res, err := newFetcher(t, stub, limits(10, 2000)).Run(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := append([]string(nil), stub.queuedIDs...)
+	sort.Strings(got)
+	if strings.Join(got, ",") != "cola,plain" || res.Skipped != 0 {
+		t.Fatalf("queued %v with %d skipped, want cola and plain and nothing skipped", got, res.Skipped)
+	}
+}
+
 func TestFetch_RanksMetadataInsteadOfTakingProviderOrder(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
-		offers: []filler.DiscoveredRef{
+		offers: []source.Item{
 			{ID: "first-low", URL: "https://archive.org/details/first-low", Height: 240},
 			{ID: "second-hd", URL: "https://archive.org/details/second-hd", Height: 1080, License: "cc-by"},
 		},
@@ -492,7 +613,7 @@ func TestFetch_RanksMetadataInsteadOfTakingProviderOrder(t *testing.T) {
 func TestFetch_EnumeratesTheRegisteredProviderKind(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "youtube:kids", Kind: "youtube", URI: "https://youtube.com/@kids/videos", Enabled: true}},
-		offers:  []filler.DiscoveredRef{youtubeRef("video-1", 30*time.Second)},
+		offers:  []source.Item{youtubeRef("video-1", 30*time.Second)},
 	}
 	if _, err := newFetcher(t, stub, limits(2, 2000)).Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -510,15 +631,15 @@ func TestFetch_ScheduledSelectionKeepsProviderNamespacesDistinct(t *testing.T) {
 		{ID: "archive:classic", Kind: "archive", URI: "https://archive.org/details/classic", Enabled: true},
 		{ID: "youtube:classic", Kind: "youtube", URI: "https://youtube.com/@classic/videos", Enabled: true},
 	}}
-	enum := sourceEnum(func(source filler.FetchSource) []filler.DiscoveredRef {
-		if source.Kind == "youtube" {
+	enum := sourceEnum(func(src filler.FetchSource) []source.Item {
+		if src.Kind == "youtube" {
 			item := youtubeRef("abcdef12345", 30*time.Second)
 			item.Height = 1080
-			return []filler.DiscoveredRef{item}
+			return []source.Item{item}
 		}
-		return []filler.DiscoveredRef{{ID: "abcdef12345", URL: "https://archive.org/details/abcdef12345", Height: 1080}}
+		return []source.Item{{ID: "abcdef12345", URL: "https://archive.org/details/abcdef12345", Height: 1080}}
 	})
-	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, enum, stub, limits(1, 2000), discardLog())
+	f := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, enum.list, nil), stub, limits(1, 2000), discardLog())
 	res, err := f.Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -531,7 +652,7 @@ func TestFetch_ScheduledSelectionKeepsProviderNamespacesDistinct(t *testing.T) {
 func TestFetch_PreservesCaseSensitiveYouTubeItemIdentity(t *testing.T) {
 	upperRef, lowerRef := youtubeRef("AbCd123", 30*time.Second), youtubeRef("abcd123", 30*time.Second)
 	upperRef.Title, lowerRef.Title = "Upper title", "Lower title"
-	stub := &fetchStub{sources: []filler.FetchSource{{ID: "youtube:case", Kind: "youtube", URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []filler.DiscoveredRef{upperRef, lowerRef}}
+	stub := &fetchStub{sources: []filler.FetchSource{{ID: "youtube:case", Kind: "youtube", URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []source.Item{upperRef, lowerRef}}
 	res, err := newFetcher(t, stub, limits(2, 2000)).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -543,7 +664,7 @@ func TestFetch_PreservesCaseSensitiveYouTubeItemIdentity(t *testing.T) {
 
 func TestFetch_TypedRemoteStatesExcludeOnlyExactIdentity(t *testing.T) {
 	upper := filler.RemoteIdentity{Provider: "youtube", SourceID: "youtube:case", RemoteID: "AbCd123"}
-	stub := &fetchStub{sources: []filler.FetchSource{{ID: upper.SourceID, Kind: upper.Provider, URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []filler.DiscoveredRef{youtubeRef(upper.RemoteID, 30*time.Second), youtubeRef("abcd123", 30*time.Second)}}
+	stub := &fetchStub{sources: []filler.FetchSource{{ID: upper.SourceID, Kind: upper.Provider, URI: "https://youtube.com/@case/videos", Enabled: true}}, offers: []source.Item{youtubeRef(upper.RemoteID, 30*time.Second), youtubeRef("abcd123", 30*time.Second)}}
 	res, err := newFetcherWithRemoteStates(t, stub, limits(2, 2000), map[string]filler.ExistingRemoteState{upper.Key(): filler.RemoteCatalogued}).Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -617,6 +738,72 @@ func TestFetch_SkipsFolderAndLibraryRows(t *testing.T) {
 	}
 }
 
+// A source whose provider is not registered is inert: a scheduled pass skips it, says so once, and
+// leaves the row to be fetched again when the provider is back. A scanned provider's source, even
+// one with an address, is never fetched either, and a manual check of either polls nothing.
+func TestFetch_ASourceWhoseProviderIsNotFetchedIsInert(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "vimeo-src", Kind: "vimeo", URI: "https://vimeo.com/channels/x", Enabled: true},
+			{ID: "scanned-src", Kind: "folder", URI: "/media/clips", Enabled: true},
+			{ID: "s1", Kind: "archive", URI: "coll", Enabled: true},
+		},
+		offers: refs("a"),
+	}
+	var logged bytes.Buffer
+	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, stub.list, nil), stub, limits(10, 2000),
+		slog.New(slog.NewTextHandler(&logged, nil)))
+
+	for range 2 {
+		res, err := fetcher.Run(t.Context())
+		if err != nil {
+			t.Fatalf("a scheduled pass failed on an inert source: %v", err)
+		}
+		if res.SourcesPolled != 1 || res.Queued != 1 {
+			t.Fatalf("pass = %+v, want only the archive source polled", res)
+		}
+		delete(stub.checked, "s1")
+	}
+	if stub.claimCalls != 2 || !reflect.DeepEqual(stub.listed, []string{"coll", "coll"}) {
+		t.Fatalf("claims=%d listed=%v, want only the archive source claimed and listed, once per pass", stub.claimCalls, stub.listed)
+	}
+	if n := strings.Count(logged.String(), "provider is not registered or not fetched"); n != 1 {
+		t.Fatalf("logged %d inert reports over two passes, want one:\n%s", n, logged.String())
+	}
+
+	for _, id := range []string{"vimeo-src", "scanned-src"} {
+		if res, err := fetcher.RunSource(t.Context(), id); err != nil || res.SourcesPolled != 0 {
+			t.Errorf("manual check of %s = %+v, %v, want nothing polled and no error", id, res, err)
+		}
+	}
+	if stub.claimCalls != 2 {
+		t.Fatalf("a manual check of an inert source claimed it (%d claims)", stub.claimCalls)
+	}
+	if status, err := fetcher.Status(t.Context()); err != nil || !status.Enabled {
+		t.Fatalf("status = %+v, %v, want fetching on: the archive source is fetched", status, err)
+	}
+}
+
+// A wake whose only enabled sources are inert reads source state and nothing else: it neither
+// claims them nor walks the catalog, so an unregistered provider costs no more than an idle wake.
+func TestFetch_AWakeWithOnlyInertSourcesStaysCheap(t *testing.T) {
+	stub := &fetchStub{
+		sources: []filler.FetchSource{
+			{ID: "vimeo-src", Kind: "vimeo", URI: "https://vimeo.com/channels/x", Enabled: true},
+			{ID: "scanned-src", Kind: "folder", URI: "/media/clips", Enabled: true},
+		},
+	}
+	fetcher := filler.NewFetcher(fetchStoreWithRemoteStates{fetchStub: stub}, providersOver(t, stub.list, nil), stub,
+		limits(10, 2000), nil)
+	if _, err := fetcher.Run(t.Context()); err != nil {
+		t.Fatalf("pass: %v", err)
+	}
+	if stub.catalogCalls != 0 || stub.claimCalls != 0 {
+		t.Fatalf("catalog reads=%d claims=%d, want neither for a wake with only inert sources",
+			stub.catalogCalls, stub.claimCalls)
+	}
+}
+
 // ⚠ Without dedupe the job re-downloads its own output on every pass, forever. The typed remote
 // state is the high-water mark; paths still count toward the catalog ceiling but cannot prove
 // provider/source identity.
@@ -679,7 +866,7 @@ func TestFetch_SkipsCataloguedYouTubeOutputTemplatePath(t *testing.T) {
 	stub := &fetchStub{
 		sources: []filler.FetchSource{{ID: "youtube:retro", Kind: "youtube", URI: "https://youtube.com/@retro/videos", Enabled: true}},
 		paths:   []string{"Title for a catalogued clip [video-id].mp4"},
-		offers:  []filler.DiscoveredRef{youtubeRef("video-id", 30*time.Second)},
+		offers:  []source.Item{youtubeRef("video-id", 30*time.Second)},
 	}
 	res, err := newFetcherWithRemoteStates(t, stub, limits(10, 2000), map[string]filler.ExistingRemoteState{
 		(filler.RemoteIdentity{Provider: "youtube", SourceID: "youtube:retro", RemoteID: "video-id"}).Key(): filler.RemoteCatalogued,

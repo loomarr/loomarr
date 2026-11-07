@@ -1,20 +1,11 @@
-import { LoomarrProvider } from "@loomarr/design-system";
+import { NativeAppRoot } from "@loomarr/native-app";
 import { Stack } from "expo-router";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
-
-const ClientLayout = () => {
-  const insets = useSafeAreaInsets();
-  return (
-    <LoomarrProvider insets={insets}>
-      <Stack screenOptions={{ headerShown: false }} />
-    </LoomarrProvider>
-  );
-};
+import { nativeApp } from "../src/native-app";
 
 const RootLayout = () => (
-  <SafeAreaProvider>
-    <ClientLayout />
-  </SafeAreaProvider>
+  <NativeAppRoot app={nativeApp}>
+    <Stack screenOptions={{ headerShown: false }} />
+  </NativeAppRoot>
 );
 
 export default RootLayout;

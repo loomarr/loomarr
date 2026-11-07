@@ -2,6 +2,7 @@
 // …) for the Testing Library component tests. Loaded via vite.config test.setupFiles.
 import { configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
+import { FakeEventSource } from "./fake-event-source";
 import { installServerLifecycle } from "./msw/server";
 import "@testing-library/jest-dom/vitest";
 
@@ -15,16 +16,11 @@ import "@testing-library/jest-dom/vitest";
 // just later. What it removes is a red build caused by CPU contention rather than by the code.
 configure({ asyncUtilTimeout: 5000 });
 
-// jsdom has no EventSource; the SSE bus (core.useLoomarrEvents) constructs one on
-// mount. A no-op stub lets components that open the stream render in tests.
-class MockEventSource {
-  onmessage: ((ev: MessageEvent) => void) | null = null;
-  constructor(public url: string) {}
-  addEventListener(): void {}
-  removeEventListener(): void {}
-  close(): void {}
-}
-globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
+// jsdom has no EventSource; the SSE bus (core.useLoomarrEvents) constructs one on mount. The one
+// shared fake lets components that open the stream render, and lets a test push spec frames down
+// it with `FakeEventSource.broadcast`. Tests do not stub their own.
+globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+afterEach(() => FakeEventSource.reset());
 
 // DOM APIs jsdom doesn't implement, shimmed so components that use them can render in tests.
 //
@@ -55,7 +51,7 @@ globalThis.ResizeObserver ??= class {
 
 // The shared MSW server (V53d) — one mock layer for the whole suite, replacing the per-file
 // `stubFetch` helpers that 31 test files each hand-rolled. See `./msw/server` for why the
-// unhandled-request guard records-and-asserts instead of using `onUnhandledRequest: "error"`,
+// unhandled-request guard records-and-asserts instead of using `onUnhandledFrame: "error"`,
 // which does not fail a test.
 //
 // ⚠ Installed globally but STARTS WITH NO HANDLERS. Every test declares the routes it needs via

@@ -10,17 +10,17 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/scheduler"
-	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -44,7 +44,7 @@ func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *
 	if st == nil {
 		return nil
 	}
-	return newDatabaseService(st, func() string { return set.str("backup.dir") }, eventBus).
+	return newDatabaseService(st, func() string { return settings.BackupDir.Get(set) }, eventBus).
 		WithMigrationRequest(overrides.DatabaseMigration).
 		WithLastError(overrides.DatabaseMigrationError)
 }
@@ -66,7 +66,7 @@ type operationsBuild struct {
 	productNotifications     *productNotificationCoordinator
 	invitationDelivery       api.InvitationDeliveryService
 	passwordRecovery         api.PasswordRecoveryService
-	liveConfig               func(string) string
+	liveSettings             settings.Reader
 	libraryConfigured        func() bool
 	jobs                     api.JobService
 	database                 api.DatabaseService
@@ -85,7 +85,7 @@ func buildOperations(
 	tmdbClient *tmdb.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
-	registry *scheduler.Registry,
+	registry *jobs.Registry,
 	owner *generationLifecycle,
 	playoutResolver *playoutResolver,
 	appliedBackend func(context.Context) (string, error),
@@ -100,7 +100,7 @@ func buildOperations(
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
-	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection).
+	destinationRepository := notifications.NewProtectedRepository(st, protection).
 		WithCredentialRedactor(secretRedactor)
 	if destinationRepository != nil {
 		if err := destinationRepository.SeedCredentialRedaction(rootCtx); err != nil {
@@ -112,19 +112,19 @@ func buildOperations(
 	}
 	providerHTTP := overrides.NotificationHTTP
 	if providerHTTP == nil {
-		providerHTTP = httpx.NewNamedObserved("notification-provider", httpx.TimeoutNotifications, metricRecorder)
+		providerHTTP = httpx.NewNamedObserved(httpx.TargetNotifications, httpx.TimeoutNotifications, metricRecorder)
 	}
 	providerAdapters, providerValidators := notifications.NewHTTPProviderAdapters(
-		providerHTTP, func() string { return set.str("access.public_url") },
+		providerHTTP, func() string { return settings.AccessPublicURL.Get(set) },
 	)
-	mqttAdapter := notifications.NewMQTTAdapter(func() string { return set.str("access.public_url") })
+	mqttAdapter := notifications.NewMQTTAdapter(func() string { return settings.AccessPublicURL.Get(set) })
 	providerAdapters = append(providerAdapters, mqttAdapter)
 	providerValidators = append(providerValidators, mqttAdapter)
 	if secrets != nil {
 		identity := secrets.WebPushIdentity()
 		webPushAdapter := notifications.NewWebPushAdapter(notifications.WebPushIdentity{
 			PublicKey: identity.PublicKey, PrivateKey: identity.PrivateKey,
-		}, overrides.NotificationHTTP, func() string { return set.str("access.public_url") })
+		}, overrides.NotificationHTTP, func() string { return settings.AccessPublicURL.Get(set) })
 		providerAdapters = append(providerAdapters, webPushAdapter)
 		providerValidators = append(providerValidators, webPushAdapter)
 	}
@@ -132,12 +132,15 @@ func buildOperations(
 		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
 	)
 	providerValidators = append(accountDelivery.validators, providerValidators...)
-	jobs := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	jobService, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	if err != nil {
+		return operationsBuild{}, err
+	}
 	triggerHealth := func(ctx context.Context) {
-		if jobs == nil {
+		if jobService == nil {
 			return
 		}
-		if err := jobs.Trigger(ctx, "system-health"); err != nil {
+		if err := jobService.Trigger(ctx, "system-health"); err != nil {
 			log.Warn("current health refresh after settings change could not be queued", "err", err)
 		}
 	}
@@ -147,7 +150,7 @@ func buildOperations(
 		guide: buildGuide(st, set, playoutResolver, appliedBackend, metricRecorder),
 		settings: buildSettings(
 			st, set, desiredSet, secrets, libraryClient, tmdbClient,
-			refreshSecretRedactor, readGeneratedSecret, triggerHealth, log,
+			refreshSecretRedactor, readGeneratedSecret, triggerHealth, emitter.SettingsChanged, log,
 		),
 		notificationDestinations: buildNotificationDestinations(
 			destinationRepository, providerValidators, accountDelivery.service,
@@ -155,7 +158,7 @@ func buildOperations(
 		productNotifications: &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
 		invitationDelivery:   accountDelivery.invitations,
 		passwordRecovery:     accountDelivery.recovery,
-		jobs:                 jobs,
+		jobs:                 jobService,
 		database:             buildDatabase(st, set, overrides, eventBus),
 		residentLLM:          buildResidentLLM(set, log),
 	}
@@ -163,7 +166,7 @@ func buildOperations(
 		result.webPushPublicKey = secrets.WebPushIdentity().PublicKey
 	}
 	if st != nil {
-		result.liveConfig = set.str
+		result.liveSettings = set
 		result.libraryConfigured = set.libraryConfigured
 	}
 	return result, nil
@@ -172,7 +175,7 @@ func buildOperations(
 func migrateLegacySMTPProvider(
 	ctx context.Context,
 	st store.Store,
-	repository notifications.DestinationRepository,
+	repository notifications.Repository,
 	set resolved,
 ) error {
 	if st == nil || repository == nil || set.svc == nil {
@@ -219,7 +222,7 @@ func migrateLegacySMTPProvider(
 }
 
 func buildNotificationDestinations(
-	repository notifications.DestinationRepository,
+	repository notifications.Repository,
 	validators []notifications.DestinationValidator,
 	tester notifications.DestinationTester,
 ) api.NotificationDestinationService {
@@ -231,10 +234,10 @@ func buildNotificationDestinations(
 
 func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 	probe := func(ctx context.Context) (float64, string) {
-		if set.str("llm.provider") != "ollama" || set.str("llm.url") == "" {
+		if settings.LLMProvider.Get(set) != "ollama" || settings.LLMURL.Get(set) == "" {
 			return 0, ""
 		}
-		resident, err := llm.NewOllama(set.str("llm.url"), set.str("llm.model")).ListResident(ctx)
+		resident, err := llm.NewOllama(settings.LLMURL.Get(set), settings.LLMModel.Get(set)).ListResident(ctx)
 		if err != nil {
 			log.Debug("playout doctor: /api/ps residency probe failed", "err", err)
 			return 0, ""
@@ -250,10 +253,10 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 		return total, largest.Name
 	}
 	reclaim := func(ctx context.Context) {
-		if set.str("llm.provider") != "ollama" || set.str("llm.url") == "" {
+		if settings.LLMProvider.Get(set) != "ollama" || settings.LLMURL.Get(set) == "" {
 			return
 		}
-		provider := llm.NewProvider("ollama", set.str("llm.url"), set.str("llm.model"), "")
+		provider := llm.NewProvider("ollama", settings.LLMURL.Get(set), settings.LLMModel.Get(set), "")
 		evictor, ok := provider.(llm.Evictor)
 		if !ok {
 			return
@@ -265,18 +268,18 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 	return residentLLMBuild{probe: probe, reclaim: reclaim}
 }
 
-func buildBackups(st store.Store, set resolved, jobs *scheduler.Registry, log *slog.Logger) api.BackupsService {
+func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) api.BackupsService {
 	if writer := store.BackupWriter(st); writer != nil {
 		service := &backupsService{
-			w: writer, dir: func() string { return set.str("backup.dir") },
-			retain: func() int { return set.intv("backup.retain") },
-			sched:  func() string { return set.str("backup.schedule") },
+			w: writer, dir: func() string { return settings.BackupDir.Get(set) },
+			retain: func() int { return settings.BackupRetain.Get(set) },
+			sched:  func() string { return settings.BackupSchedule.Get(set) },
 		}
-		jobs.Add(service.Job(log))
+		registry.Add(service.Job(log))
 		return service
 	}
 	if st != nil {
-		jobs.Add(unavailableBackupJob(
+		registry.Add(unavailableBackupJob(
 			"Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."))
 	}
 	return nil
@@ -322,20 +325,20 @@ func buildAuth(
 		return result
 	}
 
-	manager := auth.NewManager(st, set.dur("session.ttl"), time.Now)
+	manager := auth.NewManager(st, settings.SessionTTL.Get(set), time.Now)
 	loginLimiter := auth.NewRateLimiter(0.2, 5)
 	result.login = auth.NewLoginService(libraryClient, st, manager, loginLimiter, time.Now)
 	result.userSync = auth.NewUserSync(libraryClient, st, time.Now)
 	result.provision = auth.NewProvisioner(st, libraryClient, newID, time.Now)
 	result.sso = auth.NewSSOService(func() auth.SSOConfig {
-		base := strings.TrimRight(set.str("server.public_url"), "/")
+		base := strings.TrimRight(settings.ServerPublicURL.Get(set), "/")
 		redirect := ""
 		if base != "" {
 			redirect = base + "/v1/auth/sso/callback"
 		}
 		return auth.SSOConfig{
-			Enabled: set.boolv("auth.sso.enabled"), Issuer: set.str("auth.sso.issuer"),
-			ClientID: set.str("auth.sso.client_id"), ClientSecret: set.str("auth.sso.client_secret"),
+			Enabled: settings.AuthSSOEnabled.Get(set), Issuer: settings.AuthSSOIssuer.Get(set),
+			ClientID: settings.AuthSSOClientID.Get(set), ClientSecret: settings.AuthSSOClientSecret.Get(set),
 			RedirectURL: redirect,
 		}
 	}, st, manager, time.Now, log)
@@ -396,6 +399,7 @@ func buildSettings(
 	refreshRedactor func(),
 	readSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	triggerHealth func(context.Context),
+	settingsChanged func(),
 	log *slog.Logger,
 ) api.SettingsService {
 	if st == nil || secrets == nil {
@@ -404,7 +408,7 @@ func buildSettings(
 	return settingsAdapter{
 		svc: set.svc, secrets: secrets, store: st, log: log, protection: set.protection,
 		tests: connectionTests(desiredSet, libraryClient, tmdbClient), refreshRedactor: refreshRedactor,
-		readSecret: readSecret, triggerHealth: triggerHealth,
+		readSecret: readSecret, triggerHealth: triggerHealth, changed: settingsChanged,
 	}
 }
 
@@ -412,31 +416,34 @@ func buildScheduler(
 	rootCtx context.Context,
 	st store.Store,
 	set resolved,
-	registry *scheduler.Registry,
+	registry *jobs.Registry,
 	emitter *eventEmitter,
 	owner *generationLifecycle,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
-) api.JobService {
+) (api.JobService, error) {
 	if st == nil {
-		return nil
+		return nil, nil
 	}
-	service := scheduler.New(st, registry, func(key, fallback string) string {
-		if configured := set.str(key); configured != "" {
+	service := jobs.New(st, registry, func(key, fallback string) string {
+		// Job schedule keys arrive from the jobs registry, so the key is dynamic; the answer
+		// is a string setting or the caller's fallback.
+		if configured, _ := set.Value(key).(string); configured != "" {
 			return configured
 		}
 		return fallback
 	}, time.Now, log).WithNotifier(emitter).WithObserver(metricRecorder)
 	service.SeedRegistry(rootCtx)
-	if pool := store.PoolOf(st); pool != nil {
-		stop, err := service.StartRiver(rootCtx, store.DialectOf(st), pool, log)
-		if err != nil {
-			log.Error("scheduler: River did not start — no job will run on its schedule", "err", err)
-		} else {
-			owner.addStop(stop)
-		}
-	} else {
-		log.Error("scheduler: store exposes no pool — no job will run on its schedule")
+	// River is the only job executor: without it nothing runs on its schedule, so a failure to
+	// start fails the build rather than serving an app with a dead background.
+	pool := store.PoolOf(st)
+	if pool == nil {
+		return nil, errors.New("start River job queue: store exposes no database pool")
 	}
-	return jobsAdapter{s: service}
+	stop, err := service.StartRiver(rootCtx, store.DialectOf(st), pool, log)
+	if err != nil {
+		return nil, fmt.Errorf("start River job queue: %w", err)
+	}
+	owner.addStop(stop)
+	return jobsAdapter{s: service}, nil
 }

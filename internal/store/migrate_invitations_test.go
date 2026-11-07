@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 func TestInvitationMigrationPreservesExistingContactAddresses(t *testing.T) {
@@ -31,9 +33,9 @@ func testInvitationMigrationPreservesExistingContactAddresses(
 	if _, err := provider.UpTo(ctx, 77); err != nil {
 		t.Fatalf("migrate through 77: %v", err)
 	}
-	ph := placeholder(passthrough)
+	ph := placeholder(storedb.Passthrough)
 	if dialect == DialectPostgres {
-		ph = pgPlaceholders
+		ph = storedb.PgPlaceholders
 	}
 	if _, err := db.ExecContext(ctx, ph(`INSERT INTO users
 		(id, name, role, password_hash, media_server_linked)

@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // ErrSplitValidation marks a rejected confirm edit (out-of-clip bounds,
@@ -52,8 +53,8 @@ var ErrConditioningOwnershipMismatch = errors.New("filler: conditioning publicat
 type SplitStore interface {
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
 	ListClips(ctx context.Context) ([]StoreClip, error) // the dedup candidate set
-	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
-	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
+	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
+	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
 	UpsertClip(ctx context.Context, c StoreClip) error
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
@@ -136,11 +137,12 @@ type SplitArtworkWriter interface {
 	IngestSplitArtwork(ctx context.Context, proposalID string, segment SplitSegment, jpeg []byte) (string, error)
 }
 
-// SegmentLanguagePolicy applies the installation language to each detected span before the split
-// becomes reviewable. Budget is the existing per-pass whisper allowance, not another user knob.
+// SegmentLanguagePolicy applies the intake languages (IntakeLanguages) to each detected span before
+// the split becomes reviewable. Budget is the existing per-pass whisper allowance, not another user
+// knob.
 type SegmentLanguagePolicy struct {
 	Detector LanguageDetector
-	Want     func() string
+	Want     func(context.Context) (string, error)
 	Budget   func() int
 }
 
@@ -162,7 +164,7 @@ func (sp *Splitter) WithStorageGovernor(governor *storagegovernor.Governor) *Spl
 	return sp
 }
 
-// WithSegmentLanguage attaches the installation language check to proposal preparation. Keeping
+// WithSegmentLanguage attaches the intake language check to proposal preparation. Keeping
 // it on Splitter makes scheduled and explicitly requested proposals use the same path.
 func (sp *Splitter) WithSegmentLanguage(policy SegmentLanguagePolicy) *Splitter {
 	if sp != nil {
@@ -250,18 +252,23 @@ func (sp *Splitter) prepareArtwork(ctx context.Context, p SplitProposal) (SplitP
 	return p, pending, nil
 }
 
-func (sp *Splitter) startSegmentLanguage(p *SplitProposal) bool {
+func (sp *Splitter) startSegmentLanguage(ctx context.Context, p *SplitProposal) (bool, error) {
 	policy := sp.segmentLanguage
 	if policy == nil || policy.Detector == nil || policy.Want == nil {
-		return false
+		return false, nil
 	}
-	want := NormalizeLanguage(policy.Want())
+	raw, err := policy.Want(ctx)
+	if err != nil {
+		// Not "no language": that would present every segment as reviewable under no policy.
+		return false, fmt.Errorf("read the channels' commercial languages: %w", err)
+	}
+	want := LanguageSet(raw)
 	if want == "" {
-		return false
+		return false, nil
 	}
 	p.LanguagePreference = want
 	p.Language = &SplitLanguageProgress{Want: p.LanguagePreference}
-	return true
+	return true, nil
 }
 
 func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *SplitProposal) (bool, error) {
@@ -647,7 +654,10 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	p.Segments = segs
 	p.Structure = &structure
 	p.Detection = nil
-	languagePending := sp.startSegmentLanguage(p)
+	languagePending, err := sp.startSegmentLanguage(ctx, p)
+	if err != nil {
+		return p, false, err
+	}
 	if p.Dropped.Count > 0 && sp.log != nil {
 		// INFO, not WARN: discarding sub-floor fragments is the design working, not a fault. It is
 		// logged because it costs recording time the operator can otherwise only infer from
@@ -847,12 +857,12 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 	if err != nil || len(catalog) == 0 {
 		return
 	}
-	type hashed struct {
-		path   string
-		hashes []uint64
+	type candidate struct {
+		path string
+		fp   creative.Fingerprint
 	}
-	var candidates []hashed
-	cached, cacheErr := sp.store.ListClipFingerprints(ctx, dHashAlgorithm)
+	var candidates []candidate
+	cached, cacheErr := sp.store.ListClipFingerprints(ctx, creative.Algorithm)
 	if cacheErr != nil && sp.log != nil {
 		sp.log.Warn("catalog fingerprint cache read failed; missing entries will be recomputed", "err", cacheErr)
 	}
@@ -860,23 +870,24 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 		if c.Hash == clipHash {
 			continue // the compilation itself — segments trivially live inside it
 		}
-		hashes, ok := sp.catalogFingerprint(ctx, c, cached[c.Hash])
+		fp, ok := sp.catalogFingerprint(ctx, c, cached[c.Hash])
 		if !ok {
 			continue
 		}
-		candidates = append(candidates, hashed{path: c.Path, hashes: hashes})
+		candidates = append(candidates, candidate{path: c.Path, fp: fp})
 	}
 	if len(candidates) == 0 {
 		return
 	}
+	// Only a copy is a duplicate. A segment that is a variant of a catalog clip, such as a
+	// cut-down, is a separate ad and is kept (#2033).
 	for i := range segs {
-		frames, err := sp.tools.GrayFrames(ctx, file, segs[i].StartMs, segs[i].EndMs)
+		fp, err := sp.tools.Fingerprint(ctx, file, segs[i].StartMs, segs[i].EndMs)
 		if err != nil {
 			continue
 		}
-		h := dHashFrames(frames)
 		for _, c := range candidates {
-			if mean, ok := meanHamming(h, c.hashes); ok && mean <= DupHashThreshold {
+			if creative.Compare(fp, c.fp) == creative.Same {
 				segs[i].DupOf = c.path
 				break
 			}
@@ -886,24 +897,20 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []Spl
 
 // catalogFingerprint makes whole-catalog dedup incremental. Content hash plus algorithm version
 // is the cache key, so a hit is exact; failures always degrade to recomputation or no verdict.
-func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached []uint64) ([]uint64, bool) {
-	if len(cached) > 0 {
+func (sp *Splitter) catalogFingerprint(ctx context.Context, c StoreClip, cached creative.Fingerprint) (creative.Fingerprint, bool) {
+	if len(cached.Video) > 0 {
 		return cached, true
 	}
-	frames, err := sp.tools.GrayFrames(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
-	if err != nil {
-		return nil, false
-	}
-	hashes := dHashFrames(frames)
-	if len(hashes) == 0 {
-		return nil, false
+	fp, err := sp.tools.Fingerprint(ctx, filepath.Join(sp.dropDir, c.Path), 0, c.DurationMs)
+	if err != nil || len(fp.Video) == 0 {
+		return creative.Fingerprint{}, false
 	}
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if err := sp.store.UpsertClipFingerprint(saveCtx, c.Hash, dHashAlgorithm, hashes); err != nil && sp.log != nil {
+	if err := sp.store.UpsertClipFingerprint(saveCtx, c.Hash, creative.Algorithm, fp); err != nil && sp.log != nil {
 		sp.log.Warn("catalog fingerprint cache write failed", "clip", c.Hash, "err", err)
 	}
-	return hashes, true
+	return fp, true
 }
 
 // Confirm writes the operator's reviewed cut list to the catalog (§10): each kept segment is cut
@@ -1000,7 +1007,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			DeclaredBytes: source.Bytes, DurationMS: source.DurationMs,
 		})
 		if !ok {
-			return nil, storageDecisionError("estimate split storage", storagegovernor.Decision{
+			return nil, storagegovernor.Pause("estimate split storage", storagegovernor.Decision{
 				Snapshot: storagegovernor.Snapshot{Domain: storagegovernor.DomainFiller, Reason: storagegovernor.ReasonEstimateUnknown},
 			})
 		}
@@ -1010,11 +1017,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 			EstimatedBytes: budget.ReservationBytes, Mode: storageMode,
 		})
 		if storageLease == nil {
-			return nil, storageDecisionError("reserve split storage", decision)
+			return nil, storagegovernor.Pause("reserve split storage", decision)
 		}
 		defer storageLease.Release()
 		if decision = storageLease.Revalidate(ctx, 0); !decision.Allowed {
-			return nil, storageDecisionError("revalidate split storage", decision)
+			return nil, storagegovernor.Pause("revalidate split storage", decision)
 		}
 	}
 	ext := filepath.Ext(source.Path)
@@ -1118,7 +1125,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		} else if statErr != nil {
 			return nil, fmt.Errorf("split confirm: inspect segment %d: %w", i, statErr)
 		} else {
-			equal, compareErr := exactFileBytesEqual(splitCtx, tmp, dst, mediatools.ConditioningMaxSnapshotBytes)
+			equal, compareErr := exactFileBytesEqual(splitCtx, tmp, dst, tools.ConditioningMaxSnapshotBytes)
 			if compareErr != nil || !equal {
 				return nil, fmt.Errorf("split confirm: existing segment %d bytes do not match identity", i)
 			}

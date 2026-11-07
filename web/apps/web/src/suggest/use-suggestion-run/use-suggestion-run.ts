@@ -4,47 +4,39 @@ import type { Intent } from "@loomarr/api/models/intent";
 import { unwrap } from "@loomarr/api/unwrap";
 import type { SuggestionPhase } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { roundOf } from "../round";
-import {
-  clearSuggestionDraft,
-  readActiveSuggestionJob,
-  readSuggestionDraft,
-  writeActiveSuggestionJob,
-  writeSuggestionDraft,
-} from "../suggestion-draft";
-import type { SuggestionRun } from "./use-suggestion-run.type";
+import { clearSuggestionDraft, readSuggestionDraft, writeSuggestionDraft } from "../suggestion-draft";
+import type { SuggestionRun, SuggestionRunJob } from "./use-suggestion-run.type";
 
 // Owns one suggestion run: submit an intent, follow it through the live phases, and
 // surface the proposal it produced.
 //
 // Detailed phases (searching · reasoning · scoring) are transient SSE hints. The
-// Proposal Job Journey is the durable source of truth, restored from session storage
-// after reload and polled while generating; SSE only invalidates that same read sooner.
-const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
+// Proposal Job Journey is the durable source of truth, polled while generating; SSE only
+// invalidates that same read sooner. Which Job that is belongs to the caller (the Guide keeps
+// it in the URL): a submit or resume reports the new Job through `onJob`, and the run stays
+// pending until `onJob` settles, so no frame shows the form between the two.
+const useSuggestionRun = ({ jobId, onJob }: SuggestionRunJob): SuggestionRun => {
   const queryClient = useQueryClient();
-  const [jobId, setJobIdState] = useState<string | undefined>(
-    () => initialJobId ?? readActiveSuggestionJob(),
-  );
   // Keep the complete intent after an authorized edit clears the finished job. The form must
   // retain constraints; its description alone is not an honest retry of the request.
   const [intent, setIntent] = useState<Intent | undefined>(() =>
-    initialJobId === undefined ? readSuggestionDraft() : undefined,
+    jobId === undefined ? readSuggestionDraft() : undefined,
   );
   const [phase, setPhase] = useState<SuggestionPhase | undefined>();
   const [round, setRound] = useState<number | undefined>();
 
-  // A deep-linked Journey is just as resumable as one started in this tab. Persist
-  // it before the Guide's Close action removes the URL handoff, so reopening the
-  // panel restores the same review and its Job-scoped local title choices.
-  useEffect(() => {
-    if (initialJobId && typeof window !== "undefined") {
-      writeActiveSuggestionJob(initialJobId);
-    }
-  }, [initialJobId]);
-
-  const submit = proposalsApi.useSubmitProposal();
+  const submit = proposalsApi.useSubmitProposal({
+    mutation: {
+      onSuccess: async (res) => {
+        if (res.status !== 200) return;
+        clearSuggestionDraft();
+        await onJob(res.data.jobId);
+      },
+    },
+  });
   const revision = proposalJobsApi.useReviseProposalJob({
     mutation: {
       // Keep the mutation pending until the authoritative Journey has been
@@ -78,10 +70,6 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
   });
 
   const journey = unwrap(journeyQuery.data);
-  const setJobId = (next: string | undefined) => {
-    setJobIdState(next);
-    writeActiveSuggestionJob(next);
-  };
   const start = (intent: Intent) => {
     setIntent(intent);
     // The POST can reject before it creates a durable Proposal Job (for example when
@@ -90,16 +78,7 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
     writeSuggestionDraft(intent);
     setPhase(undefined);
     setRound(undefined);
-    submit.mutate(
-      { data: intent },
-      {
-        onSuccess: (res) => {
-          if (res.status !== 200) return;
-          clearSuggestionDraft();
-          setJobId(res.data.jobId);
-        },
-      },
-    );
+    submit.mutate({ data: intent });
   };
   const revise = (nextIntent: Intent) => {
     if (!jobId) return;
@@ -135,13 +114,13 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
       setIntent(undefined);
       setPhase(undefined);
       setRound(undefined);
-      setJobId(nextJobId);
+      void onJob(nextJobId);
     },
+    // Clears this run's own state. Leaving the Job is the caller's: it owns which Job is shown.
     reset: (preserveIntent = false) => {
       if (preserveIntent && journey?.intent) setIntent(journey.intent);
       submit.reset();
       revision.reset();
-      setJobId(undefined);
       setPhase(undefined);
       setRound(undefined);
       if (!preserveIntent) {

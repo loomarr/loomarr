@@ -8,19 +8,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // fakeSessions implements api.SessionManager. The API layer must not care how hashes are
 // produced — it only surfaces them and passes them back for revocation.
 type fakeSessions struct {
-	list    []store.Session
+	list    []identitystore.Session
 	revoked []string
 	err     error
 }
 
 func (f *fakeSessions) Revoke(context.Context, string) error { return nil }
-func (f *fakeSessions) List(context.Context, string) ([]store.Session, error) {
+func (f *fakeSessions) List(context.Context, string) ([]identitystore.Session, error) {
 	return f.list, f.err
 }
 func (f *fakeSessions) RevokeHash(_ context.Context, hash string) error {
@@ -52,22 +52,17 @@ func newSessionsHarness(t *testing.T, configs ...sessionsHarnessConfig) *session
 
 	fs := &fakeSessions{}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		if err := defaults.Store.UpsertUser(context.Background(), store.User{
-			ID: "u1", Name: "Ada", Role: store.RoleAdmin,
+		if err := defaults.Store.UpsertUser(context.Background(), identitystore.User{
+			ID: "u1", Name: "Ada", Role: identitystore.RoleAdmin,
 		}); err != nil {
 			t.Fatal(err)
 		}
 		return api.Router(defaults.Log, api.Options{
-			Store:    defaults.Store,
-			Auth:     defaults.Auth,
-			Log:      defaults.Log,
-			Sessions: fs,
-			LiveConfigInt: func(key string) int {
-				if key == "suggest.max_acquisitions" {
-					return config.DefaultQuota
-				}
-				return 0
-			},
+			Store:        defaults.Store,
+			Auth:         defaults.Auth,
+			Log:          defaults.Log,
+			Sessions:     fs,
+			LiveSettings: mapSettings{"suggest.max_acquisitions": config.DefaultQuota},
 		})
 	})
 	return &sessionsHarness{apiHarness: base, Sessions: fs}
@@ -92,7 +87,7 @@ func TestSessions_RequireAdmin(t *testing.T) {
 func TestSessions_ListShapesForReview(t *testing.T) {
 	harness := newSessionsHarness(t)
 	now := time.Unix(1_700_000_000, 0).UTC()
-	harness.Sessions.list = []store.Session{
+	harness.Sessions.list = []identitystore.Session{
 		{TokenHash: "hash-a", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 	}
 

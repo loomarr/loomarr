@@ -91,10 +91,11 @@ describe("AppShell", () => {
   });
 
   // The v2 mock's `navDefs`, with #1659's rename: Home · Guide · Requests · Filler · People ·
-  // Settings · Help. Counted, not just spot-checked, because the count IS the claim — `Channels` and
-  // `Suggest` folding into `/guide` is what took this from nine to seven, and a regression
-  // would most likely show up as an extra entry rather than a wrong one.
-  it("gives an admin exactly the mock's seven", async () => {
+  // Settings · Help, plus the Library after Guide (#2151, design/library). Counted, not just
+  // spot-checked, because the count IS the claim — `Channels` and `Suggest` folding into `/guide`
+  // took this from nine to seven before the Library made it eight, and a regression would most
+  // likely show up as an extra entry rather than a wrong one.
+  it("gives an admin exactly the mock's eight", async () => {
     renderShell(true);
     // Awaited: the RouterHarness resolves before Links render, so reading the DOM
     // synchronously finds an empty nav.
@@ -104,15 +105,15 @@ describe("AppShell", () => {
       // The footer identity link (Your account) is not a nav section — it is you. Excluded
       // by its aria-label rather than its text, which is the avatar initials glued to the
       // name ("OPOperator") and would silently stop matching if either changed.
-      .filter((a) => a.getAttribute("aria-label") !== "Your account")
+      .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
       .map((a) => a.textContent?.trim());
-    expect(labels).toEqual(["Home", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
+    expect(labels).toEqual(["Home", "Guide", "Library", "Requests", "Filler", "People", "Settings", "Help"]);
   });
 
   // The palette opens on ⌘K or Ctrl K everywhere; the hint names the one this keyboard has.
   it("names the search shortcut for the viewer's platform", async () => {
     renderShell(true);
-    const search = await screen.findByRole("button", { name: "Open global search" });
+    const search = await screen.findByRole("button", { name: /^Search…/ });
     const apple = /mac|iphone|ipad|ipod/i.test(navigator.platform);
     expect(search).toHaveTextContent(apple ? "⌘K" : "Ctrl K");
     expect(search).toHaveAttribute("aria-keyshortcuts", apple ? "Meta+K" : "Control+K");
@@ -203,10 +204,20 @@ describe("AppShell", () => {
       const nav = await screen.findByRole("navigation", { name: "Primary" });
       const labels = within(nav)
         .getAllByRole("link")
-        .filter((a) => a.getAttribute("aria-label") !== "Your account")
+        .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
         .map((a) => a.textContent?.trim());
-      expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
-      expect(screen.getByRole("link", { name: "Watch" })).toHaveAttribute("href", "/channels/ch-7/watch");
+      expect(labels).toEqual([
+        "Home",
+        "Watch",
+        "Guide",
+        "Library",
+        "Requests",
+        "Filler",
+        "People",
+        "Settings",
+        "Help",
+      ]);
+      expect(screen.getByRole("link", { name: "Watch" })).toHaveAttribute("href", "/watch/ch-7");
     });
 
     it("inserts Watch second for a member once a channel exists", async () => {
@@ -214,7 +225,7 @@ describe("AppShell", () => {
       const nav = await screen.findByRole("navigation", { name: "Primary" });
       const labels = within(nav)
         .getAllByRole("link")
-        .filter((a) => a.getAttribute("aria-label") !== "Your account")
+        .filter((a) => !a.getAttribute("aria-label")?.startsWith("Your account"))
         .map((a) => a.textContent?.trim());
       expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Notifications", "Help"]);
     });
@@ -236,7 +247,7 @@ describe("AppShell", () => {
     it("highlights Watch on any channel's watch route, not only the rail's own target", async () => {
       // A different channel ("$id") than the rail's own target ("ch-7") — any channel's Watch
       // route must light the rail's Watch entry, not just the one it links to.
-      renderShellAt("/channels/$id/watch", { isAdmin: true, watchChannelId: "ch-7" });
+      renderShellAt("/watch/$id", { isAdmin: true, watchChannelId: "ch-7" });
       const watch = await screen.findByRole("link", { name: "Watch" });
       // "You are here" is neutral (#1909 Q1): elevated fill, foreground text at 500, never amber.
       expect(watch).toHaveClass("bg-static-800", "font-medium", "text-foreground");

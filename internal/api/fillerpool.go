@@ -23,7 +23,7 @@ type PoolChannelDTO struct {
 	ChannelID  string `json:"channelId" doc:"Channel id"`
 	Name       string `json:"name" doc:"Channel name"`
 	Number     int    `json:"number" doc:"Channel number"`
-	Level      string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"Which ladder rung this channel's breaks resolve at. bumper_card means the catalog cannot fill them and the embedded card plays."`
+	Level      string `json:"level" enum:"exact,widened,audience,bumper_card" doc:"Which ladder rung this channel's breaks resolve at. bumper_card means no ad can fill them: the channel's station material plays, else the embedded card."`
 	Total      int    `json:"total" doc:"Eligible clips available to this channel at its widest rung"`
 	DurationMs int64  `json:"durationMs" doc:"Combined playable duration at the widest eligible rung"`
 	Categories int    `json:"categories" doc:"Distinct grounded product categories at the widest eligible rung"`

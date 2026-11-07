@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/mediatools"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // The wire's needsDetails is the domain predicate, not a client-side guess from kind + tagged: an
@@ -24,7 +24,7 @@ func TestClipToDTONeedsDetailsFollowsThePredicate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := clipToDTO(store.Clip{Clip: tc.clip}, false, nil).NeedsDetails; got != tc.want {
+			if got := clipToDTO(catalogstore.Clip{Clip: tc.clip}, false, nil).NeedsDetails; got != tc.want {
 				t.Errorf("needsDetails = %v, want %v", got, tc.want)
 			}
 		})
@@ -35,11 +35,11 @@ func TestClipMediaDTOProjectsPreparedPlaybackFacts(t *testing.T) {
 	tags := filler.SidecarTags{MediaAssets: &filler.MediaAssetManifest{
 		Playback: &filler.MediaDerivativeLineage{
 			Asset: filler.MediaAssetIdentity{Bytes: 9_361_105},
-			Recipe: mediatools.DerivativeRecipe{
+			Recipe: tools.DerivativeRecipe{
 				Container: "mp4", VideoCodec: "h264", AudioCodec: "aac",
 				AudioChannels: 2, AudioRateHz: 48_000,
 			},
-			OutputProbe: mediatools.Probed{Width: 1920, Height: 1080, Cadence: "24000/1001"},
+			OutputProbe: tools.Probed{Width: 1920, Height: 1080, Cadence: "24000/1001"},
 		},
 	}}
 

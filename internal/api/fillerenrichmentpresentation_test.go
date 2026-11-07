@@ -8,17 +8,17 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
 )
 
 func TestFillerExactClipIncludesServerOwnedEnrichmentPresentation(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	putClip(t, st, filler.Clip{Hash: "details", Path: "details.mp4", Name: "Details", Kind: filler.Commercial})
 	now := time.Unix(1_700_000_500, 0).UTC()
-	state := fillerenrichment.State{
-		ClipHash: "details", Axis: fillerenrichment.AxisKind, Status: fillerenrichment.StatusComplete,
-		Value: fillerenrichment.Value{Text: "commercial"},
-		Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceItem,
+	state := enrichment.State{
+		ClipHash: "details", Axis: enrichment.AxisKind, Status: enrichment.StatusComplete,
+		Value: enrichment.Value{Text: "commercial"},
+		Evidence: enrichment.Evidence{Kind: enrichment.EvidenceItem,
 			Reference: "item.title", Confidence: 100, Producer: "metadata", ProducerVersion: "1", ObservedAt: now},
 	}
 	if _, changed, err := st.ApplyFillerEnrichment(context.Background(), state, now); err != nil || !changed {

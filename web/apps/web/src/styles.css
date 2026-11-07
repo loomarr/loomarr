@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@loomarr/tokens/theme.css";
+@import "@loomarr/design-system/theme.css";
 
 /* Self-hosted Geist + Geist Mono (§2.2) land in 13.2 with the visual harness (they
    only matter for deterministic screenshots); the token font-stack falls back to

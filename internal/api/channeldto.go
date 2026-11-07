@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -224,7 +225,7 @@ func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]s
 		return nil, err
 	}
 	return schedule.ApplyLineup(current, incoming, schedule.LineupReplace,
-		schedule.ApplyOpts{PreserveByKey: true}), nil
+		schedule.ApplyOpts{PreserveByKey: true, Now: time.Now().UTC()}), nil
 }
 
 // lineupEntriesFromDTOs validates + converts the lossy edit DTOs into partial LineupEntries

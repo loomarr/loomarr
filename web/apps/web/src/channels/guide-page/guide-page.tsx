@@ -9,6 +9,7 @@ import {
   guideSelectionForChannel,
   layoutGuide,
   moveGuideSelection,
+  useGuideWindow,
 } from "@loomarr/core/guide";
 import { GuideCompact, type GuideFilter, GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
@@ -18,22 +19,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { ColorBars } from "@/components/loomarr/shell/color-bars";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { TvStatic } from "@/components/loomarr/shell/tv-static";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
-import { Image } from "@/components/ui/image";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useLoomarrEventListener } from "@/events/events-provider";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
-import { type ChannelSuggestionStage, ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
-import {
-  clearSuggestionDraft,
-  readActiveSuggestionJob,
-  readSuggestionDraft,
-} from "@/suggest/suggestion-draft";
+import { ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
+import { originationHeading } from "@/suggest/origination-flow";
+import { useOriginationFlow } from "@/suggest/use-origination-flow";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 import type { GuidePageProps } from "./guide-page.type";
@@ -71,11 +68,10 @@ const WINDOW_CHOICES = [
 const RETENTION_DAYS = 1;
 const FORWARD_DAYS = 6;
 
-// The now-line advances CLIENT-SIDE from the block timestamps. The browser already knows the
+// The now-line advances CLIENT-SIDE (`useGuideWindow`'s `nowMs`). The browser already knows the
 // wall clock, so pushing "time passed" over SSE would be pure waste — a frame per second per
 // viewer to transmit something every client can compute. SSE is reserved for the genuine
-// invalidation (a lineup changed), below.
-const NOW_TICK_MS = 30_000;
+// invalidation (a lineup changed).
 
 // The hours the START picker offers. Every third hour is enough to land anywhere in the day
 // in one click; a 24-entry list is a scroll, not a choice.
@@ -101,11 +97,11 @@ const reconcileSelection = (
   return kept ?? (first ? guideSelectionForChannel(layout, first, atMs) : undefined);
 };
 
-// The programme card's art: the same Image (ThumbHash placeholder, sized sources) the old
+// The programme card's art: the same ServedImage (ThumbHash placeholder, sized sources) the old
 // detail card used, contained rather than cropped so it still identifies what will air.
 const renderArtwork = (airing: GuideAiringLayout) =>
   airing.source.thumbImage ? (
-    <Image image={airing.source.thumbImage} alt="" sizes="360px" className="size-full object-contain" />
+    <ServedImage image={airing.source.thumbImage} alt="" sizes="360px" fit="contain" />
   ) : airing.source.thumbUrl ? (
     <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
   ) : undefined;
@@ -121,17 +117,10 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = ({
-  initialIntent,
-  initialJobId,
-  openOnArrival,
-  openManualOnArrival,
-  initialIdeaId,
-}: GuidePageProps) => {
+const GuidePage = ({ search }: GuidePageProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   // Selection owns the grid's roving Tab stop; actual hover/focus owns its preview.
   const [selection, setSelection] = useState<GuideSelection>();
   const [dayOffset, setDayOffset] = useState<number>(0);
@@ -141,6 +130,10 @@ const GuidePage = ({
   const [windowMinutes, setWindowMinutes] = useState<number>(() =>
     phoneWidth ? Number(WINDOW_CHOICES[0].value) : DEFAULT_WINDOW_MINUTES,
   );
+  // `nowMs` drives the now-line and moves on its own timer. `anchorMs` pins TODAY's window so the
+  // grid does not slide under the reader while they look at it: it advances only when the clock
+  // nears the window's end (see `useGuideWindow`). The now-line moves; the axis stays put.
+  const { nowMs, anchorMs } = useGuideWindow(windowMinutes);
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
   // from `startHour` so stepping away from a chosen start hour is still relative to it.
   const [hourShift, setHourShift] = useState<number>(0);
@@ -154,73 +147,26 @@ const GuidePage = ({
   const hasCustomView = startHour !== null;
   // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
   // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
-  // dialog. `adding` toggles it open.
-  //
-  // Opens on arrival when the wizard handed off a template (§13), a setup round trip retained
-  // a draft, or this tab owns an active Proposal Job. The last case makes a reload return to the
-  // current review rather than a bare grid; closing still hides it for the current page lifetime.
-  const [adding, setAdding] = useState(() =>
-    Boolean(
-      initialIntent ||
-        initialJobId ||
-        openOnArrival ||
-        openManualOnArrival ||
-        readActiveSuggestionJob() ||
-        readSuggestionDraft(),
-    ),
-  );
-  const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>("describe");
-
-  // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
-  // panel with a template the operator already dismissed — and right after the wizard, on a
-  // first-run install, a refresh is likely rather than exotic. `replace: true` keeps the
-  // dismissal out of history: closing a panel is not a place you navigate back to.
-  const closePanel = () => {
-    setAdding(false);
-    clearSuggestionDraft();
-    if (initialIntent || initialJobId || openOnArrival || openManualOnArrival || initialIdeaId)
-      void navigate({ to: "/guide", search: {}, replace: true });
-  };
-
-  // A recovered job is deliberately resumable from the URL, but a user who explicitly starts
-  // another channel must not resume that old job on reload. Keep the panel open while replacing
-  // only this handoff's search fields; route-owned search remains free to retain any unrelated
-  // parameters it grows in future.
-  const startFresh = () => {
-    setAdding(true);
-    void navigate({
-      to: "/guide",
-      search: (search) => ({ ...search, intent: undefined, job: undefined }),
-      replace: true,
-    });
-  };
+  // dialog. Its state is the route's search params (useOriginationFlow); the header names its
+  // current step from the same run the panel renders.
+  const flow = useOriginationFlow(search);
+  const adding = flow.open;
+  const heading = originationHeading(flow.stage, isAdmin);
 
   // The inline panel approved a proposal, which created the channel — drop the operator on
   // its page, and refresh the guide behind them.
   const onCreated = (id: string) => {
-    setAdding(false);
     void queryClient.invalidateQueries({ queryKey: channelsApi.getListChannelsQueryKey() });
-    // Navigating away to the new channel drops `?intent=` with the rest of the URL, so this
-    // needs no explicit clear the way closePanel does.
     void navigate({ to: "/channels/$id", params: { id } });
   };
-
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
-    return () => clearInterval(id);
-  }, []);
-
-  // `mountedAt` pins TODAY's window so the grid does not slide under the reader every thirty
-  // seconds while they are looking at it. The now-line moves; the axis stays put.
-  const [mountedAt] = useState<number>(() => Date.now());
 
   // The window lives in guide-window.ts, shared with the route's prefetch loader: TODAY's start
   // is quantised to a minute so a hover-prefetch and the click that follows address the SAME
   // react-query key. An unquantised window recomputes `from` between the two and warms an entry
   // the page never reads — a prefetch that costs a request and saves nothing.
   const { from, to } = useMemo(
-    () => guideWindow({ at: mountedAt, dayOffset, windowMinutes, hourShift, startHour }),
-    [dayOffset, windowMinutes, mountedAt, hourShift, startHour],
+    () => guideWindow({ at: anchorMs, dayOffset, windowMinutes, hourShift, startHour }),
+    [dayOffset, windowMinutes, anchorMs, hourShift, startHour],
   );
 
   // "Are we looking at the present?" — drives the NOW button's tone. Any of the three
@@ -250,22 +196,16 @@ const GuidePage = ({
       ...(dayOffset < FORWARD_DAYS ? [{ hourShift, dayOffset: dayOffset + 1 }] : []),
     ];
     for (const n of neighbours) {
-      const w = guideWindow({ at: mountedAt, windowMinutes, startHour, ...n });
+      const w = guideWindow({ at: anchorMs, windowMinutes, startHour, ...n });
       void queryClient.prefetchQuery(channelsApi.getChannelGuideQueryOptions(w));
     }
-  }, [settled, queryClient, mountedAt, dayOffset, hourShift, windowMinutes, startHour]);
+  }, [settled, queryClient, anchorMs, dayOffset, hourShift, windowMinutes, startHour]);
 
-  // Live update: a `channel` frame means a lineup actually changed (a reconcile completed),
-  // which is the ONE thing the client cannot derive on its own. Refetching on that keeps the
-  // grid honest without polling.
-  //
-  // Deliberately not `onTitle`: a title becoming available fires BEFORE the backfill that
-  // places it, so refetching there would race and often return the pre-backfill lineup.
-  useLoomarrEventListener({
-    onChannel: () => {
-      void queryClient.invalidateQueries({ queryKey: channelsApi.getChannelGuideQueryKey({ from, to }) });
-    },
-  });
+  // Live update needs no listener here: a `channel` frame means a lineup actually changed (a
+  // reconcile completed), and the SSE bus invalidates every cached `/v1/guide` window —
+  // the one on screen and the prefetched neighbours alike. Deliberately not `title`: a title
+  // becoming available fires BEFORE the backfill that places it, so refetching there would race
+  // and often return the pre-backfill lineup.
 
   const body = unwrap(guide.data);
   const channels = useMemo(() => body?.channels ?? [], [body]);
@@ -305,8 +245,9 @@ const GuidePage = ({
     },
     [layout, selected],
   );
+  // A guide row or block tunes its channel (#2088): the channel page now opens on Info, not Watch.
   const onOpenChannel = useCallback(
-    (id: string) => void navigate({ to: "/channels/$id", params: { id } }),
+    (id: string) => void navigate({ to: "/watch/$id", params: { id } }),
     [navigate],
   );
   const renderRowMenu = useCallback(
@@ -338,34 +279,8 @@ const GuidePage = ({
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
-        title={
-          !adding
-            ? "Channels"
-            : suggestionStage === "review"
-              ? "Review your channel"
-              : suggestionStage === "updating"
-                ? "Updating suggestions"
-                : suggestionStage === "generating"
-                  ? "Finding titles"
-                  : suggestionStage === "failed"
-                    ? "Channel suggestion"
-                    : isAdmin
-                      ? "Add a channel"
-                      : "Request a channel"
-        }
-        description={
-          adding
-            ? suggestionStage === "review"
-              ? "Choose what belongs. Nothing is created until you continue."
-              : suggestionStage === "updating"
-                ? "Your current lineup stays in place while Loomarr refreshes its suggestions."
-                : suggestionStage === "generating"
-                  ? "Loomarr is finding titles that match your brief."
-                  : suggestionStage === "failed"
-                    ? "Your brief is saved. Choose a recovery option below."
-                    : "Describe what you want to watch. You'll choose the final titles before anything is created."
-            : "Every channel Loomarr manages, and what's on right now."
-        }
+        title={adding ? heading.title : "Channels"}
+        description={adding ? heading.description : "Every channel Loomarr manages, and what's on right now."}
         actions={
           /* THE origination door (§12) — for both roles, since `/suggest` folded in here and
             this is now the only one in the app. Toggles the ChannelSuggestPanel open below:
@@ -387,7 +302,7 @@ const GuidePage = ({
           (!isEmpty || adding) && (
             <Button
               variant={adding ? "outline" : "suggest"}
-              onClick={() => (adding ? closePanel() : setAdding(true))}
+              onClick={adding ? flow.close : flow.openPanel}
               aria-expanded={adding}
             >
               {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
@@ -401,17 +316,8 @@ const GuidePage = ({
           spans the guide; its content sits in the centred form tier (#1817 Q10), inside the
           page-edge contract's 24 px gutter (16 below `sm`). */}
       {adding && (
-        <div className="border-border border-b bg-card px-4 py-4.5 sm:px-6">
-          <ChannelSuggestPanel
-            className="mx-auto max-w-form"
-            initialIntent={initialIntent}
-            initialJobId={initialJobId}
-            initialManual={openManualOnArrival}
-            initialIdeaId={initialIdeaId}
-            onCreated={onCreated}
-            onStartFresh={startFresh}
-            onStageChange={setSuggestionStage}
-          />
+        <div className="border-border bg-card border-b px-4 py-4.5 sm:px-6">
+          <ChannelSuggestPanel className="max-w-form mx-auto" flow={flow} onCreated={onCreated} />
         </div>
       )}
 
@@ -419,7 +325,7 @@ const GuidePage = ({
           much time is on screen. Precise planning controls live in the secondary View row. */}
       {!adding && channels.length > 0 && (
         <>
-          <div className="flex flex-wrap items-center gap-3.5 border-border/60 border-b px-7 py-2.5">
+          <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
             <div className="flex items-center gap-1.75">
               <Select value={String(dayOffset)} onValueChange={(v) => setDayOffset(Number(v))}>
                 <SelectTrigger className="h-6.5 font-mono text-xs" aria-label="Day">
@@ -428,7 +334,7 @@ const GuidePage = ({
                 <SelectContent>
                   {dayChoices.map((d) => (
                     <SelectItem key={d} value={String(d)} className="font-mono text-xs">
-                      {dayLabel(d, mountedAt)}
+                      {dayLabel(d, anchorMs)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -441,7 +347,7 @@ const GuidePage = ({
                   type="button"
                   onClick={() => setDayOffset(0)}
                   className={cn(
-                    "cursor-pointer rounded-md border border-border px-2.5 py-0.5 font-mono text-2xs transition-colors hover:border-static-400",
+                    "border-border text-2xs hover:border-static-400 cursor-pointer rounded-md border px-2.5 py-0.5 font-mono transition-colors",
                     dayOffset < 0 ? "text-static-400" : "text-tune",
                   )}
                 >
@@ -465,7 +371,7 @@ const GuidePage = ({
               <Button
                 variant="outline"
                 size="sm"
-                className={cn("h-6.5 font-mono text-2xs", atNow ? "text-static-400" : "text-foreground")}
+                className={cn("text-2xs h-6.5 font-mono", atNow ? "text-static-400" : "text-foreground")}
                 onClick={() => {
                   setHourShift(0);
                   setDayOffset(0);
@@ -505,7 +411,7 @@ const GuidePage = ({
                         "min-w-8 cursor-pointer rounded-md border px-2 py-1 font-mono text-xs transition-colors",
                         // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
                         active
-                          ? "border-foreground bg-static-800 font-semibold text-foreground"
+                          ? "border-foreground bg-static-800 text-foreground font-semibold"
                           : "border-border text-static-400 hover:border-static-400",
                       )}
                     >
@@ -521,7 +427,7 @@ const GuidePage = ({
               size="sm"
               className={cn(
                 "h-6.5",
-                viewOptionsOpen && "border-foreground bg-static-800 font-semibold text-foreground",
+                viewOptionsOpen && "border-foreground bg-static-800 text-foreground font-semibold",
               )}
               aria-label={hasCustomView ? "View options, custom" : "View options"}
               aria-expanded={viewOptionsOpen}
@@ -529,7 +435,7 @@ const GuidePage = ({
               onClick={() => setViewOptionsOpen((open) => !open)}
             >
               {hasCustomView ? (
-                <span className="size-2 rounded-full bg-foreground" aria-hidden />
+                <span className="bg-foreground size-2 rounded-full" aria-hidden />
               ) : (
                 <SlidersHorizontal className="size-3.5" aria-hidden />
               )}
@@ -540,7 +446,7 @@ const GuidePage = ({
           {viewOptionsOpen && (
             <div
               id="guide-view-options"
-              className="flex flex-wrap items-center justify-start gap-x-6 gap-y-2 border-border/60 border-b bg-card/40 px-7 py-2.5 sm:justify-end"
+              className="border-border/60 bg-card/40 flex flex-wrap items-center justify-start gap-x-6 gap-y-2 border-b px-7 py-2.5 sm:justify-end"
             >
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
@@ -629,7 +535,7 @@ const GuidePage = ({
               description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
               action={{
                 label: isAdmin ? "Add a channel" : "Request a channel",
-                onClick: () => setAdding(true),
+                onClick: flow.openPanel,
               }}
             />
           </div>
@@ -642,7 +548,7 @@ const GuidePage = ({
               <div
                 role="status"
                 aria-label="Loading guide"
-                className="pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-signal"
+                className="bg-signal pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse"
               />
             )}
             {layout && phoneWidth ? (
@@ -656,7 +562,7 @@ const GuidePage = ({
                 onFilterChange={setFilter}
                 selection={selected}
                 onSelect={setSelection}
-                onWatch={(id) => void navigate({ to: "/channels/$id/watch", params: { id } })}
+                onWatch={(id) => void navigate({ to: "/watch/$id", params: { id } })}
                 renderArtwork={renderArtwork}
               />
             ) : layout ? (

@@ -117,7 +117,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               {selected.map((id) => (
                 <li
                   key={id}
-                  className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-sm"
+                  className="border-border bg-muted/40 flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm"
                 >
                   <span>{labelOf(id)}</span>
                   <button

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/proctree"
 )
 
 // The class probe measures what one stream of each cost class costs this host (#1512 G5). It never
@@ -41,7 +43,9 @@ const (
 	// them for a moment after ffmpeg exits, and the unsettled ramp read 11 or 12 on the dev GeForce.
 	sessionSettlePoll = 200 * time.Millisecond
 	sessionSettleMax  = 3 * time.Second
-	// probeNice is the probe encoders' scheduling priority: the lowest, below every viewer.
+	// probeNice is the probe encoders' scheduling priority: the lowest, below every viewer. The
+	// encoder starts at it (proctree.StartAtNice), not as proctree.LowPriority's batch work: it is
+	// killed outright the moment a viewer tunes in, so its encoder is free for the viewer at once.
 	probeNice = 19
 )
 
@@ -160,10 +164,10 @@ type ClassProbeConfig struct {
 	FFmpeg string
 	// ClipDir holds the generated clips across restarts (playout.state_dir).
 	ClipDir string
-	Encoder Encoder
+	Encoder encode.Encoder
 	// CPUTonemap and GPU are the build's tone-mappers, as the live chain passes them to HostFor.
 	CPUTonemap bool
-	GPU        GPUFilters
+	GPU        encode.GPUFilters
 	// Outputs are the ladder's rung profiles, best first; each distinct height is measured.
 	Outputs []Profile
 	// Classes limits the run (nil = every transcode class). A restart that reuses a stored table
@@ -276,7 +280,7 @@ func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool,
 	if len(cfg.Outputs) == 0 {
 		return ClassCost{}, false, nil
 	}
-	host := HostFor(cfg.Encoder, cfg.CPUTonemap, cfg.GPU)
+	host := encode.HostFor(cfg.Encoder, cfg.CPUTonemap, cfg.GPU)
 	var class FormatClass
 	for _, c := range []FormatClass{Format4KHDR, Format4KSDR} {
 		if aired, _ := (ChannelFormats{Baseline: FormatBaseline, Premium: c}).OnHost(host); aired.Premium != "" {
@@ -321,7 +325,7 @@ func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool,
 // default deint=all processes every frame, including this progressive synthetic input. Pricing
 // each class for the costlier graph avoids borrowing GPU-only costs for interlaced items.
 func fallbackProbeClip(cfg ClassProbeConfig, clip probeClip) (probeClip, bool) {
-	if engineOf(cfg.Encoder) != EncoderVideoToolbox || cfg.GPU.VideoToolboxDeinterlace {
+	if encode.EngineOf(cfg.Encoder) != encode.EncoderVideoToolbox || cfg.GPU.VideoToolboxDeinterlace {
 		return probeClip{}, false
 	}
 	clip.format.Interlaced = true
@@ -339,7 +343,7 @@ func premiumProbeClips(cfg ClassProbeConfig) []probeClip {
 }
 
 func measureClassEnvelope(
-	ctx context.Context, cfg ClassProbeConfig, clip probeClip, path string, out Profile, gpu *GPUFilters,
+	ctx context.Context, cfg ClassProbeConfig, clip probeClip, path string, out Profile, gpu *encode.GPUFilters,
 ) (ClassCost, Pipeline, error) {
 	cost, pipe, err := measureWithDemotion(ctx, cfg, clip, path, out, gpu)
 	if err != nil {
@@ -372,11 +376,11 @@ func wantClass(classes []StreamClass, c StreamClass) bool {
 // measureWithDemotion measures one cell, walking the live ladder's tone-map order on failure
 // (GPUFilters.demote) so the self-check reports what a real HDR programme would get.
 func measureWithDemotion(
-	ctx context.Context, cfg ClassProbeConfig, clip probeClip, path string, out Profile, gpu *GPUFilters,
+	ctx context.Context, cfg ClassProbeConfig, clip probeClip, path string, out Profile, gpu *encode.GPUFilters,
 ) (ClassCost, Pipeline, error) {
 	src := clip.source()
 	for {
-		host := HostFor(cfg.Encoder, cfg.CPUTonemap, *gpu)
+		host := encode.HostFor(cfg.Encoder, cfg.CPUTonemap, *gpu)
 		// The live curve's own graph: the HDR cell it measures is keyed by that curve.
 		output := ChannelOutput(out)
 		output.ToneCurve = cfg.curve()
@@ -480,7 +484,7 @@ func runProbeCommand(ctx context.Context, cfg ClassProbeConfig, purpose, target 
 	cmd.Stdout = &limitedWriter{w: &stdout, n: 1 << 20}
 	cmd.Stderr = &limitedWriter{w: &stderr, n: 16 << 10}
 	run := cfg.Manager.Begin(diagnostics.ProcessSpec{Purpose: purpose, Target: target, Executable: cfg.FFmpeg, Args: args})
-	err := startLowPriority(cmd)
+	err := proctree.StartAtNice(cmd, probeNice)
 	if err == nil {
 		err = cmd.Wait()
 	}
@@ -557,7 +561,7 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 		Purpose: "capacity_probe", Target: fmt.Sprintf("%s@%dp", class, height), Executable: cfg.FFmpeg, Args: args,
 	})
 	start := time.Now()
-	if err := startLowPriority(cmd); err != nil {
+	if err := proctree.StartAtNice(cmd, probeNice); err != nil {
 		if run != nil {
 			run.Finish(diagnostics.ProcessResult{Err: err})
 		}
@@ -641,7 +645,7 @@ func round3(v float64) float64 { return float64(int64(v*1000+0.5)) / 1000 }
 // SessionProbeConfig is one encoder-session probe.
 type SessionProbeConfig struct {
 	FFmpeg  string
-	Encoder Encoder
+	Encoder encode.Encoder
 	// Bound caps the ramp (SessionProbeBound).
 	Bound   int
 	Manager *diagnostics.ProcessManager
@@ -658,7 +662,7 @@ type SessionProbeConfig struct {
 // the sessions still in use, another application's included, alongside the ones it opened.
 // Software hosts have no such limit: 0.
 func ProbeSessionLimit(ctx context.Context, cfg SessionProbeConfig) (int, error) {
-	if IsSoftwareEncoder(cfg.Encoder) || cfg.Bound <= 0 {
+	if encode.IsSoftware(cfg.Encoder) || cfg.Bound <= 0 {
 		return 0, nil
 	}
 	return yielding(ctx, cfg.Foreground, func(ctx context.Context) (int, error) {
@@ -698,8 +702,8 @@ func settleSessions(ctx context.Context, inUse func(context.Context) (int, bool)
 
 // EncoderSessionsInUse is the in-use session counter for enc's family, or nil when its driver has
 // none: NVIDIA's reports every process's NVENC sessions, which is what a GeForce's cap counts.
-func EncoderSessionsInUse(enc Encoder) func(context.Context) (int, bool) {
-	if engineOf(enc) != EncoderNVENC {
+func EncoderSessionsInUse(enc encode.Encoder) func(context.Context) (int, bool) {
+	if encode.EngineOf(enc) != encode.EncoderNVENC {
 		return nil
 	}
 	return func(ctx context.Context) (int, bool) {
@@ -726,12 +730,12 @@ func EncoderSessionsInUse(enc Encoder) func(context.Context) (int, bool) {
 // batches on tiny real-time inputs and each stays open, so the count is of overlapping sessions; the
 // first refusal ends the ramp. Opening them all at once undercounts: on a GeForce, 16 simultaneous
 // opens past the 12-session cap left just one open. Bounded by sessionProbeTimeout.
-func rampSessions(ctx context.Context, ffmpeg string, enc Encoder, bound int, manager *diagnostics.ProcessManager) (int, error) {
+func rampSessions(ctx context.Context, ffmpeg string, enc encode.Encoder, bound int, manager *diagnostics.ProcessManager) (int, error) {
 	if bound <= 0 {
 		return 0, nil
 	}
 	tiny := Profile{Width: 320, Height: 180, Framerate: 25, AudioBitrate: 64, Encoder: enc}
-	pipe, err := Build(HostFor(enc, false, GPUFilters{}), MediaFormat{}, ChannelOutput(tiny))
+	pipe, err := Build(encode.HostFor(enc, false, encode.GPUFilters{}), MediaFormat{}, ChannelOutput(tiny))
 	if err != nil {
 		return 0, err
 	}
@@ -800,7 +804,7 @@ func openHeldSession(
 		return false, err.Error()
 	}
 	run := manager.Begin(diagnostics.ProcessSpec{Purpose: "encoder_session_probe", Target: target, Executable: ffmpeg, Args: args})
-	if err := startLowPriority(cmd); err != nil {
+	if err := proctree.StartAtNice(cmd, probeNice); err != nil {
 		if run != nil {
 			run.Finish(diagnostics.ProcessResult{Err: err})
 		}

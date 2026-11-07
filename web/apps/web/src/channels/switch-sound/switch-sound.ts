@@ -5,7 +5,7 @@
 //
 // Everything reaches the output through one master gain at the player's own volume; nothing plays
 // when the player is muted, before the page has had a user gesture (a cold autoplay start), or when
-// the viewer has turned the sound off (the Audio menu's "Channel-change sound").
+// the viewer has turned the sound off (Settings' "Channel-change sound").
 
 /** The static's level (before the player's volume): near the programme's own loudness. */
 const STATIC_PEAK = 0.13;
@@ -41,6 +41,17 @@ const noiseBuffer = (ctx: BaseAudioContext, seconds: number) => {
   const data = buffer.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   return buffer;
+};
+
+// The static's loop sounds the same every time, and filling two seconds of it on each press holds
+// up the tuning overlay's paint, so a context keeps one.
+const staticLoops = new WeakMap<BaseAudioContext, AudioBuffer>();
+const staticLoop = (ctx: BaseAudioContext) => {
+  const kept = staticLoops.get(ctx);
+  if (kept) return kept;
+  const loop = noiseBuffer(ctx, 2);
+  staticLoops.set(ctx, loop);
+  return loop;
 };
 
 // A small TV speaker: no deep bass, no air, a boxy mid bump, and a little overdrive.
@@ -124,7 +135,7 @@ const startSwitchSound = (ctx: BaseAudioContext, gate: SwitchSoundGate): SwitchS
 
   // Raw static until lock, with the mains buzz a set's audio stage picks up.
   const noise = ctx.createBufferSource();
-  noise.buffer = noiseBuffer(ctx, 2);
+  noise.buffer = staticLoop(ctx);
   noise.loop = true;
   const level = ctx.createGain();
   level.gain.setValueAtTime(0, t + 0.02);

@@ -73,16 +73,16 @@ const SurfRail = ({
   return (
     <Surface
       accessibilityLabel="Channel surfer"
-      gap="$control"
-      level="overlay"
+      gap="control"
       maxHeight="100%"
       maxWidth="100%"
-      padding={density === "tv" ? "$section" : "$control"}
+      padding={density === "tv" ? "section" : "control"}
       width={surfRailWidth(density)}
+      level="overlay"
     >
       <Surface
         alignItems="center"
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
         flexDirection="row"
         justifyContent="space-between"
@@ -96,11 +96,11 @@ const SurfRail = ({
       </Surface>
 
       {selectedChannel?.now ? (
-        <Surface gap="$control" padding="$control">
+        <Surface gap="control" padding="control">
           <AdaptiveSplit
             breakpoint={density === "touch" ? 520 : 420}
             density={density}
-            gap="$control"
+            gap="control"
             primary={
               <ArtworkFrame
                 density={density}
@@ -111,7 +111,7 @@ const SurfRail = ({
               </ArtworkFrame>
             }
             secondary={
-              <Surface backgroundColor="$transparent" borderWidth={0} gap="$control">
+              <Surface backgroundColor="transparent" borderWidth={0} gap="control">
                 <ChannelIdentity
                   channel={{
                     channelLogoState: selectedLogo ? selectedChannel.channelLogoState : "missing",
@@ -146,7 +146,7 @@ const SurfRail = ({
 
       <ScrollFrame density={density} style={{ maxHeight: density === "tv" ? 440 : 320 }}>
         {groups.map((group) => (
-          <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline" key={group.kind}>
+          <Surface backgroundColor="transparent" borderWidth={0} gap="inline" key={group.kind}>
             <Text density={density} textRole="metadata" tone="secondary">
               {group.label.toUpperCase()}
             </Text>

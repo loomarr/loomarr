@@ -87,7 +87,7 @@ const Switch = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
           // ⚠ Applied to the checked state too, with the green kept — otherwise hovering an ON
           // switch would read as it turning off.
           "peer-hover:border-static-400 peer-checked:peer-hover:border-lock",
-          "peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background",
+          "peer-focus-visible:ring-ring peer-focus-visible:ring-offset-background peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2",
           "peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
           // A disabled switch must not offer the hover affordance — it cannot be flipped.
           "peer-disabled:peer-hover:border-static-700",
@@ -111,7 +111,7 @@ const Switch = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
         className={cn(
           "-translate-y-1/2",
           "bg-static-500 transition-transform motion-reduce:transition-none",
-          "peer-checked:translate-x-3.5 peer-checked:bg-lock",
+          "peer-checked:bg-lock peer-checked:translate-x-3.5",
         )}
       />
     </span>

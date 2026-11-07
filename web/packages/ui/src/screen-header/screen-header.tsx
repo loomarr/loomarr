@@ -12,10 +12,10 @@ const ScreenHeader = ({ actions, title }: ScreenHeaderProps) => {
   return (
     <Surface
       alignItems="center"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       flexDirection="row"
-      gap="$inline"
+      gap="inline"
       minHeight={android ? 64 : undefined}
       paddingBottom={android ? 0 : 10}
       paddingTop={android ? 0 : 6}

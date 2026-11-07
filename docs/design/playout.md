@@ -45,6 +45,19 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   through the same builder tail as items and so matches their sample descriptions. After at most
   `SlateRetry` (10 s) the schedule is asked again and the programme rejoins in progress at the right
   offset. A decoder-configuration mismatch between items is logged with both sample descriptions.
+  An item whose source **ran out** before its slot filled (its encoder read the input to the end
+  and exited 0: a commercial whose audio outlasts its picture, a file shorter than its listed
+  runtime) is not reopened: the rest of its slot is slate (`packager.SourceEnd`), at most
+  `SlateRetry`, after which the schedule is asked again. ffmpeg also exits 0 on a truncated or
+  unreadable file, so a programme that stops minutes early still rejoins as a failure would.
+  Reopening a clip at its last frame started an encoder that produced nothing and failed, which on
+  VAAPI reads as a GPU fault (`A hardware frames reference is required`, 2026-10-24). Any other
+  early end, including a stream that ended on a bad fragment, rejoins at once.
+  A slot with **less than half a frame** left, an item or a card alike, airs nothing: the schedule is
+  asked what airs at its end instead. For a card this is not cosmetic. Its slate would round to no
+  frames, the timeline would never pass the boundary, and the packager would ask for that same
+  instant forever. That happened live at the end of a break whose clips ran out before the break
+  did (2026-10-29): a core spun and the picture froze on the last commercial.
 - **Two audiences, one timeline.** A browser tunes a **master playlist** naming a `<format>.m3u8`
   variant, with `BANDWIDTH`, `CODECS` (read from the channel init), `RESOLUTION` and `FRAME-RATE`.
   Asset names are flat: `<format>-init.mp4` and `<format>-segNNNNNNNN.m4s`. A media server's tuner
@@ -57,7 +70,11 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   that rendition warm but cannot start a new packager or promote one to viewing. Premium snapshots
   require the viewer's learned premium preference. The hint is stripped from init and segment URLs,
   so prefetched bytes use the same signed addresses as the real player. These requests never count
-  as household viewing or as evidence that the client chose premium.
+  as household viewing or as evidence that the client chose premium. What a warm packager airs is
+  not watched either: while no viewer holds it and none has released it in the last
+  `watchedWithin` (10 s), its item lookups carry `WithUnwatched`, and the commercials it resolves
+  are not recorded in the household's rotation (scheduling.md, Rotation). A browser player holds a
+  lease only while a playlist request is in flight; a tuner holds one for its whole session.
   Playlist acquisition is ordered with lifecycle changes; waiting for media readiness releases that
   lifecycle lock so stop, pause and quiesce can cancel a pending response.
 - **Stills.** A warm channel's still is decoded once per segment from its newest listed segment. A cold
@@ -126,6 +143,14 @@ entire table is empty; failed measurements never restore the older whole-stream 
 Rate control is quality-based VBR at quality 22 on every rung. The 1080p budget is an 8 Mbit/s target
 with a 12 Mbit/s cap, and lower rungs scale both by pixel count (720p 3.6/5.3 Mbit/s, 480p 1.6/2.4,
 floor 1.0/1.5). Host capability profiles are data, so every family is golden-tested on any machine.
+
+**The encode vocabulary is shared (#2121).** The encoders, their engines and HEVC siblings, the
+host profile (`HostFor`), the GPU decode rule (`HostProfile.DecodeRefusal`), the device and decode
+arguments, and each family's encoder flags and rate control (`VideoArgs`) live in `internal/media/encode`,
+so the filler pipeline encodes on the same hardware path without importing playout. The per-family
+graphs above stay here: every one fits the item to the channel's uniform output, which a filler
+derivative (source geometry and cadence preserved) does not want. Which encoder a host runs is still
+playout's trial encode (`DetectObserved`); `internal/media/encode` never probes.
 
 **Tone mapping is a given, never black and never silent.** Every HDR source is tone-mapped on every
 SDR output. `playout.tone_curve` picks the one curve (`hable` by default; `mobius`, `reinhard`,
@@ -219,7 +244,8 @@ red/amber/cyan, the 1990s cyan/pink/green, and every other decade, or no bounded
 **Holiday versions.** While a calendar holiday is on, a generated logo carries a small picture to
 its left: Halloween a pumpkin, bat or ghost; Thanksgiving a leaf; Christmas holly or a snowflake;
 New Year a firework; Valentine's Day a heart (`policy.watermark.motifs` picks where there is a
-choice; the first is the default). While a holiday is on, the coloured looks take the holiday's colours whatever colour is chosen (the holiday version is one design);
+choice; the first is the default). The other calendar holidays (Easter, Mother's Day and the
+rest, see #2030) have no holiday version yet: the logo airs plain through them. While a holiday is on, the coloured looks take the holiday's colours whatever colour is chosen (the holiday version is one design);
 a fixed colour gives way too. `policy.watermark.holiday` false turns it off; omitted is on, except that
 a channel whose seasonal mode is off (Ignore holidays) never shows one and a channel limited to some
 holidays shows only those. An uploaded image airs unchanged (no holiday version). The holiday comes
@@ -232,8 +258,9 @@ at the same local instant as the programming: on a US/Eastern channel 9 pm on Oc
 Halloween. The section's holiday rows (`HonouredHolidays`) use the same zone.
 
 **The channel page's On-screen logo section.** It reads two endpoints and holds no copy of the
-calendar. `GET /v1/channels/{id}/watermark/options` returns the holidays this channel honours (empty
-when its seasonal mode is Ignore holidays; only the chosen ones when limited), each with its date
+calendar. `GET /v1/channels/{id}/watermark/options` returns the holidays this channel honours that
+have a holiday version, soonest first (empty when its seasonal mode is Ignore holidays; only the
+chosen ones when limited), each with its date
 window, whether it is in effect today, and its pictures (the first is the default), plus the era label
 and the auto name the logo would carry. The section draws one bordered row per holiday from that list:
 its name, dates and an "In effect now" badge, then its picture chips (a small picture and its name; a
@@ -277,7 +304,7 @@ development briefly built a second one to serve it:
   with the continuous-stream design (#1460, #1507). Phase 4 of #1512 (#1547) removed its code
   (decision [0040](decisions/0040-prepared-media-withdrawn.md)).
 - **Load certification** (`playout-load-cert`, `internal/playoutcert`) retired with the chain.
-- **Per-client `EncodePlan` sessions**, direct-play stream copy and the HEVC-follows-content rule
+- **Per-client encode plans**, direct-play stream copy and the HEVC-follows-content rule
   (V47, V48, V50) are **SUPERSEDED** by the uniform-output packager above: a channel's format follows
   its lineup, never the watching device, and there is no copy path.
 
@@ -456,7 +483,8 @@ It plays the HLS pair above. Two facts make this a real feature and not just a `
   existing `playout_token`: **no new secret**, the token never leaves the server, and the URL
   self-expires (the mock's "signed with the playout token, good for 8 hours"). The HLS routes accept
   **either** the device token (a media server) **or** a valid signed URL (a browser/native app);
-  everything else about segment auth below is unchanged.
+  everything else about segment auth below is unchanged. The op takes no request body and no
+  device capabilities: the optional `quality` query is its only per-viewer input.
 
 **Audio track selection is ours to make, because nobody else is left to make it.** With no explicit
 `-map`, ffmpeg picks one stream per type by "best" — for audio that means **the most channels**,
@@ -473,22 +501,37 @@ gets audio. A hard map without the `?` fails the whole encode on an untagged fil
 goes black rather than one that speaks the wrong language, which is strictly worse. Empty means
 "whatever ffmpeg would have picked", preserving today's behaviour for anyone who wants it.
 
-*A per-channel override is now offered; a per-viewer one is still not (V46).* When the Watch UI (above)
-gave audio a visible control, the question "whose choice is this?" had to be answered honestly. A
-per-**viewer** track is still refused for the reason it always was — it forks the encode per viewer and
-breaks one-encoder-per-channel. But a per-**channel** override is the *same shape* as the instance
-default already described here, just resolved with `policy.playout.audio_language` precedence over the
-global (like every other channel policy, §15) — so the Watch tab's Audio control is **admin-scoped and
-channel-wide**: it re-picks the track for the shared stream, for everyone, exactly as changing the
-instance default would. The per-**title** decision (a subtitled original vs a dub, one program at a
-time) remains a separate, unscoped feature; a channel-wide knob does not pre-empt it.
+*The channel picks the default track; the viewer picks between renditions (#2088).* What
+one-encoder-per-channel forbids is a per-viewer **encode**, not a per-viewer **choice**. An HLS
+alternate rendition is one output per channel that every viewer pulls, and each player picks which one
+it plays. So:
 
-**Subtitles are not a setting yet.** The track probe reports what the current item carries, but the
-encoder deliberately maps video plus one audio stream and drops subtitles. The previously-drawn
-global and Watch-tab burn-in controls were therefore inert and are retired in V55. A future subtitle
-control must add the real encoder filter and its direct-play/transcode consequences in the same
-change; a selectable per-viewer soft track would still require per-viewer output and is outside the
-one-encoder-per-channel model.
+- `policy.playout.audio_language` (with precedence over the global, like every other channel policy,
+  §15) is the channel's **default audio language**, set by an admin in the channel's settings. It
+  is the track the video rendition group's default audio carries.
+- When the airing item also carries another language, playout emits **at most one alternate** audio
+  rendition, so the master playlist carries two audio renditions at most. That is one extra audio-only
+  encode per channel while such an item airs, and nothing per viewer. The viewer chooses between the
+  two in the player.
+- Before #2088 the Watch tab's Audio control re-picked the single shared track for everyone. That is
+  superseded; the admin control is the default language only.
+- The per-**title** decision (a subtitled original vs a dub, one programme at a time) remains a
+  separate, unscoped feature.
+
+**Subtitles are soft renditions, with GPU burn-in only for image formats (#2088; not yet built).** The
+track probe reports what the current item carries; today the encoder maps video plus one audio
+stream and drops subtitles (the inert V55-era burn-in controls were retired). The decided shape:
+
+- **Text subtitles** (SRT, ASS, mov_text, WebVTT) are extracted to one **WebVTT rendition per
+  language** per channel, in the master playlist's subtitle group. Each viewer turns them on or off
+  and picks the language in the player, and the choice is remembered per viewer. The cost is a cheap
+  text extraction per channel, never a video re-encode.
+- **Image subtitles** (PGS, VOBSUB) cannot become text cheaply, so they are **not offered** by default.
+  An admin can set a channel to **always burn in** an image track. That is a GPU overlay in the
+  video graph, and it applies to everyone on the channel. Where the GPU path cannot do it, the track
+  is dropped: never a CPU filter in the playout graph.
+- Nothing the server did not supply is invented: a programme without a subtitle stream shows no
+  subtitle choices.
 
 Both files carry a **`playout_token`** (§15, a generated secret): every segment request is signed, so
 only the operator's media server can pull the stream. Regenerating it invalidates the media server's
@@ -545,7 +588,12 @@ lineup and filler.
   API key), enables the movie and show libraries and scans them. `/v1/setup/status` reports a
   `tunarr_library` check until that is done. The wizard's dedicated "Give Tunarr your library" step
   (`web-ui.md` §13 step 5) is the only UI that triggers this connect; it exists only on the Tunarr
-  path and is never shown to an internal-playout install.
+  path and is never shown to an internal-playout install. Saving a media-server or Tunarr
+  connection setting re-runs the connect, which pushes the current library token to the source
+  Loomarr created. Channel maintenance re-runs it whenever this process has not yet wired the
+  current library connection: after a restart (an environment-set token can change with no save)
+  or after a failed connect. Tunarr redacts the token it stores, so the process's own last push is
+  the only staleness signal.
 - Programming entries need Tunarr's own program id, so the adapter maps media-server item ids through
   Tunarr's persisted `/programs` index (never the ephemeral browse handles). An unindexed item airs
   as flex, and a reconcile with misses triggers one best-effort library scan.

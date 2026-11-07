@@ -73,9 +73,9 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
           {series.map((key) => (
             <li
               key={key}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-sm"
+              className="border-border bg-muted/40 flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm"
             >
-              <span className="font-mono text-muted-foreground text-xs">{labelOfKey(key)}</span>
+              <span className="text-muted-foreground font-mono text-xs">{labelOfKey(key)}</span>
               <button
                 type="button"
                 aria-label={`Remove ${labelOfKey(key)}`}

@@ -13,12 +13,12 @@
     "@loomarr/core": "workspace:*"
   },
   "peerDependencies": {
-    "react-native": ">=0.86 <0.87"
+    "react-native": ">=0.88 <0.89"
   },
   "devDependencies": {
-    "@types/react": "19.2.18",
-    "react-native": "npm:react-native-tvos@0.86.2-0",
+    "@types/react": "19.3.0",
+    "react-native": "npm:react-native-tvos@0.88.1-0",
     "typescript": "7.0.2",
-    "vitest": "4.1.11"
+    "vitest": "5.0.5"
   }
 }

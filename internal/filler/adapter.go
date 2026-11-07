@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // PodAdapter implements the scheduler's PodFiller port (§10): it loads the clip
@@ -15,12 +17,12 @@ import (
 // a per-channel pool (not a per-gap sequence): the scheduler no longer sizes pods
 // to individual gaps.
 type PodAdapter struct {
-	catalog   CatalogReader
-	exposures ExposureReader
+	catalog CatalogReader
+	airings AiringReader
 	// policy is RESOLVED PER CALL, not captured once.
 	//
 	// ⚠ **It was a plain `Policy` value, and that quietly broke every filler setting's
-	// hot-apply.** `app.go` builds the struct at boot with `set.intv(…)`/`set.dur(…)`, so the
+	// hot-apply.** `app.go` builds the struct at boot from `settings.X.Get(set)` reads, so the
 	// values were a snapshot: changing `filler.pod_max`, `filler.min_quality` or (from V51f)
 	// `filler.min_clip_duration`/`max_clip_duration` did nothing until the process restarted.
 	// The setting persisted, the API read it back, and the assembler kept using the old number.
@@ -38,6 +40,8 @@ type PodAdapter struct {
 	policy  func() Policy
 	log     *slog.Logger
 	metrics PodMetrics
+	// now dates the season of a question asked without a break start (seasonAt).
+	now func() time.Time
 }
 
 // PodMetrics observes only attached pods; previews deliberately do not count.
@@ -60,11 +64,15 @@ type CatalogReader interface {
 	AllClips(ctx context.Context) ([]Clip, error)
 }
 
-// ExposureReader is the durable channel-history seam used only for actual break planning.
-// Keeping it separate from CatalogReader makes previews/tests that intentionally have no history
-// explicit, and prevents assembly from acquiring any write capability.
-type ExposureReader interface {
-	FillerExposureRecords(ctx context.Context, channelID string) (map[string]ExposureRecord, error)
+// AiringReader is the durable airing-history seam used only for actual break planning. Keeping it
+// separate from CatalogReader makes previews/tests that intentionally have no history explicit,
+// and prevents assembly from acquiring any write capability.
+//
+// ⚠ The history is the HOUSEHOLD's, not one channel's: a commercial seen on any channel rests on
+// every channel (#2017). Per-channel history let one TV switching channels see the same clips in
+// the same order on two channels within the hour.
+type AiringReader interface {
+	FillerAirings(ctx context.Context) (AiringHistory, error)
 }
 
 // Selection is a channel's per-channel filler choice in filler-native terms (§10) — the
@@ -77,10 +85,11 @@ type Selection struct {
 	EraWindows []EraRange // normalized union; when present, authoritative over Era
 	Audience   Audience   // "" = any
 	Categories []string   // empty = any
-	Kinds      []string   // empty = the default kinds
+	Kinds      []string   // empty = the default kinds (all but political and news)
 	Pinned     []string   // clip ids always included
 	Excluded   []string   // clip ids never used
 	Geography  Geography  // zero country inherits Installation geography from Policy
+	Language   string     // the channel's commercial language; "" inherits Policy.Language
 	// BreakDurationMs is a per-channel override. Zero inherits Policy.BreakDurationMs.
 	BreakDurationMs int64
 	// Spacing is the per-channel repeat spacing for one commercial. Nil inherits Policy.Cooldown;
@@ -92,8 +101,24 @@ type Selection struct {
 //
 // ⚠ `policy` is a RESOLVER, called on every assembly, so a settings change takes effect on the
 // next pod rather than at the next restart. Pass nil for "no policy" — the zero value.
-func NewPodAdapter(catalog CatalogReader, exposures ExposureReader, policy func() Policy, log *slog.Logger) *PodAdapter {
-	return &PodAdapter{catalog: catalog, exposures: exposures, policy: policy, log: log}
+func NewPodAdapter(catalog CatalogReader, airings AiringReader, policy func() Policy, log *slog.Logger) *PodAdapter {
+	return &PodAdapter{catalog: catalog, airings: airings, policy: policy, log: log, now: time.Now}
+}
+
+// WithClock replaces the wall clock seasonAt falls back to.
+func (a *PodAdapter) WithClock(now func() time.Time) *PodAdapter {
+	a.now = now
+	return a
+}
+
+// seasonAt is the household calendar's season for a break starting at t. A question with no
+// break start (the reconciler's pool check, a Tunarr filler list, coverage, a clip's fit) is
+// answered for now, as programming's seasonality is: the periodic sweep rolls it with the date.
+func (a *PodAdapter) seasonAt(pol Policy, t time.Time) schedule.HolidaySeason {
+	if t.IsZero() {
+		t = a.now()
+	}
+	return pol.Calendar.SeasonAt(t)
 }
 
 // WithMetrics binds generation-scoped observations without coupling filler to Prometheus.
@@ -118,14 +143,19 @@ const defaultBreakDurationMs int64 = 120_000 // 2m; mirrors filler.break_duratio
 // gate meant an install with no Tunarr assembled a perfect pod and then got no breaks, because
 // none of its clips carried a uuid.
 //
-// A pod of ONLY the embedded fallback card is not a pool: there is nothing to play, and
-// promising breaks would render as empty channel-named blocks in the guide (§10).
+// A pod no ad fits is not a pool. The embedded fallback card alone has nothing to play, and
+// promising breaks would render as empty channel-named blocks in the guide (§10). Station material
+// alone is not a pool either: it covers a break whose ads are all resting (#2036), and is no reason
+// to give breaks to a channel with no ad, such as a Christmas-only catalog in July (#2030).
 func (a *PodAdapter) HasPool(ctx context.Context, channelID string, seed int64, sel Selection) bool {
 	pod, err := a.Preview(ctx, channelID, seed, sel)
 	if err != nil {
 		if a.log != nil {
 			a.log.Warn("filler pool check failed (channel stays break-free)", "channel", channelID, "err", err)
 		}
+		return false
+	}
+	if pod.MatchLevel == MatchBumperCard {
 		return false
 	}
 	for _, e := range pod.Entries {
@@ -137,11 +167,24 @@ func (a *PodAdapter) HasPool(ctx context.Context, channelID string, seed int64, 
 	return false
 }
 
-// PlayableDurationMs reports the duration of real files in the deterministic pod.
-// The embedded fallback card deliberately contributes nothing: it is generated at
-// playout time and must not extend a commercial break after the selected clips end.
+// PlayableDurationMs reports the duration of real files in the deterministic pod: the length
+// reconcile gives every break on the channel's timeline. The embedded fallback card deliberately
+// contributes nothing: it is generated at playout time and must not extend a commercial break
+// after the selected clips end.
+//
+// ⚠ It is sized WITHOUT the play history, so only the catalog, the selection and the policy move
+// it. Sized from the live rotation, every commercial that aired re-sized every break, the
+// timeline walked from the anchor shifted by tens of seconds or minutes at each reconcile, and
+// the viewer was thrown back into the programme or into the same break again (live smoke,
+// 2026-10-24). Rotation still decides WHICH clips air: PreviewAt assembles each break to this
+// length from its own history snapshot. Holiday seasons are left out for the same reason: a
+// season opening at midnight must not re-size every break (#2030).
 func (a *PodAdapter) PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel Selection) int64 {
-	pod, err := a.Preview(ctx, channelID, seed, sel)
+	clips, err := a.catalog.AllClips(ctx)
+	var pod Pod
+	if err == nil && len(clips) > 0 {
+		pod = a.assemble(clips, nil, channelID, Break{Seed: seed, yearRound: true}, sel, a.pol())
+	}
 	if err != nil {
 		if a.log != nil {
 			a.log.Warn("filler duration check failed (channel stays break-free)", "channel", channelID, "err", err)
@@ -205,15 +248,27 @@ func (a *PodAdapter) PreviewAt(ctx context.Context, channelID string, seed int64
 	return a.previewAt(ctx, channelID, seed, sel, breakStart)
 }
 
-// Break names one break to assemble: its start and the seed derived from it.
+// BreakSlot is one break on a channel's timeline as its callers know it: when it starts and how
+// long its scheduled slot is. The seed is derived from the start by whoever owns the channel.
+type BreakSlot struct {
+	Start  time.Time
+	Length time.Duration
+}
+
+// Break names one break to assemble: its start, the seed derived from it, and the length of its
+// scheduled slot. A zero Length is the configured break length (a break not yet on a timeline).
 type Break struct {
-	Seed  int64
-	Start time.Time
+	Seed   int64
+	Start  time.Time
+	Length time.Duration
+	// yearRound assembles with no holiday seasons, every clip year-round: PlayableDurationMs sizes
+	// breaks with it so a season opening or closing never re-sizes the timeline.
+	yearRound bool
 }
 
 // PreviewAtMany assembles several breaks of one channel — the guide's per-airing hover cards
 // (#1420). Each pod is exactly what PreviewAt returns for that break; the catalog, the policy and
-// the channel's exposure records are read ONCE and each break's snapshot is cut from them in
+// the household's airing history are read ONCE and each break's snapshot is cut from them in
 // memory. It used to be a catalog read plus an exposure query per break, 40-80 full-catalog reads
 // for a four-hour guide once breaks were on.
 func (a *PodAdapter) PreviewAtMany(ctx context.Context, channelID string, sel Selection, breaks []Break) ([]Pod, error) {
@@ -228,17 +283,19 @@ func (a *PodAdapter) PreviewAtMany(ctx context.Context, channelID string, sel Se
 	if len(clips) == 0 {
 		return pods, nil
 	}
-	var records map[string]ExposureRecord
-	if a.exposures != nil {
-		if records, err = a.exposures.FillerExposureRecords(ctx, channelID); err != nil {
+	var history *AiringHistory
+	if a.airings != nil {
+		h, err := a.airings.FillerAirings(ctx)
+		if err != nil {
 			return nil, err
 		}
+		history = &h
 	}
 	// ⚠ Resolved ONCE for the whole batch, for the same reason assemble resolves it once per pod:
 	// a concurrent settings write must not size some breaks by one policy and some by another.
 	pol := a.pol()
 	for i, b := range breaks {
-		pods[i] = a.assemble(clips, records, channelID, b.Seed, sel, b.Start, pol)
+		pods[i] = a.assemble(clips, history, channelID, b, sel, pol)
 	}
 	return pods, nil
 }
@@ -251,9 +308,16 @@ func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64
 	return pods[0], nil
 }
 
-// assemble is the one per-break assembly every preview path runs, over inputs already loaded.
-func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, channelID string, seed int64, sel Selection, breakStart time.Time, pol Policy) Pod {
+// assemble is the one per-break assembly every preview path runs, over inputs already loaded. A
+// break on a timeline is assembled to its slot's own length, which is the hard budget: the slot
+// may be shorter than the configured break (reconcile caps it at the playable pod), and a pod
+// assembled to the setting would run past the slot's end and lose its last ad mid-spot.
+func (a *PodAdapter) assemble(clips []Clip, history *AiringHistory, channelID string, b Break, sel Selection, pol Policy) Pod {
+	seed, breakStart := b.Seed, b.Start
 	breakDurationMs := effectiveBreakDurationMs(sel, pol)
+	if b.Length > 0 {
+		breakDurationMs = b.Length.Milliseconds()
+	}
 	if sel.Spacing != nil && *sel.Spacing >= 0 {
 		pol.Cooldown = *sel.Spacing
 	}
@@ -265,9 +329,13 @@ func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, c
 	// categories/kinds narrow the catalog, pinned/excluded are the overrides. An empty
 	// Selection leaves every field at its zero "any" value → the whole catalog, which is
 	// the prior behaviour (and the additive default for a channel with no filler choice).
-	w := a.windowFor(channelID, seed, sel, podMax, breakDurationMs)
-	if a.exposures != nil {
-		w.Exposures = ExposuresBefore(records, breakStart)
+	var season schedule.HolidaySeason
+	if !b.yearRound {
+		season = a.seasonAt(pol, breakStart)
+	}
+	w := a.windowFor(channelID, seed, sel, podMax, breakDurationMs, season)
+	if history != nil {
+		w.Exposures = ExposuresBefore(*history, breakStart)
 		w.SnapshotAt = breakStart
 	}
 	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
@@ -352,10 +420,11 @@ const maxPodClips = 64
 // They already share the ladder (both end up in `candidatePools`); this is the step before it,
 // and duplicating it is how a meter ends up reporting on a slightly different window than the
 // pod it claims to describe — an off-by-one-field bug that no ladder test would catch.
-func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podMax int, breakDurationMs int64) Window {
+func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podMax int, breakDurationMs int64, season schedule.HolidaySeason) Window {
 	return Window{
+		Season:    season,
 		ChannelID: channelID, Seed: seed,
-		Era: sel.Era, Audience: sel.Audience, Geography: sel.Geography,
+		Era: sel.Era, Audience: sel.Audience, Geography: sel.Geography, Language: sel.Language,
 		EraWindows: append([]EraRange(nil), sel.EraWindows...),
 		// ⚠ The gap IS the break. The scheduler cuts a slot of exactly breakDurationMs and the
 		// playout walks the pod through it by offset, so a pod one second longer loses its tail —
@@ -381,10 +450,28 @@ func (a *PodAdapter) CoverageFor(ctx context.Context, channelID string, sel Sele
 	return a.CoverageFrom(clips, channelID, sel), nil
 }
 
-// Catalog loads the full clip catalog once, for a caller that will then ask several
-// catalog-shaped questions of it (the pool report asks one per live channel). Pairs with
-// CoverageFrom: load here, answer there.
-func (a *PodAdapter) Catalog(ctx context.Context) ([]Clip, error) { return a.catalog.AllClips(ctx) }
+// PoolFor is the pool strip's report (§10 V35) over ONE catalog read: the catalog-wide counts
+// (PoolCounts) plus one CoverageFrom per channel, worst first. `Untagged` is left for the caller,
+// which owns the store predicate (see the field).
+//
+// ⚠ One snapshot answers every number. The counts and each channel's coverage used to come from
+// separate catalog loads, so a clip admitted between them could make the strip disagree with
+// itself; it is also one table read instead of two.
+func (a *PodAdapter) PoolFor(ctx context.Context, channels []PoolChannel) (PoolReport, error) {
+	clips, err := a.catalog.AllClips(ctx)
+	if err != nil {
+		return PoolReport{}, err
+	}
+	report := PoolCounts(clips, a.pol())
+	for _, ch := range channels {
+		report.Channels = append(report.Channels, ChannelCoverage{
+			ChannelID: ch.ChannelID, Name: ch.Name, Number: ch.Number,
+			Report: a.CoverageFrom(clips, ch.ChannelID, ch.Selection),
+		})
+	}
+	OrderWorstFirst(report.Channels)
+	return report, nil
+}
 
 // CoverageFrom is CoverageFor over a catalog the caller already holds — the same derivation,
 // the same window, the same answer, minus the load.
@@ -405,7 +492,7 @@ func (a *PodAdapter) CoverageFrom(clips []Clip, channelID string, sel Selection)
 	}
 	// Seed 0: unused by Coverage (it never draws), and stated here rather than left implicit
 	// so nobody threads a real seed through expecting it to matter.
-	w := a.windowFor(channelID, 0, sel, podMax, breakDurationMs)
+	w := a.windowFor(channelID, 0, sel, podMax, breakDurationMs, a.seasonAt(pol, time.Time{}))
 	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
 	return Coverage(clips, w, pol)
 }
@@ -425,14 +512,14 @@ func (a *PodAdapter) FitForChannel(channelID string, sel Selection, c Clip) Fit 
 	}
 	// Seed 0, for CoverageFor's reason: fit is a property of the clip and the selection, never
 	// of one break, so a real seed would imply an answer that varies per pod.
-	return FitFor(c, a.windowFor(channelID, 0, sel, podMax, breakDurationMs), pol)
+	return FitFor(c, a.windowFor(channelID, 0, sel, podMax, breakDurationMs, a.seasonAt(pol, time.Time{})), pol)
 }
 
 // PoolCounts reports the catalog-wide half of the pool strip (§10 V35) — how much material
 // exists at all, before any channel's selection narrows it.
 //
-// The channel-shaped half is assembled by the caller from CoverageFor, one call per live
-// channel, so this adds no second opinion about matching. It only counts.
+// The channel-shaped half is PoolFor's, from CoverageFrom per live channel, so this adds no
+// second opinion about matching. It only counts.
 func (a *PodAdapter) PoolCounts(ctx context.Context) (PoolReport, error) {
 	clips, err := a.catalog.AllClips(ctx)
 	if err != nil {

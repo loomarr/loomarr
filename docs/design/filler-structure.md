@@ -74,26 +74,63 @@ keeps the derived kind so a rebuild cannot collapse children to the parent's kin
 **Materialization needs agreement.** A deterministic **structure-decision reducer** takes complete
 candidate assessments from at least two independently locked producer families (two routes to one
 model family count once). They must agree on the source unit, interval count, each interval's
-disposition and role, and the ordered joins, with joins within the locked tolerance (the reducer
-takes the midpoint and revalidates coverage). Any conflict, failure, gap, disagreement or
-unsupported candidate is an explicit hold; majority voting never decides.
+**disposition** (`filler_candidate`, `non_filler` or `unresolved`) and the ordered joins, with
+joins within the locked tolerance (the reducer takes the midpoint and revalidates coverage). Any
+conflict, failure, gap, disagreement or unsupported candidate is an explicit hold; majority voting
+never decides.
 
-- A **complete-timeline assessor** sees no peer answer and must describe every millisecond. One
-  content-addressed assessment-media contract owns the derivative: MP4, H.264/yuv420p, 960×720 at
-  30 fps with aspect-preserving padding, AAC stereo 48 kHz, 90 kHz timescale, stripped metadata,
-  bitexact, at most 64 MiB, with the argument templates part of the recipe identity. Every
-  assessment binds the source and the derivative as distinct identities. The preparer gets two
-  roots, the applied filler root and a private assessment-media root, and neither is derived from
-  the other.
-- The runtime prepares and validates all media, and stays inside the certified duration and byte
-  envelope, **before** any provider metadata refresh, reservation or request. Nothing extrapolates
-  from shorter cases, truncates a reel or substitutes chunks; long reels need their own certified
-  protocol.
+- **Structure owns where the source divides, not what each child is** (#1069). A commercial
+  against a PSA is one filler candidate on both sides, so the structure confirms. A filler role
+  against programme or non-filler, or any `ambiguous` or `unusable` interval, always holds.
+- The decision keeps an interval's role only when every assessor gave the same one, as a
+  diagnostic. It never takes the first answer or a majority; each candidate's own role stays in
+  the artifact as evidence.
+- The exact role is the **final child's** to establish, from its conditioned bytes, through a
+  separately certified role module. Until that module exists, an interval with no unanimous role
+  is not materialized: the role-sliced authority and the V67 projection both hold it.
+
+- A **window assessor** sees no peer answer and must describe every millisecond of its window. A
+  source is planned into windows (a 120 s primary span with 15 s of context on each side, at most
+  15 windows and 30 minutes), every assessor family answers every window, and a deterministic
+  stitch projects the overlapping answers onto one complete timeline; a conflict in an overlap
+  holds. One content-addressed assessment-media contract owns each window's derivative: MP4,
+  H.264/yuv420p, 960×720 at 30 fps with aspect-preserving padding, AAC stereo 48 kHz, 90 kHz
+  timescale, stripped metadata, bitexact, at most 64 MiB, with the argument templates part of the
+  recipe identity. Every call binds the source and the derivative as distinct identities. The
+  preparer gets two roots, the applied filler root and a private assessment-media root, and
+  neither is derived from the other.
+- **The cut encodes on the channels' GPU (#2121).** Decode, cadence, scale and pad stay on the CPU,
+  so every family cuts the same picture; only the encoder differs, through the shared
+  `encode.FileVideoArgs`. Each family with a measured cut level is its **own profile**, with its own
+  digest: x264 `medium` CRF 23 in software, NVENC `-cq 29`. The NVENC level is the highest whose
+  VMAF against the same scaled source matched or beat the software cut's on every one of 20 real
+  masters (60 s each; median 94.4 against 93.8), at a median 80% of its size; `-cq 31` fell below it
+  on all 20. A family without a measured cut level (VAAPI,
+  VideoToolbox, the generic encoders) cuts in software.
+- **A certification covers one profile.** The authority pins its media-profile digest, and the
+  runtime cuts to exactly that profile: a host whose encoder is not the certified family (a GPU
+  certification on a host in software, or the reverse) sends each proposal to split review rather
+  than assessing a picture nobody reviewed. Moving a household to the GPU cut means certifying the
+  GPU profile. The certify tools in the frozen research module still build the old software
+  profile, so a new certificate needs them back in the main module first.
+- The runtime prepares and validates every window's media, and stays inside the certified duration
+  and byte envelope, **before** any provider metadata refresh, reservation or request. Nothing
+  extrapolates beyond the plan's capacity or truncates a reel; a longer source holds at split
+  review.
 - The OpenRouter adapter uses one fallback-disabled, zero-retention route and a strict schema,
   hashes everything, and durably reserves the request digest and worst-case charge in the shared
   filler-inference budget before sending. A journal refuses a second reservation for the same
-  request. An unknown settlement keeps the full reservation; open and budget-held entries are
-  recovery holds, never permission to resend.
+  request once the call has an answer. An unknown settlement keeps the full reservation, and an
+  open entry is a recovery hold, never permission to resend.
+- **Only a known outcome is replayed.** A window call that is accepted, refused or invalid
+  (provider answer), unsettled with response bytes, or over its reservation has a response that may
+  have been billed, so it is published and replays without a second call. A call that produced **no
+  answer** is not published and is retried on the next pass: a budget hold (nothing was sent, so the
+  retry replaces the hold) and a transport failure (no response came back, so the lost request keeps
+  its reservation in the budget and the retry reserves a new attempt of the same request, bounded by
+  that budget). The earlier windows of the same source replay, and the pass fails as retryable
+  rather than storing a held decision, so a day of budget exhaustion or a network blip never pins a
+  source at split review.
 - The reducer publishes an immutable artifact with every candidate and the reason for each
   decision. A child cut on a confirmed `keep` interval carries its SHA-256 in conditioning lineage;
   legacy or operator-edited cuts leave it absent.
@@ -144,8 +181,9 @@ Its design and measurements are archived in
    is **unsplittable**, never guessed.
 4. **Role before enrichment.** Each interval gets its own role first; taxonomy enrichment adds
    product, era and audience only afterwards, and cannot repair an unresolved role.
-5. **Deterministic discard.** A dHash over grey frames at 1/3 fps separates re-encoded duplicates
-   from different adverts by a wide measured margin; duplicates and sub-floor segments are
+5. **Deterministic discard.** The creative fingerprint (picture and sound, see
+   [Creative identity](filler.md#clip-identity)) separates re-encoded duplicates from different
+   adverts by a wide measured margin; duplicates and sub-floor segments are
    discarded before classification. Neither deletes source media. Ambiguity is never a discard.
    The proposal reports discarded time ("39 fragments under 10s discarded"), never silently.
 6. **Per-segment language.** Each span samples its own bounded audio with the installation's
@@ -189,7 +227,7 @@ only the first. It is a ceiling ladder:
 Within one boundary the best evidence wins; across a segment's two boundaries the worst wins. Then
 over-long caps at 50 and `unsplittable` at 20. Black is not ranked above silence, and duration is
 not an input beyond the over-long cap (half of a real reel was correctly cut sub-10 s bumpers). A
-single-span rescue removes the over-long cap rather than adding points. dHash, duplicates and vision
+single-span rescue removes the over-long cap rather than adding points. Fingerprints, duplicates and vision
 tags are deliberately not scored.
 
 ## Split review

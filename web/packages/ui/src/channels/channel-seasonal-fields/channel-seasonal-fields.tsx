@@ -29,6 +29,10 @@ const MODE_OPTIONS: readonly ChoiceOption<SeasonalMode>[] = [
   },
 ];
 
+// The mode's name as the editor shows it, for screens that summarise a policy rather than edit it.
+const seasonalModeLabel = (mode: SeasonalMode): string =>
+  MODE_OPTIONS.find((o) => o.value === mode)?.label ?? mode;
+
 // How many holiday episodes of an ordinary series the built-in rotation features per day.
 const STRENGTH_OPTIONS: readonly ChoiceOption<SeasonalStrength>[] = [
   { value: "light", label: "Light", description: "About one holiday episode a day while a holiday is on." },
@@ -74,8 +78,8 @@ const ChannelSeasonalFields = ({
   offSeason,
   onOffSeasonChange,
 }: ChannelSeasonalFieldsProps) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap="$section">
-    <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+  <Surface backgroundColor="transparent" borderWidth={0} gap="section">
+    <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
       <ChoiceGroup
         density={density}
         label="Seasonal behavior"
@@ -93,20 +97,20 @@ const ChannelSeasonalFields = ({
     {mode !== "off" ? (
       <Surface
         aria-label="Included holidays"
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
-        gap="$inline"
+        gap="inline"
         role="group"
       >
         <Text density={density} textRole="label">
           Included holidays
         </Text>
         <Surface
-          backgroundColor="$transparent"
+          backgroundColor="transparent"
           borderWidth={0}
           flexDirection="row"
           flexWrap="wrap"
-          gap="$control"
+          gap="control"
         >
           {holidays.map((holiday) => (
             <Toggle
@@ -126,7 +130,7 @@ const ChannelSeasonalFields = ({
 
     {mode === "default" ? (
       <>
-        <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+        <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
           <ChoiceGroup
             density={density}
             label="Holiday strength"
@@ -155,7 +159,7 @@ const ChannelSeasonalFields = ({
     ) : null}
 
     {mode === "exclusive" ? (
-      <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
+      <Surface backgroundColor="transparent" borderWidth={0} gap="inline">
         <ChoiceGroup
           density={density}
           label="Out of season"
@@ -169,4 +173,4 @@ const ChannelSeasonalFields = ({
   </Surface>
 );
 
-export { ChannelSeasonalFields };
+export { ChannelSeasonalFields, seasonalModeLabel };

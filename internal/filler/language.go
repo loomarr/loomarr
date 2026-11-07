@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/loomarr/loomarr/internal/bgexec"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/langcode"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
+	"github.com/loomarr/loomarr/internal/media/tools"
 
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -91,53 +93,10 @@ func LanguageSpan(durationMs int64) (startMs, endMs int64) {
 	return start, start + LanguageSampleMs
 }
 
-// NormalizeLanguage reduces a code to its base tag for comparison: `en-US`, `EN`, `eng ` all
-// become `en`.
-//
-// ⚠ Comparing raw codes is the obvious implementation and it is wrong in a way that only shows up
-// on real data: whisper answers `en`, a hosted model may answer `en-US` or `English`, and an
-// operator may type `EN` into the setting. Any of those mismatching the others means the gate
-// rejects every English clip in the catalog — the loudest possible failure, arrived at honestly.
-func NormalizeLanguage(code string) string {
-	c := strings.ToLower(strings.TrimSpace(code))
-	if c == "" {
-		return ""
-	}
-	// Strip a region or script subtag: en-US, zh-Hans, pt_BR.
-	for _, sep := range []string{"-", "_"} {
-		if i := strings.Index(c, sep); i > 0 {
-			c = c[:i]
-			break
-		}
-	}
-	// A few spellings a model may return in prose rather than as a code. Deliberately SHORT:
-	// this is a safety net for the common case, not a language database — an unrecognised name
-	// stays as-is and simply will not match, which is the honest outcome.
-	switch c {
-	case "english":
-		return "en"
-	case "spanish", "espanol", "español":
-		return "es"
-	case "french", "francais", "français":
-		return "fr"
-	case "german", "deutsch":
-		return "de"
-	}
-	// ISO 639-2 → 639-1 for the handful whisper can emit in three-letter form.
-	if len(c) == 3 {
-		switch c {
-		case "eng":
-			return "en"
-		case "spa":
-			return "es"
-		case "fra", "fre":
-			return "fr"
-		case "deu", "ger":
-			return "de"
-		}
-	}
-	return c
-}
+// NormalizeLanguage reduces a code to the detector's base tag for comparison: `en-US`, `EN`,
+// `eng`, `English` all become `en` (langcode.Normalize). Any of those mismatching the others
+// means the gate rejects every English clip in the catalog — the loudest possible failure.
+func NormalizeLanguage(code string) string { return langcode.Normalize(code) }
 
 // LanguageRejects decides whether a detected code means "drop this clip".
 //
@@ -146,13 +105,67 @@ func NormalizeLanguage(code string) string {
 // the clip. A gate over a probabilistic signal has to fail toward keeping, because the cost of the
 // two mistakes is not symmetric: a foreign advert that slips through plays once and annoys, while
 // a wrongly-rejected clip is deleted from the catalog and the operator is never told which.
+//
+// `want` is a set (IntakeLanguages): a clip in any of its languages is kept.
 func LanguageRejects(detected, want string) bool {
-	d, w := NormalizeLanguage(detected), NormalizeLanguage(want)
+	d, w := NormalizeLanguage(detected), LanguageSet(want)
 	if w == "" || d == "" || d == LangNone {
 		return false // gate off, not yet checked, or nothing to judge
 	}
-	return d != w
+	return !slices.Contains(strings.Split(w, ","), d)
 }
+
+// IntakeLanguages is the set the intake gate admits (#2030 decision 13): the union of the
+// channels' commercial languages, each the channel's own or else the household's. Adding a channel
+// in a new language opens the gate to it with no settings change; removing the last one closes it
+// to new clips and leaves catalogued ones alone.
+//
+// Empty turns the gate off. A channel with no language airs every language, so intake cannot
+// refuse one; with no channels yet, the household's language stands alone.
+//
+// ⚠ Comma-joined and sorted ("en,es"), not a slice, for the same reason as Geography.Fallback: a
+// split proposal snapshots it, and a single language persists exactly as it always did.
+func IntakeLanguages(household string, channels []string) string {
+	household = NormalizeLanguage(household)
+	if len(channels) == 0 {
+		return household
+	}
+	set := make([]string, 0, len(channels))
+	for _, own := range channels {
+		lang := NormalizeLanguage(own)
+		if lang == "" {
+			lang = household
+		}
+		if lang == "" {
+			return ""
+		}
+		set = append(set, lang)
+	}
+	return LanguageSet(strings.Join(set, ","))
+}
+
+// LanguageSet normalizes a comma-joined set of languages: each code mapped, once, sorted.
+func LanguageSet(raw string) string {
+	var set []string
+	for code := range strings.SplitSeq(raw, ",") {
+		if lang := NormalizeLanguage(code); lang != "" {
+			set = append(set, lang)
+		}
+	}
+	slices.Sort(set)
+	return strings.Join(slices.Compact(set), ",")
+}
+
+// LanguageList splits a set into its codes; an empty set is an empty list.
+func LanguageList(set string) []string {
+	if set = LanguageSet(set); set == "" {
+		return []string{}
+	}
+	return strings.Split(set, ",")
+}
+
+// languageNames renders a set for a reject detail: "en, es".
+func languageNames(set string) string { return strings.ReplaceAll(LanguageSet(set), ",", ", ") }
 
 // --- the local backend ---
 
@@ -232,8 +245,8 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 
 	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span. Shared with the hosted
 	// backend (`extractSpanWAV`) — the two carried byte-identical copies of this until V41.
-	wav := mediatools.SpanWAVPath(dir)
-	if err := mediatools.ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
+	wav := tools.SpanWAVPath(dir)
+	if err := tools.ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
 		return LangUndetermined, err
 	}
 
@@ -298,7 +311,7 @@ const silenceFloorLUFS = -50.0
 // An error is reported as NOT silent: failing to measure must not become grounds for a verdict in
 // either direction, and the caller keeps the clip either way.
 func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
-	out, err := bgexec.FFmpeg(ctx, mediatools.FFmpegOr(ffmpegPath),
+	out, err := bgexec.FFmpeg(ctx, tools.FFmpegOr(ffmpegPath),
 		"-nostdin", "-i", wav, "-af", "ebur128=framelog=quiet", "-f", "null", "-").CombinedOutput()
 	if err != nil {
 		return false, err

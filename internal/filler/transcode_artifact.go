@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 type conditioningSnapshots struct {
@@ -39,8 +39,8 @@ func snapshotConditioningArtifacts(ctx context.Context, stageDir, source, parent
 		cleanup()
 		return conditioningSnapshots{}, errors.New("conditioning source or parent bytes do not match catalog identity")
 	}
-	sourceEqual, sourceErr := exactFileBytesEqual(ctx, source, out.Source, mediatools.ConditioningMaxSnapshotBytes)
-	parentEqual, parentErr := exactFileBytesEqual(ctx, parent, out.Parent, mediatools.ConditioningMaxSnapshotBytes)
+	sourceEqual, sourceErr := exactFileBytesEqual(ctx, source, out.Source, tools.ConditioningMaxSnapshotBytes)
+	parentEqual, parentErr := exactFileBytesEqual(ctx, parent, out.Parent, tools.ConditioningMaxSnapshotBytes)
 	if sourceErr != nil || parentErr != nil || !sourceEqual || !parentEqual {
 		cleanup()
 		return conditioningSnapshots{}, errors.New("conditioning source or parent snapshot is not exact")
@@ -50,12 +50,12 @@ func snapshotConditioningArtifacts(ctx context.Context, stageDir, source, parent
 
 // validateRecoveredTranscode proves an existing canonical artifact is the exact output and restart
 // record from this attempt. Sparse catalog identity alone is never recovery authority.
-func validateRecoveredTranscode(ctx context.Context, staged, published, expectedHash, profileID string, lineage *ConditioningLineage, evidence *ConditioningEvidence, quality MediaQuality, normalizedLUFS float64, assets *MediaAssetManifest) error {
+func validateRecoveredTranscode(ctx context.Context, staged, published, expectedHash, profileID string, lineage *ConditioningLineage, evidence *ConditioningEvidence, quality MediaQuality, assets *MediaAssetManifest) error {
 	publishedID, err := ClipID(published)
 	if err != nil || publishedID != expectedHash {
 		return errors.New("existing transformed artifact bytes do not match their identity")
 	}
-	equal, err := exactFileBytesEqual(ctx, staged, published, mediatools.ConditioningMaxSnapshotBytes)
+	equal, err := exactFileBytesEqual(ctx, staged, published, tools.ConditioningMaxSnapshotBytes)
 	if err != nil || !equal {
 		return errors.New("existing transformed artifact bytes do not exactly match the staged output")
 	}
@@ -68,8 +68,7 @@ func validateRecoveredTranscode(ctx context.Context, staged, published, expected
 	}
 	if evidence != nil && (!reflect.DeepEqual(tags.ConditioningLineage, lineage) ||
 		tags.Conditioning == nil || !reflect.DeepEqual(*tags.Conditioning, *evidence) ||
-		tags.MediaQuality == nil || !reflect.DeepEqual(*tags.MediaQuality, quality) ||
-		tags.NormalizedLUFS != normalizedLUFS) {
+		tags.MediaQuality == nil || !reflect.DeepEqual(*tags.MediaQuality, quality)) {
 		return errors.New("existing transformed artifact is not bound to this child evidence")
 	}
 	return nil

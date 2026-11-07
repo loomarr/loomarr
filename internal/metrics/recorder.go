@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -14,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 )
 
 // Options identifies one application generation to its metrics Recorder.
@@ -316,11 +317,8 @@ func New(options Options) *Recorder {
 			fillerMetrics.airings.WithLabelValues(repeat, cooldown)
 		}
 	}
-	for _, target := range []string{
-		"tunarr", "tmdb", "library", "seerr", "arr", "llm",
-		"filler_review", "filler_bakeoff", "notifications", "other",
-	} {
-		for _, reason := range []string{"transport", "408", "429", "500", "502", "503", "504", "other"} {
+	for _, target := range outboundTargets {
+		for _, reason := range []string{"transport", "408", "429", "500", "502", "503", "504", "other_status", "other"} {
 			outboundMetrics.retries.WithLabelValues(target, reason)
 		}
 	}
@@ -495,23 +493,18 @@ func (t *recorderTransport) RoundTrip(request *http.Request) (*http.Response, er
 	return response, err
 }
 
+// outboundTargets is the closed set of outbound target labels. httpx.Target.Label
+// maps each service onto one of these; anything else is "other".
+var outboundTargets = []string{
+	"tunarr", "tmdb", "library", "seerr", "arr", "llm", "notifications", "reference",
+	"filler_research", "filler_openrouter", "filler_review", "other",
+}
+
 func outboundTargetLabel(target string) string {
-	switch target {
-	case "tunarr", "tunarr-bulk":
-		return "tunarr"
-	case "tmdb", "library", "seerr", "arr", "llm":
+	if slices.Contains(outboundTargets, target) {
 		return target
-	case "llm-video":
-		return "llm"
-	case "filler-review-ollama", "filler-review-openrouter":
-		return "filler_review"
-	case "filler-bakeoff-ollama", "filler-bakeoff-openrouter", "filler-openrouter-snapshot":
-		return "filler_bakeoff"
-	case "notification-provider":
-		return "notifications"
-	default:
-		return "other"
 	}
+	return "other"
 }
 
 // SchedulerJobs initializes the sealed code-defined Job set to explicit zeroes.

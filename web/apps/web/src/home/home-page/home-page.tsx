@@ -2,11 +2,11 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
 import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { unwrap } from "@loomarr/api/unwrap";
-import { layoutGuide } from "@loomarr/core/guide";
+import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
+import { keepPreviousData } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useAuth } from "@/auth/use-auth";
-import { defaultGuideWindow } from "@/channels/guide-window";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { ChannelIdeas } from "../channel-ideas";
@@ -17,16 +17,6 @@ import { OnTheWay, YourRequests } from "../on-the-way";
 import { RecentlyTuned } from "../recently-tuned";
 import { Tonight } from "../tonight";
 import { WatchingNow } from "../watching-now";
-
-// Progress bars and "what's on now" move with the clock, not only with refetches.
-const useMinuteClock = () => {
-  const [nowMs, setNowMs] = useState(Date.now);
-  useEffect(() => {
-    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-  return nowMs;
-};
 
 // HomePage — the landing page for both roles (#1822 evidence): a neutral inventory line, then
 // what's on, in the approved order (Recently tuned, On now, Watching now, Tonight, New this week,
@@ -43,9 +33,12 @@ const useMinuteClock = () => {
 const HomePage = () => {
   useDocumentTitle("Home");
   const { isAdmin, user } = useAuth();
-  const nowMs = useMinuteClock();
+  // The window is pinned and slides only near its end; `nowMs` is the live clock that moves
+  // progress bars and "what's on now" between refetches. `keepPreviousData` makes a slide refetch
+  // behind the sections already on screen instead of unmounting them (the #1396 blank page).
+  const { nowMs, window: guideWindow } = useGuideWindow();
 
-  const guide = channelsApi.useChannelGuide(defaultGuideWindow(nowMs));
+  const guide = channelsApi.useChannelGuide(guideWindow, { query: { placeholderData: keepPreviousData } });
   const body = unwrap(guide.data);
   // Only the channels the body actually carries: a body without them reads as none, not a crash.
   const channels = body?.channels ?? [];
@@ -78,7 +71,7 @@ const HomePage = () => {
       <div className="flex-1 overflow-auto">
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
             `md` the bottom bar replaced the 56px rail the table assumed, so 390px leaves 358px. */}
-        <div className="mx-auto flex max-w-overview flex-col gap-6 p-4 sm:gap-8 sm:p-6">
+        <div className="max-w-overview mx-auto flex flex-col gap-6 p-4 sm:gap-8 sm:p-6">
           <HomeStrip
             state={stripState}
             count={channels.length}
@@ -117,7 +110,7 @@ const HomePage = () => {
           {hasLife && !isAdmin && <YourRequests />}
           {hasLife && isAdmin && <OnTheWay />}
           {isAdmin && (
-            <p className="m-0 text-static-400 text-xs">
+            <p className="text-static-400 m-0 text-xs">
               Encoder, storage and service details are in{" "}
               <Link to="/settings/system" className="text-tune underline underline-offset-2">
                 Settings → This server

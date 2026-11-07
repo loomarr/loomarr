@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -35,6 +35,8 @@ func (c *countingCycle) CyclePreview(context.Context, string, time.Time) (
 func (c *countingCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
 	return c.window, nil
 }
+
+func (c *countingCycle) Calendar() schedule.Calendar { return schedule.Calendar{} }
 
 func (c *countingCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
 	return true, nil

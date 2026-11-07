@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/config"
-	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-func buildSecretProtection(ctx context.Context, st store.Store, dataDir string) (*secretprotection.Manager, error) {
+func buildSecretProtection(ctx context.Context, st store.Store, dataDir string, log *slog.Logger) (*secretprotection.Manager, error) {
 	if dataDir == "" {
 		if path := store.SQLitePath(st); path != "" {
 			dataDir = filepath.Dir(path)
@@ -24,6 +25,12 @@ func buildSecretProtection(ctx context.Context, st store.Store, dataDir string) 
 	loaded, err := secretprotection.LoadInstallationKey(secretprotection.InstallationKeyOptions{DataDir: dataDir})
 	if err != nil {
 		return nil, fmt.Errorf("initialize database secret protection: %w", err)
+	}
+	if keyBesideDatabase(loaded.Path, store.SQLitePath(st)) && log != nil {
+		log.Warn("the encryption key is stored beside the database it protects: a copy of this folder "+
+			"(a volume backup, rsync, a sync tool) carries both, and the saved credentials with them. "+
+			"Keep the key in a separate place and point LOOMARR_ENCRYPTION_KEY_FILE at it.",
+			"key", loaded.Path, "database", store.SQLitePath(st))
 	}
 	previous, replacing, err := secretprotection.LoadPreviousInstallationKey(nil)
 	if err != nil {
@@ -48,6 +55,16 @@ func buildSecretProtection(ctx context.Context, st store.Store, dataDir string) 
 		return nil, fmt.Errorf("initialize database secret protection: %w", err)
 	}
 	return manager, nil
+}
+
+// keyBesideDatabase reports whether the installation key file sits in the SQLite database's own
+// directory, where any copy of that folder carries the key and the ciphertext it protects together.
+// A key from the environment (no path) or a Postgres store (no file) is never beside it.
+func keyBesideDatabase(keyPath, databasePath string) bool {
+	if keyPath == "" || databasePath == "" {
+		return false
+	}
+	return filepath.Dir(filepath.Clean(keyPath)) == filepath.Dir(filepath.Clean(databasePath))
 }
 
 func protectedSetting(reg *settings.Registry, key string) bool {
@@ -94,7 +111,10 @@ func settingRecord(key string) secretprotection.Record {
 	return secretprotection.Record{Kind: "setting", ID: key, Field: "value"}
 }
 
-func loadProtectedSettings(
+// openProtectedSettings lists every setting with protected values decrypted. A protected value
+// stored as plaintext predates encrypted settings (v0.2.0-beta.1); the error names every such
+// key, never its value, and no row is rewritten.
+func openProtectedSettings(
 	ctx context.Context,
 	st store.Store,
 	reg *settings.Registry,
@@ -107,27 +127,25 @@ func loadProtectedSettings(
 	if err != nil {
 		return nil, err
 	}
-	rewrites := make([]store.SettingMutation, 0)
+	var plaintext []error
 	for i := range rows {
 		if !protectedSetting(reg, rows[i].Key) || rows[i].Value == "" {
 			continue
 		}
-		if secretprotection.IsEnvelope(rows[i].Value) {
-			plain, err := protection.Open(settingRecord(rows[i].Key), rows[i].Value)
-			if err != nil {
-				return nil, fmt.Errorf("open protected setting %q: %w", rows[i].Key, err)
-			}
-			rows[i].Value = string(plain)
+		if !secretprotection.IsEnvelope(rows[i].Value) {
+			plaintext = append(plaintext, fmt.Errorf(
+				"setting %q is stored unencrypted: this database predates encrypted settings (v0.2.0-beta.1); "+
+					"upgrade through a v0.2.x release first, or clear that setting and re-enter it", rows[i].Key))
 			continue
 		}
-		envelope, err := protection.Seal(settingRecord(rows[i].Key), []byte(rows[i].Value))
+		plain, err := protection.Open(settingRecord(rows[i].Key), rows[i].Value)
 		if err != nil {
-			return nil, fmt.Errorf("protect legacy setting %q: %w", rows[i].Key, err)
+			return nil, fmt.Errorf("open protected setting %q: %w", rows[i].Key, err)
 		}
-		rewrites = append(rewrites, store.SettingMutation{Key: rows[i].Key, Value: envelope})
+		rows[i].Value = string(plain)
 	}
-	if err := st.RewriteSettingValues(ctx, rewrites); err != nil {
-		return nil, fmt.Errorf("migrate legacy setting secrets: %w", err)
+	if len(plaintext) > 0 {
+		return nil, errors.Join(plaintext...)
 	}
 	return rows, nil
 }

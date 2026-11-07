@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The next iPhone build number: the caller's floor (CI's run number), or one past the highest build
+// The next build number of an Apple app: the caller's floor (CI's run number), or one past the highest build
 // App Store Connect already holds for the app, whichever is higher (#1900 item 1).
 //
 //   node asc-next-build-number.mjs <bundle-id> <floor>

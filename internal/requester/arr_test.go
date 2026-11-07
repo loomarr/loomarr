@@ -3,12 +3,14 @@ package requester
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -253,5 +255,38 @@ func TestArr_UnconfiguredArrForMediaTypeFails(t *testing.T) {
 	})
 	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000001, Name: "M"}); err == nil {
 		t.Error("movie with no Radarr should fail")
+	}
+}
+
+// A non-2xx answer to the lookup is the shared httpx.StatusError, so a caller can
+// tell a busy arr (transient) from a refusal without parsing the message.
+func TestArr_RequestMovie_LookupFailureIsAStatusError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+	a := arrFor("movie", srv.URL, "", "")
+	err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000604, Name: "M"})
+	var status *httpx.StatusError
+	if !errors.As(err, &status) || status.Status != http.StatusServiceUnavailable {
+		t.Fatalf("err = %v, want *httpx.StatusError 503", err)
+	}
+	if got := httpx.Classify(err); got != httpx.ClassTransient {
+		t.Errorf("Classify = %v, want transient", got)
+	}
+}
+
+// RootFolders lists every folder the arr reports, ignoring the override (which only picks where
+// new titles go), and names an arr with no address as not configured.
+func TestArr_RootFolders(t *testing.T) {
+	stub := newArrStub(t, "movie")
+	a := arrFor("movie", stub.server.URL, "", "/override")
+
+	got, err := a.RootFolders(context.Background(), "radarr")
+	if err != nil || len(got) != 1 || got[0] != "/data/media" {
+		t.Fatalf("RootFolders = %v, %v", got, err)
+	}
+	if _, err := a.RootFolders(context.Background(), "sonarr"); !errors.Is(err, ErrArrNotConfigured) {
+		t.Fatalf("unconfigured sonarr: %v", err)
 	}
 }

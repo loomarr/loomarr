@@ -24,6 +24,9 @@ moves them to `docs/contributing/` and `project/android-release.md`.
   [`reference/settings.md`](../reference/settings.md), and the package inventory is
   [`package-map.md`](package-map.md). Do not restate them in prose.
 - Vocabulary is defined in [`CONTEXT.md`](../../CONTEXT.md). Work status lives in GitHub issues.
+- **New to the backend?** Read [Start here](package-map.md#start-here) in the package map first. It
+  groups the packages under `internal/` into areas in plain words and traces a channel request and a
+  commercial end to end.
 
 ## Subsystems
 
@@ -33,7 +36,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | --- | --- | --- | --- |
 | [overview](overview.md) | scope, design envelope, ports, package-name traps, backend structure rules, HTTP API rules, concurrency rules | 1, 2, 7, 7.1, 14.1, 18 | here |
 | [dependencies](dependencies.md) | every dependency and bundled tool, with its reason | 14 | here |
-| [package-map](package-map.md) | generated package inventory | 2 (map), 14.2 | here |
+| [package-map](package-map.md) | generated area index with the two main flows; each area's packages and imports are on its own page in [areas/](areas/) | 2 (map), 14.2 | here |
 | [acquisition](acquisition.md) | title identity, provisioning state machine, requesters, outbound client rules | 3, 4, 6 | here |
 | [library](library.md) | media-server contract, media inventory, series episode cache, search | 5 (inventory), 6, 7.2 | here |
 | [storage](storage.md) | one store with two backends, Postgres concurrency, retention, backup | 5, 16 (backup) | here |
@@ -106,5 +109,8 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0041](decisions/0041-ship-ffmpeg-9.md) | 2026-09-27 | Ship ffmpeg 9 |
 | [0042](decisions/0042-iphone-permanent-app-identity.md) | 2026-10-03 | The iPhone app has one permanent identity, selected only by its release build |
 | [0043](decisions/0043-devices-act-with-their-approvers-role.md) | 2026-10-03 | A paired device acts with its approver's role |
+| [0044](decisions/0044-apple-tv-permanent-app-identity.md) | 2026-10-13 | The Apple TV app is its own App Store Connect app, selected only by its release build |
+| [0045](decisions/0045-loomarr-recommends-curated-youtube-channels.md) | 2026-10-27 | Loomarr recommends curated filler sources, YouTube channels included |
+| [0046](decisions/0046-loomarr-scans-its-own-media-files.md) | 2026-11-03 | Loomarr scans its own media files; the media server keeps only sign-in and Live TV |
 
 Future work that used to live in `design.md` §20 is tracked in #1576.

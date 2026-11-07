@@ -1,0 +1,146 @@
+package notifications
+
+import (
+	"context"
+	"crypto/ecdh"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
+
+	"github.com/loomarr/loomarr/internal/httpx"
+)
+
+type WebPushIdentity struct {
+	PublicKey  string
+	PrivateKey string
+}
+
+type WebPushAdapter struct {
+	identity  WebPushIdentity
+	client    HTTPDoer
+	publicURL func() string
+}
+
+func NewWebPushAdapter(identity WebPushIdentity, client HTTPDoer, publicURL func() string) *WebPushAdapter {
+	if client == nil {
+		client = safeWebPushHTTPClient()
+	}
+	return &WebPushAdapter{identity: identity, client: client, publicURL: publicURL}
+}
+
+func (*WebPushAdapter) Means() Means { return MeansWebPush }
+
+func (a *WebPushAdapter) ValidateDestination(settings ProviderSettings) error {
+	if a == nil || a.identity.PublicKey == "" || a.identity.PrivateKey == "" {
+		return fmt.Errorf("browser push identity is unavailable")
+	}
+	endpoint, err := url.Parse(settings.secret(keyEndpoint))
+	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil || endpoint.Fragment != "" {
+		return fmt.Errorf("browser push requires an HTTPS subscription endpoint")
+	}
+	if address := net.ParseIP(endpoint.Hostname()); address != nil && !httpx.IsPublicIP(address) {
+		return fmt.Errorf("browser push endpoint must use a public push service")
+	}
+	publicKey, err := decodeWebPushValue(settings.secret(keyP256dh))
+	if err != nil || len(publicKey) != 65 {
+		return fmt.Errorf("browser push public key is invalid")
+	}
+	if _, err := ecdh.P256().NewPublicKey(publicKey); err != nil {
+		return fmt.Errorf("browser push public key is invalid")
+	}
+	auth, err := decodeWebPushValue(settings.secret(keyAuth))
+	if err != nil || len(auth) < 16 || len(auth) > 64 {
+		return fmt.Errorf("browser push authentication secret is invalid")
+	}
+	return nil
+}
+
+func safeWebPushHTTPClient() *http.Client {
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	transport := &http.Transport{
+		ForceAttemptHTTP2: true, TLSHandshakeTimeout: 10 * time.Second,
+		DialContext: httpx.PublicDialContext(net.DefaultResolver, dialer.DialContext),
+	}
+	return &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+}
+
+func (a *WebPushAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
+	if a == nil || delivery.Destination == nil || delivery.Destination.Means != MeansWebPush ||
+		a.ValidateDestination(delivery.Destination.ProviderSettings()) != nil {
+		return providerConfigurationFailure()
+	}
+	message := providerMessage(delivery.Intent, a.publicURL)
+	payload, err := json.Marshal(map[string]any{
+		"version": 1,
+		"title":   "Loomarr",
+		"body":    "You have a new Loomarr notification.",
+		"url":     webPushPath(message.Link),
+		"tag":     "loomarr-" + truncate(message.EventID, 100),
+	})
+	if err != nil {
+		return providerConfigurationFailure()
+	}
+	settings := delivery.Destination.ProviderSettings()
+	response, err := webpush.SendNotificationWithContext(ctx, payload, &webpush.Subscription{
+		Endpoint: settings.secret(keyEndpoint),
+		Keys:     webpush.Keys{P256dh: settings.secret(keyP256dh), Auth: settings.secret(keyAuth)},
+	}, &webpush.Options{
+		HTTPClient: a.client, Subscriber: webPushSubscriber(a.publicURL), TTL: 300,
+		Topic: "loomarr-" + truncate(string(message.EventType), 24), Urgency: webpush.UrgencyNormal,
+		VAPIDPublicKey: a.identity.PublicKey, VAPIDPrivateKey: a.identity.PrivateKey,
+	})
+	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return Result{Status: StatusFailed, FailureClass: FailureCancelled, OutcomeCode: OutcomeCancelled}
+		}
+		return providerTransientFailure()
+	}
+	defer func() { _ = response.Body.Close() }()
+	read, err := io.Copy(io.Discard, io.LimitReader(response.Body, providerResponseLimit+1))
+	if err != nil || read > providerResponseLimit {
+		return Result{Status: StatusFailed, FailureClass: FailureAmbiguous, OutcomeCode: OutcomeAcceptanceAmbiguous}
+	}
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		return Result{Status: StatusDelivered}
+	}
+	return failureForStatus(response)
+}
+
+func decodeWebPushValue(value string) ([]byte, error) {
+	if decoded, err := base64.RawURLEncoding.DecodeString(value); err == nil {
+		return decoded, nil
+	}
+	return base64.URLEncoding.DecodeString(value)
+}
+
+func webPushSubscriber(publicURL func() string) string {
+	if publicURL != nil {
+		if parsed, err := url.Parse(strings.TrimSpace(publicURL())); err == nil && parsed.Scheme == "https" && parsed.Host != "" {
+			return parsed.Scheme + "://" + parsed.Host
+		}
+	}
+	return "https://github.com/loomarr/loomarr"
+}
+
+func webPushPath(link string) string {
+	parsed, err := url.Parse(link)
+	// /queue/ stays allowed: it redirects to /requests, and a notification stored before the rename
+	// still carries the old path.
+	if err != nil || parsed.Path == "" || (!strings.HasPrefix(parsed.Path, "/requests/") &&
+		!strings.HasPrefix(parsed.Path, "/queue/") &&
+		!strings.HasPrefix(parsed.Path, "/channels/") && parsed.Path != "/") {
+		return "/"
+	}
+	return parsed.EscapedPath()
+}

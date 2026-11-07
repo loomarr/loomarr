@@ -83,11 +83,14 @@ acquire_lock() {
 	mkdir -p "$STATE/sessions" "$STATE/baselines"
 	LOCK="$STATE/lock"
 	i=0
-	until mkdir "$LOCK" 2>/dev/null; do
-		owner_pid="$(field pid "$LOCK/owner" 2>/dev/null || true)"
-		created="$(field created "$LOCK/owner" 2>/dev/null || true)"
-		# A process can die in the few instructions between mkdir and writing owner. The
-		# directory timestamp gives that ownerless lock the same bounded recovery path.
+	# The lock is a file created with noclobber (O_CREAT|O_EXCL), never `mkdir`: uutils mkdir
+	# (Ubuntu 26.04's coreutils) lets two racing callers both succeed on one directory. The owner
+	# is written into the file by the same create.
+	until (set -C; printf 'pid=%s\ncreated=%s\n' "$$" "$(date +%s)" > "$LOCK") 2>/dev/null; do
+		owner_pid="$(field pid "$LOCK" 2>/dev/null || true)"
+		created="$(field created "$LOCK" 2>/dev/null || true)"
+		# A process can die between the create and the write, and a lock left by an older
+		# version is a directory. The file's own timestamp gives both the same bounded recovery.
 		case "$created" in
 			''|*[!0-9]*) created="$(stat -c %Y "$LOCK" 2>/dev/null || stat -f %m "$LOCK" 2>/dev/null || true)" ;;
 		esac
@@ -96,8 +99,8 @@ acquire_lock() {
 			''|*[!0-9]*) ;;
 			*)
 				# Registry mutations take milliseconds. Recover only an abandoned lock whose
-				# process is gone and whose age proves this is not a writer between mkdir and
-				# publishing its owner file.
+				# process is gone and whose age proves this is not a writer between the create
+				# and its owner line.
 				if [ $((now - created)) -ge 30 ]; then
 					case "$owner_pid" in
 						''|*[!0-9]*) abandoned=1 ;;
@@ -117,16 +120,11 @@ acquire_lock() {
 		}
 		sleep 0.1
 	done
-	{
-		printf 'pid=%s\n' "$$"
-		printf 'created=%s\n' "$(date +%s)"
-	} > "$LOCK/owner"
-	trap 'rm -f "$LOCK/owner"; rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+	trap 'rm -f "$LOCK"' EXIT INT TERM
 }
 
 release_lock() {
-	rm -f "$LOCK/owner"
-	rmdir "$LOCK" 2>/dev/null || true
+	rm -f "$LOCK"
 	trap - EXIT INT TERM
 }
 
@@ -356,8 +354,9 @@ baseline() {
 		echo "agent-baseline: reusing green comprehensive verification for $(git -C "$ROOT" rev-parse --short HEAD)"
 		return
 	fi
-	if mkdir "$lock" 2>/dev/null; then
-		trap 'rmdir "$lock" 2>/dev/null || true' EXIT INT TERM
+	# Claimed with noclobber, not `mkdir`, for the same reason as the registry lock.
+	if (set -C; : > "$lock") 2>/dev/null; then
+		trap 'rm -f "$lock"' EXIT INT TERM
 		echo "agent-baseline: no cached result; running make verify SCOPE=all"
 		if make -C "$ROOT" verify SCOPE=all; then
 			if [ "$(git -C "$ROOT" rev-parse HEAD)" != "$start_head" ] ||
@@ -366,14 +365,14 @@ baseline() {
 				return 1
 			fi
 			printf '%s\n' "$toolchain" > "$stamp"
-			rmdir "$lock"
+			rm -f "$lock"
 			trap - EXIT INT TERM
 			return
 		fi
 		return 1
 	fi
 	echo "agent-baseline: another worktree is proving this commit; waiting"
-	while [ -d "$lock" ]; do sleep 2; done
+	while [ -e "$lock" ]; do sleep 2; done
 	[ -f "$stamp" ] || { echo "agent-baseline: the shared gate failed" >&2; exit 1; }
 	echo "agent-baseline: shared gate is green"
 }

@@ -8,10 +8,12 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/people/contact"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // registerUsers mounts /v1/users* (§11). All are admin-only.
@@ -117,7 +119,7 @@ type contactAddressBody struct {
 }
 
 // toUserBody renders a user; lastSeen comes from userLastSeen (zero: never seen).
-func toUserBody(u store.User, lastSeen time.Time) userBody {
+func toUserBody(u identitystore.User, lastSeen time.Time) userBody {
 	body := userBody{
 		ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled,
 		Quota: u.Quota, AutoApprove: u.AutoApprove, Local: !u.MediaServerLinked && u.PasswordHash != "",
@@ -221,7 +223,7 @@ func (s *Server) putUserContactAddress(ctx context.Context, in *putUserContactAd
 		OwnerKind: contact.OwnerUser, OwnerID: in.ID, Email: email, Normalized: normalized, Status: contact.StatusPending,
 		Provenance: contact.ProvenanceAdmin, CreatedAt: time.Now().UTC(),
 	})
-	if errors.Is(err, store.ErrContactAddressConflict) {
+	if errors.Is(err, identitystore.ErrContactAddressConflict) {
 		return nil, errConflict("Email already in use", "Use an address that isn't attached to another person or pending replacement.")
 	}
 	if err != nil {
@@ -258,10 +260,10 @@ func (s *Server) deleteUserContactReplacement(ctx context.Context, in *userConta
 // leaves the count at zero rather than failing the whole list — the Users page must still
 // render so an admin can act, and a wrong-looking zero is visibly different from a page
 // that will not load.
-func (s *Server) withUsage(ctx context.Context, body userBody, u store.User) userBody {
+func (s *Server) withUsage(ctx context.Context, body userBody, u identitystore.User) userBody {
 	limit := u.Quota
 	if limit <= 0 {
-		limit = s.configInt("suggest.max_acquisitions")
+		limit = s.configInt(settings.SuggestMaxAcquisitions)
 	}
 	body.EffectiveQuota = limit
 	usage, err := suggest.PendingFor(ctx, s.store, u.ID, limit)
@@ -292,7 +294,7 @@ func (s *Server) patchUser(ctx context.Context, in *patchUserInput) (*patchUserO
 		return nil, err
 	}
 	if in.Body.Role != nil {
-		u.Role = store.Role(*in.Body.Role)
+		u.Role = identitystore.Role(*in.Body.Role)
 	}
 	if in.Body.Quota != nil {
 		u.Quota = *in.Body.Quota

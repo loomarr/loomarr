@@ -126,7 +126,6 @@ describe("FillerSources", () => {
           source({
             kind: "archive",
             effectiveCountry: "US",
-            effectiveMarket: "New York",
           }),
         ]}
       />,
@@ -177,6 +176,30 @@ describe("FillerSources registered peers", () => {
       removable: true,
     }),
   ];
+
+  // #2059 decision 10: a curated source Loomarr switched on for a nearby station says so while on.
+  it("marks a source switched on for the household's area", () => {
+    const near = source({
+      kind: "archive",
+      id: "archive:harbor",
+      target: "Harbor airchecks",
+      onForPlace: true,
+    });
+    const off = source({
+      kind: "archive",
+      id: "archive:lakeside",
+      target: "Lakeside airchecks",
+      onForPlace: true,
+      enabled: false,
+    });
+    render(<FillerSources sources={[near, off]} />);
+    expect(
+      within(screen.getByText("Harbor airchecks").parentElement!).getByText("For your area"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByText("Lakeside airchecks").parentElement!).queryByText("For your area"),
+    ).not.toBeInTheDocument();
+  });
 
   it("lists the specific sources an operator added", () => {
     render(<FillerSources sources={flat} />);
@@ -318,6 +341,14 @@ describe("FillerSources provider roll-up", () => {
       searchable: true,
     }),
   ];
+
+  it("names a paused provider by its own row, not by a kind the page knows", () => {
+    const rows = grouped({ target: "Registry Name", enabled: false }).map((row) =>
+      row.parentId ? { ...row, readiness: "provider_off" as const, effectiveEnabled: false } : row,
+    );
+    render(<FillerSources sources={rows} />);
+    expect(screen.getAllByText("Paused with Registry Name. Existing clips stay here.")).toHaveLength(2);
+  });
 
   it("nests a provider's sources under it, in their own list", () => {
     render(<FillerSources sources={grouped()} />);

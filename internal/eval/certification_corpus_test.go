@@ -13,10 +13,11 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -78,7 +79,7 @@ func TestCertificationContextRevisionPreservesQualificationGates(t *testing.T) {
 
 func TestCertificationEpochContractRevisionPreservesQualificationGates(t *testing.T) {
 	var contracts []map[string]any
-	for _, path := range []string{"testdata/planner-certification-v16.json", certificationManifestPath} {
+	for _, path := range []string{"testdata/planner-certification-v17.json", certificationManifestPath} {
 		blob, err := certificationFiles.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -102,8 +103,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v17" {
-		t.Fatalf("corpus version = %q, want planner-certification-v17", corpus.Version)
+	if corpus.Version != "planner-certification-v18" {
+		t.Fatalf("corpus version = %q, want planner-certification-v18", corpus.Version)
 	}
 	if corpus.SchemaVersion != 8 {
 		t.Fatalf("corpus schema version = %d, want 8", corpus.SchemaVersion)
@@ -307,7 +308,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v17" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v18" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
@@ -441,8 +442,8 @@ func TestRunnerScoresWrongCertificationToolRouteAsQuality(t *testing.T) {
 }
 
 func TestCertificationRunnerScoresPolicyProposalAndRecoveryQuality(t *testing.T) {
-	proposal := suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 10019, Name: "Synthetic Recovery"}},
+	proposal := proposals.Proposal{
+		Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 10019, Name: "Synthetic Recovery"}},
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 			Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
 		}},
@@ -503,7 +504,7 @@ func TestCertificationCountsOnlyEncounteredRepairRecoveryOpportunities(t *testin
 		{ModelCalls: 3, ToolCalls: 1, GroundingStage: "grounded"},
 		{ModelCalls: 2, ToolCalls: 1, GroundingStage: "grounded"},
 	}}
-	card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{
+	card := NewRunner(scriptedGenerator{proposal: proposals.Proposal{Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 10020, Name: "Synthetic Repair",
 	}}}}, RunnerConfig{Contract: &CertificationContract{Thresholds: CertificationThresholds{
 		MinRecoveryRate: 1,

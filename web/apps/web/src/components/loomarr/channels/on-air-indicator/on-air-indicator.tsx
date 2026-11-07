@@ -22,7 +22,7 @@ const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorP
     <span className="relative flex size-2.5">
       {state === "live" && (
         <span
-          className="absolute inline-flex size-full rounded-full bg-onair opacity-60 motion-safe:animate-ping"
+          className="bg-onair absolute inline-flex size-full rounded-full opacity-60 motion-safe:animate-ping"
           aria-hidden
         />
       )}
@@ -31,7 +31,7 @@ const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorP
     {showLabel && (
       <span
         className={cn(
-          "font-mono text-2xs uppercase tracking-wide",
+          "text-2xs font-mono tracking-wide uppercase",
           state === "live" ? "text-onair-300" : "text-static-400",
         )}
       >

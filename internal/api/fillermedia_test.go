@@ -12,8 +12,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // The content hashes the byte-route tests address the seeded clips by. ⚠ Since V45a the byte
@@ -30,7 +30,7 @@ const (
 // row, and a secret outside the folder entirely. All three are load-bearing: the secret is what
 // makes a traversal assertion mean something, and the uncatalogued file is what proves the
 // catalog check is a real gate rather than a lookup.
-func newMediaServer(t *testing.T) (*httptest.Server, string, fillerstore.Store) {
+func newMediaServer(t *testing.T) (*httptest.Server, string, records.Store) {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -57,7 +57,7 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, fillerstore.Store) 
 	// Hash → disk path. The wire identity is the hash (V45a); the route looks a clip up by hash
 	// then serves the row's path. A path is never addressable directly, only a catalogued hash.
 	for hash, p := range map[string]string{mediaHash: "80s/toys/intro.mp4", htmlHash: "notes.html"} {
-		if err := st.UpsertClip(ctx, store.Clip{
+		if err := st.UpsertClip(ctx, catalogstore.Clip{
 			Clip:      filler.Clip{Hash: hash, Path: p, Name: p, Kind: filler.Commercial, DurationMs: 30_000},
 			UpdatedAt: time.Now().UTC(),
 		}); err != nil {
@@ -76,12 +76,7 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, fillerstore.Store) 
 		FillerLayout: layout,
 		// A saved desired value may differ until restart. Serving the clip successfully proves the
 		// byte route uses the applied layout above, not this live settings seam.
-		LiveConfig: func(key string) string {
-			if key == "filler.dir" {
-				return filepath.Join(root, "desired-after-restart")
-			}
-			return ""
-		},
+		LiveSettings: mapSettings{"filler.dir": filepath.Join(root, "desired-after-restart")},
 	}))
 	t.Cleanup(srv.Close)
 	return srv, root, st

@@ -12,8 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
@@ -64,10 +63,12 @@ type Tunarr struct {
 	localFillerSource bool
 	// Media-source state for tunarr-connect (§6): the Emby source Loomarr wires so
 	// Tunarr can index the library. sourceID is empty until EnsureEmbySource.
-	sourceID         string
-	msLibs           []*msLibrary
-	MediaSourceToken string // captures the access token used (assert: the admin key, no user login)
-	Scans            int    // library scans triggered
+	sourceID           string
+	msLibs             []*msLibrary
+	MediaSourceToken   string // captures the access token used (assert: the admin key, no user login)
+	MediaSourceEnsures int    // EnsureEmbySource calls, including failed ones
+	EnsureSourceErr    error  // when set, EnsureEmbySource fails with it (Tunarr unreachable)
+	Scans              int    // library scans triggered
 }
 
 // msLibrary models one of Tunarr's enumerated media-server libraries (movies/shows/…).
@@ -338,8 +339,8 @@ func (m *Tunarr) Guide(context.Context, time.Time, time.Time) (map[string][]tuna
 // LiveTVURLs satisfies the Adapter's Live TV URL surface with the zero value. Like Guide, it is
 // unreached by current tests: the Live TV URL wiring always reads the concrete, non-overridden
 // adapter built alongside this double (see app.liveTVURLsFor), never ov.Programmer.
-func (m *Tunarr) LiveTVURLs() setup.LiveTVURLs {
-	return setup.LiveTVURLs{}
+func (m *Tunarr) LiveTVURLs() tunarr.LiveTVURLs {
+	return tunarr.LiveTVURLs{}
 }
 
 var _ tunarr.Adapter = (*Tunarr)(nil)

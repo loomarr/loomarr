@@ -13,7 +13,7 @@ const NativeLayoutWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" 
         <AdaptiveSplit
           density={density}
           primary={
-            <Surface gap="$control" padding="$section">
+            <Surface gap="control" padding="section">
               <Text density={density} textRole="metadata" tone="live">
                 NOW PLAYING
               </Text>

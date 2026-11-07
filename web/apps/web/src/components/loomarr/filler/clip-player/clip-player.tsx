@@ -28,7 +28,7 @@ const ClipPlayer = ({ clip, onClose, onPlaybackStart, className }: ClipPlayerPro
       <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/80" />
       <DialogPrimitive.Popup
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-border bg-static-950 shadow-lg focus:outline-none",
+          "border-border bg-static-950 fixed top-1/2 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border shadow-lg focus:outline-none",
           className,
         )}
       >
@@ -54,7 +54,7 @@ const ClipPlayer = ({ clip, onClose, onPlaybackStart, className }: ClipPlayerPro
                     variant="ghost"
                     size="icon"
                     aria-label="Close player"
-                    className="size-8 bg-static-900/80 text-static-100 hover:bg-static-900 hover:text-white focus-visible:ring-offset-0"
+                    className="bg-static-900/80 text-static-100 hover:bg-static-900 size-8 hover:text-white focus-visible:ring-offset-0"
                   />
                 }
               >

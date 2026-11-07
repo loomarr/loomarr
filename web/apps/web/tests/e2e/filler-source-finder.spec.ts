@@ -110,7 +110,7 @@ test("Archive source search stays in flow and registers only after confirmation"
       await expect.poll(() => registrations.length).toBe(1);
       expect(registrations[0]).toEqual({
         kind: "archive",
-        uri: "classic_tv_commercials",
+        uri: "https://archive.org/details/classic_tv_commercials",
         label: "Classic TV Commercials",
       });
     }
@@ -126,7 +126,7 @@ test("a specific clip keeps its parent source and reconnects to the durable down
   await page.getByRole("button", { name: `Manage ${sourceName}` }).click();
   await expect(page).toHaveURL(/\/filler\/sources\/archive(?::|%3A)long$/i);
   let workspace = page.getByRole("dialog", { name: sourceName });
-  await workspace.getByRole("button", { name: /finding a specific clip/i }).click();
+  await workspace.getByRole("button", { name: /find a specific clip/i }).click();
   await workspace.getByRole("textbox", { name: "Search this source" }).fill("station break");
   await workspace.getByRole("button", { name: "Search", exact: true }).click();
   await workspace.getByRole("button", { name: "Queue download: Found clip 1" }).click();
@@ -148,7 +148,7 @@ test("a specific clip keeps its parent source and reconnects to the durable down
   await page.reload();
   workspace = page.getByRole("dialog", { name: sourceName });
   await expect(workspace).toBeVisible();
-  await workspace.getByRole("button", { name: /finding a specific clip/i }).click();
+  await workspace.getByRole("button", { name: /find a specific clip/i }).click();
   await workspace.getByRole("textbox", { name: "Search this source" }).fill("station break");
   await workspace.getByRole("button", { name: "Search", exact: true }).click();
 
@@ -269,7 +269,7 @@ test("Archive source setup falls back to an exact URL and recovers from a failed
   let addAttempts = 0;
   await page.route("**/v1/filler/providers/archive/suggestions?*", async (route) => {
     if (new URL(route.request().url()).searchParams.get("q") === "nothing here") {
-      return route.fulfill({ status: 200, json: { suggestions: [] } });
+      return route.fulfill({ status: 200, json: { exact: false, suggestions: [] } });
     }
     return route.fallback();
   });
@@ -320,6 +320,7 @@ test("registered sources stay compact and open a scalable source workspace", asy
     return {
       id: `archive:${index + 1}`,
       uri: `collection_${index + 1}`,
+      pageUrl: `https://archive.org/details/collection_${index + 1}`,
       kind: "archive",
       target: index === 0 ? sourceName : attention ? "Paused collection" : `Archive collection ${index + 1}`,
       detail: "an archive.org collection",
@@ -337,7 +338,6 @@ test("registered sources stay compact and open a scalable source workspace", asy
       ready: !attention,
       locationSource: "installation",
       effectiveCountry: "US",
-      effectiveMarket: "New York City",
       actions: attention ? ["enable"] : ["fetch", "search", "disable", "remove", "edit_location"],
     };
   });
@@ -465,7 +465,7 @@ test("registered sources stay compact and open a scalable source workspace", asy
     expect(backend.state.fillerFetches.at(-1)).toBe("archive:1");
 
     await expect(workspace.getByRole("textbox", { name: "Search this source" })).toHaveCount(0);
-    await workspace.getByRole("button", { name: /finding a specific clip/i }).click();
+    await workspace.getByRole("button", { name: /find a specific clip/i }).click();
     await workspace.getByRole("textbox", { name: "Search this source" }).fill("breakfast cereal");
     await workspace.getByRole("button", { name: "Search", exact: true }).click();
     await expect(workspace.getByText("Showing 8 of 20 matches")).toBeVisible();
@@ -621,6 +621,7 @@ for (const viewport of [
             {
               id: "archive:classic_tv_commercials",
               uri: "classic_tv_commercials",
+              pageUrl: "https://archive.org/details/classic_tv_commercials",
               kind: "archive",
               target: "Classic TV Commercials",
               detail: "an Archive.org collection",
@@ -638,7 +639,7 @@ for (const viewport of [
               readiness: locationReady ? "ready" : "needs_location",
               ready: locationReady,
               locationSource: locationReady ? "installation" : "missing",
-              ...(locationReady ? { effectiveCountry: "US", effectiveMarket: "New York City" } : {}),
+              ...(locationReady ? { effectiveCountry: "US" } : {}),
               actions: locationReady
                 ? ["fetch", "search", "disable", "remove", "edit_location"]
                 : ["set_location", "disable", "remove"],
@@ -688,7 +689,7 @@ for (const viewport of [
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("region", { name: "Unsaved changes" })).toHaveCount(0);
     expect(backend.state.edits["filler.home_country"]).toBe("US");
-    expect(backend.state.edits["filler.home_market"]).toBe("New York City");
+    expect(backend.state.edits["filler.home_place"]).toBe("5128581");
 
     await page.goto("/filler/sources");
     await expect(page.getByText("2 of 2 ready")).toBeVisible();

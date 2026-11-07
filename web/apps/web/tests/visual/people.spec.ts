@@ -50,6 +50,10 @@ test.describe("People workspace certification", () => {
               return (
                 style.visibility !== "hidden" &&
                 style.display !== "none" &&
+                // Base UI's form-value inputs are clipped to nothing (`clip-path: inset(50%)`) and
+                // hold no pixels a person can touch. Since @base-ui/react 1.9 they sit at 0,0 rather
+                // than -1,-1, so the viewport test below would otherwise count them.
+                style.clipPath !== "inset(50%)" &&
                 rect.right > 0 &&
                 rect.bottom > 0 &&
                 rect.left < window.innerWidth &&

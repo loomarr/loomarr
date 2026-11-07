@@ -365,6 +365,28 @@ else
   run_expo_build cold
 fi
 # Expo's generic destination builds without physical-device enumeration or an implicit launch.
+# The simulator was booted before the build, but the build can leave it Shut Down (hosted runners
+# have failed install with SimError 405 "Unable to lookup in current state: Shutdown" right after
+# "Build Succeeded"). `bootstatus -b` boots it again if needed and waits until it is ready.
+#
+# The boot itself can fail because CoreSimulator no longer lists the runtime it booted minutes
+# earlier: "simulator runtime is not available" (SimError 401). Restarting the service makes it
+# discover runtimes again. This only runs when the boot failed, and a recovered device still has to
+# pass the install, launch and screenshot checks below.
+boot_simulator_after_build() {
+  local attempt
+  for attempt in 1 2 3; do
+    if xcrun simctl bootstatus "${simulator_id}" -b; then
+      return 0
+    fi
+    printf 'apple-client: simulator boot attempt %s failed; restarting CoreSimulator\n' "$attempt" >&2
+    xcrun simctl runtime list >&2 || true
+    killall -9 com.apple.CoreSimulator.CoreSimulatorService >/dev/null 2>&1 || true
+    sleep 10
+  done
+  return 1
+}
+boot_simulator_after_build
 xcrun simctl install "${simulator_id}" "${BUILD_DIR}/${SCHEME}.app"
 record_phase_timing native_build_install "$native_build_started_at"
 
@@ -404,10 +426,17 @@ fi
 sleep 5
 readonly SCREENSHOT_PATH="${ARTIFACTS_DIR}/${APP_NAME}.png"
 capture_screenshot() {
-  local attempt
+  local attempt display_args=() error
   for attempt in 1 2 3; do
-    if xcrun simctl io "${simulator_id}" screenshot "$SCREENSHOT_PATH"; then
+    if error="$(xcrun simctl io "${simulator_id}" screenshot ${display_args[@]+"${display_args[@]}"} \
+      "$SCREENSHOT_PATH" 2>&1)"; then
       return
+    fi
+    printf '%s\n' "$error" >&2
+    # Xcode 27 simulators can expose more than one display, and simctl then refuses to guess.
+    # Its error lists them; capture the device's own screen, the one named "(primary)".
+    if [[ "$error" =~ --display=([0-9]+)[[:space:]][^$'\n']*\(primary\) ]]; then
+      display_args=("--display=${BASH_REMATCH[1]}")
     fi
     if (( attempt < 3 )); then
       printf 'apple-client: screenshot attempt %d failed; retrying\n' "$attempt" >&2

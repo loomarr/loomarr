@@ -101,7 +101,7 @@ const SortableLineupRow = ({
       defaultValue={value || ""}
       placeholder={placeholder}
       aria-label={`${entry.name} ${bound === "seasonMin" ? "first" : "last"} season`}
-      className="w-16 rounded border border-border bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      className="border-border bg-background focus-visible:ring-ring w-16 rounded border px-2 py-1 text-xs focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
       onBlur={(e) => {
         const next = e.target.value === "" ? undefined : Number(e.target.value);
         if (next === (value || undefined)) return;
@@ -124,7 +124,7 @@ const SortableLineupRow = ({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "@md:flex grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border border-border bg-card px-3 py-2.5",
+        "border-border bg-card grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border px-3 py-2.5 @md:flex",
         isDragging && "z-10 opacity-70 shadow-md",
       )}
     >
@@ -134,19 +134,19 @@ const SortableLineupRow = ({
         {...listeners}
         disabled={disabled}
         aria-label={`Reorder ${entry.name}`}
-        className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+        className="text-static-400 hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
       >
         <GripVertical className="size-4" aria-hidden />
       </button>
 
-      <div className="@md:block contents @md:min-w-0 @md:flex-1">
+      <div className="contents @md:block @md:min-w-0 @md:flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="truncate font-medium text-sm">{entry.name}</span>
-          {entry.year ? <span className="font-mono text-static-400 text-xs">{entry.year}</span> : null}
+          <span className="truncate text-sm font-medium">{entry.name}</span>
+          {entry.year ? <span className="text-static-400 font-mono text-xs">{entry.year}</span> : null}
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
         </div>
         {isSeries && onSeasonChange && (
-          <div className="col-[2/-1] @md:mt-1.5 flex flex-wrap items-center gap-1.5">
+          <div className="col-[2/-1] flex flex-wrap items-center gap-1.5 @md:mt-1.5">
             <span className="text-muted-foreground text-xs">Seasons</span>
             {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
             <span className="flex items-center gap-1.5">
@@ -168,7 +168,7 @@ const SortableLineupRow = ({
             <Button
               variant="ghost"
               size="icon"
-              className="col-[2/-1] @md:size-7 size-11 shrink-0 justify-self-end"
+              className="col-[2/-1] size-11 shrink-0 justify-self-end @md:size-7"
               disabled={disabled}
               aria-label={`Remove ${entry.name}`}
               onClick={onRemove}
@@ -263,9 +263,9 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
   };
 
   return (
-    <section className={cn("flex flex-col gap-3 rounded-lg border border-border p-4", className)}>
+    <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
       <div>
-        <h2 className="font-semibold text-lg">Lineup</h2>
+        <h2 className="text-lg font-semibold">Lineup</h2>
         <p className="text-muted-foreground text-sm">
           Add, remove, and reorder the titles this channel plays. Changes save immediately.
         </p>
@@ -298,10 +298,10 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               // 23 px tall as drawn: a touch screen gets the 24 px tap area (styles.css, #1785).
               data-touch-target
               className={cn(
-                "cursor-pointer rounded-md border px-2.5 py-0.5 font-mono text-2xs transition-colors",
+                "text-2xs cursor-pointer rounded-md border px-2.5 py-0.5 font-mono transition-colors",
                 // Pressed is neutral (#1909 Q2), like the Guide's span picker.
                 sort === value
-                  ? "border-foreground bg-static-800 font-semibold text-foreground"
+                  ? "border-foreground bg-static-800 text-foreground font-semibold"
                   : "border-border text-static-400 hover:border-static-400",
               )}
             >
@@ -313,7 +313,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
       )}
 
       {entries.length === 0 ? (
-        <p className="rounded-md border border-border border-dashed px-3 py-6 text-center text-muted-foreground text-sm">
+        <p className="border-border text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-sm">
           Nothing in the lineup yet. Add a title below.
         </p>
       ) : (
@@ -324,7 +324,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
                 lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
                 (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
                 dnd-kit auto-scrolls this container during a drag toward its edges. */}
-            <ul className="@container scroll-thin flex max-h-128 flex-col gap-2 overflow-y-auto">
+            <ul className="scroll-thin @container flex max-h-128 flex-col gap-2 overflow-y-auto">
               {shown.map((entry) => (
                 <SortableLineupRow
                   key={entry.key}

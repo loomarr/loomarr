@@ -59,6 +59,8 @@ func PlanAcquisitionFor(intent AcquisitionIntent, candidates []AcquisitionCandid
 			decision.Detail = "selected first: it fills a channel coverage gap (" + gap + ")"
 			if strings.HasPrefix(gap, "era:") {
 				decision.Detail = fmt.Sprintf("selected first: its year %d falls in a channel coverage gap", decision.Candidate.ObservedYear)
+			} else if strings.HasPrefix(gap, "station:") {
+				decision.Detail = "selected first: a search for " + decision.Candidate.StationSearch + ", a station near a channel's place, found it"
 			}
 		}
 		plan.Selected = append(plan.Selected, decision)
@@ -179,12 +181,26 @@ type CoverageGaps struct {
 	// Roles are break roles the catalog lacks entirely: bookends (bumpers and station IDs) when
 	// no live channel's pod can open or close on one.
 	Roles []Kind
+	// Short is how many commercials the shortest channel's exact rung lacks of its pool target
+	// (#2035). Zero with no gap is a met target: an unattended pass has nothing to fetch.
+	Short int
+	// Stations are the call signs a pass searches each archive source for (#2059 decision 9): those
+	// in-radius stations held during the era gaps, sorted. They steer where a short pass looks and
+	// never make a target unmet: local material is a flavour, not a quota.
+	Stations []string
 }
 
-// gapFilled returns the gap key a candidate fills, era first. Only OBSERVED facts count: a
-// candidate with no observed year fills no era gap, and one with no role token fills no role gap,
-// because missing metadata never satisfies a target (see AcquisitionIntent).
+// Met reports whether every channel is at its target and nothing is missing.
+func (g CoverageGaps) Met() bool { return g.Short <= 0 && len(g.Eras) == 0 && len(g.Roles) == 0 }
+
+// gapFilled returns the gap key a candidate fills: a station search's hit first, then era, then
+// role. Only OBSERVED facts count: a candidate with no observed year fills no era gap, and one with
+// no role token fills no role gap, because missing metadata never satisfies a target (see
+// AcquisitionIntent).
 func gapFilled(c AcquisitionCandidate, gaps CoverageGaps) (string, bool) {
+	if c.StationSearch != "" && slices.Contains(gaps.Stations, c.StationSearch) {
+		return StationGapKey(c.StationSearch), true
+	}
 	if c.ObservedYear > 0 {
 		for _, r := range gaps.Eras {
 			if !r.Any() && r.Contains(c.ObservedYear) {
@@ -216,6 +232,9 @@ func observedRoles(c AcquisitionCandidate) []Kind {
 // RoleGapKey is the stable record of a role gap an acquisition was for: "role:station_id".
 func RoleGapKey(role Kind) string { return "role:" + string(role) }
 
+// StationGapKey is the stable record of a station search an acquisition came from: "station:WPIX".
+func StationGapKey(callSign string) string { return "station:" + callSign }
+
 // EraGapKey is the stable record of an era gap an acquisition was for (#749): "era:1990-1999",
 // "era:2005-" or "era:-1979"; "" for any era, which is never a gap. The "era:" prefix leaves room
 // for the other gap kinds a download can be for, without a schema change.
@@ -238,15 +257,19 @@ func EraGapKey(r EraRange) string {
 // show, so acquisition steers by the answer operators see rather than a second opinion (#749).
 //
 // Era gaps are the era windows of live channels whose breaks cannot fill from their own era
-// (Coverage.Level below exact, down to the bumper card); channels with no era target are skipped
-// (any era is their exact rung) and overlapping windows merge. The role gap is bookends: live
-// channels and not one bumper or station ID in the catalog. Audience is deliberately not a gap
+// (Coverage.Level below exact, down to the bumper card) or whose exact rung is short of its pool
+// target (#2035); channels with no era target add no era (any era is their exact rung) and
+// overlapping windows merge. Short is the largest channel's shortfall. The role gap is bookends:
+// live channels and not one bumper or station ID in the catalog. Audience is deliberately not a gap
 // kind: no provider observes a remote item's audience before download, so steering by it would
 // be a guess.
-func CoverageGapsFrom(pool PoolReport) CoverageGaps {
+func CoverageGapsFrom(pool PoolReport, targets PoolTargets, thisYear int) CoverageGaps {
 	var eras []EraRange
+	short := 0
 	for _, ch := range pool.Channels {
-		if ch.Report.Level == MatchExact {
+		deficit := targets.For(ch.Report.EraWindows, thisYear) - ch.Report.exactClips()
+		short = max(short, deficit)
+		if ch.Report.Level == MatchExact && deficit <= 0 {
 			continue
 		}
 		for _, r := range ch.Report.EraWindows {
@@ -255,7 +278,7 @@ func CoverageGapsFrom(pool PoolReport) CoverageGaps {
 			}
 		}
 	}
-	gaps := CoverageGaps{Eras: NormalizeEraWindows(eras)}
+	gaps := CoverageGaps{Eras: NormalizeEraWindows(eras), Short: short}
 	if len(pool.Channels) > 0 && pool.Bookends == 0 {
 		gaps.Roles = []Kind{Bumper, StationID}
 	}

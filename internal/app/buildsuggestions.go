@@ -10,20 +10,22 @@ import (
 	"github.com/loomarr/loomarr/internal/buildinfo"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/moviecollections"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
-	"github.com/loomarr/loomarr/internal/recurate"
-	"github.com/loomarr/loomarr/internal/reference"
-	"github.com/loomarr/loomarr/internal/scheduler"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/webreference"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -31,7 +33,7 @@ type suggestionBuild struct {
 	suggest          api.SuggestService
 	progress         api.ProposalProgress // the same *suggest.Service, read for live generation progress
 	workflow         api.ProposalWorkflow
-	durableWorkflow  *proposalworkflow.Workflow
+	durableWorkflow  *workflow.Workflow
 	search           api.SearchService
 	movieCollections api.MovieCollectionService
 	collections      api.CollectionService
@@ -50,7 +52,7 @@ func buildSuggestions(
 	overrides Overrides,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
-	jobs *scheduler.Registry,
+	registry *jobs.Registry,
 	fillerLayout filler.Layout,
 	activityRecorder *activity.Recorder,
 	log *slog.Logger,
@@ -60,6 +62,7 @@ func buildSuggestions(
 	approver *suggest.Approver,
 	owner *generationLifecycle,
 	metricRecorder *metrics.Recorder,
+	holidays holidayvocab.Source,
 ) (suggestionBuild, error) {
 	var result suggestionBuild
 	if st == nil {
@@ -68,7 +71,7 @@ func buildSuggestions(
 		return result, nil
 	}
 
-	result.durableWorkflow = proposalworkflow.New(st, newID, time.Now)
+	result.durableWorkflow = workflow.New(st, newID, time.Now)
 	result.workflow = result.durableWorkflow
 
 	var err error
@@ -83,7 +86,7 @@ func buildSuggestions(
 	overrides.Startup.Complete(diagnostics.StartupCheckImageWorker, diagnostics.StartupPassed,
 		"required worker certified", "", "")
 	result.imageFetcher = registerImageJobs(
-		rootCtx, jobs, result.images, imageStore{st}, fillerLayout, set, activityRecorder, log,
+		rootCtx, registry, result.images, imageStore{st}, fillerLayout, set, activityRecorder, log,
 	)
 	result.timelineThumbs = newTimelineThumbs(rootCtx, timelineThumbResolver{
 		tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher,
@@ -110,29 +113,29 @@ func buildSuggestions(
 	if overrides.LLM != nil {
 		provider = overrides.LLM
 	}
-	suggester := suggest.New(provider, catalogService, tmdbClient, set.intv("suggest.max_acquisitions"))
+	suggester := suggest.New(provider, catalogService, tmdbClient, settings.SuggestMaxAcquisitions.Get(set))
 	suggester.WithRatings(tmdbClient).
+		WithCalendar(householdCalendar(set, holidays, log)).
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
-		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved("reference", httpx.TimeoutReference, metricRecorder)))
-	service := suggest.NewService(st, suggester, suggest.Config{
-		Workers: set.intv("job.workers"), Timeout: set.dur("job.timeout"), CacheTTL: 24 * time.Hour,
-	}, newID, time.Now, log).
+		WithReferences(webreference.NewWeb(httpx.NewPublicNamedObserved(httpx.TargetReference, httpx.TimeoutReference, metricRecorder)))
+	service := suggest.NewService(st, result.durableWorkflow, suggester, suggest.Config{
+		Workers: settings.JobWorkers.Get(set), Timeout: settings.JobTimeout.Get(set), CacheTTL: 24 * time.Hour,
+	}, time.Now, log).
 		WithProgressEmitter(emitter).
 		WithProposalNotifier(emitter).
-		WithDurableWorkflow(result.durableWorkflow).
 		WithQualityRecorder(st)
 	service = service.WithAutoApprove(suggest.NewAutoApprover(
-		st, approver, func(context.Context) int { return set.intv("suggest.max_acquisitions") }, log,
+		st, approver, func(context.Context) int { return settings.SuggestMaxAcquisitions.Get(set) }, log,
 	))
 	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurateThresholds{set}, log))
-	jobs.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
+	registry.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
 
 	result.suggest = service
 	result.progress = service
 	result.systemLLM = systemLLM
 	owner.goRun(func(ctx context.Context) { service.Run(ctx) })
-	log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"),
-		"tmdb_configured", set.str("tmdb.api_key") != "")
+	log.Info("suggester started", "provider", provider.Name(), "workers", settings.JobWorkers.Get(set),
+		"tmdb_configured", settings.TMDBAPIKey.Get(set) != "")
 	return result, nil
 }

@@ -128,7 +128,7 @@ func seedBackupRestoreDrill(t *testing.T, s Store) {
 	}
 	if err := s.CreateProposal(ctx, Proposal{
 		ID: backupDrillProposalID, JobID: backupDrillJobID, Status: "approved",
-		CreatedBy: user.ID, ApprovedBy: user.ID, ProposalJSON: `{}`,
+		CreatedBy: user.ID, ApprovedBy: user.ID,
 		ApprovedAt: now, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("seed proposal audit: %v", err)

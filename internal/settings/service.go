@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/library"
 )
 
@@ -64,7 +64,7 @@ type Change struct {
 // without touching the DB on the hot path. Safe for concurrent use.
 type Service struct {
 	reg    *Registry
-	env    func(string) (string, bool) // injectable for tests; defaults to os.LookupEnv
+	env    func(string) (string, bool) // injectable for tests; defaults to config.LookupEnv
 	log    *slog.Logger
 	loader Loader // kept for post-write hot-apply and replica refresh
 	// dataDir anchors the defaults of DataSubdir settings; see WithDataDir.
@@ -111,7 +111,7 @@ func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger, op
 	}
 	s := &Service{
 		reg:      reg,
-		env:      os.LookupEnv,
+		env:      config.LookupEnv,
 		log:      log,
 		loader:   loader,
 		watchers: make(map[string][]chan Change),
@@ -191,11 +191,11 @@ func (s *Service) envRaw(set Setting) (string, bool, error) {
 	case hasDirect && direct != "" && hasFile:
 		return "", false, fmt.Errorf("%s and %s_FILE both set (ambiguous)", set.EnvVar, set.EnvVar)
 	case hasFile:
-		b, err := os.ReadFile(filePath) //nolint:gosec // path is operator-supplied config, by design
+		secret, err := config.ReadSecret(filePath)
 		if err != nil {
-			return "", false, fmt.Errorf("read %s_FILE (%s): %w", set.EnvVar, filePath, err)
+			return "", false, fmt.Errorf("%s_FILE: %w", set.EnvVar, err)
 		}
-		return strings.TrimRight(string(b), "\n"), true, nil
+		return secret, true, nil
 	case hasDirect:
 		return direct, true, nil
 	default:

@@ -10,8 +10,8 @@ const EmptyState = ({ icon, title, description, action, className }: EmptyStateP
   <div className={cn("flex flex-col items-center justify-center gap-3 p-10 text-center", className)}>
     {icon && <div className="text-static-500 [&_svg]:size-8">{icon}</div>}
     <div>
-      <p className="font-mono text-sm text-static-400 uppercase tracking-wide">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-muted-foreground text-sm">{description}</p>}
+      <p className="text-static-400 font-mono text-sm tracking-wide uppercase">{title}</p>
+      {description && <p className="text-muted-foreground mt-1 max-w-sm text-sm">{description}</p>}
     </div>
     {action && (
       <Button size="sm" onClick={action.onClick}>

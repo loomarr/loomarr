@@ -29,7 +29,7 @@ const Tabs = <Value extends string>({
   options,
   value,
 }: TabsProps<Value>) => (
-  <View aria-label={label} flexDirection="row" gap="$inline" role="tablist">
+  <View aria-label={label} flexDirection="row" gap="inline" role="tablist">
     {options.map((option) => {
       const selected = option.value === value;
       return (
@@ -70,7 +70,7 @@ const MenuList = <Value extends string>({
   label,
   onSelect,
 }: MenuListProps<Value>) => (
-  <Surface aria-label={label} gap="$inline" padding="$inline" role="menu">
+  <Surface aria-label={label} gap="inline" padding="inline" role="menu">
     {items.map((item) => (
       <Action
         accessibilityRole="menuitem"
@@ -122,7 +122,7 @@ const SelectControl = <Value extends string>({
 }: SelectControlProps<Value>) => {
   const selected = options.find((option) => option.value === value);
   return (
-    <View gap="$inline" width="100%">
+    <View gap="inline" width="100%">
       {appearance === "field" ? (
         <Pressable
           accessibilityLabel={`${label}, ${selected?.label ?? "No selection"}`}
@@ -133,12 +133,12 @@ const SelectControl = <Value extends string>({
         >
           <Surface
             alignItems="center"
-            backgroundColor="$surfaceCanvas"
-            borderColor="$borderControl"
+            backgroundColor="surfaceCanvas"
+            borderColor="borderControl"
             borderRadius={semanticRadius.control}
             borderWidth={1}
             flexDirection="row"
-            gap="$inline"
+            gap="inline"
             minHeight={semanticTargets[density]}
             opacity={disabled ? 0.62 : 1}
             paddingHorizontal={semanticSpace.control}
@@ -171,7 +171,7 @@ const SelectControl = <Value extends string>({
         </>
       )}
       {open ? (
-        <Surface padding="$control">
+        <Surface padding="control">
           <ChoiceGroup
             density={density}
             label={`${label} options`}
@@ -196,10 +196,10 @@ interface HintProps {
 }
 
 const Hint = ({ children, content, density = "pointer", visible }: HintProps) => (
-  <View alignItems="flex-start" gap="$inline">
+  <View alignItems="flex-start" gap="inline">
     {children}
     {visible ? (
-      <Surface level="overlay" maxWidth={density === "tv" ? 520 : 320} padding="$inline" role="tooltip">
+      <Surface level="overlay" maxWidth={density === "tv" ? 520 : 320} padding="inline" role="tooltip">
         <Text density={density} textRole="metadata" tone="primary">
           {content}
         </Text>

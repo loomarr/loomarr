@@ -94,7 +94,7 @@ const rowFor = ({ journey, status }: RequestEntry) => {
           <Link
             to="/requests/$jobId"
             params={{ jobId: journey.jobId }}
-            className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="focus-visible:ring-ring rounded-sm hover:underline focus-visible:ring-2 focus-visible:outline-none"
           >
             {title}
           </Link>
@@ -203,7 +203,7 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
   return (
     <ListGroup
       aria-label={tab === "done" ? "Finished requests" : "Requests in progress"}
-      className="mx-auto w-full max-w-reading"
+      className="max-w-reading mx-auto w-full"
     >
       {entries.map(rowFor)}
       {decidedPulls.map(pullRowFor)}
@@ -233,10 +233,10 @@ const NeedsYouList = () => {
     );
   }
   return (
-    <div className="mx-auto flex w-full max-w-reading flex-col gap-6">
+    <div className="max-w-reading mx-auto flex w-full flex-col gap-6">
       {showApprovals && (
         <section aria-labelledby="needs-approvals" className="flex flex-col gap-3">
-          <h2 id="needs-approvals" className="font-semibold text-lg">
+          <h2 id="needs-approvals" className="text-lg font-semibold">
             Waiting for your approval
           </h2>
           <ApprovalQueue onReviewingChange={setReviewing} />
@@ -244,7 +244,7 @@ const NeedsYouList = () => {
       )}
       {failed.length > 0 && (
         <section aria-labelledby="needs-failed" className="flex flex-col gap-3">
-          <h2 id="needs-failed" className="font-semibold text-lg">
+          <h2 id="needs-failed" className="text-lg font-semibold">
             Couldn't be built
           </h2>
           <ul className="flex flex-col gap-3">

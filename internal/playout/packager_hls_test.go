@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -27,11 +28,11 @@ type fakeHLSOrigin struct {
 
 var errFakeAcquire = errors.New("fake acquire")
 
-func (f *fakeHLSOrigin) acquirePlaylist(ch string, _ EncodePlan, _ bool, _ string) (hlsPlaylistLease, error) {
+func (f *fakeHLSOrigin) acquirePlaylist(ch string, _ bool, _ string) (hlsPlaylistLease, error) {
 	f.acquired = append(f.acquired, ch)
 	return hlsPlaylistLease{}, errFakeAcquire
 }
-func (f *fakeHLSOrigin) AssetPath(_ string, _ EncodePlan, rel string) (string, bool) {
+func (f *fakeHLSOrigin) AssetPath(_ string, rel string) (string, bool) {
 	p, ok := f.assets[rel]
 	return p, ok
 }
@@ -39,8 +40,14 @@ func (f *fakeHLSOrigin) StopChannel(string) { f.stopped++ }
 func (f *fakeHLSOrigin) StopAll()           { f.stopped++ }
 
 func TestPackagerHLSAssetPathServesOnlyItsOwnFiles(t *testing.T) {
+	p, err := packager.New(packager.Config{FPS: 25, Dir: t.TempDir()}, func(ctx context.Context, _ time.Time) (packager.Item, error) {
+		return packager.Item{}, ctx.Err()
+	}, func(context.Context) (*packager.Slate, error) { return nil, errors.New("no slate") })
+	if err != nil {
+		t.Fatal(err)
+	}
 	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{
-		{channel: "ch", format: FormatBaseline}: {dir: "/scratch/ch-1"},
+		{channel: "ch", format: FormatBaseline}: {dir: "/scratch/ch-1", p: p},
 	}}
 	// A channel's formats share one flat namespace, `<format>-<file>`; the files keep bare names.
 	for rel, want := range map[string]string{
@@ -48,11 +55,11 @@ func TestPackagerHLSAssetPathServesOnlyItsOwnFiles(t *testing.T) {
 		"init.mp4": "", "seg00000007.m4s": "", "4k-hevc-sdr-init.mp4": "", "1080p-h264-sdr.m3u8": "",
 		"../secret": "", "1080p-h264-sdr-seg/../../x.m4s": "", "1080p-h264-sdr-init.mp4.bak": "", "seg-1.ts": "",
 	} {
-		if got, ok := m.AssetPath("ch", PlanBaseline, rel); got != want || ok != (want != "") {
+		if got, ok := m.AssetPath("ch", rel); got != want || ok != (want != "") {
 			t.Errorf("AssetPath(%q) = %q, %v, want %q", rel, got, ok, want)
 		}
 	}
-	if _, ok := m.AssetPath("other", PlanBaseline, "1080p-h264-sdr-init.mp4"); ok {
+	if _, ok := m.AssetPath("other", "1080p-h264-sdr-init.mp4"); ok {
 		t.Error("an asset of a channel with no packager resolved")
 	}
 }
@@ -108,7 +115,7 @@ func TestNewScratchRootSweepsOnlyUnownedRoots(t *testing.T) {
 // Filler on the packager path gets the static gain the old chain applied (#1512 G6), in the
 // builder's audio stage; a library title (GainDB 0) gets no audio filter at all.
 func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
-	host := HostFor(EncoderSoftware, true, GPUFilters{})
+	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 23, TargetKbps: 3000, MaxKbps: 4500, GOPSeconds: 1, AudioKbps: 128}
 	format := MediaFormat{VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
@@ -134,7 +141,7 @@ func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 // packager's item starts on the unmeasured start rung, as the retired program handler's did, and
 // SDR 1080p stays full.
 func TestPackagerItemArgsStartOnTheSoftwareRung(t *testing.T) {
-	host := HostFor(EncoderSoftware, true, GPUFilters{})
+	host := encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
 	for name, want := range map[string]bool{"hevc-4k-hdr-dv": true, "h264-1080p-sdr-25": false} {
@@ -182,7 +189,7 @@ func failingEncoder(t *testing.T, stderr string) (ffmpeg string, runs func() []s
 // openItem runs the channel's schedule for one item n times, as the packager does when an
 // item fails: the first encoder fails, the schedule is asked again, the next attempt opens.
 // It returns the fallbacks the packager reported to its metrics observer.
-func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n int) []string {
+func openItem(t *testing.T, ffmpeg string, host encode.HostProfile, it PackagerItem, n int) []string {
 	t.Helper()
 	m, err := NewPackagerHLS(stuckSlateSource{}, ffmpeg, t.TempDir(), time.Second, nil)
 	if err != nil {
@@ -209,6 +216,47 @@ func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n 
 	return obs.Fallbacks()
 }
 
+// recordingSource hands out an hour of a title whose RecordAiringServed counts its calls.
+type recordingSource struct {
+	stuckSlateSource
+	recorded atomic.Int32
+}
+
+func (s *recordingSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
+	item := progItem(MediaFormat{})
+	item.RecordAiringServed = func(context.Context) { s.recorded.Add(1) }
+	return item, nil
+}
+
+// An item airs when a viewer receives its segments (#2017): resolving it, which a neighbour warm's
+// packager does to keep a channel switch fast, records nothing, and the packager item carries the
+// recorder for the segment serve path to call.
+func TestPackagerItemRecordsOnlyWhenServed(t *testing.T) {
+	src := &recordingSource{}
+	m, err := NewPackagerHLS(src, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+
+	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, encode.HostProfile{}, OutputProfile{FPS: 25},
+		nil, nil, slog.New(slog.DiscardHandler))
+	item, err := sched(t.Context(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := src.recorded.Load(); got != 0 {
+		t.Fatalf("resolving the item recorded %d airings, want none", got)
+	}
+	if item.Served == nil {
+		t.Fatal("the packager item carries no recorder for the serve path")
+	}
+	item.Served()
+	if got := src.recorded.Load(); got != 1 {
+		t.Fatalf("serving the item recorded %d airings, want one", got)
+	}
+}
+
 type fixedItemSource struct {
 	stuckSlateSource
 	item PackagerItem
@@ -231,7 +279,7 @@ func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
 	bug := &Watermark{Straight: "/wm/bug.png", Width: 120, Height: 60, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
 	var asked []string
 	resolver := func(declines bool) WatermarkFor {
-		return func(_ context.Context, enc Encoder, width, height int) *Watermark {
+		return func(_ context.Context, enc encode.Encoder, width, height int) *Watermark {
 			asked = append(asked, fmt.Sprintf("%s %dx%d", enc, width, height))
 			if declines {
 				return nil
@@ -239,10 +287,10 @@ func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
 			return bug
 		}
 	}
-	nvenc, software := HostFor(EncoderNVENC, true, GPUFilters{}), HostFor(EncoderSoftware, true, GPUFilters{})
+	nvenc, software := encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{})
 	for _, tc := range []struct {
 		name string
-		host HostProfile
+		host encode.HostProfile
 		wm   WatermarkFor
 		want bool
 	}{
@@ -264,7 +312,7 @@ func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
 		if tc.wm != nil && !slices.Equal(asked, []string{fmt.Sprintf("%s 1920x1080", tc.host.Encoder)}) {
 			t.Errorf("%s: the resolver was asked %q, want once for the packager's encoder and output", tc.name, asked)
 		}
-		if tc.host.Family == FamilyNVENC && !tc.want && strings.Contains(args, "yuv420p") {
+		if tc.host.Family == encode.FamilyNVENC && !tc.want && strings.Contains(args, "yuv420p") {
 			t.Errorf("%s: a bug-free item keeps the nv12 main: %s", tc.name, args)
 		}
 	}
@@ -295,7 +343,7 @@ func TestPackagerTuneInSeeksFromTheIndexedKeyframe(t *testing.T) {
 		ffmpeg, runs := failingEncoder(t, "stopped")
 		it := progItem(testSources()["h264-1080p-sdr-25"])
 		it.Seek, it.Keyframe, it.KeyframeIndexed = 100*time.Second, tc.keyframe, tc.indexed
-		openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), it, 2)
+		openItem(t, ffmpeg, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), it, 2)
 		got := runs()
 		if len(got) != 2 {
 			t.Fatalf("%s: %d encoder runs, want 2", tc.name, len(got))
@@ -313,7 +361,7 @@ func TestPackagerTuneInSeeksFromTheIndexedKeyframe(t *testing.T) {
 // (§9.1 V47, the retired chain's ladder): retrying the same -hwaccel path fails identically.
 func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
 	ffmpeg, runs := failingEncoder(t, "[AVHWFramesContext @ 0x1] Failed to sync surface 0xc: 23 (internal decoding error)")
-	fallbacks := openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), progItem(testSources()["h264-1080p-sdr-25"]), 2)
+	fallbacks := openItem(t, ffmpeg, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), progItem(testSources()["h264-1080p-sdr-25"]), 2)
 	r := runs()
 	if len(r) != 2 || !strings.Contains(r[0], "-hwaccel") {
 		t.Fatalf("want a GPU-decoded first attempt and a retry, got %q", r)
@@ -333,7 +381,7 @@ func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
 // and the retry takes the next tone-mapper for the curve (DemoteTonemap's order).
 func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
 	ffmpeg, runs := failingEncoder(t, "[Parsed_tonemap_opencl_3 @ 0x1] Failed to enqueue kernel: -5.")
-	fallbacks := openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), progItem(testSources()["hevc-4k-hdr-dv"]), 2)
+	fallbacks := openItem(t, ffmpeg, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{TonemapOpenCL: true, Libplacebo: true}), progItem(testSources()["hevc-4k-hdr-dv"]), 2)
 	r := runs()
 	if len(r) != 2 || !strings.Contains(r[0], "tonemap_opencl") {
 		t.Fatalf("want an OpenCL tone-mapped first attempt and a retry, got %q", r)
@@ -350,18 +398,22 @@ func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
 // The packager admits through the one cost-aware policy (Admit, §9.1 V49): a full budget refuses a
 // new channel with ErrAtCapacity, and an unmeasured (zero) budget never blocks playout.
 func TestFillerGainIsFillerOnly(t *testing.T) {
-	lufs := -20.0
+	lufs, hot, quiet, peaky := -20.0, -12.2, -27.0, -3.0
 	for name, tc := range map[string]struct {
 		a      Airing
 		target string
 		gain   float64
 		noted  bool
 	}{
-		"filler measured":     {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "-23", -3, false},
-		"library title":       {Airing{LibraryItemID: "x", MeasuredLUFS: &lufs}, "-23", 0, false},
-		"filler unmeasured":   {Airing{Source: "/f/clip.mp4"}, "-23", 0, true},
-		"target not a number": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
-		"no target":           {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
+		"filler measured": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "-23", -3, false},
+		// #2032: the household's most-aired ad, which the old ±6 dB clamp left 4.8 dB hot.
+		"hot clip cut fully": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &hot}, "-23", -10.8, false},
+		// A boost stops where the true peak would pass -1 dBTP.
+		"boost capped by peak": {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &quiet, MeasuredTruePeak: &peaky}, "-23", 2, false},
+		"library title":        {Airing{LibraryItemID: "x", MeasuredLUFS: &lufs}, "-23", 0, false},
+		"filler unmeasured":    {Airing{Source: "/f/clip.mp4"}, "-23", 0, true},
+		"target not a number":  {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "loud", 0, true},
+		"no target":            {Airing{Source: "/f/clip.mp4", MeasuredLUFS: &lufs}, "", 0, false},
 	} {
 		gain, note := FillerGain(tc.a, tc.target)
 		if gain != tc.gain || (note != "") != tc.noted {
@@ -378,8 +430,8 @@ func (stuckSlateSource) ItemAt(context.Context, string, time.Time) (PackagerItem
 }
 func (stuckSlateSource) Premium(context.Context, string) FormatClass { return "" }
 
-func (stuckSlateSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
-	return HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
+func (stuckSlateSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
+	return encode.HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
 // The slate is not on the tune path (#1512 G2): live, a cold process spent 0.8 s encoding it before
@@ -397,7 +449,7 @@ func TestChannelStartDoesNotWaitForTheSlate(t *testing.T) {
 	t.Cleanup(m.Stop)
 	started := make(chan error, 1)
 	go func() {
-		lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+		lease, err := m.acquirePlaylist("ch", false, "")
 		if err == nil {
 			lease.release()
 		}
@@ -438,7 +490,7 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,8 +512,8 @@ func (hdrItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, e
 
 func (hdrItemSource) Premium(context.Context, string) FormatClass { return "" }
 
-func (hdrItemSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
-	return HostFor(EncoderSoftware, true, GPUFilters{}), OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
+func (hdrItemSource) Output(context.Context, string, FormatClass, int) (encode.HostProfile, OutputProfile) {
+	return encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
 // The channel packager is admitted by the ResourceBudget (#1520): one lease per running (channel,
@@ -483,7 +535,7 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	lease, err := m.acquirePlaylist("ch1", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch1", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +554,7 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 		t.Fatalf("ledger = %+v, want one HDR transcode at rung 1", use)
 	}
 	// A second channel: even SDR keyframes-only (0.297) does not fit beside 3.42 on 3.5.
-	if _, err := m.acquirePlaylist("ch2", PlanBaseline, false, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("ch2", false, ""); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("second channel: err = %v, want ErrAtCapacity", err)
 	}
 	m.StopChannel("ch1")
@@ -549,7 +601,7 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	if _, err := m.acquirePlaylist("ch", PlanBaseline, false, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("ch", false, ""); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("4K HDR first item on a nearly full host: err = %v, want ErrAtCapacity", err)
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -559,7 +611,7 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 
 	held.Release()
 	allowance = 3.5
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -608,7 +660,7 @@ func TestPackagerItemEncoderTeachesTheLedgerItsCPUCost(t *testing.T) {
 	base := cost()
 	_, out := slowItemSource{}.Output(t.Context(), "ch", FormatBaseline, 0)
 	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline},
-		HostFor(EncoderSoftware, true, GPUFilters{}), out, lease, nil, slog.New(slog.DiscardHandler))
+		encode.HostFor(encode.EncoderSoftware, true, encode.GPUFilters{}), out, lease, nil, slog.New(slog.DiscardHandler))
 	// encodeItem airs one item into a 60 s slot as airItem does; delivered < 0 is a channel that
 	// stopped mid-item (airItem reports nothing).
 	encodeItem := func(delivered int64) {
@@ -653,7 +705,7 @@ type fakeVariantOrigin struct {
 	asked []string
 }
 
-func (f *fakeVariantOrigin) acquireMediaPlaylist(_ context.Context, _ string, _ EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
+func (f *fakeVariantOrigin) acquireMediaPlaylist(_ context.Context, _ string, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
 	f.asked = append(f.asked, rel)
 	return hlsPlaylistLease{
 		await: func(context.Context) error { return nil }, release: func() {},
@@ -668,17 +720,17 @@ func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
 	pk := &fakeVariantOrigin{fakeHLSOrigin: fakeHLSOrigin{assets: map[string]string{}}}
 	o := newOrigin(nil, pk)
 
-	asset, ok, err := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr.m3u8", false)
+	asset, ok, err := o.OpenAsset(context.Background(), "ch", "1080p-h264-sdr.m3u8", false)
 	if err != nil || !ok || !asset.Playlist {
 		t.Fatalf("variant: ok %v playlist %v err %v", ok, asset.Playlist, err)
 	}
 	if b, _ := io.ReadAll(asset.Content); string(b) != "#EXTM3U\n1080p-h264-sdr.m3u8\n" {
 		t.Fatalf("variant body %q", b)
 	}
-	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); ok {
+	if _, ok, _ := o.OpenAsset(context.Background(), "ch", "4k-hevc-hdr.m3u8", false); ok {
 		t.Fatal("a variant the packager does not serve resolved")
 	}
-	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr-seg00000001.m4s", false); ok {
+	if _, ok, _ := o.OpenAsset(context.Background(), "ch", "1080p-h264-sdr-seg00000001.m4s", false); ok {
 		t.Fatal("a segment went to MediaPlaylist, or resolved with no file")
 	}
 	if len(pk.asked) != 2 {
@@ -699,13 +751,13 @@ func (s *premiumSource) Premium(context.Context, string) FormatClass {
 	return s.premium
 }
 
-func (s *premiumSource) Output(_ context.Context, _ string, class FormatClass, _ int) (HostProfile, OutputProfile) {
+func (s *premiumSource) Output(_ context.Context, _ string, class FormatClass, _ int) (encode.HostProfile, OutputProfile) {
 	base := OutputProfile{Width: 1920, Height: 1080, FPS: 25, GOPSeconds: 2, TargetKbps: 8000, MaxKbps: 12000, AudioKbps: 160}
 	out := base
 	if class != FormatBaseline {
 		out, _ = PremiumOutput(class, base)
 	}
-	return HostFor(EncoderNVENC, false, GPUFilters{Libplacebo: true}), out
+	return encode.HostFor(encode.EncoderNVENC, false, encode.GPUFilters{Libplacebo: true}), out
 }
 
 // premiumFacts is a measured NVENC host: SDR 1080p at 6x, 4K HDR tone-map at 2.4x, and the premium
@@ -744,7 +796,7 @@ func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,6 +826,47 @@ func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
 	}
 }
 
+// stalledPremiumSource is a lineup lookup that ignores its context, as a slow cycle walk did on a
+// live channel.
+type stalledPremiumSource struct {
+	premiumSource
+	unblock chan struct{}
+}
+
+func (s *stalledPremiumSource) Premium(context.Context, string) FormatClass {
+	<-s.unblock
+	return Format4KHDR
+}
+
+// A premium lookup that outruns its bound must not hold the master: the master lists the baseline
+// alone at the deadline, well inside a player's request timeout.
+func TestPackagerHLSMasterDoesNotWaitPastThePremiumLookupBound(t *testing.T) {
+	source := &stalledPremiumSource{unblock: make(chan struct{})}
+	t.Cleanup(func() { close(source.unblock) })
+	m, err := NewPackagerHLS(source, sleepingFFmpeg(t), t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.premiumLookup = 100 * time.Millisecond
+	t.Cleanup(m.Stop)
+
+	lease, err := m.acquirePlaylist("ch", false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.release()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	body, err := lease.snapshot(ctx)
+	if err != nil {
+		t.Fatalf("master waited on the stalled lookup until its request gave up: %v", err)
+	}
+	master := string(body)
+	if !strings.Contains(master, "1080p-h264-sdr.m3u8") || strings.Contains(master, "4k-hevc-hdr.m3u8") {
+		t.Fatalf("master = %q, want the baseline alone", master)
+	}
+}
+
 // Playing the premium variant starts the channel's second packager, admitted at the premium class's
 // own measured price (NVENC 2.4x = a 0.5 GPU share, 0.5 cores), never the item's; a premium the
 // channel does not air is not served and starts nothing.
@@ -787,12 +880,12 @@ func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	if _, ok, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-sdr.m3u8", false); ok || err != nil {
+	if _, ok, err := m.MediaPlaylist(t.Context(), "ch", "4k-hevc-sdr.m3u8", false); ok || err != nil {
 		t.Fatalf("4k-hevc-sdr on a 4K HDR channel = %v, %v; want not found", ok, err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
-	if _, _, err := m.MediaPlaylist(ctx, "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := m.MediaPlaylist(ctx, "ch", "4k-hevc-hdr.m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("premium playlist err = %v, want the wait for its first segment", err)
 	}
 	m.mu.Lock()
@@ -843,7 +936,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 			m.WithBudget(budget)
 			t.Cleanup(m.Stop)
 
-			if _, _, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); !errors.Is(err, ErrAtCapacity) {
+			if _, _, err := m.MediaPlaylist(t.Context(), "ch", "4k-hevc-hdr.m3u8", false); !errors.Is(err, ErrAtCapacity) {
 				t.Fatalf("premium play err = %v, want ErrAtCapacity", err)
 			}
 			time.Sleep(200 * time.Millisecond)
@@ -860,7 +953,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 func TestPackagerHLSMediaPlaylistServesOnlyTheChannelsFormats(t *testing.T) {
 	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{}, source: &premiumSource{}}
 	for _, rel := range []string{"4k-hevc-sdr.m3u8", "4k-hevc-hdr.m3u8", "../1080p-h264-sdr.m3u8", "live.m3u8", "1080p-h264-sdr"} {
-		if _, ok, err := m.MediaPlaylist(context.Background(), "ch", PlanBaseline, rel, false); ok || err != nil {
+		if _, ok, err := m.MediaPlaylist(context.Background(), "ch", rel, false); ok || err != nil {
 			t.Errorf("MediaPlaylist(%q, false) = %v, %v; want not found, without starting a packager", rel, ok, err)
 		}
 	}
@@ -879,6 +972,45 @@ func TestMasterPlaylistNamesEachVariant(t *testing.T) {
 		"#EXT-X-STREAM-INF:BANDWIDTH=40000000,AVERAGE-BANDWIDTH=30000000,RESOLUTION=3840x2160,FRAME-RATE=25.000\n4k-hevc-hdr.m3u8\n"
 	if got != want {
 		t.Fatalf("master:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// An encoder's source ran out only when its own output ended and it then exited 0: a failed
+// encoder, or one a ladder step cut at a box boundary while it still runs, did not read its input
+// to the end, and its airing must rejoin through the schedule.
+func TestEncoderOutputReportsASourceThatRanOut(t *testing.T) {
+	const box = `printf '\000\000\000\020free12345678'`
+	for _, tc := range []struct {
+		name, tail string
+		cut, want  bool
+	}{
+		{"read to the end", "exit 0", false, true},
+		{"failed", "exit 3", false, false},
+		// The step's encoder would go on to exit 0; it still did not air its source to the end.
+		{"cut for a ladder step", "sleep 0.3; exit 0", true, false},
+	} {
+		ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+		if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\n"+box+"\n"+tc.tail+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		rc, err := startFragmentEncoder(t.Context(), ffmpeg, nil, slog.New(slog.DiscardHandler), nil, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := rc.(*encoderOutput)
+		if _, err := io.ReadFull(out, make([]byte, 16)); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if tc.cut {
+			out.cut.stop.Store(true)
+		}
+		if _, err := io.ReadAll(out); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got := out.SourceEnded(); got != tc.want {
+			t.Errorf("%s: SourceEnded = %v, want %v", tc.name, got, tc.want)
+		}
+		_ = out.Close()
 	}
 }
 
@@ -1002,7 +1134,7 @@ func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
 		t.Error("a resume without a new step still held")
 	}
 
-	gpu := m.schedule(packagedKey{channel: "gpu"}, HostFor(EncoderNVENC, true, GPUFilters{}), out, nil, nil, slog.New(slog.DiscardHandler))
+	gpu := m.schedule(packagedKey{channel: "gpu"}, encode.HostFor(encode.EncoderNVENC, true, encode.GPUFilters{}), out, nil, nil, slog.New(slog.DiscardHandler))
 	if item, err := gpu(t.Context(), at); err == nil {
 		if rc, err := item.Open(t.Context(), slot); err == nil {
 			for deadline := time.Now().Add(5 * time.Second); strings.Count(string(args), "\n") < 3 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {

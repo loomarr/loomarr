@@ -37,9 +37,9 @@ const Stat = ({
   tone?: "warn";
 }) => (
   <div className="flex min-w-0 flex-col gap-0.5">
-    <Caption className="uppercase tracking-wide">{label}</Caption>
+    <Caption className="tracking-wide uppercase">{label}</Caption>
     {/* A warning is caution-yellow. It was `text-lock`, the green that means "good" (#1659). */}
-    <span className={cn("font-semibold text-lg tabular-nums", tone === "warn" && "text-caution")}>
+    <span className={cn("text-lg font-semibold tabular-nums", tone === "warn" && "text-caution")}>
       {value}
     </span>
     <span className="text-muted-foreground text-xs">{note}</span>
@@ -66,7 +66,7 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
     return (
       <section
         aria-label="Catalog health"
-        className={cn("flex items-center gap-2 rounded-lg border border-border px-3 py-2.5", className)}
+        className={cn("border-border flex items-center gap-2 rounded-lg border px-3 py-2.5", className)}
       >
         <p className="min-w-0 flex-1 text-sm">
           {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
@@ -83,7 +83,7 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
     <section
       aria-label="Catalog health"
       className={cn(
-        "flex flex-wrap items-center gap-x-8 gap-y-4 rounded-lg border border-border p-4",
+        "border-border flex flex-wrap items-center gap-x-8 gap-y-4 rounded-lg border p-4",
         className,
       )}
     >

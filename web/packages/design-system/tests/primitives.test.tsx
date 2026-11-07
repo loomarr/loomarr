@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { Badge, LoomarrProvider, ProgressTrack, StatusDot, Text } from "../index";
+import { declarationsOf, stylesOfText, tagBefore, withoutRuntimeMarker } from "./support/atomic-css";
 
 describe("StatusDot", () => {
   it("carries the tone's colour and an accessible name", () => {
@@ -15,10 +16,12 @@ describe("StatusDot", () => {
   });
 
   it("hides an unlabelled dot from assistive tech", () => {
-    const markup = renderToStaticMarkup(
-      <LoomarrProvider>
-        <StatusDot label="" tone="ok" />
-      </LoomarrProvider>,
+    const markup = withoutRuntimeMarker(
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <StatusDot label="" tone="ok" />
+        </LoomarrProvider>,
+      ),
     );
     expect(markup).toContain("aria-hidden");
     expect(markup).not.toContain('role="img"');
@@ -120,14 +123,30 @@ describe("Badge", () => {
         </Badge>
       </LoomarrProvider>,
     );
-    expect(markup).toContain("border-top-color:var(--borderControl)");
+    expect(markup).toContain("border-color:var(--borderControl)");
     expect(markup).toContain("color:var(--contentPrimary)");
-    expect(markup).toMatch(/padding-top:1px/);
-    expect(markup).not.toMatch(/_(col|backgroundColor|btc)-actionPrim/);
+    expect(markup).toMatch(/padding-block:1px/);
+    expect(markup).not.toContain("var(--actionPrimary)");
   });
 });
 
 describe("Text", () => {
+  it("announces a live region on the web as aria-live, not as an unknown DOM prop", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Text accessibilityLiveRegion="polite" textRole="metadata">
+          2m behind
+        </Text>
+        <Text accessibilityLiveRegion="none" textRole="metadata">
+          quiet
+        </Text>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain('aria-live="polite"');
+    expect(markup).toContain('aria-live="off"');
+    expect(markup.toLowerCase()).not.toContain("accessibilityliveregion");
+  });
+
   it("sets a strong label at 600 without changing the role's size", () => {
     const strong = renderToStaticMarkup(
       <LoomarrProvider>
@@ -140,8 +159,9 @@ describe("Text", () => {
       </LoomarrProvider>,
     );
     // Tamagui's own Text takes an atomic class; the `as` host takes inline style.
-    expect(strong).toMatch(/class="[^"]*_fw-600/);
-    expect(strong).not.toMatch(/class="[^"]*_fw-500/);
+    const tamaguiStyles = declarationsOf(strong, /<span class="is_Text[^>]*>/.exec(strong)?.[0] ?? "");
+    expect(tamaguiStyles).toContain("font-weight:600");
+    expect(tamaguiStyles).not.toContain("font-weight:500");
     expect(strong).toMatch(/<span[^>]*font-weight:600/);
     expect(strong).toMatch(/<span[^>]*font-size:13px/);
   });
@@ -179,7 +199,7 @@ describe("Text", () => {
     );
     // The element's own atomic class, not the provider's injected stylesheet — that sheet
     // carries `text-transform:uppercase` for other components whether or not this Text has it.
-    expect(markup.slice(markup.lastIndexOf("<span"))).toMatch(/class="[^"]*\b_tt-uppercase\b/);
+    expect(declarationsOf(markup, tagBefore(markup, "hi"))).toContain("text-transform:uppercase");
   });
 
   // Amber means focus or the primary action (#1909 Q4): a number role is foreground at rest, and a
@@ -187,7 +207,7 @@ describe("Text", () => {
   it.each(["channelNumber", "code", "cardChannelNumber", "guideNumber"] as const)(
     "draws %s in foreground unless a display numeral opts in",
     (textRole) => {
-      const element = (tone?: "signal") => {
+      const colour = (tone?: "signal") => {
         const markup = renderToStaticMarkup(
           <LoomarrProvider>
             <Text textRole={textRole} tone={tone}>
@@ -195,10 +215,10 @@ describe("Text", () => {
             </Text>
           </LoomarrProvider>,
         );
-        return markup.slice(markup.lastIndexOf("<span"));
+        return /(?:^|;)color:([^;]+)/.exec(stylesOfText(markup, "07<"))?.[1];
       };
-      expect(element()).toMatch(/class="[^"]*\b_col-contentPrim/);
-      expect(element("signal")).toMatch(/class="[^"]*\b_col-actionPrima/);
+      expect(colour()).toBe("var(--contentPrimary)");
+      expect(colour("signal")).toBe("var(--actionPrimary)");
     },
   );
 });

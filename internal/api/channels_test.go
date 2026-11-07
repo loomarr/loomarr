@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -29,7 +29,7 @@ import (
 // Embedding the real store keeps the test on the production SQL contract; the hook performs one
 // winning mutation immediately before the handler attempts to save its older snapshot.
 type staleOnceChannelStore struct {
-	fillerstore.Store
+	records.Store
 	once   sync.Once
 	before func(context.Context, store.Channel) error
 }
@@ -61,6 +61,8 @@ type fakeChannelSvc struct {
 	cycleActive schedule.ActiveRuleAttribution // returned attribution
 	cycleWindow time.Duration                  // returned window
 	cycleErr    error                          // returned error (nil ⇒ f.err path unused)
+	// calendar is the household holiday calendar Calendar returns (zero = the US, shipped holidays).
+	calendar schedule.Calendar
 	// cycleExcluded is the §4 exclusion report the draft preview reports back — what the
 	// audience ceiling / scope filters refused.
 	cycleExcluded schedule.ExclusionReport
@@ -86,6 +88,8 @@ func (f *fakeChannelSvc) Purge(ctx context.Context, id string) error {
 	f.purges++
 	return f.err
 }
+
+func (f *fakeChannelSvc) Calendar() schedule.Calendar { return f.calendar }
 
 func (f *fakeChannelSvc) CyclePreview(ctx context.Context, id string, at time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
@@ -175,10 +179,9 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 			Log:      defaults.Log,
 			Channels: chSvc,
 			LiveTV:   ltv,
-			// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
-			// lineupFromIntent/policyFromIntent (which now go through the binder) resolve real
-			// approved proposals in these tests, same as production wiring.
-			Binder: binder.New(defaults.Store, chSvc, nil, defaults.Log),
+			// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
+			// (channeledit asks the binder) matches production wiring.
+			Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
 		})
 	})
 	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv}
@@ -187,7 +190,7 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 // newInternalServerWithoutTunarr exercises the production-facing setting shape that exposed the
 // bug: internal playout is selected and tunarr.url is empty, but channel convergence is still a
 // real local operation rather than an unconfigured route.
-func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeChannelSvc) {
+func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, records.Store, *fakeChannelSvc) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/internal-no-tunarr.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -195,13 +198,9 @@ func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, fillerstore
 	log := slog.New(slog.DiscardHandler)
 	h := api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
-		Binder: binder.New(st, chSvc, nil, log),
-		LiveConfig: func(key string) string {
-			if key == "playout.backend" {
-				return schedule.PlayoutBackendInternal
-			}
-			return "" // in particular: tunarr.url is unconfigured
-		},
+		Binder: approval.New(st, chSvc, nil, log),
+		// In particular: tunarr.url is unconfigured.
+		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -393,33 +392,6 @@ func TestCreateChannelDuplicateNumber(t *testing.T) {
 		`{"id":"c2","name":"B","number":5,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("duplicate number → %d, want 409", resp.StatusCode)
-	}
-}
-
-func TestCreateChannelDuplicateIntentRef(t *testing.T) {
-	harness := newChannelsHarness(t)
-	srv, st := harness.Server, harness.Store
-	ctx := context.Background()
-	if _, err := st.SaveChannel(ctx, store.Channel{
-		Channel: schedule.Channel{
-			ID: "bound", Name: "Already bound", Number: 41, Strategy: schedule.Sequential,
-			IntentRef: "job-bound", Status: schedule.StatusBuilding,
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
-		`{"id":"duplicate","name":"Duplicate","number":42,"strategy":"sequential","intentRef":"job-bound"}`)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("duplicate intent create -> %d, want 409", resp.StatusCode)
-	}
-	channels, err := st.ListChannels(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(channels) != 1 || channels[0].ID != "bound" {
-		t.Fatalf("channels after duplicate create = %+v, want only the original binding", channels)
 	}
 }
 
@@ -893,7 +865,7 @@ func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) 
 // channelPatchBody attaches the revision an editor read to a PATCH payload. Keeping this in the
 // HTTP tests makes every successful edit exercise the real optimistic-concurrency contract while
 // letting each case keep its payload focused on the field whose behavior it asserts.
-func channelPatchBody(t *testing.T, st fillerstore.Store, id, body string) string {
+func channelPatchBody(t *testing.T, st records.Store, id, body string) string {
 	t.Helper()
 	ch, err := st.GetChannel(context.Background(), id)
 	if err != nil {
@@ -908,7 +880,7 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 // newServerWithSchedulerAndSuggest wires BOTH the channel service and a fake suggest
 // service, so refine (which needs the suggester) can be exercised end to end.
-func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeSuggest) {
+func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, records.Store, *fakeSuggest) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/refine.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -949,24 +921,21 @@ func TestRefineChannel_HandMadeChannel422(t *testing.T) {
 	}
 }
 
-func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
+// A refine is seeded from the intent the CHANNEL owns, so it works when the job the channel was
+// made from is long gone — housekeeping purges finished jobs older than `jobs.retention`. The
+// channel here has no job row at all, as a channel a month past its request.
+func TestRefineChannel_SeedsFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testing.T) {
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
 	ctx := context.Background()
 
-	// A channel bound to a suggestion job, with a current lineup.
-	if err := st.CreateJob(ctx, store.Job{
-		ID: "job-orig", Kind: "suggest", Status: "done",
-		IntentJSON: `{"description":"90s action"}`, CreatedBy: "alex",
-	}); err != nil {
-		t.Fatal(err)
-	}
 	ch := store.Channel{
+		IntentJSON: `{"description":"90s action","era":"1990s","mustExclude":["Slow Burn"],"refineText":"old note","channelName":"Fixed"}`,
 		Lineup: []schedule.LineupEntry{
 			{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999},
 			{Key: "movie:tmdb:90000165", Title: "Iron Lullaby", Year: 1991},
 		},
 	}
-	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-orig", "90s Action", 42
+	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
@@ -979,24 +948,50 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 	}
 	var body struct{ JobID string }
 	_ = json.NewDecoder(resp.Body).Decode(&body)
-	// Returns the channel's OWN job id (re-queued in place), so the refined proposal binds
-	// back to this channel — the whole point of "reuse the intentRef job".
-	if body.JobID != "job-orig" {
-		t.Errorf("refine returned jobId %q, want the channel's IntentRef job-orig", body.JobID)
+	// A refine is a NEW job, never the job the channel was made from.
+	if body.JobID != "job-refine-1" {
+		t.Errorf("refine returned jobId %q, want the new refine job", body.JobID)
 	}
-	if fs.refines != 1 || fs.lastJobID != "job-orig" {
-		t.Errorf("Refine called %d times on job %q, want 1 on job-orig", fs.refines, fs.lastJobID)
+	if fs.refines != 1 || fs.lastChannelID != "c1" {
+		t.Errorf("Refine called %d times for channel %q, want 1 for c1", fs.refines, fs.lastChannelID)
 	}
-	// The refine intent carried the change + the current lineup as context + kept the
-	// original description.
+	// The refine intent kept the channel's full intent, replaced the one-run inputs, and carries
+	// the change + the current lineup as context.
 	if fs.last.RefineText != "add more heist capers, drop the slow ones" {
 		t.Errorf("refine intent RefineText = %q", fs.last.RefineText)
 	}
-	if fs.last.Description != "90s action" {
-		t.Errorf("refine intent kept original description? got %q, want '90s action'", fs.last.Description)
+	if fs.last.Description != "90s action" || fs.last.Era != "1990s" || len(fs.last.MustExclude) != 1 {
+		t.Errorf("refine intent lost the channel's intent: %+v", fs.last)
+	}
+	if fs.last.ChannelName != "" {
+		t.Errorf("refine intent kept the requested name %q; the channel may have been renamed", fs.last.ChannelName)
 	}
 	if len(fs.last.CurrentLineup) != 2 || fs.last.CurrentLineup[0].Name != "Marigold Protocol" {
 		t.Errorf("refine intent CurrentLineup = %+v, want the 2 seeded titles", fs.last.CurrentLineup)
+	}
+}
+
+// A channel whose request is gone (its job was purged before channels owned their intent) is
+// never refined from a guess such as its name: the admin is asked to describe it again.
+func TestRefineChannel_UnavailableOriginalRequest422(t *testing.T) {
+	srv, st, fs := newServerWithSchedulerAndSuggest(t)
+	ch := store.Channel{}
+	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
+	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", adminToken, `{"change":"more action"}`)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refine → %d, want 422", resp.StatusCode)
+	}
+	var problem struct{ Title, Detail string }
+	_ = json.NewDecoder(resp.Body).Decode(&problem)
+	if !strings.Contains(problem.Detail, "Describe the channel again") {
+		t.Errorf("problem detail = %q, want it to ask the admin to describe the channel again", problem.Detail)
+	}
+	if fs.refines != 0 {
+		t.Errorf("Refine ran %d times for a channel with no request; it must not fall back to the channel name", fs.refines)
 	}
 }
 
@@ -1250,6 +1245,29 @@ func TestUpdateChannel_PersistsDateScopeAndDisjointFillerEraWindows(t *testing.T
 	}
 }
 
+func TestUpdateChannel_FillerPlaceMustBeACityInItsCountry(t *testing.T) {
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
+	mkChannel(t, srv, "c1", "A", 5)
+
+	for name, geography := range map[string]string{
+		"unknown place":     `{"country":"US","place":"999999999"}`,
+		"place in another":  `{"country":"CA","place":"4560349"}`,
+		"place without one": `{"country":"","place":"4560349"}`,
+	} {
+		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1",
+			`{"policy":{"filler":{"geography":`+geography+`}}}`))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s → %d, want 422", name, resp.StatusCode)
+		}
+	}
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1",
+		`{"policy":{"filler":{"geography":{"country":"US","place":"4560349"}}}}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Philadelphia → %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestUpdateChannel_RejectsMalformedDateScopes(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
@@ -1383,12 +1401,7 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
 		Channels: channelSvc, Playout: playback, TunerRescanner: rescanner,
-		LiveConfig: func(key string) string {
-			if key == "playout.backend" {
-				return schedule.PlayoutBackendInternal
-			}
-			return ""
-		},
+		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	}))
 	t.Cleanup(srv.Close)
 
@@ -1528,7 +1541,7 @@ func TestUpdateChannel_NotFound(t *testing.T) {
 // seedChannelWithLineup writes a channel carrying a lineup directly (the create endpoint
 // needs an approved proposal for a real lineup; these tests exercise the edit path, so
 // they seed the starting state in the store).
-func seedChannelWithLineup(t *testing.T, st fillerstore.Store, id string, entries ...schedule.LineupEntry) {
+func seedChannelWithLineup(t *testing.T, st records.Store, id string, entries ...schedule.LineupEntry) {
 	t.Helper()
 	_, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{
@@ -2037,5 +2050,36 @@ func TestChannelsNowNext_NoGuideConfiguredIsEmptyNotError(t *testing.T) {
 	resp := do(t, srv, http.MethodGet, "/v1/channels/now-next", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("now-next without a guide → %d, want 200", resp.StatusCode)
+	}
+}
+
+// A refine is refused while the channel already has an unfinished channel job, so two clicks or a
+// refine during a re-curation never queue a second generation.
+func TestRefineChannel_RefusedWhileAnotherChannelJobIsUnfinished(t *testing.T) {
+	srv, st, fs := newServerWithSchedulerAndSuggest(t)
+	ctx := context.Background()
+	ch := store.Channel{IntentJSON: `{"description":"90s action"}`}
+	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-origin", "90s Action", 42
+	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateJob(ctx, store.Job{
+		ID: "job-running", Kind: "recurate", Status: "running", ChannelID: "c1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/refine", adminToken, `{"change":"more action"}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("refine during another channel job → %d, want 409", resp.StatusCode)
+	}
+	var problem struct{ Title, Detail string }
+	_ = json.NewDecoder(resp.Body).Decode(&problem)
+	if !strings.Contains(problem.Title+problem.Detail, "already in progress") {
+		t.Errorf("problem = %+v, want it to say a refine is already in progress", problem)
+	}
+	if fs.refines != 0 {
+		t.Errorf("Refine ran %d times while another channel job was unfinished", fs.refines)
 	}
 }

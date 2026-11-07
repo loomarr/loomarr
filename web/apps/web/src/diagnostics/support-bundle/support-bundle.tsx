@@ -1,9 +1,5 @@
 import type { BundlePreview } from "@loomarr/api/models/bundlePreview";
 import type { BundleSelection } from "@loomarr/api/models/bundleSelection";
-import { Download, LoaderCircle, Settings2, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { Download, LoaderCircle, Settings2, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -171,10 +171,12 @@ const SupportBundle = ({
         }
       }}
     >
-      <DialogTrigger render={<Button variant="outline" />}>
-        <Download aria-hidden /> Download troubleshooting report
+      <DialogTrigger>
+        <Button variant="outline">
+          <Download aria-hidden /> Download troubleshooting report
+        </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+      <DialogContent size="form">
         <DialogHeader>
           <DialogTitle>Download troubleshooting report</DialogTitle>
           <DialogDescription>
@@ -184,11 +186,11 @@ const SupportBundle = ({
         </DialogHeader>
 
         <div className="space-y-4">
-          <section className="rounded-lg border border-border bg-muted/20 p-4" aria-label="Report scope">
+          <section className="border-border bg-muted/20 rounded-lg border p-4" aria-label="Report scope">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="font-medium">Recent diagnostic evidence</h3>
-                <p className="mt-1 text-muted-foreground text-sm">
+                <p className="text-muted-foreground mt-1 text-sm">
                   {events ? "Application and player logs" : ""}
                   {events && processes ? " plus " : ""}
                   {processes ? "related process details" : ""}
@@ -212,8 +214,8 @@ const SupportBundle = ({
                 </SelectContent>
               </Select>
             </div>
-            <div className="mt-4 flex items-start gap-2 rounded-md border border-success/30 bg-success/5 p-3">
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-lock" aria-hidden />
+            <div className="border-success/30 bg-success/5 mt-4 flex items-start gap-2 rounded-md border p-3">
+              <ShieldCheck className="text-lock mt-0.5 size-4 shrink-0" aria-hidden />
               <p className="text-muted-foreground text-xs">
                 Secrets, URL credentials, and local paths are redacted again while the report is built.
               </p>
@@ -221,14 +223,14 @@ const SupportBundle = ({
           </section>
 
           {busy === "preview" && (
-            <p className="inline-flex items-center gap-2 text-muted-foreground text-sm" role="status">
+            <p className="text-muted-foreground inline-flex items-center gap-2 text-sm" role="status">
               <LoaderCircle className="size-4 animate-spin" aria-hidden /> Reviewing the selected evidence…
             </p>
           )}
 
           {preview && (
             <section
-              className="space-y-3 rounded-lg border border-border bg-card p-4"
+              className="border-border bg-card space-y-3 rounded-lg border p-4"
               aria-label="Troubleshooting report summary"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -254,7 +256,7 @@ const SupportBundle = ({
                 </div>
               </dl>
               {warnings.length > 0 ? (
-                <p className="rounded-md border border-caution/30 bg-caution/5 p-3 text-sm">
+                <p className="border-caution/30 bg-caution/5 rounded-md border p-3 text-sm">
                   Some evidence is limited: {warnings.join(", ")}.
                 </p>
               ) : (
@@ -265,13 +267,13 @@ const SupportBundle = ({
             </section>
           )}
 
-          <details className="rounded-lg border border-border p-4">
-            <summary className="cursor-pointer font-medium text-sm">
+          <details className="border-border rounded-lg border p-4">
+            <summary className="cursor-pointer text-sm font-medium">
               <Settings2 className="mr-2 inline size-4" aria-hidden /> Customize report
             </summary>
             <div className="mt-4 space-y-4">
               <fieldset>
-                <legend className="mb-2 font-medium text-sm">Evidence types</legend>
+                <legend className="mb-2 text-sm font-medium">Evidence types</legend>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {[
                     ["Application and player logs", "events", events],
@@ -280,7 +282,7 @@ const SupportBundle = ({
                   ].map(([label, kind, checked]) => (
                     <div
                       key={String(kind)}
-                      className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                      className="border-border flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
                     >
                       <Checkbox
                         aria-label={String(label)}
@@ -298,7 +300,7 @@ const SupportBundle = ({
                 </div>
               </fieldset>
               <div>
-                <h4 className="mb-2 font-medium text-sm">Exact identifiers</h4>
+                <h4 className="mb-2 text-sm font-medium">Exact identifiers</h4>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {correlationFields.map(([label, key]) => (
                     <div key={key} className="space-y-1 text-sm">
@@ -318,7 +320,7 @@ const SupportBundle = ({
               </div>
               {preview && (
                 <details>
-                  <summary className="cursor-pointer text-muted-foreground text-sm">Files included</summary>
+                  <summary className="text-muted-foreground cursor-pointer text-sm">Files included</summary>
                   <ul className="mt-2 grid gap-1 font-mono text-xs sm:grid-cols-2">
                     {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map((name) => (
                       <li key={name}>{name}</li>
@@ -333,13 +335,13 @@ const SupportBundle = ({
         {error && (
           <p
             role="alert"
-            className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-destructive text-sm"
+            className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border p-3 text-sm"
           >
             {error}
           </p>
         )}
 
-        <DialogFooter className="flex-col-reverse sm:flex-row">
+        <DialogFooter>
           <Button
             onClick={() => void download()}
             disabled={!preview || busy !== undefined || (!events && !processes && !processOutput)}

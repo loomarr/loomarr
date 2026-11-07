@@ -34,6 +34,30 @@ another destination. Do not commit or paste the key. A tag-specific
 `project/release/<tag>.md` file, when present, is prepended for human-authored framing and known
 limitations.
 
+## Check a candidate on real data and real GPUs
+
+Do both before a final tag. Neither runs by itself yet.
+
+**Rehearse the migrations.** Run this where the household backup lives, so the data stays there:
+
+```bash
+make migration-rehearsal BACKUP=<backup directory> IMAGE=<candidate image>
+```
+
+It boots the candidate on a copy of the backup and reports whether it came up. The backup is only
+read, and the container has no network, because the database names the household's real services.
+
+**Check the hardware.** Software, Intel and NVIDIA block a release; AMD is best-effort. Software is
+covered by required CI. For the others, dispatch `playout-bench.yml` with `run_arc` and
+`run_geforce`, then run:
+
+```bash
+make hardware-gate COMMIT=<full commit id>
+```
+
+A skipped leg counts as missing. `release.yml` doesn't enforce this yet, because the Intel and
+NVIDIA runners aren't registered. Wire it in once they are, or every release would stop.
+
 ## Docs pass
 
 The docs ship with every release (#1682, maintainer decision D3; step 5 of #1572). Two things
@@ -130,39 +154,52 @@ Release body (including its links to the third-party source releases named in
 commit. The tag-specific header remains the place to state limitations
 that cannot be derived from pull requests.
 
-## iPhone TestFlight
+## Apple TestFlight
 
-The **iPhone TestFlight beta** workflow (`.github/workflows/ios-testflight.yml`) builds the
-permanent-identity iPhone app (`media.loomarr.mobile`, [ADR 0042](../design/decisions/0042-iphone-permanent-app-identity.md)),
-verifies the IPA, and uploads it. It runs only on `main` and uses the `ios-testflight` environment,
-whose deployment branch policy releases the secrets only to `main`. It never runs for a pull request
-or a merge group.
+The **Apple TestFlight betas** workflow (`.github/workflows/apple-testflight.yml`) builds, verifies,
+and uploads the two permanent-identity Apple apps. Each is its own App Store Connect record:
 
-Every push to `main` that changes the iPhone app uploads a build with no manual step. A secretless
-`plan` job decides, using the classifier CI uses for the Apple mobile gate
-(`scripts/ci-impact.sh`, `apple_mobile`), so a push that changes no iPhone input uploads nothing.
-As in CI, a push whose diff cannot be established counts as a change. The pushed build's version
-is the newest `v*` tag reachable from the commit (`0.2.0-beta.8` until `v0.2.0-beta.9` is tagged);
-TestFlight shows only its `x.y.z`. Release runs queue one at a time. A newer pending one replaces an
-older one, and it builds a later `main` that already contains the older change.
+| App | `app` | Record | Bundle ID | Platform | Variable |
+| --- | --- | --- | --- | --- | --- |
+| iPhone ([ADR 0042](../design/decisions/0042-iphone-permanent-app-identity.md)) | `iphone` | Loomarr | `media.loomarr.mobile` | `iphoneos` | `ASC_APPLE_APP_ID` |
+| Apple TV | `apple-tv` | Loomarr TV | `media.loomarr.tv` | `appletvos` | `ASC_APPLE_TV_APP_ID` |
+
+It runs only on `main` and uses the `ios-testflight` environment, whose deployment branch policy
+releases the secrets only to `main`. It never runs for a pull request or a merge group.
+
+Every push to `main` that changes an Apple app uploads a build of that app with no manual step. A
+secretless `plan` job decides, using the classifier CI uses for the Apple mobile and Apple TV gates
+(`scripts/ci-impact.sh`, `apple_mobile` and `apple_tv`), so a push that changes neither app uploads
+nothing, and a push that changes both uploads both. As in CI, a push whose diff cannot be established
+counts as a change to both. The pushed build's version is the newest `v*` tag reachable from the
+commit (`0.2.0-beta.8` until `v0.2.0-beta.9` is tagged); TestFlight shows only its `x.y.z`.
+
+The `release` job runs once per planned app, from a matrix over the plan's list. One app's failure
+does not cancel the other's upload. Release runs of one app queue one at a time. A newer pending one
+replaces an older one, and it builds a later `main` that already contains the older change.
+
+One script, `web/scripts/build-apple-testflight.sh <app>`, archives, exports, verifies, validates,
+and uploads either app; its table of what differs between them (Expo package, bundle ID, Xcode
+scheme, destination, platform, and record variable) is the only per-app code. Both app configs take
+the release identity from `web/scripts/apple-testflight-config.cjs`.
 
 The environment has no required reviewer (a maintainer decision): the reviewed, merge-queue-tested
-merge is the review. `release-verify` pins the triggers, inputs, both jobs, the environment, and
-every script step's command, environment, and condition
-(`internal/releaseverify/ios_testflight_workflow.go`).
+merge is the review. `release-verify` pins the triggers, inputs, both jobs, the matrix, the
+environment, and every script step's command, environment, and condition
+(`internal/releaseverify/apple_testflight_workflow.go`).
 
 ### One-time Apple setup
 
 1. Enrol in the Apple Developer Program and note the 10-character **Team ID**.
-2. Register the App ID `media.loomarr.mobile`. Automatic signing can register it, but doing it first
-   removes one failure mode.
-3. Create the App Store Connect app record by hand (name, language, bundle ID, SKU). Note its numeric
+2. Register each app's App ID (`media.loomarr.mobile`, `media.loomarr.tv`). Automatic signing can
+   register it, but doing it first removes one failure mode.
+3. Create each App Store Connect app record by hand (name, language, bundle ID, SKU). Note its numeric
    **Apple ID**; App Store Connect cannot create the record from the workflow.
 4. Create a **Team** API key (Users and Access, Integrations; Admin only). An individual key cannot use
    provisioning endpoints. Download the `.p8` once. Apple's cloud signing then holds the distribution
    certificate, so the workflow needs no certificate, profile, or keychain. If a role below Admin cannot
-   cloud-sign, use Admin.
-5. Add internal testers in TestFlight.
+   cloud-sign, use Admin. One key serves both records.
+5. Add internal testers in TestFlight, in a group on each record.
 
 ### Repository setup
 
@@ -175,41 +212,49 @@ reviewer. Then set:
 | `ASC_API_KEY_ID` | secret | the key's 10-character ID |
 | `ASC_API_ISSUER_ID` | secret | the issuer UUID |
 | `APPLE_TEAM_ID` | variable | the Team ID |
-| `ASC_APPLE_APP_ID` | variable | the app record's numeric Apple ID |
+| `ASC_APPLE_APP_ID` | variable | the iPhone record's numeric Apple ID |
+| `ASC_APPLE_TV_APP_ID` | variable | the Apple TV record's numeric Apple ID |
 
 The credentials step, which runs after dependency installation and before the archive, fails with a
-message naming every missing value.
+message naming every value its app is missing. An app needs only its own record's variable.
 
 ### Dispatch
 
 ```sh
-gh workflow run ios-testflight.yml --repo loomarr/loomarr --ref main -f version=0.2.0-beta.9
-gh workflow run ios-testflight.yml --repo loomarr/loomarr --ref main -f version=0.2.0-beta.9 -f upload=true
+gh workflow run apple-testflight.yml --repo loomarr/loomarr --ref main -f app=apple-tv -f version=0.2.0-beta.9
+gh workflow run apple-testflight.yml --repo loomarr/loomarr --ref main -f app=iphone -f version=0.2.0-beta.9 -f upload=true
 ```
 
-Dispatch for a dry run or a re-upload; it rebuilds the current `main` with the version you name. With
-`upload` unset (the default) it signs, exports, verifies, and runs `altool --validate-app` without
-uploading, and it logs `xcodebuild -version` and `sw_vers`. Each upload needs a new run: the build number is
-`github.run_number`, which a re-run keeps, so Apple rejects a second upload of the same run. Keep the
-workflow file name stable, because renaming it can restart `run_number`.
+Dispatch for a dry run or a re-upload of one app; it rebuilds the current `main` with the version you
+name. With `upload` unset (the default) it signs, exports, verifies, and runs `altool --validate-app`
+without uploading, and it logs `xcodebuild -version` and `sw_vers`. App Store Connect picks the build
+number: one past the highest build the record already holds (`web/scripts/asc-next-build-number.mjs`),
+with `github.run_number` only as a floor, so a re-run or an upload made elsewhere never collides.
 
 The version is `x.y.z` with an optional suffix. Every prerelease of `0.2.0` shares the `0.2.0` TestFlight
 version, and the build number orders them.
 
 ### What verification checks
 
-`web/scripts/build-ios-testflight.sh build` opens the exported IPA and fails unless:
+`web/scripts/build-apple-testflight.sh <app> build` opens the exported IPA and fails unless:
 
-- the bundle ID is `media.loomarr.mobile`, and `CFBundleShortVersionString` and `CFBundleVersion` match
-  the requested version and build number;
-- `ITSAppUsesNonExemptEncryption` is `false` and `NSLocalNetworkUsageDescription` is present;
+- the bundle ID is the app's, and `CFBundleShortVersionString` and `CFBundleVersion` match the
+  requested version and build number;
+- `ITSAppUsesNonExemptEncryption` is `false`, and for the iPhone `NSLocalNetworkUsageDescription` is
+  present (the Apple TV app does not browse the local network: its LAN discovery pod is iPhone-only),
+  and for the Apple TV the compiled home-screen icon and both Top Shelf images are declared;
 - `PrivacyInfo.xcprivacy` is at the app bundle root, has `NSPrivacyTracking` false or absent and no
   tracking domains, declares `UserDefaults` with reason `CA92.1`, and every accessed-API entry has a
   category, at least one reason, and appears once (the entry count is not pinned; see
   [Privacy manifest](#privacy-manifest)). Every declared category and its reasons are printed in the
   log and written to the evidence JSON;
-- the platform is `iphoneos`, every Mach-O in the app bundle (executable, frameworks, dylibs, and
-  plug-ins) is `arm64` only and not built for a simulator, and `codesign` verifies.
+- the platform is the app's (`iphoneos` or `appletvos`), every Mach-O in the app bundle (executable,
+  frameworks, dylibs, and plug-ins) is `arm64` only and not built for a simulator, and `codesign`
+  verifies.
+
+The Apple TV home-screen icon and Top Shelf images come from `make brand-assets`, which draws them
+from the brand contract at the exact sizes tvOS requires; `@react-native-tvos/config-tv` builds the
+asset catalog from them (`appleTVImages` in `web/apps/tv/app.json`).
 
 It writes the IPA's SHA-256 and the Xcode version next to the IPA, and the workflow keeps both as an
 artifact for 30 days. `validate` and `upload` re-check the IPA against that SHA-256 and refuse any
@@ -220,12 +265,13 @@ script names it and does not retry; wait for the `xcode-27` image to ship a GM X
 
 ### Privacy manifest
 
-The audit of the autolinked iOS pods found `UserDefaults` in `expo-system-ui`, which persists the root
-view colour there. `expo-system-ui` ships its own `ios/PrivacyInfo.xcprivacy` declaring it, and the app
+The audit of the autolinked iPhone pods found `UserDefaults` in `expo-system-ui`, which persists the
+root view colour there. The Apple TV app's pods are a subset of the iPhone app's, so the same audit
+and the same app-level declaration cover both apps. `expo-system-ui` ships its own `ios/PrivacyInfo.xcprivacy` declaring it, and the app
 declares `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1` at app level as well.
 `react-native-tvos`, `expo-constants`, and `expo-file-system` also carry their own manifests,
 `expo-modules-core` reads only a file size, and the other pods use no required-reason API. Repeat the
-audit when the iOS pod set changes.
+audit when either app's Apple pod set changes.
 
 The shipped app manifest has more entries than the one the app declares. React Native's pod install
 (`add_aggregated_privacy_manifest` in `react-native/scripts/cocoapods/privacy_manifest_utils.rb`) merges
@@ -279,13 +325,13 @@ failure distribution, then reproduce it through the certification or benchmark s
 does not move merely because it handles media or because a Rust implementation is possible. The
 Image service itself imports no Go `image` package; its deterministic corpus generator lives only in
 `cmd/image-cert`, and a source architecture test keeps that boundary closed. Filler-era frame hints
-remain in `internal/mediatools`: they sample at most 1,024 pixels per keyframe in background work and
+remain in `internal/media/tools`: they sample at most 1,024 pixels per keyframe in background work and
 no captured Image-worker evidence identifies them as a bottleneck. Therefore V59b selects no next
 capability. A future measured case extends this worker protocol and resource boundary rather than
 creating a second Rust service.
 
 `make image-bench` is the performance companion to certification. It drives the installed release
-worker through `internal/images/rustgen` with deterministic poster, backdrop, and icon sources and
+worker through `internal/media/images/rustgen` with deterministic poster, backdrop, and icon sources and
 the complete AVIF width ladder for each role. Source creation and the capabilities self-test happen
 outside the timed region. After one warm-up per role, three runs record the recipe, host architecture
 and logical CPU count, process/Rendition counts, output bytes, complete-ladder throughput,
@@ -301,7 +347,54 @@ protocol, output, and resource-ceiling correctness.
 
 The consumer half of the gate is observable through public seams. Guide programme art, Watch
 timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
-render through the shared frontend `Image` primitive. An animated filler hover must offer an
+render through the shared frontend `ServedImage` primitive. An animated filler hover must offer an
 animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.
+
+## Bundled ffmpeg pin
+
+The image ships BtbN's newest release-series GPL build of ffmpeg (`nX.Y` builds, never master's
+`N-` builds), pinned by build id and per-architecture SHA256. BtbN keeps only its newest 14 daily
+releases and deletes each build's dependency download cache after 14 days. Each pin is therefore
+published, together with its corresponding source, as a Loomarr `third-party-sources-<date>` release.
+The image and CI download the binaries from that release, never from BtbN.
+
+`scripts/ffmpeg-pin-refresh.sh` does the whole update:
+
+```sh
+./scripts/ffmpeg-pin-refresh.sh check                   # newest BtbN build vs the pin; changes nothing
+./scripts/ffmpeg-pin-refresh.sh dry-run .artifacts/ffmpeg-pin   # download, verify, stage; no publish, no write
+./scripts/ffmpeg-pin-refresh.sh publish .artifacts/ffmpeg-pin   # publish the release, rewrite the pin
+```
+
+`publish` finds the BtbN run that published the newest autobuild and downloads both GPL archives,
+checking them against BtbN's checksums. It also downloads the ffmpeg source archive at the build's
+commit, the BtbN recipe archive at the commit the run built, and the run's `download-cache`
+artifact. It fails if that artifact has expired. It then publishes the release, which is split into
+parts over GitHub's 2 GiB asset limit, and checks every published asset's digest. Last, it rewrites:
+
+- the five `FFMPEG_*` ARGs in the `Dockerfile`;
+- the ffmpeg entry in `project/evidence/redistribution-manifest-v1.json`;
+- `project/evidence/source-distribution-<date>.json` and `project/evidence/ffmpeg-pin-<date>.md`;
+- the `ffmpeg-pin` block in `THIRD_PARTY_NOTICES.md`.
+
+`internal/releaseverify` fails unless the pinned build's source release is recorded with both
+binaries, the source, the recipe and the cache.
+
+The `ffmpeg-pin-refresh.yml` workflow runs it every Monday and on dispatch (`dry_run` stages only).
+When BtbN has a newer build, the workflow publishes the release and pushes `deps/ffmpeg-<build>`. It
+then opens a PR and dispatches `ci.yml` with `scope=full`, because a bot push triggers no CI. That
+CI run builds the image on amd64 and arm64 and runs `make test-ffmpeg` against the image's own
+ffmpeg, which includes the software-encode picture checks
+(`TestLive_SoftwareRungsProduceAPictureInOneFormat` fails on a black picture). A new release series
+opens as a draft labelled `ready-for-human`; it merges only after explicit approval.
+
+CI has no GPU. Before merging a pin PR, run the GPU checks on a GPU host, one at a time, with each
+GPU command under `flock /tmp/loomarr-gpu.lock`:
+
+1. Put the pinned ffmpeg first on `PATH`. Then run `make test-ffmpeg` against it, and once against
+   the previous pin.
+2. Encode the packager's arguments (`packagerItemArgs`) for the software and hardware paths, SDR and
+   HDR, from a non-black 1080p source. Check the output with `signalstats`: YAVG and YMAX must be well
+   above 16 and match the previous pin. Look at a saved frame from each path.

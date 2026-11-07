@@ -34,7 +34,7 @@ func TestAiredInWindowEdges(t *testing.T) {
 		// The time of day is ignored: the end day is inclusive.
 		{"halloween", time.Date(1990, time.November, 7, 23, 0, 0, 0, time.UTC), true},
 	} {
-		d, ok := lookup(tt.id)
+		d, ok := Default().lookup(tt.id)
 		if !ok {
 			t.Fatalf("unknown holiday %s", tt.id)
 		}

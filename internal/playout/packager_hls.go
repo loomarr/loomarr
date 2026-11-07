@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -39,19 +40,24 @@ type PackagerItem struct {
 	// Watermark is set only for a PROGRAMME airing (never filler, bumpers or IDs): the channel's bug
 	// sized for the packager's output, resolved per item because one item airs in every format.
 	Watermark WatermarkFor
+	// RecordAiringServed, if set, records that the item aired: it is called once when a viewer first
+	// receives a segment of it, never by the lookup that resolved it, so a neighbour warm's encode
+	// or a read of the schedule airs nothing. The packager resolves an airing again after an encoder
+	// restart, so the recorder is idempotent per airing.
+	RecordAiringServed func(ctx context.Context)
 }
 
 // WatermarkFor returns the channel's rendered bug for an encoder and output size, or nil when the
 // channel turned it off or this host's GPU overlay failed its self-check (WatermarkCheck); the item
 // then airs bug-free.
-type WatermarkFor func(ctx context.Context, enc Encoder, width, height int) *Watermark
+type WatermarkFor func(ctx context.Context, enc encode.Encoder, width, height int) *Watermark
 
 // PackagerSource is the application's side of the channel packager (#1512 phase 2): the schedule,
 // and the host and output one of a channel's formats encodes with at an output ladder rung (the
 // lease's).
 type PackagerSource interface {
 	ItemAt(ctx context.Context, channelID string, at time.Time) (PackagerItem, error)
-	Output(ctx context.Context, channelID string, class FormatClass, rung int) (HostProfile, OutputProfile)
+	Output(ctx context.Context, channelID string, class FormatClass, rung int) (encode.HostProfile, OutputProfile)
 	// Premium is the premium format the channel airs on this host (its lineup's, after
 	// ChannelFormats.OnHost); empty when none.
 	Premium(ctx context.Context, channelID string) FormatClass
@@ -80,6 +86,9 @@ type PackagerHLS struct {
 	budget *ResourceBudget
 	// ladderCfg tunes each airing's RungMonitor; zero is the defaults (a test seam for its dwell times).
 	ladderCfg RungMonitorConfig
+	// premiumLookup bounds how long a master waits for its premium lookup; zero is
+	// premiumLookupTimeout (a test seam).
+	premiumLookup time.Duration
 
 	// life bounds background work that outlives a viewer (the slate encodes); Stop ends it.
 	life    context.Context
@@ -100,7 +109,7 @@ type PackagerHLS struct {
 
 type packagedChannel struct {
 	p       *packager.Packager
-	host    HostProfile
+	host    encode.HostProfile
 	out     OutputProfile
 	started time.Time
 	dir     string
@@ -149,21 +158,26 @@ func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
 	return m
 }
 
-// acquirePlaylist serves the channel's master playlist. Every plan gets the baseline variant: a
-// PlanBaseline browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2). Beside
+// acquirePlaylist serves the channel's master playlist. Every client gets the baseline variant: a
+// browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2). Beside
 // it the master names the channel's premium format when it airs one here and the ledger has room
 // (#1512 G10). The premium is described from its output alone: only a client that plays it starts
 // its packager. Its lineup lookup runs beside the baseline's cold start, off the tune path. A
 // speculative tune (a neighbour warm) starts the packager only into spare room (#1780), and for a
 // viewer whose client takes the premium it warms the channel's premium too, once the baseline is
 // admitted, so the premium never takes the baseline's room (#1037).
-func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculative bool, viewer string) (hlsPlaylistLease, error) {
+func (m *PackagerHLS) acquirePlaylist(channelID string, speculative bool, viewer string) (hlsPlaylistLease, error) {
 	premium, found := new(*hlsVariant), make(chan struct{})
 	warmPremium := speculative && m.takesPremium(viewer)
 	admitted := make(chan bool, 1) // the baseline's admission, read only by a premium warm
+	lookup := m.premiumLookup
+	if lookup <= 0 {
+		lookup = premiumLookupTimeout
+	}
+	deadline := time.Now().Add(lookup)
 	go func() {
 		defer close(found)
-		ctx, cancel := context.WithTimeout(m.life, premiumLookupTimeout)
+		ctx, cancel := context.WithDeadline(m.life, deadline)
 		defer cancel()
 		class := m.source.Premium(ctx, channelID)
 		if warmPremium && class != "" && <-admitted {
@@ -182,11 +196,20 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculativ
 		await:   c.p.AwaitPlaylist,
 		snapshot: func(ctx context.Context) ([]byte, error) {
 			vs := []hlsVariant{c.variant(FormatBaseline)}
+			// ⚠ The deadline is the master's own, not only the lookup's context. The lookup walks the
+			// channel's whole cycle, and a step that outruns its context held every master behind it:
+			// one channel's took ~30 s, its players gave up at ~10 s, and the channel would not play.
+			// Past the deadline the master lists the baseline alone, as a failed lookup does.
+			wait := time.NewTimer(time.Until(deadline))
+			defer wait.Stop()
 			select {
 			case <-found:
 				if *premium != nil {
 					vs = append(vs, **premium)
 				}
+			case <-wait.C:
+				m.log.Warn("packager hls: premium lookup overran; offering the baseline only",
+					"channel", channelID, "after", lookup)
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
@@ -282,8 +305,8 @@ var premiumAdmission = AdmitRequest{Class: ClassPremium4K, NoRungDrop: true}
 // player polls it, not the master, so each poll counts as a viewer and keeps the packager past its
 // grace. A premium playlist is the client's opt-in (#1512 G10): it starts the channel's premium
 // packager, and only for the premium the channel airs on this host.
-func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string, speculative bool) ([]byte, bool, error) {
-	lease, ok, err := m.acquireMediaPlaylist(ctx, channelID, PlanBaseline, rel, speculative)
+func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, rel string, speculative bool) ([]byte, bool, error) {
+	lease, ok, err := m.acquireMediaPlaylist(ctx, channelID, rel, speculative)
 	if err != nil || !ok {
 		return nil, false, err
 	}
@@ -295,7 +318,7 @@ func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ Enc
 	return body, true, nil
 }
 
-func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
+func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
 	class := FormatClass(strings.TrimSuffix(rel, ".m3u8"))
 	if filepath.Base(rel) != rel || !strings.HasSuffix(rel, ".m3u8") {
 		return hlsPlaylistLease{}, false, nil
@@ -504,9 +527,10 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 
 // schedule adapts the application's items to the packager: each Open builds the item's command
 // with the phase-1a builder and starts its encoder. Each item moves the channel's lease to its
-// class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520).
+// class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520). A lookup
+// only reads the schedule: an item airs when a viewer receives its segments (PackagerItem.RecordAiringServed).
 func (m *PackagerHLS) schedule(
-	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
+	key packagedKey, host encode.HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
 	ladder := &itemLadder{}
@@ -530,6 +554,9 @@ func (m *PackagerHLS) schedule(
 		item := packager.Item{Label: it.Label, Duration: it.Remaining}
 		if it.Input == "" {
 			return item, nil
+		}
+		if record := it.RecordAiringServed; record != nil {
+			item.Served = func() { record(ctx) }
 		}
 		// A CPU too slow for the source degrades the picture instead of refusing it (#1517): the
 		// ledger picks the item's software rung (GPU families ignore it); with no ledger, the
@@ -559,7 +586,7 @@ func (m *PackagerHLS) schedule(
 		}
 		var monitor *RungMonitor
 		switch {
-		case host.Family != FamilySoftware:
+		case host.Family != encode.FamilySoftware:
 			ladder.begin("", nil)
 		case resumed:
 			monitor = ladder.current()
@@ -748,7 +775,7 @@ type itemFault struct {
 	noOpenCL, noLibplacebo bool
 }
 
-func (f itemFault) apply(h HostProfile) HostProfile {
+func (f itemFault) apply(h encode.HostProfile) encode.HostProfile {
 	if f.cpuDecode {
 		h.DecodeCodecs = nil
 	}
@@ -760,7 +787,7 @@ func (f itemFault) apply(h HostProfile) HostProfile {
 // leftTheGPU reports a demotion that moved a stage onto the CPU, the live hardware→software fallback
 // the metrics count: the decode, or the tone-map once no GPU tone-mapper is left on this host.
 // OpenCL → libplacebo stays on the GPU and is not one.
-func leftTheGPU(before, after itemFault, host HostProfile) bool {
+func leftTheGPU(before, after itemFault, host encode.HostProfile) bool {
 	if after.cpuDecode && !before.cpuDecode {
 		return true
 	}
@@ -804,7 +831,7 @@ func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
 // packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline on
 // the host less any stage this source faulted, the channel's bug when wm is non-nil (a programme on
 // a host whose overlay passed its self-check), the filler gain in its audio stage, fMP4 out.
-func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
+func packagerItemArgs(host encode.HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
 	h := fault.apply(host)
 	h.Overlay = wm != nil
 	pl, err := BuildItem(h, it.Format, out, wm)
@@ -849,7 +876,7 @@ func (m *PackagerHLS) removeLocked(key packagedKey, c *packagedChannel) {
 
 // AssetPath resolves `<format>-<file>`, the init segment or a media segment of one of a running
 // channel's packagers.
-func (m *PackagerHLS) AssetPath(channelID string, _ EncodePlan, rel string) (string, bool) {
+func (m *PackagerHLS) AssetPath(channelID string, rel string) (string, bool) {
 	class, file, ok := strings.Cut(rel, "-"+packager.InitName)
 	if ok && file == "" {
 		file = packager.InitName
@@ -866,6 +893,9 @@ func (m *PackagerHLS) AssetPath(channelID string, _ EncodePlan, rel string) (str
 	m.mu.Unlock()
 	if c == nil {
 		return "", false
+	}
+	if file != packager.InitName {
+		c.p.SegmentServed(file) // a viewer is receiving it: the item airs
 	}
 	return filepath.Join(c.dir, file), true
 }
@@ -901,7 +931,7 @@ const slateEncodeTimeout = time.Minute
 // slate returns the house slate for an encode as a SlateSource: the packager waits on it only when a
 // slot needs slate (#1512 G2: never on the tune path; the first manifest waits for a real item
 // anyway). The encode starts on that first need or, when prewarmed, once the channel is on air.
-func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateSource {
+func (m *PackagerHLS) slate(host encode.HostProfile, out OutputProfile) packager.SlateSource {
 	return func(ctx context.Context) (*packager.Slate, error) {
 		e := m.slateEncodeFor(host, out)
 		select {
@@ -916,7 +946,7 @@ func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateS
 // slateEncodeFor returns the (host, output) slate encode, starting it in the background if none is
 // running or done. Encodes are shared across channels and sessions; a failed one is forgotten, so
 // the next need encodes it again.
-func (m *PackagerHLS) slateEncodeFor(host HostProfile, out OutputProfile) *slateEncode {
+func (m *PackagerHLS) slateEncodeFor(host encode.HostProfile, out OutputProfile) *slateEncode {
 	key := fmt.Sprintf("%+v|%+v", host, out)
 	m.slateMu.Lock()
 	e := m.slates[key]
@@ -947,7 +977,7 @@ func (m *PackagerHLS) slateEncodeFor(host HostProfile, out OutputProfile) *slate
 
 // encodeSlate encodes a house slate: a black, silent source run through the same builder and
 // encoder as the items, so its sample descriptions match theirs.
-func (m *PackagerHLS) encodeSlate(ctx context.Context, host HostProfile, out OutputProfile) (*packager.Slate, error) {
+func (m *PackagerHLS) encodeSlate(ctx context.Context, host encode.HostProfile, out OutputProfile) (*packager.Slate, error) {
 	src := filepath.Join(m.root, fmt.Sprintf("slate-%dx%d-%d.mkv", out.Width, out.Height, out.FPS))
 	if _, err := os.Stat(src); err != nil {
 		// Two hosts with one output size may make the source at once: each writes its own temp.
@@ -1038,7 +1068,7 @@ func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log
 	if progress != nil {
 		_ = progressW.Close() // the child holds its own copy
 		pid := cmd.Process.Pid
-		go ReadProgress(progress, func(p Progress) {
+		go encode.ReadProgress(progress, func(p encode.Progress) {
 			if cut.stop.Load() {
 				return
 			}
@@ -1118,8 +1148,14 @@ type encoderOutput struct {
 	// (Lease.ObserveCPU, #1520); the schedule divides it by the frames the packager took.
 	done     func(cpu time.Duration)
 	produced bool // read on the packager's reader goroutine, then by Close after it
-	log      *slog.Logger
-	once     sync.Once
+	// eof: the encoder's own output ended, not a ladder step's cut (boxCut.stop). Read on the
+	// packager's reader goroutine, then by SourceEnded after it.
+	eof     bool
+	log     *slog.Logger
+	once    sync.Once
+	reaping sync.Once
+	reaped  chan struct{} // closed once cmd.Wait has returned waitErr
+	waitErr error
 }
 
 func (e *encoderOutput) Read(p []byte) (int, error) {
@@ -1127,16 +1163,61 @@ func (e *encoderOutput) Read(p []byte) (int, error) {
 	if n > 0 {
 		e.produced = true
 	}
+	if errors.Is(err, io.EOF) && !e.cut.stop.Load() {
+		e.eof = true
+	}
 	return n, err
+}
+
+// sourceEndWait bounds how long SourceEnded waits for an encoder whose output ended to exit. An
+// ffmpeg that has written its last fragment exits at once; one that does not is not trusted, and
+// its airing rejoins through the schedule. Short, because the channel's timeline waits on it.
+const sourceEndWait = 500 * time.Millisecond
+
+// SourceEnded implements packager.SourceEnd: the encoder's output ended on its own (not cut for a
+// ladder step) and the process then exited 0, so it read its input to the end. A commercial whose
+// audio runs past its picture ends this way before its slot fills; reopening it there would start
+// an encoder at the last frame, which produces nothing and fails (on VAAPI: "A hardware frames
+// reference is required", the misleading error of 2026-10-24).
+func (e *encoderOutput) SourceEnded() bool {
+	if !e.eof {
+		return false
+	}
+	select {
+	case <-e.reap():
+		return e.waitErr == nil
+	case <-time.After(sourceEndWait):
+		if e.log != nil {
+			e.log.Warn("packager hls: encoder still running after its output ended; rejoining", "wait_ms", sourceEndWait.Milliseconds())
+		}
+		return false
+	}
+}
+
+// reap waits for the encoder once, for SourceEnded and Close alike.
+func (e *encoderOutput) reap() <-chan struct{} {
+	e.reaping.Do(func() {
+		e.reaped = make(chan struct{})
+		go func() {
+			e.waitErr = e.cmd.Wait()
+			close(e.reaped)
+		}()
+	})
+	return e.reaped
 }
 
 func (e *encoderOutput) Close() error {
 	e.once.Do(func() {
 		_ = e.ReadCloser.Close()
-		if e.cmd.Process != nil {
-			_ = e.cmd.Process.Kill() // the packager is done with this item, finished or not
+		select {
+		case <-e.reap():
+		default:
+			if e.cmd.Process != nil {
+				_ = e.cmd.Process.Kill() // the packager is done with this item, finished or not
+			}
+			<-e.reaped
 		}
-		err := e.cmd.Wait()
+		err := e.waitErr
 		// Every encoder that produced reports its CPU, however it ended (the packager cancels the
 		// item's context before closing it): the schedule counts it only over the frames the
 		// packager reported delivered.
@@ -1166,7 +1247,7 @@ type limitedWriter struct {
 }
 
 func (l *limitedWriter) Write(b []byte) (int, error) {
-	if !l.decodeFault && IsHardwareDecodeFault(string(b)) {
+	if !l.decodeFault && encode.IsHardwareDecodeFault(string(b)) {
 		l.decodeFault = true
 	}
 	if l.n > 0 {
@@ -1180,7 +1261,7 @@ func (l *limitedWriter) Write(b []byte) (int, error) {
 // mediaPlaylister is an hlsOrigin whose Tune answer is a master playlist: its variant playlists are
 // live documents, rendered per request, not files.
 type mediaPlaylister interface {
-	acquireMediaPlaylist(ctx context.Context, channelID string, plan EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error)
+	acquireMediaPlaylist(ctx context.Context, channelID string, rel string, speculative bool) (hlsPlaylistLease, bool, error)
 }
 
 // hlsVariant is one EXT-X-STREAM-INF entry of a channel's master playlist.

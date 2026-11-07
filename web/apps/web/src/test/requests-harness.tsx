@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
-import { vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -120,13 +119,6 @@ const stub = ({ me, journeys = [], proposals = [], pulls = [], titles = {} }: Fi
     http.get("*/v1/system/restart", () => HttpResponse.json({}, { status: 404 })),
     http.get("*/v1/system/services", () => HttpResponse.json({}, { status: 404 })),
     ...appHandlers(),
-  );
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      addEventListener() {}
-      close() {}
-    },
   );
   return seen;
 };

@@ -65,6 +65,8 @@ compose-verify: ## verify Traefik, database wiring, and pinned release images
 
 .PHONY: release-verify release-notes-preview docs-release-gate
 release-verify: ## verify release, CI acquisition, Android, and publication policy
+	@./scripts/staging-test.sh
+	@./scripts/check-hardware-gate-test.sh
 	@./scripts/check-release-tag.sh --self-test
 	@./scripts/check-release-image-absence.sh --self-test
 	@./scripts/android-version-code.sh --self-test
@@ -75,7 +77,7 @@ release-verify: ## verify release, CI acquisition, Android, and publication poli
 	@./web/scripts/test-apple-client-cache-test.sh
 	@./web/scripts/validate-apple-compilation-cache-test.sh
 	@./scripts/check-release-docs-gate.sh --self-test
-	@./web/scripts/build-ios-testflight.test.sh
+	@./web/scripts/build-apple-testflight.test.sh
 	@./web/scripts/check-ios-pods-binaries.test.sh
 	@./web/scripts/build-shield-play.test.sh
 	@$(GO) test ./internal/releaseverify

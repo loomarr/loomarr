@@ -38,19 +38,19 @@ const ChannelDangerZone = ({
   return (
     <div
       className={cn(
-        "flex flex-col gap-4 rounded-lg border border-onair-tint-15 bg-onair-tint-15 p-4",
+        "border-onair-tint-15 bg-onair-tint-15 flex flex-col gap-4 rounded-lg border p-4",
         className,
       )}
     >
       <div>
-        <h3 className="font-semibold text-base text-onair-300">Danger zone</h3>
-        <p className="mt-1 text-muted-foreground text-xs">
+        <h3 className="text-onair-300 text-base font-semibold">Danger zone</h3>
+        <p className="text-muted-foreground mt-1 text-xs">
           These actions affect whether {channelName} broadcasts at all.
         </p>
       </div>
 
       {/* Pause/resume — fully reversible, so it is a single click with no confirm step. */}
-      <div className="flex items-center justify-between gap-3 border-onair-tint-15 border-t pt-4">
+      <div className="border-onair-tint-15 flex items-center justify-between gap-3 border-t pt-4">
         <p className="text-sm">
           {paused ? "Paused: off air but kept." : "Take this channel off air without deleting it."}
         </p>
@@ -71,7 +71,7 @@ const ChannelDangerZone = ({
           only for a Tunarr-streamed channel: a detached channel Loomarr plays itself goes off
           air (api/channelplayurl.go). Until the maintainer settles it, this row keeps the line
           that is true for both. */}
-      <div className="flex flex-col gap-3 border-onair-tint-15 border-t pt-4">
+      <div className="border-onair-tint-15 flex flex-col gap-3 border-t pt-4">
         {!confirming ? (
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-3">
@@ -109,7 +109,7 @@ const ChannelDangerZone = ({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 rounded-md border border-onair-tint-15 bg-background/40 p-3">
+          <div className="border-onair-tint-15 bg-background/40 flex flex-col gap-3 rounded-md border p-3">
             {removal === "detach" ? (
               <p className="text-sm">
                 Stop updating {channelName}? Loomarr will keep its record and leave any Tunarr channel in

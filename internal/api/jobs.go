@@ -10,7 +10,7 @@ import (
 )
 
 // JobService backs the background-job scheduler routes (§18.1). Satisfied by an adapter over
-// *scheduler.Scheduler in the composition root (the api package doesn't import scheduler).
+// *jobs.Scheduler in the composition root (the api package doesn't import jobs).
 type JobService interface {
 	// List returns the current status of every registered job, in a stable order.
 	List(ctx context.Context) ([]JobView, error)

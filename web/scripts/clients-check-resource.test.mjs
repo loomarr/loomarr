@@ -6,6 +6,6 @@ const workspace = JSON.parse(readFileSync(new URL("../package.json", import.meta
 
 describe("shared client resource bounds", () => {
   it("bundles mobile and TV clients one at a time", () => {
-    assert.match(workspace.scripts["clients:check"], /turbo run bundle --concurrency=1/);
+    assert.match(workspace.scripts["clients:bundle"], /turbo run bundle --concurrency=1/);
   });
 });

@@ -51,7 +51,8 @@ func ownerFor(setting Setting) Owner {
 
 var fillerOwners = map[string]Owner{
 	"filler.home_country":    OwnerLocation,
-	"filler.home_market":     OwnerLocation,
+	"filler.home_place":      OwnerLocation,
+	"filler.local_radius_km": OwnerLocation,
 	"filler.breaks_per_hour": OwnerDefaults,
 
 	"filler.dir":                   OwnerFillerFolders,
@@ -62,6 +63,8 @@ var fillerOwners = map[string]Owner{
 	"filler.fetch.every":              OwnerFillerDownloads,
 	"filler.fetch.max_per_run":        OwnerFillerDownloads,
 	"filler.acquisition.compilations": OwnerFillerDownloads,
+	// Edited beside the download limits; it also orders which countries' ads air.
+	"filler.region_fallback": OwnerFillerDownloads,
 
 	"filler.fetch.max_catalog_clips":    OwnerFillerStorage,
 	"filler.storage.library_budget_gb":  OwnerFillerStorage,
@@ -80,7 +83,6 @@ var fillerOwners = map[string]Owner{
 
 	"filler.transcribe.enabled":               OwnerFillerReview,
 	"filler.vision.enabled":                   OwnerFillerReview,
-	"filler.conditioning.normalize_loudness":  OwnerFillerReview,
 	"filler.autosplit.enabled":                OwnerFillerReview,
 	"filler.autosplit.min_confidence":         OwnerFillerReview,
 	"filler.autosplit.max_duration":           OwnerFillerReview,
@@ -104,6 +106,8 @@ var fillerOwners = map[string]Owner{
 	"filler.pipeline.max_vision":       OwnerFillerLimits,
 	"filler.pipeline.max_split_vision": OwnerFillerLimits,
 	"filler.pipeline.max_splits":       OwnerFillerLimits,
+	"filler.defects.judge_look_cents":  OwnerFillerLimits,
+	"filler.defects.judge_daily_cents": OwnerFillerLimits,
 
 	"ingest.ytdlp_path":    OwnerFillerTools,
 	"ingest.ffmpeg_path":   OwnerFillerTools,

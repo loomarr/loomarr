@@ -2,14 +2,18 @@ package testkit
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sort"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
 // NotificationRepository is the shared in-memory delivery-work double. It models only the
 // repository contract needed by notification service tests; SQL behavior belongs to conformance.
+// It refuses what the store refuses: an invalid intent, attempt or completion, an idempotency
+// key replayed for a different request, a taken id, and an unknown attempt.
 type NotificationRepository struct {
 	Destinations map[string]notifications.Destination
 	Intents      map[string]notifications.Intent
@@ -142,16 +146,44 @@ func (f *NotificationRepository) CreateNotificationIntent(
 	intent notifications.Intent,
 	attempts []notifications.Attempt,
 ) (notifications.Intent, bool, error) {
-	if id := f.ByKey[intent.IdempotencyKey]; id != "" {
-		return f.Intents[id], false, nil
+	if err := intent.Validate(); err != nil {
+		return notifications.Intent{}, false, fmt.Errorf("validate notification intent: %w", err)
+	}
+	if len(attempts) == 0 && intent.Policy != notifications.PolicyConfigurable {
+		return notifications.Intent{}, false, errors.New("notification intent requires a delivery decision")
 	}
 	allTerminal := true
 	for _, attempt := range attempts {
-		f.Attempts[attempt.ID] = attempt
-		if attempt.Status == notifications.StatusQueued || attempt.Status == notifications.StatusSending {
+		if err := attempt.Validate(); err != nil {
+			return notifications.Intent{}, false, fmt.Errorf("validate notification attempt: %w", err)
+		}
+		if attempt.IntentID != intent.ID || attempt.AttemptNumber != 1 ||
+			(attempt.Status != notifications.StatusQueued && attempt.Status != notifications.StatusSuppressed) {
+			return notifications.Intent{}, false, errors.New("initial notification attempt has invalid ownership or state")
+		}
+		if attempt.Status == notifications.StatusQueued {
 			allTerminal = false
 		}
 	}
+	if id := f.ByKey[intent.IdempotencyKey]; id != "" {
+		existing := f.Intents[id]
+		if !sameNotificationRequest(existing, intent) {
+			return notifications.Intent{}, false, notifications.ErrConflict
+		}
+		return existing, false, nil
+	}
+	if _, taken := f.Intents[intent.ID]; taken {
+		return notifications.Intent{}, false, notifications.ErrConflict
+	}
+	for _, attempt := range attempts {
+		if _, taken := f.Attempts[attempt.ID]; taken {
+			return notifications.Intent{}, false, notifications.ErrConflict
+		}
+	}
+	for _, attempt := range attempts {
+		f.Attempts[attempt.ID] = attempt
+	}
+	intent.TerminalAt = time.Time{}
 	if allTerminal {
 		intent.TerminalAt = intent.CreatedAt
 	}
@@ -240,8 +272,19 @@ func (f *NotificationRepository) CompleteNotificationAttempt(
 	completion notifications.Completion,
 ) error {
 	attempt, ok := f.Attempts[completion.AttemptID]
-	if !ok || attempt.Status != notifications.StatusSending || attempt.LeaseOwner != completion.LeaseOwner {
+	if !ok {
+		return notifications.ErrNotFound
+	}
+	if attempt.Status != notifications.StatusSending || attempt.LeaseOwner != completion.LeaseOwner {
 		return notifications.ErrConflict
+	}
+	if err := completion.Validate(attempt); err != nil {
+		return fmt.Errorf("complete notification attempt: validate: %w", err)
+	}
+	if completion.Next != nil {
+		if _, taken := f.Attempts[completion.Next.ID]; taken {
+			return notifications.ErrConflict
+		}
 	}
 	attempt.Status = completion.Status
 	attempt.ProviderMessageID = completion.ProviderMessageID
@@ -256,6 +299,14 @@ func (f *NotificationRepository) CompleteNotificationAttempt(
 	}
 	f.Completions = append(f.Completions, completion)
 	return nil
+}
+
+// sameNotificationRequest is the store's idempotency rule: a replayed key must describe the
+// same request.
+func sameNotificationRequest(a, b notifications.Intent) bool {
+	return a.Topic == b.Topic && a.RecipientKind == b.RecipientKind && a.RecipientID == b.RecipientID &&
+		a.ReferenceKind == b.ReferenceKind && a.ReferenceID == b.ReferenceID && a.Policy == b.Policy &&
+		a.Template == b.Template
 }
 
 type NotificationRouter struct {

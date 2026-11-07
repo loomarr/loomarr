@@ -5,7 +5,6 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -19,11 +18,10 @@ import { suggestionFailureCopy } from "../suggestion-failure-copy";
 import { useAiResume } from "../use-ai-resume";
 import { useElapsed } from "../use-elapsed";
 import { useProposalReviewEdit } from "../use-proposal-review-edit";
-import { useSuggestionRun } from "../use-suggestion-run";
 import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 
 // ChannelSuggestPanel — origination, inline in the Guide header (§12). The create path IS
-// describing a channel: IntentForm → useSuggestionRun → GenerationProgress → ProposalReview,
+// describing a channel: IntentForm → the suggestion run → GenerationProgress → ProposalReview,
 // and on approval it hands the new channel id back so the Guide navigates to it. It does NOT
 // fork the flow or the approval gate: approve is the same admin-only useApproveProposal, and a
 // member sees the review without the controls (§7/§11).
@@ -32,41 +30,23 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // once this panel moved onto the channels surface. Nothing was stranded with it: the
 // cross-user approval queue had already moved into `/queue`'s tabs (V27).
 //
-// One expanding surface over useSuggestionRun's three states: idle → describe form; running →
-// live phases; a landed proposal → review with Approve/Deny. A successful approve or
-// "Create another" resets back to the form.
-const ChannelSuggestPanel = ({
-  onCreated,
-  initialIntent,
-  initialJobId,
-  initialManual,
-  initialIdeaId,
-  onStartFresh,
-  onStageChange,
-  className,
-}: ChannelSuggestPanelProps) => {
+// One expanding surface over the run's three states: idle → describe form; running → live
+// phases; a landed proposal → review with Approve/Deny. A successful approve or "Create
+// another" resets back to the form. Which of those shows, and which Job, is the Guide's
+// origination flow (its URL); this panel renders it and acts through it.
+const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanelProps) => {
   const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
-  const [startedFresh, setStartedFresh] = useState(false);
-  // Entered from "Build it manually instead" (#1817, decision G2/G2.1) on a failed or
-  // unconfigured AI run, or straight from the Guide's `?manual=1` handoff — swaps this panel
-  // for the manual builder in place, rather than forking a second origination surface. Leaving
-  // the builder without submitting returns here, to the SAME error state the operator left
-  // (its own run/error is untouched).
-  const [building, setBuilding] = useState(Boolean(initialManual));
+  const { run, search } = flow;
   // "Edit first" (#1817): seeds the builder from one channel idea. Fetched here rather than in
   // the builder itself, so a plain "Add a channel"/"Build it manually instead" entry (no idea)
   // never pays for a list it doesn't need.
-  const editIdeas = discoveryApi.useListChannelIdeas({ query: { enabled: initialIdeaId !== undefined } });
-  const editIdea = initialIdeaId
-    ? unwrap(editIdeas.data, (body) => body.ideas)?.find((idea) => idea.id === initialIdeaId)
+  const editIdeas = discoveryApi.useListChannelIdeas({ query: { enabled: search.ideaId !== undefined } });
+  const editIdea = search.ideaId
+    ? unwrap(editIdeas.data, (body) => body.ideas)?.find((idea) => idea.id === search.ideaId)
     : undefined;
-  const run = useSuggestionRun(initialJobId);
   const [edit, setEdit, optionalSuggestions, expansionAdded] = useProposalReviewEdit(run.jobId, run.proposal);
   const { resumeWithAi } = useAiResume(run, edit, optionalSuggestions);
-  // The resume banner's "Try AI suggestions" with nothing picked yet: the builder's description
-  // seeds the describe form instead.
-  const [describeSeed, setDescribeSeed] = useState<string>();
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
   const aiUnconfigured = runProblem?.type === "feature_not_configured";
@@ -80,7 +60,7 @@ const ChannelSuggestPanel = ({
         // id — navigate there so the operator lands on the channel it just committed.
         if (res.status === 200) {
           setEdit(undefined);
-          run.reset();
+          flow.created();
           onCreated(res.data.channelId);
         }
       },
@@ -91,28 +71,14 @@ const ChannelSuggestPanel = ({
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() });
         setEdit(undefined);
-        run.reset();
-        // Discard is an explicit fresh start. A route-provided template remains
-        // in this mounted component until navigation settles, so suppress it
-        // locally as well as clearing the URL handoff.
-        setStartedFresh(true);
-        onStartFresh?.();
+        // Discard is an explicit fresh start: the template and the Job leave the URL too.
+        flow.startFresh();
       },
     },
   });
 
   const proposal = run.proposal;
   const canRevise = isAdmin && (run.actions.includes("edit") || run.isRunning);
-  const stage = proposal
-    ? run.isRunning
-      ? "updating"
-      : "review"
-    : run.isRunning
-      ? "generating"
-      : run.failed
-        ? "failed"
-        : "describe";
-  useEffect(() => onStageChange?.(stage), [onStageChange, stage]);
   const outlook = useProposalOutlook({
     id: proposal?.id,
     proposal: proposal?.proposal,
@@ -120,19 +86,15 @@ const ChannelSuggestPanel = ({
   });
   const startFresh = () => {
     setEdit(undefined);
-    run.reset();
-    setStartedFresh(true);
-    onStartFresh?.();
+    flow.startFresh();
   };
   const start = (intent: Intent) => {
     setEdit(undefined);
-    // The seed has done its job once the form submits; a later fresh form must not resurrect it.
-    setDescribeSeed(undefined);
     run.start(intent);
   };
   const editFailedDescription = () => {
     setEdit(undefined);
-    run.reset(true);
+    flow.editDescription();
   };
   const retry = () => {
     setEdit(undefined);
@@ -141,27 +103,22 @@ const ChannelSuggestPanel = ({
   const failureNeedsEdit = run.failure?.recoveryAction !== "retry_later";
   const failureCopy = run.failure ? suggestionFailureCopy(run.failure) : undefined;
 
-  if (building) {
+  // "Build it manually instead" (#1817, decision G2/G2.1) on a failed or unconfigured AI run,
+  // or the Guide's `?manual=1` handoff, swaps this panel for the manual builder in place rather
+  // than forking a second origination surface. Leaving the builder without submitting returns
+  // to the SAME error state the operator left (the run is untouched). Submitting moves the flow
+  // onto the builder's Job, which leaves the builder.
+  if (flow.manual) {
     return (
       <section className={cn("flex flex-col gap-4", className)}>
         <ManualChannelBuilder
           isAdmin={isAdmin}
           initialIdea={editIdea}
-          onCancel={() => setBuilding(false)}
-          onSubmitted={(jobId) => {
-            setBuilding(false);
-            run.resume(jobId);
-          }}
-          onAiSubmitted={(jobId, description, channelName) => {
-            setBuilding(false);
-            resumeWithAi(jobId, description, channelName);
-          }}
-          onDescribeWithAi={(description) => {
-            setBuilding(false);
-            // The failed or unconfigured request that led here is history now: AI is back.
-            run.reset();
-            setDescribeSeed(description || undefined);
-          }}
+          onCancel={flow.leaveManual}
+          onSubmitted={run.resume}
+          onAiSubmitted={resumeWithAi}
+          // The failed or unconfigured request that led here is history now: AI is back.
+          onDescribeWithAi={flow.describeWithAi}
         />
       </section>
     );
@@ -174,7 +131,7 @@ const ChannelSuggestPanel = ({
           so falling through to a blank form here would swallow the error the user needs. */}
       {!run.isRunning && !run.failed && !proposal && (
         <IntentForm
-          initialDescription={describeSeed ?? (startedFresh ? undefined : initialIntent)}
+          initialDescription={search.intent}
           initialIntent={run.intent}
           onSubmit={start}
           submitting={run.isRunning}
@@ -184,11 +141,11 @@ const ChannelSuggestPanel = ({
       {run.error != null &&
         !proposal &&
         (aiUnconfigured || groundingUnconfigured ? (
-          <div role="alert" className="rounded-lg border border-border bg-muted/40 p-4">
+          <div role="alert" className="border-border bg-muted/40 rounded-lg border p-4">
             <p className="font-medium">
               {groundingUnconfigured ? "Connect TMDB to build this channel" : "Finish AI setup"}
             </p>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               {groundingUnconfigured
                 ? isAdmin
                   ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
@@ -216,7 +173,7 @@ const ChannelSuggestPanel = ({
                   tracked on #1872) — no server Journey action gates it; the LLM being off is the
                   one failure this recovers from, so grounding-only failures don't offer it. */}
               {aiUnconfigured && (
-                <Button variant="outline" size="sm" onClick={() => setBuilding(true)}>
+                <Button variant="outline" size="sm" onClick={flow.buildManually}>
                   Build it manually instead
                 </Button>
               )}
@@ -243,15 +200,15 @@ const ChannelSuggestPanel = ({
       {run.failed && !proposal && (
         <div
           role="alert"
-          className="mx-auto flex w-full max-w-form flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
+          className="max-w-form border-border bg-muted/35 mx-auto flex w-full flex-col gap-3 rounded-lg border p-4"
         >
           <div>
             <h3 className="font-medium">{failureCopy?.title ?? "Something went wrong"}</h3>
-            <p className="mt-1 text-muted-foreground text-sm">
+            <p className="text-muted-foreground mt-1 text-sm">
               {failureCopy?.message ?? "Loomarr couldn't finish this request."}
             </p>
             {failureCopy?.guidance && (
-              <p className="mt-1 text-muted-foreground text-sm">{failureCopy.guidance}</p>
+              <p className="text-muted-foreground mt-1 text-sm">{failureCopy.guidance}</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -276,7 +233,7 @@ const ChannelSuggestPanel = ({
             )}
             {/* Always offered client-side (#1817 maintainer decision 1, #1872): a generation
                 failure, whatever its reason, can always fall back to building by hand. */}
-            <Button variant="suggest" size="sm" onClick={() => setBuilding(true)}>
+            <Button variant="suggest" size="sm" onClick={flow.buildManually}>
               Build it manually instead
             </Button>
           </div>

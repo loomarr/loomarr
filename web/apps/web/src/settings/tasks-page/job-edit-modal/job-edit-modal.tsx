@@ -1,10 +1,6 @@
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { toast } from "sonner";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
+import { invalidateSettings } from "@loomarr/core/events";
 import {
   Dialog,
   DialogContent,
@@ -12,10 +8,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CRON_PRESETS, CUSTOM_VALUE, isPreset } from "../cron-presets";
+import { CUSTOM_VALUE, isPreset } from "../cron-presets";
 import type { JobEditModalProps } from "./job-edit-modal.type";
 
 // The "Modify Job" dialog (§18.1): edit a scheduled job's cron. Human-readable PRESETS are the
@@ -24,18 +25,20 @@ import type { JobEditModalProps } from "./job-edit-modal.type";
 // validates the cron, so an invalid advanced expression comes back as a field error. The
 // scheduler hot-applies the new cron on its next tick and emits a `job` SSE frame, so the
 // Tasks list refreshes without a manual reload.
-const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
+const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) => {
   const queryClient = useQueryClient();
   // The picked preset value (a cron string) or CUSTOM_VALUE; seeded from the job's current
   // schedule — a matching preset if there is one, else Custom (advanced).
-  const [choice, setChoice] = useState<string>(() => (isPreset(job.schedule) ? job.schedule : CUSTOM_VALUE));
+  const [choice, setChoice] = useState<string>(() =>
+    isPreset(job.schedule, presets) ? job.schedule.trim() : CUSTOM_VALUE,
+  );
   const [advancedCron, setAdvancedCron] = useState<string>(job.schedule);
   const advanced = choice === CUSTOM_VALUE;
 
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+        await invalidateSettings(queryClient);
         // The scheduler re-reads the cron on its next tick; nudge /v1/jobs so the new
         // schedule + next-run show immediately rather than on the next SSE frame. Use the
         // generated query key (["/v1/jobs"]) — a hand-written ["jobsList"] matches nothing.
@@ -61,15 +64,15 @@ const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <span className="font-medium text-sm">Frequency</span>
+            <span className="text-sm font-medium">Frequency</span>
             <Select value={choice} onValueChange={setChoice}>
               <SelectTrigger aria-label="Frequency">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {CRON_PRESETS.map((p) => (
-                  <SelectItem key={p.cron} value={p.cron}>
-                    {p.label}
+                {presets.map((preset) => (
+                  <SelectItem key={preset.value} value={preset.value}>
+                    {preset.label}
                   </SelectItem>
                 ))}
                 <SelectItem value={CUSTOM_VALUE}>Custom (advanced)…</SelectItem>
@@ -80,7 +83,7 @@ const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
           {/* Advanced: the raw cron field, revealed only for the Custom choice. */}
           {advanced && (
             <div className="flex flex-col gap-1.5">
-              <span className="font-medium text-sm">Cron expression</span>
+              <span className="text-sm font-medium">Cron expression</span>
               <Input
                 aria-label="Cron expression"
                 value={advancedCron}

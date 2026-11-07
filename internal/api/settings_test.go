@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -308,7 +308,7 @@ func newSettingsHarness(t *testing.T, configs ...settingsHarnessConfig) *setting
 			Channels:          config.Channels,
 			LiveTV:            config.LiveTV,
 			BackendTransition: transition,
-			LiveConfig:        func(key string) string { return config.Config[key] },
+			LiveSettings:      stringSettings(func(key string) string { return config.Config[key] }),
 			LibraryConfigured: func() bool {
 				return config.Config["library.flavor"] != "" &&
 					config.Config["library.url"] != "" && config.Config["library.token"] != ""

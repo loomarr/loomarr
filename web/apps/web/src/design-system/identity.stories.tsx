@@ -74,11 +74,11 @@ const IdentityWorkshop = ({
         };
 
   return (
-    <Screen density={density} gap="$section">
+    <Screen density={density} gap="section">
       <Text density={density} textRole="metadata" tone="info">
         AUTHORITATIVE MEDIA IDENTITY
       </Text>
-      <Surface gap="$section" maxWidth={density === "tv" ? 960 : 680} padding="$section" width="100%">
+      <Surface gap="section" maxWidth={density === "tv" ? 960 : 680} padding="section" width="100%">
         <ChannelIdentity
           channel={channel}
           density={density}

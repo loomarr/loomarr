@@ -26,9 +26,9 @@ type PairDeviceProps = {
 const SignInFirst = ({ code }: { code: string }) => {
   const here = `/pair${code ? `?code=${encodeURIComponent(code)}` : ""}`;
   return (
-    <div className="mx-auto max-w-focused px-6 py-16 text-center">
-      <h1 className="font-semibold text-2xl">Add a device</h1>
-      <p className="mt-3 text-md text-muted-foreground leading-relaxed">
+    <div className="max-w-focused mx-auto px-6 py-16 text-center">
+      <h1 className="text-2xl font-semibold">Add a device</h1>
+      <p className="text-md text-muted-foreground mt-3 leading-relaxed">
         Sign in first, then we'll bring you straight back here to finish adding your device.
       </p>
       {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
@@ -98,9 +98,9 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
   if (!user) return <SignInFirst code={initialCode ?? ""} />;
 
   return (
-    <div className="mx-auto max-w-focused px-6 py-16">
-      <h1 className="font-semibold text-2xl">Add a device</h1>
-      <p className="mt-3 text-md text-muted-foreground leading-relaxed">
+    <div className="max-w-focused mx-auto px-6 py-16">
+      <h1 className="text-2xl font-semibold">Add a device</h1>
+      <p className="text-md text-muted-foreground mt-3 leading-relaxed">
         Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
       </p>
 
@@ -115,7 +115,7 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
           autoComplete="one-time-code"
           autoCorrect="off"
           autoFocus
-          className="h-20 w-full text-center font-mono text-3xl uppercase tracking-[0.35em]"
+          className="h-20 w-full text-center font-mono text-3xl tracking-[0.35em] uppercase"
           inputMode="text"
           maxLength={9}
           onChange={(event) => setCode(event.target.value)}
@@ -133,13 +133,13 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
             const failure = classifyApproveFailure(approve.error);
             if (failure === "invalid-code")
               return (
-                <p className="mt-4 text-center text-destructive text-md">
+                <p className="text-destructive text-md mt-4 text-center">
                   That code is wrong or has expired. Codes last ten minutes — check the screen and try again.
                 </p>
               );
             if (failure === "rate-limited")
               return (
-                <p className="mt-4 text-center text-caution text-md">
+                <p className="text-caution text-md mt-4 text-center">
                   Too many pairing codes tried. Wait a moment and try again.
                 </p>
               );
@@ -157,9 +157,9 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         : null}
 
       {approved ? (
-        <div className="mt-8 rounded-lg border border-border p-5 text-center">
-          <p className="font-medium text-md">{approved} is ready</p>
-          <p className="mt-1 text-muted-foreground leading-relaxed">
+        <div className="border-border mt-8 rounded-lg border p-5 text-center">
+          <p className="text-md font-medium">{approved} is ready</p>
+          <p className="text-muted-foreground mt-1 leading-relaxed">
             It should start playing in a few seconds. You can remove it any time from Settings → Access and
             devices.
           </p>
@@ -168,7 +168,7 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
 
       {/* A paired device acts as the person who approved it, with their real role (ADR 0043), so an
           admin's TV is an admin. */}
-      <p className="mt-10 text-center text-muted-foreground text-sm leading-relaxed">
+      <p className="text-muted-foreground mt-10 text-center text-sm leading-relaxed">
         The device acts with your access and role. Removing it later signs out only that device.
       </p>
     </div>

@@ -44,7 +44,7 @@ test("Logs filters, expands evidence, and downloads the visible page", async ({ 
   await page.getByRole("button", { name: /Replacement source missed/ }).click();
   await page.locator("summary:visible").filter({ hasText: "Technical details" }).click();
   await expect(page.locator("pre:visible").filter({ hasText: "drift_ms" })).toBeVisible();
-  await expect(page.locator('button[aria-label="Copy Request id"]:visible')).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Copy Request id/ }).locator("visible=true")).toBeVisible();
 
   const filteredRequest = page.waitForRequest((request) => {
     const url = new URL(request.url());

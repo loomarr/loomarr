@@ -2,14 +2,12 @@ import {
   type GuideController,
   type GuideLayout,
   type GuideNavigationDirection,
-  guideSelectionForChannel,
   moveGuideSelection,
 } from "@loomarr/core/guide";
 import type { GuideFocusTarget } from "@loomarr/ui";
 
 import type { TvFocusRegistry } from "../focus-registry";
 import type {
-  TvGuideActivation,
   TvGuideFilterOption,
   TvGuideMoveResult,
   TvGuideNavigationState,
@@ -149,35 +147,9 @@ const tvGuideTimeEdge = async (
   return intent;
 };
 
-const activateTvGuideFocus = (state: TvGuideNavigationState): TvGuideActivation =>
-  state.focus.region === "filters"
-    ? { filter: state.focus.filter, kind: "filter" }
-    : { kind: "tune", selection: state.focus.selection };
-
 /** The channel a long-press of Select acts on: the focused programme's, never a filter chip's. */
 const tvGuideFavouriteChannel = (focus: GuideFocusTarget | undefined): string | undefined =>
   focus?.kind === "airing" ? focus.selection.channelId : undefined;
-
-const restoreTvGuideFocus = (
-  layout: GuideLayout,
-  state: TvGuideNavigationState,
-): TvGuideNavigationState | undefined => {
-  const preferred = guideSelectionForChannel(
-    layout,
-    state.gridSelection.channelId,
-    state.gridSelection.anchorMs,
-  );
-  const first = layout.channels[0]
-    ? guideSelectionForChannel(layout, layout.channels[0].source.channelId, state.gridSelection.anchorMs)
-    : undefined;
-  const selection = preferred ?? first;
-  if (!selection) return undefined;
-  return {
-    ...state,
-    focus: state.focus.region === "grid" ? { region: "grid", selection } : state.focus,
-    gridSelection: selection,
-  };
-};
 
 const tvGuideRowWindow = (
   channelCount: number,
@@ -196,11 +168,4 @@ const tvGuideRowWindow = (
   };
 };
 
-export {
-  activateTvGuideFocus,
-  moveTvGuideFocus,
-  restoreTvGuideFocus,
-  tvGuideFavouriteChannel,
-  tvGuideRowWindow,
-  tvGuideTimeEdge,
-};
+export { moveTvGuideFocus, tvGuideFavouriteChannel, tvGuideRowWindow, tvGuideTimeEdge };

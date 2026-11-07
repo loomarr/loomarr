@@ -5,11 +5,13 @@ import {
   getRefineChannelMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { RefinePanel } from "./refine-panel";
 
 const makeWrapper = () => {
@@ -154,6 +156,55 @@ describe("RefinePanel", () => {
 
     expect(screen.queryByText("Marigold Protocol")).not.toBeInTheDocument();
     expect(screen.getByLabelText(CHANGE)).toHaveValue("");
+  });
+
+  // The refine REQUEST itself can be refused before any job exists: 422 when the channel has no
+  // stored intent yet, 409 when a refine is already running. No job id means no Journey and no
+  // SSE phase, so nothing but the request error can move the panel out of "Starting…".
+  it.each([
+    [422, "Can't refine this channel yet", "Describe the channel's intent first."],
+    [409, "A refine is already running", "Wait for it to finish, then try again."],
+  ])(
+    "clears the spinner and shows the %i problem when the refine request is refused",
+    async (status, title, detail) => {
+      server.use(
+        http.post("*/v1/channels/:id/refine", () =>
+          HttpResponse.json(
+            { title, detail, status },
+            { status, headers: { "Content-Type": "application/problem+json" } },
+          ),
+        ),
+      );
+      render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
+
+      await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+      await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(title);
+      expect(alert).toHaveTextContent(detail);
+      expect(screen.queryByText("Starting…")).not.toBeInTheDocument();
+      // Back on the form with the text intact and the retry button live.
+      expect(screen.getByLabelText(CHANGE)).toHaveValue("add more action");
+      expect(screen.getByRole("button", { name: SUGGEST })).toBeEnabled();
+    },
+  );
+
+  it("retries after a refused refine request", async () => {
+    server.use(
+      http.post("*/v1/channels/:id/refine", () =>
+        HttpResponse.json({ title: "A refine is already running", status: 409 }, { status: 409 }),
+      ),
+    );
+    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
+    await screen.findByRole("alert");
+
+    stubRefine({ proposals: [{ id: "p1", jobId: "job-1", status: "submitted", proposal }] });
+    await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
+
+    expect(await screen.findByRole("button", { name: /apply changes/i })).toBeInTheDocument();
   });
 
   // A generation FAILURE restored from the durable Journey (never a proposal)

@@ -9,7 +9,7 @@ import (
 )
 
 func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-note-exact-target", []filler.PullPlanRow{
 		{SourceID: "classic", Provider: "archive", RemoteID: "reel-1", URL: "https://archive.org/details/reel-1"},
@@ -28,7 +28,7 @@ func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
 // #749: the coverage gap a candidate was selected for is kept on the pending pull and reaches
 // the approved download, so what the operator agreed to and what arrives share one record.
 func TestApproveFillerPull_TargetsCarryTheGapTheirCandidateFills(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	created := seedPull(t, st, "pull-gap-carried", []filler.PullPlanRow{
 		{SourceID: "classic", Provider: "archive", RemoteID: "in-gap", URL: "https://archive.org/details/in-gap", Gap: "era:1990-1999"},
@@ -52,7 +52,7 @@ func TestApproveFillerPull_TargetsCarryTheGapTheirCandidateFills(t *testing.T) {
 }
 
 func TestApproveFillerPull_NoteIsAnAnnotationForLegacySourceLevelPlan(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
+	srv, st, ff := newFillerServerWithConfig(t, nil, locatedInUS)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
 	pull := filler.Pull{
 		ID: "legacy-pull", Status: filler.PullPending, Plan: []filler.PullPlanRow{{

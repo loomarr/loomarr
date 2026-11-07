@@ -13,4 +13,10 @@ const languageName = (code: string, locale?: string): string => {
   return code.toLocaleUpperCase();
 };
 
-export { languageName };
+// A set of languages read as a list in the active locale: "English and Spanish".
+const languageList = (codes: readonly string[], locale?: string): string =>
+  new Intl.ListFormat(locale ? [locale] : undefined, { type: "conjunction" }).format(
+    codes.map((code) => languageName(code, locale)),
+  );
+
+export { languageList, languageName };

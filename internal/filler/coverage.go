@@ -15,7 +15,10 @@ package filler
 // WHICH clip plays, not whether the rung can fill a break. Level alone is read off one fresh
 // assembly (#1684), because how far down the ladder a break reaches depends on the fill.
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // Criterion names one of the channel's break settings, for the per-criterion breakdown.
 //
@@ -33,6 +36,7 @@ const (
 	CriterionDuration  Criterion = "duration"
 	CriterionQuality   Criterion = "quality"
 	CriterionGeography Criterion = "geography"
+	CriterionLanguage  Criterion = "language"
 )
 
 // CriterionCoverage is one setting and how much of the commercial catalog survives it ON ITS OWN.
@@ -70,8 +74,14 @@ type CoverageReport struct {
 	// own, else the installation's). A zero country means no location limit. Reported so the
 	// channel page can say WHICH commercials the pool is limited to without restating a setting.
 	Geography Geography
+	// Language is the commercial language this channel's breaks were limited to (the channel's own,
+	// else the household's), "" when there is none. UndeterminedLanguage counts the break-body
+	// commercials whose language is unknown: they count only on a channel whose language is the
+	// household default (language_boundary.go).
+	Language             string
+	UndeterminedLanguage int
 	// Criteria is the per-setting breakdown — which single setting is emptying the ladder.
-	// Always the same six entries in the same order, so the UI renders a stable list rather
+	// Always the same entries in the same order, so the UI renders a stable list rather
 	// than one that reshuffles as counts change.
 	Criteria []CriterionCoverage
 	// Rungs, tightest first, in ladder order.
@@ -106,6 +116,16 @@ type CoverageReport struct {
 	EraWindows []EraRange
 }
 
+// exactClips is the exact rung's count: the clips a break fills from without widening.
+func (r CoverageReport) exactClips() int {
+	for _, rung := range r.Rungs {
+		if rung.Level == MatchExact {
+			return rung.Clips
+		}
+	}
+	return 0
+}
+
 // ChannelCoverage is one channel's coverage answer, labelled for display (§10 V35).
 //
 // It carries the channel's identity as plain strings/ints rather than a channel type: this
@@ -116,6 +136,30 @@ type ChannelCoverage struct {
 	Name      string
 	Number    int
 	Report    CoverageReport
+}
+
+// PoolChannel is one channel the pool strip reports on: its display identity and the Selection its
+// breaks resolve to. The caller supplies both (this package must not learn about channels): it
+// decides which channels are airing and derives each selection through the one writer, so the
+// strip describes the pods the channel really gets.
+type PoolChannel struct {
+	ChannelID string
+	Name      string
+	Number    int
+	Selection Selection
+}
+
+// OrderWorstFirst sorts channels so the weakest coverage level leads, ties broken by channel
+// number. The strip's diagnosis line names `Channels[0]` (Weakest), and an unstable list would
+// make that line flicker between equally-bad channels on every poll.
+func OrderWorstFirst(channels []ChannelCoverage) {
+	sort.SliceStable(channels, func(i, j int) bool {
+		li, lj := channels[i].Report.Level, channels[j].Report.Level
+		if li != lj {
+			return LevelWorseThan(li, lj)
+		}
+		return channels[i].Number < channels[j].Number
+	})
 }
 
 // PoolReport is catalog-wide filler health (§10 V35) — the Filler page's pool strip.
@@ -196,6 +240,9 @@ func levelRank(l MatchLevel) int {
 func PoolCounts(catalog []Clip, policy Policy) PoolReport {
 	report := PoolReport{Clips: len(catalog)}
 	for _, c := range catalog {
+		if c.IsBumper() {
+			report.Bookends++ // what pod assembly opens and closes a break on (#749 role gaps)
+		}
 		if c.EffectivePlacement() != PlacementBreakBody {
 			continue
 		}
@@ -235,10 +282,10 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 		return n
 	}
 
+	area := policy.area(w.Geography)
 	return []CriterionCoverage{
-		{CriterionGeography, count(func(c Clip) bool {
-			return GeographicallyEligible(c, effectiveGeography(w.Geography, policy.Geography))
-		})},
+		{CriterionGeography, count(func(c Clip) bool { return GeographicallyEligible(c, area) })},
+		{CriterionLanguage, count(func(c Clip) bool { return speaksTheChannelsLanguage(c, w, policy) })},
 		{CriterionEra, count(func(c Clip) bool { return len(filterEraWindows([]Clip{c}, w.eraWindows())) > 0 })},
 		{CriterionAudience, count(func(c Clip) bool {
 			return len(filterAudienceWithUngrounded([]Clip{c}, w.Audience)) > 0
@@ -247,7 +294,7 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 			return len(filterCategories([]Clip{c}, w.Categories)) > 0
 		})},
 		{CriterionKind, count(func(c Clip) bool {
-			return len(filterKinds([]Clip{c}, w.Kinds)) > 0
+			return len(filterKinds([]Clip{c}, w.Kinds, area.Stations)) > 0
 		})},
 		{CriterionDuration, count(func(c Clip) bool { return durationEligible(c, policy) })},
 		{CriterionQuality, count(func(c Clip) bool { return qualityEligible(c, policy) })},
@@ -278,6 +325,12 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	// one of the criteria being reported. Measuring it after would make that line always equal the
 	// base — a row that can never say anything.
 	criteria := criterionCoverage(catalog, w, policy)
+	undetermined := 0
+	for _, c := range catalog {
+		if c.EffectivePlacement() == PlacementBreakBody && NormalizeLanguage(c.Language) == LangUndetermined {
+			undetermined++
+		}
+	}
 
 	// Level is the rung a fresh break REACHES, so it is read off the same assembly rather than
 	// re-derived: since #1684 a pod tops up from looser rungs, and "tightest non-empty rung"
@@ -289,16 +342,20 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	assembled := Assemble(catalog, fresh, policy, nil).MatchLevel
 
 	geography := effectiveGeography(w.Geography, policy.Geography)
-	catalog = filterGeography(catalog, geography)
-	catalog = filterKinds(catalog, w.Kinds)
+	area := geography.Resolve(policy.LocalStations)
+	catalog = filterGeography(catalog, area)
+	catalog = filterKinds(catalog, w.Kinds, area.Stations)
 
 	pools := candidatePools(catalog, w, policy)
 
 	report := CoverageReport{
 		Geography: geography.Normalize(),
+		Language:  commercialLanguage(w, policy),
 		Criteria:  criteria,
-		Rungs:     make([]RungCoverage, 0, len(pools)),
-		Level:     MatchBumperCard,
+
+		UndeterminedLanguage: undetermined,
+		Rungs:                make([]RungCoverage, 0, len(pools)),
+		Level:                MatchBumperCard,
 	}
 	if windows := w.eraWindows(); len(windows) > 0 && !windows[0].Any() {
 		report.EraWindows = NormalizeEraWindows(windows)

@@ -20,7 +20,7 @@ import type { PhoneBottomBarProps } from "./phone-bottom-bar.type";
 type BarValue = PhoneDestinationKey | "more" | "none";
 
 const navigateToDestination = (navigate: ReturnType<typeof useNavigate>, destination: PhoneDestination) => {
-  if (destination.to === "/channels/$id/watch") {
+  if (destination.to === "/watch/$id") {
     void navigate({ to: destination.to, params: destination.params });
   } else {
     void navigate({ to: destination.to });
@@ -125,7 +125,7 @@ const MoreSheet = ({
         <BottomSheet accessibilityLabel="More destinations" handle={false}>
           <Surface
             alignItems="center"
-            backgroundColor="$transparent"
+            backgroundColor="transparent"
             borderWidth={0}
             flexDirection="row"
             justifyContent="space-between"
@@ -143,7 +143,7 @@ const MoreSheet = ({
               <Icon decorative glyph={icons.close} size="control" tone="secondary" />
             </Pressable>
           </Surface>
-          <Surface backgroundColor="$transparent" borderWidth={0}>
+          <Surface backgroundColor="transparent" borderWidth={0}>
             {destinations.map((destination) => (
               <SheetRow
                 destination={destination}
@@ -170,10 +170,10 @@ const PhoneBottomBar = ({ badges, isAdmin, watchChannelId }: PhoneBottomBarProps
 
   const primary = phoneBarPrimary(watchChannelId, badges);
   const overflow = phoneBarOverflow(isAdmin, badges);
-  // Decision X2 (critique row 5), shared with the desktop rail: a channel's Watch tab highlights
-  // Watch, its management tabs (Info/Programming/Filler/Danger) highlight Guide instead — the URL
-  // stays under `/channels/$id/...` for both, so the plain per-destination path match below can't
-  // tell them apart on its own.
+  // Decision X2 (critique row 5), shared with the desktop rail: a channel's `/watch/$id` player
+  // highlights Watch, its management tabs (Info/Programming/Filler/Danger) highlight Guide instead —
+  // those URLs stay under `/channels/$id/...`, so the plain per-destination path match below can't
+  // tell them apart from the channel on its own.
   const highlight = channelNavHighlight(pathname);
   const all = [...primary, ...overflow];
   const active =

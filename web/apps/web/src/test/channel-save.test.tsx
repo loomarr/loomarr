@@ -141,6 +141,9 @@ const rename = async (user: ReturnType<typeof userEvent.setup>, name: string) =>
   await user.type(field, `${name}{Enter}`);
 };
 
+// Each test renders the whole route tree and types through several editors; the first also pays
+// the cold load of the Programming route. That is ~1.5 s on a workstation and over 5 s on a loaded
+// CI shard, so the suite carries its own bound instead of the 5 s unit default.
 describe("channel saves", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -246,4 +249,4 @@ describe("channel saves", () => {
     expect(patches).toHaveLength(1);
     expect(toast.error).toHaveBeenCalledWith("Channel already exists");
   });
-});
+}, 15_000);

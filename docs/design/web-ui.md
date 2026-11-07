@@ -85,7 +85,8 @@ Every route sends an unbootstrapped install to the wizard, decided by the unauth
    names the owner.
 2. **Playout:** Loomarr (default) or Tunarr, writing `playout.backend`. Choosing Loomarr also requires
    `server.public_url` on this step.
-3. **Location:** one place combobox writing the installation country and optional market.
+3. **Location:** one place combobox writing the installation country and, for a city, its place id
+   (`filler.home_place`).
 4. **Connection checklist**, live-testing each dependency with a fix hint and a docs deep link. It is
    backed by `GET /v1/setup/status` and re-runnable from Settings for the life of the install.
 5. **Give Tunarr your library** (Tunarr path only).

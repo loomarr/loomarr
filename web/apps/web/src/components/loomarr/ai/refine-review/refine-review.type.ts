@@ -28,7 +28,6 @@ interface RefineReviewProps {
   onApply: () => void;
   onDiscard: () => void;
   busy?: boolean;
-  className?: string;
 }
 
 export type { CurrentLineupItem, RefineReviewProps };

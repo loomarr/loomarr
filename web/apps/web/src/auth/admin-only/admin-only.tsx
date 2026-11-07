@@ -17,7 +17,7 @@ const AdminOnly = ({ children }: AdminOnlyProps) => {
   if (isLoading) return null;
   if (isAdmin) return children;
   return (
-    <Surface backgroundColor="$transparent" borderWidth={0} padding="$section">
+    <Surface backgroundColor="transparent" borderWidth={0} padding="section">
       <StatePanel
         kind="permission"
         title="Admins only"

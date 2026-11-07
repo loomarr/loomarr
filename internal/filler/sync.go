@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/logchange"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
@@ -63,13 +63,12 @@ type RawClip struct {
 	TunarrProgramID string
 	Name            string
 	// NameSource is where the scan found Name (#1988); the catalog row takes it with the name.
-	NameSource      clipcatalog.NameSource
+	NameSource      clips.NameSource
 	DurationMs      int64
 	Kind            Kind
 	Era             int // initial era from filename; 0 if none
 	GeographicScope GeographicScope
 	Country         string
-	Market          string
 	Network         string
 	Station         string
 	AirDate         string
@@ -161,6 +160,8 @@ type Syncer struct {
 	libraries    *LibraryScanner
 	acquisitions AcquisitionManifestStore
 	storage      *storagegovernor.Governor
+	// inferior names copies of an ad that lost to a better copy (#2033). nil ⇒ none.
+	inferior InferiorCopyStore
 	// quarantined suppresses the repeated per-pass "remains quarantined" warning for one file.
 	quarantined *logchange.Throttle
 }
@@ -177,7 +178,7 @@ type Syncer struct {
 // ⚠ Nothing is returned at all, deliberately. There is no aggregate outcome worth reporting: the
 // clips that arrived are counted by the intake that follows, and a per-source failure belongs on
 // that source's row rather than in a number the caller would have to interpret.
-func (s *Syncer) drainScanSources(ctx context.Context) {
+func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool) {
 	if s.scanSources == nil {
 		return // no per-source scanning wired (the single-folder path still runs)
 	}
@@ -225,7 +226,7 @@ func (s *Syncer) drainScanSources(ctx context.Context) {
 				s.warnSource("filler: skipped a watched folder that overlaps the clip library", src, err)
 				continue
 			}
-			if res, err := takeInFrom(ctx, sourceDir, s.dir, true, src.ID, s.logAttrs, nil, s.storage); err != nil {
+			if res, err := takeInFrom(ctx, sourceDir, s.dir, true, src.ID, s.logAttrs, nil, s.storage, inferior); err != nil {
 				s.warnSource("filler: could not drain a watched folder", src, err)
 			} else if s.log != nil && res.Taken > 0 {
 				s.log.Info("filler: filed clips from a watched folder",
@@ -249,7 +250,7 @@ func (s *Syncer) drainScanSources(ctx context.Context) {
 					"source", src.ID, "library", src.URI, "copied", res.Copied)
 			}
 			if res.Copied > 0 {
-				if _, err := takeInFrom(ctx, watch, s.dir, true, src.ID, s.logAttrs, nil, s.storage); err != nil {
+				if _, err := takeInFrom(ctx, watch, s.dir, true, src.ID, s.logAttrs, nil, s.storage, inferior); err != nil {
 					s.warnSource("filler: could not file media-server library clips", src, err)
 				}
 			}
@@ -324,6 +325,33 @@ func (s *Syncer) WithStorageGovernor(governor *storagegovernor.Governor) *Syncer
 	return s
 }
 
+// InferiorCopyStore names every catalog and source identity of a copy that lost to a better copy
+// of the same ad (#2033).
+type InferiorCopyStore interface {
+	InferiorCopyHashes(ctx context.Context) (map[string]bool, error)
+}
+
+// WithInferiorCopies keeps a copy that lost out of the catalog and out of intake. Its files may
+// outlive the merge: an operator's file is never deleted, and a failed unlink leaves bytes behind.
+func (s *Syncer) WithInferiorCopies(inferior InferiorCopyStore) *Syncer {
+	s.inferior = inferior
+	return s
+}
+
+// inferiorCopies reads the set once per pass. A failed read admits nothing extra for long: the
+// identity job merges a re-catalogued copy into its survivor again.
+func (s *Syncer) inferiorCopies(ctx context.Context) map[string]bool {
+	if s.inferior == nil {
+		return nil
+	}
+	hashes, err := s.inferior.InferiorCopyHashes(ctx)
+	if err != nil {
+		s.logAttrs("filler sync: inferior copies could not be read; any re-catalogued copy merges again", "err", err)
+		return nil
+	}
+	return hashes
+}
+
 // SyncResult reports what a sync did (for the API + logs).
 type SyncResult struct {
 	Total    int // clips in the Tunarr local filler source
@@ -331,6 +359,7 @@ type SyncResult struct {
 	Updated  int // existing clips whose server-derived fields changed
 	Repaired int // legacy stale-hash paths moved to the bytes' canonical identity
 	Pruned   int // clips removed (gone from the source)
+	Inferior int // files skipped as known inferior copies of an ad already in the catalog
 }
 
 // Sync ensures the Tunarr local source exists, then reconciles the catalog (§10):
@@ -363,9 +392,12 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			"dir", s.dir, "err", err)
 	}
 
+	// A copy that lost to a better copy of its ad is never filed or catalogued again (#2033).
+	inferior := s.inferiorCopies(ctx)
+
 	// Every registered folder and library drains into the watch folder FIRST, so the intake below
 	// files what they brought in on this same pass (§10 V38c).
-	s.drainScanSources(ctx)
+	s.drainScanSources(ctx, inferior)
 
 	// ⚠ INTAKE RUNS BEFORE THE LISTING, and the order is the whole difference between "I dropped
 	// a file in and it appeared" and "I dropped a file in and nothing happened". Draining after
@@ -375,7 +407,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 	// Failures are logged, not returned: a watch folder that cannot be drained (a permissions
 	// problem, a full disk) must not take the catalog down with it. The clips already filed are
 	// still there, and the arrivals stay put for the next pass.
-	if taken, err := takeInFrom(ctx, s.watch, s.dir, false, "", s.logAttrs, s.bindAcquisitionArtifact(ctx), s.storage); err != nil {
+	if taken, err := takeInFrom(ctx, s.watch, s.dir, false, "", s.logAttrs, s.bindAcquisitionArtifact(ctx), s.storage, inferior); err != nil {
 		if s.log != nil {
 			s.log.Warn("filler: could not drain the watch folder; scanning what is already filed",
 				"watch", s.watch, "err", err)
@@ -423,6 +455,11 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		// for every clip under one folder. The moment two watched folders each hold `ads/coke.mp4`
 		// the path stops being unique, one clip overwrites the other, and `keep` prunes a live
 		// row — which is the exact failure V38c moved identity off the path to prevent.
+		if inferior[rc.ID] {
+			// Not kept, so a row a failed merge left behind is pruned too.
+			res.Inferior++
+			continue
+		}
 		existing, found, err := s.store.GetClip(ctx, rc.ID)
 		if err != nil {
 			return res, fmt.Errorf("get clip %s: %w", rc.ID, err)
@@ -467,7 +504,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		merged.DurationMs = rc.DurationMs
 		merged.Kind = rc.Kind
 		merged.GeographicScope = rc.GeographicScope
-		merged.Country, merged.Market = rc.Country, rc.Market
+		merged.Country = rc.Country
 		merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = rc.Network, rc.Station, rc.AirDate, rc.GeoEvidence
 		// Quality is scan-owned like duration: it is a property of the FILE, so a re-encode
 		// that changes the resolution should be reflected, and there is no hand-edited value
@@ -509,7 +546,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.AITagged = existing.AITagged
 			merged.Rating = existing.Rating
 			merged.GeographicScope = existing.GeographicScope
-			merged.Country, merged.Market = existing.Country, existing.Market
+			merged.Country = existing.Country
 			merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = existing.Network, existing.Station, existing.AirDate, existing.GeoEvidence
 			merged.Source = existing.Source
 			// The era suggestion (V34) is loomarr-owned too — a scan knows nothing
@@ -765,7 +802,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 	if found {
 		grounded = existing.Clip
 	}
-	rc.Name, rc.NameSource = groundedRepairName(grounded), clipcatalog.NameFromGrounded
+	rc.Name, rc.NameSource = groundedRepairName(grounded), clips.NameFromGrounded
 	if rc.SidecarInvalid {
 		return rc, true, nil
 	}
@@ -813,11 +850,11 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 
 	// If the durable row still has a useful title, put it beside the bytes before moving. This is
 	// the last automatic chance to prevent the next scan from replacing it with the stale hash.
-	repairName, repairSource := "", clipcatalog.NameFromUnknown
+	repairName, repairSource := "", clips.NameFromUnknown
 	if found {
 		repairName, repairSource = existing.Name, existing.NameSource
 		if isHashDisplayName(repairName) {
-			repairName, repairSource = groundedRepairName(existing.Clip), clipcatalog.NameFromGrounded
+			repairName, repairSource = groundedRepairName(existing.Clip), clips.NameFromGrounded
 		}
 	}
 	if repairName != "" {
@@ -920,7 +957,7 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 	}
 	// A segment's chapter title or operator edit is not Loomarr's to improve, and neither is the
 	// filename fallback it records explicitly (#1988).
-	if recorded := clipcatalog.NameSource(tags.NameProvenance); recorded.Known() && recorded != clipcatalog.NameFromGrounded {
+	if recorded := clips.NameSource(tags.NameProvenance); recorded.Known() && recorded != clips.NameFromGrounded {
 		return rc, false, nil
 	}
 	legacy := existing.Clip
@@ -938,7 +975,7 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 	if err := WriteSidecarTags(full, tags, false); err != nil {
 		return rc, false, err
 	}
-	rc.Name, rc.NameSource = name, clipcatalog.NameFromGrounded
+	rc.Name, rc.NameSource = name, clips.NameFromGrounded
 	return rc, true, nil
 }
 
@@ -950,6 +987,9 @@ func isHashDisplayName(value string) bool {
 func isContentHash(value string) bool {
 	return len(value) == 64 && isLowerHex(value)
 }
+
+// IsContentHash reports whether value is a 64-character lowercase hex content hash.
+func IsContentHash(value string) bool { return isContentHash(value) }
 
 func isOpaqueHash(value string) bool {
 	return (len(value) == 40 || len(value) == 64) && isLowerHex(value)

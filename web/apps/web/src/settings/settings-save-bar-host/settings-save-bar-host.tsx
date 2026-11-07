@@ -1,5 +1,5 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
-import * as setupApi from "@loomarr/api/endpoints/setup";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -16,10 +16,9 @@ const SettingsSaveBarHost = () => {
     mutation: {
       onSuccess: async (response) => {
         setResults(response.status === 200 ? (response.data.results ?? []) : []);
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-        ]);
+        // The `settings` row of core's table, awaited before the buffer clears so a saved field
+        // never shows its old value. The backend's frame covers other tabs and other writers.
+        await invalidateSettings(queryClient);
         if (response.status !== 200) return;
         const saved = (response.data.results ?? [])
           .filter((result) => result.status === "saved")

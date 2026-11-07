@@ -1,6 +1,8 @@
-import { Text as TamaguiText, useTheme, View } from "@tamagui/core";
+import { useTheme, View } from "@tamagui/core";
 import Svg, { ClipPath, Defs, G, Rect } from "react-native-svg";
 
+import { lineHeightPx } from "../primitives";
+import { TamaguiText } from "../text-base";
 import { brandChroma, brandContract, semanticColors } from "../tokens";
 
 type BrandTone = "fullColor" | "monochrome" | "inverse";
@@ -101,12 +103,12 @@ const BrandWordmark = ({ size = "medium", tone = "monochrome" }: BrandWordmarkPr
   const scale = wordmarkSizes[size];
   return (
     <TamaguiText
-      color={tone === "inverse" ? semanticColors.brand.ground : "$contentPrimary"}
-      fontFamily="$body"
+      color={tone === "inverse" ? semanticColors.brand.ground : "contentPrimary"}
+      fontFamily="body"
       fontSize={scale.fontSize}
       fontWeight={brandContract.wordmark.weight as 700}
       letterSpacing={scale.fontSize * brandContract.wordmark.trackingEm}
-      lineHeight={scale.lineHeight}
+      lineHeight={lineHeightPx(scale.lineHeight)}
     >
       LOOMARR
     </TamaguiText>
@@ -149,8 +151,8 @@ const BrandLockup = ({
         <BrandWordmark size={size} tone={inverse ? "inverse" : "monochrome"} />
         {showTagline ? (
           <TamaguiText
-            color={inverse ? semanticColors.brand.ground : "$contentSecondary"}
-            fontFamily="$data"
+            color={inverse ? semanticColors.brand.ground : "contentSecondary"}
+            fontFamily="data"
             fontSize={size === "large" ? 14 : size === "medium" ? 13 : 11}
           >
             always something on

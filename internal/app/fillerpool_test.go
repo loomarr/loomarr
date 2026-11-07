@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -22,7 +23,7 @@ func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (p
 	st := testkit.MigratedSQLiteStore(t)
 
 	for _, c := range clips {
-		if err := st.UpsertClip(ctx, store.Clip{Clip: c, UpdatedAt: time.Now().UTC()}); err != nil {
+		if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: c, UpdatedAt: time.Now().UTC()}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -118,9 +119,10 @@ func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if report.Bookends != tc.bookends || len(filler.CoverageGapsFrom(report).Roles) != tc.roleGapTo {
+		roles := filler.CoverageGapsFrom(report, filler.PoolTargets{}, 2026).Roles
+		if report.Bookends != tc.bookends || len(roles) != tc.roleGapTo {
 			t.Fatalf("bookends = %d, role gaps = %v; want %d and %d roles", report.Bookends,
-				filler.CoverageGapsFrom(report).Roles, tc.bookends, tc.roleGapTo)
+				roles, tc.bookends, tc.roleGapTo)
 		}
 	}
 }

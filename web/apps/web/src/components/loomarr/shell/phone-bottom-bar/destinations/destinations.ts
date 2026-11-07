@@ -11,6 +11,7 @@ type PhoneDestinationKey =
   | "guide"
   | "help"
   | "home"
+  | "library"
   | "notifications"
   | "people"
   | "requests"
@@ -27,13 +28,14 @@ type PhoneDestination = {
   icon: IconName;
   key: PhoneDestinationKey;
   label: string;
-} & ({ params?: never; to: NavTo } | { params: { id: string }; to: "/channels/$id/watch" });
+} & ({ params?: never; to: NavTo } | { params: { id: string }; to: "/watch/$id" });
 
 const PRIMARY_ORDER: readonly PhoneDestinationKey[] = ["home", "watch", "guide", "requests"];
-const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["filler", "people", "settings", "help"];
+// In the sidebar's order: Library sits after Guide and before Requests, so it leads the overflow.
+const ADMIN_OVERFLOW: readonly PhoneDestinationKey[] = ["library", "filler", "people", "settings", "help"];
 const MEMBER_OVERFLOW: readonly PhoneDestinationKey[] = ["notifications", "help"];
 
-const describe = (
+const destinationFor = (
   key: PhoneDestinationKey,
   watchChannelId: string | undefined,
 ): PhoneDestination | undefined => {
@@ -44,11 +46,13 @@ const describe = (
       // Decision X2: hidden (not greyed, not a held gap) until a channel exists.
       return watchChannelId === undefined
         ? undefined
-        : { icon: "play", key, label: "Watch", params: { id: watchChannelId }, to: "/channels/$id/watch" };
+        : { icon: "play", key, label: "Watch", params: { id: watchChannelId }, to: "/watch/$id" };
     case "guide":
       return { icon: "guide", key, label: "Guide", to: "/guide" };
     case "requests":
       return { icon: "requests", key, label: "Requests", to: "/requests" };
+    case "library":
+      return { icon: "library", key, label: "Library", to: "/library" };
     case "filler":
       return { icon: "filler", key, label: "Filler", to: "/filler" };
     case "people":
@@ -66,7 +70,7 @@ const withBadge = (
   destination: PhoneDestination,
   badges: Partial<Record<NavTo, number>> | undefined,
 ): PhoneDestination => {
-  const count = destination.to === "/channels/$id/watch" ? 0 : (badges?.[destination.to] ?? 0);
+  const count = destination.to === "/watch/$id" ? 0 : (badges?.[destination.to] ?? 0);
   return count > 0 ? { ...destination, badgeCount: count } : destination;
 };
 
@@ -76,20 +80,20 @@ const phoneBarPrimary = (
   badges?: Partial<Record<NavTo, number>>,
 ): PhoneDestination[] =>
   PRIMARY_ORDER.flatMap((key) => {
-    const destination = describe(key, watchChannelId);
+    const destination = destinationFor(key, watchChannelId);
     return destination ? [withBadge(destination, badges)] : [];
   });
 
-/** Everything else: admin's Filler/People/Settings/Help, member's Notifications/Help. */
+/** Everything else: admin's Library/Filler/People/Settings/Help, member's Notifications/Help. */
 const phoneBarOverflow = (isAdmin: boolean, badges?: Partial<Record<NavTo, number>>): PhoneDestination[] =>
   (isAdmin ? ADMIN_OVERFLOW : MEMBER_OVERFLOW).flatMap((key) => {
-    const destination = describe(key, undefined);
+    const destination = destinationFor(key, undefined);
     return destination ? [withBadge(destination, badges)] : [];
   });
 
-/** A `/channels/:id/watch` URL is "on Watch" regardless of which channel; otherwise exact-or-nested. */
+/** A `/watch/:id` URL is "on Watch" regardless of which channel; otherwise exact-or-nested. */
 const phoneDestinationMatches = (pathname: string, destination: Pick<PhoneDestination, "to">): boolean =>
-  destination.to === "/channels/$id/watch"
+  destination.to === "/watch/$id"
     ? isWatchRoute(pathname)
     : pathname === destination.to || pathname.startsWith(`${destination.to}/`);
 

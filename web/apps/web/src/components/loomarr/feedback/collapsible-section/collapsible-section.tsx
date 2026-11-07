@@ -51,7 +51,7 @@ const CollapsibleSection = ({
         className={cn(
           // shrink-0: overflow-hidden drops a flex item's minimum height to zero, so a scrolling
           // page column would squeeze the section and clip its body instead of scrolling (#1785).
-          "shrink-0 overflow-hidden rounded-lg border border-border",
+          "border-border shrink-0 overflow-hidden rounded-lg border",
           size === "compact" && "bg-card",
           className,
         )}
@@ -60,23 +60,23 @@ const CollapsibleSection = ({
   >
     <Collapsible.Trigger
       className={cn(
-        "group flex w-full cursor-pointer items-center gap-3 text-left transition-colors hover:bg-static-800",
+        "group hover:bg-static-800 flex w-full cursor-pointer items-center gap-3 text-left transition-colors",
         size === "compact" ? "px-4 py-3.5" : "px-5 py-4",
       )}
     >
-      {icon && <span className="flex shrink-0 items-center text-muted-foreground">{icon}</span>}
+      {icon && <span className="text-muted-foreground flex shrink-0 items-center">{icon}</span>}
       <span className="min-w-0">
         <span
           className={cn(
             "block leading-tight",
-            size === "compact" ? "font-medium text-sm" : "font-semibold text-lg",
+            size === "compact" ? "text-sm font-medium" : "text-lg font-semibold",
           )}
         >
           {title}
         </span>
         {description && (
           <span
-            className={cn("mt-0.5 block text-muted-foreground", size === "compact" ? "text-xs" : "text-sm")}
+            className={cn("text-muted-foreground mt-0.5 block", size === "compact" ? "text-xs" : "text-sm")}
           >
             {description}
           </span>
@@ -88,7 +88,7 @@ const CollapsibleSection = ({
           be a second source of truth for the same fact. */}
       <ChevronDown
         className={cn(
-          "size-5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-180",
+          "text-muted-foreground size-5 shrink-0 transition-transform group-data-[panel-open]:rotate-180",
           trailing ? "ml-3" : "ml-auto",
         )}
         aria-hidden

@@ -1,10 +1,10 @@
 import * as helpApi from "@loomarr/api/endpoints/help";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Card } from "@loomarr/design-system";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -54,7 +54,7 @@ const HelpPage = () => {
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 md:flex-row">
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
-          <Card className="flex flex-col gap-3 p-3">
+          <Card gap={12} padding={12}>
             <div>
               <Label htmlFor="help-search">Search</Label>
               <Input
@@ -73,8 +73,8 @@ const HelpPage = () => {
                     onClick={() => navigate({ to: "/help", search: { page: d.slug } })}
                     className={
                       d.slug === active
-                        ? "w-full cursor-pointer rounded-md bg-static-800 px-2 py-1.5 text-left text-sm"
-                        : "w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-muted-foreground text-sm hover:bg-static-900"
+                        ? "bg-static-800 w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm"
+                        : "text-muted-foreground hover:bg-static-900 w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm"
                     }
                   >
                     {d.title}
@@ -82,7 +82,7 @@ const HelpPage = () => {
                 </li>
               ))}
               {visible.length === 0 && (
-                <li className="px-2 py-1.5 text-muted-foreground text-sm">No pages match.</li>
+                <li className="text-muted-foreground px-2 py-1.5 text-sm">No pages match.</li>
               )}
             </ul>
           </Card>

@@ -14,7 +14,7 @@ const NativeOverlayWorkshop = ({
   const [visible, setVisible] = useState(true);
   return (
     <Screen density={density}>
-      <Surface flex={1} justifyContent="center" padding="$section">
+      <Surface flex={1} justifyContent="center" padding="section">
         <Text density={density} textRole="title">
           Playback remains mounted
         </Text>

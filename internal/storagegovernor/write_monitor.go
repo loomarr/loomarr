@@ -3,7 +3,6 @@ package storagegovernor
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -63,20 +62,14 @@ func monitorPaths(parent context.Context, lease *Lease, roots []string, baseByte
 		}
 		if grow && observed > lease.Estimated() {
 			if extension := lease.Extend(parent, saturatingAdd(observed, max(observed/growthMarginDenom, growthFloorBytes))); !extension.Allowed {
-				if extension.Err != nil {
-					return fmt.Errorf("storage write paused (%s): %w", extension.Snapshot.Reason, extension.Err)
-				}
-				return fmt.Errorf("storage write paused (%s)", extension.Snapshot.Reason)
+				return Pause("storage write paused", extension)
 			}
 		}
 		decision := lease.Revalidate(parent, observed)
 		if decision.Allowed {
 			return nil
 		}
-		if decision.Err != nil {
-			return fmt.Errorf("storage write paused (%s): %w", decision.Snapshot.Reason, decision.Err)
-		}
-		return fmt.Errorf("storage write paused (%s)", decision.Snapshot.Reason)
+		return Pause("storage write paused", decision)
 	}
 	go func() {
 		ticker := time.NewTicker(writeMonitorInterval)

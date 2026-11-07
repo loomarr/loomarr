@@ -37,7 +37,7 @@ const tabEmpty = {
 const counted = (count: number) => (count > 0 ? { count } : {});
 
 const Section = ({ children, title }: { children: React.ReactNode; title: string }) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap="$control" role="group">
+  <Surface backgroundColor="transparent" borderWidth={0} gap="control" role="group">
     <Text density="touch" textRole="headline">
       {title}
     </Text>
@@ -89,13 +89,13 @@ const RequestsBody = ({
       <Surface
         accessibilityLabel="Loading your requests"
         aria-busy
-        backgroundColor="$transparent"
+        backgroundColor="transparent"
         borderWidth={0}
-        gap="$inline"
+        gap="inline"
         role="status"
       >
         {[0, 1, 2].map((row) => (
-          <Surface gap="$inline" key={row} level="raised" padding="$control">
+          <Surface gap="inline" padding="control" key={row} level="raised">
             <Skeleton shape="line" width="40%" />
             <Skeleton shape="line" width="85%" />
             <Skeleton shape="line" width="60%" />
@@ -229,7 +229,7 @@ const RequestsBody = ({
   }
 
   return (
-    <Surface backgroundColor="$transparent" borderWidth={0} gap="$control">
+    <Surface backgroundColor="transparent" borderWidth={0} gap="control">
       {/* iPhone's segmented control: full width, so three counted labels never overflow the phone. */}
       <SegmentedControl
         accessibilityLabel="Requests sections"
@@ -256,7 +256,7 @@ const RequestsList = (props: RequestsListProps) => {
     onPress: props.onRequestChannel,
   } as const;
   return (
-    <Surface backgroundColor="$transparent" borderWidth={0} gap="$control">
+    <Surface backgroundColor="transparent" borderWidth={0} gap="control">
       <ScreenHeader
         actions={props.headerAction ? [request, props.headerAction] : [request]}
         title="Requests"

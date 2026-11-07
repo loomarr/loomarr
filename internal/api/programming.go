@@ -9,8 +9,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -45,8 +45,8 @@ type programmingVocabularyOutput struct {
 
 // getProgrammingVocabulary serves the closed authoring vocabulary (§6.6) so the rules editor
 // stops hand-mirroring presets.go. Pure + read-only.
-func (s *Server) getProgrammingVocabulary(_ context.Context, _ *struct{}) (*programmingVocabularyOutput, error) {
-	return &programmingVocabularyOutput{Body: schedule.BuildVocabulary()}, nil
+func (s *Server) getProgrammingVocabulary(context.Context, *struct{}) (*programmingVocabularyOutput, error) {
+	return &programmingVocabularyOutput{Body: schedule.BuildVocabulary(s.holidayCalendar())}, nil
 }
 
 type previewProgrammingInput struct {

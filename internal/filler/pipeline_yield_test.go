@@ -8,15 +8,32 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 )
 
-// scriptedHeadroom reports busy for its first `busyFor` questions, then clear.
+// scriptedHeadroom reports busy for its first `busyFor` questions, then clear. startPlayback is a
+// live transcode's admission: it ends every background context handed out, and playback stays
+// busy from then on.
 type scriptedHeadroom struct {
-	busyFor int
-	asked   int
+	busyFor     int
+	asked       int
+	playing     bool
+	backgrounds []context.CancelFunc
+}
+
+func (h *scriptedHeadroom) BackgroundContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	bctx, cancel := context.WithCancel(ctx)
+	h.backgrounds = append(h.backgrounds, cancel)
+	return bctx, cancel
+}
+
+func (h *scriptedHeadroom) startPlayback() {
+	h.playing = true
+	for _, cancel := range h.backgrounds {
+		cancel()
+	}
 }
 
 func (h *scriptedHeadroom) PlaybackBusy() (bool, string) {
 	h.asked++
-	if h.asked <= h.busyFor {
+	if h.playing || h.asked <= h.busyFor {
 		return true, "2 channels streaming"
 	}
 	return false, ""
@@ -126,6 +143,53 @@ func TestPipelineYield_CheapRungsAreNeverGated(t *testing.T) {
 		if id == filler.StageProbe && stages[id].runs != 1 {
 			t.Errorf("cheap rung %s ran %d times under continuous playback, want 1", id, stages[id].runs)
 		}
+	}
+}
+
+// #2121: a viewer tuning in mid-encode stops the encode at once. That is a deferral, not a failure:
+// the clip stays queued at transcode with no attempt spent, and the rest of the pass starts no
+// other encode while playback runs.
+func TestPipelineYield_PlaybackStartingMidEncodeDefersIt(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "c1")
+	seedEnrolled(st, "c2")
+	stages := yieldStages()
+	head := &scriptedHeadroom{}
+	stages[filler.StageTranscode].killCtx = head.startPlayback
+
+	res, err := yieldPipe(st, asSlice(stages), head, &sleepLog{}).RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stages[filler.StageTranscode].runs; got != 1 {
+		t.Fatalf("transcode ran %d times, want 1: the yield speaks for the rest of the pass", got)
+	}
+	if res.Failed != 0 || res.Deferred == 0 {
+		t.Fatalf("pass = failed %d deferred %d, want the yield counted as a deferral", res.Failed, res.Deferred)
+	}
+	for _, id := range []string{"c1", "c2"} {
+		row := st.rows[id]
+		if row.Stage != filler.StageTranscode || row.Status != filler.StatusQueued || row.Attempts != 0 {
+			t.Errorf("%s = %q/%q attempts=%d, want queued at transcode with no attempt spent", id, row.Stage, row.Status, row.Attempts)
+		}
+	}
+}
+
+// Only the encodes are stopped mid-run. Transcription waits before it starts but is never cut off
+// by a tune, or a long recording's transcription would restart forever.
+func TestPipelineYield_TranscriptionIsNotPreempted(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "c1")
+	stages := yieldStages()
+	head := &scriptedHeadroom{}
+	stages[filler.StageTranscribe].cost = filler.CostWhisper
+	stages[filler.StageTranscribe].killCtx = head.startPlayback
+
+	if _, err := yieldPipe(st, asSlice(stages), head, &sleepLog{}).RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if row := st.rows["c1"]; filler.StageIndex(row.Stage) <= filler.StageIndex(filler.StageTranscribe) {
+		t.Fatalf("clip = %q/%q, want it past transcription", row.Stage, row.Status)
 	}
 }
 

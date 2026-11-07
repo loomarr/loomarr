@@ -23,8 +23,9 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Toaster } from "sonner";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -65,26 +66,6 @@ type Opts = {
   taxonomy?: ListTaxonomyOutputBody;
 };
 
-// The SSE stream, captured so a test can fire frames at the app: the split job's terminal
-// `filler_split` frame is what hands the review route its proposal id (V34), and a no-op
-// EventSource would leave that handoff untestable.
-class CaptureEventSource {
-  static listeners = new Map<string, Array<(ev: MessageEvent) => void>>();
-  addEventListener(type: string, cb: (ev: MessageEvent) => void) {
-    const list = CaptureEventSource.listeners.get(type) ?? [];
-    list.push(cb);
-    CaptureEventSource.listeners.set(type, list);
-  }
-  close() {}
-}
-
-const fireFrame = (type: string, payload: unknown) => {
-  const data = JSON.stringify(payload);
-  for (const cb of CaptureEventSource.listeners.get(type) ?? []) {
-    cb({ data } as MessageEvent);
-  }
-};
-
 // ⚠ The stub this replaces was a ten-branch `includes` ladder whose CORRECTNESS DEPENDED ON ITS
 // ORDER, and it said so out loud: "Stubbed BEFORE the catch-all `/v1/filler` branch below, which
 // would otherwise answer these with a clip list". That comment is the bug report. Three of the
@@ -106,7 +87,6 @@ const stubFiller = ({
   watch,
   taxonomy,
 }: Opts = {}) => {
-  CaptureEventSource.listeners = new Map();
   const tagPatches: unknown[] = [];
   const bulkRemoves: unknown[] = [];
   const bulkTags: unknown[] = [];
@@ -127,6 +107,8 @@ const stubFiller = ({
       id: "sp-1",
       clipHash: "c1",
       createdAt: "2026-07-25T20:00:00Z",
+      checkedLanguages: [],
+      currentLanguages: [],
       segments: [{ index: 0, startMs: 0, endMs: 30000, name: "First ad" }],
     }),
     getTagFillerClipMockHandler(async ({ request }) => {
@@ -221,7 +203,6 @@ const stubFiller = ({
     ...appHandlers(),
   );
 
-  vi.stubGlobal("EventSource", CaptureEventSource);
   return { tagPatches, bulkRemoves, bulkTags, listQueries, taxonCreates, splitCount: () => splits };
 };
 
@@ -243,11 +224,6 @@ const renderAt = (path: string) => {
   );
   return router;
 };
-
-// ⚠ `unstubAllGlobals`, not `restoreAllMocks` — CaptureEventSource is installed with
-// `vi.stubGlobal`, and restoreAllMocks does not undo a stubbed global. Leaving it in place leaks
-// the capture map into whatever runs next.
-afterEach(() => vi.unstubAllGlobals());
 
 describe("Filler page", () => {
   it("exposes one current Filler destination and one document heading on Incoming", async () => {
@@ -686,10 +662,10 @@ describe("Filler page", () => {
     expect(await screen.findByText(/detecting cuts in crunchlings/i)).toBeInTheDocument();
 
     act(() => {
-      fireFrame("filler_split", { jobId: "job-split-1", clipHash: "c1", status: "running" });
+      FakeEventSource.broadcast("filler_split", { jobId: "job-split-1", clipHash: "c1", status: "running" });
     });
     act(() => {
-      fireFrame("filler_split", {
+      FakeEventSource.broadcast("filler_split", {
         jobId: "job-split-1",
         clipHash: "c1",
         status: "success",
@@ -710,7 +686,7 @@ describe("Filler page", () => {
     await userEvent.click(await screen.findByRole("button", { name: /find the clips/i }));
 
     act(() => {
-      fireFrame("filler_split", {
+      FakeEventSource.broadcast("filler_split", {
         jobId: "job-split-1",
         clipHash: "c1",
         status: "error",

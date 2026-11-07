@@ -89,7 +89,7 @@ as the person who paired it, so a Channel starred on the TV shows on their phone
 
 Home's **Watching now** reads `GET /v1/household/viewing` (#1662). Who is watching is the server's
 own observation, not a client report: a live player re-reads its media playlist every segment, so a
-device is watching a Channel while its polls continue (`internal/viewing`).
+device is watching a Channel while its polls continue (`internal/channels/viewing`).
 
 - **Attribution.** A play URL carries a signed `viewer` tag naming the person and device it was
   minted for: a paired device by its name, a browser by its family and system ("Firefox on
@@ -114,10 +114,18 @@ Pause is shared time-shift, not a private playback stack (decision
 - Pausing freezes the viewer's broadcast position; resume continues from it while it stays inside
   the fifteen-minute `DVRHorizon`. The player shows how far it trails live and one **Go Live**
   action. An expired position returns to the live edge and says so. Tuning always joins live.
-- The Web adapter records the media time and the viewer's wall-clock time, pauses the one element
-  without stopping the shared session, and resumes by seeking when the position is still seekable.
-  hls.js back-buffer and latency correction are set beyond the horizon. A tune's replacement
-  callbacks never resume a deliberately paused viewer.
+- One live clock (`@loomarr/player`, pure: no React, no DOM) holds the viewer's position for every
+  client. It measures wall time against the server's clock at mint time, not the device's, so a wrong
+  device clock shifts neither programme identity nor the lag. A pause **stays paused** however long
+  the viewer waits: nothing returns it to live on its own, and expiry is decided at resume and
+  announced once. A stall the viewer didn't cause that leaves a live viewer more than thirty seconds
+  behind rejoins the live edge once the player reports where it is; a viewer who paused or went back
+  stays where they chose.
+- The Web adapter is the browser `PlayerTransport` under the same player controller the native
+  clients use, so tuning, surfing, warming and automatic retries are the controller's. It pauses the
+  one element without stopping the shared session, records the media time, and resumes by seeking
+  when the position is still seekable. hls.js back-buffer and latency correction are set beyond the
+  horizon. A tune's replacement callbacks never resume a deliberately paused viewer.
 - Programme time and the mini-guide follow the viewer's clock, derived from
   `EXT-X-PROGRAM-DATE-TIME` for the frame on screen (hls.js `playingDate`, native HLS timeline, or
   Media3's Window clock minus `currentLiveOffset`).
@@ -125,6 +133,50 @@ Pause is shared time-shift, not a private playback stack (decision
   `ErrSegmentGone`. Pausing ten viewers creates no extra packagers. The Watch timeline asks for the
   same fifteen minutes behind live plus its three-hour future. `DVRHorizon` is one exported server
   constant, not a setting.
+
+## Watch (web)
+
+**Being built (#2088): the route is in, the rest below is decided but not yet built.** A dedicated
+full-bleed route, `/watch/$id`, has no app nav around it and a ✕ to leave; it replaced the channel
+page's Watch tab with a **Watch** button in the channel header, and the default audio language moved
+to an admin card on Channel info (#2093). A bare `/channels/$id` opens on Channel info. The chrome
+is the cross-device player design ([`frontend-design.md`
+§9](../frontend-design.md#9-player-chrome--one-design-for-every-player), mock of record
+[`design/watch-player/`](../../design/watch-player/README.md)). Live Channels only: there is no
+on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause) already keeps.
+
+- **Seek inside `DVRHorizon`.** ⟲10 / ⟳10 and `←`/`→` move ten seconds; ⟳10 does nothing at the
+  live edge. The playbar's past is seekable by click or drag; its future is preview only. `L` (and
+  the live indicator) goes live; **Start over** seeks to the current programme's start, offered
+  only when that start is inside the window.
+- **Preview playbar.** Time-true from fifteen minutes behind to about two hours ahead, from the
+  Guide airings (stills, S/E, rating, synopsis) and each break's pod entries (one tick per spot,
+  with its thumbnail). A pointer hovers it for the preview card; touch opens the right-hand sheet.
+- **Station ID.** Every settled tune shows the station-ID card for five seconds, and a break reads
+  `Commercials · <clip title>`, the same rules as [Android TV](#android-tv).
+- **Panels.** Info (`I`: still, synopsis, year, rating, genres, time bar and `Up next`; closes on
+  `Esc` and by itself after eight seconds during playback), Settings (`⚙`: quality Auto plus the
+  ladder's manual rungs, shown as `Auto · 720p`, with audio and subtitles), Playback info (from ⚙,
+  open to everyone: members see rung, resolution, codec, bitrate, buffer and lag; admins also see
+  the encoder, transcode reason and session, and get **Copy stream URL**), Channels (`G`) and
+  Shortcuts (`?`, replacing the always-visible hint line). One sheet is open at a time.
+- **Audio, subtitles and quality are per viewer and remembered**, chosen among the renditions the
+  Channel publishes: the default audio plus at most one alternate, and soft WebVTT subtitles
+  (`C` cycles them; [`playout.md`](playout.md)). The choice switches the rendition; it never
+  restarts the encoder.
+- **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
+  (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
+  The route hides the app nav and has a ✕/back control.
+- **Keys** (when focus is not in a control that owns them): `Space`/`K` play-pause · `←`/`→` ±10 s ·
+  `L` live · `↑`/`↓`/`PgUp`/`PgDn` channel · digits + `Enter` tune · `G` channels · `M` mute ·
+  `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`
+  shortcuts · `Esc` closes the top layer, then leaves `/watch`.
+- **Phone.** Portrait keeps the N5 layout (picture on top, panel below) with ⚙ and ⓘ added and the
+  playbar as a `Coming up` filmstrip; landscape is the full-bleed overlay with 44 px targets, tap to
+  show or hide the chrome, and double-tap either side to skip ten seconds.
+- **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
+  `@loomarr/ui` after the web route ships, one PR each; the TV's input mapping for the playbar is
+  decided then.
 
 ## Android TV
 

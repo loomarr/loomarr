@@ -2,6 +2,7 @@ package filler
 
 import (
 	"math/rand"
+	"slices"
 	"sort"
 	"time"
 )
@@ -33,7 +34,9 @@ type pool struct {
 // Each rung is filtered to eligible durations (density, §10). Clips already used
 // in the window are excluded at fill time (no-repeat), not here.
 func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
-	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
+	catalog = filterGeography(catalog, policy.area(w.Geography))
+	catalog = filterSeason(catalog, w)
+	catalog = filterLanguage(catalog, w, policy)
 	body := make([]Clip, 0, len(catalog))
 	for _, c := range catalog {
 		// ⚠ The quality floor applies to break-body clips only, alongside the duration bounds —
@@ -91,8 +94,11 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //     whole window. Nothing is added to `used` here — Assemble does that as it appends.
 //   - Deterministic: all randomness comes from the seeded rng, and candidates are sorted
 //     by Path (the identity) before any pick so catalog input order can't leak into output.
+//   - SEASON SHARE: in-season clips stay at most half of the break's commercials (`share`, which
+//     already counts the pins), and with none yet the best rested in-season clip is placed first,
+//     then moved to a seeded spot among the commercials (placeLead, season.go).
 //   - Returns ("", nil) when no pool has eligible clips; Assemble then uses the bumper card.
-func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (MatchLevel, []Clip) {
+func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand, share *seasonShare) (MatchLevel, []Clip) {
 	// w.GapMs is already net of the intro and return bumpers: Assemble subtracts their real
 	// lengths before it calls here, so the ads below fill exactly what the break has left.
 	budget := w.GapMs
@@ -104,13 +110,14 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// Every un-used clip once, at the tightest rung that holds it (the rungs nest).
 	var cands []rungClip
 	seen := map[string]bool{}
+	regionOf := effectiveGeography(w.Geography, policy.Geography).regionRanker()
 	for rung, p := range pools {
 		for _, c := range sortByID(p.clips) {
-			if used[c.ID()] || seen[c.ID()] {
+			if taken(used, c) || seen[c.ID()] {
 				continue
 			}
 			seen[c.ID()] = true
-			cands = append(cands, rungClip{Clip: c, rung: rung})
+			cands = append(cands, rungClip{Clip: c, rung: rung, region: regionOf(c.Country)})
 		}
 	}
 	if len(cands) == 0 {
@@ -123,11 +130,24 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// Stable sorting after the seeded shuffle preserves varied tie-breaking while making the
 	// ladder and durable rotation authoritative (see ladderLess).
 	sort.SliceStable(cands, func(i, j int) bool { return ladderLess(cands[i], cands[j], w, policy) })
+	// At least one in-season commercial when one is rested: the first that fits is placed first, so
+	// nothing can crowd it out, and takes a seeded position once the break is filled (decision 35).
+	lead := ""
+	if share.in == 0 {
+		for i, c := range cands {
+			if inSeason(c.Clip, w) && !resting(c.Clip, w, policy) && c.DurationMs <= budget {
+				cands = append([]rungClip{c}, slices.Delete(cands, i, i+1)...)
+				lead = c.ID()
+				break
+			}
+		}
+	}
 
 	var out []Clip
 	var totalMs int64
 	loosest := -1
 	lastCat := ""
+	segment := false // a break holds one station segment (#2065)
 	// Two passes per BAND (one rung, rested or resting — see ladderBand): first honor category
 	// variety strictly; the fallback pass allows a repeat only if the pod would otherwise be short
 	// of clips. Variety wins WITHIN a band; we don't descend the ladder just to avoid a repeat
@@ -145,7 +165,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			// ⚠ Keyed by HASH (Clip.ID()), not Path — `used` is seeded by hash-keyed pinned/excluded
 			// and reserved by hash everywhere (§10 V45a). Path keying here meant a pinned/excluded
 			// clip was never recognised as used, so it could be double-placed or ignore its exclusion.
-			if used[c.ID()] || contains(out, c.ID()) {
+			if used[c.ID()] || contains(out, c.ID()) || (segment && isStationSegment(c.Clip)) {
 				continue
 			}
 			if !allowRepeat && c.Category != "" && c.Category == lastCat {
@@ -154,9 +174,14 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if totalMs+c.DurationMs > budget {
 				continue // does not fit; caller's fallback card is the bounded never-dead-air answer
 			}
+			if !share.admits(c.Clip, w) {
+				continue // the break already holds its half of in-season clips
+			}
+			share.add(c.Clip, w)
 			out = append(out, c.Clip)
 			totalMs += c.DurationMs
 			lastCat = c.Category
+			segment = segment || isStationSegment(c.Clip)
 			if c.rung > loosest {
 				loosest = c.rung
 			}
@@ -177,7 +202,27 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	if len(out) == 0 {
 		return "", nil
 	}
-	return pools[loosest].level, out
+	return pools[loosest].level, placeLead(out, lead, rng)
+}
+
+// placeLead moves the guaranteed in-season commercial from the front of out to a seeded position
+// among the commercials, one that keeps category variety (decision 35).
+func placeLead(out []Clip, lead string, rng *rand.Rand) []Clip {
+	if lead == "" || len(out) < 2 || out[0].ID() != lead {
+		return out
+	}
+	c, rest := out[0], slices.Clone(out[1:])
+	clash := func(other Clip) bool { return c.Category != "" && other.Category == c.Category }
+	var at []int
+	for i := 0; i <= len(rest); i++ {
+		if (i == 0 || !clash(rest[i-1])) && (i == len(rest) || !clash(rest[i])) {
+			at = append(at, i)
+		}
+	}
+	if len(at) == 0 {
+		return out
+	}
+	return slices.Insert(rest, at[rng.Intn(len(at))], c)
 }
 
 // rungClip is a ladder candidate: the clip and the tightest rung (index into the pools) that
@@ -185,6 +230,8 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 type rungClip struct {
 	Clip
 	rung int
+	// region is the clip's country in the installation's preference order: 0 home.
+	region int
 }
 
 // ladderBand is the placement band a candidate belongs to: its rung, with every clip resting
@@ -198,10 +245,19 @@ func ladderBand(c rungClip, w Window, policy Policy) int {
 }
 
 // ladderLess orders ladder candidates: by band (rested before resting, then tightest rung
-// first), then by durable rotation inside the band (new, then least recently played).
+// first), then the home country's clips before each fallback country's in preference order
+// (#2035), then by durable rotation (new, then least recently played).
+//
+// ⚠ Region orders WITHIN a band, never makes one: the variety pass runs per band, and a band per
+// country would stack two home beer ads before it reached a fallback car ad. Region also yields to
+// era: a fallback country's clip from the channel's own era outranks a home clip from a widened
+// one, since "US first, then GB when US supply for an era runs thin" is per era.
 func ladderLess(a, b rungClip, w Window, policy Policy) bool {
 	if ab, bb := ladderBand(a, w, policy), ladderBand(b, w, policy); ab != bb {
 		return ab < bb
+	}
+	if a.region != b.region {
+		return a.region < b.region
 	}
 	return rotationLess(a.Clip, b.Clip, w, policy)
 }
@@ -215,8 +271,18 @@ const (
 // rotationRank is the domain-owned anti-repeat ordering (§10 V58). The returned timestamp is
 // meaningful only for aired clips; lower tiers and older times rank first.
 func rotationRank(c Clip, w Window, policy Policy) (int, time.Time) {
-	exposure, ok := w.Exposures[c.ID()]
-	if !ok || exposure.PlayCount <= 0 || exposure.LastPlayedAt.IsZero() {
+	exposure := w.Exposures[c.ID()]
+	// Versions of one ad rest together (#2033): a viewer who saw the 30 s spot an hour ago has
+	// seen the 15 s cut-down too.
+	for _, v := range c.Variants {
+		if ve := w.Exposures[v]; ve.PlayCount > 0 {
+			exposure.PlayCount += ve.PlayCount
+			if ve.LastPlayedAt.After(exposure.LastPlayedAt) {
+				exposure.LastPlayedAt = ve.LastPlayedAt
+			}
+		}
+	}
+	if exposure.PlayCount <= 0 || exposure.LastPlayedAt.IsZero() {
 		return rotationNever, time.Time{}
 	}
 	if policy.Cooldown <= 0 || w.SnapshotAt.IsZero() ||
@@ -239,10 +305,11 @@ func rotationLess(a, b Clip, w Window, policy Policy) bool {
 	return false
 }
 
-// contains reports whether a clip id (its HASH) is already in the pod-in-progress.
+// contains reports whether a clip id (its HASH), or another version of its ad, is already in the
+// pod-in-progress. Variant links are stored both ways, so the placed clip's list is enough.
 func contains(out []Clip, id string) bool {
 	for _, c := range out {
-		if c.ID() == id {
+		if c.ID() == id || slices.Contains(c.Variants, id) {
 			return true
 		}
 	}
@@ -442,21 +509,45 @@ func filterAudienceWithUngrounded(clips []Clip, aud Audience) []Clip {
 // clip whose role remains unknown. Applied catalog-wide BEFORE pickBumper/candidatePools, so a
 // "bumpers only" selection empties the commercial pool and a "no bumpers" one leaves
 // pickBumper nothing — the kind choice shapes the whole pod, not just the middle.
-func filterKinds(clips []Clip, kinds []string) []Clip {
+//
+// Political and news clips are opt-in (#2037): the empty selection leaves them out, and only a
+// selection that names them lets them in. A station's own news is the exception. It is station
+// material like the station's idents, so it airs wherever station idents do, but only from a
+// station in `local`, the channel's resolved radius. The check is here rather than left to
+// GeographicallyEligible, which admits every clip on an installation with no location.
+func filterKinds(clips []Clip, kinds []string, local map[string]bool) []Clip {
 	allow := map[Kind]bool{}
-	if len(kinds) > 0 {
-		for _, k := range kinds {
-			allow[Kind(k)] = true
+	if len(kinds) == 0 {
+		for _, k := range defaultKinds {
+			allow[k] = true
 		}
+	}
+	for _, k := range kinds {
+		allow[Kind(k)] = true
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
 		if c.EffectivePlacement() == PlacementNotPlayable {
 			continue
 		}
-		if len(kinds) == 0 || c.Kind != Unclassified && allow[c.Kind] {
+		switch {
+		case len(kinds) == 0 && c.Kind == Unclassified, allow[c.Kind] && c.Kind != Unclassified:
+			out = append(out, c)
+		case c.Kind == News && c.GeographicScope == GeographicLocal && local[c.Station] && allow[StationID]:
 			out = append(out, c)
 		}
+	}
+	return out
+}
+
+// defaultKinds is what a channel that chose no kinds airs: every role except the opt-in ones.
+var defaultKinds = []Kind{Commercial, Bumper, StationID, PSA, Trailer, Interstitial}
+
+// DefaultKinds is defaultKinds as wire strings, for a page that shows the default ticked.
+func DefaultKinds() []string {
+	out := make([]string, len(defaultKinds))
+	for i, k := range defaultKinds {
+		out[i] = string(k)
 	}
 	return out
 }

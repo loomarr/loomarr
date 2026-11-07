@@ -41,10 +41,7 @@ fn static_png_fixture(label: &str) -> (PathBuf, PathBuf, String) {
     writer.write_image_data(&pixels).expect("write PNG pixels");
     drop(writer);
 
-    let source_hash = format!(
-        "{:x}",
-        Sha256::digest(fs::read(&source).expect("read PNG fixture"))
-    );
+    let source_hash = sha256_hex(&fs::read(&source).expect("read PNG fixture"));
     (root, source, source_hash)
 }
 
@@ -138,7 +135,7 @@ fn animated_gif_preserves_its_timeline_in_resized_webp() {
     fs::create_dir_all(&staging).expect("create staging");
     let source = root.join("source.gif");
     fs::write(&source, &source_bytes).expect("write fixture");
-    let source_hash = format!("{:x}", Sha256::digest(&source_bytes));
+    let source_hash = sha256_hex(&source_bytes);
 
     let request = serde_json::json!({
         "protocol": 1,
@@ -264,4 +261,11 @@ fn static_ladder_steps_down_from_the_preceding_rung() {
         "a multi-rung ladder resized the small rung from the full-resolution source"
     );
     fs::remove_dir_all(&root).expect("remove fixture root");
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }

@@ -14,6 +14,12 @@ type NativeDiscoveryModule = {
 };
 
 type NativeServer = DiscoveredServer & { protocol: string };
+// The events the native module emits, with each listener's arguments.
+type DiscoveryEvents = {
+  loomarrDiscoveryFound: [server: NativeServer];
+  loomarrDiscoveryLost: [server: { id?: string }];
+  loomarrDiscoveryError: [];
+};
 const nativeModule = NativeModules.LoomarrLanDiscovery as NativeDiscoveryModule | undefined;
 const discoveryTimeoutMs = 30_000;
 // Platform.OS is "ios" on tvOS too, where the same native module is linked.
@@ -67,7 +73,7 @@ const createNativeServerDiscovery = (): ServerDiscovery => {
       serversById.clear();
       const activeGeneration = ++generation;
       publish({ servers: [], status: "searching" });
-      const events = new NativeEventEmitter(nativeModule);
+      const events = new NativeEventEmitter<DiscoveryEvents>(nativeModule);
       subscriptions = [
         events.addListener("loomarrDiscoveryFound", (server: NativeServer) => {
           if (activeGeneration !== generation) return;

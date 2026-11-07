@@ -13,22 +13,17 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-// Settings-store keys for the in-app LLM selection (§8.1). Present ⇒ they override
-// the LLM_* env defaults. The api_key is a secret (never echoed by any endpoint).
+// The in-app LLM selection (§8.1) is the settings.LLMProvider/LLMURL/LLMModel/LLMAPIKey/
+// LLMKeepAlive handles: a stored value overrides the LLM_* env defaults. The api key is a secret
+// (never echoed by any endpoint) and keep_alive is the local model-residency hint (§8.2),
+// local-only: the registry hides it for a hosted provider, and buildProviderFor only applies it
+// to Ollama.
 const (
-	setLLMProvider = "llm.provider"
-	setLLMURL      = "llm.url"
-	setLLMModel    = "llm.model"
-	setLLMAPIKey   = "llm.api_key" //nolint:gosec // settings key name, not a credential
-	// setLLMKeepAlive is the local model-residency hint (§8.2). Local-only: the
-	// registry hides it for a hosted provider, and buildProviderFor only applies it
-	// to Ollama.
-	setLLMKeepAlive = "llm.keep_alive"
 	// setLLMHosted preserves the BRANDED hosted provider key (openrouter, custom, …)
 	// across restart. llm.provider only stores the wire kind (ollama|openai) — its
 	// enum can't hold a brand — so without this the brand (and thus the namespaced key
@@ -61,7 +56,8 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	// (WithKeepAlive at construction), so without it here an operator's change would
 	// sit in the store, apply to nothing, and appear to have been ignored until restart.
 	go func() {
-		ch := set.svc.Watch(setLLMProvider, setLLMURL, setLLMModel, setLLMAPIKey, setLLMKeepAlive)
+		ch := set.svc.Watch(settings.LLMProvider.Key(), settings.LLMURL.Key(), settings.LLMModel.Key(),
+			settings.LLMAPIKey.Key(), settings.LLMKeepAlive.Key())
 		for {
 			select {
 			case <-ctx.Done():
@@ -78,32 +74,46 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	}()
 
 	svc := &systemLLMService{
-		swap:       sw,
-		ollamaBase: func() string { return ollamaBase(set) }, // resolved live per probe/pull
-		saveSettings: func(ctx context.Context, edits map[string]string) error {
-			results, err := set.svc.Patch(ctx, storePersister{st: st, protection: set.protection}, edits, "system")
-			if err != nil {
-				return err
-			}
-			// A per-key refusal (an env pin, or a value the registry rejects) is NOT an
-			// error from Patch's point of view — it is a result. Swallowing it would
-			// recreate the bug in a new costume: the picker would report success while
-			// the environment kept winning, and the operator's choice would evaporate
-			// on restart with nothing having said no.
-			for _, r := range results {
-				if r.Status != settings.PatchSaved {
-					return fmt.Errorf("could not save %s: %s", r.Key, r.Problem)
-				}
-			}
-			return nil
-		},
-		store: st, protection: set.protection,
+		swap:         sw,
+		ollamaBase:   func() string { return ollamaBase(set) }, // resolved live per probe/pull
+		saveSettings: llmSettingsSaver(set, st, bus),
+		store:        st, protection: set.protection,
 		bus:   bus,
 		log:   log,
 		newID: newID,
 		start: owner.startInteractiveOperation, operations: st, pullTimeout: modelPullTimeout,
 	}
 	return sw, svc
+}
+
+// llmSettingsSaver persists the picker's llm.* edits through the settings service and announces a
+// committed write on the live-update stream, so other tabs refetch settings-derived reads.
+func llmSettingsSaver(set resolved, st store.Store, bus *events.Bus) func(context.Context, map[string]string) error {
+	return func(ctx context.Context, edits map[string]string) error {
+		results, err := set.svc.Patch(ctx, storePersister{st: st, protection: set.protection}, edits, "system")
+		saved := false
+		for _, r := range results {
+			saved = saved || r.Status == settings.PatchSaved
+		}
+		// A persistence error can follow keys the batch already committed, so it announces too.
+		if (saved || err != nil) && bus != nil {
+			bus.Publish(events.Event{Type: "settings", Payload: api.SettingsEvent{}})
+		}
+		if err != nil {
+			return err
+		}
+		// A per-key refusal (an env pin, or a value the registry rejects) is NOT an
+		// error from Patch's point of view — it is a result. Swallowing it would
+		// recreate the bug in a new costume: the picker would report success while
+		// the environment kept winning, and the operator's choice would evaporate
+		// on restart with nothing having said no.
+		for _, r := range results {
+			if r.Status != settings.PatchSaved {
+				return fmt.Errorf("could not save %s: %s", r.Key, r.Problem)
+			}
+		}
+		return nil
+	}
 }
 
 // keepAliveArg renders the resolved llm.keep_alive duration for the Ollama wire
@@ -174,11 +184,11 @@ func buildProviderFor(sel llm.Selection, recorder *metrics.Recorder) llm.Provide
 // back to the registry's base llm.api_key (the LLM_API_KEY env pin).
 func resolveSelection(set resolved) llm.Selection {
 	sel := llm.Selection{
-		Provider:  set.str(setLLMProvider),
-		URL:       set.str(setLLMURL),
-		Model:     set.str(setLLMModel),
-		APIKey:    set.str(setLLMAPIKey),
-		KeepAlive: keepAliveArg(set.dur(setLLMKeepAlive)),
+		Provider:  settings.LLMProvider.Get(set),
+		URL:       settings.LLMURL.Get(set),
+		Model:     settings.LLMModel.Get(set),
+		APIKey:    settings.LLMAPIKey.Get(set),
+		KeepAlive: keepAliveArg(settings.LLMKeepAlive.Get(set)),
 	}
 	// Restore the BRANDED provider (openrouter, custom, …) that llm.provider flattened
 	// to the "openai" wire kind: llm.hosted_provider holds the brand persisted at
@@ -189,7 +199,7 @@ func resolveSelection(set resolved) llm.Selection {
 	// operator who later pins llm.url in the environment (env > db, config-design §3) is no
 	// longer talking to the picker's provider, and re-branding would send the stale
 	// namespaced key to the pinned server.
-	envKey := set.svc.Provenance(setLLMAPIKey) == settings.ProvenanceEnv
+	envKey := set.svc.Provenance(settings.LLMAPIKey.Key()) == settings.ProvenanceEnv
 	if sel.Provider == "openai" && !envKey {
 		if v, err := set.svc.LoadRaw(setLLMHosted); err == nil && v != "" {
 			if hp, ok := llm.HostedProviderByKey(v); ok && hostedSelectionMatches(sel, hp) {
@@ -200,7 +210,7 @@ func resolveSelection(set resolved) llm.Selection {
 	// An env-pinned key is the operator's explicit choice: it outranks any persisted copy and
 	// the persisted brand (whose only job is to pick that copy) is not applied at all.
 	if sel.Provider != "" && sel.Provider != "ollama" && !envKey {
-		if v, err := set.svc.LoadRaw(setLLMAPIKey + "." + sel.Provider); err == nil && v != "" {
+		if v, err := set.svc.LoadRaw(settings.LLMAPIKey.Key() + "." + sel.Provider); err == nil && v != "" {
 			sel.APIKey = v
 		}
 	}
@@ -215,8 +225,8 @@ const defaultOllamaBase = "http://localhost:11434"
 // provider is ollama; otherwise the conventional default (a hosted-by-default
 // install can still probe/manage a local Ollama if one is running).
 func ollamaBase(set resolved) string {
-	if set.str(setLLMProvider) == "ollama" && set.str(setLLMURL) != "" {
-		return set.str(setLLMURL)
+	if settings.LLMProvider.Get(set) == "ollama" && settings.LLMURL.Get(set) != "" {
+		return settings.LLMURL.Get(set)
 	}
 	return defaultOllamaBase
 }
@@ -359,7 +369,7 @@ func (s *systemLLMService) hostedCatalog(ctx context.Context, active llm.Selecti
 // storedKeyFor returns the persisted key for a hosted provider, or "" if none. The
 // key is namespaced per provider so switching providers doesn't reuse the wrong key.
 func (s *systemLLMService) storedKeyFor(ctx context.Context, provider string) string {
-	if v, err := readProtectedSetting(ctx, s.store, s.protection, setLLMAPIKey+"."+provider); err == nil {
+	if v, err := readProtectedSetting(ctx, s.store, s.protection, settings.LLMAPIKey.Key()+"."+provider); err == nil {
 		return v
 	}
 	// A provider configured through the ordinary settings form initially has the
@@ -477,7 +487,7 @@ func (s *systemLLMService) selectHosted(ctx context.Context, provider, baseURL, 
 	}
 	// Persist the key namespaced per provider so each provider keeps its own.
 	if apiKey != "" {
-		if err := writeProtectedSetting(ctx, s.store, s.protection, setLLMAPIKey+"."+provider, apiKey); err != nil {
+		if err := writeProtectedSetting(ctx, s.store, s.protection, settings.LLMAPIKey.Key()+"."+provider, apiKey); err != nil {
 			return err
 		}
 	}
@@ -628,9 +638,9 @@ func (s *systemLLMService) persist(ctx context.Context, sel llm.Selection) error
 		// The branded key still lives on the in-memory Selection (for the openai/…
 		// model ids) and namespaces the stored API key; only the coarse setting is
 		// normalized to the wire kind.
-		setLLMProvider: wireKind(sel.Provider),
-		setLLMURL:      sel.URL,
-		setLLMModel:    sel.Model,
+		settings.LLMProvider.Key(): wireKind(sel.Provider),
+		settings.LLMURL.Key():      sel.URL,
+		settings.LLMModel.Key():    sel.Model,
 	})
 }
 

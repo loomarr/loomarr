@@ -4,7 +4,7 @@ import { ChannelIdentity, ProgrammeIdentity } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 
 const NativeIdentityWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => (
-  <Screen density={density} gap="$section">
+  <Screen density={density} gap="section">
     <ChannelIdentity
       channel={{
         channelLogoState: "missing",
@@ -13,7 +13,7 @@ const NativeIdentityWorkshop = ({ density = "touch" }: { density?: "touch" | "tv
       }}
       density={density}
     />
-    <Surface padding="$section">
+    <Surface padding="section">
       <ProgrammeIdentity
         density={density}
         programme={{

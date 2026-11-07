@@ -52,7 +52,7 @@ const ModelPicker = ({
           <li
             key={model.tag}
             className={cn(
-              "flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5",
+              "border-border bg-card flex items-start gap-3 rounded-md border px-3 py-2.5",
               // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
               isActive && "bg-static-800",
             )}
@@ -64,13 +64,13 @@ const ModelPicker = ({
                 below the WCAG AA contrast floor, which the a11y gate rejects (frontend-design
                 §7 — express state with color/semantics, never opacity over text). */}
             <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2 font-medium text-sm">
+              <p className="flex items-center gap-2 text-sm font-medium">
                 {model.label}
-                <span className="font-mono text-static-400 text-xs">{model.tag}</span>
+                <span className="text-static-400 font-mono text-xs">{model.tag}</span>
                 {model.recommended && <Badge variant="signal">recommended</Badge>}
                 {isActive && <Badge variant="lock">active</Badge>}
               </p>
-              <p className="mt-0.5 text-muted-foreground text-sm">{model.why}</p>
+              <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>
               <p className="mt-1 flex items-center gap-2 text-xs">
                 <Badge variant={fit.variant}>{fit.text}</Badge>
                 <span className="text-static-400">~{formatGiB(model.approxVramGiB)}</span>

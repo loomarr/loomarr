@@ -10,17 +10,17 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type devAccessHarnessConfig struct {
 	DevLogin bool
 	Pprof    bool
-	Seed     func(fillerstore.Store)
+	Seed     func(records.Store)
 }
 
 // newDevAccessHarness owns the auth stack for opt-in development route gates.
@@ -52,14 +52,14 @@ func newDevAccessHarness(t *testing.T, config devAccessHarnessConfig) *apiHarnes
 	})
 }
 
-func newDevLoginHarness(t *testing.T, devLogin bool, seed func(fillerstore.Store)) *apiHarness {
+func newDevLoginHarness(t *testing.T, devLogin bool, seed func(records.Store)) *apiHarness {
 	t.Helper()
 	return newDevAccessHarness(t, devAccessHarnessConfig{DevLogin: devLogin, Seed: seed})
 }
 
-func seedAdmin(t *testing.T, st fillerstore.Store, id, name string, role store.Role) {
+func seedAdmin(t *testing.T, st records.Store, id, name string, role identitystore.Role) {
 	t.Helper()
-	u := store.User{ID: id, Name: name, Role: role, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	u := identitystore.User{ID: id, Name: name, Role: role, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := st.UpsertUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
@@ -70,8 +70,8 @@ func seedAdmin(t *testing.T, st fillerstore.Store, id, name string, role store.R
 // whole security property of the feature; if it ever regresses, a production binary
 // grows a credential-free admin door.
 func TestDevLoginAbsentByDefault(t *testing.T) {
-	srv := newDevLoginHarness(t, false, func(st fillerstore.Store) {
-		seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
+	srv := newDevLoginHarness(t, false, func(st records.Store) {
+		seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
@@ -93,8 +93,8 @@ func TestDevLoginAbsentByDefault(t *testing.T) {
 // would pass vacuously — a typo'd path or a server that registered no routes at all
 // would satisfy it just as well.
 func TestDevLoginIssuesAdminSessionWhenEnabled(t *testing.T) {
-	srv := newDevLoginHarness(t, true, func(st fillerstore.Store) {
-		seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
+	srv := newDevLoginHarness(t, true, func(st records.Store) {
+		seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
@@ -145,9 +145,9 @@ func TestDevLoginIssuesAdminSessionWhenEnabled(t *testing.T) {
 // install with no admin row must be refused, or the bypass would quietly become a
 // provisioning path around the wizard.
 func TestDevLoginRefusesWhenNoAdminExists(t *testing.T) {
-	srv := newDevLoginHarness(t, true, func(st fillerstore.Store) {
+	srv := newDevLoginHarness(t, true, func(st records.Store) {
 		// A member exists, but no admin.
-		seedAdmin(t, st, "u-kid", "kid", store.RoleMember)
+		seedAdmin(t, st, "u-kid", "kid", identitystore.RoleMember)
 	}).Server
 
 	res, err := http.Post(srv.URL+"/v1/auth/dev-login", "application/json", nil)
@@ -167,8 +167,8 @@ func TestDevLoginRefusesWhenNoAdminExists(t *testing.T) {
 // A disabled admin is not a usable identity — Login rejects one, and dev login must
 // not become the way around that.
 func TestDevLoginSkipsDisabledAdmin(t *testing.T) {
-	srv := newDevLoginHarness(t, true, func(st fillerstore.Store) {
-		u := store.User{ID: "u-off", Name: "off", Role: store.RoleAdmin, Disabled: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	srv := newDevLoginHarness(t, true, func(st records.Store) {
+		u := identitystore.User{ID: "u-off", Name: "off", Role: identitystore.RoleAdmin, Disabled: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 		if err := st.UpsertUser(context.Background(), u); err != nil {
 			t.Fatal(err)
 		}
@@ -193,8 +193,8 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 		on   bool
 	}{{"off", false}, {"on", true}} {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := newDevLoginHarness(t, tc.on, func(st fillerstore.Store) {
-				seedAdmin(t, st, "u-boss", "boss", store.RoleAdmin)
+			srv := newDevLoginHarness(t, tc.on, func(st records.Store) {
+				seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
 			}).Server
 			res, err := http.Get(srv.URL + "/v1/setup/state")
 			if err != nil {

@@ -82,7 +82,7 @@ const usePlaybackState = (
     if (!el) return;
     if (el.paused) {
       if (liveTransport) {
-        void liveTransport.play(el);
+        void liveTransport.play();
         return;
       }
       // ⚠ Replay from the window's start. Without this, pressing Play after the window ended
@@ -92,7 +92,7 @@ const usePlaybackState = (
       // The promise is caught: autoplay policies reject play() without a gesture, and an uncaught
       // rejection logs an unhandled-promise error on an ordinary interaction.
       void el.play().catch(() => setPlaying(false));
-    } else if (liveTransport) liveTransport.pause(el);
+    } else if (liveTransport) liveTransport.pause();
     else el.pause();
   }, [videoRef, startAt, endAt, liveTransport]);
 

@@ -23,12 +23,12 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
   // so the absence is explained instead of rendered.
   if (!list.supported) {
     return (
-      <section className={cn("rounded-lg border border-border p-4", className)}>
+      <section className={cn("border-border rounded-lg border p-4", className)}>
         <div className="flex items-center gap-2">
-          <Database className="size-4 text-muted-foreground" aria-hidden />
-          <h2 className="font-medium text-sm">Backups</h2>
+          <Database className="text-muted-foreground size-4" aria-hidden />
+          <h2 className="text-sm font-medium">Backups</h2>
         </div>
-        <p className="mt-2 text-muted-foreground text-sm">
+        <p className="text-muted-foreground mt-2 text-sm">
           This install runs on PostgreSQL, which Loomarr does not back up itself. Use{" "}
           <code className="font-mono text-xs">pg_dump</code> against the database and restore with{" "}
           <code className="font-mono text-xs">pg_restore</code>, on whatever schedule you already run for your
@@ -39,11 +39,11 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
   }
 
   return (
-    <section className={cn("rounded-lg border border-border p-4", className)}>
+    <section className={cn("border-border rounded-lg border p-4", className)}>
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h2 className="font-medium text-sm">Backups</h2>
-          <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+          <h2 className="text-sm font-medium">Backups</h2>
+          <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
             A backup is the whole instance: settings, channels, people, and the generated secrets. Treat the
             file as a credential.
           </p>
@@ -55,14 +55,14 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
       </div>
 
       {error ? (
-        <p className="mt-3 flex items-start gap-2 text-danger text-sm" role="alert">
+        <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           {error}
         </p>
       ) : null}
 
       {backups.length === 0 ? (
-        <p className="mt-4 rounded-md border border-border border-dashed p-4 text-center text-muted-foreground text-sm">
+        <p className="border-border text-muted-foreground mt-4 rounded-md border border-dashed p-4 text-center text-sm">
           No backups yet. One is written on the schedule below, or take the first one now.
         </p>
       ) : (
@@ -70,11 +70,11 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
           {backups.map((b) => (
             <li
               key={b.name}
-              className="flex items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-2"
+              className="border-border bg-muted/30 flex items-center gap-3 rounded-md border px-3 py-2"
             >
               <span className="min-w-0 flex-1 truncate font-mono text-xs">{b.name}</span>
-              <span className="shrink-0 font-mono text-muted-foreground text-xs">{formatBytes(b.bytes)}</span>
-              <span className="shrink-0 font-mono text-muted-foreground text-xs">
+              <span className="text-muted-foreground shrink-0 font-mono text-xs">{formatBytes(b.bytes)}</span>
+              <span className="text-muted-foreground shrink-0 font-mono text-xs">
                 {/* writtenAt is Unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
                 {formatRelative(b.writtenAt * 1000)}
               </span>
@@ -93,7 +93,7 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
         </ul>
       )}
 
-      <p className="mt-3 font-mono text-muted-foreground text-xs">
+      <p className="text-muted-foreground mt-3 font-mono text-xs">
         {/* The raw cron rather than a friendly label: the default (03:30) matches no preset,
             so describeCron would render "Custom" — which tells the operator nothing. */}
         {list.schedule} into {list.dir} · keeps{" "}

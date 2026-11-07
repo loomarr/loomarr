@@ -19,10 +19,10 @@ const ApprovalGroup = ({
   selecting,
   title,
 }: ApprovalGroupProps) => (
-  <Surface backgroundColor="$transparent" borderWidth={0} gap="$control" role="group">
+  <Surface backgroundColor="transparent" borderWidth={0} gap="control" role="group">
     <Surface
       alignItems="center"
-      backgroundColor="$transparent"
+      backgroundColor="transparent"
       borderWidth={0}
       flexDirection="row"
       justifyContent="space-between"
@@ -46,7 +46,7 @@ const ApprovalGroup = ({
     {rows.map((row) => {
       const busy = deciding.includes(row.id);
       return (
-        <Surface gap="$control" key={row.id} level="raised" padding="$control" width="100%">
+        <Surface gap="control" padding="control" width="100%" key={row.id} level="raised">
           {selecting ? (
             <Toggle
               checked={selected.includes(row.id)}
@@ -77,7 +77,7 @@ const ApprovalGroup = ({
             </Text>
           ) : null}
           {selecting ? null : (
-            <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
+            <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="inline">
               <Action
                 accessibilityRole="button"
                 density="touch"

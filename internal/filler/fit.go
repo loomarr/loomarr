@@ -32,8 +32,10 @@ const (
 	FitQuality   FitReason = "quality"   // below the channel's minimum-quality floor
 	FitCategory  FitReason = "category"  // the channel narrowed to categories this clip is not in
 	FitAudience  FitReason = "audience"  // wrong audience, and not a general-audience clip
-	FitGeography FitReason = "geography" // foreign, out-of-market, or unknown geography
+	FitGeography FitReason = "geography" // foreign, out-of-radius local, or unknown geography
 	FitExcluded  FitReason = "excluded"  // the operator excluded it from this channel
+	FitSeason    FitReason = "season"    // a holiday clip outside its season (season.go)
+	FitLanguage  FitReason = "language"  // not in the channel's commercial language (language_boundary.go)
 )
 
 // Fit reports how one clip relates to one channel's selection.
@@ -88,7 +90,7 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 		fit.Reason = FitExcluded
 		return fit
 	}
-	if !GeographicallyEligible(c, effectiveGeography(w.Geography, policy.Geography)) {
+	if !GeographicallyEligible(c, policy.area(w.Geography)) {
 		fit.Reason = FitGeography
 		return fit
 	}
@@ -98,7 +100,7 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	// KIND and DURATION gate everything, pins included: `pickPinned` reads the kind-filtered
 	// catalog and checks `durationEligible` itself, so these two reject a pinned clip as surely
 	// as an unpinned one.
-	if len(filterKinds(one, w.Kinds)) == 0 {
+	if len(filterKinds(one, w.Kinds, policy.area(w.Geography).Stations)) == 0 {
 		fit.Reason = FitKind
 		return fit
 	}
@@ -118,6 +120,16 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	// it was being honoured. Caught by asserting against `Assemble` rather than re-asserting the
 	// predicates this function calls.
 	if fit.Pinned {
+		return fit
+	}
+	// Like the season below, the commercial language holds for bookends and body alike.
+	if !speaksTheChannelsLanguage(c, w, policy) {
+		fit.Reason = FitLanguage
+		return fit
+	}
+	// Out of season a holiday clip airs nowhere in the break, bookend or body.
+	if outOfSeason(c, w) {
+		fit.Reason = FitSeason
 		return fit
 	}
 
