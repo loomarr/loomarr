@@ -2,6 +2,7 @@ import { loginSchema } from "@loomarr/core/schemas";
 import { useForm } from "@tanstack/react-form";
 import { FlaskConical, KeyRound, Loader2, LogIn } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,14 +73,9 @@ const LoginForm = ({
               autoComplete="username"
               value={field.state.value}
               aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
-            {field.state.meta.errors[0] && (
-              <p className="text-onair-300 text-sm" role="alert">
-                {field.state.meta.errors[0].message}
-              </p>
-            )}
+            <FieldError errors={field.state.meta.errors} />
           </div>
         )}
       </form.Field>
@@ -95,14 +91,9 @@ const LoginForm = ({
               autoComplete="current-password"
               value={field.state.value}
               aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
-            {field.state.meta.errors[0] && (
-              <p className="text-onair-300 text-sm" role="alert">
-                {field.state.meta.errors[0].message}
-              </p>
-            )}
+            <FieldError errors={field.state.meta.errors} />
           </div>
         )}
       </form.Field>
