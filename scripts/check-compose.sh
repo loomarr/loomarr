@@ -98,6 +98,20 @@ if printf '%s\n' "$demo_postgres" | jq -e '.services.postgres.ports' >/dev/null;
 	exit 1
 fi
 
+# The tunnel must never start with the rest of the stack: demo-site.sh starts it only after retiring
+# the public admin password, and a plain `up` would skip that.
+demo_public="$(
+	LOOMARR_IMAGE=loomarr-test docker compose -f "$ROOT/docker/compose.demo.yaml" \
+		-f "$ROOT/docker/compose.demo.public.yaml" config --format json
+)" || {
+	echo 'compose-verify: docker/compose.demo.public.yaml does not render' >&2
+	exit 1
+}
+if printf '%s\n' "$demo_public" | jq -e '.services.cloudflared' >/dev/null; then
+	echo 'compose-verify: the demo tunnel starts without its profile' >&2
+	exit 1
+fi
+
 postgres="$(
 	LOOMARR_VERSION="$VERSION" SERVER_PUBLIC_URL="$PUBLIC_URL" docker compose \
 		-f "$ROOT/docker/compose.yaml" \
