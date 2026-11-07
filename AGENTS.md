@@ -283,7 +283,8 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
   workflow-level `paths:` filter.
 - Pull requests own fast affected feedback. In the merge queue, `merge-gate.yml` reports the required
   `CI` check in minutes, and ci.yml's complete affected gate set runs beside it as `CI assurance`,
-  which finishes after the merge and files an issue when a merged commit fails. Normal queue-produced
+  which finishes after the merge and files an issue when a merged commit fails. Revert first: anyone
+  may revert that commit, and the fix lands as a new PR. Rerun a flake or outage. Normal queue-produced
   pushes to `main` publish only and must not restore a third product validation run. Keep `CI`
   required for both PR and `merge_group` commits.
 - CodeQL uses checked-in advanced setup. Trusted PR/main diffs select only changed languages;

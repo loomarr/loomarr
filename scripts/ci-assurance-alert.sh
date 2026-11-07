@@ -16,4 +16,4 @@ fi
 
 gh issue create --repo "$repository" \
   --title "CI assurance failed on main at ${sha:0:9}" \
-  --body "The complete gate set failed on a commit that has already merged. Fix forward or revert: $run_url"
+  --body "The complete gate set failed on a commit that has already merged. Revert it first and land the fix as a new PR; rerun if this is a flake or an outage: $run_url"
