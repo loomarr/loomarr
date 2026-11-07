@@ -49,9 +49,7 @@ jobs:
         run: ./scripts/go-mod-download.sh
       - name: Static analysis
         if: matrix.shard == 1
-        run: make vet vet-tags lint
-        env:
-          MAKEFLAGS: -j4 --output-sync=target # independent checks
+        run: make vet vet-tags lint # serial: each already uses every core, and -j4 was slower
       - name: Repository contracts
         if: matrix.shard == 2
         run: make fmt shellcheck privacy-verify tags-verify agent-harness-test compose-verify release-verify go-race-verify eval-contract
@@ -73,11 +71,11 @@ jobs:
         if: matrix.shard == 2
         run: make dev-docs-verify
       - name: Retired identifiers are gone from prose
-        if: matrix.shard == 1
+        if: matrix.shard == 2
         run: make retired-verify
       - name: Workflows are valid
         if: matrix.shard == 2
         run: make ci-lint
       - name: Observability artifacts are provisionable
-        if: matrix.shard == 1
+        if: matrix.shard == 2
         run: make observability-verify
