@@ -35,11 +35,15 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("Inventory", func(t *testing.T) {
 		t.Run("RoundTripAndIdempotency", func(t *testing.T) { testInventoryRoundTrip(t, newStore) })
 		t.Run("GroundedIdentityOnly", func(t *testing.T) { testInventoryGroundedIdentity(t, newStore) })
+		t.Run("OriginFollowsIDs", func(t *testing.T) { testInventoryOriginFollowsIDs(t, newStore) })
 		t.Run("MeasurementRevision", func(t *testing.T) { testInventoryMeasurementRevision(t, newStore) })
 		t.Run("AnalysisRevision", func(t *testing.T) { testInventoryAnalysisRevision(t, newStore) })
 		t.Run("ExplicitMissing", func(t *testing.T) { testInventoryExplicitMissing(t, newStore) })
 		t.Run("MalformedRejected", func(t *testing.T) { testInventoryMalformedRejected(t, newStore) })
 		t.Run("BoundsRejected", func(t *testing.T) { testInventoryBoundsRejected(t, newStore) })
+		t.Run("LibraryRootDiscovery", func(t *testing.T) { testLibraryRootDiscovery(t, newStore) })
+		t.Run("LibraryRootByHand", func(t *testing.T) { testLibraryRootByHand(t, newStore) })
+		t.Run("LibraryFiles", func(t *testing.T) { testLibraryFiles(t, newStore) })
 	})
 
 	t.Run("Titles", func(t *testing.T) {
