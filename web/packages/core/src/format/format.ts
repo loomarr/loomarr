@@ -68,6 +68,8 @@ const tidyGoDuration = (value: string | undefined): string => {
 // else, rather than a guess.
 const goDurationMinutes = (value: string | undefined): number | undefined => {
   const text = value?.trim() ?? "";
+  // Go's ParseDuration takes a bare "0" as the only unitless duration.
+  if (text === "0") return 0;
   if (!/^(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h))+$/.test(text)) return undefined;
   const perMinute: Record<string, number> = { ms: 1 / 60_000, s: 1 / 60, m: 1, h: 60 };
   let minutes = 0;
