@@ -678,7 +678,10 @@ classify() {
         scripts/merge-release-digests.sh) select_gate contracts ;;
         scripts/observability-dev-runtime-test.sh) select_gate contracts ;;
         scripts/observability-dev-test.sh) select_gate contracts ;;
-        scripts/demo-site.sh|scripts/staging.sh|scripts/staging-test.sh) select_gate contracts ;;
+        scripts/demo-site.sh|scripts/staging.sh|scripts/staging-test.sh|scripts/check-hardware-gate.sh|scripts/check-hardware-gate-test.sh) select_gate contracts ;;
+        # A glob, because release verification reads a literal path here as a command CI may run,
+        # and this one runs a container on a household backup. Only a maintainer runs it.
+        scripts/migration-rehearsal.*) select_gate contracts ;;
         scripts/observability-dev.sh) select_gate contracts ;;
         scripts/publish-release-image.sh) select_gate contracts ;;
         scripts/smoke.sh) select_gate contracts ;;

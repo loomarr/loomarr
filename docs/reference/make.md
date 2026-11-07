@@ -168,6 +168,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
 | `make demo-site` |  | run the demo site from an image: VERSION=<release>, or LOOMARR_IMAGE=<image built from this checkout> |
 | `make demo-site-down` |  | stop the demo site and delete its data |
+| `make migration-rehearsal` |  | boot IMAGE on a copy of the backup in BACKUP, with no network; run it where the backup lives |
+| `make hardware-gate` |  | has COMMIT passed the playout bench on Intel and NVIDIA? |
 | `make demo-library` |  | serve the demo library's Emby-compatible stand-in (generates its clips and art on first run) |
 | `make demo-titles-verify` |  | no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, whenever ci-impact sees a scanned path) |
 | `make demo-seed` |  | point this worktree's backend at the running demo library and create the demo channels (idempotent) |
