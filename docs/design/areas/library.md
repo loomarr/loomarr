@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 14 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
+- **platform** · 15 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
 - **media** · 1 import — the scanner reads each media file's header to learn its length, streams and embedded ids
 - **channels** · 1 import — the backstop's episode refresh re-reads each scheduled show into the scheduler's episode cache, whose entries are `channels/schedule.ResolvedProgram`; the job moves into channels with the Wave 6.4 directory moves
 
@@ -22,7 +22,9 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`library`** · 12 importers · → `episodeevidence`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`library/scan`** · 2 importers · → `inventory`, `library`, `media/header`, `metadataprovider`, `metadataprovider/precedence`, `store`
+- **`library/arrhook`** · 2 importers · → `httpx`
+  Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
+- **`library/scan`** · 2 importers · → `inventory`, `library`, `library/arrhook`, `media/header`, `metadataprovider`, `metadataprovider/precedence`, `store`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
 - **`metadataprovider`** · 7 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).

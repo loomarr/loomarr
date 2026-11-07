@@ -47,9 +47,13 @@ func TestBuildLibrary_StartsTheScanner(t *testing.T) {
 			svc := buildLibrary(st, visionSet(t, tc.rows), libraryBuild{
 				log: slog.New(slog.NewTextHandler(io.Discard, nil)), owner: owner,
 			})
-			lib, ok := svc.(*scan.Library)
-			if !ok || lib.Scanner == nil {
-				t.Fatalf("library = %T, want a *scan.Library with a scanner", svc)
+			lib, ok := svc.roots.(*scan.Library)
+			if !ok || lib.Scanner == nil || svc.hooks == nil {
+				t.Fatalf("library = %+v, want a *scan.Library with a scanner, and the webhooks", svc)
+			}
+			// No arr is connected here, so registering finds nothing to do.
+			if got := svc.hooks.Statuses(); len(got) != 2 || got[0].State != scan.HookNotConfigured {
+				t.Fatalf("hooks = %+v", got)
 			}
 			if lib.Enabled() != tc.scanned {
 				t.Fatalf("Enabled = %v, want %v", lib.Enabled(), tc.scanned)

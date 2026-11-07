@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/arrhook"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
@@ -38,16 +40,25 @@ type libraryBuild struct {
 	ffmpegPath string
 	// processes lists each ffprobe run in Diagnostics; nil lists none.
 	processes *diagnostics.ProcessManager
-	log       *slog.Logger
-	owner     *generationLifecycle
+	// hookSecret is the password Sonarr and Radarr send with each webhook.
+	hookSecret string
+	log        *slog.Logger
+	owner      *generationLifecycle
 }
 
-// buildLibrary wires Settings → Library (#2151 decision 6) and starts the scanner with its folder
-// watcher for the generation's lifetime. Sources, the path map, the arr connections and the kill
-// switch are read per call, so a saved setting applies at once.
-func buildLibrary(st libraryStore, set resolved, deps libraryBuild) api.LibraryRootService {
+// libraryServices is Settings → Library and the arrs' webhooks; both nil without a store.
+type libraryServices struct {
+	roots api.LibraryRootService
+	hooks api.LibraryHookService
+}
+
+// buildLibrary wires Settings → Library (#2151 decision 6) and starts the scanner, its folder
+// watcher and the arr webhook registrations for the generation's lifetime. Sources, the path map,
+// the arr connections, Loomarr's address and the kill switch are read per call, so a saved
+// setting applies at once.
+func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServices {
 	if st == nil {
-		return nil
+		return libraryServices{}
 	}
 	pathMap := func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) }
 	roots := &scan.Roots{
@@ -60,7 +71,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) api.LibraryR
 	resolver, err := precedence.New("US")
 	if err != nil {
 		deps.log.Error("library scan: not started", "err", err)
-		return &scan.Library{Roots: roots}
+		return libraryServices{roots: &scan.Library{Roots: roots}}
 	}
 	conns := set.arrConns()
 	managers := []scan.Manager{
@@ -84,9 +95,29 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) api.LibraryR
 	}
 	scanner := scan.NewScanner(im, scan.ReconcileInterval)
 	watcher := &scan.Watcher{Scanner: scanner}
+	hooks := &scan.ArrHooks{
+		Scanner: scanner,
+		Clients: map[string]arrhook.Client{
+			"sonarr": {Conn: arrhook.Conn(conns.Sonarr)},
+			"radarr": {Conn: arrhook.Conn(conns.Radarr)},
+		},
+		URL:    func(app string) string { return libraryHookURL(settings.ServerPublicURL.Get(set), app) },
+		Secret: deps.hookSecret,
+	}
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
-	return &scan.Library{Roots: roots, Scanner: scanner}
+	deps.owner.goRunAfterBuild(hooks.Run)
+	return libraryServices{roots: &scan.Library{Roots: roots, Scanner: scanner}, hooks: hooks}
+}
+
+// libraryHookURL is where app posts its events: Loomarr's own address as the arrs reach it, the
+// same one the media server and Tunarr use. "" when that address is unset.
+func libraryHookURL(publicURL, app string) string {
+	base := strings.TrimRight(strings.TrimSpace(publicURL), "/")
+	if base == "" {
+		return ""
+	}
+	return base + "/v1/library/hooks/" + app
 }
 
 // libraryHeader reads a file's header natively, and through ffprobe when the container needs it.
