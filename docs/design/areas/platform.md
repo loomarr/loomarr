@@ -33,7 +33,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`housekeeping`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`, `settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
-- **`httpx`** · 11 importers · → `metrics`
+- **`httpx`** · 12 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`jobs`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.

@@ -8,8 +8,8 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
+- **platform** · 6 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, Tunarr's HTTP client and metrics, and the address check that keeps LAN discovery answering only the household's network
 - **media** · 5 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
-- **platform** · 5 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, and Tunarr's HTTP client and metrics
 - **channels** · 4 imports — the `schedule` programming a backend plays
 - **library** · 2 imports — the media server's Live TV API that channels are published to, and `provision` keys naming what a slot plays
 
@@ -17,7 +17,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`backendtransition`** · 1 importer · → `schedule`, `store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
-- **`landiscovery`**
+- **`landiscovery`** · → `httpx`
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`livetvpublish`** · 1 importer · → `library`, `tunarr`
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
