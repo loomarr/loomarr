@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
 func (s *Store) ListNotificationReferenceRecipients(

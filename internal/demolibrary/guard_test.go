@@ -285,7 +285,7 @@ var migratedGo = []string{
 	"internal/eval/release_latency_test.go",
 	"internal/eval/runner_accounting_test.go",
 	// The remaining small groups and the archived filler research tooling (slice 17).
-	"internal/auth/", "internal/contact/", "internal/llm/", "internal/media/tools/", "internal/notifications/",
+	"internal/people/auth/", "internal/people/contact/", "internal/llm/", "internal/media/tools/", "internal/people/notifications/",
 	"internal/proposaloutlook/", "internal/quality/", "internal/releaseverify/", "internal/tunarr/",
 	"internal/watermark/", "research/",
 	"internal/suggest/season_window_test.go",

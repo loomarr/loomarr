@@ -13,15 +13,15 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`auth`** · 3 importers · → `contact`, `invitation`, `library`, `recovery`, `store`, `store/identitystore`
+- **`people/auth`** · 3 importers · → `library`, `people/contact`, `people/invitation`, `people/recovery`, `store`, `store/identitystore`
   Issues and validates Loomarr sessions (design §11).
-- **`contact`** · 6 importers
+- **`people/contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).
-- **`invitation`** · 7 importers · → `contact`
+- **`people/invitation`** · 7 importers · → `people/contact`
   Owns administrator admission decisions and their bearer grants (§11).
-- **`notifications`** · 6 importers · → `httpx`, `secretprotection`
+- **`people/notifications`** · 6 importers · → `httpx`, `people/secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
-- **`recovery`** · 6 importers
+- **`people/recovery`** · 6 importers
   Owns local-password recovery records and their bearer grants (§11).
-- **`secretprotection`** · 3 importers · → `config`
+- **`people/secretprotection`** · 3 importers · → `config`
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.

@@ -4,8 +4,6 @@ export type {
   CatalogRefreshState,
 } from "./src/catalog-refresher";
 export { createCatalogRefresher } from "./src/catalog-refresher";
-export type { LastChannelStorage, LastChannelStore } from "./src/last-channel";
-export { createLastChannelStore } from "./src/last-channel";
 export type {
   LiveClock,
   LiveClockOptions,

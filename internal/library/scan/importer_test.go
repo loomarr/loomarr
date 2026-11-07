@@ -508,4 +508,60 @@ func TestImportGoneDiscImageIsNoLongerAProblem(t *testing.T) {
 	}
 }
 
+// A pass over one folder writes what is new in it and removes what is gone from it, and leaves
+// everything outside it as it was, gone or not.
+func TestImportFoldersPassStaysInItsFolders(t *testing.T) {
+	h := newHarness(t)
+	for i := range 6 {
+		h.file(fmt.Sprintf("Uniform/Season 1/Uniform S01E%02d.mkv", i+1), 5)
+		h.file(fmt.Sprintf("Victor/Season 1/Victor S01E%02d.mkv", i+1), 5)
+	}
+	h.run()
+	ctx := context.Background()
+
+	h.file("Uniform/Season 1/Uniform S01E07.mkv", 5)
+	if err := os.Remove(filepath.Join(h.root, "Uniform", "Season 1", "Uniform S01E01.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(h.root, "Victor", "Season 1", "Victor S01E01.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	h.inv.applied.Store(0)
+	if err := h.im.RunFolders(ctx, h.root, []string{filepath.Join(h.root, "Uniform", "Season 1")}); err != nil {
+		t.Fatal(err)
+	}
+	h.item(fileOrigin(h.root, "Uniform/Season 1/Uniform S01E07.mkv"))
+	gone := fileOrigin(h.root, "Uniform/Season 1/Uniform S01E01.mkv")
+	if o := h.origin(h.item(gone), gone); o.MissingAt.IsZero() {
+		t.Error("a file gone from the folder was not removed")
+	}
+	outside := fileOrigin(h.root, "Victor/Season 1/Victor S01E01.mkv")
+	if o := h.origin(h.item(outside), outside); !o.MissingAt.IsZero() {
+		t.Error("a pass over one folder removed a file outside it")
+	}
+	kept := fileOrigin(h.root, "Victor/Season 1/Victor S01E02.mkv")
+	if o := h.origin(h.item(kept), kept); !o.MissingAt.IsZero() {
+		t.Error("a pass over one folder marked a present file outside it missing")
+	}
+	series := seriesOrigin(h.root, "Victor")
+	if o := h.origin(h.item(series), series); !o.MissingAt.IsZero() {
+		t.Error("a pass over one folder marked another series missing")
+	}
+	// The new episode on the walk and again with its header, and its series: nothing outside.
+	if got := h.inv.applied.Load(); got != 3 {
+		t.Errorf("writes = %d, want 3", got)
+	}
+
+	// A folder deleted with everything in it is a change to the folder above.
+	if err := os.RemoveAll(filepath.Join(h.root, "Victor")); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.im.RunFolders(ctx, h.root, []string{filepath.Join(h.root, "Victor", "Season 1")}); err != nil {
+		t.Fatal(err)
+	}
+	if o := h.origin(h.item(kept), kept); o.MissingAt.IsZero() && h.im.Progress().Roots[0].State != RootHeld {
+		t.Error("a deleted folder's files were neither removed nor held")
+	}
+}
+
 func twoDigits(n int) string { return fmt.Sprintf("%02d", n) }

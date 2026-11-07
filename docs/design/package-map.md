@@ -75,7 +75,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | --- |
 | `catalog` | `library`, `provision` |
 | `config` | — |
-| `contact` | — |
 | `diagnostics` | `storagegovernor` |
 | `filler` | `diagnostics`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `schedule`, `storagegovernor` |
 | `filler/source` | — |
@@ -86,7 +85,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `holidayvocab` | — |
 | `httpx` | `metrics` |
 | `inventory` | — |
-| `invitation` | `contact` |
 | `jobs` | `store` |
 | `library` | `httpx`, `inventory`, `metrics` |
 | `llm` | `httpx`, `metrics` |
@@ -97,17 +95,19 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `media/tools` | `diagnostics`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode` |
 | `metadataprovider` | — |
 | `metrics` | `provision` |
-| `notifications` | `httpx` |
+| `people/contact` | — |
+| `people/invitation` | `people/contact` |
+| `people/notifications` | `httpx` |
+| `people/recovery` | — |
 | `playout` | `config`, `diagnostics`, `media/encode`, `provision`, `schedule` |
 | `proposal` | `provision`, `schedule`, `storagegovernor` |
 | `provision` | — |
 | `quality` | `provision` |
 | `rating` | — |
-| `recovery` | — |
 | `schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `settings` | `config`, `library` |
 | `storagegovernor` | — |
-| `store` | `contact`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `invitation`, `media/creative`, `media/defects`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule` |
+| `store` | `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposal`, `provision`, `quality`, `schedule` |
 | `suggest` | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `rating`, `schedule`, `store` |
 
 ## How the area pages are made

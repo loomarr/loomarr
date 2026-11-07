@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/store"
 )
 

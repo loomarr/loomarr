@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -179,7 +180,7 @@ func (im *Importer) Run(ctx context.Context) error {
 			results = append(results, RootResult{Root: root.Path, State: RootNested})
 			continue
 		}
-		result, waiting, err := im.scanRoot(ctx, root.Path, idx)
+		result, waiting, err := im.scanRoot(ctx, root.Path, idx, nil)
 		if err != nil {
 			return fmt.Errorf("scan %s: %w", root.Path, err)
 		}
@@ -192,6 +193,46 @@ func (im *Importer) Run(ctx context.Context) error {
 	}
 	im.setProgress(func(p *Progress) { p.CompletedAt = im.now() })
 	return nil
+}
+
+// RunFolders makes a pass over the named folders of one walked root: the ones a change signal
+// named. It writes and removes only what is under them, under the same removal guard, and does not
+// count as the root's scan. A root that is not walked on its own is left to the full pass.
+func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) error {
+	if len(dirs) == 0 || (im.Enabled != nil && !im.Enabled()) {
+		return nil
+	}
+	im.run.Lock()
+	defer im.run.Unlock()
+	all, err := im.Store.LibraryRoots(ctx)
+	if err != nil {
+		return err
+	}
+	if !scannedRoots(all.Roots)[root] {
+		return nil
+	}
+	var managers []Manager
+	if im.Managers != nil {
+		managers = im.Managers()
+	}
+	idx, errs := indexManagers(ctx, managers, all.Paths)
+	for _, err := range errs {
+		im.log().Warn("library scan: an arr did not list", "err", err)
+	}
+	im.setProgress(func(p *Progress) { p.Stage, p.ArrIncomplete = StageWalking, !idx.complete })
+	defer im.setProgress(func(p *Progress) { p.Stage = StageIdle })
+	result, queue, err := im.scanRoot(ctx, root, idx, dirs)
+	if err != nil {
+		return fmt.Errorf("scan %s: %w", root, err)
+	}
+	im.setProgress(func(p *Progress) {
+		for i := range p.Roots {
+			if p.Roots[i].Root == root {
+				p.Roots[i] = result
+			}
+		}
+	})
+	return im.readHeaders(ctx, queue)
 }
 
 // scannedRoots is the in-use roots a pass walks: each one not inside another in-use root, by real
@@ -266,14 +307,22 @@ func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) e
 	return nil
 }
 
-// scanRoot walks one root and writes what changed. It returns the files whose headers are unread.
-func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex) (RootResult, []pending, error) {
+// scanRoot walks one root, or only the folders of it in scope when scope is set, and writes what
+// changed. It returns the files whose headers are unread.
+func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex, scope []string) (RootResult, []pending, error) {
 	result := RootResult{Root: root, State: RootScanned}
 	if im.Disk != nil && !im.Disk.Readable(ctx, root) {
 		result.State = RootUnreadable
 		return result, nil, nil
 	}
-	walk, err := walkRoot(ctx, root)
+	var walk Walk
+	var err error
+	if scope == nil {
+		walk, err = walkRoot(ctx, root)
+	} else {
+		scope = existingFolders(root, scope)
+		walk, err = walkFolders(ctx, root, scope)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return result, nil, ctx.Err()
@@ -303,6 +352,17 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 	found := map[string]bool{}
 	for _, file := range walk.Files {
 		found[file.Path] = true
+	}
+	inScope := func(path string) bool { return scope == nil || under(path, scope) }
+	// A pass over some folders still sees every present file outside them, so marking unseen
+	// below takes only what is gone from the folders it walked.
+	for _, r := range rows {
+		if inScope(r.Path) || !r.MissingAt.IsZero() || r.Problem == ProblemDiscImage {
+			continue
+		}
+		if rel, err := filepath.Rel(root, r.Path); err == nil {
+			b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel), Extra: r.Kind == string(kindExtra)})
+		}
 	}
 	for _, file := range b.order(walk.Files) {
 		old, known := prev[file.Path]
@@ -367,11 +427,11 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 		return result, nil, err
 	}
 
-	removed, present := removals(prev, found)
+	removed, present := removals(prev, found, inScope)
 	if walk.Complete {
-		// A confirmation is spent by the first complete walk after it, held or not: it answers the
-		// removal the maintainer saw, never a later one.
-		confirmed := im.takeConfirmed(root)
+		// A confirmation is spent by the first complete walk of the whole root after it, held or
+		// not: it answers the removal the maintainer saw, never a later one.
+		confirmed := scope == nil && im.takeConfirmed(root)
 		over := len(removed) > holdAtLeast || (present > 0 && float64(len(removed)) > holdShare*float64(present))
 		held := over && !confirmed
 		for _, r := range removed {
@@ -398,8 +458,10 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex)
 		if err := im.markUnseen(ctx, root, b.seen, now); err != nil {
 			return result, nil, err
 		}
-		if err := im.Store.SetLibraryRootScanned(ctx, root, now); err != nil && !errors.Is(err, store.ErrNotFound) {
-			return result, nil, err
+		if scope == nil {
+			if err := im.Store.SetLibraryRootScanned(ctx, root, now); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return result, nil, err
+			}
 		}
 	}
 	return result, queue, nil
@@ -422,9 +484,10 @@ func (im *Importer) applyFile(ctx context.Context, snapshot inventory.Snapshot) 
 	}
 }
 
-// removals is every present file a walk did not find, and how many importable files were present.
-// A problem file that is gone is a removal too, but never counts toward a hold.
-func removals(prev map[string]store.LibraryFile, found map[string]bool) ([]store.LibraryFile, int) {
+// removals is every present file in the walk's scope that it did not find, and how many
+// importable files the root held. A problem file that is gone is a removal too, but never counts
+// toward a hold.
+func removals(prev map[string]store.LibraryFile, found map[string]bool, inScope func(string) bool) ([]store.LibraryFile, int) {
 	var removed []store.LibraryFile
 	present := 0
 	for path, r := range prev {
@@ -434,11 +497,41 @@ func removals(prev map[string]store.LibraryFile, found map[string]bool) ([]store
 		if r.Problem == "" {
 			present++
 		}
-		if !found[path] {
+		if !found[path] && inScope(path) {
 			removed = append(removed, r)
 		}
 	}
 	return removed, present
+}
+
+// under reports whether path is one of dirs or inside one.
+func under(path string, dirs []string) bool {
+	for _, d := range dirs {
+		if path == d || strings.HasPrefix(path, d+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// existingFolders is each folder in dirs, or, for one that is gone, its nearest ancestor inside
+// root that is not: a folder deleted with everything in it is a change to the folder above.
+func existingFolders(root string, dirs []string) []string {
+	out := []string{}
+	for _, d := range dirs {
+		d = filepath.Clean(d)
+		for d != root && under(d, []string{root}) {
+			if info, err := os.Stat(d); err == nil && info.IsDir() {
+				break
+			}
+			d = filepath.Dir(d)
+		}
+		if !under(d, []string{root}) {
+			d = root
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 // ConfirmRemovals records the maintainer's confirmation of a root's held removal. The next pass

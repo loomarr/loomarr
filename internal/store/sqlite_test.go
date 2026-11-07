@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store/storetest"
