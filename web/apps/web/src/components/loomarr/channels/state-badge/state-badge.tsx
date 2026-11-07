@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeTone } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ProvisioningState, StateBadgeProps } from "./state-badge.type";
 
@@ -17,7 +17,7 @@ import type { ProvisioningState, StateBadgeProps } from "./state-badge.type";
 //
 // What stays here is the part that IS domain knowledge: which lifecycle state reads as which
 // tone, and the struck-through treatment for a title Loomarr gave up on.
-const TONE: Record<ProvisioningState, "neutral" | "tune" | "lock" | "caution"> = {
+const TONE: Record<ProvisioningState, BadgeTone> = {
   wanted: "neutral",
   requested: "neutral",
   downloading: "tune",
@@ -40,14 +40,11 @@ const LABEL: Record<ProvisioningState, string> = {
 // is needed (and aria-label on a generic <span> isn't ARIA-valid).
 const StateBadge = ({ state, className }: StateBadgeProps) => (
   <Badge
-    variant={TONE[state]}
-    className={cn(
-      "font-mono tracking-wide uppercase",
-      // Loomarr gave up on this title (§4). The strike-through is the one visual the base chip
-      // has no notion of, and it is genuinely domain-specific.
-      state === "unavailable" && "line-through",
-      className,
-    )}
+    shape="square"
+    tone={TONE[state]}
+    // Loomarr gave up on this title (§4). The strike-through is the one visual the base chip
+    // has no notion of, and it is genuinely domain-specific.
+    className={cn(state === "unavailable" && "line-through", className)}
   >
     {LABEL[state]}
   </Badge>

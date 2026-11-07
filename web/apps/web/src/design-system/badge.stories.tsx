@@ -1,5 +1,5 @@
+import { Badge } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Badge } from "./badge";
 
 // Badge — the tinted chip, and THE component the §2.1 badge rule is about.
 //
@@ -9,7 +9,7 @@ import { Badge } from "./badge";
 const meta = {
   title: "Primitives/Badge",
   component: Badge,
-  args: { children: "Live" },
+  args: { children: "Live", shape: "square" },
 } satisfies Meta<typeof Badge>;
 
 type Story = StoryObj<typeof meta>;
@@ -23,7 +23,7 @@ const AllVariants: Story = {
   render: () => (
     <div className="flex flex-wrap items-center gap-2">
       {(["neutral", "tune", "lock", "caution", "onair", "suggest", "signal"] as const).map((v) => (
-        <Badge key={v} variant={v}>
+        <Badge key={v} shape="square" tone={v}>
           {v}
         </Badge>
       ))}
@@ -35,8 +35,12 @@ const AllVariants: Story = {
 const OnTintStops: Story = {
   render: () => (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge variant="onair">on air</Badge>
-      <Badge variant="suggest">generating</Badge>
+      <Badge shape="square" tone="onair">
+        on air
+      </Badge>
+      <Badge shape="square" tone="suggest">
+        generating
+      </Badge>
     </div>
   ),
 };

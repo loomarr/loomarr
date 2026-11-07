@@ -9,13 +9,14 @@ import {
 } from "@loomarr/api/msw";
 import { unwrap } from "@loomarr/api/unwrap";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { ChannelLineupEditor } from "./channel-lineup-editor";
 
 // The remove button carries a tooltip, and Radix tooltips need a provider ancestor

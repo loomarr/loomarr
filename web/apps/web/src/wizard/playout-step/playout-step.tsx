@@ -4,12 +4,12 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
+import { Badge } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useState } from "react";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -182,8 +182,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
 
       {pinnedBy && (
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          <Badge className="gap-1">
-            <Lock className="size-3" aria-hidden />
+          <Badge shape="square" icon={<Lock className="size-3" aria-hidden />}>
             set via environment
           </Badge>
           <span>

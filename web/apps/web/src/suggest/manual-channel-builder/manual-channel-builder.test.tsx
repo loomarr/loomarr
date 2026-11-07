@@ -8,11 +8,12 @@ import {
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
+import { render as rtlRender } from "@/test/render";
 import { POLL_MS } from "../use-ai-reconnect";
 import { ManualChannelBuilder } from "./manual-channel-builder";
 

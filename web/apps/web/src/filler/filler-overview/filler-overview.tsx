@@ -3,11 +3,10 @@ import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO"
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Card } from "@loomarr/design-system";
+import { Badge, type BadgeTone, Card } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { FillerSettingsSection } from "../filler-settings-section";
 
@@ -128,13 +127,12 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
 // label). The tones are NOT the mock's: it painted the worst rung green and the best amber, and
 // the redesign map (#1659) corrects that so green means good and red means nothing to play.
 // Keyed by the generated union, so a new rung is a compile error here.
-const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; variant: "lock" | "caution" | "onair" }> =
-  {
-    exact: { label: "Good match", variant: "lock" },
-    widened: { label: "Years loosened", variant: "caution" },
-    audience: { label: "Audience only", variant: "caution" },
-    bumper_card: { label: "Bumpers only", variant: "onair" },
-  };
+const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: BadgeTone }> = {
+  exact: { label: "Good match", tone: "lock" },
+  widened: { label: "Years loosened", tone: "caution" },
+  audience: { label: "Audience only", tone: "caution" },
+  bumper_card: { label: "Bumpers only", tone: "onair" },
+};
 
 const FillerOverview = () => {
   const { isAdmin } = useAuth();
@@ -164,7 +162,9 @@ const FillerOverview = () => {
         <Card className="border-caution/40! bg-caution/5!" padding={20}>
           <div className="flex flex-col items-start gap-4 sm:flex-row">
             <div className="min-w-0 flex-1">
-              <Badge variant="caution">Action recommended</Badge>
+              <Badge shape="square" tone="caution">
+                Action recommended
+              </Badge>
               <h2 className="mt-3 text-xl font-semibold">{action.title}</h2>
               <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{action.description}</p>
               {/* Every destination behind the button is admin-only, so a member got a button
@@ -238,7 +238,7 @@ const FillerOverview = () => {
                           : `${formatDuration(channel.durationMs)} playable · ${pluralize(channel.total, "clip")}`}
                       </p>
                     </div>
-                    <Badge variant={badge.variant} className="shrink-0 whitespace-nowrap">
+                    <Badge shape="square" tone={badge.tone} flexShrink={0} className="whitespace-nowrap">
                       {badge.label}
                     </Badge>
                   </div>

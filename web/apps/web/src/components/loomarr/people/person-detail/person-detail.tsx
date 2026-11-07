@@ -1,11 +1,10 @@
 import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
-import { FieldHint } from "@loomarr/design-system";
+import { Badge, FieldHint } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { KeyRound, Mail, Server } from "lucide-react";
 import { useId, useState } from "react";
 import { SessionList } from "@/components/loomarr/people/session-list";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -101,8 +100,16 @@ const PersonDetail = ({
           Identity
         </h3>
         <div className="flex flex-wrap items-center gap-2">
-          {isSelf && <Badge variant="tune">You</Badge>}
-          {user.disabled && <Badge variant="onair">Disabled</Badge>}
+          {isSelf && (
+            <Badge shape="square" tone="tune">
+              You
+            </Badge>
+          )}
+          {user.disabled && (
+            <Badge shape="square" tone="onair">
+              Disabled
+            </Badge>
+          )}
         </div>
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
           {user.local ? (
@@ -136,7 +143,7 @@ const PersonDetail = ({
             <div className="flex flex-wrap items-center gap-2">
               <Mail className="text-muted-foreground size-4" aria-hidden />
               <span className="text-sm break-all">{user.contactAddress.email}</span>
-              <Badge variant={user.contactAddress.status === "verified" ? "lock" : "neutral"}>
+              <Badge shape="square" tone={user.contactAddress.status === "verified" ? "lock" : "neutral"}>
                 {user.contactAddress.status === "verified" ? "Verified" : "Unverified"}
               </Badge>
             </div>
@@ -156,7 +163,9 @@ const PersonDetail = ({
           <div className="border-suggest-700/50 bg-suggest-950/20 flex flex-col gap-2 rounded-md border p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm break-all">{user.contactReplacement.email}</span>
-              <Badge variant="suggest">Pending replacement</Badge>
+              <Badge shape="square" tone="suggest">
+                Pending replacement
+              </Badge>
             </div>
             <p className="text-muted-foreground text-xs">
               The verified address above remains recovery-capable until this replacement is verified.

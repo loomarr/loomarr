@@ -1,7 +1,7 @@
 import type { LLMModelView } from "@loomarr/api/models/lLMModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
+import { Badge, type BadgeTone } from "@loomarr/design-system";
 import { Check, Download, Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ModelPickerProps } from "./model-picker.type";
@@ -13,10 +13,10 @@ import type { ModelPickerProps } from "./model-picker.type";
 //
 // A model that cannot run is shown and disabled rather than hidden: "why isn't X here?"
 // is a worse question than seeing X greyed out with the reason next to it.
-const FIT_LABEL: Record<string, { text: string; variant: "lock" | "caution" | "onair" }> = {
-  fits: { text: "fits", variant: "lock" },
-  tight: { text: "tight", variant: "caution" },
-  wont_fit: { text: "won't fit", variant: "onair" },
+const FIT_LABEL: Record<string, { text: string; tone: BadgeTone }> = {
+  fits: { text: "fits", tone: "lock" },
+  tight: { text: "tight", tone: "caution" },
+  wont_fit: { text: "won't fit", tone: "onair" },
 };
 
 const ModelPicker = ({
@@ -40,7 +40,7 @@ const ModelPicker = ({
 
     <ul className="flex flex-col gap-2">
       {catalog.map((model: LLMModelView) => {
-        const fit = FIT_LABEL[model.fit] ?? { text: model.fit, variant: "caution" as const };
+        const fit = FIT_LABEL[model.fit] ?? { text: model.fit, tone: "caution" as const };
         const isActive = model.tag === active;
         const isPulling = pulling?.tag === model.tag;
         const progress = isPulling ? pulling?.percent : undefined;
@@ -67,12 +67,22 @@ const ModelPicker = ({
               <p className="flex items-center gap-2 text-sm font-medium">
                 {model.label}
                 <span className="text-static-400 font-mono text-xs">{model.tag}</span>
-                {model.recommended && <Badge variant="signal">recommended</Badge>}
-                {isActive && <Badge variant="lock">active</Badge>}
+                {model.recommended && (
+                  <Badge shape="square" tone="signal">
+                    recommended
+                  </Badge>
+                )}
+                {isActive && (
+                  <Badge shape="square" tone="lock">
+                    active
+                  </Badge>
+                )}
               </p>
               <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>
               <p className="mt-1 flex items-center gap-2 text-xs">
-                <Badge variant={fit.variant}>{fit.text}</Badge>
+                <Badge shape="square" tone={fit.tone}>
+                  {fit.text}
+                </Badge>
                 <span className="text-static-400">~{formatGiB(model.approxVramGiB)}</span>
                 {!model.runtimeOk && <span className="text-onair-300">needs a newer Ollama</span>}
                 {isPulling && (

@@ -4,14 +4,13 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Card } from "@loomarr/design-system";
+import { Badge, Card } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -141,7 +140,7 @@ const TaxonTree = ({
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
-                <Badge variant="neutral" title="Clips directly assigned this tag">
+                <Badge shape="square" title="Clips directly assigned this tag" tone="neutral">
                   {taxon.assertedClips.toLocaleString()} direct
                 </Badge>
               ) : null}

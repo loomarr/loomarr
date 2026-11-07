@@ -2,7 +2,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeTone } from "@loomarr/design-system";
 import { Caption } from "@/components/ui/caption";
 import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
@@ -14,11 +14,11 @@ import type { PodTimelineProps } from "./pod-timeline.type";
 // shows nothing; every other level says how far down the §10 fallback ladder assembly had
 // to go, ending at `bumper_card` — the dead-air guard, where no ad matched and the
 // embedded card stands in rather than silence.
-const MATCH: Record<PodPoolDTOMatchLevel, { label: string; variant: "caution" | "neutral" } | null> = {
+const MATCH: Record<PodPoolDTOMatchLevel, { label: string; tone: BadgeTone } | null> = {
   exact: null,
-  widened: { label: "Era widened", variant: "caution" },
-  audience: { label: "Any era", variant: "caution" },
-  bumper_card: { label: "Bumper only", variant: "neutral" },
+  widened: { label: "Era widened", tone: "caution" },
+  audience: { label: "Any era", tone: "caution" },
+  bumper_card: { label: "Bumper only", tone: "neutral" },
 };
 
 // A member-readable pod withholds a name that is only a filename (#1980); the segment then reads
@@ -85,9 +85,17 @@ const PodTimeline = ({
         <span className="text-static-400 font-mono text-xs tracking-wide uppercase">
           {`Pod · ${formatClipDuration(total)}`}
         </span>
-        {era ? <Badge variant="neutral">{`${era}s`}</Badge> : null}
-        {audience ? <Badge variant="neutral">{audience}</Badge> : null}
-        {chip && <Badge variant={chip.variant}>{chip.label}</Badge>}
+        {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}
+        {audience ? (
+          <Badge shape="square" tone="neutral">
+            {audience}
+          </Badge>
+        ) : null}
+        {chip && (
+          <Badge shape="square" tone={chip.tone}>
+            {chip.label}
+          </Badge>
+        )}
       </div>
 
       <ul

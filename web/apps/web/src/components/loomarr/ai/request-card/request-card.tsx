@@ -1,8 +1,7 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Card } from "@loomarr/design-system";
+import { Badge, Card } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import type { RequestCardProps } from "./request-card.type";
 
 // RequestCard — one request on the Requests page (#1405). Everything but the optional `action` is
@@ -26,7 +25,9 @@ const RequestCard = ({ jobId, title, line, tone, createdAt, hint, action, now }:
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <p className="font-medium">{title}</p>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={tone}>{line}</Badge>
+          <Badge shape="square" tone={tone}>
+            {line}
+          </Badge>
           <time
             dateTime={createdAt}
             title={new Date(createdAt).toLocaleString()}

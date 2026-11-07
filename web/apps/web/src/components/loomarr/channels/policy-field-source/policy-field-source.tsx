@@ -1,5 +1,4 @@
-import { semanticColors } from "@loomarr/design-system";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@loomarr/design-system";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PolicyFieldSourceProps } from "./policy-field-source.type";
@@ -20,19 +19,9 @@ const PolicyFieldSource = ({
 }: PolicyFieldSourceProps) => (
   <div className={cn("flex flex-wrap items-center gap-2", className)}>
     {/* An override is neutral with a foreground label and a control hairline (#1909 Q5): the word
-        carries the meaning, and amber stays for focus and the primary action. The inset shadow
+        carries the meaning, and amber stays for focus and the primary action. The `override` tone
         draws the hairline without making this badge taller than the Default one. */}
-    <Badge
-      variant="neutral"
-      style={
-        overridden
-          ? {
-              boxShadow: `inset 0 0 0 1px ${semanticColors.border.control}`,
-              color: semanticColors.content.primary,
-            }
-          : undefined
-      }
-    >
+    <Badge shape="square" tone={overridden ? "override" : "neutral"}>
       {overridden ? overrideLabel : defaultLabel}
     </Badge>
     {overridden || !hideResetWhenDefault ? (

@@ -8,10 +8,10 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
+import { Badge } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
 import { Plus, Sparkles, X } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,9 +33,13 @@ const proposalItemFromCandidate = (candidate: SearchCandidate): ProposalItem => 
 
 const lineupBadge = (item: ProposalItem) =>
   item.inLibrary ? (
-    <Badge variant="lock">In your library</Badge>
+    <Badge shape="square" tone="lock">
+      In your library
+    </Badge>
   ) : (
-    <Badge variant="tune">Will be added</Badge>
+    <Badge shape="square" tone="tune">
+      Will be added
+    </Badge>
   );
 
 // ManualChannelBuilder — the manual/AI-off channel creation path (#1817, decision G2; approved

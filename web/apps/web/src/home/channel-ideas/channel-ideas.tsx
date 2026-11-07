@@ -4,12 +4,12 @@ import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests";
+import { Badge } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { RefreshCcw, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -57,7 +57,9 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
       <div className="mt-auto p-4">
         {idea.requested ? (
           <div className="flex min-h-8 items-center">
-            <Badge variant="suggest">Waiting for an admin</Badge>
+            <Badge shape="square" tone="suggest">
+              Waiting for an admin
+            </Badge>
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">

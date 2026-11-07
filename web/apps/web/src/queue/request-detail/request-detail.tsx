@@ -3,7 +3,7 @@ import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
 import { requestAcquisitions, requestFixLabel, requestStatus } from "@loomarr/core/requests";
-import { Card } from "@loomarr/design-system";
+import { Badge, Card } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, RotateCw } from "lucide-react";
@@ -13,7 +13,6 @@ import { StateBadge } from "@/components/loomarr/channels/state-badge";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useRequests } from "@/queue/use-requests";
 
@@ -107,7 +106,9 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
       />
       <div className="max-w-reading mx-auto flex w-full flex-1 flex-col gap-6 overflow-auto p-6">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={status.tone}>{status.line}</Badge>
+          <Badge shape="square" tone={status.tone}>
+            {status.line}
+          </Badge>
         </div>
 
         {/* The same live surface the Guide shows while generating: stage line, titles as they are

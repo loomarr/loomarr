@@ -1,10 +1,11 @@
 import type { ChannelPolicy } from "@loomarr/api";
-import { render as rtlRender, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
+import { render as rtlRender } from "@/test/render";
 import { ChannelAutoCurate } from "./channel-auto-curate";
 
 // The opt-in's help is a FieldHelp tooltip, which needs a TooltipProvider ancestor.

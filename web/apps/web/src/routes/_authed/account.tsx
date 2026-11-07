@@ -4,13 +4,12 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
-import { Card, FieldHint } from "@loomarr/design-system";
+import { Badge, Card, FieldHint } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -98,10 +97,12 @@ const AccountScreen = () => {
           <div className="min-w-0">
             <p className="font-medium">{user?.name}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-              <Badge variant={isLocal ? "tune" : "neutral"}>
+              <Badge shape="square" tone={isLocal ? "tune" : "neutral"}>
                 {isLocal ? "Local account" : "Media-server account"}
               </Badge>
-              <Badge variant={user?.role === "admin" ? "lock" : "neutral"}>{user?.role}</Badge>
+              <Badge shape="square" tone={user?.role === "admin" ? "lock" : "neutral"}>
+                {user?.role}
+              </Badge>
             </div>
           </div>
         </Card>
@@ -179,7 +180,11 @@ const AccountScreen = () => {
                     </p>
                   )}
                 </div>
-                {s.current && <Badge variant="lock">This device</Badge>}
+                {s.current && (
+                  <Badge shape="square" tone="lock">
+                    This device
+                  </Badge>
+                )}
                 {/* No Sign out on your own session: the shell's Sign out is for that. */}
                 {!s.current && (
                   <Button

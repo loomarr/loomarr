@@ -1,7 +1,7 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
+import { Badge } from "@loomarr/design-system";
 import { CalendarClock, Loader2, LogIn, ShieldCheck, UserRound } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
@@ -72,7 +72,8 @@ const InvitationJoin = ({
             <p className="font-medium break-words">{identity}</p>
           </div>
           <Badge
-            variant={preview.role === "admin" ? "onair" : "neutral"}
+            shape="square"
+            tone={preview.role === "admin" ? "onair" : "neutral"}
             tintOpacity={preview.role === "admin" ? 0.12 : undefined}
           >
             {preview.role}

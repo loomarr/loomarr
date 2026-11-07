@@ -1,11 +1,12 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
+import { render as rtlRender } from "@/test/render";
 import { ChannelSeriesScope } from "./channel-series-scope";
 
 const makeWrapper = () => {

@@ -1,6 +1,6 @@
+import { Badge } from "@loomarr/design-system";
 import { Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Caption } from "@/components/ui/caption";
 import { cn } from "@/lib/utils";
 import type { PaletteScope, SearchCommandProps } from "./search-command.type";
@@ -236,7 +236,11 @@ const SearchCommand = ({
                   <span className="min-w-0 truncate">{item.name}</span>
                   <span className="flex shrink-0 items-center gap-2">
                     {item.meta && <span className="text-static-400 font-mono text-xs">{item.meta}</span>}
-                    {item.inLibrary && <Badge variant="lock">In library</Badge>}
+                    {item.inLibrary && (
+                      <Badge shape="square" tone="lock">
+                        In library
+                      </Badge>
+                    )}
                   </span>
                 </button>
               );

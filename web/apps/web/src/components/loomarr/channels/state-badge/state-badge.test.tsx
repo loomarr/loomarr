@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { StateBadge } from "./state-badge";
 import type { ProvisioningState } from "./state-badge.type";
 

@@ -1,7 +1,8 @@
 import type { FillerSourceDTO } from "@loomarr/api";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { FillerSources } from "./filler-sources";
 
 // Defaults describe a normal, switched-ON source. `enabled` defaulting to false would make

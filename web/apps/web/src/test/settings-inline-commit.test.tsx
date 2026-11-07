@@ -7,7 +7,7 @@ import {
   getSystemLlmStatusMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
@@ -16,6 +16,7 @@ import { AiModelSettings } from "@/settings/ai-model-settings";
 import { SecretsSettings } from "@/settings/secrets-settings";
 import { useSettingsEdits } from "@/settings/settings-edits";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 
 // config-design §5 names FOUR inline-commit exceptions, and they are all verbs: select a model,
 // pull a model, regenerate a secret, run a job now. Each commits immediately and deliberately

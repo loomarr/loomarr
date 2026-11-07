@@ -1,7 +1,8 @@
 import type { SessionBody } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { SessionList } from "./session-list";
 
 // A fixed clock, so "3d ago" is an assertion rather than a race with the wall clock.

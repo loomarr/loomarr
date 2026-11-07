@@ -7,13 +7,14 @@ import {
   getSystemLlmTestMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { AiModelSettings } from "./ai-model-settings";
 

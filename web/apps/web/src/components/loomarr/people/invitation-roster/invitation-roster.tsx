@@ -1,5 +1,5 @@
+import { Badge } from "@loomarr/design-system";
 import { Mail, QrCode } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { InvitationRosterProps } from "./invitation-roster.type";
 
@@ -75,12 +75,14 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{name}</span>
-                    <Badge variant={value.role === "admin" ? "tune" : "neutral"}>{value.role}</Badge>
-                    <Badge variant={value.status === "revoked" ? "onair" : "neutral"}>
+                    <Badge shape="square" tone={value.role === "admin" ? "tune" : "neutral"}>
+                      {value.role}
+                    </Badge>
+                    <Badge shape="square" tone={value.status === "revoked" ? "onair" : "neutral"}>
                       {value.status === "redeemed" ? "Redeemed" : value.status}
                     </Badge>
                     {copy && (
-                      <Badge variant={delivery?.status === "failed" ? "onair" : "neutral"}>
+                      <Badge shape="square" tone={delivery?.status === "failed" ? "onair" : "neutral"}>
                         {copy.label}
                       </Badge>
                     )}

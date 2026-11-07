@@ -1,5 +1,5 @@
+import { Badge } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Badge } from "@/components/ui";
 import { widthFrame } from "@/test/story-utils";
 import { CollapsibleSection } from "./collapsible-section";
 
@@ -42,7 +42,11 @@ const WithTrailing: Story = {
     title: "Lineup",
     description: "Add, remove, and reorder the titles this channel plays.",
     defaultOpen: true,
-    trailing: <Badge variant="neutral">4 titles</Badge>,
+    trailing: (
+      <Badge shape="square" tone="neutral">
+        4 titles
+      </Badge>
+    ),
     children: body,
   },
 };

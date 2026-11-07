@@ -1,8 +1,7 @@
 import { pluralize } from "@loomarr/core/format";
-import { Card } from "@loomarr/design-system";
+import { Badge, Card } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 import { Input } from "@/components/ui/input";
@@ -69,11 +68,17 @@ const PullCard = ({
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="lock">Filler pull</Badge>
+            <Badge shape="square" tone="lock">
+              Filler pull
+            </Badge>
             <span id={titleId} className="text-sm font-semibold">
               {pull.title}
             </span>
-            {edited && <Badge variant="suggest">Edited</Badge>}
+            {edited && (
+              <Badge shape="square" tone="suggest">
+                Edited
+              </Badge>
+            )}
           </div>
           {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
               requester is — proposedBy itself is a raw user id (or a scheduled job's name) and
@@ -113,7 +118,9 @@ const PullCard = ({
           const isDropped = dropped.has(id);
           return (
             <li key={id} className={cn("flex flex-wrap items-center gap-3", isDropped && "opacity-50")}>
-              <Badge variant="neutral">{row.tag}</Badge>
+              <Badge shape="square" tone="neutral">
+                {row.tag}
+              </Badge>
               <div className="min-w-0 flex-1">
                 <p className={cn("truncate text-sm", isDropped && "line-through")}>{row.name}</p>
                 {row.why && <Caption>{row.why}</Caption>}

@@ -4,9 +4,9 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
+import { Badge } from "@loomarr/design-system";
 import { LoaderCircle, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -29,11 +29,11 @@ const itemDetails = (item: ProposalItem) =>
 const stateLabel = (kind: PickKind, selected: boolean) => {
   switch (kind) {
     case "ready":
-      return { text: "In your library", variant: "lock" as const };
+      return { text: "In your library", tone: "lock" as const };
     default:
       return selected
-        ? { text: "Will be added", variant: "tune" as const }
-        : { text: "Not in your library", variant: "neutral" as const };
+        ? { text: "Will be added", tone: "tune" as const }
+        : { text: "Not in your library", tone: "neutral" as const };
   }
 };
 
@@ -103,12 +103,24 @@ const PickRow = ({
           <span className={cn("text-sm font-medium", !included && "line-through")}>{pick.item.name}</span>
           {pick.item.year ? <span className="text-muted-foreground text-xs">{pick.item.year}</span> : null}
           {included ? (
-            <Badge variant={state.variant}>{state.text}</Badge>
+            <Badge shape="square" tone={state.tone}>
+              {state.text}
+            </Badge>
           ) : (
-            <Badge variant="neutral">Not included</Badge>
+            <Badge shape="square" tone="neutral">
+              Not included
+            </Badge>
           )}
-          {season && <Badge variant="tune">{season}</Badge>}
-          {selection && <Badge variant="suggest">{selection}</Badge>}
+          {season && (
+            <Badge shape="square" tone="tune">
+              {season}
+            </Badge>
+          )}
+          {selection && (
+            <Badge shape="square" tone="suggest">
+              {selection}
+            </Badge>
+          )}
         </div>
         <p className="text-muted-foreground mt-1 text-xs">{itemDetails(pick.item)}</p>
         {included && pick.item.rationale && (

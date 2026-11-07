@@ -1,7 +1,8 @@
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { InvitationRoster } from "./invitation-roster";
 
 const invitation = (overrides: Partial<InvitationBody> = {}): InvitationBody => ({

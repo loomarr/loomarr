@@ -4,6 +4,7 @@ import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueInvitationGrantOutputBody";
 import { createInvitationSchema } from "@loomarr/core/schemas";
 import {
+  Badge,
   Dialog,
   DialogClose,
   DialogContent,
@@ -19,7 +20,6 @@ import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { FieldError } from "@/components/loomarr/feedback/field-error";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -393,10 +393,12 @@ const InvitationDialog = ({
               </div>
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant={invitation.role === "admin" ? "tune" : "neutral"}>
+                  <Badge shape="square" tone={invitation.role === "admin" ? "tune" : "neutral"}>
                     {invitation.role === "admin" ? "Administrator" : "Member"}
                   </Badge>
-                  <Badge variant="neutral">Expires {expiryLabel(grant.expiresAt)}</Badge>
+                  <Badge shape="square" tone="neutral">
+                    Expires {expiryLabel(grant.expiresAt)}
+                  </Badge>
                 </div>
                 <p className="text-sm">
                   Ask {invitationName(invitation)} to scan this code, or copy the same private link.

@@ -6,9 +6,9 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Badge } from "@loomarr/design-system";
 import { Clapperboard, Clock, ListTree, ShieldAlert, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
@@ -144,7 +144,11 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
         <span className="truncate">{episodeTitle}</span>
         {pending ? <span className="shrink-0"> (coming soon)</span> : null}
       </span>
-      {slot.part && slot.part > 0 ? <Badge variant="neutral">Part {slot.part}</Badge> : null}
+      {slot.part && slot.part > 0 ? (
+        <Badge shape="square" tone="neutral">
+          Part {slot.part}
+        </Badge>
+      ) : null}
     </li>
   );
 };
@@ -368,7 +372,11 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           {/* ⚠ Says WHICH schedule is on screen. Without it, a draft preview and a saved one
               are indistinguishable — and an author who has just edited a rule would have no
               way to tell whether they are looking at their change or at what is live. */}
-          {draftPolicy ? <Badge variant="neutral">Unsaved changes</Badge> : null}
+          {draftPolicy ? (
+            <Badge shape="square" tone="neutral">
+              Unsaved changes
+            </Badge>
+          ) : null}
         </div>
         <p className="text-muted-foreground text-sm">
           {draftPolicy

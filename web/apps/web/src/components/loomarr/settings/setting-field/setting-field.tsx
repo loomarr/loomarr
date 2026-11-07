@@ -3,10 +3,9 @@ import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
-import { FieldHint } from "@loomarr/design-system";
+import { Badge, FieldHint } from "@loomarr/design-system";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -393,25 +392,31 @@ const SettingField = ({
                   200ms is the house duration for this kind of moment (frontend-design §7's
                   "lock in"). No reduced-motion guard needed — styles.css already zeroes every
                   transition under `prefers-reduced-motion`, globally. */}
-              <Badge className="group-hover/unlock:bg-signal-tint-15 group-hover/unlock:text-signal group-focus-visible/unlock:bg-signal-tint-15 group-focus-visible/unlock:text-signal gap-1 transition-colors duration-200">
-                {/* Both padlocks occupy ONE fixed box so the crossfade cannot reflow the chip's
-                    text — a swap that changes width would make the label twitch on hover. */}
-                <span className="relative inline-flex size-3 shrink-0 items-center justify-center">
-                  <Lock
-                    className="absolute size-3 transition-all duration-200 group-hover/unlock:scale-90 group-hover/unlock:opacity-0 group-focus-visible/unlock:scale-90 group-focus-visible/unlock:opacity-0"
-                    aria-hidden
-                  />
-                  <LockOpen
-                    className="absolute size-3 scale-90 opacity-0 transition-all duration-200 group-hover/unlock:scale-100 group-hover/unlock:opacity-100 group-focus-visible/unlock:scale-100 group-focus-visible/unlock:opacity-100"
-                    aria-hidden
-                  />
-                </span>
+              {/* Both padlocks occupy ONE fixed box so the crossfade cannot reflow the chip's
+                  text — a swap that changes width would make the label twitch on hover. The
+                  hover/focus classes carry `!` because Tamagui's unlayered atomic CSS sets the
+                  badge's background and colour and would otherwise beat these utilities. */}
+              <Badge
+                shape="square"
+                icon={
+                  <span className="relative inline-flex size-3 shrink-0 items-center justify-center">
+                    <Lock
+                      className="absolute size-3 transition-all duration-200 group-hover/unlock:scale-90 group-hover/unlock:opacity-0 group-focus-visible/unlock:scale-90 group-focus-visible/unlock:opacity-0"
+                      aria-hidden
+                    />
+                    <LockOpen
+                      className="absolute size-3 scale-90 opacity-0 transition-all duration-200 group-hover/unlock:scale-100 group-hover/unlock:opacity-100 group-focus-visible/unlock:scale-100 group-focus-visible/unlock:opacity-100"
+                      aria-hidden
+                    />
+                  </span>
+                }
+                className="group-hover/unlock:bg-signal-tint-15! group-hover/unlock:text-signal! group-focus-visible/unlock:bg-signal-tint-15! group-focus-visible/unlock:text-signal! transition-colors duration-200"
+              >
                 set via environment
               </Badge>
             </button>
           ) : (
-            <Badge className="gap-1">
-              <Lock className="size-3" aria-hidden />
+            <Badge shape="square" icon={<Lock className="size-3" aria-hidden />}>
               set via environment
             </Badge>
           ))}
@@ -426,19 +431,19 @@ const SettingField = ({
               aria-label={`Hand ${label} back to ${entry.envVar ?? "the environment"}, your saved value is kept`}
               className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
             >
-              <Badge variant="caution" className="gap-1">
-                <LockOpen className="size-3" aria-hidden />
+              <Badge shape="square" tone="caution" icon={<LockOpen className="size-3" aria-hidden />}>
                 overriding {entry.envVar ?? "the environment"}
               </Badge>
             </button>
           ) : (
-            <Badge variant="caution" className="gap-1">
-              <LockOpen className="size-3" aria-hidden />
+            <Badge shape="square" tone="caution" icon={<LockOpen className="size-3" aria-hidden />}>
               overriding {entry.envVar ?? "the environment"}
             </Badge>
           ))}
         {result?.status === SettingResultStatus.pinned && !pinned && (
-          <Badge variant="caution">not saved: pinned</Badge>
+          <Badge shape="square" tone="caution">
+            not saved: pinned
+          </Badge>
         )}
       </div>
 
