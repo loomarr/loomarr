@@ -57,6 +57,9 @@ const SEEK_STEP_MS = 10_000;
 // The station-ID card's time on screen after a settled tune (playback-clients: Station ID).
 const IDENT_MS = 5_000;
 
+// A rung as Settings names it: the premium by its class, the rest by lines.
+const rungLabel = (height: number) => (height >= 2160 ? "4K" : `${height}p`);
+
 // HoldWhile keeps the player's controls shown while `on`: VideoPlayer's hold is a count, so each
 // hold(true) is paired with exactly one hold(false), here by the effect's cleanup.
 const HoldWhile = ({ hold, on }: { hold: VideoPlayerChrome["hold"]; on: boolean }) => {
@@ -170,6 +173,22 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     value: option.value,
   }));
 
+  // Quality (#2088 decision 7): Auto, naming the rung on air, then the channel's rungs. A remembered
+  // rung this channel doesn't offer shows Auto chosen, because Auto is what plays.
+  const { rungs, height: onAir } = player.ladder;
+  const pinned = player.quality !== "auto" && rungs.some((rung) => rung.height === player.quality);
+  const qualityOptions =
+    rungs.length > 0
+      ? [
+          { label: onAir ? `Auto · ${rungLabel(onAir)}` : "Auto", selected: !pinned, value: "auto" },
+          ...rungs.map((rung) => ({
+            label: rungLabel(rung.height),
+            selected: pinned && rung.height === player.quality,
+            value: String(rung.height),
+          })),
+        ]
+      : undefined;
+
   // The channel on the OSD is the one asked for, from the moment the controller starts its tune.
   const osdChannel = channel;
   const tuning = player.status === "loading";
@@ -257,6 +276,12 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           audio={audio}
           density={density}
           onSwitchSound={setSwitchSoundOn}
+          quality={
+            qualityOptions && {
+              onSelect: (value) => player.setQuality(value === "auto" ? "auto" : Number(value)),
+              options: qualityOptions,
+            }
+          }
           switchSound={switchSoundOn}
         />
       </PlayerSheet>

@@ -17,6 +17,7 @@ type Mocked = ReturnType<typeof vi.fn>;
 interface FakeHls {
   attachMedia: Mocked;
   config: { autoStartLoad?: boolean; enableWorker?: boolean };
+  currentLevel: number;
   destroy: Mocked;
   levels: { attrs: { CODECS?: string }; height: number; videoRange: string }[];
   liveSyncPosition: number | null;
@@ -241,6 +242,36 @@ describe("browser transport", () => {
 
       expect(active.loadLevel).toBe(1);
       expect(active.startLevel).toBe(1);
+    });
+
+    it("plays the viewer's rung, reports the ladder, and moves when the viewer picks another", async () => {
+      hls.supported = true;
+      const { video } = createVideo();
+      const onLadder = vi.fn();
+      const { open, transport } = harness(video, { onLadder });
+      transport.setQuality(720);
+      open("ch-1");
+      const active = await loaded(0, "ch-1");
+      active.levels = [
+        { attrs: { CODECS: "avc1.640028,mp4a.40.2" }, height: 1080, videoRange: "SDR" },
+        { attrs: { CODECS: "avc1.64001f,mp4a.40.2" }, height: 720, videoRange: "SDR" },
+      ];
+
+      handler(active, "manifestParsed")();
+
+      expect(active.loadLevel).toBe(1);
+      expect(onLadder).toHaveBeenLastCalledWith({
+        height: 720,
+        rungs: [
+          { height: 1080, index: 0 },
+          { height: 720, index: 1 },
+        ],
+      });
+
+      transport.setQuality("auto");
+      expect(active.currentLevel).toBe(0);
+      handler(active, "levelSwitched")(undefined, { level: 0 });
+      expect(onLadder).toHaveBeenLastCalledWith(expect.objectContaining({ height: 1080 }));
     });
 
     it("says plainly that the browser can play neither MSE nor native HLS", async () => {

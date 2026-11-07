@@ -7,6 +7,7 @@ class MockHls {
   static Events = {
     ERROR: "error",
     FRAG_BUFFERED: "fragBuffered",
+    LEVEL_SWITCHED: "levelSwitched",
     LEVEL_UPDATED: "levelUpdated",
     MANIFEST_PARSED: "manifestParsed",
   };
@@ -23,6 +24,7 @@ class MockHls {
   ];
   startLevel = -1;
   loadLevel = -1;
+  currentLevel = -1;
   playingDate: Date | null = null;
   attachMedia = vi.fn((media: HTMLMediaElement) => {
     this.media = media;

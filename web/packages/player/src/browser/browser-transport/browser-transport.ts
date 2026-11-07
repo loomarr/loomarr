@@ -5,7 +5,13 @@ import type { PlayerTransport, PlayerTransportEvent } from "../../player-control
 import type { PlayerSource } from "../../player-source";
 import { parseStartFailureReason } from "../../start-failure";
 import { liveHlsConfig } from "../live-hls-config";
-import { selectLiveLevel } from "../live-level";
+import {
+  type LiveLadder,
+  type LiveLevel,
+  type LiveQuality,
+  playableRungs,
+  selectQualityLevel,
+} from "../live-level";
 import { liveSeek } from "../live-seek";
 import {
   afterNextPaint,
@@ -45,6 +51,8 @@ interface BrowserTransportOptions {
    * controller has published the attempt's snapshot.
    */
   channelId: () => string | undefined;
+  /** The tuned channel's ladder changed: read from its manifest, a level switch, or a new tune. */
+  onLadder?: (ladder: LiveLadder) => void;
   /** An attempt reached a phase of its tune, for timing. */
   onPhase?: (attemptId: number, phase: BrowserTunePhase) => void;
   recordDiagnostic: (observation: ClientObservation) => void;
@@ -58,6 +66,11 @@ interface BrowserTransport extends PlayerTransport {
   attach: (video: HTMLVideoElement) => () => void;
   /** Names this player's session in client diagnostics. */
   playbackSessionId: string;
+  /**
+   * The viewer's quality (#2088 decision 7): Auto, or a rung by height, played when the master
+   * offers it. A change switches the playing level at once and never re-binds the source.
+   */
+  setQuality: (quality: LiveQuality) => void;
 }
 
 /** The oldest media a paused point may be asked for is bounded by the server window; this is the keepalive cadence. */
@@ -74,6 +87,12 @@ interface ManifestLoadFailure {
 }
 
 const createHlsController = (HlsController: typeof Hls): Hls => new HlsController({ ...liveHlsConfig });
+
+// What MediaSource can decode: the gate on the premium rung.
+const canPlayMime = (mime: string) => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(mime);
+
+const levelsOf = (hls: Hls): LiveLevel[] =>
+  hls.levels.map((l) => ({ codecs: l.attrs.CODECS, height: l.height, videoRange: l.videoRange }));
 
 /**
  * The reason a channel's playlist request was refused, when the server decided it (a 5xx problem
@@ -98,10 +117,13 @@ const createPlaybackSessionID = () => {
 
 const createBrowserTransport = ({
   channelId,
+  onLadder,
   onPhase,
   recordDiagnostic,
 }: BrowserTransportOptions): BrowserTransport => {
   const playbackSessionId = createPlaybackSessionID();
+  // The viewer's quality, read by each tune's manifest.
+  let quality: LiveQuality = "auto";
   const clock = createLiveClock();
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   const videoWaiters = new Set<() => void>();
@@ -465,20 +487,26 @@ const createBrowserTransport = ({
       };
       const onManifestParsed = () => {
         manifestParsed = true;
-        // One level for the whole tune (#1512 G10): the premium only when this browser decodes
-        // its exact CODECS, else the baseline. Manual, so ABR and player-size capping never move
-        // it onto a codec it cannot play or a 4K encode it did not choose.
-        const level = selectLiveLevel(
-          hls.levels.map((l) => ({ codecs: l.attrs.CODECS, height: l.height, videoRange: l.videoRange })),
-          (mime) => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(mime),
-        );
+        // One level for the whole tune (#1512 G10): the viewer's rung when they chose one and it is
+        // offered here; otherwise the premium only when this browser decodes its exact CODECS, else
+        // the baseline. Manual, so ABR and player-size capping never move it onto a codec it cannot
+        // play or a 4K encode it did not choose.
+        const levels = levelsOf(hls);
+        const level = selectQualityLevel(levels, canPlayMime, quality);
         hls.startLevel = level;
         hls.loadLevel = level;
+        if (current())
+          onLadder?.({ height: levels[level]?.height, rungs: playableRungs(levels, canPlayMime) });
         joinTransferredLiveSync();
         playReplacement();
         manifestArrived();
       };
       const onLevelUpdated = () => joinTransferredLiveSync();
+      const onLevelSwitched = (_: unknown, data: { level: number }) => {
+        if (!current()) return;
+        const levels = levelsOf(hls);
+        onLadder?.({ height: levels[data.level]?.height, rungs: playableRungs(levels, canPlayMime) });
+      };
       const onFragmentBuffered = () => {
         armFirstFrameWatch();
         // attachMedia can queue a target loadstart after it returns. WebKit then resets the
@@ -555,12 +583,14 @@ const createBrowserTransport = ({
       } else armFirstFrameWatch();
       hls.on(Hls.Events.MANIFEST_PARSED, onManifestParsed);
       hls.on(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
+      hls.on(Hls.Events.LEVEL_SWITCHED, onLevelSwitched);
       hls.on(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
       hls.on(Hls.Events.ERROR, onError);
       const detachHandlers = () => {
         stopFirstFrameWatch();
         hls.off(Hls.Events.MANIFEST_PARSED, onManifestParsed);
         hls.off(Hls.Events.LEVEL_UPDATED, onLevelUpdated);
+        hls.off(Hls.Events.LEVEL_SWITCHED, onLevelSwitched);
         hls.off(Hls.Events.FRAG_BUFFERED, onFragmentBuffered);
         hls.off(Hls.Events.ERROR, onError);
       };
@@ -801,6 +831,15 @@ const createBrowserTransport = ({
       clock.seekTo(seek.wallMs);
       emitLive();
     },
+    // A deliberate change, so a brief rebuffer is fair: move the playing controller to the rung now,
+    // or back to Auto's choice. A later tune reads `quality` on its manifest.
+    setQuality: (next) => {
+      quality = next;
+      const hls = active.hls;
+      if (!hls || hls.levels.length === 0) return;
+      const level = selectQualityLevel(levelsOf(hls), canPlayMime, quality);
+      if (level !== hls.currentLevel) hls.currentLevel = level;
+    },
     replace: async (source: PlayerSource, { attemptId, signal }) => {
       const mine = ++generation;
       const current = () => !disposed && generation === mine && !signal.aborted;
@@ -816,6 +855,8 @@ const createBrowserTransport = ({
       framedAttemptId = undefined;
       stalled = false;
       pausedMediaTime = undefined;
+      // The outgoing channel's rungs are not this one's: empty until its manifest is read.
+      onLadder?.({ rungs: [] });
       clock.begin(source.serverTimeMs);
       // The picture the viewer was watching holds under the tuning overlay until this source has
       // frame data of its own: `loadeddata` itself means the replacement has a current frame.

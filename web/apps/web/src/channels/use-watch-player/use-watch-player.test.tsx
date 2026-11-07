@@ -25,6 +25,7 @@ vi.mock("@loomarr/player/browser", () => ({
     return {
       attach: vi.fn(),
       controls: browser.controls,
+      ladder: { rungs: [] },
       playbackSessionId: "web_session",
       snapshot: browser.snapshot,
     };

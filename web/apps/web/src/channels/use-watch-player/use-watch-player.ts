@@ -5,6 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { channelSourcePort } from "../channel-play-url";
 import { beginTune, markTunePhase, type TuneAttempt } from "../tuner-timing";
+import { useQualityPreference } from "../use-quality-preference";
 import type {
   UseWatchPlayerOptions,
   WatchLiveTransport,
@@ -53,10 +54,13 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     [],
   );
 
+  // The viewer's quality, remembered across channels: a rung a channel doesn't offer plays Auto.
+  const [quality, setQuality] = useQualityPreference();
   const player = useBrowserPlayer({
     channels: channels ?? NO_CHANNELS,
     onPhase,
     onTune,
+    quality,
     recordDiagnostic,
     source: channelSourcePort,
   });
@@ -166,9 +170,12 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     channel,
     currentTitle,
     error,
+    ladder: player.ladder,
     liveTransport,
     playbackSessionId: player.playbackSessionId,
+    quality,
     retry: () => void retry(),
+    setQuality,
     status,
     step: (direction: TuneDirection) => void step(direction),
     stillURL: decodedStill === stillUri ? stillUri : undefined,

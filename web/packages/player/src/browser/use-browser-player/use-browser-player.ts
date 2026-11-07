@@ -8,6 +8,7 @@ import {
 } from "../../player-controller";
 import type { PlayerChannel, PlayerSourcePort } from "../../player-source";
 import { type BrowserTransport, type BrowserTunePhase, createBrowserTransport } from "../browser-transport";
+import type { LiveLadder, LiveQuality } from "../live-level";
 
 // useBrowserPlayer — the browser's player: the shared player controller running over the browser
 // transport, bound to the page's <video>. The controller owns tuning, surfing, warming and recovery;
@@ -20,6 +21,8 @@ interface BrowserPlayerOptions {
   onTune?: (report: PlayerTuneReport) => void;
   /** An attempt reached a phase of its tune, for timing. */
   onPhase?: (attemptId: number, phase: BrowserTunePhase) => void;
+  /** The viewer's quality: Auto, or a rung by height. A change switches the playing level at once. */
+  quality?: LiveQuality;
   recordDiagnostic: (observation: ClientObservation) => void;
   source: PlayerSourcePort;
 }
@@ -37,6 +40,8 @@ interface BrowserPlayer {
    */
   attach: (video: HTMLVideoElement) => () => void;
   controls: BrowserPlayerControls;
+  /** The tuned channel's rungs this browser plays, and the height on air. */
+  ladder: LiveLadder;
   /** Names this player's session in client diagnostics; empty until the player has started. */
   playbackSessionId: string;
   snapshot: PlayerSnapshot;
@@ -48,12 +53,14 @@ interface Runtime {
 }
 
 const EMPTY_SNAPSHOT: PlayerSnapshot = { catalog: [], recentChannelIds: [], status: "empty" };
+const NO_LADDER: LiveLadder = { rungs: [] };
 const noUnsubscribe = () => undefined;
 
 const useBrowserPlayer = ({
   channels,
   onPhase,
   onTune,
+  quality = "auto",
   recordDiagnostic,
   source,
 }: BrowserPlayerOptions): BrowserPlayer => {
@@ -62,12 +69,14 @@ const useBrowserPlayer = ({
   callbacks.current = { onPhase, onTune, recordDiagnostic };
   const [runtime, setRuntime] = useState<Runtime>();
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  const [ladder, setLadder] = useState<LiveLadder>(NO_LADDER);
 
   useLayoutEffect(() => {
     // The transport reports the channel of the attempt it is opening from the controller's snapshot.
     let controller: PlayerController | undefined;
     const transport = createBrowserTransport({
       channelId: () => controller?.getSnapshot().channel?.id,
+      onLadder: setLadder,
       onPhase: (attemptId, phase) => callbacks.current.onPhase?.(attemptId, phase),
       recordDiagnostic: (observation) => callbacks.current.recordDiagnostic(observation),
     });
@@ -90,6 +99,10 @@ const useBrowserPlayer = ({
     if (!runtime || !video) return;
     return runtime.transport.attach(video);
   }, [runtime, video]);
+
+  useLayoutEffect(() => {
+    runtime?.transport.setQuality(quality);
+  }, [runtime, quality]);
 
   // Reconcile when the playable set changes, not on every new array of the same channels.
   const channelsRef = useRef(channels);
@@ -128,7 +141,13 @@ const useBrowserPlayer = ({
     [runtime],
   );
 
-  return { attach, controls, playbackSessionId: runtime?.transport.playbackSessionId ?? "", snapshot };
+  return {
+    attach,
+    controls,
+    ladder: runtime ? ladder : NO_LADDER,
+    playbackSessionId: runtime?.transport.playbackSessionId ?? "",
+    snapshot,
+  };
 };
 
 export type { BrowserPlayer, BrowserPlayerControls, BrowserPlayerOptions };

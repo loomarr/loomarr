@@ -1,6 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelNowNext } from "@loomarr/api/models/channelNowNext";
 import type { LivePlaybackState, TuneDirection } from "@loomarr/player";
+import type { LiveLadder, LiveQuality } from "@loomarr/player/browser";
 
 /**
  * The viewer's live position and what moves it: pause stays paused until play, goLive rejoins the
@@ -36,10 +37,15 @@ interface WatchPlayer {
   /** What is airing on `channel` now. */
   currentTitle?: string;
   error?: string;
+  /** The tuned channel's rungs this browser plays and the height on air; empty until known. */
+  ladder: LiveLadder;
   /** The viewer's live position and the controls that move it. */
   liveTransport: WatchLiveTransport;
   playbackSessionId: string;
+  /** The viewer's remembered quality: Auto, or a rung by height. */
+  quality: LiveQuality;
   retry: () => void;
+  setQuality: (quality: LiveQuality) => void;
   status: WatchPlayerStatus;
   step: (direction: TuneDirection) => void;
   /** The tuning channel's picture, once decoded, to show until its stream's first frame. */
