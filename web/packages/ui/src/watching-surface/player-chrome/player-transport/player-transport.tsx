@@ -1,5 +1,13 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { type Density, Icon, type IconName, icons, playerChrome, Text } from "@loomarr/design-system";
+import {
+  type Density,
+  Icon,
+  type IconName,
+  icons,
+  playerChrome,
+  Text,
+  useFocusLook,
+} from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
@@ -105,7 +113,7 @@ const ToolButton = ({
   tipAlign = "center",
 }: ToolButtonProps) => {
   const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook();
   const size = density === "touch" ? 44 : 36;
   return (
     <Pressable
@@ -113,8 +121,7 @@ const ToolButton = ({
       accessibilityRole="button"
       accessibilityState={{ disabled, expanded: active || undefined }}
       disabled={disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
+      {...focusHandlers}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={onPress}

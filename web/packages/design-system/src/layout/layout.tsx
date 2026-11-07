@@ -1,8 +1,9 @@
 import { useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ComponentRef, ReactNode } from "react";
-import { forwardRef, useId, useState } from "react";
+import { forwardRef, useId } from "react";
 import { Pressable, ScrollView, useWindowDimensions } from "react-native";
 
+import { useFocusLook } from "../focus-look";
 import { Text } from "../primitives";
 import { type Density, semanticSpace, semanticTargets } from "../tokens";
 import { useViewportScale } from "../viewport";
@@ -129,7 +130,7 @@ const Disclosure = ({
 }: DisclosureProps) => {
   const generatedId = useId();
   const contentId = `loomarr-disclosure-${generatedId.replaceAll(":", "")}`;
-  const [focused, setFocused] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook();
   const theme = useTheme();
 
   return (
@@ -149,8 +150,7 @@ const Disclosure = ({
         aria-disabled={disabled || undefined}
         aria-expanded={expanded}
         disabled={disabled}
-        onBlur={() => setFocused(false)}
-        onFocus={() => setFocused(true)}
+        {...focusHandlers}
         onPress={() => onExpandedChange(!expanded)}
         style={({ pressed }) => ({
           alignItems: "center",

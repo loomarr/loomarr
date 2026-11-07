@@ -124,4 +124,51 @@ describe("TV surf rail focus (#1887)", () => {
     expect(amberCard(card())).toBe(true);
     expect(ambers(host)).toEqual([card()]);
   });
+
+  // The focus-target wiring every TV surface shares: a journey's registry gets each card's handle
+  // and hears where focus lands before the surface's own handler runs, and a surface rendered
+  // without a registry still reports its selection.
+  const renderRail = (
+    onFocusSelection: () => void,
+    focusRegistry?: { focused: () => void; register: () => void; request: () => void },
+  ) =>
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <SurfRail
+            autoTune={{ choicesMs: [1_200, 5_000], onChange: vi.fn(), valueMs: 5_000 }}
+            clientVersion="prototype"
+            density="tv"
+            focusRegistry={focusRegistry}
+            groups={surfGroups}
+            onDisconnect={vi.fn()}
+            onFocusSelection={onFocusSelection}
+            onTune={vi.fn()}
+            selection={{ channelId: channel?.id ?? "", group: "recent" }}
+          />
+        </LoomarrProvider>,
+      );
+    });
+
+  it("registers each card with the focus registry and reports focus to it before the rail", () => {
+    const calls: string[] = [];
+    const registry = { focused: vi.fn(() => calls.push("registry")), register: vi.fn(), request: vi.fn() };
+    renderRail(() => calls.push("rail"), registry);
+
+    act(() => row().focus());
+
+    const selection = { channelId: channel?.id, group: "recent" };
+    expect(registry.register).toHaveBeenCalledWith(selection, expect.anything());
+    expect(registry.focused).toHaveBeenCalledWith(selection);
+    expect(calls).toEqual(["registry", "rail"]);
+  });
+
+  it("reports the focused selection without a registry", () => {
+    const onFocusSelection = vi.fn();
+    renderRail(onFocusSelection);
+
+    act(() => row().focus());
+
+    expect(onFocusSelection).toHaveBeenCalledWith({ channelId: channel?.id, group: "recent" });
+  });
 });
