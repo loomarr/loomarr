@@ -26,13 +26,13 @@ One area of the [package map](../package-map.md#start-here).
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
 - **`metadataprovider`** · 7 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
-- **`metadataprovider/arr`** · → `metadataprovider`
+- **`metadataprovider/arr`** · 1 importer · → `metadataprovider`
   Sonarr and Radarr as metadata providers (#2151 decisions 7, 15, 38).
 - **`metadataprovider/localart`** · → `metadataprovider`
   The artwork beside the media as a metadata provider (#2151 decision 19).
-- **`metadataprovider/nfo`** · → `metadataprovider`
+- **`metadataprovider/nfo`** · 1 importer · → `metadataprovider`
   Kodi NFO sidecars as a metadata provider (#2151 decision 2).
-- **`metadataprovider/precedence`** · 1 importer · → `metadataprovider`, `rating`
+- **`metadataprovider/precedence`** · 2 importers · → `metadataprovider`, `rating`
   Decides which source's value Loomarr uses for each field of a media item (#2151 decision 7, ADR 0046).
 - **`metadataprovider/providertest`** · → `metadataprovider`
   Conformance suite every metadata provider runs.

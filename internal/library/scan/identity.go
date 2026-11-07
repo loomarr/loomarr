@@ -2,6 +2,7 @@ package scan
 
 import (
 	"context"
+	"errors"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -41,6 +42,9 @@ func indexManagers(ctx context.Context, managers []Manager, paths []store.Librar
 	var errs []error
 	for _, m := range managers {
 		records, err := m.Lister.List(ctx)
+		if errors.Is(err, mp.ErrNotConfigured) {
+			continue // an arr with no connection manages nothing
+		}
 		if err != nil {
 			idx.complete = false
 			errs = append(errs, err)
