@@ -426,13 +426,9 @@ test("mounts authoritative grouped Surf data with previous-Channel history", asy
 test("routes the native remote through TV adapters and preserves platform-home Back", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
+  // The remote itself (digit entry and its timer, OK versus a long press letting go) is
+  // createTvRemote, whose behaviour packages/ui-tv/tests/tv-remote.test.ts pins.
   assert.match(appSource, /useTVEventHandler/);
-  assert.match(
-    appSource,
-    /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\), keyActionOf\(eventKeyAction\)\)/,
-  );
-  assert.match(appSource, /event && event\.key !== "select"/);
-  assert.match(appSource, /reduceTvWatchingRemote\(remoteStateRef\.current, event, autoTuneMs\)/);
   // The per-device auto-tune duration (#1659 decision N4) is read from the device's secure store.
   assert.match(appSource, /createTvAutoTuneSetting\(\{\s*getItem: SecureStore\.getItemAsync/);
   // The Guide's time edges page through the shared reducer (#1659 decision N4).
@@ -440,13 +436,7 @@ test("routes the native remote through TV adapters and preserves platform-home B
     appSource,
     /onTimeEdge=\{\(side\) => void tvGuideTimeEdge\(guide, guideFocusRegistry, side, Date\.now\(\)\)\}/,
   );
-  // Watching's OK opens the Guide, except the press tvOS sends when a long press of Select lifts.
-  assert.match(
-    appSource,
-    /onOpenGuide=\{\(\) => \{[\s\S]*?tvPressIsLongSelectRelease\(longSelectAtMs\.current, Date\.now\(\)\)[\s\S]*?else dispatchRemoteEvent\(\{ key: "select" \}\);\s*\}\}/,
-  );
   assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
-  assert.match(appSource, /numberEntry=\{tvNumberEntryPresentation\(remoteState, snapshot\.catalog\)\}/);
   assert.match(appSource, /if \(!destination\) return false/);
   // tvOS routes Menu to BackHandler only while the menu key is enabled: on wherever Back has a
   // destination, off at the roots so Menu goes Home there (#1500 audit #1).
@@ -472,7 +462,7 @@ test("restarts Watching inactivity only for handled remote and tune activity", a
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
   assert.match(appSource, /controlsActivityKey=\{controlsActivityKey\}/);
-  assert.match(appSource, /if \(result\.handled\) showControlsForActivity\(\);/);
+  assert.match(appSource, /if \(handled\) showControlsForActivity\(\);/);
 
   // Guide and Surf share tuneFromList, which skips only the press tvOS sends when a long-press Select lifts.
   assert.match(
