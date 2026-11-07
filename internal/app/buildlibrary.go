@@ -159,6 +159,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 			Enabled: im.Enabled, Log: deps.log,
 		}
 		deps.owner.goRunAfterBuild(enricher.Run)
+		lib.Enricher = enricher
 		lib.Search = tmdbSearcher(deps.tmdb)
 		matcher := &scan.Matcher{
 			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,

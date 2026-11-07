@@ -1,7 +1,6 @@
 import {
   Action,
   Disclosure,
-  Field,
   StatusDot,
   Surface,
   Text,
@@ -12,6 +11,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { View } from "react-native";
 
 import { LibraryPoster, Line, Stack } from "../library-poster";
+import { nameYear, PickTitle } from "../pick-title";
 import type {
   LibraryNeed,
   LibraryNeedCandidate,
@@ -28,7 +28,6 @@ const STRIP_FIRST = 4;
 // An answer locks the card in (static → clear) and it leaves once that has been seen.
 const LOCK_CLEAR_MS = 200;
 const LOCK_HOLD_MS = 1400;
-const SEARCH_SETTLE_MS = 300;
 
 const fileName = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 
@@ -39,8 +38,6 @@ const reasonFor = (c: LibraryNeedCandidate): string => {
   if (c.nameMatches && c.yearMatches) return "The name and year match.";
   return "It looks close, but we can't be sure.";
 };
-
-const nameYear = (c: LibraryNeedCandidate) => (c.year ? `${c.name} (${c.year})` : c.name);
 
 // What a need is called where it is named: its best guess, else its first file.
 const needName = (need: LibraryNeed) => need.best?.name ?? fileName(need.files[0] ?? "");
@@ -192,74 +189,6 @@ const LibraryNeedsStrip = ({ needs, onLink, onOpenNeeds }: LibraryNeedsStripProp
 
 // ── Needs you: one card each ──────────────────────────────────────────────────────────────────
 
-// The search as typed, settled for a moment before it is asked.
-const useSettled = (value: string) => {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setSettled(value), SEARCH_SETTLE_MS);
-    return () => clearTimeout(t);
-  }, [value]);
-  return settled;
-};
-
-type Found = { query: string; results?: readonly LibraryNeedCandidate[]; failed?: boolean };
-
-// "Pick a different title": the other guesses, or what a search for a typed name finds.
-const PickOther = ({
-  need,
-  onSearch,
-  onPick,
-}: {
-  need: LibraryNeed;
-  onSearch: LibraryNeedSearch;
-  onPick: (c: LibraryNeedCandidate) => void;
-}) => {
-  const [typed, setTyped] = useState("");
-  const query = useSettled(typed.trim());
-  const [found, setFound] = useState<Found>({ query: "" });
-  useEffect(() => {
-    if (query === "") return;
-    let current = true;
-    onSearch(query, need.kind).then(
-      (results) => current && setFound({ query, results }),
-      () => current && setFound({ query, failed: true }),
-    );
-    return () => {
-      current = false;
-    };
-  }, [query, need.kind, onSearch]);
-  const searched = query !== "" && found.query === query;
-  const list = query === "" ? need.others : searched ? (found.results ?? []) : [];
-  return (
-    <Surface gap="inline" padding="control">
-      <Field
-        label="Search for the title"
-        onChangeText={setTyped}
-        placeholder="Type a movie or show name"
-        value={typed}
-      />
-      {searched && found.failed ? (
-        <Text textRole="body" tone="secondary">
-          Couldn't search just now. Try again in a moment.
-        </Text>
-      ) : searched && list.length === 0 ? (
-        <Text textRole="body" tone="secondary">{`Nothing matches "${query}".`}</Text>
-      ) : null}
-      {list.map((c) => (
-        <Line flexWrap="nowrap" key={c.tmdbId}>
-          <Thumb art={c.poster} name={c.name} width={28} />
-          <Stack flexBasis={0} flexGrow={1} minWidth={0}>
-            <Text textRole="body">{nameYear(c)}</Text>
-          </Stack>
-          <Action onPress={() => onPick(c)} variant="secondary">
-            Use this one
-          </Action>
-        </Line>
-      ))}
-    </Surface>
-  );
-};
-
 const NeedCard = ({
   need,
   primary,
@@ -335,7 +264,9 @@ const NeedCard = ({
                   Ignore this
                 </Action>
               </Line>
-              {other ? <PickOther need={need} onPick={onPick} onSearch={onSearch} /> : null}
+              {other ? (
+                <PickTitle kind={need.kind} onPick={onPick} onSearch={onSearch} others={need.others} />
+              ) : null}
               {need.files.length > 0 ? (
                 <Disclosure
                   expanded={files}

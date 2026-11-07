@@ -53,7 +53,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //
 //	2: titles name the catalog row their details come from (library_items.catalog).
 //	3: titles note their scan origin and whether anything grounds them (Needs you).
-const writeVersion = 3
+//	4: titles note what said which title they are, and its page (Wrong title?).
+const writeVersion = 4
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.

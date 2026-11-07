@@ -94,11 +94,11 @@ func (e *Enricher) Tick(ctx context.Context) error {
 				return err
 			}
 		}
-		stop, err := e.fetch(ctx, key, now)
+		outcome, err := e.fetch(ctx, key, now)
 		if err != nil {
 			return err
 		}
-		if stop {
+		if outcome != fetchDone {
 			return nil
 		}
 	}
@@ -115,8 +115,39 @@ func (e *Enricher) staleShare(total int) int {
 	return total/ticks + 1
 }
 
-// fetch fetches one key. stop is true when the catalog failed in a way the next key would too.
-func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now time.Time) (stop bool, err error) {
+// Update fetches one title's record now, for "Update details" (decision 20), and writes its titles
+// again when it changed. ErrNoCatalog when the catalog is not configured; ErrCatalogUnreachable
+// when it failed, and the record is then tried again later as any failed fetch is.
+func (e *Enricher) Update(ctx context.Context, key store.LibraryCatalogKey) error {
+	outcome, err := e.fetch(ctx, key, e.now())
+	switch {
+	case err != nil:
+		return err
+	case outcome == fetchUnconfigured:
+		return ErrNoCatalog
+	case outcome == fetchFailed:
+		return ErrCatalogUnreachable
+	}
+	return nil
+}
+
+// ErrCatalogUnreachable is a catalog fetch that failed: the catalog is down, slow or refused.
+var ErrCatalogUnreachable = errors.New("the catalog could not be reached")
+
+// fetchOutcome is how one fetch went.
+type fetchOutcome int
+
+const (
+	// fetchDone fetched the record, or learned the catalog has no such title.
+	fetchDone fetchOutcome = iota
+	// fetchUnconfigured is a catalog with no key: nothing can be fetched until it has one.
+	fetchUnconfigured
+	// fetchFailed is a catalog that failed: the next key would fail too.
+	fetchFailed
+)
+
+// fetch fetches one key.
+func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now time.Time) (fetchOutcome, error) {
 	ref := mp.Ref{Kind: mp.Kind(key.Kind), ID: mp.ExternalID{Namespace: mp.Namespace(key.Provider), Value: key.ExternalID}}
 	rec, fetchErr := e.Provider.Fetch(ctx, ref)
 	record := ""
@@ -124,7 +155,7 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 	case fetchErr == nil:
 		raw, err := json.Marshal(rec)
 		if err != nil {
-			return false, err
+			return fetchDone, err
 		}
 		record = string(raw)
 	case errors.Is(fetchErr, mp.ErrNotFound), errors.Is(fetchErr, mp.ErrUnsupported):
@@ -132,27 +163,27 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 		// refresh.
 	case errors.Is(fetchErr, tmdb.ErrAPIKeyRequired):
 		// Not configured: nothing is fetched until it is, and no title is held back for it.
-		return true, nil
+		return fetchUnconfigured, nil
 	default:
 		if ctx.Err() != nil {
-			return true, ctx.Err()
+			return fetchFailed, ctx.Err()
 		}
 		if err := e.Store.FailLibraryCatalog(ctx, key, now.Add(enrichRetry)); err != nil {
-			return false, err
+			return fetchFailed, err
 		}
 		e.log().Debug("library enrich: fetch failed", "catalog", key.String(), "err", fetchErr)
-		return true, nil
+		return fetchFailed, nil
 	}
 	changed, err := e.Store.SaveLibraryCatalog(ctx, key, record, now)
 	if err != nil || !changed {
-		return false, err
+		return fetchDone, err
 	}
 	files, err := e.Store.RewriteLibraryCatalogFiles(ctx, key)
 	if err != nil {
-		return false, err
+		return fetchDone, err
 	}
 	rewriteFolders(files, e.Rewrite)
-	return false, nil
+	return fetchDone, nil
 }
 
 func (e *Enricher) sleep(ctx context.Context, d time.Duration) error {

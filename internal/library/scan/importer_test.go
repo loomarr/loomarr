@@ -299,11 +299,22 @@ func TestImportArrIdentityThroughPathMap(t *testing.T) {
 		IDs:         []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000612"}},
 		Files:       []mp.FileRef{{Path: "/movies/Delta (1999)/Delta.mkv"}},
 		Descriptive: &mp.Descriptive{Title: "Delta", Year: 1999},
+		Page:        "http://radarr.invalid/movie/90000612",
 	}}
 	h.run()
 	origin := fileOrigin(h.root, "Delta (1999)/Delta.mkv")
-	if item := h.item(origin); !hasID(item.ExternalIDs, "tmdb", "90000612") {
+	item := h.item(origin)
+	if !hasID(item.ExternalIDs, "tmdb", "90000612") {
 		t.Fatalf("arr identity = %+v", item.ExternalIDs)
+	}
+	// Radarr decides what it is, and "Wrong title?" opens its page there.
+	listed, err := h.st.LibraryItem(ctx, string(item.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := store.LibraryMatch{Basis: "manager", App: "radarr", Page: "http://radarr.invalid/movie/90000612"}
+	if listed.Match != want {
+		t.Fatalf("match = %+v, want %+v", listed.Match, want)
 	}
 
 	radarr.err = errors.New("radarr is down")

@@ -204,7 +204,9 @@ type Library struct {
 	// NeedStore keeps Needs you; Search finds titles to answer it with (nil: no catalog).
 	NeedStore store.LibraryNeedsStore
 	Search    Searcher
-	Now       func() time.Time
+	// Enricher fetches a title's catalog record on request (Update details); nil has no catalog.
+	Enricher *Enricher
+	Now      func() time.Time
 }
 
 // Progress is the scanner's current state; the zero Progress when no scanner runs.

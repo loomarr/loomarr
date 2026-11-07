@@ -58,6 +58,9 @@ func TestSonarr_FetchReturnsTheSeriesWithItsEpisodes(t *testing.T) {
 	if !reflect.DeepEqual(rec.IDs, wantIDs) {
 		t.Errorf("series ids = %+v, want %+v", rec.IDs, wantIDs)
 	}
+	if rec.Page != lib.URL+"/series/the-lantern-office" {
+		t.Errorf("page = %q, want the series' page in Sonarr", rec.Page)
+	}
 	wantDesc := mp.Descriptive{
 		Title: "The Lantern Office", SortTitle: "lantern office",
 		Overview:     "A night clerk at a seaside lighthouse registry keeps the lamps of a town that no longer has ships.",
@@ -225,6 +228,9 @@ func TestRadarr_FetchReturnsTheMovie(t *testing.T) {
 	}
 	if len(rec.Artwork) != 1 || rec.Artwork[0].Kind != "poster" {
 		t.Errorf("artwork = %+v, want the https poster only", rec.Artwork)
+	}
+	if rec.Page != lib.URL+"/movie/90000501" {
+		t.Errorf("page = %q, want the movie's page in Radarr", rec.Page)
 	}
 }
 

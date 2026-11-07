@@ -22,9 +22,25 @@ type LibraryItem struct {
 	// Origin is its scan origin: a movie's file, a series' folder. The maintainer's answer for a
 	// title nothing grounds is kept against it.
 	Origin LibraryOrigin
-	// Grounded is true when anything gives it an id: an arr, a name, a sidecar or a link.
-	Grounded bool
+	// Match is what says which title it is; the zero value when nothing does, which puts it in
+	// Needs you.
+	Match LibraryMatch
 }
+
+// LibraryMatch is what said which title an item is (#2151 decision 26): "Wrong title?" sends the
+// maintainer to the app that decides, or lets them pick when nothing else does.
+type LibraryMatch struct {
+	// Basis is the evidence, a metadataprovider basis: manager (an arr), embedded_id (an id in a
+	// name), sidecar (an NFO) or link (the maintainer's answer). "" is nothing.
+	Basis string
+	// App is the provider that said it; "" for evidence Loomarr finds itself.
+	App string
+	// Page is the title's page in that app, for a person to open; "" when it has none.
+	Page string
+}
+
+// Grounded is true when anything gives the item an id.
+func (m LibraryMatch) Grounded() bool { return m.Basis != "" }
 
 // LibraryOrigin is an inventory origin by its authority and key.
 type LibraryOrigin struct {
@@ -73,6 +89,14 @@ type LibraryItemStore interface {
 	LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error)
 	// LibraryItemFiles lists an item's present files (a series' episodes), in path order.
 	LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error)
+	// RecheckLibraryItemFiles puts the header of an item's present, importable files (a series'
+	// episodes) back to pending, so the scanner reads them again, and lists them.
+	RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error)
+}
+
+func (s *sqlStore) RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error) {
+	return s.resetFiles(ctx, `header = '`+LibraryHeaderPending+`'`,
+		`(item_id = ? OR series_id = ?) AND problem = ''`, id, id)
 }
 
 func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at time.Time) error {
@@ -85,12 +109,13 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 	}
 	defer func() { _ = tx.Rollback() }()
 	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_items (id, kind, name, sort_name, year, catalog,
-		origin_authority, origin_key, grounded, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		origin_authority, origin_key, grounded, match_basis, match_app, match_page, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
 		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
 		origin_authority = excluded.origin_authority, origin_key = excluded.origin_key,
-		grounded = excluded.grounded, updated_at = excluded.updated_at`))
+		grounded = excluded.grounded, match_basis = excluded.match_basis, match_app = excluded.match_app,
+		match_page = excluded.match_page, updated_at = excluded.updated_at`))
 	if err != nil {
 		return fmt.Errorf("save library items: %w", err)
 	}
@@ -104,7 +129,8 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 			sortName = strings.ToLower(it.Name)
 		}
 		if _, err := stmt.ExecContext(ctx, it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(),
-			it.Origin.Authority, it.Origin.Key, it.Grounded, at.UnixMilli()); err != nil {
+			it.Origin.Authority, it.Origin.Key, it.Match.Grounded(), it.Match.Basis, it.Match.App, it.Match.Page,
+			at.UnixMilli()); err != nil {
 			return fmt.Errorf("save library item: %w", err)
 		}
 	}
@@ -125,11 +151,11 @@ const presentFiles = `(
 // itemColumns is an item, its poster ref and its file counts, read over presentFiles; itemGroup
 // groups by the item.
 const (
-	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year,
+	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page,
 		COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
 			AND r.owner_id = i.id AND r.role = 'poster'), ''),
 		COUNT(*), COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0)`
-	itemGroup = `i.id, i.kind, i.name, i.sort_name, i.year`
+	itemGroup = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page`
 )
 
 func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
@@ -189,10 +215,13 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 	out := []LibraryItemSummary{}
 	for rows.Next() {
 		var it LibraryItemSummary
-		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &it.Poster, &it.Files, &it.Pending); err != nil {
+		var catalog string
+		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
+			&it.Match.App, &it.Match.Page, &it.Poster, &it.Files, &it.Pending); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}
+		it.Catalog, _ = ParseLibraryCatalogKey(catalog)
 		out = append(out, it)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {

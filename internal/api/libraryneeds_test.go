@@ -33,8 +33,8 @@ func TestLibraryNeedsYou(t *testing.T) {
 	}
 	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Mystery Film", Origin: origin("file:a")},
-		{ID: "90000002", Kind: "movie", Name: "Known Film", Origin: origin("file:b"), Grounded: true},
-		{ID: "90000003", Kind: "movie", Name: "Arr Film", Grounded: false},
+		{ID: "90000002", Kind: "movie", Name: "Known Film", Origin: origin("file:b"), Match: store.LibraryMatch{Basis: "embedded_id"}},
+		{ID: "90000003", Kind: "movie", Name: "Arr Film"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}

@@ -316,9 +316,25 @@ step 5). Nothing reads the scanner's origins until the cutover.
   ready" clears on its own (decision 35, until a `library` SSE frame exists). A title's page
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and a movie's files behind
-  Technical details. Still to come: Needs you and Wrong title? (step 11), Collections (step 12);
-  Update details, Check files again, On these channels, and the rest of Technical details (where
-  the details came from, picture, sound, subtitles), which need endpoints of their own.
+  Technical details. Still to come: Collections (step 12); On these channels, and the rest of
+  Technical details (where the details came from, picture, sound, subtitles).
+- **Needs you on the page** (step 11b). The Library page's strip asks about the first four
+  titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
+  different title, or Find it with no guess); `/library/needs` holds one card each with the
+  reason line, the other guesses, a TMDB search, Ignore this, and the files behind a disclosure.
+  An answer locks in and leaves once seen; one that fails puts the question back. The Library nav
+  badge is the status's `needsYou`, the same number as the heading.
+- **A title's actions** (step 11c, decision 26). Each title row records what decided which title
+  it is: the basis and provider of its highest-ranked catalog id (`match_basis`, `match_app`), and
+  for an arr its page there (`match_page`, from the arr's `titleSlug`). `GET /v1/library/items/{id}`
+  says `match.by`: `app` (Sonarr or Radarr), `file` (an id in its name, or an NFO), `you` (an
+  answer) or `none`. Wrong title? follows it: an arr's title opens its page there ("Sonarr decides
+  what this is"); a file's says to rename it or change its NFO, since an answer ranks below what
+  the file says; any other opens the same search as Needs you, with Forget my answer when the
+  household answered. Update details (`POST …/refresh`) fetches the title's TMDB record at once
+  (503 when TMDB fails) and writes the title again, so what its arr and sidecars say now is read
+  too. Check files again (`POST …/check`) puts its files' headers back to pending and passes over
+  their folders, so they are opened and read again.
 
 ## Cached series episodes
 

@@ -112,6 +112,7 @@ func (s *Sonarr) seriesRecord(ctx context.Context, ep endpoint, series sonarrSer
 	rec := mp.Record{
 		Source: sonarrSource,
 		Kind:   mp.KindSeries,
+		Page:   page(ep.base, "series", series.TitleSlug),
 		IDs: ids(intID(mp.NamespaceTVDB, series.TVDBID), intID(mp.NamespaceTMDB, series.TMDBID),
 			mp.ExternalID{Namespace: mp.NamespaceIMDB, Value: strings.TrimSpace(series.IMDBID)}),
 		Descriptive: &mp.Descriptive{
@@ -179,6 +180,7 @@ type sonarrSeries struct {
 	TVDBID        int      `json:"tvdbId"`
 	TMDBID        int      `json:"tmdbId"`
 	IMDBID        string   `json:"imdbId"`
+	TitleSlug     string   `json:"titleSlug"`
 	FirstAired    string   `json:"firstAired"`
 	Certification string   `json:"certification"`
 	Genres        []string `json:"genres"`

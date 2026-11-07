@@ -6677,6 +6677,8 @@ components:
           type: array
         item:
           $ref: "#/components/schemas/LibraryItemDTO"
+        match:
+          $ref: "#/components/schemas/LibraryMatchDTO"
         overview:
           type: string
         rating:
@@ -6695,6 +6697,7 @@ components:
         - genres
         - files
         - seasons
+        - match
       type: object
     LibraryItemFileDTO:
       additionalProperties: false
@@ -6713,6 +6716,30 @@ components:
         - path
         - size
         - ready
+      type: object
+    LibraryMatchDTO:
+      additionalProperties: false
+      properties:
+        app:
+          description: The app, when by is app
+          enum:
+            - sonarr
+            - radarr
+          type: string
+        by:
+          description: "What says which title this is: the app that manages it, the file itself (an id in its name, or an NFO beside it), your answer, or nothing yet"
+          enum:
+            - app
+            - file
+            - you
+            - none
+          type: string
+        page:
+          description: The title's page in that app, when by is app and it has one
+          format: uri
+          type: string
+      required:
+        - by
       type: object
     LibraryNeedDTO:
       additionalProperties: false
@@ -17648,6 +17675,29 @@ paths:
       summary: Take back an answer
       tags:
         - library
+  /v1/library/items/{id}/check:
+    post:
+      description: Opens the title's files and reads their details again, such as after a file was replaced.
+      operationId: checkLibraryItemFiles
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Check a title's files again
+      tags:
+        - library
   /v1/library/items/{id}/ignore:
     post:
       description: "Says a title isn't one: it leaves the library and Needs you."
@@ -17698,6 +17748,29 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Say which title this is
+      tags:
+        - library
+  /v1/library/items/{id}/refresh:
+    post:
+      description: Fetches the title's details from TMDB now, and reads what its app and its files say again. 503 when TMDB can't be reached.
+      operationId: updateLibraryItemDetails
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a title's details
       tags:
         - library
   /v1/library/needs:

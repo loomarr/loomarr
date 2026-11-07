@@ -33,6 +33,8 @@ type LibraryRootService interface {
 
 	Items(ctx context.Context, q store.LibraryItemQuery) (store.LibraryItemPage, error)
 	Item(ctx context.Context, id string) (scan.ItemDetail, error)
+	UpdateDetails(ctx context.Context, id string) error
+	CheckFiles(ctx context.Context, id string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
 	NeedCount(ctx context.Context) (int, error)

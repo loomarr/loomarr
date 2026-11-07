@@ -1,8 +1,8 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Action, Badge, Disclosure, Text, useWindowWidth } from "@loomarr/design-system";
+import { Action, Badge, Disclosure, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
-
 import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
+import { PickTitle } from "../pick-title";
 import type { LibraryTitleDetail, LibraryTitleProps, LibraryTitleSeason } from "./library-title.type";
 
 // A TITLE'S PAGE (#2151 decisions 25–26, design/library variant D): big artwork, the facts in plain
@@ -117,7 +117,134 @@ const TechnicalDetails = ({ title }: { title: LibraryTitleDetail }) => {
   );
 };
 
-const LibraryTitle = ({ title, onBack }: LibraryTitleProps) => {
+// "Wrong title?" (decision 26) follows what decides: the app's own page, a note when the file
+// itself says, else a search, and Forget my answer when the household answered.
+const WrongTitle = ({
+  title,
+  onOpenApp,
+  onSearch,
+  onLink,
+  onForget,
+}: Pick<LibraryTitleProps, "title" | "onOpenApp" | "onSearch" | "onLink" | "onForget">) => {
+  const [done, setDone] = useState<string>();
+  const [failed, setFailed] = useState(false);
+  const { by, app } = title.match;
+  if (by === "app" && app) {
+    return (
+      <Surface gap="inline" padding="control">
+        <Text textRole="body">{`${app} decides what this is. Change it in ${app}.`}</Text>
+        {onOpenApp ? (
+          <Line>
+            <Action onPress={onOpenApp} variant="secondary">
+              {`Open ${app}`}
+            </Action>
+          </Line>
+        ) : null}
+      </Surface>
+    );
+  }
+  if (by === "file") {
+    return (
+      <Surface gap="inline" padding="control">
+        <Text textRole="body">
+          This file's name says what it is. Rename it, or change its NFO, to fix it.
+        </Text>
+      </Surface>
+    );
+  }
+  if (done) {
+    return (
+      <Line>
+        <StatusDot label="Done" tone="ok" />
+        <Text textRole="body">{`Done — ${done} is sorted.`}</Text>
+      </Line>
+    );
+  }
+  const answer = (save: Promise<void>, name?: string) => {
+    setFailed(false);
+    save.then(
+      () => name && setDone(name),
+      () => setFailed(true),
+    );
+  };
+  return (
+    <Stack gap="inline">
+      <PickTitle
+        kind={title.kind}
+        onPick={(c) => answer(onLink(c.tmdbId), c.name)}
+        onSearch={onSearch}
+        others={[]}
+      />
+      {failed ? (
+        <Text textRole="body" tone="secondary">
+          Couldn't save your answer. Try again in a moment.
+        </Text>
+      ) : null}
+      {by === "you" ? (
+        <Line>
+          <Action onPress={() => answer(onForget())} variant="ghost">
+            Forget my answer
+          </Action>
+        </Line>
+      ) : null}
+    </Stack>
+  );
+};
+
+type Busy = "update" | "check";
+
+// Update details · Check files again · Wrong title?, as the mock words them. A press waits for its
+// answer; a check that went through says so, and one that failed says to try again.
+const TitleActions = (props: Omit<LibraryTitleProps, "onBack">) => {
+  const { onUpdateDetails, onCheckFiles } = props;
+  const [busy, setBusy] = useState<Busy>();
+  const [checked, setChecked] = useState(false);
+  const [failed, setFailed] = useState<Busy>();
+  const [wrong, setWrong] = useState(false);
+  // A press while one is out is dropped, rather than disabling the buttons: a disabled button
+  // loses the keyboard focus it holds.
+  const run = (which: Busy, act: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(which);
+    setFailed(undefined);
+    act().then(
+      () => {
+        setBusy(undefined);
+        if (which === "check") setChecked(true);
+      },
+      () => {
+        setBusy(undefined);
+        setFailed(which);
+      },
+    );
+  };
+  return (
+    <Stack gap="control">
+      <Line>
+        <Action onPress={() => run("update", onUpdateDetails)} variant="secondary">
+          Update details
+        </Action>
+        <Action onPress={() => run("check", onCheckFiles)} variant="secondary">
+          {checked ? "Checked just now" : "Check files again"}
+        </Action>
+        <Action onPress={() => setWrong(!wrong)} variant="ghost">
+          Wrong title?
+        </Action>
+      </Line>
+      {failed ? (
+        <Text textRole="body" tone="secondary">
+          {failed === "update"
+            ? "Couldn't update the details just now. Try again in a moment."
+            : "Couldn't check the files just now. Try again in a moment."}
+        </Text>
+      ) : null}
+      {wrong ? <WrongTitle {...props} /> : null}
+    </Stack>
+  );
+};
+
+const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
+  const { title } = actions;
   const wide = useWindowWidth() >= SIDE_BY_SIDE;
   const facts = factLine(title);
   return (
@@ -143,7 +270,8 @@ const LibraryTitle = ({ title, onBack }: LibraryTitleProps) => {
           <LibraryPoster art={title.poster} big name={title.name} />
         </Stack>
         <Stack flexBasis={wide ? 0 : undefined} flexGrow={1} gap="control" minWidth={0}>
-          <Text as="h1" textRole="display">
+          {/* A name no one has fixed yet can be a file name with no spaces; it breaks mid-word. */}
+          <Text as="h1" style={{ overflowWrap: "anywhere" }} textRole="display">
             {title.name}
           </Text>
           {facts || title.rating ? (
@@ -162,6 +290,7 @@ const LibraryTitle = ({ title, onBack }: LibraryTitleProps) => {
             </Text>
           ) : null}
           {title.overview ? <Text textRole="body">{title.overview}</Text> : null}
+          <TitleActions {...actions} />
         </Stack>
       </Stack>
 
