@@ -512,7 +512,7 @@ classify() {
       select_gate go
       select_gate go_full
       ;;
-    internal/fillereval/corpus/*)
+    internal/filler/eval/corpus/*)
       known=true
       select_gate contracts
       select_gate go
@@ -545,7 +545,7 @@ classify() {
       select_gate go
       select_gate image
       ;;
-    internal/installationlocation/*.gz|internal/installationlocation/*.json)
+    internal/filler/location/*.gz|internal/filler/location/*.json)
       # Generated runtime indexes are embedded by data.go. They can change location
       # behavior and the production image, but they are not inputs to any native client.
       known=true
@@ -553,7 +553,7 @@ classify() {
       select_gate go
       select_gate image
       ;;
-    internal/broadcaststation/*.gz|internal/broadcaststation/*.json)
+    internal/filler/station/*.gz|internal/filler/station/*.json)
       # The generated station seed is embedded by seed.go and applied by every store open,
       # so it reaches the Postgres store suite as well as the image.
       known=true

@@ -3,8 +3,8 @@ package filler_test
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // #1452: a clip with no source title is named from grounded evidence, in order, and the name
@@ -45,12 +45,12 @@ func TestGroundedName_Ladder(t *testing.T) {
 // and capitalised like a title; every other recorded source shows, slug-shaped or not.
 func TestViewerName_ProvenanceDecides(t *testing.T) {
 	for _, name := range []string{"Widgetmax Ad 1991", "Fizzbolt Summer Sale", "commercial-widgetmax-1991"} {
-		if got := filler.ViewerName(name, clipcatalog.NameFromFilename); got != "" {
+		if got := filler.ViewerName(name, clips.NameFromFilename); got != "" {
 			t.Errorf("ViewerName(%q, filename) = %q, want it withheld", name, got)
 		}
 	}
-	for _, source := range []clipcatalog.NameSource{
-		clipcatalog.NameFromSource, clipcatalog.NameFromSidecar, clipcatalog.NameFromGrounded, clipcatalog.NameFromCurated,
+	for _, source := range []clips.NameSource{
+		clips.NameFromSource, clips.NameFromSidecar, clips.NameFromGrounded, clips.NameFromCurated,
 	} {
 		for _, name := range []string{"Widgetmax Ad 1991", "zx-qt"} {
 			if got := filler.ViewerName(name, source); got != name {
@@ -79,7 +79,7 @@ func TestViewerName_UnknownProvenanceWithholdsFileShapedNames(t *testing.T) {
 		"   ",
 		"",
 	} {
-		for _, unknown := range []clipcatalog.NameSource{clipcatalog.NameFromUnknown, ""} {
+		for _, unknown := range []clips.NameSource{clips.NameFromUnknown, ""} {
 			if got := filler.ViewerName(name, unknown); got != "" {
 				t.Errorf("ViewerName(%q, %q) = %q, want it withheld", name, unknown, got)
 			}
@@ -97,7 +97,7 @@ func TestViewerName_UnknownProvenanceWithholdsFileShapedNames(t *testing.T) {
 		"Dr. Fizz",
 		"Loomarr — We'll be right back",
 	} {
-		if got := filler.ViewerName(name, clipcatalog.NameFromUnknown); got != name {
+		if got := filler.ViewerName(name, clips.NameFromUnknown); got != name {
 			t.Errorf("ViewerName(%q, unknown) = %q, want the curated name unchanged", name, got)
 		}
 	}

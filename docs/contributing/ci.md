@@ -91,7 +91,7 @@ the classifier.
 **Adding a new build input means adding it to the filter in the same PR.**
 
 Three non-obvious entries: the help pages (`docs/get-started.md`, `docs/guides/`,
-`docs/explanation/`) are in the Go filter because they are embedded and the doc-claims test reads them, `internal/installationlocation/` contains generated indexes embedded
+`docs/explanation/`) are in the Go filter because they are embedded and the doc-claims test reads them, `internal/filler/location/` contains generated indexes embedded
 in the backend, and `scripts/` is there because the job executes them.
 
 ### Specialized gate classifier activates one job at a time

@@ -9,19 +9,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
-	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
-	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // recordingSources captures what got registered, and can fail on demand.
 type recordingSources struct {
-	upserted []fillerstore.FillerSource
+	upserted []records.FillerSource
 	err      error
 }
 
@@ -30,27 +30,27 @@ type successfulClipIngestor struct{}
 type rejectingClipIngestor struct{ err error }
 
 type testAcquisitionPlan struct {
-	run func(context.Context) clipfetch.Result
+	run func(context.Context) fetch.Result
 }
 
-func (p testAcquisitionPlan) Run(ctx context.Context) clipfetch.Result { return p.run(ctx) }
-func (testAcquisitionPlan) Release()                                   {}
+func (p testAcquisitionPlan) Run(ctx context.Context) fetch.Result { return p.run(ctx) }
+func (testAcquisitionPlan) Release()                               {}
 
-func (successfulClipIngestor) Run(context.Context, []clipfetch.Source) clipfetch.Result {
-	return clipfetch.Result{Fetched: 1}
+func (successfulClipIngestor) Run(context.Context, []fetch.Source) fetch.Result {
+	return fetch.Result{Fetched: 1}
 }
 
-func (s successfulClipIngestor) Prepare(_ context.Context, sources []clipfetch.Source, _ storagegovernor.Mode) (clipfetch.AcquisitionPlan, error) {
-	return testAcquisitionPlan{run: func(ctx context.Context) clipfetch.Result { return s.Run(ctx, sources) }}, nil
+func (s successfulClipIngestor) Prepare(_ context.Context, sources []fetch.Source, _ storagegovernor.Mode) (fetch.AcquisitionPlan, error) {
+	return testAcquisitionPlan{run: func(ctx context.Context) fetch.Result { return s.Run(ctx, sources) }}, nil
 }
 
-func (r rejectingClipIngestor) Prepare(context.Context, []clipfetch.Source, storagegovernor.Mode) (clipfetch.AcquisitionPlan, error) {
+func (r rejectingClipIngestor) Prepare(context.Context, []fetch.Source, storagegovernor.Mode) (fetch.AcquisitionPlan, error) {
 	return nil, r.err
 }
 
 type recordingClipIngestor struct {
-	sources chan []clipfetch.Source
-	result  clipfetch.Result
+	sources chan []fetch.Source
+	result  fetch.Result
 }
 
 type blockingClipIngestor struct {
@@ -78,24 +78,24 @@ func testInteractiveOperationLauncher(
 	return nil
 }
 
-func (b blockingClipIngestor) Run(ctx context.Context, _ []clipfetch.Source) clipfetch.Result {
+func (b blockingClipIngestor) Run(ctx context.Context, _ []fetch.Source) fetch.Result {
 	close(b.started)
 	<-ctx.Done()
 	close(b.cancelled)
-	return clipfetch.Result{}
+	return fetch.Result{}
 }
 
-func (b blockingClipIngestor) Prepare(_ context.Context, sources []clipfetch.Source, _ storagegovernor.Mode) (clipfetch.AcquisitionPlan, error) {
-	return testAcquisitionPlan{run: func(ctx context.Context) clipfetch.Result { return b.Run(ctx, sources) }}, nil
+func (b blockingClipIngestor) Prepare(_ context.Context, sources []fetch.Source, _ storagegovernor.Mode) (fetch.AcquisitionPlan, error) {
+	return testAcquisitionPlan{run: func(ctx context.Context) fetch.Result { return b.Run(ctx, sources) }}, nil
 }
 
-func (r recordingClipIngestor) Run(_ context.Context, sources []clipfetch.Source) clipfetch.Result {
-	r.sources <- append([]clipfetch.Source(nil), sources...)
+func (r recordingClipIngestor) Run(_ context.Context, sources []fetch.Source) fetch.Result {
+	r.sources <- append([]fetch.Source(nil), sources...)
 	return r.result
 }
 
-func (r recordingClipIngestor) Prepare(_ context.Context, sources []clipfetch.Source, _ storagegovernor.Mode) (clipfetch.AcquisitionPlan, error) {
-	return testAcquisitionPlan{run: func(ctx context.Context) clipfetch.Result { return r.Run(ctx, sources) }}, nil
+func (r recordingClipIngestor) Prepare(_ context.Context, sources []fetch.Source, _ storagegovernor.Mode) (fetch.AcquisitionPlan, error) {
+	return testAcquisitionPlan{run: func(ctx context.Context) fetch.Result { return r.Run(ctx, sources) }}, nil
 }
 
 type recordingAcquisitions struct {
@@ -111,13 +111,13 @@ func (r recordingAcquisitions) UpsertAcquisitionRun(_ context.Context, run fille
 	return nil
 }
 
-func (r *recordingSources) ListFillerSources(context.Context) ([]fillerstore.FillerSource, error) {
+func (r *recordingSources) ListFillerSources(context.Context) ([]records.FillerSource, error) {
 	return r.upserted, nil
 }
-func (r *recordingSources) ListFillerProviders(context.Context) ([]fillerstore.FillerProvider, error) {
-	return []fillerstore.FillerProvider{{Kind: "archive", Enabled: true}, {Kind: "youtube", Enabled: true}}, nil
+func (r *recordingSources) ListFillerProviders(context.Context) ([]records.FillerProvider, error) {
+	return []records.FillerProvider{{Kind: "archive", Enabled: true}, {Kind: "youtube", Enabled: true}}, nil
 }
-func (r *recordingSources) UpsertFillerSource(_ context.Context, s fillerstore.FillerSource) error {
+func (r *recordingSources) UpsertFillerSource(_ context.Context, s records.FillerSource) error {
 	if r.err != nil {
 		return r.err
 	}
@@ -218,7 +218,7 @@ func TestArchiveIDFrom(t *testing.T) {
 // know how long this is".
 func TestDiscoveredStats_OmitsAnItemItLearnedNothingAbout(t *testing.T) {
 	t.Parallel()
-	stats := discoveredStats([]clipfetch.DiscoveredItem{
+	stats := discoveredStats([]fetch.DiscoveredItem{
 		{ID: "probed", DurationMS: 91_090, Height: 960},
 		{ID: "unprobed"},
 		// Partial knowledge is still knowledge: a height with no runtime must survive, or a
@@ -322,8 +322,8 @@ func TestIngest_SuccessCataloguesTheDownloadedFilesImmediately(t *testing.T) {
 func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T) {
 	fixed := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
 	fetched := recordingClipIngestor{
-		sources: make(chan []clipfetch.Source, 1),
-		result:  clipfetch.Result{Fetched: 2, Skipped: 1},
+		sources: make(chan []fetch.Source, 1),
+		result:  fetch.Result{Fetched: 2, Skipped: 1},
 	}
 	runs := make(chan filler.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
@@ -362,7 +362,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 	select {
 	case sources := <-fetched.sources:
 		for _, source := range sources {
-			if source.AcquisitionID != "acq-17" || source.ID != "archive:classic" || source.Kind != clipfetch.Archive {
+			if source.AcquisitionID != "acq-17" || source.ID != "archive:classic" || source.Kind != fetch.Archive {
 				t.Fatalf("download source = %+v, want acquisition and source provenance", source)
 			}
 		}
@@ -422,7 +422,7 @@ func TestIngest_ProviderPauseBlocksDirectDownloaderExecution(t *testing.T) {
 
 func TestIngest_StorageRefusalHappensBeforeDurableQueueMutation(t *testing.T) {
 	runs := make(chan filler.AcquisitionRun, 1)
-	refusal := &clipfetch.CapacityError{Decision: storagegovernor.Decision{
+	refusal := &fetch.CapacityError{Decision: storagegovernor.Decision{
 		Snapshot: storagegovernor.Snapshot{Reason: storagegovernor.ReasonHostReserve},
 	}}
 	a := fillerServiceAdapter{
@@ -447,12 +447,12 @@ func TestIngest_StorageRefusalHappensBeforeDurableQueueMutation(t *testing.T) {
 // want of a registration, and the folder and library are scanned, never fetched.
 func TestFillerSourceProviders_RegisterEveryProviderASourceCanName(t *testing.T) {
 	providers := fillerSourceProviders("yt-dlp", &fakeArchiveCatalog{}, nil, slog.New(slog.DiscardHandler))
-	for _, id := range []sourceprovider.ID{"youtube", "archive"} {
+	for _, id := range []source.ID{"youtube", "archive"} {
 		if _, fetched := providers.Lister(id); !fetched {
 			t.Errorf("provider %q is not registered as fetched", id)
 		}
 	}
-	for _, id := range []sourceprovider.ID{"folder", "library"} {
+	for _, id := range []source.ID{"folder", "library"} {
 		provider, registered := providers.Get(id)
 		if !registered {
 			t.Errorf("provider %q is not registered", id)
@@ -468,16 +468,16 @@ func TestFillerSourceProviders_RegisterEveryProviderASourceCanName(t *testing.T)
 }
 
 // testFillerProviders is the production registry with no network behind it.
-func testFillerProviders() *sourceprovider.Registry {
+func testFillerProviders() *source.Registry {
 	return fillerSourceProviders("", &fakeArchiveCatalog{}, nil, slog.New(slog.DiscardHandler))
 }
 
 // clipfetch cannot import the provider packages (they import it), so it names the two downloaded
 // providers itself; the downloaders are registered under the providers' own IDs.
 func TestClipfetchKindsAreTheProviderIDs(t *testing.T) {
-	if clipfetch.YouTube != youtubeprovider.ID || clipfetch.Archive != archiveprovider.ID {
+	if fetch.YouTube != youtubeprovider.ID || fetch.Archive != archiveprovider.ID {
 		t.Fatalf("clipfetch kinds %q and %q are not the provider IDs %q and %q",
-			clipfetch.YouTube, clipfetch.Archive, youtubeprovider.ID, archiveprovider.ID)
+			fetch.YouTube, fetch.Archive, youtubeprovider.ID, archiveprovider.ID)
 	}
 }
 
@@ -517,24 +517,24 @@ type fakeArchiveCatalog struct {
 	allowed time.Duration
 }
 
-func (f *fakeArchiveCatalog) EnumerateCollection(context.Context, string, int) (clipfetch.DiscoveryResult, error) {
-	var out clipfetch.DiscoveryResult
+func (f *fakeArchiveCatalog) EnumerateCollection(context.Context, string, int) (fetch.DiscoveryResult, error) {
+	var out fetch.DiscoveryResult
 	listed := f.listed
 	if listed == nil {
 		listed = []string{"reel", "spot"}
 	}
 	for _, id := range listed {
-		out.Items = append(out.Items, clipfetch.DiscoveredItem{ID: id})
+		out.Items = append(out.Items, fetch.DiscoveredItem{ID: id})
 	}
 	out.Total = len(out.Items)
 	return out, nil
 }
 
-func (f *fakeArchiveCatalog) SearchCollection(context.Context, string, string, int) (clipfetch.DiscoveryResult, error) {
-	return clipfetch.DiscoveryResult{}, nil
+func (f *fakeArchiveCatalog) SearchCollection(context.Context, string, string, int) (fetch.DiscoveryResult, error) {
+	return fetch.DiscoveryResult{}, nil
 }
 
-func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.DiscoveredItem) {
+func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []fetch.DiscoveredItem) {
 	f.enriched++
 	if deadline, ok := ctx.Deadline(); ok {
 		f.allowed = time.Until(deadline)
@@ -554,17 +554,17 @@ func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.Disco
 func TestArchiveProvider_RuntimesAreReadOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".loomarr-remote-runtimes.json")
 	archive := &fakeArchiveCatalog{runtimes: map[string]int{"reel": 30 * 60 * 1000, "spot": 45 * 1000}, listed: []string{"reel", "spot", "unprobed"}}
-	enumerate := func() map[string]sourceprovider.Item {
+	enumerate := func() map[string]source.Item {
 		t.Helper()
 		// A fresh cache over the same file each time: what a restarted server would see.
 		catalog := cachedArchiveCatalog{Catalog: archive, runtimes: newRemoteRuntimeCache(path, slog.New(slog.DiscardHandler))}
 		provider := archiveprovider.New(archiveprovider.Config{Catalog: catalog, Runtimes: func() bool { return true }})
-		listing, err := provider.List(t.Context(), sourceprovider.Source{ID: "s", URI: "reels_collection"},
-			sourceprovider.ListRequest{Take: 10, List: 10})
+		listing, err := provider.List(t.Context(), source.Source{ID: "s", URI: "reels_collection"},
+			source.ListRequest{Take: 10, List: 10})
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := map[string]sourceprovider.Item{}
+		got := map[string]source.Item{}
 		for _, item := range listing.Items {
 			got[item.ID] = item
 		}
@@ -646,7 +646,7 @@ func TestIngest_RefusesAnEmptyAcquisition(t *testing.T) {
 }
 
 func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
-	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
+	fetched := recordingClipIngestor{sources: make(chan []fetch.Source, 1)}
 	runs := make(chan filler.AcquisitionRun, 3)
 	a := fillerServiceAdapter{
 		fetcher: fetched, acquisitions: recordingAcquisitions{runs: runs}, providers: testFillerProviders(),
@@ -670,7 +670,7 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 		if sources[0].ID != "classic" || sources[1].ID != "holiday" {
 			t.Fatalf("sources = %+v, want per-target registered source ids", sources)
 		}
-		if sources[0].Kind != clipfetch.Archive || sources[1].Kind != clipfetch.YouTube {
+		if sources[0].Kind != fetch.Archive || sources[1].Kind != fetch.YouTube {
 			t.Fatalf("sources = %+v, want registered provider kinds preserved", sources)
 		}
 		if sources[0].AcquisitionID != "acq-17" || sources[1].AcquisitionID != "acq-17" {
@@ -684,13 +684,13 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 // Discovery already knew each item's duration and height; dropping them at the ingest boundary
 // left the storage fallback with nothing to size an unestimable item from (#1394).
 func TestIngestSourceItems_PassesDiscoveryHintsToTheFetcher(t *testing.T) {
-	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
+	fetched := recordingClipIngestor{sources: make(chan []fetch.Source, 1)}
 	a := fillerServiceAdapter{
 		fetcher: fetched, acquisitions: recordingAcquisitions{runs: make(chan filler.AcquisitionRun, 3)}, providers: testFillerProviders(),
 		newID: func() string { return "acq-18" },
 		start: testInteractiveOperationLauncher,
 	}
-	if _, err := a.IngestSourceItems(t.Context(), "archive:ads", "archive", []sourceprovider.Item{
+	if _, err := a.IngestSourceItems(t.Context(), "archive:ads", "archive", []source.Item{
 		{ID: "ad-1", URL: "https://archive.org/details/ad-1", DurationMS: 30_000, Height: 480, Gap: "era:1990-1999"},
 	}); err != nil {
 		t.Fatal(err)

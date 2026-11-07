@@ -140,12 +140,12 @@ var areas = []area{
 			"then admitted or refused; admitted clips are catalogued with their tags and the TV stations " +
 			"they name; and the catalog is assembled into the pods that fill a channel's breaks.",
 		Packages: []string{
-			"filler", "filleradmission", "fillerdefectfloor",
-			"fillerenrichment", "fillereval", "fillerresearch", "fillerscreening",
-			"fillerstore", "fillerstructure", "fillerstructureassessment", "fillerstructuremedia",
-			"fillerstructurewindow", "fillerstructurewindowopenrouter", "clipcatalog", "clipfetch",
-			"taxonomy", "broadcaststation", "sourceprovider", "sourceprovider/archive",
-			"sourceprovider/youtube", "installationlocation",
+			"filler", "filler/admission", "filler/defectfloor",
+			"filler/enrichment", "filler/eval", "filler/research", "filler/screening",
+			"filler/records", "filler/structure", "filler/structure/assessment", "filler/structure/cut",
+			"filler/structure/window", "filler/structure/window/openrouter", "filler/clips", "filler/fetch",
+			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
+			"filler/source/youtube", "filler/location",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +
@@ -251,15 +251,15 @@ var flows = []flow{
 	},
 	{
 		Title: "From a filler source to a break",
-		Text: "An operator registers a source; `sourceprovider` lists what it offers, with " +
-			"`sourceprovider/youtube` and `sourceprovider/archive` as the remote kinds. `clipfetch` " +
+		Text: "An operator registers a source; `filler/source` lists what it offers, with " +
+			"`filler/source/youtube` and `filler/source/archive` as the remote kinds. `filler/fetch` " +
 			"downloads each pulled clip into the drop folder, and `filler` drains that folder into the " +
-			"clip folder, while `fillerstore` records the sources, pulls and acquisition runs. Each clip " +
-			"is then checked: `fillerscreening` for what it says and shows, and whether it is safe to air, " +
-			"`fillerstructureassessment` for long reels that need splitting, and `fillerdefectfloor` " +
-			"for picture and sound defects; `filleradmission` is the certification tooling that weighs " +
+			"clip folder, while `filler/records` records the sources, pulls and acquisition runs. Each clip " +
+			"is then checked: `filler/screening` for what it says and shows, and whether it is safe to air, " +
+			"`filler/structure/assessment` for long reels that need splitting, and `filler/defectfloor` " +
+			"for picture and sound defects; `filler/admission` is the certification tooling that weighs " +
 			"that evidence into an admit or refuse decision. A clip that passes its checks enters the catalog, whose " +
-			"values are `clipcatalog`, whose tags are `taxonomy`, and which `store/catalogstore` " +
+			"values are `filler/clips`, whose tags are `filler/taxonomy`, and which `store/catalogstore` " +
 			"persists. When `schedule` leaves a break in a channel's programming, the `channels` engine " +
 			"asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.",
 	},

@@ -394,7 +394,7 @@ An enabled source is checked on its effective policy and new items download with
   - Clips queued but not yet through the pipeline do not count toward the target. A pass
     six hours later can queue the same shortfall again, so a slow pipeline can overshoot by up
     to one pass.
-  - To serve this, airings are kept whole for eight weeks (`clipcatalog.AiringHistoryAge`), not
+  - To serve this, airings are kept whole for eight weeks (`clips.AiringHistoryAge`), not
     one day; beyond that a clip keeps its newest four.
   - A short pass also **searches each enabled archive.org source for nearby stations** (#2066).
     The search covers the call signs of stations in a place's radius that were held during a short
@@ -440,7 +440,7 @@ Unattended fetching can fill a disk, so it is bounded by limits that fail toward
   too long, live, upcoming, private, unavailable, incomplete).
 - **Archive.org and YouTube are peers.** Each registered remote is enumerated by its stored `kind`
   (Archive's bounded collection API; yt-dlp flat-playlist listing) through enumeration and download.
-  Listing belongs to the provider (`internal/sourceprovider`: its window, cursor, duration-cut
+  Listing belongs to the provider (`internal/filler/source`: its window, cursor, duration-cut
   choice, station searches and metadata screen); the fetch pass owns the budget, lease, shared
   rejection, dedupe, selection and queueing. A source whose provider is not registered is inert:
   a scheduled pass skips it, a manual check refuses it, and the row is kept. The folder and the

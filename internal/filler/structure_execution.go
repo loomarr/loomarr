@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 // AssessProposalStructure resolves and re-verifies the proposal's exact retained source, executes
@@ -33,7 +33,7 @@ func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitP
 	if err != nil {
 		return SplitProposal{}, fmt.Errorf("assess complete proposal timeline: %w", err)
 	}
-	if err := fillerstructure.ValidateArtifact(artifact); err != nil ||
+	if err := structure.ValidateArtifact(artifact); err != nil ||
 		artifact.Decision.Source.SHA256 != source.SHA256 || artifact.Decision.Source.Bytes != source.Bytes || artifact.Decision.Source.DurationMS != source.DurationMs {
 		return SplitProposal{}, fmt.Errorf("assess proposal structure: decision is invalid or source-drifted")
 	}
@@ -41,7 +41,7 @@ func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitP
 	// A confirmed decision whose assessors disputed a filler subtype has no role to project until
 	// the final-child role module owns roles (#1069). Keep it like a held one, so the paid
 	// assessment is retained rather than repeated, and the detector plan stays the reviewable one.
-	if artifact.Decision.Status == fillerstructure.StatusConfirmed && everyIntervalHasRole(artifact.Decision) {
+	if artifact.Decision.Status == structure.StatusConfirmed && everyIntervalHasRole(artifact.Decision) {
 		assessment, projectionErr := ProjectConfirmedStructureDecision(source, proposal.Structure, artifact)
 		if projectionErr != nil {
 			return SplitProposal{}, projectionErr
@@ -57,7 +57,7 @@ func (sp *Splitter) AssessProposalStructure(ctx context.Context, proposal SplitP
 	return updated, nil
 }
 
-func everyIntervalHasRole(decision fillerstructure.Decision) bool {
+func everyIntervalHasRole(decision structure.Decision) bool {
 	for _, segment := range decision.Segments {
 		if segment.Role == "" {
 			return false

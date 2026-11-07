@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 // Compilation splitting (§10, V34) — domain types and the PURE segment logic.
@@ -426,7 +426,7 @@ type SplitProposal struct {
 	Structure *SourceStructureAssessment `json:"-"`
 	// StructureDecision retains the independent complete-video assessments and their replayable
 	// provider-neutral reduction. It cannot authorize publication by itself.
-	StructureDecision *fillerstructure.Artifact `json:"-"`
+	StructureDecision *structure.Artifact `json:"-"`
 	// Spawned remembers children already produced by partial auto-confirm. It is private durable
 	// state, not review UI: final confirmation needs the whole new generation so it can retire
 	// superseded children without also retiring cuts produced on an earlier pass.

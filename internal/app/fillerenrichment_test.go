@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -104,8 +104,8 @@ func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) 
 		t.Fatal(err)
 	}
 	observer := &recordingTranscriptObserver{}
-	executor := fillerMediaExecutor{store: st, transcript: observer, kind: fillerenrichment.CapabilityTranscript}
-	result, err := executor.Run(t.Context(), fillerenrichment.Candidate{ClipHash: clip.Hash})
+	executor := fillerMediaExecutor{store: st, transcript: observer, kind: enrichment.CapabilityTranscript}
+	result, err := executor.Run(t.Context(), enrichment.Candidate{ClipHash: clip.Hash})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,14 +132,14 @@ func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAns
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
-	for _, state := range []fillerenrichment.State{
-		{ClipHash: clip.Hash, Axis: fillerenrichment.AxisBrand, Status: fillerenrichment.StatusComplete,
-			Value: fillerenrichment.Value{Text: "Operator Brand"}},
-		{ClipHash: clip.Hash, Axis: fillerenrichment.AxisEra, Status: fillerenrichment.StatusComplete,
-			Value: fillerenrichment.Value{Year: 1987}},
-		{ClipHash: clip.Hash, Axis: fillerenrichment.AxisProduct, Status: fillerenrichment.StatusComplete},
+	for _, state := range []enrichment.State{
+		{ClipHash: clip.Hash, Axis: enrichment.AxisBrand, Status: enrichment.StatusComplete,
+			Value: enrichment.Value{Text: "Operator Brand"}},
+		{ClipHash: clip.Hash, Axis: enrichment.AxisEra, Status: enrichment.StatusComplete,
+			Value: enrichment.Value{Year: 1987}},
+		{ClipHash: clip.Hash, Axis: enrichment.AxisProduct, Status: enrichment.StatusComplete},
 	} {
-		state.Evidence = fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceOperator,
+		state.Evidence = enrichment.Evidence{Kind: enrichment.EvidenceOperator,
 			Reference: "operator", Confidence: 100, Producer: "operator", ProducerVersion: "1", ObservedAt: at}
 		if _, changed, err := st.ApplyFillerEnrichment(t.Context(), state, at); err != nil || !changed {
 			t.Fatalf("apply operator state = changed %v, err %v", changed, err)
@@ -148,15 +148,15 @@ func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAns
 	observer := &recordingVisionObserver{observation: filler.VisionObservation{
 		Brand: "Model Brand", VisibleText: "MODEL BRAND 1999 CANDY", Era: 1999, Tags: []string{"candy"},
 	}}
-	runner := fillerenrichment.NewCapabilityRunner(
-		fillerenrichment.CapabilityVision,
+	runner := enrichment.NewCapabilityRunner(
+		enrichment.CapabilityVision,
 		fillerEnrichmentRepository{st: st},
-		func() fillerenrichment.CapabilitySelection {
-			return fillerenrichment.CapabilitySelection{
+		func() enrichment.CapabilitySelection {
+			return enrichment.CapabilitySelection{
 				Available: true, Producer: "vision:test", ProducerVersion: "vision-v1:model",
 			}
 		},
-		fillerMediaExecutor{store: st, vision: observer, kind: fillerenrichment.CapabilityVision}.Run,
+		fillerMediaExecutor{store: st, vision: observer, kind: enrichment.CapabilityVision}.Run,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())
@@ -183,7 +183,7 @@ func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAns
 func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallationLocation(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_300, 0).UTC()
-	source := fillerstore.NewFillerSource("youtube:inherited", "youtube", "https://youtube.example/channel",
+	source := records.NewFillerSource("youtube:inherited", "youtube", "https://youtube.example/channel",
 		"Inherited source", at)
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 	files := fstest.MapFS{
 		"inherited-geography.info.json": {Data: []byte(`{"title":"Local advert","loomarr":{"sourceId":"youtube:inherited"}}`)},
 	}
-	runner := fillerenrichment.NewRunner(
+	runner := enrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
 		fillerEnrichmentSignals{store: st, files: files}.Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
@@ -219,7 +219,7 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_400, 0).UTC()
-	source := fillerstore.NewFillerSource("youtube:regional", "youtube", "https://youtube.example/channel",
+	source := records.NewFillerSource("youtube:regional", "youtube", "https://youtube.example/channel",
 		"Regional source", at)
 	source.Geography = filler.Geography{Country: "GB"}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
@@ -235,7 +235,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	files := fstest.MapFS{
 		"explicit-geography.info.json": {Data: []byte(`{"title":"Regional advert","loomarr":{"sourceId":"youtube:regional"}}`)},
 	}
-	runner := fillerenrichment.NewRunner(
+	runner := enrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
 		fillerEnrichmentSignals{store: st, files: files}.Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
@@ -267,9 +267,9 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
-	research := fillerenrichment.State{ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography, Status: fillerenrichment.StatusComplete,
-		Value: fillerenrichment.Value{Geography: fillerenrichment.Geography{Scope: "national", Country: "US"}},
-		Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceInference, Reference: "context.report:context-stack:citations:1",
+	research := enrichment.State{ClipHash: clip.Hash, Axis: enrichment.AxisGeography, Status: enrichment.StatusComplete,
+		Value: enrichment.Value{Geography: enrichment.Geography{Scope: "national", Country: "US"}},
+		Evidence: enrichment.Evidence{Kind: enrichment.EvidenceInference, Reference: "context.report:context-stack:citations:1",
 			Confidence: 80, Producer: "context-model:test", ProducerVersion: "filler-context-v2", ObservedAt: at}}
 	if _, changed, err := st.ApplyFillerEnrichment(t.Context(), research, at); err != nil || !changed {
 		t.Fatalf("apply research = changed %v, err %v", changed, err)
@@ -278,7 +278,7 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 		t.Fatalf("precondition: research projected %+v, want national", got.Clip)
 	}
 
-	runner := fillerenrichment.NewRunner(
+	runner := enrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
 		fillerEnrichmentSignals{store: st, files: fstest.MapFS{}, stations: &stationDirectory{list: st.ListBroadcastStations}}.Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
@@ -310,10 +310,10 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 		t.Fatal(err)
 	}
 	signals := fillerEnrichmentSignals{store: st, files: fstest.MapFS{}}
-	runner := fillerenrichment.NewRunner(fillerEnrichmentRepository{st: st}, signals.Load,
+	runner := enrichment.NewRunner(fillerEnrichmentRepository{st: st}, signals.Load,
 		func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
-	coordinator := fillerenrichment.NewCoordinator(runner, fillerEnrichmentRepository{st: st},
-		func() fillerenrichment.TextSelection { return fillerenrichment.TextSelection{} },
+	coordinator := enrichment.NewCoordinator(runner, fillerEnrichmentRepository{st: st},
+		func() enrichment.TextSelection { return enrichment.TextSelection{} },
 		signals.Load, func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
 	driver := newFillerPipelineDriver(nil, coordinator, nil)
 	driver.prepare = func(context.Context) (filler.PipelineResult, error) {
@@ -322,17 +322,17 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 	if err := driver.Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	candidates, err := st.ListFillerEnrichmentCandidates(t.Context(), fillerenrichment.DeterministicProducer,
-		fillerenrichment.DeterministicProducerVersion, fillerenrichment.ControlledTaxonomyVersion, 10)
+	candidates, err := st.ListFillerEnrichmentCandidates(t.Context(), enrichment.DeterministicProducer,
+		enrichment.DeterministicProducerVersion, enrichment.ControlledTaxonomyVersion, 10)
 	if err != nil || len(candidates) != 0 {
 		t.Fatalf("clip still lacks a deterministic pass: %+v, err %v", candidates, err)
 	}
 }
 
 // geographyFixture registers one archive source and one break-body clip fetched from it.
-func geographyFixture(t *testing.T, st fillerstore.Store, at time.Time, country, title string) (catalogstore.Clip, fstest.MapFS) {
+func geographyFixture(t *testing.T, st records.Store, at time.Time, country, title string) (catalogstore.Clip, fstest.MapFS) {
 	t.Helper()
-	source := fillerstore.NewFillerSource("archive:geo", "archive", "archive.org/details/commercials", "Archive source", at)
+	source := records.NewFillerSource("archive:geo", "archive", "archive.org/details/commercials", "Archive source", at)
 	source.Geography = filler.Geography{Country: country}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
@@ -350,9 +350,9 @@ func geographyFixture(t *testing.T, st fillerstore.Store, at time.Time, country,
 	return clip, files
 }
 
-func runDeterministic(t *testing.T, st fillerstore.Store, files fstest.MapFS, at time.Time) {
+func runDeterministic(t *testing.T, st records.Store, files fstest.MapFS, at time.Time) {
 	t.Helper()
-	runner := fillerenrichment.NewRunner(fillerEnrichmentRepository{st: st},
+	runner := enrichment.NewRunner(fillerEnrichmentRepository{st: st},
 		fillerEnrichmentSignals{store: st, files: files}.Load,
 		func() int { return 5 }, func() time.Time { return at })
 	if result, err := runner.Run(t.Context()); err != nil || result.Considered != 1 {
@@ -430,15 +430,15 @@ func TestFillerEnrichmentRetractsEarlierHomeCountryStamp(t *testing.T) {
 	at := time.Unix(1_700_000_500, 0).UTC()
 	clip, files := geographyFixture(t, st, at, "", "Hollowbrook IPA commercial")
 	stampedAt := at.Add(time.Minute)
-	if _, err := st.ApplyFillerEnrichmentPass(t.Context(), fillerenrichment.Pass{
-		ClipHash: clip.Hash, Producer: fillerenrichment.DeterministicProducer, ProducerVersion: "3",
-		TaxonomyVersion: fillerenrichment.ControlledTaxonomyVersion, CompletedAt: stampedAt,
-		States: []fillerenrichment.State{{ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography,
-			Status: fillerenrichment.StatusComplete,
-			Value:  fillerenrichment.Value{Geography: fillerenrichment.Geography{Scope: "national", Country: "US"}},
-			Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceSourceDefault,
+	if _, err := st.ApplyFillerEnrichmentPass(t.Context(), enrichment.Pass{
+		ClipHash: clip.Hash, Producer: enrichment.DeterministicProducer, ProducerVersion: "3",
+		TaxonomyVersion: enrichment.ControlledTaxonomyVersion, CompletedAt: stampedAt,
+		States: []enrichment.State{{ClipHash: clip.Hash, Axis: enrichment.AxisGeography,
+			Status: enrichment.StatusComplete,
+			Value:  enrichment.Value{Geography: enrichment.Geography{Scope: "national", Country: "US"}},
+			Evidence: enrichment.Evidence{Kind: enrichment.EvidenceSourceDefault,
 				Reference: "registered_source:archive:geo", Confidence: 100,
-				Producer: fillerenrichment.DeterministicProducer, ProducerVersion: "3", ObservedAt: stampedAt}}},
+				Producer: enrichment.DeterministicProducer, ProducerVersion: "3", ObservedAt: stampedAt}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +458,7 @@ func TestFillerEnrichmentRetractsEarlierHomeCountryStamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, state := range states {
-		if state.Axis == fillerenrichment.AxisGeography && state.Status != fillerenrichment.StatusUnsupported {
+		if state.Axis == enrichment.AxisGeography && state.Status != enrichment.StatusUnsupported {
 			t.Fatalf("geography state after retraction = %+v, want unsupported", state)
 		}
 	}
@@ -469,12 +469,12 @@ func TestFillerEnrichmentWithdrawalKeepsOtherEvidence(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_500, 0).UTC()
 	clip, files := geographyFixture(t, st, at, "", "Tumbleworths commercial")
-	if _, err := st.ApplyFillerEnrichmentPass(t.Context(), fillerenrichment.Pass{
+	if _, err := st.ApplyFillerEnrichmentPass(t.Context(), enrichment.Pass{
 		ClipHash: clip.Hash, Producer: "vision", ProducerVersion: "1", CompletedAt: at,
-		States: []fillerenrichment.State{{ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography,
-			Status: fillerenrichment.StatusComplete,
-			Value:  fillerenrichment.Value{Geography: fillerenrichment.Geography{Scope: "national", Country: "GB"}},
-			Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceContent, Reference: "frame.visible_text",
+		States: []enrichment.State{{ClipHash: clip.Hash, Axis: enrichment.AxisGeography,
+			Status: enrichment.StatusComplete,
+			Value:  enrichment.Value{Geography: enrichment.Geography{Scope: "national", Country: "GB"}},
+			Evidence: enrichment.Evidence{Kind: enrichment.EvidenceContent, Reference: "frame.visible_text",
 				Confidence: 100, Producer: "vision", ProducerVersion: "1", ObservedAt: at}}},
 	}); err != nil {
 		t.Fatal(err)

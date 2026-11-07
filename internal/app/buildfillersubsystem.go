@@ -13,16 +13,19 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/jobs"
@@ -31,22 +34,19 @@ import (
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
-	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
-	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 type fillerBuild struct {
 	service  api.FillerService
-	defects  *fillerdefectfloor.DefectReports
+	defects  *defectfloor.DefectReports
 	preview  api.PodPreviewer
 	taxonomy api.TaxonomyEditor
 	research api.FillerResearchService
 	// providers is every provider a filler source can name; the API publishes it and the fetcher
 	// and the service adapter dispatch through it.
-	providers *sourceprovider.Registry
+	providers *source.Registry
 	// intakeLanguages is the language gate's live wanted set, for split review to compare against.
 	intakeLanguages func(context.Context) (string, error)
 }
@@ -61,7 +61,7 @@ func compilationGate(set resolved) filler.CompilationGate {
 }
 
 func buildFillerSubsystem(
-	st fillerstore.Store,
+	st records.Store,
 	set resolved,
 	layout filler.Layout,
 	log *slog.Logger,
@@ -86,7 +86,7 @@ func buildFillerSubsystem(
 	}
 	result.research = newFillerResearchSettingsAdapter(st, set, metricRecorder)
 	result.intakeLanguages = intakeLanguages(st, set)
-	result.defects = fillerdefectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
+	result.defects = defectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, time.Now)
 	// Background acquisition workers are process-owned in the single-replica beta. Any queued or
 	// running rows visible before this process accepts requests belonged to the previous process
 	// and can no longer complete; close them instead of promising work that does not exist.
@@ -121,7 +121,7 @@ func buildFillerSubsystem(
 		}
 	}
 	artifactRecoveryCtx, artifactRecoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	if recovered, err := clipfetch.RecoverAcquisitionArtifacts(artifactRecoveryCtx, layout.WatchDir(), layout.ClipDir(), st, time.Now); err != nil {
+	if recovered, err := fetch.RecoverAcquisitionArtifacts(artifactRecoveryCtx, layout.WatchDir(), layout.ClipDir(), st, time.Now); err != nil {
 		log.Warn("could not recover filler acquisition artifacts", "err", err)
 	} else if recovered.Published > 0 || recovered.Repair > 0 || recovered.Pending > 0 {
 		log.Info("recovered filler acquisition artifacts",
@@ -143,7 +143,7 @@ func buildFillerSubsystem(
 		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
 	}
 	providers := fillerSourceProviders(ytDlpPath,
-		cachedArchiveCatalog{Catalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
+		cachedArchiveCatalog{Catalog: fetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
 		// The compilation gate can only hold back a runtime it knows (#1773).
 		func() bool { return !settings.FillerAcquisitionCompilations.Get(set) }, log)
 	result.providers = providers
@@ -157,7 +157,7 @@ func buildFillerSubsystem(
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st, wake: wake},
 		storage: storageGovernor, storagePath: layout.ClipDir(),
 		storageAutomatic: func() bool { return settings.FillerStorageLibraryBudgetGb.Get(set) == 0 },
-		storageCleanup:   clipfetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
+		storageCleanup:   fetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
 	}
 
 	pods := buildPodAdapter(st, set, calendar, log).WithMetrics(metricRecorder)
@@ -177,9 +177,9 @@ func buildFillerSubsystem(
 	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
 	judgeVision := &hotVisionProvider{set: set, log: log, metrics: metricRecorder}
 	defectTools := buildFillerMediaTools(set, metricRecorder)
-	defectJudge := fillerdefectfloor.NewVisionDefectJudge(judgeVision, defectTools,
+	defectJudge := defectfloor.NewVisionDefectJudge(judgeVision, defectTools,
 		fillerDefectJudgeLedger{st: st, set: set}, judgeVision.defectJudgeEndpoint, time.Now, log)
-	defectFloor := fillerdefectfloor.NewDefectFloor(
+	defectFloor := defectfloor.NewDefectFloor(
 		fillerDefectStoreAdapter{st}, filler.FFprobeNextTo(ffmpegPath),
 		func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error) {
 			return mediatools.MeasureDefects(ctx, ffmpegPath, file, width, height, hasAudio)
@@ -193,78 +193,78 @@ func buildFillerSubsystem(
 		defectFloor.CheckReplacement)
 	stations := &stationDirectory{list: st.ListBroadcastStations}
 	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
-	enrichment := fillerenrichment.NewRunner(
+	enrichmentRunner := enrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
 		enrichmentSignals.Load,
 		func() int { return settings.FillerPipelineMaxClips.Get(set) }, time.Now,
 	)
-	enrichmentCoordinator := fillerenrichment.NewCoordinator(
-		enrichment, fillerEnrichmentRepository{st: st},
-		func() fillerenrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
+	enrichmentCoordinator := enrichment.NewCoordinator(
+		enrichmentRunner, fillerEnrichmentRepository{st: st},
+		func() enrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
 		enrichmentSignals.Load,
 		func() int { return settings.FillerPipelineMaxClips.Get(set) }, time.Now,
 	).WithCapabilities(
-		fillerenrichment.NewCapabilityRunner(
-			fillerenrichment.CapabilityTranscript, fillerEnrichmentRepository{st: st},
-			func() fillerenrichment.CapabilitySelection { return activeFillerTranscriptCapability(set) },
+		enrichment.NewCapabilityRunner(
+			enrichment.CapabilityTranscript, fillerEnrichmentRepository{st: st},
+			func() enrichment.CapabilitySelection { return activeFillerTranscriptCapability(set) },
 			fillerMediaExecutor{store: st, transcript: transcribeStage,
-				kind: fillerenrichment.CapabilityTranscript}.Run,
+				kind: enrichment.CapabilityTranscript}.Run,
 			func() int { return settings.FillerPipelineMaxWhisper.Get(set) }, time.Now,
 		),
-		fillerenrichment.NewCapabilityRunner(
-			fillerenrichment.CapabilityVision, fillerEnrichmentRepository{st: st},
-			func() fillerenrichment.CapabilitySelection { return activeFillerVisionCapability(set) },
+		enrichment.NewCapabilityRunner(
+			enrichment.CapabilityVision, fillerEnrichmentRepository{st: st},
+			func() enrichment.CapabilitySelection { return activeFillerVisionCapability(set) },
 			fillerMediaExecutor{store: st, vision: visionStage,
-				kind: fillerenrichment.CapabilityVision}.Run,
+				kind: enrichment.CapabilityVision}.Run,
 			func() int { return settings.FillerPipelineMaxVision.Get(set) }, time.Now,
 		),
 	)
 	selection := activeFillerTextSelection(set, metricRecorder)
-	var researchRunner *fillerresearch.Runner
+	var researchRunner *research.Runner
 	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
 		const researchUserAgent = "Loomarr/1.0 (https://github.com/loomarr/loomarr)"
 		structuredClient := httpx.NewNamedObserved(httpx.TargetFillerStructuredResearch, httpx.TimeoutReference, metricRecorder)
-		wiki, wikiErr := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
+		wiki, wikiErr := research.NewMediaWiki(research.MediaWikiConfig{
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
-		wikidata, wikidataErr := fillerresearch.NewWikidata(fillerresearch.WikidataConfig{
+		wikidata, wikidataErr := research.NewWikidata(research.WikidataConfig{
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
-		archive, archiveErr := fillerresearch.NewArchive(fillerresearch.ArchiveConfig{
+		archive, archiveErr := research.NewArchive(research.ArchiveConfig{
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
-		loc, locErr := fillerresearch.NewLOC(fillerresearch.LOCConfig{
+		loc, locErr := research.NewLOC(research.LOCConfig{
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
-		wikidataSource, wikidataSwitchErr := fillerresearch.NewSwitchable(wikidata,
+		wikidataSource, wikidataSwitchErr := research.NewSwitchable(wikidata,
 			func() bool { return settings.FillerResearchWikidataEnabled.Get(set) })
-		wikipediaSource, wikipediaSwitchErr := fillerresearch.NewSwitchable(wiki,
+		wikipediaSource, wikipediaSwitchErr := research.NewSwitchable(wiki,
 			func() bool { return settings.FillerResearchWikipediaEnabled.Get(set) })
-		archiveSource, archiveSwitchErr := fillerresearch.NewSwitchable(archive,
+		archiveSource, archiveSwitchErr := research.NewSwitchable(archive,
 			func() bool { return settings.FillerResearchArchiveEnabled.Get(set) })
-		locSource, locSwitchErr := fillerresearch.NewSwitchable(loc,
+		locSource, locSwitchErr := research.NewSwitchable(loc,
 			func() bool { return settings.FillerResearchLocEnabled.Get(set) })
-		retriever, retrievalErr := fillerresearch.NewFederated(
+		retriever, retrievalErr := research.NewFederated(
 			wikidataSource, wikipediaSource, archiveSource, locSource,
 		)
 		if err := errors.Join(wikiErr, wikidataErr, archiveErr, locErr, wikidataSwitchErr,
 			wikipediaSwitchErr, archiveSwitchErr, locSwitchErr, retrievalErr); err != nil {
 			log.Warn("could not construct filler context retrieval", "err", err)
 		} else {
-			web := fillerresearch.NewWeb(func() fillerresearch.WebConfig {
-				return fillerresearch.WebConfig{
-					Provider:     fillerresearch.WebProvider(settings.FillerResearchWebProvider.Get(set)),
+			web := research.NewWeb(func() research.WebConfig {
+				return research.WebConfig{
+					Provider:     research.WebProvider(settings.FillerResearchWebProvider.Get(set)),
 					BraveAPIKey:  settings.FillerResearchBraveAPIKey.Get(set),
 					SearXNGURL:   settings.FillerResearchSearxngURL.Get(set),
 					MonthlyLimit: settings.FillerResearchMonthlyLimit.Get(set),
 				}
-			}, st, fillerresearch.WebOptions{
+			}, st, research.WebOptions{
 				Client: httpx.NewNamedObserved(httpx.TargetFillerWebSearch, httpx.TimeoutReference, metricRecorder),
 				Now:    time.Now,
 			})
-			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
+			researcher := research.New(retriever, selection.Provider, selection.ProviderName,
 				selection.Model, time.Now).WithFallback(web).WithStations(stations.resolveDuring(log))
-			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
+			researchRunner = research.NewRunner(fillerResearchRepository{st: st}, researcher,
 				fillerResearchSignals{files: layout.FS()}.Load,
 				func() int {
 					structuredEnabled := settings.FillerResearchWikidataEnabled.Get(set) ||
@@ -361,7 +361,7 @@ func buildFillerSubsystem(
 		}
 		return gaps, nil
 	})
-	autoFetch.WithOpenSearch(openArchiveSearch{archive: clipfetch.NewArchiveDownloader(), channels: st,
+	autoFetch.WithOpenSearch(openArchiveSearch{archive: fetch.NewArchiveDownloader(), channels: st,
 		policy: placePolicy, stations: stations, languages: result.intakeLanguages})
 	adapter.autoFetch = autoFetch
 	result.service = adapter
@@ -377,18 +377,18 @@ func buildFillerSubsystem(
 // order the source list shows them in.
 func fillerSourceProviders(
 	ytDlpPath string, archiveCatalog archiveprovider.Catalog, archiveRuntimes func() bool, log *slog.Logger,
-) *sourceprovider.Registry {
-	youtube := youtubeprovider.New(youtubeprovider.YtDlp(clipfetch.NewYouTubeEnumerator(ytDlpPath)))
+) *source.Registry {
+	youtube := youtubeprovider.New(youtubeprovider.YtDlp(fetch.NewYouTubeEnumerator(ytDlpPath)))
 	if ytDlpPath != "" {
-		youtube.WithFinder(clipfetch.NewYouTubeSourceFinder(ytDlpPath))
+		youtube.WithFinder(fetch.NewYouTubeSourceFinder(ytDlpPath))
 	}
-	providers, err := sourceprovider.NewRegistry(
+	providers, err := source.NewRegistry(
 		archiveprovider.New(archiveprovider.Config{Catalog: archiveCatalog, Runtimes: archiveRuntimes, Log: log}),
 		youtube,
 		// Library before Folder: the add form offers local providers in registry order, and a
 		// media-server library is the common case.
-		sourceprovider.Library(),
-		sourceprovider.Folder(),
+		source.Library(),
+		source.Folder(),
 	)
 	if err != nil {
 		// The IDs are fixed above, so this is a programming error, never an installation's.
@@ -399,7 +399,7 @@ func fillerSourceProviders(
 
 func fillerResearchRunLimit(enabled, structuredEnabled bool, webProvider string, pipelineLimit int) int {
 	provider := strings.TrimSpace(webProvider)
-	if !enabled || (!structuredEnabled && (provider == "" || provider == string(fillerresearch.WebProviderNone))) {
+	if !enabled || (!structuredEnabled && (provider == "" || provider == string(research.WebProviderNone))) {
 		return 0
 	}
 	return max(0, pipelineLimit)

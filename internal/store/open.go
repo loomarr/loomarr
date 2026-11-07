@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
+	"github.com/loomarr/loomarr/internal/filler/station"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // seedAfterMigrate runs idempotent boot seeds that must live in Go rather than SQL (the taxonomy, so
@@ -31,7 +31,7 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 	if err := catalogstore.HealUndatedHolidays(ctx, s.catalogCluster, now); err != nil {
 		return err
 	}
-	if err := catalogstore.ConvergeBroadcastStationSeed(ctx, s.catalogCluster, broadcaststation.SeedRevisions(), now); err != nil {
+	if err := catalogstore.ConvergeBroadcastStationSeed(ctx, s.catalogCluster, station.SeedRevisions(), now); err != nil {
 		return err
 	}
 	// ⚠ Rebuild every taxonomy-derived projection on open, unlike the seed's empty-guard. This is the

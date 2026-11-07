@@ -3,7 +3,7 @@ package filler
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 type StructureAssessmentSource struct {
@@ -14,5 +14,5 @@ type StructureAssessmentSource struct {
 // CompleteTimelineStructureDecisioner is the split stage's deep assessment interface. The
 // implementation owns independent execution, evidence persistence, and deterministic reduction.
 type CompleteTimelineStructureDecisioner interface {
-	Assess(context.Context, StructureAssessmentSource) (fillerstructure.Artifact, error)
+	Assess(context.Context, StructureAssessmentSource) (structure.Artifact, error)
 }

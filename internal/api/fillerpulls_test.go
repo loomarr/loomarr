@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
 type pullBody struct {
@@ -51,10 +51,10 @@ func locatedInUS(key string) string {
 	return map[string]string{"filler.home_country": "US"}[key]
 }
 
-func seedSource(t *testing.T, st fillerstore.Store, id, uri string, enabled bool) {
+func seedSource(t *testing.T, st records.Store, id, uri string, enabled bool) {
 	t.Helper()
 	ctx := context.Background()
-	src := fillerstore.NewFillerSource(id, "archive", uri, id, time.Now().UTC())
+	src := records.NewFillerSource(id, "archive", uri, id, time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func seedSource(t *testing.T, st fillerstore.Store, id, uri string, enabled bool
 // seedPull persists a pending pull directly, bypassing the removed propose-filler-pull endpoint
 // (#1743): nothing calls it, so these tests seed the queue the way a pre-V66 or operator-composed
 // pull would already be stored, and exercise approve/dismiss — the operations that remain.
-func seedPull(t *testing.T, st fillerstore.Store, id string, plan []filler.PullPlanRow) filler.Pull {
+func seedPull(t *testing.T, st records.Store, id string, plan []filler.PullPlanRow) filler.Pull {
 	t.Helper()
 	p := filler.Pull{ID: id, Status: filler.PullPending, CreatedAt: time.Now().UTC(), Plan: plan}
 	if err := st.UpsertPull(t.Context(), p); err != nil {

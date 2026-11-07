@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/clipfetch"
-	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 )
 
 // remoteRuntimesFile is the runtime cache's file inside the filler folder. Dot-prefixed like the
@@ -132,8 +132,8 @@ type cachedArchiveCatalog struct {
 	runtimes *remoteRuntimeCache
 }
 
-func (c cachedArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.DiscoveredItem) {
-	var unknown []clipfetch.DiscoveredItem
+func (c cachedArchiveCatalog) Enrich(ctx context.Context, items []fetch.DiscoveredItem) {
+	var unknown []fetch.DiscoveredItem
 	var at []int
 	for i := range items {
 		if r, ok := c.runtimes.lookup(string(archiveprovider.ID), items[i].ID); ok {

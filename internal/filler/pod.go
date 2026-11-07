@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -18,7 +18,7 @@ type Exposure struct {
 }
 
 // Airing is one watched airing of a clip on any channel (see clipcatalog.Airing).
-type Airing = clipcatalog.Airing
+type Airing = clips.Airing
 
 // AiringHistory is the household's stored airings and how long one takes to settle: an airing
 // recorded less than Settle before a break starts may have been recorded after that break's first
@@ -97,7 +97,7 @@ type PodEntry struct {
 	Name            string
 	// NameSource is the catalogue provenance of Name (#1988): viewer routes show Name only when
 	// it is not a filename (ViewerName).
-	NameSource     clipcatalog.NameSource
+	NameSource     clips.NameSource
 	Kind           Kind
 	DurationMs     int64
 	IsFallbackCard bool // the embedded default bumper card (bottom of the ladder)
@@ -234,7 +234,7 @@ type Policy struct {
 // ladder exists on day one. Operators can replace it per channel.
 var FallbackCard = PodEntry{
 	Name:           "Loomarr — We'll be right back",
-	NameSource:     clipcatalog.NameFromCurated, // product copy, written by a person
+	NameSource:     clips.NameFromCurated, // product copy, written by a person
 	Kind:           Bumper,
 	DurationMs:     5000, // 5s card
 	IsFallbackCard: true,

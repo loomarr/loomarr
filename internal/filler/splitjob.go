@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/creative"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // ErrSplitValidation marks a rejected confirm edit (out-of-clip bounds,

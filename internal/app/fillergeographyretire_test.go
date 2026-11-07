@@ -9,18 +9,18 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
 type retirementFake struct {
-	settled  []fillerstore.SettledGeographyClip
+	settled  []records.SettledGeographyClip
 	channels []store.Channel
 	removed  []string
 }
 
-func (f *retirementFake) ListSettledGeographyClips(context.Context) ([]fillerstore.SettledGeographyClip, error) {
+func (f *retirementFake) ListSettledGeographyClips(context.Context) ([]records.SettledGeographyClip, error) {
 	return f.settled, nil
 }
 
@@ -51,7 +51,7 @@ func retirementPolicy(country string) func() filler.Policy {
 
 func TestGeographyRetirementRemovesOnlyWhatNoPlaceCanAir(t *testing.T) {
 	fake := &retirementFake{
-		settled: []fillerstore.SettledGeographyClip{
+		settled: []records.SettledGeographyClip{
 			{Path: "harbor-news.mp4", Scope: "local", Country: "US", Station: "fcc:1"},
 			{Path: "lakeside-news.mp4", Scope: "local", Country: "US", Station: "fcc:3"},
 			{Path: "faraway-news.mp4", Scope: "local", Country: "US", Station: "fcc:9"},
@@ -73,7 +73,7 @@ func TestGeographyRetirementRemovesOnlyWhatNoPlaceCanAir(t *testing.T) {
 }
 
 func TestGeographyRetirementNeedsAnInstallationCountry(t *testing.T) {
-	fake := &retirementFake{settled: []fillerstore.SettledGeographyClip{
+	fake := &retirementFake{settled: []records.SettledGeographyClip{
 		{Path: "foreign-ad.mp4", Scope: "national", Country: "GB"},
 	}}
 	retire := fillerGeographyRetirement{clips: fake, store: fake, policy: retirementPolicy(""),

@@ -5,7 +5,7 @@
 internal/watermark	407
 internal/demolibrary	379
 internal/app	281
-internal/clipfetch	261
+internal/filler/fetch	261
 internal/api	216
 internal/store	191
 internal/integration	178
@@ -19,7 +19,7 @@ internal/filler	65
 cmd/seed	49
 internal/secretprotection	46
 internal/proposalworkflow	45
-internal/fillerstore	36
+internal/filler/records	36
 internal/playout	33
 internal/channels	31
 internal/notifications	31

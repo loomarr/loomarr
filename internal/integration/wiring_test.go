@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -117,7 +117,7 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	admin := h.asAdmin()
 	healthRuns := jobRunCount(t, h, admin, "system-health")
 	if err := h.store.UpsertFillerSource(t.Context(),
-		fillerstore.NewFillerSource("library-movies", "library", "Movies", "Commercials", time.Now())); err != nil {
+		records.NewFillerSource("library-movies", "library", "Movies", "Commercials", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 

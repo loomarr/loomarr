@@ -2,7 +2,7 @@
 // community of license and its dated call signs, from the FCC's frozen CDBS dump plus a reviewed
 // Wikidata snapshot for history the FCC never recorded.
 //
-//	go run ./cmd/station-data -output internal/broadcaststation
+//	go run ./cmd/station-data -output internal/filler/station
 //	go run ./cmd/station-data -refresh-wikidata   # re-query Wikidata into wikidata-call-signs.tsv
 package main
 
@@ -29,8 +29,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
-	"github.com/loomarr/loomarr/internal/installationlocation"
+	"github.com/loomarr/loomarr/internal/filler/location"
+	"github.com/loomarr/loomarr/internal/filler/station"
 )
 
 // CDBS stopped updating on 2023-10-01 when the FCC moved to LMS, so these files are fixed and pin
@@ -127,13 +127,13 @@ func main() {
 	stations := buildStations(facilities, history, transmitters, places, wikidata)
 	preferFullPower(stations, facilities)
 	clipReusedCallSigns(stations)
-	stations = slices.DeleteFunc(stations, func(s broadcaststation.Station) bool { return len(s.CallSigns) == 0 })
+	stations = slices.DeleteFunc(stations, func(s station.Station) bool { return len(s.CallSigns) == 0 })
 	ambiguous := concurrentHolders(stations)
 	fmt.Fprintf(os.Stderr, "station-data: %d stations; %d call-sign spans held by two stations at once (they resolve to no station)\n", len(stations), ambiguous)
 
 	seedPath := filepath.Join(*outputDir, "stations.tsv.gz")
 	var encoded bytes.Buffer
-	must(broadcaststation.EncodeSeed(&encoded, stations))
+	must(station.EncodeSeed(&encoded, stations))
 	must(os.WriteFile(seedPath, encoded.Bytes(), 0o644))
 	rows := 0
 	for _, s := range stations {
@@ -157,14 +157,14 @@ func main() {
 }
 
 func buildStations(facilities map[string]facility, history map[string][]historyRow, transmitters map[string]point,
-	places map[string][]installationlocation.Place, wikidata map[string][]wikidataRow) []broadcaststation.Station {
-	var stations []broadcaststation.Station
+	places map[string][]location.Place, wikidata map[string][]wikidataRow) []station.Station {
+	var stations []station.Station
 	for id, f := range facilities {
 		if !f.licensed && len(history[id]) == 0 {
 			continue // an unbuilt record: placeholder call signs such as WTB
 		}
 		at, ok := transmitters[id]
-		station := broadcaststation.Station{ID: "fcc:" + id, Country: countryOf(f.state), Region: f.state, City: titleCase(f.city)}
+		station := station.Station{ID: "fcc:" + id, Country: countryOf(f.state), Region: f.state, City: titleCase(f.city)}
 		if place, found := nearestPlace(places[normalizeCity(f.city)], at, ok); found {
 			station.City, at, ok = place.Name, point{place.Latitude, place.Longitude}, true
 		}
@@ -215,7 +215,7 @@ func buildStations(facilities map[string]facility, history map[string][]historyR
 				}
 			}
 			if at != nil {
-				stations = append(stations, broadcaststation.Station{ID: "wd:" + qid, Country: "US", Latitude: at.lat, Longitude: at.lon, CallSigns: spans})
+				stations = append(stations, station.Station{ID: "wd:" + qid, Country: "US", Latitude: at.lat, Longitude: at.lon, CallSigns: spans})
 			}
 		}
 	}
@@ -224,7 +224,7 @@ func buildStations(facilities map[string]facility, history map[string][]historyR
 }
 
 // sharesTenure reports whether two stations' histories hold one call sign over overlapping dates.
-func sharesTenure(a, b []broadcaststation.CallSign) bool {
+func sharesTenure(a, b []station.CallSign) bool {
 	for _, x := range a {
 		for _, y := range b {
 			if x.Sign == y.Sign && overlaps(x, y) {
@@ -235,15 +235,15 @@ func sharesTenure(a, b []broadcaststation.CallSign) bool {
 	return false
 }
 
-func overlaps(x, y broadcaststation.CallSign) bool {
+func overlaps(x, y station.CallSign) bool {
 	return (x.To == "" || y.From < x.To) && (y.To == "" || x.From < y.To)
 }
 
 // preferFullPower settles the commonest shared tenure: a Class A station licensed with the same
 // letters as a full-power one (WWNY-CD beside WWNY-TV). Titles name the full-power station, so the
 // Class A station loses the overlapping dates.
-func preferFullPower(stations []broadcaststation.Station, facilities map[string]facility) {
-	fullPower := map[string][]broadcaststation.CallSign{}
+func preferFullPower(stations []station.Station, facilities map[string]facility) {
+	fullPower := map[string][]station.CallSign{}
 	for _, s := range stations {
 		if f, ok := facilities[strings.TrimPrefix(s.ID, "fcc:")]; ok && !f.classA {
 			for _, c := range s.CallSigns {
@@ -256,7 +256,7 @@ func preferFullPower(stations []broadcaststation.Station, facilities map[string]
 		if !ok || !f.classA {
 			continue
 		}
-		var kept []broadcaststation.CallSign
+		var kept []station.CallSign
 		for _, c := range stations[i].CallSigns {
 			kept = append(kept, subtract(c, fullPower[c.Sign])...)
 		}
@@ -265,20 +265,20 @@ func preferFullPower(stations []broadcaststation.Station, facilities map[string]
 }
 
 // subtract removes every taken span's dates from c, returning what remains in order.
-func subtract(c broadcaststation.CallSign, taken []broadcaststation.CallSign) []broadcaststation.CallSign {
-	pieces := []broadcaststation.CallSign{c}
+func subtract(c station.CallSign, taken []station.CallSign) []station.CallSign {
+	pieces := []station.CallSign{c}
 	for _, t := range taken {
-		var next []broadcaststation.CallSign
+		var next []station.CallSign
 		for _, p := range pieces {
 			if !overlaps(p, t) {
 				next = append(next, p)
 				continue
 			}
 			if t.From != "" && (p.From == "" || p.From < t.From) {
-				next = append(next, broadcaststation.CallSign{Sign: p.Sign, From: p.From, To: t.From})
+				next = append(next, station.CallSign{Sign: p.Sign, From: p.From, To: t.From})
 			}
 			if t.To != "" && (p.To == "" || t.To < p.To) {
-				next = append(next, broadcaststation.CallSign{Sign: p.Sign, From: t.To, To: p.To})
+				next = append(next, station.CallSign{Sign: p.Sign, From: t.To, To: p.To})
 			}
 		}
 		pieces = next
@@ -287,10 +287,10 @@ func subtract(c broadcaststation.CallSign, taken []broadcaststation.CallSign) []
 }
 
 // concurrentHolders counts pairs of stations holding one call sign over overlapping dates.
-func concurrentHolders(stations []broadcaststation.Station) int {
+func concurrentHolders(stations []station.Station) int {
 	type held struct {
 		station int
-		span    broadcaststation.CallSign
+		span    station.CallSign
 	}
 	bySign := map[string][]held{}
 	for i, s := range stations {
@@ -318,7 +318,7 @@ func concurrentHolders(stations []broadcaststation.Station) int {
 // A later row dated at or before the one it follows is a correction: it supersedes every kept row
 // from its date on (WDNI-LP 2001-05-29, W65DW 2001-11-29, then WDNI-LP 2001-05-29 again means the
 // W65DW change was undone).
-func spansFromHistory(rows []historyRow, current string) []broadcaststation.CallSign {
+func spansFromHistory(rows []historyRow, current string) []station.CallSign {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].seq < rows[j].seq })
 	var kept []historyRow
 	for i, row := range rows {
@@ -330,7 +330,7 @@ func spansFromHistory(rows []historyRow, current string) []broadcaststation.Call
 		}
 		kept = append(kept, row)
 	}
-	var spans []broadcaststation.CallSign
+	var spans []station.CallSign
 	for i, row := range kept {
 		from := row.begin
 		if i == 0 {
@@ -339,10 +339,10 @@ func spansFromHistory(rows []historyRow, current string) []broadcaststation.Call
 		if n := len(spans); n > 0 {
 			spans[n-1].To = from
 		}
-		spans = append(spans, broadcaststation.CallSign{Sign: broadcaststation.NormalizeCallSign(row.sign), From: from})
+		spans = append(spans, station.CallSign{Sign: station.NormalizeCallSign(row.sign), From: from})
 	}
 	if len(spans) == 0 {
-		spans = []broadcaststation.CallSign{{Sign: broadcaststation.NormalizeCallSign(current)}}
+		spans = []station.CallSign{{Sign: station.NormalizeCallSign(current)}}
 	}
 	return compact(spans)
 }
@@ -350,7 +350,7 @@ func spansFromHistory(rows []historyRow, current string) []broadcaststation.Call
 // mergeWikidata adds history from before CDBS. Dated Wikidata call signs other than the first FCC
 // one, that ended before it did, precede it, and the first FCC span then starts where they end; a
 // dated Wikidata entry for the same call sign gives its start. WKYC's KYW-TV 1956-1965 comes from here.
-func mergeWikidata(spans []broadcaststation.CallSign, rows []wikidataRow) []broadcaststation.CallSign {
+func mergeWikidata(spans []station.CallSign, rows []wikidataRow) []station.CallSign {
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].from != rows[j].from {
 			return rows[i].from < rows[j].from
@@ -359,7 +359,7 @@ func mergeWikidata(spans []broadcaststation.CallSign, rows []wikidataRow) []broa
 	})
 	if len(spans) == 0 {
 		for _, row := range rows {
-			spans = append(spans, broadcaststation.CallSign{Sign: broadcaststation.NormalizeCallSign(row.sign), From: row.from, To: row.to})
+			spans = append(spans, station.CallSign{Sign: station.NormalizeCallSign(row.sign), From: row.from, To: row.to})
 		}
 		sort.SliceStable(spans, func(i, j int) bool { return spans[i].From < spans[j].From })
 		return compact(spans)
@@ -368,14 +368,14 @@ func mergeWikidata(spans []broadcaststation.CallSign, rows []wikidataRow) []broa
 	if first.From != "" {
 		return spans
 	}
-	var before []broadcaststation.CallSign
+	var before []station.CallSign
 	start := ""
 	for _, row := range rows {
-		sign := broadcaststation.NormalizeCallSign(row.sign)
+		sign := station.NormalizeCallSign(row.sign)
 		switch {
 		case sign == "":
 		case sign != first.Sign && row.to != "" && (first.To == "" || row.to <= first.To):
-			before = append(before, broadcaststation.CallSign{Sign: sign, From: row.from, To: row.to})
+			before = append(before, station.CallSign{Sign: sign, From: row.from, To: row.to})
 			start = max(start, row.to)
 		case sign == first.Sign && row.from != "" && len(before) == 0 && (first.To == "" || row.from < first.To):
 			if start == "" || row.from < start {
@@ -389,7 +389,7 @@ func mergeWikidata(spans []broadcaststation.CallSign, rows []wikidataRow) []broa
 
 // clipReusedCallSigns applies the FCC's one-holder-at-a-time rule to open starts. KYW is Philadelphia's
 // with no recorded start, but Cleveland held it until 1965, so Philadelphia's tenure starts in 1965.
-func clipReusedCallSigns(stations []broadcaststation.Station) {
+func clipReusedCallSigns(stations []station.Station) {
 	type held struct{ station, to string }
 	ends := map[string][]held{}
 	for _, s := range stations {
@@ -418,7 +418,7 @@ func clipReusedCallSigns(stations []broadcaststation.Station) {
 // compact drops unparseable signs and empty spans, and joins neighbours that are the same base call
 // sign and touch or overlap (WEWS then WEWS-TV is one tenure; Wikidata may list WJZ and WJZ-TV for
 // the same years).
-func compact(spans []broadcaststation.CallSign) []broadcaststation.CallSign {
+func compact(spans []station.CallSign) []station.CallSign {
 	out := spans[:0]
 	for _, span := range spans {
 		if span.Sign == "" || (span.From != "" && span.To != "" && span.From >= span.To) {
@@ -460,7 +460,7 @@ func readFacilities(records [][]string) map[string]facility {
 		}
 		state := strings.TrimSpace(r[1])
 		if !tvServices[r[10]] || neverOnAir[r[16]] || (!us[state] && territoryCountry[state] == "") ||
-			broadcaststation.NormalizeCallSign(r[5]) == "" {
+			station.NormalizeCallSign(r[5]) == "" {
 			continue
 		}
 		id := strings.TrimSpace(r[14])
@@ -520,10 +520,10 @@ func readTransmitters(records [][]string, facilities map[string]facility) map[st
 	return licensed
 }
 
-func placesByName() map[string][]installationlocation.Place {
-	all, err := installationlocation.Places()
+func placesByName() map[string][]location.Place {
+	all, err := location.Places()
 	must(err)
-	out := map[string][]installationlocation.Place{}
+	out := map[string][]location.Place{}
 	for _, place := range all {
 		if place.City == "" {
 			continue // a country row
@@ -536,14 +536,14 @@ func placesByName() map[string][]installationlocation.Place {
 
 // nearestPlace is the same-named place closest to the transmitter. With no transmitter on record a
 // name alone is ambiguous, so only a unique match counts.
-func nearestPlace(candidates []installationlocation.Place, at point, known bool) (installationlocation.Place, bool) {
+func nearestPlace(candidates []location.Place, at point, known bool) (location.Place, bool) {
 	if !known {
 		if len(candidates) == 1 {
 			return candidates[0], true
 		}
-		return installationlocation.Place{}, false
+		return location.Place{}, false
 	}
-	best, bestKM := installationlocation.Place{}, math.Inf(1)
+	best, bestKM := location.Place{}, math.Inf(1)
 	for _, place := range candidates {
 		if km := distanceKM(at, point{place.Latitude, place.Longitude}); km < bestKM {
 			best, bestKM = place, km

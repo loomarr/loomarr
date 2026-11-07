@@ -14,7 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/app"
 	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
@@ -30,7 +30,7 @@ import (
 type harness struct {
 	t          *testing.T
 	srv        *httptest.Server
-	store      fillerstore.Store
+	store      records.Store
 	ms         *testkit.MediaServer
 	seerr      *testkit.Seerr
 	tmdb       *testkit.TMDB
@@ -88,7 +88,7 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	// without spending the tests' one admin bootstrap.
 	t.Setenv("API_TOKEN", harnessAPIToken)
 
-	st, err := fillerstore.Open(context.Background(), "sqlite://"+t.TempDir()+"/e2e.db", true)
+	st, err := records.Open(context.Background(), "sqlite://"+t.TempDir()+"/e2e.db", true)
 	if err != nil {
 		t.Fatal(err)
 	}

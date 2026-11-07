@@ -19,7 +19,7 @@ type (
 )
 
 // Handle is the core store's database handle, lent to the stores that extend it
-// (internal/fillerstore). Those stores keep their own tables but run on this handle, and Begin
+// (internal/filler/records). Those stores keep their own tables but run on this handle, and Begin
 // is the one way to start a transaction: a write spanning core and extension tables begins here,
 // passes the Tx to both halves, and commits or rolls back as one.
 //

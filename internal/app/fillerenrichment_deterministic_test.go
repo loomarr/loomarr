@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -30,14 +30,14 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 		"hp.info.json":      {Data: []byte(`{"title":"HP Sauce Advert","description":"An advert for HP Sauce broadcast 1999 on Five.","upload_date":"20250107","loomarr":{"originalName":"hp-sauce-advert.mp4","sourceId":"classic"}}`)},
 		"tootsie.info.json": {Data: []byte(`{"title":"Tootsie Pop Classic Commercial","description":"The classic Tootsie Pop commercial. There are 3 versions.","upload_date":"20240215","loomarr":{"originalName":"tootsie-pop.mp4","sourceId":"classic"}}`)},
 	}
-	runner := fillerenrichment.NewRunner(
+	runner := enrichment.NewRunner(
 		fillerEnrichmentRepository{st: st}, fillerEnrichmentSignals{store: st, files: files}.Load,
 		func() int { return 10 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())
 	// Every axis for both clips: Tootsie's source declares no country, so its geography is an
 	// explicit unsupported withdrawal rather than an absent row (#1670).
-	if err != nil || result.Considered != 2 || result.Updated != 2*len(fillerenrichment.DeterministicAxes) {
+	if err != nil || result.Considered != 2 || result.Updated != 2*len(enrichment.DeterministicAxes) {
 		t.Fatalf("Run() = %+v, err %v", result, err)
 	}
 	hp, err := st.GetClip(t.Context(), "hp")
@@ -54,8 +54,8 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 	if tootsie.Era != 0 || tootsie.Brand != "Tootsie Pop" || tootsie.Category != "candy" {
 		t.Fatalf("Tootsie projection = %+v", tootsie)
 	}
-	candidates, err := st.ListFillerEnrichmentCandidates(t.Context(), fillerenrichment.DeterministicProducer,
-		fillerenrichment.DeterministicProducerVersion, fillerenrichment.ControlledTaxonomyVersion, 10)
+	candidates, err := st.ListFillerEnrichmentCandidates(t.Context(), enrichment.DeterministicProducer,
+		enrichment.DeterministicProducerVersion, enrichment.ControlledTaxonomyVersion, 10)
 	if err != nil || len(candidates) != 0 {
 		t.Fatalf("completed clips remained candidates: %+v, err %v", candidates, err)
 	}

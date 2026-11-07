@@ -14,45 +14,45 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`broadcaststation`** · 5 importers · → `installationlocation`
-  Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
-- **`clipcatalog`** · 4 importers
-  Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
-- **`clipfetch`** · 3 importers · → `bgexec`, `filler`, `sourceprovider`, `storagegovernor`
-  Downloads filler clips into the drop-folder (design §10, §16).
-- **`filler`** · 10 importers · → `bgexec`, `clipcatalog`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy`
+- **`filler`** · 10 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `filler/clips`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`filleradmission`**
+- **`filler/admission`**
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillerdefectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
+- **`filler/clips`** · 4 importers
+  Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
+- **`filler/defectfloor`** · 2 importers · → `creative`, `defects`, `filler`, `llm`
   Filler defect floor (#2034, #2036): it measures every published ad copy for picture and sound defects against an era-relative bar (the pure checks live in internal/defects), asks a vision model to rule on the borderline ones within a spend ceiling, records each verdict, and retires a copy that definitively fails once its fingerprint is saved.
-- **`fillerenrichment`** · 3 importers · → `broadcaststation`, `llm`, `taxonomy`
+- **`filler/enrichment`** · 3 importers · → `filler/station`, `filler/taxonomy`, `llm`
   Owns progressive descriptive understanding for filler clips.
-- **`fillereval`**
+- **`filler/eval`**
   The budget arithmetic that paid filler assessment shares with certification.
-- **`fillerresearch`** · 3 importers · → `llm`
-  Owns bounded external context lookup for publicly sourced filler.
-- **`fillerscreening`** · 2 importers · → `filler`, `fillerstructureassessment`, `mediatools`
-  Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
-- **`fillerstore`** · 3 importers · → `filler`, `fillerenrichment`, `fillerresearch`, `fillerscreening`, `fillerstructure`, `fillerstructurewindow`, `sourceprovider`, `store`, `store/catalogstore`, `store/storedb`
-  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
-- **`fillerstructure`** · 6 importers
-  Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
-- **`fillerstructureassessment`** · 2 importers · → `bgexec`, `filler`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `mediatools`
-  Complete-timeline structure-assessment runtime: the ffmpeg media preparer that renders and verifies the normalized per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
-- **`fillerstructuremedia`** · 4 importers · → `encode`, `fillerstructure`, `mediatools`
-  Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
-- **`fillerstructurewindow`** · 5 importers · → `fillerstructure`, `fillerstructuremedia`
-  Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
-- **`fillerstructurewindowopenrouter`** · 1 importer · → `encode`, `filler`, `fillerstructure`, `fillerstructureassessment`, `fillerstructuremedia`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
-  Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
-- **`installationlocation`** · 3 importers
+- **`filler/fetch`** · 3 importers · → `bgexec`, `filler`, `filler/source`, `storagegovernor`
+  Downloads filler clips into the drop-folder (design §10, §16).
+- **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
-- **`sourceprovider`** · 7 importers
+- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `store`, `store/catalogstore`, `store/storedb`
+  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
+- **`filler/research`** · 3 importers · → `llm`
+  Owns bounded external context lookup for publicly sourced filler.
+- **`filler/screening`** · 2 importers · → `filler`, `filler/structure/assessment`, `mediatools`
+  Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.
+- **`filler/source`** · 7 importers
   Contract every filler source provider implements: a place filler comes from, such as YouTube or archive.org, or a local folder or library.
-- **`sourceprovider/archive`** · 1 importer · → `clipfetch`, `sourceprovider`
+- **`filler/source/archive`** · 1 importer · → `filler/fetch`, `filler/source`
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
-- **`sourceprovider/youtube`** · 1 importer · → `clipfetch`, `filler`, `sourceprovider`
+- **`filler/source/youtube`** · 1 importer · → `filler`, `filler/fetch`, `filler/source`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
-- **`taxonomy`** · 6 importers
+- **`filler/station`** · 5 importers · → `filler/location`
+  Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
+- **`filler/structure`** · 6 importers
+  Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
+- **`filler/structure/assessment`** · 2 importers · → `bgexec`, `filler`, `filler/structure`, `filler/structure/cut`, `filler/structure/window`, `mediatools`
+  Complete-timeline structure-assessment runtime: the ffmpeg media preparer that renders and verifies the normalized per-window derivatives, the lineage records that bind those derivatives to their source, the family and window-set runtimes that run independent assessors serially and stitch their answers, and the private content-addressed evidence repositories that keep every call, stitch and decision.
+- **`filler/structure/cut`** · 4 importers · → `encode`, `filler/structure`, `mediatools`
+  Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
+- **`filler/structure/window`** · 5 importers · → `filler/structure`, `filler/structure/cut`
+  Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
+- **`filler/structure/window/openrouter`** · 1 importer · → `encode`, `filler`, `filler/structure`, `filler/structure/assessment`, `filler/structure/cut`, `filler/structure/window`, `httpx`, `openroutercatalog`, `openroutermedia`
+  Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
+- **`filler/taxonomy`** · 6 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.

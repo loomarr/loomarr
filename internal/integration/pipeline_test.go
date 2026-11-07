@@ -31,7 +31,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
@@ -84,7 +84,7 @@ type rig struct {
 
 func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	t.Helper()
-	st, err := fillerstore.Open(context.Background(), "sqlite://"+t.TempDir()+"/integration.db", true)
+	st, err := records.Open(context.Background(), "sqlite://"+t.TempDir()+"/integration.db", true)
 	if err != nil {
 		t.Fatal(err)
 	}

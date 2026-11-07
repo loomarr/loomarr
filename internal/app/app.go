@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/settings"
@@ -138,7 +138,7 @@ func trackReplicaSettingsRefresh(
 
 func buildHandler(
 	rootCtx context.Context,
-	st fillerstore.Store,
+	st records.Store,
 	log *slog.Logger,
 	ov Overrides,
 	owner *generationLifecycle,

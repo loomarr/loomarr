@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 var (
@@ -15,11 +15,11 @@ var (
 )
 
 // evening airs n ads on a channel from start, one every four and a half minutes.
-func evening(channel string, start time.Time, n int) []clipcatalog.Airing {
-	out := make([]clipcatalog.Airing, n)
+func evening(channel string, start time.Time, n int) []clips.Airing {
+	out := make([]clips.Airing, n)
 	for i := range out {
 		at := start.Add(time.Duration(i) * 270 * time.Second)
-		out[i] = clipcatalog.Airing{ChannelID: channel, ClipHash: "c", AiredAt: at, RecordedAt: at}
+		out[i] = clips.Airing{ChannelID: channel, ClipHash: "c", AiredAt: at, RecordedAt: at}
 	}
 	return out
 }
@@ -44,7 +44,7 @@ func TestSizePool_ADefaultEveningUntilTheHouseholdHasFourWeeks(t *testing.T) {
 func TestSizePool_EachDecadeTakesItsLongestEvening(t *testing.T) {
 	windows := map[string][]filler.EraRange{"a": eighties, "b": eighties, "c": nineties}
 	start := sizedAt.Add(-5 * 7 * 24 * time.Hour)
-	var airings []clipcatalog.Airing
+	var airings []clips.Airing
 	airings = append(airings, evening("a", start, 10)...) // the history's first night
 	night := sizedAt.Add(-3 * 24 * time.Hour)
 	airings = append(airings, evening("a", night, 40)...)

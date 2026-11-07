@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/sourceprovider"
+	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
 // Invented stations: WAAA is near the place, WZZZ is not.
@@ -33,7 +33,7 @@ func TestListingGateAdmitsOnlyANearbyStationDatedInTheEra(t *testing.T) {
 		{"WAAA-TV реклама 1984", "", ListingLanguage},
 		{"WAAA-TV English and French promos 1984", "", ListingLanguage},
 	} {
-		sign, refused := gate.Admit(sourceprovider.Item{Title: c.title}, eras)
+		sign, refused := gate.Admit(source.Item{Title: c.title}, eras)
 		if sign != c.sign || refused != c.refused {
 			t.Errorf("%q: admitted by %q, refused %q; want %q, %q", c.title, sign, refused, c.sign, c.refused)
 		}
@@ -55,7 +55,7 @@ func TestListingGateAdmitsALanguageAChannelAirs(t *testing.T) {
 		{"ko", "WAAA-TV 広告 1984", ListingLanguage},
 	} {
 		gate := ListingGate{Languages: c.languages, Station: near}
-		if _, refused := gate.Admit(sourceprovider.Item{Title: c.title}, eras); refused != c.want {
+		if _, refused := gate.Admit(source.Item{Title: c.title}, eras); refused != c.want {
 			t.Errorf("airing %q, %q: refused %q, want %q", c.languages, c.title, refused, c.want)
 		}
 	}

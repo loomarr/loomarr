@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/settings"
@@ -17,7 +17,7 @@ import (
 
 type httpBuild struct {
 	rootCtx     context.Context
-	store       fillerstore.Store
+	store       records.Store
 	log         *slog.Logger
 	overrides   Overrides
 	foundation  foundationBuild

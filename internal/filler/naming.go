@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // NameSource records which evidence produced a clip's derived display name (#1452). It is written
@@ -129,7 +129,7 @@ func quoteExcerpt(words []string, sentenceCase bool) string {
 // content hash, contains an underscore, or is one lowercase token joined by hyphens, dots or path
 // separators ("commercial-sneakers-1993"). A spaced or capitalised stem passes it, which is why
 // provenance replaced it everywhere provenance exists.
-func ViewerName(name string, source clipcatalog.NameSource) string {
+func ViewerName(name string, source clips.NameSource) string {
 	name = strings.TrimSpace(name)
 	switch {
 	case name == "":
