@@ -85,7 +85,13 @@ const appHandlers = (): RequestHandler[] => [
   // ⚠ `/v1/setup/state` is fetched by the ROOT route on every render — the first thing the app
   // asks and the one the old catch-all most reliably answered with `{}`, which reads as
   // "not bootstrapped, no SSO, no dev login" whether or not that was true.
-  getSetupStateMockHandler({ bootstrapped: true, devLogin: false, sso: false }),
+  // Not a demo site (#2268): the shell reads this too, and a test that wants the tour says so.
+  getSetupStateMockHandler({
+    bootstrapped: true,
+    devLogin: false,
+    sso: false,
+    demo: { enabled: false, username: "", password: "" },
+  }),
   // AppShell reads this once for every authenticated route. `dev` is the honest baseline for a
   // test bundle; tests that exercise release/dirty presentation override the generated handler.
   getSystemVersionMockHandler({ version: "dev", ready: true }),

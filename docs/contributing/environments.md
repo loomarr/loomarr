@@ -23,6 +23,10 @@ That runs the published release with six invented channels. Everything on it is 
 needs no media server, LLM or TMDB key. The first start takes about four minutes, then it prints the
 address. Sign in as `demo` with the password `loomarr-demo`.
 
+It runs in demo mode (`LOOMARR_DEMO_USERNAME` and `LOOMARR_DEMO_PASSWORD`). The sign-in screen offers
+that account in one press, and a banner at the top of every page says it's the demo and suggests
+three things to try. A release from before demo mode ignores both settings.
+
 To run an image you built from this checkout, name it instead:
 
 ```bash
@@ -81,7 +85,7 @@ The `demo` admin password is in this repository, so it can't be left working on 
 the tunnel starts, `scripts/demo-site.sh` creates a `guest` member account with the password
 `loomarr-guest`, replaces the admin password with `STAGING_DEMO_ADMIN_PASSWORD`, and checks the old
 one is refused. If any step fails, the tunnel doesn't start. Sign in as `demo` with that password to
-manage the site.
+manage the site. The sign-in screen offers visitors `guest`, never the admin.
 
 Visitors share `guest`, so a Cloudflare rule blocks `/v1/auth/password` to stop anyone changing its
 password. Keep that rule. The site plays two channels at once, so a third visitor is refused until

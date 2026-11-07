@@ -249,6 +249,8 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 		Pprof:                   cfg.Pprof,
 		CapacityProbe:           true,
 		MetricsToken:            cfg.MetricsToken,
+		DemoUsername:            cfg.DemoUsername,
+		DemoPassword:            cfg.DemoPassword,
 		Restart:                 lifecycle.RequestRestart,
 		DatabaseMigration:       lifecycle.RequestMigration,
 		DatabaseMigrationError:  databaseMigration.lastError,

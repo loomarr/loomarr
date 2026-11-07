@@ -22,6 +22,10 @@ services:
       # The seeder does the setup, so sign-in opens the app rather than the first-run wizard.
       SETUP_COMPLETED: "true"
       SERVER_PUBLIC_URL: ${DEMO_SITE_URL:-http://localhost:8088}
+      # Demo mode (#2268): the sign-in screen offers this account and the app shows the demo tour.
+      # The seeder creates it; scripts/check-compose.sh keeps the two in step.
+      LOOMARR_DEMO_USERNAME: demo
+      LOOMARR_DEMO_PASSWORD: loomarr-demo
     volumes:
       - demo-data:/data
       - demo-assets:/demo:ro

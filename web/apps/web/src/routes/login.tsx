@@ -1,6 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { MeBodyRole } from "@loomarr/api/models/meBodyRole";
+import { DemoSignIn } from "@loomarr/ui";
 import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { meQueryOptions } from "@/auth/me-query";
@@ -60,6 +61,9 @@ const LoginScreen = () => {
   // Same request, same posture as devLogin: the SERVER says whether SSO is configured, so the
   // button can never appear pointing at routes that are not mounted.
   const ssoOffered = setupState.data?.status === 200 && setupState.data.data.sso === true;
+  // Same request again: a demo site (#2268) names the account visitors use, so the card can sign
+  // them in without anyone typing a password that only lives in the repository.
+  const demo = setupState.data?.status === 200 ? setupState.data.data.demo : undefined;
 
   // The endpoint is deliberately ABSENT from api/openapi.yaml (a dev bypass is not part
   // of the product contract), so there is no generated hook for it — this is the one
@@ -76,6 +80,13 @@ const LoginScreen = () => {
 
   return (
     <LoginShell>
+      {demo?.enabled ? (
+        <DemoSignIn
+          busy={login.isPending}
+          onSignIn={() => login.mutate({ data: { username: demo.username, password: demo.password } })}
+          username={demo.username}
+        />
+      ) : null}
       <LoginForm
         onSubmit={(values) => login.mutate({ data: values })}
         isPending={login.isPending}

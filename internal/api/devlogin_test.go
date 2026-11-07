@@ -20,6 +20,7 @@ import (
 type devAccessHarnessConfig struct {
 	DevLogin bool
 	Pprof    bool
+	Demo     api.DemoAccount
 	Seed     func(records.Store)
 }
 
@@ -48,6 +49,7 @@ func newDevAccessHarness(t *testing.T, config devAccessHarnessConfig) *apiHarnes
 			CookieSecure: "false",
 			DevLogin:     config.DevLogin,
 			Pprof:        config.Pprof,
+			Demo:         config.Demo,
 		})
 	})
 }
@@ -214,6 +216,42 @@ func TestSetupStateReportsDevLoginFlag(t *testing.T) {
 			}
 			if body.DevLogin != tc.on {
 				t.Fatalf("setup/state devLogin = %v, want %v", body.DevLogin, tc.on)
+			}
+		})
+	}
+}
+
+// setup/state carries demo mode to the login screen before anyone signs in (#2268). The object is
+// always on the wire, so a client never meets null, and only a demo site names an account.
+func TestSetupStateReportsDemoMode(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		account api.DemoAccount
+		want    string
+	}{
+		{"off", api.DemoAccount{}, `{"enabled":false,"username":"","password":""}`},
+		{"on", api.DemoAccount{Username: "guest", Password: "loomarr-guest"}, `{"enabled":true,"username":"guest","password":"loomarr-guest"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newDevAccessHarness(t, devAccessHarnessConfig{Demo: tc.account, Seed: func(st records.Store) {
+				seedAdmin(t, st, "u-boss", "boss", identitystore.RoleAdmin)
+			}}).Server
+			res, err := http.Get(srv.URL + "/v1/setup/state")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = res.Body.Close() }()
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("GET /v1/setup/state = %d, want 200", res.StatusCode)
+			}
+			var body struct {
+				Demo json.RawMessage `json:"demo"`
+			}
+			if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if string(body.Demo) != tc.want {
+				t.Fatalf("setup/state demo = %s, want %s", body.Demo, tc.want)
 			}
 		})
 	}

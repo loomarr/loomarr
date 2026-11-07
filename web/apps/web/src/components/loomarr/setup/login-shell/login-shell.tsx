@@ -19,7 +19,8 @@ const LoginShell = ({ children, className }: LoginShellProps) => (
         a position:absolute layer paints OVER position:static content regardless of DOM order. */}
     <TvStatic className="z-0" />
     <BrandLockup variant="hero" className="relative z-10" />
-    <Card maxWidth={384} padding={32} position="relative" width="100%" zIndex={10}>
+    {/* `gap` spaces the demo site's sign-in card (#2268) from the form; one child is unaffected. */}
+    <Card gap={20} maxWidth={384} padding={32} position="relative" width="100%" zIndex={10}>
       {children}
     </Card>
   </main>

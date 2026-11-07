@@ -73,6 +73,8 @@ type Server struct {
 	// routes are registered: an unset flag means the route never exists, which is a
 	// stronger guarantee than a handler that checks a value it could later re-read.
 	devLogin bool
+	// demo is the demo site's public sign-in (#2268), reported by GET /v1/setup/state.
+	demo DemoAccount
 	// channels/livetv wire /v1/channels* and /v1/setup/* (§7/§9); nil until
 	// Phase 10 is configured.
 	channels ChannelService
@@ -1057,6 +1059,7 @@ type Options struct {
 	DevLogin         bool                   // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
 	Pprof            bool                   // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
 	MetricsToken     string                 // LOOMARR_METRICS_TOKEN[_FILE] (§7): the Prometheus scrape bearer; empty ⇒ /metrics refused (fail closed)
+	Demo             DemoAccount            // LOOMARR_DEMO_USERNAME/_PASSWORD (#2268): the zero value ⇒ not a demo site
 	Channels         ChannelService         // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
 	LiveTV           LiveTVService          // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
 	TunerRescanner   TunerRescanner         // §9 channel-list freshness; nil ⇒ best-effort poke unavailable

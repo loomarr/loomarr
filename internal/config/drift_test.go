@@ -20,12 +20,16 @@ func TestChangedKeysNamesEveryBootKey(t *testing.T) {
 		"LOOMARR_DEV_LOGIN":                  "true",
 		"LOOMARR_PPROF":                      "true",
 		"LOOMARR_METRICS_TOKEN":              "scrape-token",
+		"LOOMARR_DEMO_USERNAME":              "visitor",
+		"LOOMARR_DEMO_PASSWORD":              "visitor-password",
 	}
+	// The demo account is only valid as a pair, so the baseline sets both and each row moves one.
+	base := map[string]string{"LOOMARR_DEMO_USERNAME": "guest", "LOOMARR_DEMO_PASSWORD": "guest-password"}
 	if got, want := bootKeys(), slices.Sorted(maps.Keys(changed)); !slices.Equal(slices.Sorted(slices.Values(got)), want) {
 		t.Fatalf("boot keys = %v, table covers %v; add a row for each new boot key", got, want)
 	}
 
-	running, err := LoadEnv(map[string]string{})
+	running, err := LoadEnv(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +37,9 @@ func TestChangedKeysNamesEveryBootKey(t *testing.T) {
 		t.Errorf("ChangedKeys(self) = %v, want none", got)
 	}
 	for key, value := range changed {
-		desired, err := LoadEnv(map[string]string{key: value})
+		env := maps.Clone(base)
+		env[key] = value
+		desired, err := LoadEnv(env)
 		if err != nil {
 			t.Fatalf("%s=%s: %v", key, value, err)
 		}
