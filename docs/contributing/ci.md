@@ -603,6 +603,10 @@ authority. Neither seam justified consuming the remaining cache headroom.
 It always runs and inspects `needs.*.result` explicitly. That has to be explicit: a skipped job
 doesn't fail an aggregate by default, and neither does a failed one under `if: always()`.
 
+A `cancelled` job passes only on a pull request, where a newer push superseded it. In the merge queue
+and on manual runs it fails the check: a job that crosses its `timeout-minutes` reports `cancelled`
+with its tests unfinished, so it has proved nothing.
+
 The `main` branch requires the GitHub Actions-owned `CI` check in strict mode: a pull request must
 be tested against the current base before it can merge. Preserve both the check name and its app
 binding when editing branch protection.
