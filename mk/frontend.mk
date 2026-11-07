@@ -44,9 +44,12 @@ knip: ## unused files, exports and dependencies in web/ (config: web/knip.ts)
 fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 	cd $(WEB) && pnpm biome check --write
 
-# FE_SHARD is a CI-only passthrough (`make fe FE_SHARD=1/2`), with the same empty-by-default
+# `make fe` is the developer aggregate: fe-checks plus fe-unit, codegen once between them. CI runs
+# the two halves on separate runners (ci-frontend.yml), so every check still has one home.
+#
+# FE_SHARD is a CI-only passthrough (`make fe-unit FE_SHARD=1/2`), with the same empty-by-default
 # contract as GO_SHARD and the visual suite's separately validated shard input. A local `make fe`
-# runs the whole suite. The shard COUNT lives in ci.yml's `matrix.shard`.
+# runs the whole suite. The shard COUNT lives in ci-frontend.yml's fe-unit step.
 #
 # ⚠ ONLY apps/web is sharded, and that is not arbitrary. 166 of the 172 test files live there;
 # the other three packages hold 12 between them. More importantly `packages/core` and
@@ -63,12 +66,18 @@ FE_SHARD ?=
 FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
 
 .PHONY: fe
-fe: ## biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm codegen && pnpm lint && pnpm knip && pnpm --filter @loomarr/web... -r --parallel typecheck \
+fe: fe-checks fe-unit ## biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery
+
+.PHONY: fe-checks
+fe-checks: fe-codegen ## everything in fe except the web unit tests: biome, knip, typecheck, package tests, SPA, storybook
+	cd $(WEB) && pnpm lint && pnpm knip && pnpm --filter @loomarr/web... -r --parallel typecheck \
 	  && pnpm --filter @loomarr/web... --filter '!@loomarr/web' -r --parallel test \
-	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
 	@touch internal/web/dist/.gitkeep
+
+.PHONY: fe-unit
+fe-unit: fe-codegen ## web unit tests after codegen (FE_SHARD=n/m runs one shard)
+	cd $(WEB) && pnpm --filter @loomarr/web test $(FE_SHARD_ARG)
 
 .PHONY: clients
 clients: brand-assets-verify knip ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
