@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ type libraryStore interface {
 	store.LibraryFileStore
 	store.LibraryItemStore
 	store.LibraryCatalogStore
+	store.LibraryNeedsStore
 	inventory.Repository
 	posterRefs
 }
@@ -119,6 +121,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Art:       localart.New(),
 		Posters:   libraryPostersOf(deps.images, st),
 		Catalog:   st,
+		Answers:   st,
 		Resolver:  resolver,
 		Header:    libraryHeader(playout.FFprobeSourceNextTo(deps.ffmpegPath, deps.processes)),
 		Enabled:   func() bool { return settings.LibraryScannerEnabled.Get(set) },
@@ -148,16 +151,41 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
 	deps.owner.goRunAfterBuild(hooks.Run)
+	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st}
 	if deps.tmdb != nil {
+		provider := mptmdb.New(deps.tmdb, nil)
 		enricher := &scan.Enricher{
-			Store: st, Provider: mptmdb.New(deps.tmdb, nil), Rewrite: scanner.PassFolders,
+			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
 			Enabled: im.Enabled, Log: deps.log,
 		}
 		deps.owner.goRunAfterBuild(enricher.Run)
+		lib.Search = tmdbSearcher(deps.tmdb)
+		matcher := &scan.Matcher{
+			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,
+			Enabled: im.Enabled, Log: deps.log,
+		}
+		deps.owner.goRunAfterBuild(matcher.Run)
 	}
-	return libraryServices{
-		roots: &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv},
-		hooks: hooks,
+	return libraryServices{roots: lib, hooks: hooks}
+}
+
+// tmdbSearcher is TMDB's title search, as Needs you searches it.
+func tmdbSearcher(client *tmdb.Client) scan.Searcher {
+	return func(ctx context.Context, term string, limit int) ([]scan.SearchHit, error) {
+		found, err := client.Search(ctx, term, limit)
+		if err != nil {
+			return nil, err
+		}
+		hits := make([]scan.SearchHit, 0, len(found))
+		for _, c := range found {
+			if c.TMDBID <= 0 {
+				continue
+			}
+			hits = append(hits, scan.SearchHit{
+				Kind: string(c.MediaType), TMDBID: strconv.Itoa(c.TMDBID), Name: c.Name, Year: c.Year, Overview: c.Overview,
+			})
+		}
+		return hits, nil
 	}
 }
 

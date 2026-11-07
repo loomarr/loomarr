@@ -33,6 +33,13 @@ type LibraryRootService interface {
 
 	Items(ctx context.Context, q store.LibraryItemQuery) (store.LibraryItemPage, error)
 	Item(ctx context.Context, id string) (scan.ItemDetail, error)
+
+	Needs(ctx context.Context) ([]scan.Need, error)
+	NeedCount(ctx context.Context) (int, error)
+	Link(ctx context.Context, itemID, tmdbID string) error
+	Ignore(ctx context.Context, itemID string) error
+	Unanswer(ctx context.Context, itemID string) error
+	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
 }
 
 func (s *Server) registerLibrary(api huma.API) {
@@ -90,6 +97,7 @@ func (s *Server) registerLibrary(api huma.API) {
 	}, RoleAdmin), s.confirmLibraryRemoval)
 	s.registerLibraryHooks(api)
 	s.registerLibraryItems(api)
+	s.registerLibraryNeeds(api)
 }
 
 type libraryFolderNameDTO struct {
@@ -288,6 +296,7 @@ type libraryStatusOutput struct {
 		Files          int              `json:"files" doc:"Media files found in folders in use"`
 		HeadersPending int              `json:"headersPending" doc:"Files not read yet"`
 		Problems       int              `json:"problems" doc:"Files Loomarr skips, such as disc images"`
+		NeedsYou       int              `json:"needsYou" doc:"Titles Loomarr can't tell what they are"`
 		Held           []libraryHeldDTO `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
 		Hooks          []libraryHookDTO `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
 	}
@@ -306,8 +315,13 @@ func (s *Server) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStatus
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
 	}
+	needsYou, err := svc.NeedCount(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+	}
 	st := scan.StatusOf(all)
 	out := &libraryStatusOutput{}
+	out.Body.NeedsYou = needsYou
 	b := &out.Body
 	b.Health, b.InUse, b.Offline, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.ToConfirm
 	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems

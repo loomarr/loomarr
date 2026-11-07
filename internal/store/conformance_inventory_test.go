@@ -167,9 +167,30 @@ func testInventoryOriginFollowsIDs(t *testing.T, newStore NewStoreFunc) {
 	if id, err := st.ApplyInventorySnapshot(ctx, second); err != nil || id != sharedID {
 		t.Fatalf("second origin = %q, %v", id, err)
 	}
+	// An origin that joined a shared item by its ids follows them when they change; the item keeps
+	// the origin that founded it.
 	second.ExternalIDs = known.ExternalIDs
-	if _, err := st.ApplyInventorySnapshot(ctx, second); !errors.Is(err, inventory.ErrIdentityConflict) {
-		t.Fatalf("follow from a shared item = %v, want conflict", err)
+	if id, err := st.ApplyInventorySnapshot(ctx, second); err != nil || id != knownID {
+		t.Fatalf("follow from a joined item = %q, %v, want %q", id, err, knownID)
+	}
+	if item, ok, err := st.InventoryItem(ctx, inventory.ItemRef{ID: sharedID}); err != nil || !ok || len(item.Origins) != 1 {
+		t.Fatalf("item left = %+v, %v, %v, want its founder kept", item, ok, err)
+	}
+	// One whose ids then name nothing goes back to an item of its own; a founder stays put.
+	second.ExternalIDs = nil
+	homeID, err := st.ApplyInventorySnapshot(ctx, second)
+	if err != nil || homeID == knownID || homeID == sharedID {
+		t.Fatalf("back home = %q, %v", homeID, err)
+	}
+	if item, _, _ := st.InventoryItem(ctx, inventory.ItemRef{ID: homeID}); len(item.Origins) != 1 || len(item.Sources) != 1 {
+		t.Fatalf("home item = %+v, want the origin and its source", item)
+	}
+	if item, _, _ := st.InventoryItem(ctx, inventory.ItemRef{ID: knownID}); len(item.Origins) != 2 {
+		t.Fatalf("known item = %+v, want its founder and the late file", item)
+	}
+	known.ExternalIDs = nil
+	if id, err := st.ApplyInventorySnapshot(ctx, known); err != nil || id != knownID {
+		t.Fatalf("founder without ids = %q, %v, want it kept on its item", id, err)
 	}
 }
 

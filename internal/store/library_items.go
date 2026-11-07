@@ -19,6 +19,17 @@ type LibraryItem struct {
 	Year     int
 	// Catalog is the library_catalog row its details come from; zero for none.
 	Catalog LibraryCatalogKey
+	// Origin is its scan origin: a movie's file, a series' folder. The maintainer's answer for a
+	// title nothing grounds is kept against it.
+	Origin LibraryOrigin
+	// Grounded is true when anything gives it an id: an arr, a name, a sidecar or a link.
+	Grounded bool
+}
+
+// LibraryOrigin is an inventory origin by its authority and key.
+type LibraryOrigin struct {
+	Authority string
+	Key       string
 }
 
 // LibraryItemImageOwner is the image_refs owner kind of a library item's artwork. The ref is the
@@ -73,11 +84,13 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 		return fmt.Errorf("save library items: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_items (id, kind, name, sort_name, year, catalog, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_items (id, kind, name, sort_name, year, catalog,
+		origin_authority, origin_key, grounded, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
 		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
-		updated_at = excluded.updated_at`))
+		origin_authority = excluded.origin_authority, origin_key = excluded.origin_key,
+		grounded = excluded.grounded, updated_at = excluded.updated_at`))
 	if err != nil {
 		return fmt.Errorf("save library items: %w", err)
 	}
@@ -90,7 +103,8 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 		if sortName == "" {
 			sortName = strings.ToLower(it.Name)
 		}
-		if _, err := stmt.ExecContext(ctx, it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(), at.UnixMilli()); err != nil {
+		if _, err := stmt.ExecContext(ctx, it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(),
+			it.Origin.Authority, it.Origin.Key, it.Grounded, at.UnixMilli()); err != nil {
 			return fmt.Errorf("save library item: %w", err)
 		}
 	}
@@ -132,6 +146,9 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 		where = append(where, "LOWER(i.name) LIKE ? ESCAPE '\\'")
 		args = append(args, "%"+likeEscape(strings.ToLower(search))+"%")
 	}
+	// A title the maintainer said is not one is left out.
+	where = append(where, `NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
+		AND a.origin_key = i.origin_key AND a.ignored = 1)`)
 	from := ` FROM library_items i JOIN ` + presentFiles + ` f ON f.id = i.id WHERE ` + strings.Join(where, " AND ")
 
 	var page LibraryItemPage

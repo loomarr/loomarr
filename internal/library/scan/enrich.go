@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"path/filepath"
 	"time"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
@@ -152,20 +151,7 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 	if err != nil {
 		return false, err
 	}
-	dirs := map[string]map[string]bool{}
-	for _, f := range files {
-		if dirs[f.Root] == nil {
-			dirs[f.Root] = map[string]bool{}
-		}
-		dirs[f.Root][filepath.Dir(f.Path)] = true
-	}
-	for root, set := range dirs {
-		list := make([]string, 0, len(set))
-		for d := range set {
-			list = append(list, d)
-		}
-		e.Rewrite(root, list...)
-	}
+	rewriteFolders(files, e.Rewrite)
 	return false, nil
 }
 

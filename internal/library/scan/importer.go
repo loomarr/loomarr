@@ -64,6 +64,8 @@ type Importer struct {
 	Posters Posters
 	// Catalog is the cache of catalog records a title's details come from; nil reads none.
 	Catalog CatalogStore
+	// Answers is the maintainer's Needs you answers; nil reads none.
+	Answers AnswerStore
 	// Resolver applies precedence.
 	Resolver *precedence.Resolver
 	// Header reads one file's container header.

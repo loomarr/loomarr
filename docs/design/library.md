@@ -185,7 +185,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   season folder, else the nearest folder named by an id, else its own. A file nothing grounds is
   still written, with no ids. Extras (trailers, `extras/` folders and the like) are their own
   items, related to the movie beside them. An origin whose ids later name another item of its kind
-  moves to it, when it is its item's only origin.
+  moves to it, when it is its item's only origin or joined the item by its ids rather than founding
+  it. A joined origin whose ids then name nothing goes back to an item of its own, so taking back a
+  Needs you link splits the copy out again; the founding origin never leaves.
 - **Unchanged files are never opened.** `library_files` keeps each file's stat and a digest of
   its identity inputs (the arr record, names, its sidecars' stat). A pass writes a file only when
   either changed, and reads its header only when its bytes changed. While an arr fails to list,
@@ -284,6 +286,26 @@ step 5). Nothing reads the scanner's origins until the cutover.
   TVDB episode id) are not fetched yet. The identity digest carries a write version; raising it
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.
+- **Needs you** (step 11a, decision 27). A movie or series is grounded when anything gives it a
+  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
+  title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
+  `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
+  answered, up to 20 a tick at the provider's rate hint. It searches by the name up to the release
+  words (quality, source, codec) and the last year-like word after the first, or the year a
+  sidecar gave. It looks at the first five results of the title's kind, fetching each one's
+  details, and keeps three in `library_candidates`, best first: the name counts most, then the
+  year (a year apart at most), then the length (movies only: within five minutes or 8% of the
+  runtime). `library_items.searched` notes what was searched, so a title is searched again only
+  when its name or year changes. With no TMDB key nothing is searched or marked. An answer lives
+  in `library_answers` by scan origin, so it outlives rewrites: a link (`POST
+  /v1/library/items/{id}/link`) is a `link` record below what the files say, so its details then
+  come from the catalog, and an ignore (`…/ignore`) leaves the Library and Needs you. `DELETE
+  …/answer` takes either back. An answer forgets the title's files' identity digests and passes
+  over their folders, as a changed catalog record does. `GET /v1/library/needs` lists each title
+  with its candidates and files, `GET /v1/library/search` searches TMDB for Pick a different
+  title (503 without a key), and the status counts `needsYou`. The API says which facts agree;
+  the sentence is the UI's. A candidate's poster is adopted by the image service under the
+  title, and the API leaves it out until its bytes are here.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with a bar, paused, a held removal or an

@@ -30,6 +30,9 @@ type ImageService interface {
 	Get(ctx context.Context, hash string) (images.Image, error)
 	Rendition(ctx context.Context, hash string, f images.Format, width int) (images.Rendition, error)
 	Ingest(ctx context.Context, r io.Reader, req images.IngestRequest) (images.Image, error)
+	// Adopt records a remote https image for the fetch job and returns at once; the image has its
+	// bytes only once the job fetched them.
+	Adopt(ctx context.Context, srcURL string, req images.IngestRequest) (images.Image, error)
 	PathFor(hash string, width int, f images.Format) string
 	URLFor(hash string, width int, f images.Format) string
 	SrcSet(hash string, role images.Role, f images.Format) string
