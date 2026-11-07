@@ -498,13 +498,11 @@ func fixtureFiles(t *testing.T, root string) []string {
 }
 
 // inventedGoFixtures are Go test fixtures written as invented data from the start: each entry is
-// a directory (every file under it) or one file. radarr/import_webhook.json is a retained capture
-// for the webhook parity test and is not listed. Keep in step with the matching case in
+// a directory (every file under it) or one file. Keep in step with the matching case in
 // scripts/ci-impact.sh.
 var inventedGoFixtures = []string{
 	"internal/testkit/fixtures/sonarr/",
-	"internal/testkit/fixtures/radarr/movie.json",
-	"internal/testkit/fixtures/radarr/config_metadata.json",
+	"internal/testkit/fixtures/radarr/",
 	"internal/metadataprovider/nfo/testdata/",
 }
 

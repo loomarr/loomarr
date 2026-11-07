@@ -12172,7 +12172,7 @@ components:
         key:
           description: Stable identity key
           examples:
-            - movie:tmdb:1111867
+            - movie:tmdb:91111867
           type: string
         lastError:
           description: Why the title was given up on (unavailable only)
@@ -12190,7 +12190,7 @@ components:
           type: string
         name:
           examples:
-            - In Flames
+            - Ashgrove Anomaly
           type: string
         progress:
           description: Download completion 0..1 (arr queue poll)
@@ -12207,7 +12207,7 @@ components:
           type: string
         tmdbId:
           examples:
-            - 1111867
+            - 91111867
           format: int64
           type: integer
         tvdbId:
@@ -12228,11 +12228,11 @@ components:
       properties:
         key:
           examples:
-            - movie:tmdb:1111867
+            - movie:tmdb:91111867
           type: string
         name:
           examples:
-            - In Flames
+            - Ashgrove Anomaly
           type: string
         state:
           enum:
@@ -19571,7 +19571,7 @@ paths:
           required: true
           schema:
             examples:
-              - movie:tmdb:1111867
+              - movie:tmdb:91111867
             type: string
       responses:
         "200":
