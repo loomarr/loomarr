@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
 // InternalPlayoutURLs derives the tuner + guide URLs Loomarr serves ITSELF (§9.1).

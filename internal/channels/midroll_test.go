@@ -7,10 +7,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
-	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // hourAvail resolves every key to a one-hour library item.

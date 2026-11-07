@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
 func statusServer(t *testing.T, status int) *tunarr.Tunarr {

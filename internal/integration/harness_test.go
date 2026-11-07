@@ -15,9 +15,9 @@ import (
 	"github.com/loomarr/loomarr/internal/app"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/testkit"
-	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // harness drives the REAL composition root (app.Build) end to end, faking

@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/testkit"
-	"github.com/loomarr/loomarr/internal/tunarr"
-	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // newServer spins a mock Tunarr with a per-path handler map and records the last

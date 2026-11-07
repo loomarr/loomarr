@@ -7,11 +7,11 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/backendtransition"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/backendtransition"
+	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // backendTransitionDependencies are the composition-owned adapters needed to construct the

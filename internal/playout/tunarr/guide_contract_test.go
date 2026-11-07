@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/testkit"
-	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // Guide parsing runs against the PINNED capture

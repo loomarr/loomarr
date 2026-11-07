@@ -1,4 +1,4 @@
-package playoutbench
+package bench
 
 import (
 	"strings"

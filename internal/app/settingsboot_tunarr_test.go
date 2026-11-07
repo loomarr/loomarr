@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
 func TestResolvedTunarrConfigReadsLiveSettingsTogether(t *testing.T) {

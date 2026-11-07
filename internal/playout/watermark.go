@@ -21,7 +21,7 @@ import (
 // programmes bug-free and declares it in Pipeline.Fallbacks. The programme's frames never leave the
 // GPU for it; only the bug's own single frame is prepared on the CPU, once, before its upload.
 //
-// The image is pre-rendered by internal/watermark at its final pixel size with the opacity and
+// The image is pre-rendered by internal/playout/watermark at its final pixel size with the opacity and
 // drop shadow baked into its alpha, so the graph only decodes it once, uploads it once and blends
 // it: no per-frame scale or alpha maths. Every family blends STRAIGHT alpha, each from its own
 // pixel format; the convention is measured per family on real hardware, never assumed:

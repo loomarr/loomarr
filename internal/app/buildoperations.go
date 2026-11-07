@@ -21,10 +21,10 @@ import (
 	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
-	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 func buildRestart(overrides Overrides, log *slog.Logger) (api.RestartService, *config.Config) {

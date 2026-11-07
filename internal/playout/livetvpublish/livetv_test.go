@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/testkit"
-	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 func newConnector(lib *testkit.LiveTV) *livetvpublish.LiveTVConnector {

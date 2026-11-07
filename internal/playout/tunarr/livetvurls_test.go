@@ -3,7 +3,7 @@ package tunarr_test
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
 func TestLiveTVURLsAt(t *testing.T) {

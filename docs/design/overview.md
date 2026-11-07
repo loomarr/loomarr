@@ -102,13 +102,13 @@ Subsystem names map many-to-many onto packages, and four packages share two verb
 | Turning an approved Proposal into a channel, preserving operator edits (`approval.Bind` is the pure core; the `Binder` shell reads the store and logs) | `internal/channels/approval` | `internal/channels` |
 | Re-evaluating a channel's intent through the approval gate | `internal/channels/recurate` | `internal/proposals/suggest` |
 | Title/Key identity and the acquisition state machine (pure) | `internal/provision` | `internal/provisionbackstop` |
-| Live TV publication (the owned tuner + guide pair) and Tunarr media-source wiring | `internal/livetvpublish` | `internal/config`, `internal/app` |
+| Live TV publication (the owned tuner + guide pair) and Tunarr media-source wiring | `internal/playout/livetvpublish` | `internal/config`, `internal/app` |
 | Federated search over library, TMDB and clips | `internal/catalog` | — |
 
-`internal/tunarr` is the Tunarr port and is unrelated to
+`internal/playout/tunarr` is the Tunarr port and is unrelated to
 [`programming-design.md`](../programming-design.md), which covers `ChannelPolicy` heuristics. The
-"Provisioner" is `provision` + `provisionbackstop` + `requester` + `store`; the "Scheduler" is `schedule` +
-`channels` + `tunarr`, and does not include `jobs`. Every package, its layer and its imports
+"Provisioner" is `provision` + `provisionbackstop` + `requester` + `store`; the "Scheduler" is `channels/schedule` +
+`channels` + `playout/tunarr`, and does not include `jobs`. Every package, its layer and its imports
 are in the generated [package map](package-map.md).
 
 ## Backend structure rules

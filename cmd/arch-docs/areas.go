@@ -89,7 +89,7 @@ var areas = []area{
 				"channel through the suggester",
 			"filler": "asking the filler engine for the pod that fills a break",
 			"playout": "handing reconciled programming to the backend that plays it: Loomarr's own " +
-				"`playout` engine or `tunarr`",
+				"`playout` engine or `playout/tunarr`",
 		},
 	},
 	{
@@ -123,8 +123,9 @@ var areas = []area{
 			"server, LAN discovery lets TV apps find Loomarr, and the bench measures the pipeline on " +
 			"real hardware.",
 		Packages: []string{
-			"playout", "playout/packager", "playoutbench", "watermark", "tunarr", "tunarr/tunarrtest",
-			"livetvpublish", "backendtransition", "landiscovery",
+			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/tunarr",
+			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
+			"playout/landiscovery",
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
@@ -251,9 +252,9 @@ var flows = []flow{
 			"`channels/schedule` turns " +
 			"the approved lineup and what is actually available into ordered programming, and the " +
 			"`channels` reconcile engine keeps that current for the channel's backend: either Loomarr's " +
-			"own `playout` engine, whose `playout/packager` stitches one continuous stream, or `tunarr`. " +
-			"`livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and " +
-			"when the household changes backend, `backendtransition` prepares the new one fully before " +
+			"own `playout` engine, whose `playout/packager` stitches one continuous stream, or `playout/tunarr`. " +
+			"`playout/livetvpublish` registers the playlist and guide with the media server's Live TV through " +
+			"`library`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before " +
 			"publishing it to the media server.",
 	},
 	{

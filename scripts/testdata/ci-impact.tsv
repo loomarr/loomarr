@@ -10,7 +10,7 @@ postgres-test-image-authority	internal/testkit/postgresimage/image.txt	contracts
 postgres-test-image-owner	internal/testkit/postgresimage/image.go	contracts,go,go_full,postgres,image,policy
 ryuk-test-image-authority	internal/testkit/ryukimage/image.txt	postgres,policy
 composition-go	internal/app/application.go	contracts,go,go_full,postgres,image
-backend-transition-go	internal/backendtransition/controller.go	contracts,go,postgres,image
+backend-transition-go	internal/playout/backendtransition/controller.go	contracts,go,postgres,image
 playout-go	internal/playout/packager_hls.go	contracts,go,postgres,image,playout_bench
 playout-opencl-kernel	internal/playout/watermark.cl	contracts,go,image,playout_bench
 rust-worker	rust/loomarr-image/src/lib.rs	rust,image
@@ -171,7 +171,7 @@ go-module-download	scripts/go-mod-download.sh	contracts,go,go_full,policy
 go-race-sharding	scripts/go-certification-lanes.tsv;scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-test-lane.sh;scripts/go-test-packages.sh	contracts,go,go_full,policy
 spike-throwaway	spike/4k-tonemap/README.md;spike/4k-tonemap/image/Dockerfile	docs
 playout-bench-command	cmd/playout-bench/main.go	contracts,go,postgres,image,playout_bench
-playout-bench-package	internal/playoutbench/compare.go	contracts,go,postgres,image,playout_bench
+playout-bench-package	internal/playout/bench/compare.go	contracts,go,postgres,image,playout_bench
 playout-bench-corpus-script	scripts/playout-bench-open-films.sh	docs,playout_bench
 playout-bench-coverage-script	scripts/playout-bench-coverage.sh	policy
 playout-bench-baseline	docs/engineering/playout-bench/README.md	docs,playout_bench

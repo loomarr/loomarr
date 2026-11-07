@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/livetvpublish"
-	"github.com/loomarr/loomarr/internal/tunarr"
-	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
+	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 )
 
 // liveTVURLsFor: `tunarr` reads the adapter's own URLs; everything else, including an
