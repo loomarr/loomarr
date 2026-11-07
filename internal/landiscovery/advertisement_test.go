@@ -131,3 +131,31 @@ func TestBroadcastResponderIgnoresInvalidRequestsAndUnusableURLs(t *testing.T) {
 	publicURL.Store("ftp://not-http.example")
 	assertSilent(BroadcastRequest)
 }
+
+// The responder answers the household's own network (private, link-local, loopback and Tailscale
+// addresses) and stays silent to a public sender, who could only be probing an exposed port.
+func TestBroadcastResponderAnswersOnlyTheLocalNetwork(t *testing.T) {
+	for _, tc := range []struct {
+		sender string
+		want   bool
+	}{
+		{"192.168.1.20", true},
+		{"10.0.0.5", true},
+		{"172.16.4.1", true},
+		{"169.254.10.10", true},
+		{"127.0.0.1", true},
+		{"100.101.102.103", true},
+		{"fd00::1", true},
+		{"fe80::1", true},
+		{"8.8.8.8", false},
+		{"2001:4860:4860::8888", false},
+		{"::ffff:8.8.8.8", false},
+	} {
+		if got := onLocalNetwork(&net.UDPAddr{IP: net.ParseIP(tc.sender), Port: 5353}); got != tc.want {
+			t.Errorf("onLocalNetwork(%s) = %v, want %v", tc.sender, got, tc.want)
+		}
+	}
+	if onLocalNetwork(&net.TCPAddr{IP: net.ParseIP("192.168.1.20")}) {
+		t.Error("a non-UDP sender was treated as local")
+	}
+}
