@@ -42,6 +42,41 @@ func (s *Server) registerLibraryItems(api huma.API) {
 		Description: "Opens the title's files and reads their details again, such as after a file was replaced.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
 	}, RoleAdmin), s.checkLibraryItemFiles)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "removeLibraryExtraCopy", Method: http.MethodPost, Path: "/v1/library/items/{id}/remove-copy",
+		Summary: "Remove a title's extra copy",
+		Description: "Moves one of the title's files that never plays into its media folder's trash " +
+			"(.loomarr-trash), which empties after 30 days.",
+		Tags: []string{"library"}, DefaultStatus: http.StatusNoContent,
+	}, RoleAdmin), s.removeLibraryExtraCopy)
+}
+
+type removeLibraryExtraCopyInput struct {
+	ID   string `path:"id" maxLength:"64"`
+	Body struct {
+		Path string `json:"path" minLength:"1" maxLength:"4096" doc:"The extra copy, as the title's files list it"`
+	}
+}
+
+func (s *Server) removeLibraryExtraCopy(ctx context.Context, in *removeLibraryExtraCopyInput) (*struct{}, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	err = svc.RemoveExtraCopy(ctx, in.ID, in.Body.Path)
+	switch {
+	case err == nil:
+		return nil, nil
+	case errors.Is(err, store.ErrNotFound):
+		return nil, apiErr(http.StatusNotFound, "Not one of this title's files", "Check files again, then try again.")
+	case errors.Is(err, scan.ErrPlays):
+		return nil, apiErr(http.StatusConflict, "That copy is the one that plays", "Only an extra copy can be removed.")
+	case errors.Is(err, scan.ErrTrash):
+		return nil, apiErrWithCause(http.StatusConflict, "Couldn't move the extra copy",
+			"Loomarr may not be allowed to change this folder.", err)
+	default:
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't remove the extra copy", "Try again in a moment.", err)
+	}
 }
 
 func (s *Server) updateLibraryItemDetails(ctx context.Context, in *libraryItemIDInput) (*struct{}, error) {
@@ -180,6 +215,7 @@ type libraryItemFileDTO struct {
 	Picture       *libraryPictureDTO   `json:"picture,omitempty" doc:"Its first video stream"`
 	AudioChannels int                  `json:"audioChannels,omitempty" doc:"The channels of the sound that plays: its default audio stream, else its first"`
 	Subtitles     []librarySubtitleDTO `json:"subtitles" doc:"Its subtitle streams in order; empty for none or while unread"`
+	Extra         bool                 `json:"extra" doc:"A copy that never plays, because another of the title's files does"`
 }
 
 type libraryPictureDTO struct {
@@ -202,7 +238,7 @@ type libraryDetailsFromDTO struct {
 func libraryFileOf(f scan.ItemFile) libraryItemFileDTO {
 	out := libraryItemFileDTO{
 		Path: f.Path, Size: f.Size, Ready: f.Header != store.LibraryHeaderPending,
-		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels,
+		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, Extra: f.Extra,
 		Subtitles: make([]librarySubtitleDTO, 0, len(f.Subtitles)),
 	}
 	if f.Picture != nil {

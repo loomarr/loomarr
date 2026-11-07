@@ -71,6 +71,7 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
       onForget={() => act(libraryApi.unanswerLibraryItem(id))}
       onLink={(tmdbId) => act(libraryApi.linkLibraryItem(id, { tmdbId }))}
       onOpenApp={page ? () => window.open(page, "_blank", "noopener,noreferrer") : undefined}
+      onRemoveExtra={(path) => act(libraryApi.removeLibraryExtraCopy(id, { path }))}
       onSearch={searchLibraryTitles}
       onUpdateDetails={() => act(libraryApi.updateLibraryItemDetails(id))}
       title={{

@@ -37,6 +37,7 @@ const MOVIE: LibraryTitleDetail = {
       picture: { width: 3840, height: 1600, hdr: true },
       audioChannels: 6,
       subtitles: [{ language: "eng" }, { language: "eng" }, {}],
+      extra: false,
     },
   ],
   seasons: [],
@@ -77,6 +78,7 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}
     onSearch: vi.fn(() => Promise.resolve([])),
     onLink: vi.fn(() => Promise.resolve()),
     onForget: vi.fn(() => Promise.resolve()),
+    onRemoveExtra: vi.fn(() => Promise.resolve()),
     ...over,
   };
   const host = doc.createElement("div");
@@ -133,6 +135,30 @@ describe("LibraryTitle", () => {
     act(() => button("Technical details").click());
     expect(host.textContent).toContain("Under a minute");
     expect(host.textContent).not.toContain("0 min");
+    cleanup();
+  });
+
+  it("offers to remove an extra copy, and says when it couldn't", async () => {
+    const extra = {
+      ...MOVIE.files[0],
+      path: "/media/movies/Paper Kites (1996)/Paper Kites DVD.mkv",
+      size: 4_300_000_000,
+      extra: true,
+    } as LibraryTitleDetail["files"][number];
+    const single = render(MOVIE);
+    expect(single.host.textContent).not.toContain("An extra copy");
+    single.cleanup();
+
+    const onRemoveExtra = vi.fn(() => Promise.reject(new Error("read-only")));
+    const { host, button, cleanup } = render({ ...MOVIE, files: [...MOVIE.files, extra] }, { onRemoveExtra });
+    expect(host.textContent).toContain("An extra copy is taking 4.0 GB");
+    await act(async () => button("Remove extra copy").click());
+    expect(onRemoveExtra).toHaveBeenCalledWith(extra.path);
+    expect(host.textContent).toContain(
+      "Couldn't remove it. Loomarr may not be allowed to change this folder.",
+    );
+    act(() => button("Technical details").click());
+    expect(host.textContent).toContain("Extra copy");
     cleanup();
   });
 

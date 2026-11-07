@@ -15,6 +15,8 @@ interface LibraryTitleFile {
   audioChannels?: number;
   /** Each subtitle stream; a language is an ISO 639 code, absent when the file doesn't say. */
   subtitles: readonly { language?: string }[];
+  /** A copy that never plays, because another of the title's files does. */
+  extra: boolean;
 }
 
 /** Where a title's details came from, each as a name to show ("TMDB", "Sonarr"). */
@@ -85,6 +87,8 @@ interface LibraryTitleProps {
   onLink: (tmdbId: string) => Promise<void>;
   /** Forget my answer: the title goes back to needing the household. */
   onForget: () => Promise<void>;
+  /** Remove extra copy: moves the file at path to the trash; rejects when it couldn't. */
+  onRemoveExtra: (path: string) => Promise<void>;
 }
 
 export type {

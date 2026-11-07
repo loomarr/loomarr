@@ -92,11 +92,19 @@ type LibraryItemStore interface {
 	// RecheckLibraryItemFiles puts the header of an item's present, importable files (a series'
 	// episodes) back to pending, so the scanner reads them again, and lists them.
 	RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error)
+	// RemoveLibraryFile marks a present file missing at `at`, unheld: one Loomarr moved away
+	// itself, which no removal guard needs to confirm. A file not present is left alone.
+	RemoveLibraryFile(ctx context.Context, path string, at time.Time) error
 }
 
 func (s *sqlStore) RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error) {
 	return s.resetFiles(ctx, `header = '`+LibraryHeaderPending+`'`,
 		`(item_id = ? OR series_id = ?) AND problem = ''`, id, id)
+}
+
+func (s *sqlStore) RemoveLibraryFile(ctx context.Context, path string, at time.Time) error {
+	_, err := s.resetFiles(ctx, fmt.Sprintf("missing_at = %d, held = FALSE", at.UnixMilli()), "path = ?", path)
+	return err
 }
 
 func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at time.Time) error {

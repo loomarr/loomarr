@@ -168,6 +168,7 @@ const titleActions = {
   onSearch: search,
   onLink: answered,
   onForget: answered,
+  onRemoveExtra: answered,
 };
 
 const Movie: Story = {
@@ -193,6 +194,16 @@ const Movie: Story = {
             picture: { width: 3840, height: 2160, hdr: true },
             audioChannels: 6,
             subtitles: [{ language: "en" }, { language: "es" }],
+            extra: false,
+          },
+          {
+            path: "/media/movies/Paper Kites (1996)/Paper Kites (1996) DVD.mkv",
+            size: 4_300_000_000,
+            lengthMillis: 5_880_000,
+            picture: { width: 720, height: 480, hdr: false },
+            audioChannels: 2,
+            subtitles: [],
+            extra: true,
           },
         ],
         seasons: [],

@@ -640,6 +640,10 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			if err := im.Store.SetLibraryRootScanned(ctx, root, now); err != nil && !errors.Is(err, store.ErrNotFound) {
 				return result, nil, err
 			}
+			// The folder answered in full: its trash is emptied of copies removed long enough ago.
+			if err := emptyTrash(root, now); err != nil {
+				im.log().Warn("library scan: couldn't empty a media folder's trash", "root", root, "err", err)
+			}
 		}
 	}
 	return result, queue, nil

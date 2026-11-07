@@ -6737,6 +6737,9 @@ components:
           description: "The channels of the sound that plays: its default audio stream, else its first"
           format: int64
           type: integer
+        extra:
+          description: A copy that never plays, because another of the title's files does
+          type: boolean
         lengthMillis:
           description: How long it plays, measured from the file
           format: int64
@@ -6764,6 +6767,7 @@ components:
         - size
         - ready
         - subtitles
+        - extra
       type: object
     LibraryMatchDTO:
       additionalProperties: false
@@ -9913,6 +9917,24 @@ components:
         - enabled
         - label
         - uri
+      type: object
+    RemoveLibraryExtraCopyInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RemoveLibraryExtraCopyInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        path:
+          description: The extra copy, as the title's files list it
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
       type: object
     RequestChannelIdeaOutputBody:
       additionalProperties: false
@@ -17861,6 +17883,35 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Update a title's details
+      tags:
+        - library
+  /v1/library/items/{id}/remove-copy:
+    post:
+      description: Moves one of the title's files that never plays into its media folder's trash (.loomarr-trash), which empties after 30 days.
+      operationId: removeLibraryExtraCopy
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemoveLibraryExtraCopyInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a title's extra copy
       tags:
         - library
   /v1/library/needs:

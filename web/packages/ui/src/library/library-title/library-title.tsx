@@ -1,9 +1,15 @@
+import { formatBytes } from "@loomarr/core/format";
 import { Action, Badge, Disclosure, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { lengthPhrase, TechnicalDetails } from "../technical-details";
-import type { LibraryTitleDetail, LibraryTitleProps, LibraryTitleSeason } from "./library-title.type";
+import type {
+  LibraryTitleDetail,
+  LibraryTitleFile,
+  LibraryTitleProps,
+  LibraryTitleSeason,
+} from "./library-title.type";
 
 // A TITLE'S PAGE (#2151 decisions 25–26, design/library variant D): big artwork, the facts in plain
 // words, the story, the seasons, and the file behind one "Technical details" disclosure.
@@ -205,6 +211,50 @@ const TitleActions = (props: Omit<LibraryTitleProps, "onBack">) => {
   );
 };
 
+// An extra copy (decision 37) is a calm warning with one primary action. The card stays until the
+// page refetches without the file; a press while one is out is dropped.
+const ExtraCopy = ({
+  file,
+  onRemove,
+}: {
+  file: LibraryTitleFile;
+  onRemove: (path: string) => Promise<void>;
+}) => {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const remove = () => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    onRemove(file.path).then(
+      () => setBusy(false),
+      () => {
+        setBusy(false);
+        setFailed(true);
+      },
+    );
+  };
+  return (
+    <Surface borderColor="stateWarning" gap="control" padding="section">
+      <Text as="h2" textRole="title">{`An extra copy is taking ${formatBytes(file.size)}`}</Text>
+      <Text textRole="body" tone="secondary">
+        Loomarr plays the better copy, so this one never plays. Removing it moves it to Loomarr's trash in the
+        same folder, which empties after 30 days.
+      </Text>
+      {failed ? (
+        <Text textRole="body" tone="secondary">
+          Couldn't remove it. Loomarr may not be allowed to change this folder.
+        </Text>
+      ) : null}
+      <Line>
+        <Action onPress={remove} tone="primary">
+          Remove extra copy
+        </Action>
+      </Line>
+    </Surface>
+  );
+};
+
 const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
   const { title } = actions;
   const wide = useWindowWidth() >= SIDE_BY_SIDE;
@@ -255,6 +305,12 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
           <TitleActions {...actions} />
         </Stack>
       </Stack>
+
+      {title.files
+        .filter((file) => file.extra)
+        .map((file) => (
+          <ExtraCopy file={file} key={file.path} onRemove={actions.onRemoveExtra} />
+        ))}
 
       {title.seasons.length > 0 ? (
         <Stack aria-label="Seasons" gap="control" role="region">

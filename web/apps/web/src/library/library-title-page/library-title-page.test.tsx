@@ -18,7 +18,7 @@ const echo = {
   item: { id: "90000003", kind: "movie" as const, name: "Echo", year: 1999, files: 1, ready: true },
   overview: "A story.",
   genres: ["Drama"],
-  files: [{ path: "/media/movies/Echo/Echo.mkv", size: 1_000_000, ready: true, subtitles: [] }],
+  files: [{ path: "/media/movies/Echo/Echo.mkv", size: 1_000_000, ready: true, subtitles: [], extra: false }],
   seasons: [],
   match: { by: "file" as const },
   detailsFrom: {},
