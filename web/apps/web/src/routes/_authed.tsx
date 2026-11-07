@@ -1,6 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
+import * as libraryApi from "@loomarr/api/endpoints/library";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -37,6 +38,10 @@ const AuthedLayout = () => {
   // The Requests nav badge: what is waiting on this viewer (approvals for an admin, failed
   // requests for anyone) — the same number as the Needs you tab.
   const needsYouCount = useNeedsYouCount();
+  // The Library nav badge (#2151 decision 27): the titles Loomarr can't tell what they are — the
+  // same number as the Needs you heading. Admin-only, like the Library.
+  const libraryStatus = libraryApi.useLibraryStatus({ query: { enabled: isAdmin, staleTime: 30_000 } });
+  const libraryNeedsYou = isAdmin ? (unwrap(libraryStatus.data)?.needsYou ?? 0) : 0;
   // Watch's target (#1817 item 3, #1659 Shell, decision X2), shared by the desktop rail and
   // PhoneBottomBar — one fetch, one selector, passed down as a single prop so neither shell
   // derives its own fallback chain.
@@ -81,7 +86,7 @@ const AuthedLayout = () => {
           isAdmin={isAdmin}
           userName={user?.name ?? "…"}
           serverVersion={serverVersion}
-          badges={{ "/requests": needsYouCount }}
+          badges={{ "/requests": needsYouCount, "/library": libraryNeedsYou }}
           onOpenCommand={() => setCommandOpen(true)}
           onLogout={() => logout.mutate()}
           watchChannelId={watchId}

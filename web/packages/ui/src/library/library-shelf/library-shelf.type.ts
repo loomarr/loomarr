@@ -49,6 +49,10 @@ interface LibraryShelfProps {
   /** The first page hasn't arrived: the grid draws nothing yet. */
   loading: boolean;
   onOpenTitle: (id: string) => void;
+  /** Needs you, under the status line: the strip, or on its own screen the cards. */
+  needs?: ReactNode;
+  /** False on Needs you's own screen: the tabs stay, the search and the grid go. Default true. */
+  showTitles?: boolean;
 }
 
 export type { LibraryFilter, LibraryKind, LibraryShelfProps, LibraryShelfStatus, LibraryShelfTitle };

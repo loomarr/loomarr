@@ -62,6 +62,12 @@ export type {
   LibraryHeldRemoval,
   LibraryHook,
   LibraryKind,
+  LibraryNeed,
+  LibraryNeedCandidate,
+  LibraryNeedSearch,
+  LibraryNeedsAnswers,
+  LibraryNeedsCardsProps,
+  LibraryNeedsStripProps,
   LibraryPathMapping,
   LibraryScan,
   LibrarySettingsProps,
@@ -74,7 +80,13 @@ export type {
   LibraryTitleProps,
   LibraryTitleSeason,
 } from "./src/library";
-export { LibrarySettings, LibraryShelf, LibraryTitle } from "./src/library";
+export {
+  LibraryNeedsCards,
+  LibraryNeedsStrip,
+  LibrarySettings,
+  LibraryShelf,
+  LibraryTitle,
+} from "./src/library";
 export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,

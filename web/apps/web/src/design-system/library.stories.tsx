@@ -1,4 +1,12 @@
-import { LibraryShelf, type LibraryShelfProps, type LibraryShelfTitle, LibraryTitle } from "@loomarr/ui";
+import {
+  type LibraryNeed,
+  LibraryNeedsCards,
+  LibraryNeedsStrip,
+  LibraryShelf,
+  type LibraryShelfProps,
+  type LibraryShelfTitle,
+  LibraryTitle,
+} from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // The Library (#2151, design/library variant D): the poster grid in each scan state and a title's
@@ -94,6 +102,64 @@ const Fresh: Story = {
 
 const NoMatch: Story = { args: { search: "zebra", titles: [] } };
 
+// Needs you: one guess the name agrees with, one with nothing to go on.
+const NEEDS: LibraryNeed[] = [
+  {
+    id: "90000811",
+    kind: "movie",
+    files: ["/media/movies/Paper.Kites.1997.1080p/Paper.Kites.1997.1080p.mkv"],
+    best: {
+      tmdbId: "90000901",
+      kind: "movie",
+      name: "Paper Kites",
+      year: 1996,
+      overview: "A small-town salesman hatches a plan that goes wrong the moment it starts.",
+      poster: art("#6b3a2e"),
+      nameMatches: true,
+      yearMatches: false,
+      lengthMatches: true,
+    },
+    others: [
+      {
+        tmdbId: "90000902",
+        kind: "movie",
+        name: "Paper Kites",
+        year: 2014,
+        nameMatches: true,
+        yearMatches: false,
+        lengthMatches: false,
+      },
+    ],
+  },
+  {
+    id: "90000812",
+    kind: "series",
+    files: ["/media/tv/disc2/title_t01.mkv", "/media/tv/disc2/title_t02.mkv"],
+    others: [],
+  },
+];
+
+const answered = () => Promise.resolve();
+const search = () => Promise.resolve([]);
+
+const NeedsStrip: Story = {
+  args: { needs: <LibraryNeedsStrip needs={NEEDS} onLink={answered} onOpenNeeds={() => {}} /> },
+};
+
+const NeedsCards: Story = {
+  args: {
+    showTitles: false,
+    needs: <LibraryNeedsCards needs={NEEDS} onIgnore={answered} onLink={answered} onSearch={search} />,
+  },
+};
+
+const NothingNeedsYou: Story = {
+  args: {
+    showTitles: false,
+    needs: <LibraryNeedsCards needs={[]} onIgnore={answered} onLink={answered} onSearch={search} />,
+  },
+};
+
 const Movie: Story = {
   render: () => (
     <LibraryTitle
@@ -143,4 +209,17 @@ const Series: Story = {
 };
 
 export default meta;
-export { Adding, CaughtUp, FolderOffline, Fresh, HeldRemoval, Movie, NoMatch, Paused, Series };
+export {
+  Adding,
+  CaughtUp,
+  FolderOffline,
+  Fresh,
+  HeldRemoval,
+  Movie,
+  NeedsCards,
+  NeedsStrip,
+  NoMatch,
+  NothingNeedsYou,
+  Paused,
+  Series,
+};

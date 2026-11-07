@@ -2,12 +2,19 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryItemDTO } from "@loomarr/api/models/libraryItemDTO";
 import type { LibraryStatusOutputBody } from "@loomarr/api/models/libraryStatusOutputBody";
 import { unwrap } from "@loomarr/api/unwrap";
-import { type LibraryFilter, LibraryShelf, type LibraryShelfTitle } from "@loomarr/ui";
+import {
+  type LibraryFilter,
+  LibraryNeedsCards,
+  LibraryNeedsStrip,
+  LibraryShelf,
+  type LibraryShelfTitle,
+} from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
+import { useLibraryNeeds } from "../use-library-needs";
 
 // LIBRARY (#2151 decision 22): the titles Loomarr found in its media folders, as a poster grid
 // under one line about the library. The filter and the search live in the URL; the grid loads a
@@ -47,13 +54,17 @@ const useSettled = (value: string) => {
 interface LibraryPageProps {
   filter: LibraryFilter;
   search: string;
+  /** "needs" is Needs you's own screen: its cards in place of the strip, and no grid. */
+  view?: "titles" | "needs";
 }
 
-const LibraryPage = ({ filter, search }: LibraryPageProps) => {
+const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [typed, setTyped] = useState(search);
   const settled = useSettled(typed.trim());
+  const needs = useLibraryNeeds();
+  const titlesView = view === "titles";
 
   const status = libraryApi.useLibraryStatus({
     query: { refetchInterval: (query) => (isBusy(unwrap(query.state.data)) ? BUSY_REFETCH_MS : false) },
@@ -69,14 +80,14 @@ const LibraryPage = ({ filter, search }: LibraryPageProps) => {
   // Keep the URL's search in step with what was typed, without a history entry per keystroke.
   const synced = useRef(search);
   useEffect(() => {
-    if (settled === synced.current) return;
+    if (!titlesView || settled === synced.current) return;
     synced.current = settled;
     void navigate({
       to: "/library",
       search: { kind: filter === "all" ? undefined : filter, q: settled || undefined },
       replace: true,
     });
-  }, [settled, filter, navigate]);
+  }, [settled, filter, navigate, titlesView]);
 
   const params = {
     kind: filter === "all" ? undefined : filter,
@@ -84,6 +95,7 @@ const LibraryPage = ({ filter, search }: LibraryPageProps) => {
     limit: PAGE,
   };
   const items = useInfiniteQuery({
+    enabled: titlesView,
     queryKey: [...libraryApi.getListLibraryItemsQueryKey(params), "pages"],
     initialPageParam: 0,
     queryFn: async ({ pageParam, signal }) => {
@@ -125,10 +137,27 @@ const LibraryPage = ({ filter, search }: LibraryPageProps) => {
 
   const offline = (unwrap(roots.data)?.roots ?? []).filter((f) => f.inUse && !f.readable).map((f) => f.path);
 
+  const openNeeds = () => void navigate({ to: "/library/needs" });
+  const needsSlot = titlesView ? (
+    <LibraryNeedsStrip needs={needs.needs} onLink={needs.answers.onLink} onOpenNeeds={openNeeds} />
+  ) : needs.loaded ? (
+    <LibraryNeedsCards
+      needs={needs.needs}
+      onIgnore={needs.answers.onIgnore}
+      onLink={needs.answers.onLink}
+      onSearch={needs.onSearch}
+    />
+  ) : null;
+
   return (
     <>
       {items.error ? <ErrorState error={items.error} onRetry={() => void items.refetch()} /> : null}
+      {needs.error && !titlesView ? (
+        <ErrorState error={needs.error} onRetry={() => void needs.refetch()} />
+      ) : null}
       <LibraryShelf
+        needs={needsSlot}
+        showTitles={titlesView}
         checking={discover.isPending}
         filter={filter}
         loading={items.isPending}
