@@ -9,7 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/ideas"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
@@ -100,11 +100,11 @@ type channelIdeaDTO struct {
 	// add titles from a facet one at a time, which a bare key can't render. Same data
 	// `request-channel-idea` already turns into a Proposal's lineup (ideaLineup below); this
 	// DTO just also exposes it for display before that request happens.
-	Titles     []proposal.ProposalItem `json:"titles" doc:"Keys, with display fields, in the same order"`
-	Movies     int                     `json:"movies"`
-	Series     int                     `json:"series"`
-	InLibrary  int                     `json:"inLibrary" doc:"Titles already in the library"`
-	ToDownload int                     `json:"toDownload" doc:"Titles the idea would have to request. Library-grounded ideas need none."`
+	Titles     []proposals.ProposalItem `json:"titles" doc:"Keys, with display fields, in the same order"`
+	Movies     int                      `json:"movies"`
+	Series     int                      `json:"series"`
+	InLibrary  int                      `json:"inLibrary" doc:"Titles already in the library"`
+	ToDownload int                      `json:"toDownload" doc:"Titles the idea would have to request. Library-grounded ideas need none."`
 }
 
 type listChannelIdeasOutput struct {
@@ -244,14 +244,14 @@ func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (
 			continue
 		}
 		name, pitch := ideas.Describe(idea, labels[idea.Reason.HolidayID])
-		built := proposal.Proposal{
+		built := proposals.Proposal{
 			ChannelName: name, FromIdea: idea.ID, Lineup: ideaLineup(idea.Titles), Rationale: pitch,
 			// Every title is already in the library: nothing to download.
-			Scores: proposal.Scores{AvailabilityRatio: 1},
+			Scores: proposals.Scores{AvailabilityRatio: 1},
 		}
 		// The name is the request's brief, as a typed brief is for a member's own request: Your
 		// requests and the approval queue title the request with it (#1659 web mock).
-		jobID, err := s.suggest.SubmitBuilt(ctx, proposal.Intent{Description: name}, built, userID)
+		jobID, err := s.suggest.SubmitBuilt(ctx, proposals.Intent{Description: name}, built, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -262,9 +262,9 @@ func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (
 }
 
 type submitManualChannelBody struct {
-	Name        string                  `json:"name" maxLength:"200" doc:"The channel's name, as the person typed it or the chosen starter template filled it"`
-	Description string                  `json:"description,omitempty" maxLength:"2000" doc:"A one-line reason, shown on the review card where the LLM's rationale would otherwise go"`
-	Lineup      []proposal.ProposalItem `json:"lineup" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
+	Name        string                   `json:"name" maxLength:"200" doc:"The channel's name, as the person typed it or the chosen starter template filled it"`
+	Description string                   `json:"description,omitempty" maxLength:"2000" doc:"A one-line reason, shown on the review card where the LLM's rationale would otherwise go"`
+	Lineup      []proposals.ProposalItem `json:"lineup" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
 }
 
 type submitManualChannelInput struct {
@@ -301,11 +301,11 @@ func (s *Server) submitManualChannel(ctx context.Context, in *submitManualChanne
 	if total == 0 {
 		return nil, errBadRequest("Choose at least one title", "Pick a title from your library or search before continuing.")
 	}
-	built := proposal.Proposal{
+	built := proposals.Proposal{
 		ChannelName: name, Manual: true, Lineup: lineup, Acquisitions: acquisitions, Rationale: in.Body.Description,
-		Scores: proposal.Scores{AvailabilityRatio: float64(len(lineup)) / float64(total)},
+		Scores: proposals.Scores{AvailabilityRatio: float64(len(lineup)) / float64(total)},
 	}
-	jobID, err := s.suggest.SubmitBuilt(ctx, proposal.Intent{Description: name}, built, userID)
+	jobID, err := s.suggest.SubmitBuilt(ctx, proposals.Intent{Description: name}, built, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -316,8 +316,8 @@ func (s *Server) submitManualChannel(ctx context.Context, in *submitManualChanne
 
 // ideaLineup turns an idea's library titles into proposal items, in the idea's order (newest
 // first). Each carries the id its key names, which is what grounds it for the approval gate.
-func ideaLineup(titles []ideas.Item) []proposal.ProposalItem {
-	out := make([]proposal.ProposalItem, 0, len(titles))
+func ideaLineup(titles []ideas.Item) []proposals.ProposalItem {
+	out := make([]proposals.ProposalItem, 0, len(titles))
 	for _, it := range titles {
 		if len(it.Keys) == 0 {
 			continue
@@ -326,7 +326,7 @@ func ideaLineup(titles []ideas.Item) []proposal.ProposalItem {
 		if !ok {
 			continue
 		}
-		item := proposal.ProposalItem{MediaType: mt, Name: it.Name, Year: it.Year, InLibrary: true, Genres: it.Genres}
+		item := proposals.ProposalItem{MediaType: mt, Name: it.Name, Year: it.Year, InLibrary: true, Genres: it.Genres}
 		if provider == "tvdb" {
 			item.TVDBID = id
 		} else {

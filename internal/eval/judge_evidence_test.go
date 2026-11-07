@@ -9,17 +9,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
-	proposal := proposal.Proposal{
-		Lineup: []proposal.ProposalItem{{
+	proposal := proposals.Proposal{
+		Lineup: []proposals.ProposalItem{{
 			MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999,
 			InLibrary: true, LibraryItemID: "library-marigold", Source: "library-search",
 			Rationale: "Grounded cyberpunk anchor", Confidence: 0.93,
@@ -93,11 +93,11 @@ func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
 }
 
 func TestRunnerKeepsAcquisitionOwnershipDistinctAtJudge(t *testing.T) {
-	proposal := proposal.Proposal{
-		Lineup: []proposal.ProposalItem{{
+	proposal := proposals.Proposal{
+		Lineup: []proposals.ProposalItem{{
 			MediaType: provision.Movie, TMDBID: 90000603, Name: "Library title", InLibrary: true,
 		}},
-		Acquisitions: []proposal.ProposalItem{{
+		Acquisitions: []proposals.ProposalItem{{
 			MediaType: provision.Movie, TMDBID: 90000550, Name: "Acquisition title", InLibrary: false,
 		}},
 	}
@@ -128,7 +128,7 @@ func TestRunnerKeepsAcquisitionOwnershipDistinctAtJudge(t *testing.T) {
 }
 
 func TestRunnerGivesJudgeScheduleMaterializerEvidenceNotProposalTitles(t *testing.T) {
-	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
+	proposal := proposals.Proposal{Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Series, TMDBID: 90000456, LibraryItemID: "series-mudpuddles",
 		Name: "PROPOSAL TITLE IS NOT SCHEDULE EVIDENCE", InLibrary: true,
 	}}}
@@ -176,15 +176,15 @@ func TestRunnerGivesJudgeScheduleMaterializerEvidenceNotProposalTitles(t *testin
 }
 
 func TestRunnerBoundsEveryNamedJudgeEvidenceDimension(t *testing.T) {
-	lineup := make([]proposal.ProposalItem, JudgeMaxTitlesPerOwnership+1)
-	acquisitions := make([]proposal.ProposalItem, JudgeMaxTitlesPerOwnership+1)
+	lineup := make([]proposals.ProposalItem, JudgeMaxTitlesPerOwnership+1)
+	acquisitions := make([]proposals.ProposalItem, JudgeMaxTitlesPerOwnership+1)
 	fixtures := make(map[provision.Key]FixtureTitle, len(lineup))
 	for i := range lineup {
 		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", 90001000+i))
-		lineup[i] = proposal.ProposalItem{MediaType: provision.Movie, TMDBID: 90001000 + i,
+		lineup[i] = proposals.ProposalItem{MediaType: provision.Movie, TMDBID: 90001000 + i,
 			Name: fmt.Sprintf("lineup-%02d", i), InLibrary: true, LibraryItemID: fmt.Sprintf("library-%02d", i)}
 		fixtures[key] = FixtureTitle{LibraryItemID: fmt.Sprintf("library-%02d", i), DurationMs: 90 * 60 * 1000}
-		acquisitions[i] = proposal.ProposalItem{
+		acquisitions[i] = proposals.ProposalItem{
 			MediaType: provision.Movie, TMDBID: 90002000 + i,
 			Name: fmt.Sprintf("acquisition-%02d", i),
 		}
@@ -216,7 +216,7 @@ func TestRunnerBoundsEveryNamedJudgeEvidenceDimension(t *testing.T) {
 		collections[i] = fmt.Sprintf("collection-%02d", i)
 	}
 	collections[JudgeMaxPolicyValues] = "POLICY_BEYOND_CAP"
-	proposal := proposal.Proposal{
+	proposal := proposals.Proposal{
 		Lineup: lineup, Acquisitions: acquisitions,
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 			Scope: schedule.ScopePolicy{Collections: collections},
@@ -272,7 +272,7 @@ func TestRunnerBoundsEveryNamedJudgeEvidenceDimension(t *testing.T) {
 }
 
 func TestRunnerFailsOnWrongTypedJudgeEvidenceWithoutRenderer(t *testing.T) {
-	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{{
+	proposal := proposals.Proposal{Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Year: 2000,
 	}}}
 	judge := newSemanticRecordingJudge(func(evidence JudgeEvidence) error {
@@ -296,11 +296,11 @@ func TestRunnerFailsOnWrongTypedJudgeEvidenceWithoutRenderer(t *testing.T) {
 }
 
 func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T) {
-	candidates := make([]proposal.DecisionCandidate, 65)
+	candidates := make([]proposals.DecisionCandidate, 65)
 	for i := range candidates {
-		candidates[i] = proposal.DecisionCandidate{Key: fmt.Sprintf("movie:tmdb:%d", 90000001+i), Ownership: "library", Rank: proposal.RankTuple{TieKey: fmt.Sprintf("movie:tmdb:%d", 90000001+i)}, Disposition: suggest.DispositionNotSelected, Reason: suggest.ReasonNotSelected}
+		candidates[i] = proposals.DecisionCandidate{Key: fmt.Sprintf("movie:tmdb:%d", 90000001+i), Ownership: "library", Rank: proposals.RankTuple{TieKey: fmt.Sprintf("movie:tmdb:%d", 90000001+i)}, Disposition: suggest.DispositionNotSelected, Reason: suggest.ReasonNotSelected}
 	}
-	proposal := proposal.Proposal{Trace: proposal.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: candidates}}
+	proposal := proposals.Proposal{Trace: proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: candidates}}
 	evidence, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -319,7 +319,7 @@ func TestModelJudgeRejectsTraceMismatchBeforeCallingProvider(t *testing.T) {
 	evidence := JudgeEvidence{
 		Rubric:        "grounded evidence only",
 		Lineup:        []JudgeTitleEvidence{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Ownership: JudgeOwnershipLibrary}},
-		DecisionTrace: proposal.DecisionTrace{Version: suggest.DecisionTraceVersion + 1},
+		DecisionTrace: proposals.DecisionTrace{Version: suggest.DecisionTraceVersion + 1},
 	}
 	if _, err := (modelJudge{provider: provider}).Score(context.Background(), evidence); err == nil {
 		t.Fatal("model judge accepted a mismatched decision trace")
@@ -329,7 +329,7 @@ func TestModelJudgeRejectsTraceMismatchBeforeCallingProvider(t *testing.T) {
 	}
 }
 
-func mustJudgeEvidence(t testing.TB, c Case, proposal proposal.Proposal, observation Observation, programs []MaterializedProgram) JudgeEvidence {
+func mustJudgeEvidence(t testing.TB, c Case, proposal proposals.Proposal, observation Observation, programs []MaterializedProgram) JudgeEvidence {
 	t.Helper()
 	evidence, err := NewJudgeEvidence(c, proposal, observation, programs)
 	if err != nil {

@@ -30,13 +30,13 @@ MOD = "github.com/loomarr/loomarr/"
 PKG = {}
 for sub, pkgs in {
     "API": "api httpx auth web setup invitation contact secretprotection",
-    "scheduler/guide": "schedule binder programmer channels plannerreference channelmaint",
+    "scheduler/guide": "schedule binder programmer channels channelmaint",
     "jobs runtime": "jobs bgexec",
     "filler": "filler filleradmission fillerscreening fillercorpus fillerenrichment fillereval "
               "fillerresearch fillerstructure fillerstructuremedia fillerstructurewindow "
               "fillerstructurewindowopenrouter clipfetch mediameasure media mediatools episodeevidence",
-    "curation": "suggest recommend proposaloutlook proposalworkflow recurate ideas taxonomy holidayvocab textmatch "
-                "moviecollections tmdb catalog reference quality",
+    "curation": "proposals recommend recurate ideas taxonomy holidayvocab textmatch "
+                "moviecollections tmdb catalog",
     "library sync": "library inventory requester provision provisionbackstop",
     "images": "images",
     "database": "store fillerstore",

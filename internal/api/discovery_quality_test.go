@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
 func TestDiscoveryQualityExportIsAdminOnlyAndOmitsReceipts(t *testing.T) {

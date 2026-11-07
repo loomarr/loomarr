@@ -17,12 +17,12 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/rating"
-	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -50,33 +50,33 @@ type QueryPilotCorpus struct {
 }
 
 type QueryPilotCase struct {
-	ID                    string                   `json:"id"`
-	Group                 string                   `json:"group"`
-	Category              string                   `json:"category"`
-	Type                  string                   `json:"type"`
-	FixtureCase           string                   `json:"fixtureCase"`
-	Description           string                   `json:"description"`
-	RefineText            string                   `json:"refineText,omitempty"`
-	CurrentLineup         []proposal.LineupContext `json:"currentLineup,omitempty"`
-	MustInclude           []string                 `json:"mustInclude,omitempty"`
-	MustExclude           []string                 `json:"mustExclude,omitempty"`
-	MinGrounded           int                      `json:"minGrounded"`
-	MinLineup             int                      `json:"minLineup,omitempty"`
-	MinAcquisitions       int                      `json:"minAcquisitions,omitempty"`
-	MinMovies             int                      `json:"minMovies,omitempty"`
-	AllowedMediaTypes     []provision.MediaType    `json:"allowedMediaTypes,omitempty"`
-	ExpectedToolOperation string                   `json:"expectedToolOperation,omitempty"`
-	ExpectCeiling         string                   `json:"expectCeiling,omitempty"`
-	ForbidRatingsAbove    string                   `json:"forbidRatingsAbove,omitempty"`
-	AudienceAuthority     string                   `json:"audienceAuthority,omitempty"`
-	ExpectAbstention      bool                     `json:"expectAbstention,omitempty"`
-	RecoveryExpected      bool                     `json:"recoveryExpected,omitempty"`
-	AcceptableKeys        []provision.Key          `json:"acceptableKeys"`
-	RequireKeys           []provision.Key          `json:"requireKeys,omitempty"`
-	ForbidKeys            []provision.Key          `json:"forbidKeys,omitempty"`
-	NoDates               bool                     `json:"noDates,omitempty"`
-	Dates                 *schedule.DateScope      `json:"dates,omitempty"`
-	SubjectiveReview      *QuerySubjectiveReview   `json:"subjectiveReview,omitempty"`
+	ID                    string                    `json:"id"`
+	Group                 string                    `json:"group"`
+	Category              string                    `json:"category"`
+	Type                  string                    `json:"type"`
+	FixtureCase           string                    `json:"fixtureCase"`
+	Description           string                    `json:"description"`
+	RefineText            string                    `json:"refineText,omitempty"`
+	CurrentLineup         []proposals.LineupContext `json:"currentLineup,omitempty"`
+	MustInclude           []string                  `json:"mustInclude,omitempty"`
+	MustExclude           []string                  `json:"mustExclude,omitempty"`
+	MinGrounded           int                       `json:"minGrounded"`
+	MinLineup             int                       `json:"minLineup,omitempty"`
+	MinAcquisitions       int                       `json:"minAcquisitions,omitempty"`
+	MinMovies             int                       `json:"minMovies,omitempty"`
+	AllowedMediaTypes     []provision.MediaType     `json:"allowedMediaTypes,omitempty"`
+	ExpectedToolOperation string                    `json:"expectedToolOperation,omitempty"`
+	ExpectCeiling         string                    `json:"expectCeiling,omitempty"`
+	ForbidRatingsAbove    string                    `json:"forbidRatingsAbove,omitempty"`
+	AudienceAuthority     string                    `json:"audienceAuthority,omitempty"`
+	ExpectAbstention      bool                      `json:"expectAbstention,omitempty"`
+	RecoveryExpected      bool                      `json:"recoveryExpected,omitempty"`
+	AcceptableKeys        []provision.Key           `json:"acceptableKeys"`
+	RequireKeys           []provision.Key           `json:"requireKeys,omitempty"`
+	ForbidKeys            []provision.Key           `json:"forbidKeys,omitempty"`
+	NoDates               bool                      `json:"noDates,omitempty"`
+	Dates                 *schedule.DateScope       `json:"dates,omitempty"`
+	SubjectiveReview      *QuerySubjectiveReview    `json:"subjectiveReview,omitempty"`
 }
 
 // QuerySubjectiveReview records exposed subjective development evidence
@@ -470,7 +470,7 @@ func newQueryDevelopmentGenerator(corpus QueryPilotCorpus, provider llm.Provider
 	if err != nil {
 		return nil, nil, err
 	}
-	references := &testkit.ReferenceResolver{ByURL: make(map[string]reference.Evidence)}
+	references := &testkit.ReferenceResolver{ByURL: make(map[string]webreference.Evidence)}
 	if err := json.Unmarshal(sourceBlob, &references.ByLabel); err != nil {
 		return nil, nil, err
 	}

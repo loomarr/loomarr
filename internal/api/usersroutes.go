@@ -10,10 +10,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // registerUsers mounts /v1/users* (§11). All are admin-only.

@@ -12,25 +12,25 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/proposal"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 )
 
 func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 	t.Parallel()
 
-	workflow := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
-		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1",
-		Milestone: proposalworkflow.MilestoneAwaitingApproval,
-		Intent:    proposal.Intent{Description: "Saturday morning cartoons"},
-		Attempts: []proposalworkflow.Attempt{{
-			Version: proposalworkflow.WorkflowVersion1, Number: 1, Status: proposalworkflow.AttemptSucceeded,
+	flow := &fakeProposalWorkflow{journey: workflow.Journey{
+		Version: workflow.WorkflowVersion1, JobID: "job-1",
+		Milestone: workflow.MilestoneAwaitingApproval,
+		Intent:    proposals.Intent{Description: "Saturday morning cartoons"},
+		Attempts: []workflow.Attempt{{
+			Version: workflow.WorkflowVersion1, Number: 1, Status: workflow.AttemptSucceeded,
 		}},
-		Proposal: &proposalworkflow.ProposalRef{ID: "proposal-1", Status: proposalworkflow.ProposalSubmitted, Proposal: proposal.Proposal{Trace: proposal.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Disposition: "selected", Reason: "selected"}}}}},
-		Actions:  []proposalworkflow.Action{proposalworkflow.ActionReview},
+		Proposal: &workflow.ProposalRef{ID: "proposal-1", Status: workflow.ProposalSubmitted, Proposal: proposals.Proposal{Trace: proposals.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Disposition: "selected", Reason: "selected"}}}}},
+		Actions:  []workflow.Action{workflow.ActionReview},
 	}}
-	srv := proposalJourneyServer(t, workflow)
+	srv := proposalJourneyServer(t, flow)
 
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-1", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
@@ -41,8 +41,8 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if workflow.jobID != "job-1" || !workflow.viewer.Admin {
-		t.Fatalf("workflow call = viewer %+v job %q", workflow.viewer, workflow.jobID)
+	if flow.jobID != "job-1" || !flow.viewer.Admin {
+		t.Fatalf("workflow call = viewer %+v job %q", flow.viewer, flow.jobID)
 	}
 	if body.Milestone != "awaiting_approval" || len(body.Attempts) != 1 ||
 		body.Proposal == nil || body.Proposal.ID != "proposal-1" ||
@@ -57,8 +57,8 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 func TestReviseProposalJourneyKeepsTheStableJob(t *testing.T) {
 	t.Parallel()
 
-	workflow := &fakeProposalWorkflow{}
-	srv := proposalJourneyServer(t, workflow)
+	flow := &fakeProposalWorkflow{}
+	srv := proposalJourneyServer(t, flow)
 	resp := do(t, srv, http.MethodPost, "/v1/proposal-jobs/job-1/revise", adminToken,
 		`{"description":"80s comedies with more variety","runtimeTargetMin":240}`)
 	defer func() { _ = resp.Body.Close() }()
@@ -71,18 +71,18 @@ func TestReviseProposalJourneyKeepsTheStableJob(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.JobID != "job-1" || workflow.jobID != "job-1" || !workflow.viewer.Admin ||
-		workflow.intent.Description != "80s comedies with more variety" || workflow.intent.RuntimeTgt != 240 {
+	if body.JobID != "job-1" || flow.jobID != "job-1" || !flow.viewer.Admin ||
+		flow.intent.Description != "80s comedies with more variety" || flow.intent.RuntimeTgt != 240 {
 		t.Fatalf("revision call = body %+v, viewer %+v, job %q, intent %+v",
-			body, workflow.viewer, workflow.jobID, workflow.intent)
+			body, flow.viewer, flow.jobID, flow.intent)
 	}
 }
 
 func TestReviseProposalJourneyRequiresAdminAndCurrentReview(t *testing.T) {
 	t.Parallel()
 
-	workflow := &fakeProposalWorkflow{}
-	srv := proposalJourneyServer(t, workflow)
+	flow := &fakeProposalWorkflow{}
+	srv := proposalJourneyServer(t, flow)
 	member := do(t, srv, http.MethodPost, "/v1/proposal-jobs/job-1/revise", memberToken,
 		`{"description":"more variety"}`)
 	defer func() { _ = member.Body.Close() }()
@@ -90,7 +90,7 @@ func TestReviseProposalJourneyRequiresAdminAndCurrentReview(t *testing.T) {
 		t.Fatalf("member revision = %d, want 403", member.StatusCode)
 	}
 
-	workflow.err = proposalworkflow.ErrNotRevisable
+	flow.err = workflow.ErrNotRevisable
 	stale := do(t, srv, http.MethodPost, "/v1/proposal-jobs/job-1/revise", adminToken,
 		`{"description":"more variety"}`)
 	defer func() { _ = stale.Body.Close() }()
@@ -102,11 +102,11 @@ func TestReviseProposalJourneyRequiresAdminAndCurrentReview(t *testing.T) {
 func TestProposalJourneyListEndpointUsesCallerScope(t *testing.T) {
 	t.Parallel()
 
-	workflow := &fakeProposalWorkflow{journeys: []proposalworkflow.Journey{{
-		Version: proposalworkflow.WorkflowVersion1, JobID: "job-running",
-		Milestone: proposalworkflow.MilestoneGenerating, Intent: proposal.Intent{Description: "Anime after school"},
+	flow := &fakeProposalWorkflow{journeys: []workflow.Journey{{
+		Version: workflow.WorkflowVersion1, JobID: "job-running",
+		Milestone: workflow.MilestoneGenerating, Intent: proposals.Intent{Description: "Anime after school"},
 	}}}
-	srv := proposalJourneyServer(t, workflow)
+	srv := proposalJourneyServer(t, flow)
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs?mine=true&status=generating", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
@@ -121,8 +121,8 @@ func TestProposalJourneyListEndpointUsesCallerScope(t *testing.T) {
 	if len(body.Journeys) != 1 || body.Journeys[0].JobID != "job-running" {
 		t.Fatalf("Journeys = %+v", body.Journeys)
 	}
-	if workflow.viewer.Admin || !workflow.options.Mine || workflow.options.Milestone != proposalworkflow.MilestoneGenerating {
-		t.Fatalf("workflow list call = viewer %+v options %+v", workflow.viewer, workflow.options)
+	if flow.viewer.Admin || !flow.options.Mine || flow.options.Milestone != workflow.MilestoneGenerating {
+		t.Fatalf("workflow list call = viewer %+v options %+v", flow.viewer, flow.options)
 	}
 }
 
@@ -134,8 +134,8 @@ func TestProposalJourneyEndpointFailsClosedForForbiddenAndCorruptState(t *testin
 		err    error
 		status int
 	}{
-		{name: "forbidden", err: proposalworkflow.ErrForbidden, status: http.StatusForbidden},
-		{name: "corrupt", err: errors.Join(proposalworkflow.ErrInvalidState, errors.New("private database detail")), status: http.StatusInternalServerError},
+		{name: "forbidden", err: workflow.ErrForbidden, status: http.StatusForbidden},
+		{name: "corrupt", err: errors.Join(workflow.ErrInvalidState, errors.New("private database detail")), status: http.StatusInternalServerError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -153,18 +153,18 @@ func TestProposalJourneyEndpointFailsClosedForForbiddenAndCorruptState(t *testin
 func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing.T) {
 	t.Parallel()
 
-	private := proposal.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true,
+	private := proposals.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true,
 		Terminal: suggest.TerminalProviderFailure,
-		Candidates: []proposal.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "private-candidate", Ownership: "library",
-			Rank: proposal.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
+		Candidates: []proposals.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "private-candidate", Ownership: "library",
+			Rank: proposals.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
 	if err := suggest.ValidateDecisionTrace(private); err != nil {
 		t.Fatalf("private trace must be valid: %v", err)
 	}
-	failure := &proposalworkflow.Failure{Code: proposalworkflow.FailureGenerationFailed, Reason: proposalworkflow.FailureReasonProviderUnavailable,
-		RecoveryAction: proposalworkflow.RecoveryActionRetryLater, Message: "safe", Guidance: "safe", Trace: private}
-	srv := proposalJourneyServer(t, &fakeProposalWorkflow{journey: proposalworkflow.Journey{
-		Version: proposalworkflow.WorkflowVersion1, JobID: "job-failed", Milestone: proposalworkflow.MilestoneFailed,
-		Failure: failure, Attempts: []proposalworkflow.Attempt{{Version: proposalworkflow.WorkflowVersion1, Number: 1, Status: proposalworkflow.AttemptFailed, Failure: failure}},
+	failure := &workflow.Failure{Code: workflow.FailureGenerationFailed, Reason: workflow.FailureReasonProviderUnavailable,
+		RecoveryAction: workflow.RecoveryActionRetryLater, Message: "safe", Guidance: "safe", Trace: private}
+	srv := proposalJourneyServer(t, &fakeProposalWorkflow{journey: workflow.Journey{
+		Version: workflow.WorkflowVersion1, JobID: "job-failed", Milestone: workflow.MilestoneFailed,
+		Failure: failure, Attempts: []workflow.Attempt{{Version: workflow.WorkflowVersion1, Number: 1, Status: workflow.AttemptFailed, Failure: failure}},
 	}})
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-failed", memberToken, "")
 	defer func() { _ = resp.Body.Close() }()
@@ -218,38 +218,38 @@ func containsAny(value string, values ...string) bool {
 }
 
 type fakeProposalWorkflow struct {
-	journey  proposalworkflow.Journey
-	journeys []proposalworkflow.Journey
+	journey  workflow.Journey
+	journeys []workflow.Journey
 	err      error
-	viewer   proposalworkflow.Viewer
+	viewer   workflow.Viewer
 	jobID    string
-	options  proposalworkflow.ListOptions
-	intent   proposal.Intent
+	options  workflow.ListOptions
+	intent   proposals.Intent
 }
 
 func (f *fakeProposalWorkflow) List(
 	_ context.Context,
-	viewer proposalworkflow.Viewer,
-	options proposalworkflow.ListOptions,
-) ([]proposalworkflow.Journey, error) {
+	viewer workflow.Viewer,
+	options workflow.ListOptions,
+) ([]workflow.Journey, error) {
 	f.viewer, f.options = viewer, options
 	return f.journeys, f.err
 }
 
 func (f *fakeProposalWorkflow) Inspect(
 	_ context.Context,
-	viewer proposalworkflow.Viewer,
+	viewer workflow.Viewer,
 	jobID string,
-) (proposalworkflow.Journey, error) {
+) (workflow.Journey, error) {
 	f.viewer, f.jobID = viewer, jobID
 	return f.journey, f.err
 }
 
 func (f *fakeProposalWorkflow) Revise(
 	_ context.Context,
-	viewer proposalworkflow.Viewer,
+	viewer workflow.Viewer,
 	jobID string,
-	intent proposal.Intent,
+	intent proposals.Intent,
 ) error {
 	f.viewer, f.jobID, f.intent = viewer, jobID, intent
 	return f.err
@@ -274,16 +274,16 @@ func TestProposalJourneyReportsWhoApprovedAndWhen(t *testing.T) {
 	t.Parallel()
 
 	approvedAt := time.Date(2026, 9, 24, 18, 30, 0, 0, time.UTC)
-	workflow := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
-		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1",
-		Milestone: proposalworkflow.MilestoneLive,
-		Intent:    proposal.Intent{Description: "Saturday morning cartoons"},
-		Proposal: &proposalworkflow.ProposalRef{
-			ID: "proposal-1", Status: proposalworkflow.ProposalApproved,
+	flow := &fakeProposalWorkflow{journey: workflow.Journey{
+		Version: workflow.WorkflowVersion1, JobID: "job-1",
+		Milestone: workflow.MilestoneLive,
+		Intent:    proposals.Intent{Description: "Saturday morning cartoons"},
+		Proposal: &workflow.ProposalRef{
+			ID: "proposal-1", Status: workflow.ProposalApproved,
 			ApprovedBy: suggest.AutoApprovedBy, ApprovedAt: approvedAt,
 		},
 	}}
-	srv := proposalJourneyServer(t, workflow)
+	srv := proposalJourneyServer(t, flow)
 
 	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-1", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()
@@ -331,8 +331,8 @@ func TestProposalJourneyCarriesLiveProgressWhileGenerating(t *testing.T) {
 		Stage: suggest.StageChoosing, Terms: []string{"engines"}, Target: 8, StartedAt: started,
 		Picks: []suggest.ProgressPick{{Key: "movie:tmdb:90000100", MediaType: "movie", Name: "Quiet Engines", Year: 1994, TMDBID: 90000100, InLibrary: false}},
 	}}
-	wf := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
-		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1", Milestone: proposalworkflow.MilestoneGenerating,
+	wf := &fakeProposalWorkflow{journey: workflow.Journey{
+		Version: workflow.WorkflowVersion1, JobID: "job-1", Milestone: workflow.MilestoneGenerating,
 	}}
 	body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress }))
 	if progress.got != "job-1" {
@@ -350,15 +350,15 @@ func TestProposalJourneyCarriesLiveProgressWhileGenerating(t *testing.T) {
 func TestProposalJourneyOmitsProgressOutsideGenerating(t *testing.T) {
 	t.Parallel()
 	progress := &fakeProgress{ok: true, snap: suggest.ProgressSnapshot{Stage: suggest.StageChoosing}}
-	wf := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
-		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1", Milestone: proposalworkflow.MilestoneAwaitingApproval,
+	wf := &fakeProposalWorkflow{journey: workflow.Journey{
+		Version: workflow.WorkflowVersion1, JobID: "job-1", Milestone: workflow.MilestoneAwaitingApproval,
 	}}
 	if body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress })); body.Progress != nil {
 		t.Fatalf("progress = %+v on an awaiting_approval journey, want none", body.Progress)
 	}
 	// A queued job (not running on this process) has no snapshot: progress is absent, not empty.
 	progress.ok = false
-	wf.journey.Milestone = proposalworkflow.MilestoneGenerating
+	wf.journey.Milestone = workflow.MilestoneGenerating
 	if body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress })); body.Progress != nil {
 		t.Fatalf("progress = %+v for a job with no live run, want none", body.Progress)
 	}
@@ -368,8 +368,8 @@ func TestProposalJourneyOmitsProgressOutsideGenerating(t *testing.T) {
 func TestProposalJourneyListCarriesLiveProgressToo(t *testing.T) {
 	t.Parallel()
 	progress := &fakeProgress{ok: true, snap: suggest.ProgressSnapshot{Stage: suggest.StageSearching, Terms: []string{"engines"}, Target: 8}}
-	wf := &fakeProposalWorkflow{journeys: []proposalworkflow.Journey{{
-		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1", Milestone: proposalworkflow.MilestoneGenerating,
+	wf := &fakeProposalWorkflow{journeys: []workflow.Journey{{
+		Version: workflow.WorkflowVersion1, JobID: "job-1", Milestone: workflow.MilestoneGenerating,
 	}}}
 	resp := do(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress }), http.MethodGet, "/v1/proposal-jobs", adminToken, "")
 	defer func() { _ = resp.Body.Close() }()

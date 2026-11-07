@@ -5,18 +5,18 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // Refiner submits a re-curation job for a channel against a refreshed intent (the §7 refine
 // mechanism). Satisfied by *suggest.Service. The runner declares the interface so recurate
 // doesn't depend on the concrete worker beyond the one method it calls.
 type Refiner interface {
-	Recurate(ctx context.Context, channelID string, intent proposal.Intent) (string, error)
+	Recurate(ctx context.Context, channelID string, intent proposals.Intent) (string, error)
 }
 
 // Adjacencer walks the recommendation graph from a channel's own lineup (§8.3). Optional:
@@ -118,12 +118,12 @@ func eligible(ch store.Channel) bool {
 // (description + era/tone/constraints) plus the current lineup as context, and NO RefineText —
 // the "change" is simply "re-evaluate against the library as it is now". Returns ok=false when
 // the channel has no readable original request (nothing to re-run).
-func (r *Runner) refreshIntent(ctx context.Context, ch store.Channel) (proposal.Intent, bool) {
+func (r *Runner) refreshIntent(ctx context.Context, ch store.Channel) (proposals.Intent, bool) {
 	intent, err := suggest.IntentOfChannel(ch)
 	if err != nil {
 		r.log.Warn("re-curation: the channel's original request is unavailable; skipping channel",
 			"channel", ch.ID, "err", err)
-		return proposal.Intent{}, false
+		return proposals.Intent{}, false
 	}
 	// No operator RefineText — a scheduled refresh, not a human-requested change. Seed the
 	// current lineup so the suggester reasons from what's already on the channel (and can
@@ -146,7 +146,7 @@ const adjacentLimit = 12
 // BEST-EFFORT and non-fatal in every direction: no corpus wired, a walk that errors, or a
 // channel whose lineup yields no TMDB seeds all return nil, and re-curation proceeds with
 // the LLM corpus alone. Adjacency widens a run; it must never fail one.
-func (r *Runner) adjacentFor(ctx context.Context, ch store.Channel) []proposal.AdjacentContext {
+func (r *Runner) adjacentFor(ctx context.Context, ch store.Channel) []proposals.AdjacentContext {
 	if r.adj == nil || len(ch.Lineup) == 0 {
 		return nil
 	}
@@ -171,13 +171,13 @@ func (r *Runner) adjacentFor(ctx context.Context, ch store.Channel) []proposal.A
 			"channel", ch.ID, "err", err)
 		return nil
 	}
-	out := make([]proposal.AdjacentContext, 0, len(found))
+	out := make([]proposals.AdjacentContext, 0, len(found))
 	for _, a := range found {
 		k, kerr := a.Candidate.Key()
 		if kerr != nil {
 			continue
 		}
-		out = append(out, proposal.AdjacentContext{
+		out = append(out, proposals.AdjacentContext{
 			Name: a.Candidate.Name, Year: a.Candidate.Year, Key: string(k), Votes: a.Votes,
 		})
 	}
@@ -186,10 +186,10 @@ func (r *Runner) adjacentFor(ctx context.Context, ch store.Channel) []proposal.A
 
 // lineupContext turns a channel's stored lineup into the lightweight name/year/key context the
 // refiner reasons about — the same shape the API's channel-refine handler builds.
-func lineupContext(entries []schedule.LineupEntry) []proposal.LineupContext {
-	out := make([]proposal.LineupContext, 0, len(entries))
+func lineupContext(entries []schedule.LineupEntry) []proposals.LineupContext {
+	out := make([]proposals.LineupContext, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, proposal.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
+		out = append(out, proposals.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
 	}
 	return out
 }

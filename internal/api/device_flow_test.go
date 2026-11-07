@@ -14,11 +14,11 @@ import (
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -43,7 +43,7 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 
 		return api.Router(defaults.Log, api.Options{
 			Events:           events.NewBus(),
-			ProposalWorkflow: proposalworkflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now),
+			ProposalWorkflow: workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now),
 			Approver:         suggest.NewApprover(defaults.Store, chBinder, time.Now),
 			Binder:           chBinder,
 			Store:            defaults.Store,

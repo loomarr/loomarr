@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/proposaloutlook"
+	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/settings"
 )
 
@@ -61,11 +61,11 @@ func buildHTTP(deps httpBuild) http.Handler {
 	playoutGuideSvc := deps.channels.playoutGuide
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
 	var proposalOutlook api.ProposalOutlook
-	if preview, ok := channelSvc.(proposaloutlook.Preview); ok && chBinder != nil && deps.foundation.libraryClient != nil {
+	if preview, ok := channelSvc.(outlook.Preview); ok && chBinder != nil && deps.foundation.libraryClient != nil {
 		additionResolver := approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
 			return libraryPresence{lib: deps.foundation.libraryClient.Snapshot()}
 		}}
-		proposalOutlook = proposaloutlook.New(proposaloutlook.Config{
+		proposalOutlook = outlook.New(outlook.Config{
 			Titles: st, Library: deps.foundation.libraryClient, Episodes: episodeResolver(deps.foundation.libraryClient),
 			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
 		})
