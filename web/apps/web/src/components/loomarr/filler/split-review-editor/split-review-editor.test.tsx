@@ -1,7 +1,8 @@
 import type { SplitReviewProposalDTO, SplitSegment } from "@loomarr/api";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { SplitReviewEditor } from "./split-review-editor";
 
 // Two ordinary segments plus one carrying every flag the review must surface (§10 V34):

@@ -1,0 +1,35 @@
+# The demo site on Postgres, layered over compose.demo.yaml. Use DEMO_SITE_DATABASE=postgres.
+#
+# The database has no published port, so its password never leaves this stack.
+
+x-demo-postgres-url: &demo-postgres-url postgres://loomarr:loomarr@postgres:5432/loomarr?sslmode=disable
+
+services:
+  postgres:
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+    environment:
+      POSTGRES_DB: loomarr
+      POSTGRES_USER: loomarr
+      POSTGRES_PASSWORD: loomarr
+    volumes:
+      - demo-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loomarr -d loomarr"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  loomarr:
+    environment:
+      DATABASE_URL: *demo-postgres-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  demo-seed:
+    environment:
+      DATABASE_URL: *demo-postgres-url
+
+volumes:
+  demo-postgres:

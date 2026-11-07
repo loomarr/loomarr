@@ -53,7 +53,7 @@ describe("PhoneBottomBar", () => {
       within(dialog)
         .getAllByRole("button")
         .map((b) => b.getAttribute("aria-label")),
-    ).toEqual(["Close", "Filler", "People", "Settings", "Help"]);
+    ).toEqual(["Close", "Library", "Filler", "People", "Settings", "Help"]);
     await user.click(within(dialog).getByRole("button", { name: "Settings" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument());
   });

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 var hlT0 = time.Date(2026, 9, 28, 19, 0, 0, 0, time.UTC)

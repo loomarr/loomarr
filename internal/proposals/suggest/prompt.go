@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // assistantToolCallMsg builds the assistant message that carries the model's

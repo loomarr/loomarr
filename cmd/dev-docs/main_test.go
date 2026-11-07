@@ -97,6 +97,34 @@ func TestCITargetsIgnoresCommentedInvocations(t *testing.T) {
 	}
 }
 
+// A step runs every target it names, after flags and variable assignments, and nothing after a
+// shell operator or a trailing comment belongs to make.
+func TestCITargetsReadsEveryTargetOfAnInvocation(t *testing.T) {
+	dir := t.TempDir()
+	workflow := "" +
+		"      - run: make -j4 --output-sync=target ci-lint release-verify\n" +
+		"      - run: make fe-unit FE_SHARD=${{ matrix.shard }}/4\n" +
+		"      - run: go test ./docs && make arch-docs-verify config-docs-verify\n" +
+		"      - run: make vet lint # serial: each already uses every core\n" +
+		"      - run: make shellcheck && echo done\n"
+	writeWorkflow(t, dir, "ci.yml", workflow)
+
+	got, err := ciTargets(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ci-lint", "release-verify", "fe-unit", "arch-docs-verify", "config-docs-verify", "vet", "lint", "shellcheck"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("%q is invoked by a real step but went undetected", want)
+		}
+	}
+	for _, notTarget := range []string{"j4", "output-sync", "each", "echo", "done", "matrix"} {
+		if _, ok := got[notTarget]; ok {
+			t.Errorf("%q is not a make target of any step, but the CI column would claim it", notTarget)
+		}
+	}
+}
+
 // Only workflow files are scanned. A README or a JSON config sitting in the same directory
 // mentioning `make something` must not manufacture a CI claim.
 func TestCITargetsReadsOnlyYAML(t *testing.T) {

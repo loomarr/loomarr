@@ -106,6 +106,31 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	}
 }
 
+// Sonarr and Radarr are their own optional connections (#2151 decision 29): a connected one is a
+// row that fixes in its own card, and one never connected is no row rather than a red dot.
+func TestSystemServices_ArrRowOnlyWhenConnected(t *testing.T) {
+	srv, _ := serverWithPanels(t, api.Options{
+		Settings:     &fakeSettings{},
+		LiveSettings: mapSettings{"sonarr.url": "http://sonarr.lan:8989"},
+	})
+	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")
+	var view api.ServicesView
+	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]api.ServiceRow{}
+	for _, row := range view.Rows {
+		rows[row.Name] = row
+	}
+	sonarr, ok := rows["sonarr"]
+	if !ok || sonarr.Target != "http://sonarr.lan:8989" || sonarr.SettingsGroup != "sonarr" {
+		t.Errorf("sonarr row = %+v (present %t), want its address and its own settings group", sonarr, ok)
+	}
+	if _, ok := rows["radarr"]; ok {
+		t.Error("radarr was never connected but has a row")
+	}
+}
+
 // The feed reads the PERSISTED table, so it survives a restart — which is V32's gate. A feed
 // tapping the in-memory SSE bus could satisfy neither half of that.
 func TestListActivity_ReadsPersistedRowsNewestFirst(t *testing.T) {

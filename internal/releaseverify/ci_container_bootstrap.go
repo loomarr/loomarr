@@ -10,8 +10,9 @@ import (
 const directCIPolicyBootstrap = "go run ./cmd/releaseverify -root ."
 
 const (
-	directCICheckoutAction = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-	directCISetupGoAction  = "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+	directCICheckoutAction     = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+	directCISetupGoAction      = "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+	directCICacheRestoreAction = "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
 )
 
 func directCIPolicyShellStepAuthorities() []struct {
@@ -23,8 +24,7 @@ func directCIPolicyShellStepAuthorities() []struct {
 		run  string
 	}{
 		{name: "Repository policy bootstrap outside Make", run: directCIPolicyBootstrap},
-		{name: "Workflow and publication policy", run: "make ci-lint release-verify"},
-		{name: "Agent harness and shell policy", run: "make agent-harness-test shellcheck"},
+		{name: "Workflow, publication, agent harness, and shell policy", run: "make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck"},
 		{name: "Documentation contracts read by Go", run: "go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify"},
 	}
 }
@@ -76,8 +76,8 @@ func VerifyDirectCIPolicyBootstrap(path string) error {
 		return fmt.Errorf("root CI workflow ci-policy steps: %w", err)
 	}
 	shellSteps := directCIPolicyShellStepAuthorities()
-	if len(steps.Content) != 2+len(shellSteps) {
-		return fmt.Errorf("root CI policy job must contain only the two audited setup actions and four policy shell steps")
+	if len(steps.Content) != 3+len(shellSteps) {
+		return fmt.Errorf("root CI policy job must contain only the three audited setup actions and three policy shell steps")
 	}
 	if err := verifyDirectCICheckoutStep(steps.Content[0]); err != nil {
 		return err
@@ -85,8 +85,11 @@ func VerifyDirectCIPolicyBootstrap(path string) error {
 	if err := verifyDirectCISetupGoStep(steps.Content[1]); err != nil {
 		return err
 	}
+	if err := verifyDirectCIGoCacheStep(steps.Content[2]); err != nil {
+		return err
+	}
 	for index, want := range shellSteps {
-		step := steps.Content[index+2]
+		step := steps.Content[index+3]
 		label := fmt.Sprintf("root CI policy shell step %d", index+1)
 		if step.Kind != yaml.MappingNode {
 			return fmt.Errorf("%s must be a mapping", label)
@@ -131,5 +134,27 @@ func verifyDirectCISetupGoStep(step *yaml.Node) error {
 	return requireExactScalarMap(inputs, "root CI policy setup-go inputs", map[string]string{
 		"go-version": "${{ env.GO_VERSION }}",
 		"cache":      "false",
+	})
+}
+
+// verifyDirectCIGoCacheStep allows one restore of the merge gate's cache, which only main can save.
+func verifyDirectCIGoCacheStep(step *yaml.Node) error {
+	if step.Kind != yaml.MappingNode {
+		return fmt.Errorf("root CI policy Go cache step must be a mapping")
+	}
+	if err := verifyOnlyKeys(step, "root CI policy Go cache step", "name", "uses", "with"); err != nil {
+		return err
+	}
+	if scalarValue(step, "name") != "Restore Go caches" || scalarValue(step, "uses") != directCICacheRestoreAction {
+		return fmt.Errorf("root CI policy Go cache action differs from the source-bound revision")
+	}
+	inputs, err := requiredMap(step, "with")
+	if err != nil {
+		return fmt.Errorf("root CI policy Go cache inputs: %w", err)
+	}
+	return requireExactScalarMap(inputs, "root CI policy Go cache inputs", map[string]string{
+		"path":         "~/go/pkg/mod\n~/.cache/go-build\n",
+		"key":          "merge-gate-go-${{ runner.os }}-",
+		"restore-keys": "merge-gate-go-${{ runner.os }}-\n",
 	})
 }

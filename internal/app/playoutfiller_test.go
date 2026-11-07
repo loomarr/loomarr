@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // stubCycle returns a fixed lineup: one program then a break gap.

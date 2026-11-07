@@ -5,7 +5,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // scopePolicy is how a schedule.ScopePolicy is described on the wire (#1877): the domain

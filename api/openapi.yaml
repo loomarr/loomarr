@@ -6478,6 +6478,42 @@ components:
       required:
         - label
       type: object
+    LibraryCandidateDTO:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+            - movie
+            - series
+          type: string
+        lengthMatches:
+          description: "Movies only: its runtime and the file's length agree"
+          type: boolean
+        name:
+          type: string
+        nameMatches:
+          type: boolean
+        overview:
+          type: string
+        poster:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Absent when it has none, or while it is still being fetched
+        tmdbId:
+          type: string
+        year:
+          description: Absent when unknown
+          format: int64
+          type: integer
+        yearMatches:
+          type: boolean
+      required:
+        - kind
+        - tmdbId
+        - name
+        - nameMatches
+        - yearMatches
+        - lengthMatches
+      type: object
     LibraryCollection:
       additionalProperties: false
       properties:
@@ -6491,6 +6527,56 @@ components:
       required:
         - id
         - name
+      type: object
+    LibraryDetailsFromDTO:
+      additionalProperties: false
+      properties:
+        description:
+          description: Where its description came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        episodeNames:
+          description: Where most of a series' episode names came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        rating:
+          description: Where its rating came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+      type: object
+    LibraryEpisodeDTO:
+      additionalProperties: false
+      properties:
+        end:
+          description: The last episode a multi-episode file holds
+          format: int64
+          type: integer
+        id:
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          type: integer
+        ready:
+          type: boolean
+      required:
+        - id
+        - name
+        - number
+        - ready
       type: object
     LibraryFolderNameDTO:
       additionalProperties: false
@@ -6534,6 +6620,220 @@ components:
         - episodes
         - other
       type: object
+    LibraryHookDTO:
+      additionalProperties: false
+      properties:
+        app:
+          enum:
+            - sonarr
+            - radarr
+          type: string
+        error:
+          description: Why registering failed
+          type: string
+        lastEvent:
+          description: The arr's event type, since Loomarr started
+          type: string
+        lastEventAt:
+          format: date-time
+          type: string
+        registeredAt:
+          format: date-time
+          type: string
+        state:
+          enum:
+            - registered
+            - not_configured
+            - no_address
+            - failed
+          type: string
+      required:
+        - app
+        - state
+      type: object
+    LibraryItemDTO:
+      additionalProperties: false
+      properties:
+        files:
+          description: Present files; a series counts its episodes' files
+          format: int64
+          type: integer
+        id:
+          type: string
+        kind:
+          enum:
+            - movie
+            - series
+          type: string
+        name:
+          type: string
+        poster:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its poster; absent when it has none, or while one is still being fetched
+        ready:
+          description: False while some of its files' details aren't read yet
+          type: boolean
+        year:
+          description: Absent when unknown
+          format: int64
+          type: integer
+      required:
+        - id
+        - kind
+        - name
+        - files
+        - ready
+      type: object
+    LibraryItemDetailDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryItemDetailDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        detailsFrom:
+          $ref: "#/components/schemas/LibraryDetailsFromDTO"
+        files:
+          description: A movie's files; empty for a series
+          items:
+            $ref: "#/components/schemas/LibraryItemFileDTO"
+          type: array
+        genres:
+          items:
+            type: string
+          type: array
+        item:
+          $ref: "#/components/schemas/LibraryItemDTO"
+        match:
+          $ref: "#/components/schemas/LibraryMatchDTO"
+        overview:
+          type: string
+        rating:
+          description: The certification, such as TV-14
+          type: string
+        runtimeMillis:
+          format: int64
+          type: integer
+        seasons:
+          description: A series' episodes by season; empty for a movie
+          items:
+            $ref: "#/components/schemas/LibrarySeasonDTO"
+          type: array
+      required:
+        - item
+        - genres
+        - files
+        - seasons
+        - match
+        - detailsFrom
+      type: object
+    LibraryItemFileDTO:
+      additionalProperties: false
+      properties:
+        audioChannels:
+          description: "The channels of the sound that plays: its default audio stream, else its first"
+          format: int64
+          type: integer
+        extra:
+          description: A copy that never plays, because another of the title's files does
+          type: boolean
+        lengthMillis:
+          description: How long it plays, measured from the file
+          format: int64
+          type: integer
+        path:
+          description: The file on this machine
+          type: string
+        picture:
+          $ref: "#/components/schemas/LibraryPictureDTO"
+          description: Its first video stream
+        ready:
+          description: Its details are read
+          type: boolean
+        size:
+          description: Bytes
+          format: int64
+          type: integer
+        subtitles:
+          description: Its subtitle streams in order; empty for none or while unread
+          items:
+            $ref: "#/components/schemas/LibrarySubtitleDTO"
+          type: array
+      required:
+        - path
+        - size
+        - ready
+        - subtitles
+        - extra
+      type: object
+    LibraryMatchDTO:
+      additionalProperties: false
+      properties:
+        app:
+          description: The app, when by is app
+          enum:
+            - sonarr
+            - radarr
+          type: string
+        by:
+          description: "What says which title this is: the app that manages it, the file itself (an id in its name, or an NFO beside it), your answer, or nothing yet"
+          enum:
+            - app
+            - file
+            - you
+            - none
+          type: string
+        page:
+          description: The title's page in that app, when by is app and it has one
+          format: uri
+          type: string
+      required:
+        - by
+      type: object
+    LibraryNeedDTO:
+      additionalProperties: false
+      properties:
+        candidates:
+          description: Best first; empty when a search found nothing
+          items:
+            $ref: "#/components/schemas/LibraryCandidateDTO"
+          type: array
+        files:
+          items:
+            $ref: "#/components/schemas/LibraryNeedFileDTO"
+          type: array
+        item:
+          $ref: "#/components/schemas/LibraryItemDTO"
+        searched:
+          description: False until TMDB has been searched for it
+          type: boolean
+      required:
+        - item
+        - searched
+        - candidates
+        - files
+      type: object
+    LibraryNeedFileDTO:
+      additionalProperties: false
+      properties:
+        path:
+          description: The file on this machine
+          type: string
+        ready:
+          description: Its details are read
+          type: boolean
+        size:
+          description: Bytes
+          format: int64
+          type: integer
+      required:
+        - path
+        - size
+        - ready
+      type: object
     LibraryPathMappingDTO:
       additionalProperties: false
       properties:
@@ -6558,6 +6858,23 @@ components:
         - authorityPath
         - localPath
         - byHand
+      type: object
+    LibraryPictureDTO:
+      additionalProperties: false
+      properties:
+        hdr:
+          description: High dynamic range
+          type: boolean
+        height:
+          format: int64
+          type: integer
+        width:
+          format: int64
+          type: integer
+      required:
+        - width
+        - height
+        - hdr
       type: object
     LibraryRootDTO:
       additionalProperties: false
@@ -6655,6 +6972,43 @@ components:
         - paused
         - arrIncomplete
       type: object
+    LibrarySearchHitDTO:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+            - movie
+            - series
+          type: string
+        name:
+          type: string
+        overview:
+          type: string
+        tmdbId:
+          type: string
+        year:
+          format: int64
+          type: integer
+      required:
+        - kind
+        - tmdbId
+        - name
+      type: object
+    LibrarySeasonDTO:
+      additionalProperties: false
+      properties:
+        episodes:
+          items:
+            $ref: "#/components/schemas/LibraryEpisodeDTO"
+          type: array
+        number:
+          description: 0 is the specials
+          format: int64
+          type: integer
+      required:
+        - number
+        - episodes
+      type: object
     LibrarySourceDTO:
       additionalProperties: false
       properties:
@@ -6708,8 +7062,17 @@ components:
           items:
             $ref: "#/components/schemas/LibraryHeldDTO"
           type: array
+        hooks:
+          description: Sonarr's and Radarr's webhooks to Loomarr
+          items:
+            $ref: "#/components/schemas/LibraryHookDTO"
+          type: array
         inUse:
           description: Folders in use
+          format: int64
+          type: integer
+        needsYou:
+          description: Titles Loomarr can't tell what they are
           format: int64
           type: integer
         offline:
@@ -6735,7 +7098,16 @@ components:
         - files
         - headersPending
         - problems
+        - needsYou
         - held
+        - hooks
+      type: object
+    LibrarySubtitleDTO:
+      additionalProperties: false
+      properties:
+        language:
+          description: ISO 639 code; absent when the file doesn't say
+          type: string
       type: object
     LineupContext:
       additionalProperties: false
@@ -6794,6 +7166,25 @@ components:
       required:
         - key
         - name
+      type: object
+    LinkLibraryItemInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LinkLibraryItemInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        tmdbId:
+          description: The TMDB title it is
+          maxLength: 20
+          minLength: 1
+          pattern: ^[0-9]+$
+          type: string
+      required:
+        - tmdbId
       type: object
     ListActivityOutputBody:
       additionalProperties: false
@@ -6922,6 +7313,45 @@ components:
           type: array
       required:
         - invitations
+      type: object
+    ListLibraryItemsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListLibraryItemsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/LibraryItemDTO"
+          type: array
+        total:
+          description: Titles matching, across every page
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
+    ListLibraryNeedsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListLibraryNeedsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        needs:
+          items:
+            $ref: "#/components/schemas/LibraryNeedDTO"
+          type: array
+      required:
+        - needs
       type: object
     ListOutputBody:
       additionalProperties: false
@@ -9488,6 +9918,24 @@ components:
         - label
         - uri
       type: object
+    RemoveLibraryExtraCopyInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RemoveLibraryExtraCopyInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        path:
+          description: The extra copy, as the title's files list it
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
+      type: object
     RequestChannelIdeaOutputBody:
       additionalProperties: false
       properties:
@@ -9993,6 +10441,23 @@ components:
         - mediaType
         - name
         - inLibrary
+      type: object
+    SearchLibraryTitlesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SearchLibraryTitlesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        results:
+          items:
+            $ref: "#/components/schemas/LibrarySearchHitDTO"
+          type: array
+      required:
+        - results
       type: object
     SearchOutputBody:
       additionalProperties: false
@@ -10506,14 +10971,14 @@ components:
         - requester.provider
         - seerr.url
         - seerr.api_key
-        - sonarr.url
-        - sonarr.api_key
         - sonarr.quality_profile
         - sonarr.root_folder
-        - radarr.url
-        - radarr.api_key
         - radarr.quality_profile
         - radarr.root_folder
+        - sonarr.url
+        - sonarr.api_key
+        - radarr.url
+        - radarr.api_key
         - tunarr.url
         - tunarr.transcode_config_id
         - server.public_url
@@ -10666,14 +11131,14 @@ components:
         - RequesterProvider
         - SeerrURL
         - SeerrAPIKey
-        - SonarrURL
-        - SonarrAPIKey
         - SonarrQualityProfile
         - SonarrRootFolder
-        - RadarrURL
-        - RadarrAPIKey
         - RadarrQualityProfile
         - RadarrRootFolder
+        - SonarrURL
+        - SonarrAPIKey
+        - RadarrURL
+        - RadarrAPIKey
         - TunarrURL
         - TunarrTranscodeConfigID
         - ServerPublicURL
@@ -12172,7 +12637,7 @@ components:
         key:
           description: Stable identity key
           examples:
-            - movie:tmdb:1111867
+            - movie:tmdb:91111867
           type: string
         lastError:
           description: Why the title was given up on (unavailable only)
@@ -12190,7 +12655,7 @@ components:
           type: string
         name:
           examples:
-            - In Flames
+            - Ashgrove Anomaly
           type: string
         progress:
           description: Download completion 0..1 (arr queue poll)
@@ -12207,7 +12672,7 @@ components:
           type: string
         tmdbId:
           examples:
-            - 1111867
+            - 91111867
           format: int64
           type: integer
         tvdbId:
@@ -12228,11 +12693,11 @@ components:
       properties:
         key:
           examples:
-            - movie:tmdb:1111867
+            - movie:tmdb:91111867
           type: string
         name:
           examples:
-            - In Flames
+            - Ashgrove Anomaly
           type: string
         state:
           enum:
@@ -17155,6 +17620,320 @@ paths:
       summary: List media-server collections
       tags:
         - library
+  /v1/library/hooks/{app}:
+    post:
+      description: Where Sonarr and Radarr send file events once Loomarr has registered itself with them. Authenticated by the generated secret as the basic-auth password, not by a session.
+      operationId: receiveLibraryHook
+      parameters:
+        - in: path
+          name: app
+          required: true
+          schema:
+            enum:
+              - sonarr
+              - radarr
+            type: string
+        - in: header
+          name: Authorization
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              contentMediaType: application/octet-stream
+              format: binary
+              type: string
+        required: true
+      responses:
+        "202":
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Receive an event from Sonarr or Radarr
+      tags:
+        - library
+  /v1/library/hooks/{app}/test:
+    post:
+      description: Registers Loomarr with the arr again and asks it to send its test event. 502 with the arr's answer when it cannot save or reach Loomarr's connection.
+      operationId: testLibraryHook
+      parameters:
+        - in: path
+          name: app
+          required: true
+          schema:
+            enum:
+              - sonarr
+              - radarr
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Test an arr's webhook
+      tags:
+        - library
+  /v1/library/items:
+    get:
+      description: Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet.
+      operationId: listLibraryItems
+      parameters:
+        - description: Only movies or only series; both when absent
+          explode: false
+          in: query
+          name: kind
+          schema:
+            description: Only movies or only series; both when absent
+            enum:
+              - movie
+              - series
+            type: string
+        - description: Part of the name, any case
+          explode: false
+          in: query
+          name: search
+          schema:
+            description: Part of the name, any case
+            maxLength: 200
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 60
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLibraryItemsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the library's titles
+      tags:
+        - library
+  /v1/library/items/{id}:
+    get:
+      description: A movie with its files, or a series with its episodes by season. 404 when no file of it is present.
+      operationId: getLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryItemDetailDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: One title
+      tags:
+        - library
+  /v1/library/items/{id}/answer:
+    delete:
+      description: Undoes a link or an ignore. A title nothing else identifies needs you again.
+      operationId: unanswerLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Take back an answer
+      tags:
+        - library
+  /v1/library/items/{id}/check:
+    post:
+      description: Opens the title's files and reads their details again, such as after a file was replaced.
+      operationId: checkLibraryItemFiles
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Check a title's files again
+      tags:
+        - library
+  /v1/library/items/{id}/ignore:
+    post:
+      description: "Says a title isn't one: it leaves the library and Needs you."
+      operationId: ignoreLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ignore a title
+      tags:
+        - library
+  /v1/library/items/{id}/link:
+    post:
+      description: Links a title to a TMDB title. Its files are read again with it.
+      operationId: linkLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkLibraryItemInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Say which title this is
+      tags:
+        - library
+  /v1/library/items/{id}/refresh:
+    post:
+      description: Fetches the title's details from TMDB now, and reads what its app and its files say again. 503 when TMDB can't be reached.
+      operationId: updateLibraryItemDetails
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a title's details
+      tags:
+        - library
+  /v1/library/items/{id}/remove-copy:
+    post:
+      description: Moves one of the title's files that never plays into its media folder's trash (.loomarr-trash), which empties after 30 days.
+      operationId: removeLibraryExtraCopy
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemoveLibraryExtraCopyInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a title's extra copy
+      tags:
+        - library
+  /v1/library/needs:
+    get:
+      description: Titles Loomarr can't tell what they are, each with the best guesses a search found, best first.
+      operationId: listLibraryNeeds
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLibraryNeedsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Titles that need you
+      tags:
+        - library
   /v1/library/path-map:
     put:
       description: Points one folder, as the media server, Sonarr or Radarr names it, at a folder on this machine. An empty localPath hands the row back to discovery.
@@ -17316,6 +18095,47 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Check the media folders again
+      tags:
+        - library
+  /v1/library/search:
+    get:
+      description: For picking a different title. 503 when TMDB isn't set up.
+      operationId: searchLibraryTitles
+      parameters:
+        - description: The title's name
+          explode: false
+          in: query
+          name: q
+          required: true
+          schema:
+            description: The title's name
+            maxLength: 200
+            minLength: 1
+            type: string
+        - description: Only movies or only series; both when absent
+          explode: false
+          in: query
+          name: kind
+          schema:
+            description: Only movies or only series; both when absent
+            enum:
+              - movie
+              - series
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchLibraryTitlesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Search TMDB for a title
       tags:
         - library
   /v1/library/status:
@@ -19571,7 +20391,7 @@ paths:
           required: true
           schema:
             examples:
-              - movie:tmdb:1111867
+              - movie:tmdb:91111867
             type: string
       responses:
         "200":

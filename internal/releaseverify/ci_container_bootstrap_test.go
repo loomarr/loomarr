@@ -31,6 +31,9 @@ func TestVerifyCIContainerDownloadsRequiresDirectCIBootstrap(t *testing.T) {
 				"      - name: Repository policy bootstrap outside Make\n        run: go run ./cmd/releaseverify -root .\n",
 				"      - run: make release-verify\n      - name: Repository policy bootstrap outside Make\n        run: go run ./cmd/releaseverify -root .\n", 1)
 		},
+		"foreign Go cache": func(workflow string) string {
+			return strings.Replace(workflow, "key: merge-gate-go-${{ runner.os }}-", "key: go-contracts-${{ runner.os }}-", 1)
+		},
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {

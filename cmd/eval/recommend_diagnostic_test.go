@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/channels/recommend"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/recommend"
 )
 
 func TestRecommendDiagnosticWritesContentFreeDevelopmentArtifact(t *testing.T) {

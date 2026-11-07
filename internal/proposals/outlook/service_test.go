@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/outlookfixture"
@@ -42,7 +42,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	if err := st.CreateJob(ctx, store.Job{ID: p.JobID, Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	planner := binder.New(st, nil, nil, nil)
+	planner := approval.New(st, nil, nil, nil)
 	engine := channels.New(st, nil, nil, nil, channels.Config{}, time.Now, nil)
 	svc := outlook.New(outlook.Config{Titles: st, Library: media, Episodes: media.ResolveEpisodes, Planner: planner, Preview: engine})
 	got, err := svc.Assess(ctx, p, nil)

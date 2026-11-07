@@ -1,7 +1,8 @@
 import { Activity, HeartPulse, RadioTower } from "lucide-react";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { ApplicationDiagnostics, type ApplicationFilters } from "../application-diagnostics";
+import { ApplicationDiagnostics } from "../application-diagnostics";
+import type { ApplicationFilters } from "../application-filters";
 import { StartupReportPage } from "../startup-report-page";
 import { SupportBundle } from "../support-bundle";
 

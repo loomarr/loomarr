@@ -4,7 +4,7 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge } from "@loomarr/design-system";
+import { Badge, Card } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus } from "lucide-react";
@@ -12,7 +12,6 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -266,11 +265,7 @@ const TaxonEditor = ({
   };
 
   return (
-    <Card
-      role="region"
-      className="flex flex-col gap-4 p-4"
-      aria-label={current ? `Edit ${current.label}` : "Add tag"}
-    >
+    <Card aria-label={current ? `Edit ${current.label}` : "Add tag"} gap={16} padding={16} role="region">
       <div>
         <h3 className="font-medium">{current ? `Edit ${current.label}` : "Add a tag"}</h3>
         <p className="text-muted-foreground mt-1 text-sm">
@@ -371,9 +366,11 @@ const TaxonEditor = ({
       </p>
       {review ? (
         <Card
-          className="border-signal/40 bg-signal/5 space-y-3 p-4"
           aria-label="Change impact"
           aria-live="polite"
+          className="border-signal/40! bg-signal/5!"
+          gap={12}
+          padding={16}
         >
           <div>
             <h4 className="font-medium">Review the impact</h4>
@@ -502,7 +499,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card className="p-4">
+        <Card padding={16}>
           <p className="text-muted-foreground text-xs tracking-wide uppercase">Library coverage</p>
           {data.totalClips === 0 ? (
             <>
@@ -520,7 +517,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             </>
           )}
         </Card>
-        <Card className="p-4 sm:col-span-2">
+        <Card className="sm:col-span-2" padding={16}>
           <p className="font-medium">What belongs here</p>
           <p className="text-muted-foreground mt-1 text-sm">
             Classification describes what a clip contains. Kind is the closed playout role; format and
@@ -533,7 +530,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             <Link
               to="/filler/library"
               search={{ unclassified: true }}
-              className="text-signal mt-2 inline-flex text-sm underline-offset-2 hover:underline"
+              className="text-signal mt-2 inline-flex self-start text-sm underline-offset-2 hover:underline"
             >
               Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
               {data.unclassifiedClips === 1 ? "clip" : "clips"}
@@ -564,7 +561,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
           </p>
         </div>
         {data.totalClips === 0 ? (
-          <Card className="text-muted-foreground mt-3 p-4 text-sm">
+          <Card className="text-muted-foreground text-sm" marginTop={12} padding={16}>
             Coverage will appear after clips are ready. The vocabulary below is ready when they are.
           </Card>
         ) : (
@@ -572,7 +569,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             {AXES.map((axis) => {
               const coverage = data.axisCoverage?.find((item) => item.axis === axis);
               return (
-                <Card key={axis} className="p-4">
+                <Card key={axis} padding={16}>
                   <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
                   <p className="text-muted-foreground mt-1 text-sm">{AXIS_COPY[axis].help}</p>
                   <p className="text-muted-foreground mt-2 text-xs">{AXIS_COPY[axis].example}</p>
@@ -615,7 +612,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
           <div className="grid gap-4 xl:grid-cols-2">
             {AXES.map((axis) => {
               return (
-                <Card key={axis} className="overflow-hidden">
+                <Card key={axis} overflow="hidden">
                   <div className="border-border flex items-start gap-3 border-b p-4">
                     <div className="min-w-0 flex-1">
                       <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>

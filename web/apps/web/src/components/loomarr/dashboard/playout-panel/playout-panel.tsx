@@ -2,9 +2,8 @@ import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
 import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import { pluralize } from "@loomarr/core/format";
-import { Badge, type BadgeTone } from "@loomarr/design-system";
+import { Badge, type BadgeTone, Card } from "@loomarr/design-system";
 import { Info } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { PanelRow } from "@/components/ui/panel-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -151,11 +150,11 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
   );
 };
 
-const PlayoutPanel = ({ status, loading, title = "Playout", className }: PlayoutPanelProps) => {
+const PlayoutPanel = ({ status, loading, title = "Playout" }: PlayoutPanelProps) => {
   const channels = status?.channels ?? [];
 
   return (
-    <Card className={cn("flex shrink-0 flex-col overflow-hidden p-0", className)}>
+    <Card flexShrink={0} overflow="hidden">
       <div className="border-border flex items-center justify-between gap-3 border-b px-4 py-3">
         <h2 className="text-base font-semibold">{title}</h2>
         {!loading && status != null && (

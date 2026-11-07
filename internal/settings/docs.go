@@ -11,6 +11,8 @@ import (
 var groupTitles = map[Group]string{
 	GroupMediaServer:   "Connections — Media server",
 	GroupRequester:     "Connections — Requester",
+	GroupSonarr:        "Connections — Sonarr",
+	GroupRadarr:        "Connections — Radarr",
 	GroupTunarr:        "Connections — Tunarr",
 	GroupTMDB:          "Connections — TMDB",
 	GroupGeneral:       "General",

@@ -32,7 +32,7 @@ var areas = []area{
 			"Sonarr or Radarr to fetch a title the household does not have yet. The metadata providers " +
 			"decide which source's facts about a file win.",
 		Packages: []string{
-			"library", "library/scan", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
+			"library", "library/arrhook", "library/scan", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
 			"provision", "provisionbackstop", "requester",
 			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
@@ -45,7 +45,7 @@ var areas = []area{
 			"media": "the scanner reads each media file's header to learn its length, streams and " +
 				"embedded ids",
 			"channels": "the backstop's episode refresh re-reads each scheduled show into the scheduler's " +
-				"episode cache, whose entries are `schedule.ResolvedProgram`; the job moves into channels " +
+				"episode cache, whose entries are `channels/schedule.ResolvedProgram`; the job moves into channels " +
 				"with the Wave 6.4 directory moves",
 		},
 	},
@@ -76,7 +76,8 @@ var areas = []area{
 			"it. Operator edits and approved proposals each have one write path. Self-updating channels " +
 			"are re-curated here, Home's channel ideas come from here, and so does who is watching now.",
 		Packages: []string{
-			"schedule", "channels", "channeledit", "binder", "recurate", "ideas", "recommend", "viewing",
+			"channels", "channels/schedule", "channels/edit", "channels/approval", "channels/recurate",
+			"channels/ideas", "channels/recommend", "channels/viewing",
 		},
 		MayImport: map[string]string{
 			"platform": "the store every channel write goes through, the jobs and settings behind " +
@@ -109,7 +110,7 @@ var areas = []area{
 				"the storage governor's size confidence",
 			"library": "grounding each suggested title in the real library, catalog, TMDB and collections, " +
 				"and the `provision` records for titles the household lacks",
-			"channels": "the `schedule` values a proposal describes, and the reconcile engine the outlook " +
+			"channels": "the `channels/schedule` values a proposal describes, and the reconcile engine the outlook " +
 				"runs to preview a proposal before approval",
 		},
 	},
@@ -129,7 +130,7 @@ var areas = []area{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
 				"backend transition, start-up configuration, Tunarr's HTTP client and metrics, and the " +
 				"address check that keeps LAN discovery answering only the household's network",
-			"channels": "the `schedule` programming a backend plays",
+			"channels": "the `channels/schedule` programming a backend plays",
 			"library": "the media server's Live TV API that channels are published to, and `provision` keys " +
 				"naming what a slot plays",
 			"media": "the encoder choice, loudness, media facts and process-tree control the stream is built " +
@@ -157,7 +158,7 @@ var areas = []area{
 				"OpenRouter clients",
 			"media": "ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound " +
 				"and creative-identity checks every clip passes",
-			"channels": "the holiday season and filler selection a channel's `schedule` asks for",
+			"channels": "the holiday season and filler selection a channel's `channels/schedule` asks for",
 		},
 	},
 	{
@@ -195,7 +196,7 @@ var areas = []area{
 		MayImport: map[string]string{
 			"library": "the store persists inventory, provision and episode-evidence values, and settings " +
 				"parses the media-server connection",
-			"channels":  "the store persists the `schedule` channel, lineup and slot values",
+			"channels":  "the store persists the `channels/schedule` channel, lineup and slot values",
 			"proposals": "the store persists proposals and suggestion-quality runs",
 			"filler":    "the store persists the clip catalog, its taxonomy and broadcast stations",
 			"media": "the store persists creative fingerprints and defect verdicts, and metrics count image " +
@@ -244,9 +245,10 @@ var flows = []flow{
 		Text: "A member asks for a channel through `api`. `proposals/workflow` turns the request into a " +
 			"durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` " +
 			"(the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from " +
-			"`llm`, and returns the values in `proposals`. When a person approves it, `binder` plans the channel and " +
-			"`channeledit` writes it through `store`; any title the household lacks becomes a `provision` " +
-			"record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `schedule` turns " +
+			"`llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the " +
+			"channel and `channels/edit` writes it through `store`; any title the household lacks becomes a " +
+			"`provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. " +
+			"`channels/schedule` turns " +
 			"the approved lineup and what is actually available into ordered programming, and the " +
 			"`channels` reconcile engine keeps that current for the channel's backend: either Loomarr's " +
 			"own `playout` engine, whose `playout/packager` stitches one continuous stream, or `tunarr`. " +
@@ -265,7 +267,7 @@ var flows = []flow{
 			"for picture and sound defects; `filler/admission` is the certification tooling that weighs " +
 			"that evidence into an admit or refuse decision. A clip that passes its checks enters the catalog, whose " +
 			"values are `filler/clips`, whose tags are `filler/taxonomy`, and which `store/catalogstore` " +
-			"persists. When `schedule` leaves a break in a channel's programming, the `channels` engine " +
+			"persists. When `channels/schedule` leaves a break in a channel's programming, the `channels` engine " +
 			"asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.",
 	},
 }

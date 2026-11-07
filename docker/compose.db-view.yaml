@@ -1,0 +1,48 @@
+# `make db-view` (scripts/db-view.sh) runs this file as its own throwaway Compose project and removes
+# it on exit. The viewer only ever sees a copy: a SQLite snapshot or backup mounted read-only and
+# opened immutable, or the throwaway Postgres below, filled by a dump or by cmd/seed. It never
+# mounts a live data directory, which holds encryption.key, and never connects to a real Postgres.
+#
+# Ports are ephemeral and bound to loopback, so worktrees never collide and nothing reaches the
+# tailnet. The script reads the chosen port back with `docker compose port`.
+services:
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:26.2.4@sha256:1b9e645bbbf44d5f8aefa4fca740311e438bc9255ecec2c8be2244744d5f603c
+    environment:
+      # Naming a server and an admin skips the first-run wizard. Viewers browse anonymously; the
+      # admin account exists only because the wizard requires one, with a per-run random password.
+      CB_SERVER_NAME: Loomarr
+      CB_SERVER_URL: http://127.0.0.1
+      CB_ADMIN_NAME: dbview-admin
+      CB_ADMIN_PASSWORD: ${DB_VIEW_ADMIN_PASSWORD:?}
+    ports:
+      - 127.0.0.1::8978
+    volumes:
+      # CloudBeaver rewrites its runtime config on start, so the script hands it a per-run copy.
+      - ${DB_VIEW_RUN_DIR:?}/cloudbeaver.runtime.conf:/opt/cloudbeaver/workspace/.data/.cloudbeaver.runtime.conf
+      - ${DB_VIEW_RUN_DIR:?}/data-sources.conf:/opt/cloudbeaver/conf/initial-data-sources.conf:ro
+      - ${DB_VIEW_SQLITE_FILE:?}:/snapshot/loomarr.db:ro
+    healthcheck:
+      # The image has bash but neither curl nor wget.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8978 && printf 'GET /status HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  postgres:
+    image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: loomarr
+      POSTGRES_USER: loomarr
+      POSTGRES_PASSWORD: ${DB_VIEW_PG_PASSWORD:?}
+    ports:
+      # cmd/seed runs on the host and needs to reach it.
+      - 127.0.0.1::5432
+    healthcheck:
+      # Over TCP: during init the image runs a socket-only server that a bare pg_isready accepts,
+      # then restarts it.
+      test: ["CMD-SHELL", "pg_isready -q -h 127.0.0.1 -U loomarr -d loomarr"]
+      interval: 1s
+      timeout: 2s
+      retries: 60

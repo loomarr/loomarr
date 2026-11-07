@@ -1,0 +1,24 @@
+# The demo site on the public internet, layered over compose.demo.yaml. Use DEMO_SITE_PUBLIC=1.
+#
+# The tunnel dials out to Cloudflare, so no port opens on the server. It sits in a profile so that
+# `up` can't start it: scripts/demo-site.sh starts it only after retiring the demo admin password,
+# which is public in this repository.
+
+services:
+  loomarr:
+    environment:
+      # Behind the tunnel every visitor arrives from one address, so sign-in throttling would treat
+      # them as one person, and cookies would miss the Secure flag.
+      TRUST_PROXY: "true"
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
+    profiles: ["public"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:-}
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      loomarr:
+        condition: service_healthy
+    restart: unless-stopped

@@ -154,6 +154,10 @@ var productProviderTopics = []Topic{
 	TopicAcquisitionGaveUp,
 	TopicChannelLive,
 	TopicChannelDegraded,
+	TopicLibraryFolderOffline,
+	TopicLibraryFolderBack,
+	TopicLibraryChangesDegraded,
+	TopicLibraryNeedsYou,
 }
 
 var sharedProviderTopics = []Topic{
@@ -162,6 +166,10 @@ var sharedProviderTopics = []Topic{
 	TopicAcquisitionGaveUp,
 	TopicChannelLive,
 	TopicChannelDegraded,
+	TopicLibraryFolderOffline,
+	TopicLibraryFolderBack,
+	TopicLibraryChangesDegraded,
+	TopicLibraryNeedsYou,
 }
 
 var providerDefinitions = []ProviderDefinition{

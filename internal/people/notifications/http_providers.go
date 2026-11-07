@@ -216,6 +216,14 @@ func topicLabel(topic Topic) string {
 		return "Channel live"
 	case TopicChannelDegraded:
 		return "Channel degraded"
+	case TopicLibraryFolderOffline:
+		return "Media folder offline"
+	case TopicLibraryFolderBack:
+		return "Media folder back"
+	case TopicLibraryChangesDegraded:
+		return "New files delayed"
+	case TopicLibraryNeedsYou:
+		return "Titles need you"
 	case TopicDeliveryTest:
 		return "Test notification"
 	default:
@@ -224,7 +232,9 @@ func topicLabel(topic Topic) string {
 }
 
 func topicSeverity(topic Topic) string {
-	if topic == TopicProposalDeclined || topic == TopicAcquisitionGaveUp || topic == TopicChannelDegraded {
+	switch topic {
+	case TopicProposalDeclined, TopicAcquisitionGaveUp, TopicChannelDegraded,
+		TopicLibraryFolderOffline, TopicLibraryChangesDegraded:
 		return "warning"
 	}
 	return "info"

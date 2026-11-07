@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// testLook is the approved Plate look at the approved opacity (#1617). internal/schedule owns the
+// testLook is the approved Plate look at the approved opacity (#1617). internal/channels/schedule owns the
 // product defaults; these tests exercise the renderer at the same values.
 var testLook = Look{Size: 0.06, Opacity: 0.40, Shadow: true}
 

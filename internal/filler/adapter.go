@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // PodAdapter implements the scheduler's PodFiller port (§10): it loads the clip

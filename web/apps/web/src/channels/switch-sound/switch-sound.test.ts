@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { STATIC_PEAK, shouldPlaySwitchSound, startSwitchSound } from "./switch-sound";
 
 type Call = [string, number, number?];
@@ -188,5 +188,14 @@ describe("startSwitchSound", () => {
     const count = staticGain(nodes)?.calls.length;
     sound?.lock(13);
     expect(staticGain(nodes)?.calls.length).toBe(count);
+  });
+
+  it("fills the two-second static loop once per context, not on every press", () => {
+    const { ctx } = fakeContext();
+    const createBuffer = vi.spyOn(ctx, "createBuffer");
+    const loopsFilled = () => createBuffer.mock.calls.filter(([, length]) => length === 2 * 8000).length;
+    startSwitchSound(ctx, audible);
+    startSwitchSound(ctx, audible);
+    expect(loopsFilled()).toBe(1);
   });
 });

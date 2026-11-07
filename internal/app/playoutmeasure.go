@@ -5,11 +5,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // sourceMeasurer is the part of measure.Measurer the resolver uses.

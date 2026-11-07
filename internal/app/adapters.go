@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/livetvpublish"
@@ -19,7 +20,6 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/rating"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/tmdb"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -337,7 +337,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	return item.WithLibrarySize(owned.SizeBytes), true, nil
 }
 
-// tunarrNumbers adapts a Programmer to binder.NumberSource: it answers "which channel numbers
+// tunarrNumbers adapts a Programmer to approval.NumberSource: it answers "which channel numbers
 // does Tunarr already use?" and nothing else (§9 V54).
 //
 // ⚠ The narrowing is the point, and it lives HERE rather than in the binder. The binder needs one

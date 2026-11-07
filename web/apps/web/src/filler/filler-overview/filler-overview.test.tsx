@@ -1,11 +1,12 @@
 import type { FillerReadinessDTO } from "@loomarr/api";
 import { getFillerReadinessMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { readiness } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerOverview, readinessAction } from "./filler-overview";
 

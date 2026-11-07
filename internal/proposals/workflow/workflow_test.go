@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 func TestWorkflowInspectGeneratingIsAuthoritativeAndCallerScoped(t *testing.T) {

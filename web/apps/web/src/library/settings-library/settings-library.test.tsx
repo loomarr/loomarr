@@ -66,6 +66,24 @@ describe("SettingsLibrary", () => {
     expect(discoveries).toBe(0);
   });
 
+  it("sends the maintainer's answer to a held removal for that folder", async () => {
+    let confirmed: unknown;
+    server.use(
+      getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),
+      getLibraryStatusMockHandler(
+        libraryStatus({ held: [{ path: "/media/movies", movies: 3, episodes: 0, other: 0 }] }),
+      ),
+      http.post("*/v1/library/roots/confirm-removal", async ({ request }) => {
+        confirmed = await request.json();
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "They're gone, remove them" }));
+    await waitFor(() => expect(confirmed).toEqual({ path: "/media/movies" }));
+  });
+
   it("shows why a typed folder was refused", async () => {
     server.use(
       getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),

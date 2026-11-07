@@ -1,6 +1,6 @@
 import { channelNumber } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { Caption } from "@/components/ui/caption";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { NowNextStrip } from "../now-next-strip";
 import { OnAirIndicator } from "../on-air-indicator";
@@ -27,11 +27,10 @@ const ChannelCard = ({
   managed = true,
   health = "healthy",
   trailing,
-  className,
 }: ChannelCardProps) => {
   const chip = HEALTH[health];
   return (
-    <Card className={cn("flex flex-col gap-3 p-4", className)}>
+    <Card gap={12} padding={16}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <span className="font-mono text-2xl leading-none tabular-nums">{channelNumber(number)}</span>

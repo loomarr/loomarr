@@ -8,9 +8,9 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 14 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
+- **platform** · 15 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
 - **media** · 1 import — the scanner reads each media file's header to learn its length, streams and embedded ids
-- **channels** · 1 import — the backstop's episode refresh re-reads each scheduled show into the scheduler's episode cache, whose entries are `schedule.ResolvedProgram`; the job moves into channels with the Wave 6.4 directory moves
+- **channels** · 1 import — the backstop's episode refresh re-reads each scheduled show into the scheduler's episode cache, whose entries are `channels/schedule.ResolvedProgram`; the job moves into channels with the Wave 6.4 directory moves
 
 ## Packages
 
@@ -22,13 +22,15 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`library`** · 12 importers · → `episodeevidence`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`library/scan`** · 2 importers · → `inventory`, `library`, `media/header`, `metadataprovider`, `metadataprovider/precedence`, `store`
+- **`library/arrhook`** · 2 importers · → `httpx`
+  Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
+- **`library/scan`** · 2 importers · → `inventory`, `library`, `library/arrhook`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `store`, `tmdb`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
 - **`metadataprovider`** · 7 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
 - **`metadataprovider/arr`** · 1 importer · → `metadataprovider`
   Sonarr and Radarr as metadata providers (#2151 decisions 7, 15, 38).
-- **`metadataprovider/localart`** · → `metadataprovider`
+- **`metadataprovider/localart`** · 2 importers · → `metadataprovider`
   The artwork beside the media as a metadata provider (#2151 decision 19).
 - **`metadataprovider/nfo`** · 1 importer · → `metadataprovider`
   Kodi NFO sidecars as a metadata provider (#2151 decision 2).
@@ -36,15 +38,15 @@ One area of the [package map](../package-map.md#start-here).
   Decides which source's value Loomarr uses for each field of a media item (#2151 decision 7, ADR 0046).
 - **`metadataprovider/providertest`** · → `metadataprovider`
   Conformance suite every metadata provider runs.
-- **`metadataprovider/tmdb`** · → `httpx`, `metadataprovider`, `rating`, `tmdb`
+- **`metadataprovider/tmdb`** · 1 importer · → `httpx`, `metadataprovider`, `rating`, `tmdb`
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
 - **`provision`** · 25 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`provisionbackstop`** · 1 importer · → `activity`, `jobs`, `library`, `provision`, `requester`, `schedule`, `settings`, `store`
+- **`provisionbackstop`** · 1 importer · → `activity`, `channels/schedule`, `jobs`, `library`, `provision`, `requester`, `settings`, `store`
   Provisioning backstop (design §4, §7, §18).
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
-- **`tmdb`** · 4 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
+- **`tmdb`** · 5 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.

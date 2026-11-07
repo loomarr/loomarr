@@ -3,7 +3,7 @@ import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
 import { requestAcquisitions, requestFixLabel, requestStatus } from "@loomarr/core/requests";
-import { Badge } from "@loomarr/design-system";
+import { Badge, Card } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, RotateCw } from "lucide-react";
@@ -14,7 +14,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { useRequests } from "@/queue/use-requests";
 
 // One request, end to end (#1405) — the Proposal Job journey (GET /v1/proposal-jobs/{jobId}):
@@ -120,7 +119,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
         )}
 
         {journey.failure && (
-          <Card className="flex flex-col gap-1 p-4">
+          <Card gap={4} padding={16}>
             <p className="font-medium">{journey.failure.message}</p>
             <p className="text-muted-foreground text-sm">{journey.failure.guidance}</p>
           </Card>

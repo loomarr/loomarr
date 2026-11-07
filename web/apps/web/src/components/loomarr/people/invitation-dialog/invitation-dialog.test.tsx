@@ -1,9 +1,15 @@
+import { ApiError } from "@loomarr/api";
 import type { CreateInvitationInputBody } from "@loomarr/api/models/createInvitationInputBody";
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
-import { render, screen, waitFor } from "@testing-library/react";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InvitationDialog } from "./invitation-dialog";
+
+// Field errors are design-system FieldHints, which need the theme the app mounts at its root.
+const render = (ui: ReactElement) => rtlRender(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
 const expiresAt = Date.UTC(2030, 0, 8, 12);
 const localInvitation: InvitationBody = {
@@ -98,6 +104,45 @@ describe("InvitationDialog", () => {
         role: "admin",
       }),
     );
+  });
+
+  it("shows what is missing under each field and blocks the create until it is fixed", async () => {
+    const { onCreate } = renderDialog();
+
+    await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose a username to reserve.");
+    expect(screen.getByLabelText("Reserved username")).toHaveAttribute("aria-invalid", "true");
+    expect(onCreate).not.toHaveBeenCalled();
+
+    await userEvent.type(screen.getByLabelText("Reserved username"), "newcomer");
+    await userEvent.type(screen.getByLabelText("Contact email (optional)"), "person@");
+    await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter one complete email address.");
+    expect(onCreate).not.toHaveBeenCalled();
+
+    await userEvent.clear(screen.getByLabelText("Contact email (optional)"));
+    await userEvent.click(screen.getByRole("radio", { name: "Emby or Jellyfin account" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose an Emby or Jellyfin account.");
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's problem and keeps the entered values for another try", async () => {
+    const onCreate = vi.fn().mockRejectedValue(
+      new ApiError(409, {
+        title: "Username already reserved",
+        detail: "Choose another username.",
+        status: 409,
+      }),
+    );
+    renderDialog({ onCreate });
+
+    await userEvent.type(screen.getByLabelText("Reserved username"), "newcomer");
+    await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose another username.");
+    expect(screen.getByLabelText("Reserved username")).toHaveValue("newcomer");
+    expect(screen.getByRole("button", { name: "Create invitation" })).toBeEnabled();
   });
 
   it("can request email without making QR and copy depend on delivery", async () => {

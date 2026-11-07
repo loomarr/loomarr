@@ -36,6 +36,11 @@ type Record struct {
 	// More are further items of the same kind that the same ref names: the other episodes of a
 	// multi-episode file, each with its own ids (decision 15).
 	More []Record
+
+	// Page is the item's page in the source's own app, for a person to open: where "Wrong
+	// title?" sends them when the source decides what the item is (decision 26). Empty when the
+	// source has no such page.
+	Page string
 }
 
 // Families returns the field families the record says something about.

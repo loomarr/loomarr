@@ -64,13 +64,13 @@ RACE_OFF=(
 # regression cases and the parallel paths through the shared state, and without it they walk
 # the full sample, so every assertion still runs in CI.
 #
-# internal/schedule (#2007): the full sample took 1021s under -race on four cores and 113s
+# internal/channels/schedule (#2007): the full sample took 1021s under -race on four cores and 113s
 # without it, and shard 1 hit its 15-minute limit on every run from #1939 on.
 #
 # Each entry runs in both phases of its lane, so its one measured weight in
 # scripts/go-race-weights.tsv (the median of its race and plain samples) is counted in both.
 RACE_AND_PLAIN=(
-	internal/schedule
+	internal/channels/schedule
 )
 
 module_path() { go list -m; }

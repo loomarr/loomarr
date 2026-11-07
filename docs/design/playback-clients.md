@@ -89,7 +89,7 @@ as the person who paired it, so a Channel starred on the TV shows on their phone
 
 Home's **Watching now** reads `GET /v1/household/viewing` (#1662). Who is watching is the server's
 own observation, not a client report: a live player re-reads its media playlist every segment, so a
-device is watching a Channel while its polls continue (`internal/viewing`).
+device is watching a Channel while its polls continue (`internal/channels/viewing`).
 
 - **Attribution.** A play URL carries a signed `viewer` tag naming the person and device it was
   minted for: a paired device by its name, a browser by its family and system ("Firefox on

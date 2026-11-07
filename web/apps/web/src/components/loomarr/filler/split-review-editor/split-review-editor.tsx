@@ -1,12 +1,11 @@
 import type { SplitReviewSegmentDTO } from "@loomarr/api/models/splitReviewSegmentDTO";
 import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
-import { Badge } from "@loomarr/design-system";
+import { Badge, Card } from "@loomarr/design-system";
 import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Image } from "@/components/ui/image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -378,7 +377,7 @@ const SegmentSummaryRow = ({
           <span className="sr-only">Open clip</span>{" "}
           <span className="border-border bg-static-900 relative h-14 w-24 shrink-0 overflow-hidden rounded-md border">
             {segment.artwork ? (
-              <Image image={segment.artwork} alt="" sizes="96px" className="size-full object-cover" />
+              <ServedImage image={segment.artwork} alt="" sizes="96px" />
             ) : (
               <span className="text-muted-foreground flex size-full items-center justify-center px-2 text-center text-[10px]">
                 Preview unavailable

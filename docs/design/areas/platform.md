@@ -12,7 +12,7 @@ One area of the [package map](../package-map.md#start-here).
 - **filler** · 6 imports — the store persists the clip catalog, its taxonomy and broadcast stations
 - **library** · 5 imports — the store persists inventory, provision and episode-evidence values, and settings parses the media-server connection
 - **media** · 5 imports — the store persists creative fingerprints and defect verdicts, and metrics count image generation
-- **channels** · 2 imports — the store persists the `schedule` channel, lineup and slot values
+- **channels** · 2 imports — the store persists the `channels/schedule` channel, lineup and slot values
 - **proposals** · 2 imports — the store persists proposals and suggestion-quality runs
 
 ## Packages
@@ -33,7 +33,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`housekeeping`** · 1 importer · → `diagnostics`, `jobs`, `people/invitation`, `people/notifications`, `people/recovery`, `settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
-- **`httpx`** · 12 importers · → `metrics`
+- **`httpx`** · 13 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`jobs`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
@@ -59,9 +59,9 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`store`** · 17 importers · → `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `people/secretprotection`, `proposals`, `proposals/quality`, `provision`, `schedule`, `store/catalogstore`, `store/identitystore`, `store/storedb`
+- **`store`** · 17 importers · → `channels/schedule`, `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `people/secretprotection`, `proposals`, `proposals/quality`, `provision`, `store/catalogstore`, `store/identitystore`, `store/storedb`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
-- **`store/catalogstore`** · 4 importers · → `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `media/creative`, `media/defects`, `schedule`, `store/storedb`
+- **`store/catalogstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `media/creative`, `media/defects`, `store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
 - **`store/identitystore`** · 4 importers · → `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).

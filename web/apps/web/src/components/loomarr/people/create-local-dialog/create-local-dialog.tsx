@@ -10,14 +10,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@loomarr/design-system";
-import { useForm } from "@tanstack/react-form";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAppForm } from "@/lib/app-form";
 import type { CreateLocalDialogProps } from "./create-local-dialog.type";
 
 const CreateLocalDialog = ({
@@ -27,11 +25,9 @@ const CreateLocalDialog = ({
   portalContainer,
   onCreate,
 }: CreateLocalDialogProps) => {
-  const usernameId = useId();
-  const passwordId = useId();
   const roleId = useId();
   const [open, setOpen] = useState(defaultOpen);
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { username: "", password: "", role: "member" as CreateLocalUserInputBodyRole },
     validators: { onSubmit: createLocalUserSchema },
     onSubmit: async ({ value }) => {
@@ -73,39 +69,14 @@ const CreateLocalDialog = ({
             </DialogDescription>
           </DialogHeader>
 
-          <form.Field name="username">
+          <form.AppField name="username">
+            {(field) => <field.TextField className="gap-1.5" disabled={creating} label="Username" />}
+          </form.AppField>
+          <form.AppField name="password">
             {(field) => (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={usernameId}>Username</Label>
-                <Input
-                  id={usernameId}
-                  name={field.name}
-                  value={field.state.value}
-                  disabled={creating}
-                  aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                <FieldError errors={field.state.meta.errors} />
-              </div>
+              <field.TextField className="gap-1.5" disabled={creating} label="Password" type="password" />
             )}
-          </form.Field>
-          <form.Field name="password">
-            {(field) => (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={passwordId}>Password</Label>
-                <Input
-                  id={passwordId}
-                  name={field.name}
-                  type="password"
-                  value={field.state.value}
-                  disabled={creating}
-                  aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                <FieldError errors={field.state.meta.errors} />
-              </div>
-            )}
-          </form.Field>
+          </form.AppField>
           <form.Field name="role">
             {(field) => (
               <div className="flex flex-col gap-1.5">

@@ -110,6 +110,14 @@ replace local transcription and vision; those modalities stay operator choices.
 The private visual-corpus review board is a self-contained page rendered by Go's `html/template`;
 it adds no service or dependency.
 
+## Development tools
+
+Containers a contributor starts on demand, digest-pinned in their Compose file. Nothing ships.
+
+| Tool | Why |
+| --- | --- |
+| CloudBeaver Community (`docker/compose.db-view.yaml`) | `make db-view` browses a copy of a SQLite or Postgres database in the browser. Of the popular browser viewers it covers both engines and takes preconfigured read-only connections; Apache-2.0 |
+
 ## Documentation tooling
 
 Build-time only; nothing ships. Astro + Starlight renders `docs/` in place; D2 (pinned, containerized)

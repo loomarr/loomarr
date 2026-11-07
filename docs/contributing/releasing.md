@@ -34,6 +34,30 @@ another destination. Do not commit or paste the key. A tag-specific
 `project/release/<tag>.md` file, when present, is prepended for human-authored framing and known
 limitations.
 
+## Check a candidate on real data and real GPUs
+
+Do both before a final tag. Neither runs by itself yet.
+
+**Rehearse the migrations.** Run this where the household backup lives, so the data stays there:
+
+```bash
+make migration-rehearsal BACKUP=<backup directory> IMAGE=<candidate image>
+```
+
+It boots the candidate on a copy of the backup and reports whether it came up. The backup is only
+read, and the container has no network, because the database names the household's real services.
+
+**Check the hardware.** Software, Intel and NVIDIA block a release; AMD is best-effort. Software is
+covered by required CI. For the others, dispatch `playout-bench.yml` with `run_arc` and
+`run_geforce`, then run:
+
+```bash
+make hardware-gate COMMIT=<full commit id>
+```
+
+A skipped leg counts as missing. `release.yml` doesn't enforce this yet, because the Intel and
+NVIDIA runners aren't registered. Wire it in once they are, or every release would stop.
+
 ## Docs pass
 
 The docs ship with every release (#1682, maintainer decision D3; step 5 of #1572). Two things
@@ -323,7 +347,7 @@ protocol, output, and resource-ceiling correctness.
 
 The consumer half of the gate is observable through public seams. Guide programme art, Watch
 timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
-render through the shared frontend `Image` primitive. An animated filler hover must offer an
+render through the shared frontend `ServedImage` primitive. An animated filler hover must offer an
 animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.

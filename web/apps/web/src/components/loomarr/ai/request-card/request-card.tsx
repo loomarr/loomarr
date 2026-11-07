@@ -1,9 +1,7 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Badge } from "@loomarr/design-system";
+import { Badge, Card } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import type { RequestCardProps } from "./request-card.type";
 
 // RequestCard — one request on the Requests page (#1405). Everything but the optional `action` is
@@ -17,18 +15,8 @@ import type { RequestCardProps } from "./request-card.type";
 //
 // The date reads relative ("Requested 2h ago"), like the rest of the app. The full date shows in
 // the viewer's locale on hover, and the `<time>` element carries it machine-readable (#1659 map).
-const RequestCard = ({
-  jobId,
-  title,
-  line,
-  tone,
-  createdAt,
-  hint,
-  action,
-  now,
-  className,
-}: RequestCardProps) => (
-  <Card className={cn("hover:bg-accent flex items-center gap-3 transition-colors", className)}>
+const RequestCard = ({ jobId, title, line, tone, createdAt, hint, action, now }: RequestCardProps) => (
+  <Card alignItems="center" className="hover:bg-accent! transition-colors" flexDirection="row" gap={12}>
     <Link
       to="/requests/$jobId"
       params={{ jobId }}

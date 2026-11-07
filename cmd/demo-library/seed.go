@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/auth"
@@ -110,7 +110,7 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 	if created || admin.Name == demoAdminUser {
 		out.AdminPassword = demoAdminPassword
 	}
-	approver := suggest.NewApprover(st, binder.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
+	approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 	for _, c := range demolibrary.Channels {
 		id, err := ensureChannel(ctx, st, approver, admin.ID, c)
 		if err != nil {

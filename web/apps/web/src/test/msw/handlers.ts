@@ -15,6 +15,7 @@ import {
   getGuideHighlightsMockHandler,
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
+  getLibraryStatusMockHandler,
   getListActivityMockHandler,
   getListChannelIdeasMockHandler,
   getListChannelsMockHandler,
@@ -46,6 +47,7 @@ import {
 import { HttpResponse, http, type RequestHandler } from "msw";
 import { channel } from "../fixtures/channels";
 import { fillerProviders } from "../fixtures/filler";
+import { libraryStatus } from "../fixtures/library";
 
 // appHandlers — the shared baseline for tests that mount the REAL route tree.
 //
@@ -87,6 +89,9 @@ const appHandlers = (): RequestHandler[] => [
   // AppShell reads this once for every authenticated route. `dev` is the honest baseline for a
   // test bundle; tests that exercise release/dirty presentation override the generated handler.
   getSystemVersionMockHandler({ version: "dev", ready: true }),
+  // The Library nav badge (#2151 step 11b): AppShell reads the library status for an admin on
+  // every authenticated route. Caught up, nothing needs you.
+  getLibraryStatusMockHandler(libraryStatus()),
   getGetCurrentHealthMockHandler({
     generationId: "startup-test",
     generation: 1,

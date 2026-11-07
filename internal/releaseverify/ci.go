@@ -221,7 +221,7 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"android": {
 			outputs:   []classifierOutput{{name: "impact_android", source: "android"}},
-			condition: "needs.changes.outputs.impact_android == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_android == 'true'",
 		},
 		"playout-bench": {
 			outputs:   []classifierOutput{{name: "impact_playout_bench", source: "playout_bench"}},
@@ -241,7 +241,7 @@ func VerifyCIImpactActivation(path string) error {
 		},
 		"expo-android-mobile": {
 			outputs:   []classifierOutput{{name: "impact_expo_android_mobile", source: "expo_android_mobile"}},
-			condition: "needs.changes.outputs.impact_expo_android_mobile == 'true'",
+			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_expo_android_mobile == 'true'",
 		},
 	}
 	for jobName, gate := range activated {

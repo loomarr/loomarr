@@ -2,6 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
@@ -11,7 +12,6 @@ import { PoolHealth } from "@/components/loomarr/filler/pool-health";
 import { WatchLine } from "@/components/loomarr/filler/watch-line";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { usePhoneWidth } from "@/lib/use-phone-width";
@@ -154,7 +154,14 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
 
         {watch?.autoFetch?.stoppedBy === "catalog" && tab === "library" ? (
-          <Card className="border-caution/40 bg-caution/5 flex flex-wrap items-center gap-3 p-4">
+          <Card
+            alignItems="center"
+            className="border-caution/40! bg-caution/5!"
+            flexDirection="row"
+            flexWrap="wrap"
+            gap={12}
+            padding={16}
+          >
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">Automatic fetching is paused</p>
               <p className="text-muted-foreground mt-0.5 text-sm">

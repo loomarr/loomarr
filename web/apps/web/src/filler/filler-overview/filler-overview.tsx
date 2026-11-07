@@ -3,12 +3,11 @@ import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO"
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Badge, type BadgeTone } from "@loomarr/design-system";
+import { Badge, type BadgeTone, Card } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import type { FillerSettingsSection } from "../filler-settings-section";
 
 type ActionBase = {
@@ -145,7 +144,7 @@ const FillerOverview = () => {
   }
   if (!readiness) {
     return (
-      <Card aria-live="polite" className="p-6">
+      <Card aria-live="polite" padding={24}>
         <p className="font-medium">Checking filler health…</p>
         <p className="text-muted-foreground mt-1 text-sm">Finding out what's ready and what's on the way.</p>
       </Card>
@@ -160,7 +159,7 @@ const FillerOverview = () => {
           action colour, so a state where nothing needs doing doesn't wear it: the ready card is
           plain, with the same green dot as the healthy watch line above it. */}
       {action ? (
-        <Card className="border-caution/40 bg-caution/5 p-5">
+        <Card className="border-caution/40! bg-caution/5!" padding={20}>
           <div className="flex flex-col items-start gap-4 sm:flex-row">
             <div className="min-w-0 flex-1">
               <Badge shape="square" tone="caution">
@@ -192,7 +191,7 @@ const FillerOverview = () => {
           </div>
         </Card>
       ) : (
-        <Card className="flex items-center gap-2.5 p-4">
+        <Card alignItems="center" flexDirection="row" gap={10} padding={16}>
           <span aria-hidden className="bg-lock size-2 shrink-0 rounded-full" />
           <div className="min-w-0">
             <h2 className="font-semibold">Filler is working on its own</h2>
@@ -222,7 +221,7 @@ const FillerOverview = () => {
             {readiness.pool.channels.map((channel) => {
               const badge = COVERAGE_BADGE[channel.level];
               return (
-                <Card key={channel.channelId} className="p-4">
+                <Card key={channel.channelId} padding={16}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Link
@@ -252,7 +251,7 @@ const FillerOverview = () => {
             })}
           </div>
         ) : (
-          <Card className="text-muted-foreground p-4 text-sm">
+          <Card className="text-muted-foreground text-sm" padding={16}>
             {readinessQuery.error
               ? "Channel coverage is temporarily unavailable."
               : "No live channels need filler coverage yet."}

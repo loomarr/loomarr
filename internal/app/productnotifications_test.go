@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -120,6 +120,60 @@ func TestProductNotificationJourneyRoutesOnlyConfiguredAudiencesWithStableDedupl
 		if !matched {
 			t.Fatalf("intent %s has no configured attempt", key)
 		}
+	}
+}
+
+// The scanner's notifications reach the operators' destination for each topic, never a person, and a
+// failing arr is reported at most once a day.
+func TestLibraryNotificationsReachOperators(t *testing.T) {
+	now := time.Date(2026, 11, 4, 9, 0, 0, 0, time.UTC)
+	repository := testkit.NewNotificationRepository()
+	if err := repository.SaveNotificationDestination(t.Context(), notifications.Destination{
+		ID: "operator-ntfy", Means: notifications.MeansNtfy, Label: "Household", Scope: notifications.ScopeInstallation,
+		Audience: notifications.RecipientOperators, Enabled: true, CreatedAt: now, UpdatedAt: now,
+		Topics: []notifications.Topic{
+			notifications.TopicLibraryFolderOffline, notifications.TopicLibraryFolderBack, notifications.TopicLibraryChangesDegraded,
+			notifications.TopicLibraryNeedsYou,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	source := &journeyNotificationSource{NotificationRepository: repository}
+	nextID := 0
+	service := notifications.NewService(repository, notifications.NewDestinationRouter(source, nil), nil, func() string {
+		nextID++
+		return fmt.Sprintf("notification-%d", nextID)
+	}, func() time.Time { return now })
+	var notify libraryNotifier = &productNotificationCoordinator{publisher: notifications.NewProductPublisher(service), source: source}
+
+	long := "/mnt/" + strings.Repeat("ü", 150) + "\nmovies"
+	notify.LibraryFolder(t.Context(), long, false)
+	notify.LibraryFolder(t.Context(), long, true)
+	notify.LibraryChangesDegraded(t.Context(), "sonarr", fmt.Errorf("refused"))
+	notify.LibraryChangesDegraded(t.Context(), "sonarr", fmt.Errorf("refused again"))
+	notify.LibraryNeedsYou(t.Context(), 3)
+	notify.LibraryNeedsYou(t.Context(), 4)
+	notify.LibraryNeedsYou(t.Context(), 0)
+
+	if len(repository.Intents) != 4 || len(repository.Attempts) != 4 {
+		t.Fatalf("intents = %d, attempts = %d; want four, each routed", len(repository.Intents), len(repository.Attempts))
+	}
+	topics := map[notifications.Topic]bool{}
+	for _, intent := range repository.Intents {
+		topics[intent.Topic] = true
+		if intent.RecipientKind != notifications.RecipientOperators || intent.ReferenceKind != notifications.ReferenceLibrary {
+			t.Errorf("intent %s went to %s about %s", intent.Topic, intent.RecipientKind, intent.ReferenceKind)
+		}
+		if strings.ContainsAny(intent.Template.SubjectName, "\n") || len(intent.Template.SubjectName) > 200 {
+			t.Errorf("subject %q is not fit to send", intent.Template.SubjectName)
+		}
+		if intent.Topic == notifications.TopicLibraryNeedsYou &&
+			intent.Template.Summary != "Loomarr can't tell what 3 titles are. Answer them in Library → Needs you." {
+			t.Errorf("needs you summary = %q; want the day's first count", intent.Template.Summary)
+		}
+	}
+	if len(topics) != 4 {
+		t.Errorf("topics = %v", topics)
 	}
 }
 

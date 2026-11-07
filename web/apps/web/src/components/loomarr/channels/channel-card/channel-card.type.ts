@@ -18,7 +18,6 @@ interface ChannelCardProps {
   // (e.g. a row's ⋮ menu). Lives inside the card so a per-row action reads as part of the
   // row it acts on, rather than floating in a margin beside it. Omitted → just the dot.
   trailing?: ReactNode;
-  className?: string;
 }
 
 export type { ChannelCardProps, ChannelHealth };

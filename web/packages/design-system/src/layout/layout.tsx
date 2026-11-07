@@ -183,8 +183,9 @@ const Disclosure = ({
           borderTopWidth={1}
           gap="control"
           padding="control"
+          // `id` alone: Tamagui maps it on native, and since Tamagui 3 a `nativeID` reaches the web
+          // DOM as an unknown attribute, which React warns about.
           id={contentId}
-          nativeID={contentId}
         >
           {children}
         </View>

@@ -95,7 +95,7 @@ func TestGoRacePolicyPreservesSharderWorkOrder(t *testing.T) {
 		cmd := exec.Command("bash", filepath.Join("scripts", "go-race-policy.sh"), mode)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-		cmd.Stdin = strings.NewReader("example.invalid/z\nexample.invalid/internal/config\nexample.invalid/internal/schedule\nexample.invalid/a\nexample.invalid/z\nexample.invalid/internal/filler/taxonomy\n")
+		cmd.Stdin = strings.NewReader("example.invalid/z\nexample.invalid/internal/config\nexample.invalid/internal/channels/schedule\nexample.invalid/a\nexample.invalid/z\nexample.invalid/internal/filler/taxonomy\n")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("race policy %s: %v\n%s", mode, err, output)
@@ -103,11 +103,11 @@ func TestGoRacePolicyPreservesSharderWorkOrder(t *testing.T) {
 		return strings.TrimSpace(string(output))
 	}
 
-	// internal/schedule is on RACE_AND_PLAIN (#2007): it runs in both phases, in the sharder's order.
-	if got, want := run("--race"), "example.invalid/z\nexample.invalid/internal/schedule\nexample.invalid/a"; got != want {
+	// internal/channels/schedule is on RACE_AND_PLAIN (#2007): it runs in both phases, in the sharder's order.
+	if got, want := run("--race"), "example.invalid/z\nexample.invalid/internal/channels/schedule\nexample.invalid/a"; got != want {
 		t.Fatalf("race work order =\n%s\nwant\n%s", got, want)
 	}
-	if got, want := run("--no-race"), "example.invalid/internal/config\nexample.invalid/internal/schedule\nexample.invalid/internal/filler/taxonomy"; got != want {
+	if got, want := run("--no-race"), "example.invalid/internal/config\nexample.invalid/internal/channels/schedule\nexample.invalid/internal/filler/taxonomy"; got != want {
 		t.Fatalf("plain work order =\n%s\nwant\n%s", got, want)
 	}
 }

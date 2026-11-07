@@ -1,11 +1,10 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Badge, Surface, Text } from "@loomarr/design-system";
+import { Badge, Card, Surface, Text } from "@loomarr/design-system";
 import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { episodeSelectionLabel } from "../episode-selection-label";
@@ -101,7 +100,7 @@ const ApprovalQueueItem = ({
   onApprove,
   onDeny,
   error,
-  className,
+  flat = false,
 }: ApprovalQueueItemProps) => {
   const busy = status === "approving";
   const denied = status === "denied";
@@ -112,7 +111,7 @@ const ApprovalQueueItem = ({
   const hasPicks = (lineup?.length ?? 0) + (acquisitionItems?.length ?? 0) > 0;
 
   return (
-    <Card className={cn("flex flex-col gap-3 p-4", className)}>
+    <Card gap={12} {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}>
       {/* On a phone the actions go under the pitch; beside it they left it a word per line (#1785). */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
         <div className="min-w-0 flex-1">

@@ -5,8 +5,8 @@ import (
 	"context"
 	"maps"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // OutlookLibrary supplies read-only metadata and episodes for proposal observation

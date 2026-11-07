@@ -35,6 +35,10 @@ type LibraryFile struct {
 	Held      bool
 	SeenAt    time.Time
 	MissingAt time.Time
+	// ItemID is the inventory item the file was last written as; SeriesID is an episode's series.
+	// Either is "" until known.
+	ItemID   string
+	SeriesID string
 }
 
 // LibraryFileCounts counts the present files of every root.
@@ -71,7 +75,7 @@ type LibraryFileStore interface {
 
 func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size, modified_ns, identity, kind, header,
-		problem, held, seen_at, missing_at FROM library_files WHERE root = ? ORDER BY path`), root)
+		problem, held, seen_at, missing_at, item_id, series_id FROM library_files WHERE root = ? ORDER BY path`), root)
 	if err != nil {
 		return nil, fmt.Errorf("list library files: %w", err)
 	}
@@ -80,7 +84,7 @@ func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile
 		var f LibraryFile
 		var seen, missing int64
 		if err := rows.Scan(&f.Path, &f.Root, &f.Size, &f.ModifiedNs, &f.Identity, &f.Kind, &f.Header, &f.Problem,
-			&f.Held, &seen, &missing); err != nil {
+			&f.Held, &seen, &missing, &f.ItemID, &f.SeriesID); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library files: %w", err)
 		}
@@ -106,12 +110,13 @@ func (s *sqlStore) SaveLibraryFiles(ctx context.Context, files []LibraryFile) er
 	}
 	defer func() { _ = tx.Rollback() }()
 	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_files
-		(path, root, size, modified_ns, identity, kind, header, problem, held, seen_at, missing_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(path, root, size, modified_ns, identity, kind, header, problem, held, seen_at, missing_at, item_id, series_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET root = excluded.root, size = excluded.size,
 		modified_ns = excluded.modified_ns, identity = excluded.identity, kind = excluded.kind,
 		header = excluded.header, problem = excluded.problem, held = excluded.held,
-		seen_at = excluded.seen_at, missing_at = excluded.missing_at`))
+		seen_at = excluded.seen_at, missing_at = excluded.missing_at,
+		item_id = excluded.item_id, series_id = excluded.series_id`))
 	if err != nil {
 		return fmt.Errorf("save library files: %w", err)
 	}
@@ -129,7 +134,7 @@ func (s *sqlStore) SaveLibraryFiles(ctx context.Context, files []LibraryFile) er
 			missing = f.MissingAt.UnixMilli()
 		}
 		if _, err := stmt.ExecContext(ctx, f.Path, f.Root, f.Size, f.ModifiedNs, f.Identity, f.Kind, header,
-			f.Problem, f.Held, f.SeenAt.UnixMilli(), missing); err != nil {
+			f.Problem, f.Held, f.SeenAt.UnixMilli(), missing, f.ItemID, f.SeriesID); err != nil {
 			return fmt.Errorf("save library file: %w", err)
 		}
 	}

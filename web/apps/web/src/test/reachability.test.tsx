@@ -7,6 +7,7 @@ import {
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetFillerSplitMockHandler,
+  getGetLibraryItemMockHandler,
   getGetPlayoutStatusMockHandler,
   getGetProgrammingVocabularyMockHandler,
   getGetProposalJobMockHandler,
@@ -20,6 +21,8 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListLibraryCollectionsMockHandler,
+  getListLibraryItemsMockHandler,
+  getListLibraryNeedsMockHandler,
   getListLibraryRootsMockHandler,
   getListTaxonomyMockHandler,
   getListUserSessionsMockHandler,
@@ -306,6 +309,30 @@ const stubReachable = () => {
       pathMap: [],
     }),
     getLibraryStatusMockHandler(libraryStatus()),
+    // Library and a title's page: one movie, served under any id.
+    getListLibraryItemsMockHandler({
+      items: [{ id: "ch-1", kind: "movie", name: "Paper Kites", year: 1996, files: 1, ready: true }],
+      total: 1,
+    }),
+    // Needs you: one file nothing identifies, with no guess.
+    getListLibraryNeedsMockHandler({
+      needs: [
+        {
+          item: { id: "ch-2", kind: "movie", name: "title_t01", files: 1, ready: false },
+          files: [{ path: "/media/movies/disc2/title_t01.mkv", size: 1, ready: false }],
+          candidates: [],
+          searched: true,
+        },
+      ],
+    }),
+    getGetLibraryItemMockHandler({
+      item: { id: "ch-1", kind: "movie", name: "Paper Kites", year: 1996, files: 1, ready: true },
+      genres: [],
+      files: [],
+      seasons: [],
+      match: { by: "app", app: "radarr", page: "http://radarr.invalid/movie/paper-kites" },
+      detailsFrom: {},
+    }),
     getGetPlayoutStatusMockHandler({
       running: false,
       capability: { encoder: "", hardware: false, maxChannels: 0 },

@@ -12,6 +12,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -28,12 +30,10 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
-	"github.com/loomarr/loomarr/internal/viewing"
 )
 
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
@@ -97,6 +97,8 @@ type Server struct {
 	// libraryRoots backs /v1/library/roots*, /v1/library/path-map and /v1/library/status (#2151);
 	// nil ⇒ those routes 409 as not configured.
 	libraryRoots LibraryRootService
+	// libraryHooks backs /v1/library/hooks/* (#2151 decision 10); nil ⇒ those routes 409.
+	libraryHooks LibraryHookService
 	ideaLibrary  IdeaLibrary
 	// icons backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate poster
 	// URLs drawn from the channel's own lineup titles. nil ⇒ 501 (TMDB unconfigured).
@@ -1066,6 +1068,7 @@ type Options struct {
 	MovieCollections MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
 	Collections      CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
 	LibraryRoots     LibraryRootService     // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
+	LibraryHooks     LibraryHookService     // /v1/library/hooks/* (#2151); nil ⇒ 409
 	IdeaLibrary      IdeaLibrary            // /v1/discovery/ideas (#1665); nil ⇒ route 501
 	Icons            IconService            // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte

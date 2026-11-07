@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -179,9 +179,9 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 			Log:      defaults.Log,
 			Channels: chSvc,
 			LiveTV:   ltv,
-			// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so the number check
+			// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
 			// (channeledit asks the binder) matches production wiring.
-			Binder: binder.New(defaults.Store, chSvc, nil, defaults.Log),
+			Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
 		})
 	})
 	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv}
@@ -198,7 +198,7 @@ func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, records.Sto
 	log := slog.New(slog.DiscardHandler)
 	h := api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
-		Binder: binder.New(st, chSvc, nil, log),
+		Binder: approval.New(st, chSvc, nil, log),
 		// In particular: tunarr.url is unconfigured.
 		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	})

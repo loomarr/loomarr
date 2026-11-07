@@ -2,7 +2,8 @@ import type { ListDiagnosticEvents200One } from "@loomarr/api";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import { ApplicationDiagnostics, DEFAULT_APPLICATION_FILTERS } from "./application-diagnostics";
+import { DEFAULT_APPLICATION_FILTERS } from "../application-filters";
+import { ApplicationDiagnostics } from "./application-diagnostics";
 
 const observedAt = Date.UTC(2026, 7, 23, 23, 14);
 const dropState = { dropped: 2 };

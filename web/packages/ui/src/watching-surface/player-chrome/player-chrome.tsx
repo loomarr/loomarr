@@ -1,5 +1,5 @@
 import { playerChrome, ThemeScope } from "@loomarr/design-system";
-import { useState } from "react";
+import { memo, useDeferredValue, useState } from "react";
 import { View } from "react-native";
 
 import { gradientOr, webOnly } from "./glass";
@@ -14,89 +14,95 @@ import { PreviewPlaybar } from "./preview-playbar";
 // dimmed picture. Presentational: the app owns the player, the data and the input mapping. It is dark
 // in a light app too — it sits on a picture, not on a page.
 
-const PlayerChrome = ({
-  band,
-  density,
-  formatTime,
-  ident = false,
-  onPreviewChange,
-  playbar,
-  sheet,
-  transport,
-  visible,
-}: PlayerChromeProps) => {
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const preview = (open: boolean) => {
-    setPreviewOpen(open);
-    onPreviewChange?.(open);
-  };
-  const touch = density === "touch";
-  const controls = visible && !sheet;
-  // The station-ID card stands in for hidden controls: the band alone, fuller (mock "station-id").
-  const card = ident && !visible && !sheet;
-  const shown = controls || card;
-  return (
-    <ThemeScope theme="dark">
-      <View
-        aria-hidden={!shown || undefined}
-        pointerEvents={shown ? "box-none" : "none"}
-        style={{
-          bottom: 0,
-          gap: touch ? 6 : 12,
-          left: 0,
-          opacity: shown ? 1 : 0,
-          paddingBottom: touch ? 10 : 20,
-          paddingHorizontal: touch ? 16 : 32,
-          paddingTop: touch ? 40 : 96,
-          position: "absolute",
-          right: 0,
-          zIndex: 30,
-          ...gradientOr(
-            `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
-            playerChrome.scrimMid,
-          ),
-          ...webOnly({ transition: "opacity 220ms ease" }),
-        }}
-      >
-        <LowerThirdBand
-          band={band}
-          density={density}
-          ident={card}
-          steppedBack={previewOpen && transport.pointer}
-        />
-        {card ? null : playbar ? (
-          <PreviewPlaybar
+const ChromeBody = memo(
+  ({
+    band,
+    density,
+    formatTime,
+    ident = false,
+    onPreviewChange,
+    playbar,
+    sheet,
+    transport,
+    visible,
+  }: PlayerChromeProps) => {
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const preview = (open: boolean) => {
+      setPreviewOpen(open);
+      onPreviewChange?.(open);
+    };
+    const touch = density === "touch";
+    const controls = visible && !sheet;
+    // The station-ID card stands in for hidden controls: the band alone, fuller (mock "station-id").
+    const card = ident && !visible && !sheet;
+    const shown = controls || card;
+    return (
+      <ThemeScope theme="dark">
+        <View
+          aria-hidden={!shown || undefined}
+          pointerEvents={shown ? "box-none" : "none"}
+          style={{
+            bottom: 0,
+            gap: touch ? 6 : 12,
+            left: 0,
+            opacity: shown ? 1 : 0,
+            paddingBottom: touch ? 10 : 20,
+            paddingHorizontal: touch ? 16 : 32,
+            paddingTop: touch ? 40 : 96,
+            position: "absolute",
+            right: 0,
+            zIndex: 30,
+            ...gradientOr(
+              `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
+              playerChrome.scrimMid,
+            ),
+            ...webOnly({ transition: "opacity 220ms ease" }),
+          }}
+        >
+          <LowerThirdBand
+            band={band}
             density={density}
-            formatTime={formatTime}
-            onPreviewChange={preview}
-            onSeek={playbar.onSeek}
-            playheadMs={playbar.playheadMs}
-            pointer={transport.pointer}
-            segments={playbar.segments}
-            window={playbar.window}
+            ident={card}
+            steppedBack={previewOpen && transport.pointer}
           />
+          {card ? null : playbar ? (
+            <PreviewPlaybar
+              density={density}
+              formatTime={formatTime}
+              onPreviewChange={preview}
+              onSeek={playbar.onSeek}
+              playheadMs={playbar.playheadMs}
+              pointer={transport.pointer}
+              segments={playbar.segments}
+              window={playbar.window}
+            />
+          ) : null}
+          {card ? null : <PlayerTransport {...transport} />}
+        </View>
+        {sheet ? (
+          <>
+            <View
+              pointerEvents="none"
+              style={{
+                backgroundColor: playerChrome.dim,
+                bottom: 0,
+                left: 0,
+                position: "absolute",
+                right: 0,
+                top: 0,
+                zIndex: 39,
+              }}
+            />
+            {sheet}
+          </>
         ) : null}
-        {card ? null : <PlayerTransport {...transport} />}
-      </View>
-      {sheet ? (
-        <>
-          <View
-            pointerEvents="none"
-            style={{
-              backgroundColor: playerChrome.dim,
-              bottom: 0,
-              left: 0,
-              position: "absolute",
-              right: 0,
-              top: 0,
-              zIndex: 39,
-            }}
-          />
-          {sheet}
-        </>
-      ) : null}
-    </ThemeScope>
-  );
-};
+      </ThemeScope>
+    );
+  },
+);
+
+// The chrome follows a deferred copy of its props. A channel press changes nearly all of them while
+// the chrome is on its way out, and rendering this tree then would hold up the tuning overlay's paint.
+const PlayerChrome = (props: PlayerChromeProps) => <ChromeBody {...useDeferredValue(props)} />;
 
 export { PlayerChrome };

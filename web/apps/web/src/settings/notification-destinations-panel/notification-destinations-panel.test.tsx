@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { NotificationDestinationsPanel } from "./notification-destinations-panel";
 
 const wrapper = ({ children }: { children: ReactNode }) => (

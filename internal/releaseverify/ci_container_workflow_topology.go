@@ -18,20 +18,20 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"apple-testflight.yml":         {jobs: map[string]int{"plan": 2, "release": 11}},
 		"cache-cleanup.yml":            {jobs: map[string]int{"cleanup": 1}},
 		"ci-agent.yml":                 {jobs: map[string]int{"run": 3}},
-		"ci-android.yml":               {jobs: map[string]int{"run": 18}},
+		"ci-android.yml":               {jobs: map[string]int{"run": 14}},
 		"ci-apple-mobile.yml":          {jobs: map[string]int{"run": 11}},
 		"ci-apple-tv.yml":              {jobs: map[string]int{"run": 9}},
 
-		"ci-expo-android-mobile.yml": {jobs: map[string]int{"run": 12}},
+		"ci-expo-android-mobile.yml": {jobs: map[string]int{"run": 9}},
 
 		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 7, "consumer": 7}},
 
-		"ci-clients.yml":             {jobs: map[string]int{"run": 8}},
+		"ci-clients.yml":             {jobs: map[string]int{"run": 10}},
 		"ci-docs.yml":                {jobs: map[string]int{"run": 7}},
-		"ci-frontend.yml":            {jobs: map[string]int{"run": 8}},
-		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 15}},
+		"ci-frontend.yml":            {jobs: map[string]int{"run": 10}},
+		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 10}},
 		"ci-go.yml":                  {jobs: map[string]int{"run": 14}},
-		"ci-go-cache-warm.yml":       {jobs: map[string]int{"run": 6}},
+		"ci-go-cache-warm.yml":       {jobs: map[string]int{"run": 6, "contracts": 6}},
 		"ci-image-certification.yml": {jobs: map[string]int{"run": 5}},
 		"ci-image.yml":               {jobs: map[string]int{"run": 7}},
 		"ci-playwright.yml":          {jobs: map[string]int{"run": 10}},
@@ -49,8 +49,10 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 			"changes": 3, "agent-harness-macos": 0, "release-candidate-scope": 1, "full-manual-scope": 1,
 			"ci-policy": 6, "rust-contracts": 0, "go-contracts": 0, "image-certification": 0, "go": 0,
 			"store-postgres": 0, "frontend": 0, "clients": 0, "apple-mobile": 0, "apple-tv": 0, "apple-cache-validation": 0, "expo-android-mobile": 0,
-			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "playout-bench": 0, "ci-ok": 3,
+			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "playout-bench": 0, "ci-ok": 4,
 		}},
+		"merge-gate.yml":              {jobs: map[string]int{"run": 5}},
+		"merge-gate-cache.yml":        {jobs: map[string]int{"run": 7}},
 		"curated-sources.yml":         {jobs: map[string]int{"check": 2}},
 		"deadcode.yml":                {jobs: map[string]int{"report": 3}},
 		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3}},
@@ -60,6 +62,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"release-notes.yml":           {jobs: map[string]int{"publish-notes": 5}},
 		"release.yml":                 {jobs: map[string]int{"build": 7, "publish": 9}},
 		"rust-maintenance.yml":        {jobs: map[string]int{"supply-chain": 5, "fuzz": 5}},
+		"staging.yml":                 {jobs: map[string]int{"build-image": 4, "control": 2}},
 		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 1, "render": 1, "commit": 4, "ci": 1}},
 		"visual-baselines-render.yml": {jobs: map[string]int{"render": 10}},
 	}
@@ -89,7 +92,7 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"apple-mobile":        {name: "Apple mobile — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_mobile == 'true'"},
 		"apple-tv":            {name: "Apple TV — native build + launch", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_apple_tv == 'true'"},
 
-		"expo-android-mobile": {name: "Expo Android mobile — native build", condition: "needs.changes.outputs.impact_expo_android_mobile == 'true'"},
+		"expo-android-mobile": {name: "Expo Android mobile — native build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_expo_android_mobile == 'true'"},
 
 		"apple-cache-validation": {name: "Apple compilation cache — supported-toolchain validation", condition: "github.event_name == 'workflow_dispatch' && inputs.scope == 'apple-cache-validation'"},
 
@@ -97,7 +100,7 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"tuner":         {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'", with: map[string]string{"project": "${{ inputs.project || 'all' }}", "repeat_each": "${{ inputs.repeat_each || '1' }}", "quarantine": "${{ needs.changes.outputs.lane == 'manual-tuner' && 'off' || 'exclude' }}"}, permissions: map[string]string{"contents": "read", "issues": "read"}},
 		"image":         {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
 		"docs":          {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
-		"android":       {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.impact_android == 'true'"},
+		"android":       {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_android == 'true'"},
 		"playout-bench": {name: "Playout bench — software-only pipeline", condition: "needs.changes.outputs.impact_playout_bench == 'true'"},
 	}
 }

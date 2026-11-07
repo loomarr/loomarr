@@ -3,7 +3,9 @@ import {
   bootstrapSchema,
   changePasswordSchema,
   contactAddressSchema,
+  createInvitationSchema,
   createLocalUserSchema,
+  devicePairApproveSchema,
   intentSchema,
   loginSchema,
   notificationProviderFormSchema,
@@ -106,6 +108,55 @@ describe("password forms", () => {
         ["email", "Enter one complete email address."],
       ]);
     }
+  });
+});
+
+describe("createInvitationSchema", () => {
+  const values = {
+    kind: "local",
+    username: "ana",
+    libraryUserId: "",
+    contactEmail: "",
+    role: "member",
+    sendEmail: false,
+  };
+
+  it("asks a local invitation for a username and a Library one for an account", () => {
+    expect(messages(createInvitationSchema.safeParse({ ...values, username: "  " }))).toEqual([
+      ["username", "Choose a username to reserve."],
+    ]);
+    expect(messages(createInvitationSchema.safeParse({ ...values, kind: "library" }))).toEqual([
+      ["libraryUserId", "Choose an Emby or Jellyfin account."],
+    ]);
+    expect(
+      createInvitationSchema.safeParse({ ...values, kind: "library", libraryUserId: "ada" }).success,
+    ).toBe(true);
+  });
+
+  it("trims the username and the optional contact email, and takes the wire's roles", () => {
+    expect(
+      createInvitationSchema.parse({
+        ...values,
+        username: " ana ",
+        contactEmail: " a@b.test ",
+        role: "admin",
+      }),
+    ).toEqual({ ...values, username: "ana", contactEmail: "a@b.test", role: "admin" });
+    expect(createInvitationSchema.safeParse({ ...values, role: "owner" }).success).toBe(false);
+  });
+
+  it("lets the contact email stay blank but not be half an address", () => {
+    expect(createInvitationSchema.safeParse(values).success).toBe(true);
+    expect(messages(createInvitationSchema.safeParse({ ...values, contactEmail: "ana@" }))).toEqual([
+      ["contactEmail", "Enter one complete email address."],
+    ]);
+  });
+});
+
+describe("devicePairApproveSchema", () => {
+  it("blocks a blank code and trims a typed one", () => {
+    expect(devicePairApproveSchema.safeParse({ userCode: "  " }).success).toBe(false);
+    expect(devicePairApproveSchema.parse({ userCode: " BCDF-GHJK " })).toEqual({ userCode: "BCDF-GHJK" });
   });
 });
 

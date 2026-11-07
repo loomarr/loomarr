@@ -11,9 +11,9 @@ got="$($SELECTOR internal/proposals/suggest/ground.go)"
 	exit 1
 }
 
-fixture="$($SELECTOR internal/recommend/testdata/channel-recommendation-snapshots-v2.json)"
-[[ "$fixture" == "$module/internal/recommend" ]] || {
-	printf 'go-direct-impact-test: fixture selected %s, want internal/recommend\n' "$fixture" >&2
+fixture="$($SELECTOR internal/channels/recommend/testdata/channel-recommendation-snapshots-v2.json)"
+[[ "$fixture" == "$module/internal/channels/recommend" ]] || {
+	printf 'go-direct-impact-test: fixture selected %s, want internal/channels/recommend\n' "$fixture" >&2
 	exit 1
 }
 

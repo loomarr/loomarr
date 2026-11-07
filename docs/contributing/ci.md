@@ -13,13 +13,21 @@ every top-level result, including jobs that correctly skipped.
 ## Fast PR feedback, authoritative queued integration
 
 Ordinary pull-request pushes run the always-on policy bootstrap plus affected repository-contract, static-analysis,
-compile/type, unit, documentation, shared-client, and Android feedback and return the required `CI`
+compile/type, unit, documentation, and shared-client feedback and return the required `CI`
 result quickly. They do not run race-policy shards, Postgres conformance, Playwright, release-image
-builds, runtime image certification, Apple mobile, Apple TV, the tuner matrix, or the macOS harness.
-The required `main` merge queue then builds at most two cumulative candidates concurrently against
-the current base. That
-`merge_group` run is the authoritative integration lane: the same fail-closed classifier selects
-the complete affected gate set, and every selected result remains a dependency of `CI`. Explicit
+builds, runtime image certification, Apple mobile, Apple TV, Android TV, Expo Android mobile, the
+tuner matrix, or the macOS harness.
+The required `main` merge queue then builds at most eight cumulative candidates concurrently against
+the current base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
+the merged tree compiles, so it merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from
+main at most hourly and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
+complete integration lane, reported as `CI assurance`: the same fail-closed classifier selects the
+complete affected gate set, and every selected result remains a dependency of that job. It finishes
+after the merge, so its evidence no longer blocks one. When it fails on a commit that reached main it
+files an issue. Revert first: anyone may revert the commit to get main green, and the fix lands as a
+new PR. Rerun instead when the failure is a flake or an outage. Every queue entry keeps its own run and
+none is cancelled, because a run selects gates from its own PR's diff and a later run can't replace it.
+This is a maintainer decision (2026-11-07): merge latency over pre-merge evidence. Explicit
 manual runs retain release-candidate and full recovery scopes plus an isolated Apple compilation
 cache portability scope. A normal queue-produced push to
 `main` runs publication workflows only rather than validating the admitted commit again.
@@ -55,14 +63,14 @@ definitions, so splitting the physical files does not split the public command c
 
 This is admission control, not weaker assurance. A pull request cannot merge directly after its fast
 result: it must enter the queue and pass the generated current-base commit. The queue uses squash
-merges, `ALLGREEN`, two concurrent builds, one PR per merge, and a three-hour check-response timeout.
-The concurrency cap is deliberately two: the serialized policy turned one 22.9-minute Apple build
-plus six ordinary queued changes into a 43-minute estimate, while unbounded parallelism would
-multiply cumulative builds and their invalidation cost when an earlier entry fails. Two removes the
-single-build head-of-line bottleneck without admitting a burst onto every Apple runner. The queue
-still gives accepted work a stable place in line instead of repeatedly invalidating successful
-strict-mode runs. `scripts/ci-merge-queue-policy.sh` checks the live ruleset; `APPLY=1` updates only
-its build-concurrency field and then re-checks every admission parameter.
+merges, `ALLGREEN`, eight concurrent builds, one PR per merge, and a three-hour check-response
+timeout. The concurrency cap is eight by maintainer decision on 2026-11-07, so a burst of queued PRs
+clears together instead of waiting in pairs. That accepts more CI minutes, and a larger invalidation
+cost when an early entry fails, because every cumulative build behind it restarts. Apple runners are
+the known pressure point: a burst of builds that select the Apple gates competes for the same macOS
+capacity. The queue still gives accepted work a stable place in line instead of repeatedly
+invalidating successful strict-mode runs. `scripts/ci-merge-queue-policy.sh` checks the live ruleset;
+`APPLY=1` updates only its build-concurrency field and then re-checks every admission parameter.
 
 The policy has three coupled halves:
 
@@ -380,8 +388,9 @@ propagation without a registry or network.
 
 The helper's classifier consumers are repository contracts, Postgres, visual, e2e, tuner, and CI
 policy. The Playwright runner selects repository contracts, visual, e2e, tuner, and CI policy. The
-broad Web unit gate is not selected: its `make fe` path never invokes either script, while each
-container-backed Playwright target and `test-pg` owns an explicit prerequisite.
+broad Web unit gate is not selected: its `make fe-unit` and `make fe-checks` paths never invoke
+either script, while each container-backed Playwright target and `test-pg` owns an explicit
+prerequisite.
 Any production or test change under `internal/releaseverify` or `cmd/releaseverify` selects both the
 policy job and the sharded Go job, because only the latter executes the package's RED-capable tests.
 
@@ -440,15 +449,11 @@ Metro worker, a 1280 MB Gradle heap, and a 4 GB memory scope. The CI mobile job 
 the environment, the same way the TV producer does: two Gradle workers (the wrapper's ceiling), four
 native jobs for the single-ABI app CMake build, four Metro workers, a 3 GB heap, and a 12 GB scope on
 the 16 GB runner. It reuses the TV producer's pinned ccache, the same wrapper validation
-(`web/scripts/android-ccache-env.sh`), and the same generated-Ninja launcher proof. Its own
-`android-mobile-ccache-v1-` entry is saved from pull requests only. Mobile builds a debug variant, so
-TV's release objects never hit for it. For Gradle it reads the newest Android TV generation its ref
-can see and never saves one: the two apps share the pinned React Native TV, Gradle distribution,
-dependencies, and included plugin builds, and a second ~1.3 GB entry per revision would evict the
-warm Go caches.
+(`web/scripts/android-ccache-env.sh`), and the same generated-Ninja launcher proof. It restores no
+cache: it builds a debug variant, so TV's release objects never hit for it.
 
-The permanent-identity Android TV producer keeps its exact-SHA Gradle cache and also restores a
-separate 2 GiB ccache directory across source identities. The workflow installs the exact §14 pin,
+The permanent-identity Android TV producer restores a 2 GiB ccache directory across source
+identities and keeps no Gradle cache. The workflow installs the exact §14 pin,
 while the build wrapper rejects a relative/wrong-version launcher, a foreign base directory, or any
 sloppiness setting. Ccache uses compiler-content identity and checkout-relative paths; the key may
 restore prior compiler objects, but it never includes generated `android/` or `.cxx` trees, bundles,
@@ -468,8 +473,8 @@ it instead hands its bounded ccache tree to `android-ccache-promotion.yml` throu
 artifact. The queue-produced `push` to the exact same main commit is the trusted publisher: it proves
 the source CI run, Android job, artifact name, commit/run/workflow manifest, and cache-tree digest,
 then saves that generation in the default-branch cache scope without running another product build.
-It deletes the transfer and all superseded Android generations. PR revisions may save caches only in
-their own disposable scope; queue jobs restore but never spend time saving an unreachable cache.
+It deletes the transfer and all superseded Android generations. Android jobs do not run on pull
+requests, and queue jobs restore but never spend time saving an unreachable cache.
 
 ## Per-run measurements
 
@@ -603,6 +608,10 @@ authority. Neither seam justified consuming the remaining cache headroom.
 It always runs and inspects `needs.*.result` explicitly. That has to be explicit: a skipped job
 doesn't fail an aggregate by default, and neither does a failed one under `if: always()`.
 
+A `cancelled` job passes only on a pull request, where a newer push superseded it. In the merge queue
+and on manual runs it fails the check: a job that crosses its `timeout-minutes` reports `cancelled`
+with its tests unfinished, so it has proved nothing.
+
 The `main` branch requires the GitHub Actions-owned `CI` check in strict mode: a pull request must
 be tested against the current base before it can merge. Preserve both the check name and its app
 binding when editing branch protection.
@@ -622,7 +631,9 @@ failing native result.
 ## Sharding
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go
-contracts run once in `go-contracts` and Rust contracts once in `rust-contracts`, in parallel with
+contracts run once: the workflow, release, harness, shell and generated-docs checks in CI policy on
+every PR, and the rest in `go-contracts`, whose two shards share them without overlap. Rust
+contracts once in `rust-contracts`, in parallel with
 two ordinary Go test lanes, two serial lanes for packages that must not share a runner, and the independent release-worker
 certification. Their union is the same
 assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
@@ -678,11 +689,11 @@ was still insufficient. Both certification jobs passed in 5m57s and 7m15s from q
 ordinary test steps took 10m23s and 10m41s and completed 11m18s and 11m35s after queue creation.
 Their 18-second spread ruled out shard imbalance. The executable package order was the real defect:
 the sharder modeled longest-processing-time workers, then restored `go list` order, and the race
-policy sorted that order lexically again. `internal/store` and `internal/recurate` consequently
+policy sorted that order lexically again. `internal/store` and `internal/channels/recurate` consequently
 started about 6m21s and 6m34s into their test steps. Four large, fixture-isolated packages also ran
 all top-level tests serially. The runner now emits and preserves descending measured-cost order,
 and `research/internal/fillerreview`, `internal/backendtransition`'s non-integration tests,
-`internal/recurate`, and `internal/binder` use bounded `t.Parallel` execution. The PostgreSQL-tagged
+`internal/channels/recurate`, and `internal/channels/approval` use bounded `t.Parallel` execution. The PostgreSQL-tagged
 backend tests remain serial because they mutate process environment. Same-machine four-CPU race
 controls measured `fillerreview` at 115.237s serial versus 41.154s parallel; the other three
 packages completed together in 58.83s versus 82.61s with their internal parallelism disabled.

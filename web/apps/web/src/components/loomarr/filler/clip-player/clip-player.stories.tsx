@@ -32,7 +32,7 @@ type Story = StoryObj<typeof meta>;
 // origin). The visual suite runs against `storybook-static` with no server, so a real hash would
 // 404.
 const clip: ClipDTO = {
-  name: "CTV-LifewithBonnie.mkv — CTV Life with Bonnie",
+  name: "TPH-TidepoolHour.mkv — Tidepool Hour",
   kind: "commercial",
   durationMs: 30_000,
   era: 1990,

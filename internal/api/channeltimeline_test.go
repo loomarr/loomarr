@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // fakeTimelineThumbs is a canned TimelineThumbResolver — it records the keys it was asked about and

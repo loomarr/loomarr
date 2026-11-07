@@ -48,16 +48,17 @@ if ! grep -q 'web/(apps/tv/' <<<"$legacy_android_filter"; then
 fi
 
 clients_workflow="$(<"$ROOT/.github/workflows/ci-clients.yml")"
-if ! grep -q 'run: make fe-codegen' <<<"$clients_workflow" ||
-  ! grep -q 'run: make clients' <<<"$clients_workflow"; then
+if ! grep -q 'run: make clients-checks' <<<"$clients_workflow" ||
+  ! grep -q 'run: make clients-bundles' <<<"$clients_workflow" ||
+  ! grep -Eq '^clients-bundles:.* fe-codegen( |$)' "$ROOT/mk/frontend.mk"; then
   echo 'ci-impact-test: shared-client gate no longer regenerates and verifies OpenAPI consumers' >&2
   exit 1
 fi
 
 # knip spans the whole web/ workspace, so every gate the classifier picks for a web/ path must run
-# it (#1838): `make fe` for web, `make clients` (via its knip prerequisite) for clients, and the
-# local verify web step. Selecting a gate that does not run knip lets an unused file merge green.
-if ! grep -Eq '^clients:.* knip( |$)' "$ROOT/mk/frontend.mk" ||
+# it (#1838): `make fe` for web, `make clients-checks` (via its knip prerequisite) for clients, and
+# the local verify web step. Selecting a gate that does not run knip lets an unused file merge green.
+if ! grep -Eq '^clients-checks:.* knip( |$)' "$ROOT/mk/frontend.mk" ||
   ! grep -q 'pnpm codegen && pnpm knip' "$ROOT/mk/frontend.mk" ||
   ! grep -q 'pnpm lint && pnpm knip' "$ROOT/mk/frontend.mk" ||
   ! grep -q 'pnpm lint && pnpm knip' "$ROOT/scripts/agent.sh"; then

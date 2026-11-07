@@ -61,11 +61,11 @@ Code that exists for tests and never ships in the server: the shared test double
 
 ### From a request to Live TV
 
-A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` (the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from `llm`, and returns the values in `proposals`. When a person approves it, `binder` plans the channel and `channeledit` writes it through `store`; any title the household lacks becomes a `provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `tunarr`. `livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `backendtransition` prepares the new one fully before publishing it to the media server.
+A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` (the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from `llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the channel and `channels/edit` writes it through `store`; any title the household lacks becomes a `provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `channels/schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `tunarr`. `livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `backendtransition` prepares the new one fully before publishing it to the media server.
 
 ### From a filler source to a break
 
-An operator registers a source; `filler/source` lists what it offers, with `filler/source/youtube` and `filler/source/archive` as the remote kinds. `filler/fetch` downloads each pulled clip into the drop folder, and `filler` drains that folder into the clip folder, while `filler/records` records the sources, pulls and acquisition runs. Each clip is then checked: `filler/screening` for what it says and shows, and whether it is safe to air, `filler/structure/assessment` for long reels that need splitting, and `filler/defectfloor` for picture and sound defects; `filler/admission` is the certification tooling that weighs that evidence into an admit or refuse decision. A clip that passes its checks enters the catalog, whose values are `filler/clips`, whose tags are `filler/taxonomy`, and which `store/catalogstore` persists. When `schedule` leaves a break in a channel's programming, the `channels` engine asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.
+An operator registers a source; `filler/source` lists what it offers, with `filler/source/youtube` and `filler/source/archive` as the remote kinds. `filler/fetch` downloads each pulled clip into the drop folder, and `filler` drains that folder into the clip folder, while `filler/records` records the sources, pulls and acquisition runs. Each clip is then checked: `filler/screening` for what it says and shows, and whether it is safe to air, `filler/structure/assessment` for long reels that need splitting, and `filler/defectfloor` for picture and sound defects; `filler/admission` is the certification tooling that weighs that evidence into an admit or refuse decision. A clip that passes its checks enters the catalog, whose values are `filler/clips`, whose tags are `filler/taxonomy`, and which `store/catalogstore` persists. When `channels/schedule` leaves a break in a channel's programming, the `channels` engine asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.
 
 ## Dependency spine
 
@@ -74,9 +74,10 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | Package | Depends on |
 | --- | --- |
 | `catalog` | `library`, `provision` |
+| `channels/schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `config` | — |
 | `diagnostics` | `storagegovernor` |
-| `filler` | `diagnostics`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `schedule`, `storagegovernor` |
+| `filler` | `channels/schedule`, `diagnostics`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `storagegovernor` |
 | `filler/source` | — |
 | `filler/station` | — |
 | `filler/structure` | — |
@@ -99,16 +100,16 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `people/invitation` | `people/contact` |
 | `people/notifications` | `httpx` |
 | `people/recovery` | — |
-| `playout` | `config`, `diagnostics`, `media/encode`, `provision`, `schedule` |
-| `proposals` | `provision`, `schedule`, `storagegovernor` |
+| `playout` | `channels/schedule`, `config`, `diagnostics`, `media/encode`, `provision` |
+| `proposals` | `channels/schedule`, `provision`, `storagegovernor` |
 | `proposals/quality` | `provision` |
-| `proposals/suggest` | `catalog`, `holidayvocab`, `llm`, `proposals`, `proposals/quality`, `provision`, `rating`, `schedule`, `store` |
+| `proposals/suggest` | `catalog`, `channels/schedule`, `holidayvocab`, `llm`, `proposals`, `proposals/quality`, `provision`, `rating`, `store`, `tmdb` |
 | `provision` | — |
 | `rating` | — |
-| `schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `settings` | `config`, `library` |
 | `storagegovernor` | — |
-| `store` | `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposals`, `proposals/quality`, `provision`, `schedule` |
+| `store` | `channels/schedule`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposals`, `proposals/quality`, `provision` |
+| `tmdb` | `catalog`, `httpx`, `metrics`, `provision` |
 
 ## How the area pages are made
 

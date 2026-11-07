@@ -30,6 +30,19 @@ type LibraryRootService interface {
 	Counts(ctx context.Context) (store.LibraryFileCounts, error)
 	Rescan() error
 	ConfirmRemovals(ctx context.Context, root string) error
+
+	Items(ctx context.Context, q store.LibraryItemQuery) (store.LibraryItemPage, error)
+	Item(ctx context.Context, id string) (scan.ItemDetail, error)
+	UpdateDetails(ctx context.Context, id string) error
+	CheckFiles(ctx context.Context, id string) error
+	RemoveExtraCopy(ctx context.Context, id, path string) error
+
+	Needs(ctx context.Context) ([]scan.Need, error)
+	NeedCount(ctx context.Context) (int, error)
+	Link(ctx context.Context, itemID, tmdbID string) error
+	Ignore(ctx context.Context, itemID string) error
+	Unanswer(ctx context.Context, itemID string) error
+	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
 }
 
 func (s *Server) registerLibrary(api huma.API) {
@@ -85,6 +98,9 @@ func (s *Server) registerLibrary(api huma.API) {
 			"404 when nothing is waiting for that folder; 409 when the scanner is turned off.",
 		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
 	}, RoleAdmin), s.confirmLibraryRemoval)
+	s.registerLibraryHooks(api)
+	s.registerLibraryItems(api)
+	s.registerLibraryNeeds(api)
 }
 
 type libraryFolderNameDTO struct {
@@ -283,7 +299,9 @@ type libraryStatusOutput struct {
 		Files          int              `json:"files" doc:"Media files found in folders in use"`
 		HeadersPending int              `json:"headersPending" doc:"Files not read yet"`
 		Problems       int              `json:"problems" doc:"Files Loomarr skips, such as disc images"`
+		NeedsYou       int              `json:"needsYou" doc:"Titles Loomarr can't tell what they are"`
 		Held           []libraryHeldDTO `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
+		Hooks          []libraryHookDTO `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
 	}
 }
 
@@ -300,12 +318,18 @@ func (s *Server) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStatus
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
 	}
+	needsYou, err := svc.NeedCount(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+	}
 	st := scan.StatusOf(all)
 	out := &libraryStatusOutput{}
+	out.Body.NeedsYou = needsYou
 	b := &out.Body
 	b.Health, b.InUse, b.Offline, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.ToConfirm
 	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems
 	b.Held = heldView(counts.Held)
+	b.Hooks = s.libraryHooksView()
 
 	p := svc.Progress()
 	b.Scan = libraryScanDTO{
