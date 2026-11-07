@@ -43,6 +43,17 @@ const noiseBuffer = (ctx: BaseAudioContext, seconds: number) => {
   return buffer;
 };
 
+// The static's loop sounds the same every time, and filling two seconds of it on each press holds
+// up the tuning overlay's paint, so a context keeps one.
+const staticLoops = new WeakMap<BaseAudioContext, AudioBuffer>();
+const staticLoop = (ctx: BaseAudioContext) => {
+  const kept = staticLoops.get(ctx);
+  if (kept) return kept;
+  const loop = noiseBuffer(ctx, 2);
+  staticLoops.set(ctx, loop);
+  return loop;
+};
+
 // A small TV speaker: no deep bass, no air, a boxy mid bump, and a little overdrive.
 const speaker = (ctx: BaseAudioContext, out: AudioNode): AudioNode => {
   const highpass = ctx.createBiquadFilter();
@@ -124,7 +135,7 @@ const startSwitchSound = (ctx: BaseAudioContext, gate: SwitchSoundGate): SwitchS
 
   // Raw static until lock, with the mains buzz a set's audio stage picks up.
   const noise = ctx.createBufferSource();
-  noise.buffer = noiseBuffer(ctx, 2);
+  noise.buffer = staticLoop(ctx);
   noise.loop = true;
   const level = ctx.createGain();
   level.gain.setValueAtTime(0, t + 0.02);
