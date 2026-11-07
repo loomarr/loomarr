@@ -45,12 +45,11 @@ permissions:
 
 # A newer push to the same ref cancels the older in-flight run.
 #
-# Merge-group runs are `CI assurance`, not the required check (merge-gate.yml is), and they share one
-# group: one runs, the newest waits, and older waiters are dropped. That keeps a burst of queued PRs
-# from filling the account's concurrent-job limit and starving the merge gate and PR runs. A commit
-# whose run is dropped is covered by the next run, which includes it. A running one is never cancelled.
+# Merge-group runs are `CI assurance`, not the required check (merge-gate.yml is). Each has its own
+# ref and is never cancelled: a run selects gates from its own PR's diff, so a later run cannot stand
+# in for a dropped one.
 concurrency:
-  group: ${{ github.event_name == 'merge_group' && 'ci-assurance' || format('ci-{0}', github.ref) }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 env:
