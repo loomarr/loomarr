@@ -25,8 +25,8 @@ complete integration lane, reported as `CI assurance`: the same fail-closed clas
 complete affected gate set, and every selected result remains a dependency of that job. It finishes
 after the merge, so its evidence no longer blocks one. When it fails on a commit that reached main it
 files an issue. Revert first: anyone may revert the commit to get main green, and the fix lands as a
-new PR. Rerun instead when the failure is a flake or an outage. These runs share one concurrency group, so
-one runs, the newest waits, and older waiters are dropped; the next run covers the dropped commits.
+new PR. Rerun instead when the failure is a flake or an outage. Every queue entry keeps its own run and
+none is cancelled, because a run selects gates from its own PR's diff and a later run can't replace it.
 This is a maintainer decision (2026-11-07): merge latency over pre-merge evidence. Explicit
 manual runs retain release-candidate and full recovery scopes plus an isolated Apple compilation
 cache portability scope. A normal queue-produced push to
