@@ -1,5 +1,5 @@
 import type { IncomingPreparationDTO } from "@loomarr/api/models/incomingPreparationDTO";
-import { Progress } from "@/components/ui/progress";
+import { ProgressTrack } from "@loomarr/design-system";
 
 const readyRangeLabel = (lowerSeconds: number, upperSeconds: number): string => {
   if (upperSeconds < 60) return "Less than a minute";
@@ -67,7 +67,7 @@ const IncomingPreparationSummary = ({ preparation }: { preparation: IncomingPrep
           <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{preparation.percent}%</span>
         ) : null}
       </div>
-      {showBar ? <Progress value={preparation.percent} label="Clip preparation" /> : null}
+      {showBar ? <ProgressTrack percent={preparation.percent} label="Clip preparation" tone="tune" /> : null}
     </section>
   );
 };

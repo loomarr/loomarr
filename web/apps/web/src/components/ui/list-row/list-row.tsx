@@ -1,6 +1,5 @@
-import { StatusDot } from "@loomarr/design-system";
+import { ProgressTrack, StatusDot } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
-import { Progress } from "../progress";
 import type { ListGroupProps, ListRowProps } from "./list-row.type";
 
 // ListGroup + ListRow — the bordered list of state rows (#1659 web mock: On the way, Your
@@ -35,7 +34,7 @@ const ListRow = ({ tone, toneLabel = "", title, sub, progress, action, className
     </div>
     {progress && (
       <div className="flex w-40 shrink-0 flex-col gap-1">
-        <Progress value={progress.value} label={progress.label} tone="tune" className="h-1" />
+        <ProgressTrack percent={progress.value} label={progress.label} tone="tune" width="100%" />
         {progress.eta && (
           <span className="text-2xs text-static-400 text-right font-mono">{progress.eta}</span>
         )}
