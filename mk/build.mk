@@ -141,6 +141,13 @@ seed: ## populate a dev store via the real domain paths (approval gate honored â
 # The demo library (#1587): invented titles, generated art and video, no real media anywhere.
 # Its stand-in media server listens on 22000 + this worktree's slot (LOOMARR_AGENT_SLOT from
 # dev-env.sh), beside the other dev ports; DEMO_LIBRARY_ADDR overrides it.
+.PHONY: demo-site demo-site-down
+demo-site: ## run the demo site from an image: VERSION=<release>, or LOOMARR_IMAGE=<image built from this checkout>
+	@./scripts/demo-site.sh up
+
+demo-site-down: ## stop the demo site and delete its data
+	@./scripts/demo-site.sh down
+
 .PHONY: demo-library
 demo-library: ## serve the demo library's Emby-compatible stand-in (generates its clips and art on first run)
 	@eval "$$(./scripts/dev-env.sh export)"; go run ./cmd/demo-library serve

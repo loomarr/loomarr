@@ -678,6 +678,7 @@ classify() {
         scripts/merge-release-digests.sh) select_gate contracts ;;
         scripts/observability-dev-runtime-test.sh) select_gate contracts ;;
         scripts/observability-dev-test.sh) select_gate contracts ;;
+        scripts/demo-site.sh) select_gate contracts ;;
         scripts/observability-dev.sh) select_gate contracts ;;
         scripts/publish-release-image.sh) select_gate contracts ;;
         scripts/smoke.sh) select_gate contracts ;;
