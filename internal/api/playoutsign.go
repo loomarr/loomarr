@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // Signed playout URLs — how a PERSON's browser plays a channel without holding the device
@@ -129,13 +127,13 @@ func playoutSignature(key, channelID string, exp int64) string {
 // client with no "current origin" that fetches the URL cold. The web browser uses the RELATIVE
 // form (playoutHLSPathURL) instead, because it is already on Loomarr's origin. Returns "" when the
 // base or the signature is unavailable.
-func (s *Server) playoutHLSURL(channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
-	return s.playoutHLSURLWithKey(s.playoutToken(), channelID, quality, plan, exp)
+func (s *Server) playoutHLSURL(channelID string, quality string, exp time.Time) string {
+	return s.playoutHLSURLWithKey(s.playoutToken(), channelID, quality, exp)
 }
 
-func (s *Server) playoutHLSURLWithKey(key, channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
+func (s *Server) playoutHLSURLWithKey(key, channelID string, quality string, exp time.Time) string {
 	base := s.playoutBaseURL()
-	path := s.playoutHLSPathURLWithKey(key, channelID, quality, plan, exp)
+	path := s.playoutHLSPathURLWithKey(key, channelID, quality, exp)
 	if base == "" || path == "" {
 		return ""
 	}
@@ -150,11 +148,11 @@ func (s *Server) playoutHLSURLWithKey(key, channelID string, quality string, pla
 // URL would trip) AND does not depend on `server.public_url` being set or reachable. Native apps
 // cannot use this — they have no origin to be relative to — which is exactly why the absolute form
 // above still exists. Returns "" only when the signature can't be minted (no token).
-func (s *Server) playoutHLSPathURL(channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
-	return s.playoutHLSPathURLWithKey(s.playoutToken(), channelID, quality, plan, exp)
+func (s *Server) playoutHLSPathURL(channelID string, quality string, exp time.Time) string {
+	return s.playoutHLSPathURLWithKey(s.playoutToken(), channelID, quality, exp)
 }
 
-func (s *Server) playoutHLSPathURLWithKey(key, channelID string, quality string, plan playout.EncodePlan, exp time.Time) string {
+func (s *Server) playoutHLSPathURLWithKey(key, channelID string, quality string, exp time.Time) string {
 	sig := signPlayoutWithKey(key, channelID, exp)
 	if sig == "" {
 		return ""
@@ -164,30 +162,17 @@ func (s *Server) playoutHLSPathURLWithKey(key, channelID string, quality string,
 	if quality != "" {
 		q.Set("quality", quality)
 	}
-	// `?plan=` is UNSIGNED, deliberately — like `quality`. The signature authorizes the CHANNEL
-	// (channel:exp); the plan only picks a copy bucket for a channel the sig already grants, so it
-	// needs no signing, and a client can re-probe its capabilities and switch plans without re-minting.
-	// Omitted for PlanBaseline (the default clientPlan reads on absence) so the common URL stays clean;
-	// a richer plan is written explicitly. clientPlan on the read side treats only a recognized token
-	// as capable — anything else is the safe baseline.
-	if plan != playout.PlanBaseline {
-		q.Set(playoutPlanParam, plan.String())
-	}
 	return fmt.Sprintf("/v1/playout/hls/%s/master.m3u8?%s", url.PathEscape(channelID), q.Encode())
 }
 
 // playoutStillPathURLWithKey is the RELATIVE signed URL of a channel's latest still frame. It
-// carries the same `sig` as the HLS URL — the signature scopes to the channel, not the path — and
-// the same unsigned `?plan=`, so the still comes from the plan's own segments.
-func (s *Server) playoutStillPathURLWithKey(key, channelID string, plan playout.EncodePlan, exp time.Time) string {
+// carries the same `sig` as the HLS URL — the signature scopes to the channel, not the path.
+func (s *Server) playoutStillPathURLWithKey(key, channelID string, exp time.Time) string {
 	sig := signPlayoutWithKey(key, channelID, exp)
 	if sig == "" {
 		return ""
 	}
 	q := url.Values{}
 	q.Set(signQueryParam, sig)
-	if plan != playout.PlanBaseline {
-		q.Set(playoutPlanParam, plan.String())
-	}
 	return fmt.Sprintf("/v1/playout/still/%s?%s", url.PathEscape(channelID), q.Encode())
 }

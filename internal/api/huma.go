@@ -16,7 +16,6 @@ import (
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillerstore"
@@ -24,9 +23,11 @@ import (
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -100,15 +101,14 @@ type Server struct {
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
-	images          ImageService
-	events          EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
-	shutdown        <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
-	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	fillerResearch  FillerResearchService
-	fillerDecisions *fillerdecision.Service          // durable V63 admission audit and projections
-	fillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
-	pods            PodPreviewer                     // /v1/channels/{id}/pods (§12); nil ⇒ 501
-	taxonomy        TaxonomyEditor                   // taxonomy impact + graph convergence; nil keeps store-only test wiring
+	images         ImageService
+	events         EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	shutdown       <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
+	filler         FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	fillerResearch FillerResearchService
+	fillerDefects  *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	pods           PodPreviewer                     // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy       TaxonomyEditor                   // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
@@ -194,12 +194,12 @@ type Server struct {
 	// binder serves the explicit channel creation helpers. Proposal approval does
 	// not call it directly; doing so would split the local transaction again.
 	binder ChannelBinder
-	// liveConfig reads a setting's live resolved value (config-design §3 hot-apply).
+	// liveSettings answers a setting's live resolved value (config-design §3 hot-apply).
 	// The composition root always-constructs the feature services and passes this so
 	// a route gates on the CURRENT config (a saved connection enables it with no
 	// restart, §8.1). Nil in unit tests that wire deps directly — then the nil-dep
 	// check alone gates, preserving the old contract.
-	liveConfig func(key string) string
+	liveSettings settings.Reader
 	// libraryConfigured resolves the complete live media-server connection from one settings
 	// snapshot. A domain-specific seam keeps handlers from independently reading flavor, URL,
 	// and token and accidentally observing a mixed generation during a concurrent save.
@@ -209,19 +209,6 @@ type Server struct {
 	ready          ReadyFunc
 	startupReports StartupReportService
 
-	liveConfigInt      func(key string) int
-	liveConfigDuration func(key string) time.Duration
-	// liveConfigBoolOn reads a BOOL setting whose safe answer is true (resolved.boolOn).
-	//
-	// ⚠ Bool keys must never go through liveConfig: settings.String PANICS on a non-string
-	// Kind, so `liveConfig("filler.source.folder.enabled")` killed the request rather than
-	// returning anything a comparison could inspect. A dedicated reader makes the Kind
-	// mismatch impossible to write instead of leaving the string accessor as the only tool.
-	//
-	// It is boolOn, not boolv, deliberately: nil ⇒ true, matching the syncer's own gate and
-	// the declared default. The keys read here answer "why is my catalog empty", so an
-	// unanswerable read must not render the drop-folder as switched off.
-	liveConfigBoolOn func(key string) bool
 	// guide routes now/next to the backend streaming each channel (§9.1); nil ⇒ reads empty.
 	guide GuideReader
 	// playoutObserver supplies operational snapshots and program progress (§9.1, §12).
@@ -284,14 +271,14 @@ func (s *Server) featureOff(ctx context.Context, feature string) bool {
 	return s.settings != nil && !s.settings.Features(ctx)[feature]
 }
 
-// unconfigured reports whether a required setting is empty right now. Safe when
-// liveConfig is unset (unit tests) — reports false so a wired dep still serves.
-func (s *Server) unconfigured(keys ...string) bool {
-	if s.liveConfig == nil {
+// unconfigured reports whether a required string setting is empty right now. Safe when
+// liveSettings is unset (unit tests) — reports false so a wired dep still serves.
+func (s *Server) unconfigured(keys ...settings.StringKey) bool {
+	if s.liveSettings == nil {
 		return false
 	}
 	for _, k := range keys {
-		if s.liveConfig(k) == "" {
+		if k.Get(s.liveSettings) == "" {
 			return true
 		}
 	}
@@ -306,9 +293,10 @@ func (s *Server) libraryUnconfigured() bool {
 }
 
 // SettingsService is the settings surface the API depends on (config-design §8).
-// Implemented by a settings.Service adapter in the composition root; abstracted
-// so the API package needn't import internal/settings. Secrets are masked here —
-// a value never crosses this boundary (§4).
+// Implemented by a settings.Service adapter in the composition root. Its read
+// side is the typed settings.Reader on Options.LiveSettings; this interface is the
+// management surface. Secrets are masked here — a value never crosses this
+// boundary (§4).
 type SettingsService interface {
 	// List returns every operator-managed setting with its resolved value (secrets
 	// masked) + provenance + audit metadata (config-design §8).
@@ -367,6 +355,13 @@ type SettingEnumOption struct {
 	Label string `json:"label"`
 }
 
+// SettingPreset is one common choice for an open-ended setting, offered ahead of a custom value.
+// Value is canonical, so it equals a resolved value that matches it.
+type SettingPreset struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 type SettingEntry struct {
 	Key          string              `json:"key"`
 	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
@@ -388,6 +383,7 @@ type SettingEntry struct {
 	Secret       bool                `json:"secret"`
 	Enum         []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
 	EnumOptions  []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
+	Presets      []SettingPreset     `json:"presets,omitempty" doc:"Common choices offered before a custom value, in canonical form. Any value the setting accepts still saves."`
 	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
 	RequiredFor  string              `json:"requiredFor,omitempty"`
 	Doc          string              `json:"doc"`
@@ -557,6 +553,8 @@ type DiscoveredClip struct {
 	// ThumbnailURL is archive.org's own item thumbnail. Free — a stable URL pattern needing no
 	// API call — which is why it is built here rather than fetched.
 	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
+	// EmbedURL plays the item in its provider's own player; absent when it cannot be embedded.
+	EmbedURL string `json:"embedUrl,omitempty"`
 }
 
 // DiscoveredClipStats is what a per-item metadata call learns about one result (§10, V35) —
@@ -673,17 +671,17 @@ type GuideReader interface {
 type SuggestService interface {
 	// Submit enqueues a suggestion job for an intent and returns the job id. It takes
 	// the DOMAIN intent rather than flat args: the flat form was "dependency-light",
-	// but this package already imports suggest (ProposalDTO carries suggest.Proposal),
+	// but this package already imports suggest (ProposalDTO carries proposal.Proposal),
 	// and the flat mirror had silently dropped RuntimeTgt — a knob the suggester
 	// honors (suggester.go prompt + scoring) that no client could set.
-	Submit(ctx context.Context, intent suggest.Intent, createdBy string) (jobID string, err error)
+	Submit(ctx context.Context, intent proposal.Intent, createdBy string) (jobID string, err error)
 	// Refine submits a new job for the channel with a refine-flavored intent, so its
 	// proposal binds back to the same channel (§7 POST /v1/channels/{id}/refine) and is
 	// listed as the refining admin's own request. Returns the job id to poll.
-	Refine(ctx context.Context, channelID string, intent suggest.Intent, requestedBy string) (string, error)
+	Refine(ctx context.Context, channelID string, intent proposal.Intent, requestedBy string) (string, error)
 	// SubmitBuilt queues a proposal that needed no generation (a library channel idea, #1720)
 	// as the requester's own request, and returns its job id. The model never runs.
-	SubmitBuilt(ctx context.Context, intent suggest.Intent, proposal suggest.Proposal, createdBy string) (jobID string, err error)
+	SubmitBuilt(ctx context.Context, intent proposal.Intent, proposal proposal.Proposal, createdBy string) (jobID string, err error)
 }
 
 // SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM
@@ -886,7 +884,7 @@ type TunerRescanner interface {
 
 // TunarrConnector wires the media server as *Tunarr's* media source (§6) so Tunarr
 // can stream + index the library — backs POST /v1/setup/tunarr-connect and the
-// tunarr_library setup check. Idempotent. Implemented by setup.MediaSourceConnector.
+// tunarr_library setup check. Idempotent. Implemented by livetvpublish.MediaSourceConnector.
 type TunarrConnector interface {
 	Connect(ctx context.Context) (sourceID string, librariesEnabled int, err error)
 	LibrariesReady(ctx context.Context) (bool, error)
@@ -906,7 +904,7 @@ type ProposalApprover interface {
 	// (manual/AI-off channel creation, #1817 G2), splitting it into owned titles and titles to
 	// acquire. It shares the one approval-addition resolver with Approve's edit.Add, so a
 	// manually submitted proposal gets the same "client presence is not authority" guarantee.
-	ResolveManualLineup(ctx context.Context, items []suggest.ProposalItem) (lineup, acquisitions []suggest.ProposalItem, err error)
+	ResolveManualLineup(ctx context.Context, items []proposal.ProposalItem) (lineup, acquisitions []proposal.ProposalItem, err error)
 }
 
 // ProposalDecisionQuality receives a denial only after its submitted-to-denied
@@ -915,13 +913,9 @@ type ProposalDecisionQuality interface {
 	ProposalDeclined(context.Context, string, time.Time)
 }
 
-// ChannelBinder resolves the legacy explicit POST /v1/channels intent helpers and
-// shares channel-number occupancy with manually typed channel numbers. Approval
-// uses ProposalApprover instead of reaching through this lower-level seam.
+// ChannelBinder shares channel-number occupancy with manually typed channel numbers.
+// Approval uses ProposalApprover instead of reaching through this lower-level seam.
 type ChannelBinder interface {
-	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
-	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
-	RequestFromIntent(ctx context.Context, intentRef string) (intentJSON, requestedBy string, err error)
 	// NumberInUse answers the SAME question the approve path's numbering asks — is this
 	// channel number free in Loomarr's store AND in Tunarr? — so an operator who types a
 	// number gets the same answer the server gives itself when it picks one. Best-effort:
@@ -1079,7 +1073,6 @@ type Options struct {
 	Filler          FillerService                    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	SourceProviders *sourceprovider.Registry         // /v1/filler/providers and source validation; nil ⇒ none registered
 	FillerResearch  FillerResearchService            // optional structured-first web-search status and validation
-	FillerDecisions *fillerdecision.Service          // /v1/filler/decisions* (§10 V63)
 	FillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
 	Pods            PodPreviewer                     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	Taxonomy        TaxonomyEditor                   // taxonomy impact + committed channel convergence
@@ -1178,34 +1171,17 @@ type Options struct {
 	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
 	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
 	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// LiveConfig reads a setting's live resolved value so feature routes gate on the
-	// CURRENT config (a saved connection enables the route with no restart, §8.1).
-	// The composition root passes settings.Service.String; unit tests omit it.
-	LiveConfig func(key string) string
+	// LiveSettings answers a setting's live resolved value so feature routes gate on the
+	// CURRENT config (a saved connection enables the route with no restart, §8.1). Routes read
+	// it through the typed handles — `settings.GuideTimezone.Get(s.liveSettings)` — so a key
+	// cannot be misspelt or read as the wrong kind. The composition root passes its settings
+	// view; unit tests that omit it (nil) skip the live-config gates, and a handle on a nil
+	// reader answers the setting's declared default.
+	LiveSettings settings.Reader
 	// LibraryConfigured atomically reports whether the complete live media-server
 	// {flavor,url,token} connection is usable. The composition root supplies it; unit tests
 	// that wire a concrete adapter may omit it.
 	LibraryConfigured func() bool
-	// LiveConfigInt is the INT-typed twin. Separate rather than parsing LiveConfig's
-	// string, because settings.String PANICS on a non-string key — an int setting read
-	// through the string seam took down GET /v1/users in the quota work, and only a run
-	// against a real settings service surfaced it (unit tests leave the seam nil, so the
-	// typed accessor was never reached).
-	LiveConfigInt func(key string) int
-	// LiveConfigDuration reads hot-applied duration settings without routing them through the
-	// string accessor, which deliberately panics on a kind mismatch.
-	LiveConfigDuration func(key string) time.Duration
-	// LiveConfigBoolOn is the BOOL-typed twin, and it exists for the same reason
-	// LiveConfigInt does — the third occurrence of that one bug, so the seam is now typed
-	// for every Kind a route reads rather than only the two that have already broken.
-	// GET /v1/filler/sources panicked on `filler.source.folder.enabled` (a bool) exactly
-	// as /v1/users did on an int, and again only a real settings service reached it.
-	//
-	// ⚠ boolOn, not boolv: nil ⇒ TRUE. Callers here gate "is this source being scanned",
-	// where a false read renders a working drop-folder as switched off on the page whose
-	// job is explaining an empty catalog. A key that is off by default needs its own
-	// accessor rather than this one.
-	LiveConfigBoolOn func(key string) bool
 }
 
 // arrayNullableOnce guards the one write to Huma's package-level DefaultArrayNullable (see the

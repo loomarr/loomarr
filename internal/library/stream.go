@@ -28,7 +28,7 @@ import (
 //	(a) The FILE (default). Fetch `Fields=Path`, apply `library.path_map` (§15) to translate the
 //	    media-server prefix to the local mount, and if the mapped file is readable, hand ffmpeg the
 //	    file directly — copy the video when its codec is compatible, transcode only what is not
-//	    (ffprobe decides, playout.PlanCopy).
+//	    (ffprobe decides).
 //
 //	(b) `GET /Videos/{id}/stream?static=true` (FALLBACK). When no mapping resolves a readable local
 //	    file — a media server on a different host with no shared mount — ffmpeg reads it over HTTP,

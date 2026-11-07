@@ -22,7 +22,9 @@ import (
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -97,8 +99,8 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 	// backend has no speech engine: left on, the filler pipeline fails every clip at that stage
 	// ("whisper not configured") and none ever reaches a break.
 	if err := api.expectOK(ctx, http.MethodPatch, "/v1/settings", map[string]any{"edits": map[string]string{
-		"library.flavor": "emby", "library.url": cfg.libraryURL, "library.token": DemoToken,
-		"filler.transcribe.enabled": "false",
+		settings.LibraryFlavor.Key(): "emby", settings.LibraryURL.Key(): cfg.libraryURL, settings.LibraryToken.Key(): DemoToken,
+		settings.FillerTranscribeEnabled.Key(): "false",
 	}}, nil); err != nil {
 		return fmt.Errorf("point the backend at the demo library: %w", err)
 	}
@@ -193,14 +195,14 @@ func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approv
 }
 
 func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID string, c demolibrary.Channel) error {
-	intent := suggest.Intent{Description: c.Name}
-	var lineup []suggest.ProposalItem
+	intent := proposal.Intent{Description: c.Name}
+	var lineup []proposal.ProposalItem
 	for _, id := range c.Titles {
 		t, ok := demolibrary.ByID(id)
 		if !ok {
 			return fmt.Errorf("unknown demo title %q", id)
 		}
-		item := suggest.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
+		item := proposal.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
 		if t.Kind == demolibrary.Series {
 			item.MediaType, item.TVDBID = provision.Series, t.ProviderID()
 		} else {
@@ -212,10 +214,6 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 	if err != nil {
 		return err
 	}
-	propJSON, err := json.Marshal(suggest.Proposal{Intent: intent, Lineup: lineup})
-	if err != nil {
-		return err
-	}
 	now := time.Now()
 	// CreateSuggestionResult writes the done Job, its succeeded Attempt 1 and the submitted
 	// Proposal in one transaction, the shape the real suggester worker leaves behind. A raw
@@ -224,7 +222,7 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 	if err := st.CreateSuggestionResult(ctx, store.Job{ID: jobID, Kind: "suggest", Status: "done",
 		IntentJSON: string(intentJSON), IntentHash: "demo-" + jobID, CreatedBy: adminID, CreatedAt: now, UpdatedAt: now,
 	}, store.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
-		ProposalJSON: string(propJSON), CreatedAt: now, UpdatedAt: now}); err != nil {
+		Body: proposal.Proposal{Intent: intent, Lineup: lineup}, CreatedAt: now, UpdatedAt: now}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}
 	return nil

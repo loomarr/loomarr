@@ -71,8 +71,8 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	// and everything else as failing — a second double would be one more thing to keep in
 	// agreement with the real interface.
 	srv, _ := serverWithPanels(t, api.Options{
-		Settings:   &fakeSettings{},
-		LiveConfig: func(key string) string { return map[string]string{"seerr.url": "http://seerr.lan:5055"}[key] },
+		Settings:     &fakeSettings{},
+		LiveSettings: mapSettings{"seerr.url": "http://seerr.lan:5055"},
 	})
 
 	resp := do(t, srv, http.MethodGet, "/v1/system/services", adminToken, "")

@@ -1,24 +1,32 @@
-import tokenArtifact from "@loomarr/tokens/tokens.json";
+import { webTokenSet } from "@loomarr/design-system/web-theme";
 
-// Tokens — the complete generated set, as data (§2.5, §5.1a).
+// Tokens — the complete web token set, as data (§2.5, §5.1a).
 //
 // The Palette/Typography/Spacing pages EXPLAIN the system; this one is the reference you scan
-// when you need the exact name of a thing. It reads `tokens.json` — the artifact the Tailwind
-// preset and theme.css are generated from — so a token that exists at build time appears here
-// and one that does not, cannot.
+// when you need the exact name of a thing. It reads `webTokenSet()` — the data theme.css is
+// generated from — so a token that exists at build time appears here and one that does not,
+// cannot.
 //
 // Deliberately dumb: no curation, no grouping by meaning, no commentary. The moment this page
 // starts choosing what to show, it stops being a reliable index of what exists.
 
-// A group is usually name → value, but `tintSteps` is a bare array of percentages. Both are
-// rendered rather than one being skipped: an index that quietly omits a token is worse than no
-// index, because it teaches you to trust it.
-type TokenGroup = Record<string, string | number> | number[];
+// A group is usually name → value, but `tintSteps` is a bare array of percentages and the type and
+// motion groups nest (a text style holds its size, weight and leading). Every shape is flattened to
+// one row per leaf, keyed by its dotted path, rather than any being skipped or printed as
+// "[object Object]": an index that quietly omits a token is worse than no index, because it
+// teaches you to trust it.
+type TokenLeaf = string | number;
+type TokenGroup = TokenLeaf | readonly TokenGroup[] | { readonly [key: string]: TokenGroup };
 
-const asRows = (group: TokenGroup): [string, string | number][] =>
-  Array.isArray(group) ? group.map((v, i) => [String(i), v]) : Object.entries(group);
+const asRows = (group: TokenGroup, prefix = ""): [string, TokenLeaf][] => {
+  if (typeof group === "string" || typeof group === "number") return [[prefix, group]];
+  const entries = Array.isArray(group)
+    ? group.map((v, i) => [String(i), v] as const)
+    : Object.entries(group as { readonly [key: string]: TokenGroup });
+  return entries.flatMap(([key, value]) => asRows(value, prefix ? `${prefix}.${key}` : key));
+};
 
-const isColor = (v: string | number) => typeof v === "string" && v.startsWith("#");
+const isColor = (v: TokenLeaf) => typeof v === "string" && v.startsWith("#");
 
 const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
   <section className="flex flex-col gap-2">
@@ -32,13 +40,13 @@ const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
                 <code className="font-mono text-xs">{key}</code>
               </td>
               <td className="py-1.5 pr-4 align-middle">
-                <code className="text-static-400 font-mono text-xs">{String(value)}</code>
+                <code className="text-static-400 font-mono text-xs">{value}</code>
               </td>
               <td className="w-10 py-1.5 align-middle">
                 {isColor(value) && (
                   <span
                     className="border-border block size-5 rounded border"
-                    style={{ backgroundColor: value as string }}
+                    style={{ backgroundColor: String(value) }}
                   />
                 )}
               </td>
@@ -51,7 +59,7 @@ const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
 );
 
 const Tokens = () => {
-  const groups = Object.entries(tokenArtifact) as [string, TokenGroup][];
+  const groups = Object.entries(webTokenSet()) as [string, TokenGroup][];
   const total = groups.reduce((n, [, g]) => n + asRows(g).length, 0);
 
   return (
@@ -59,11 +67,9 @@ const Tokens = () => {
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Tokens</h1>
         <p className="text-muted-foreground max-w-2xl text-sm">
-          {`All ${total} generated tokens, read from the same `}
-          <code className="font-mono text-xs">tokens.json</code>
-          {" the Tailwind preset and "}
+          {`All ${total} generated tokens, read from the same data `}
           <code className="font-mono text-xs">theme.css</code>
-          {" are built from. If it is not on this page, it does not exist at build time."}
+          {" is built from. If it is not on this page, it does not exist at build time."}
         </p>
       </header>
       {groups.map(([name, group]) => (

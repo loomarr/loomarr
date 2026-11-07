@@ -94,7 +94,10 @@ func settingRecord(key string) secretprotection.Record {
 	return secretprotection.Record{Kind: "setting", ID: key, Field: "value"}
 }
 
-func loadProtectedSettings(
+// openProtectedSettings lists every setting with protected values decrypted. A protected value
+// stored as plaintext predates encrypted settings (v0.2.0-beta.1); the error names every such
+// key, never its value, and no row is rewritten.
+func openProtectedSettings(
 	ctx context.Context,
 	st store.Store,
 	reg *settings.Registry,
@@ -107,27 +110,25 @@ func loadProtectedSettings(
 	if err != nil {
 		return nil, err
 	}
-	rewrites := make([]store.SettingMutation, 0)
+	var plaintext []error
 	for i := range rows {
 		if !protectedSetting(reg, rows[i].Key) || rows[i].Value == "" {
 			continue
 		}
-		if secretprotection.IsEnvelope(rows[i].Value) {
-			plain, err := protection.Open(settingRecord(rows[i].Key), rows[i].Value)
-			if err != nil {
-				return nil, fmt.Errorf("open protected setting %q: %w", rows[i].Key, err)
-			}
-			rows[i].Value = string(plain)
+		if !secretprotection.IsEnvelope(rows[i].Value) {
+			plaintext = append(plaintext, fmt.Errorf(
+				"setting %q is stored unencrypted: this database predates encrypted settings (v0.2.0-beta.1); "+
+					"upgrade through a v0.2.x release first, or clear that setting and re-enter it", rows[i].Key))
 			continue
 		}
-		envelope, err := protection.Seal(settingRecord(rows[i].Key), []byte(rows[i].Value))
+		plain, err := protection.Open(settingRecord(rows[i].Key), rows[i].Value)
 		if err != nil {
-			return nil, fmt.Errorf("protect legacy setting %q: %w", rows[i].Key, err)
+			return nil, fmt.Errorf("open protected setting %q: %w", rows[i].Key, err)
 		}
-		rewrites = append(rewrites, store.SettingMutation{Key: rows[i].Key, Value: envelope})
+		rows[i].Value = string(plain)
 	}
-	if err := st.RewriteSettingValues(ctx, rewrites); err != nil {
-		return nil, fmt.Errorf("migrate legacy setting secrets: %w", err)
+	if len(plaintext) > 0 {
+		return nil, errors.Join(plaintext...)
 	}
 	return rows, nil
 }

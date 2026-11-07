@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -100,7 +101,7 @@ func TestLive_NamedTitles(t *testing.T) {
 			}
 			s := suggest.New(rec, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
 			start := time.Now()
-			prop, err := s.Suggest(context.Background(), suggest.Intent{Description: desc})
+			prop, err := s.Suggest(context.Background(), proposal.Intent{Description: desc})
 			var names []string
 			if err == nil {
 				for _, p := range prop.Lineup {

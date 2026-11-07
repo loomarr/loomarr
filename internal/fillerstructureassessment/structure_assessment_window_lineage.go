@@ -87,7 +87,7 @@ func validateStructureAssessmentWindowLineage(plan fillerstructurewindow.Plan, l
 		lineage.PlanSHA256 != plan.SHA256 || !structureAssessmentWindowSourceMatchesPlan(lineage.Source, plan) ||
 		lineage.Window.Ordinal < 0 || lineage.Window.Ordinal >= len(plan.Windows) ||
 		lineage.Window != plan.Windows[lineage.Window.Ordinal] ||
-		lineage.Profile != fillerstructuremedia.CanonicalProfile() ||
+		!fillerstructuremedia.Supported(lineage.Profile) ||
 		lineage.Profile.SHA256 != plan.Profile.AssessmentMediaProfileSHA256 ||
 		!filler.IsContentHash(lineage.OperationSHA256) || !filler.IsContentHash(lineage.SHA256) ||
 		lineage.SHA256 != structureAssessmentWindowLineageSHA256(lineage) {

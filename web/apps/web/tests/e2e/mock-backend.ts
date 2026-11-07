@@ -18,7 +18,66 @@ import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 import { requestFixtures } from "@loomarr/fixtures";
 import type { Page, Route } from "@playwright/test";
 import { channel } from "../../src/test/fixtures/channels";
+import { fillerProviders } from "../../src/test/fixtures/filler";
 import { outlook } from "../../src/test/fixtures/outlook";
+
+// What a provider answers for the one source an address names, with the player the provider builds
+// for each example.
+const ARCHIVE_RESOLVED = {
+  provider: "archive",
+  targetType: "collection",
+  canonicalId: "classic_tv_commercials",
+  canonicalUrl: "https://archive.org/details/classic_tv_commercials",
+  title: "Classic TV Commercials",
+  itemCount: 8457,
+  alreadyAdded: false,
+  previewItems: [
+    {
+      title: "1970s station break",
+      url: "https://archive.org/details/station_break_1978",
+      embedUrl: "https://archive.org/embed/station_break_1978?autoplay=1",
+      durationMs: 31500,
+    },
+    {
+      title: "Local weather bumper",
+      url: "https://archive.org/details/weather_bumper",
+      embedUrl: "https://archive.org/embed/weather_bumper?autoplay=1",
+    },
+    {
+      title: "Saturday morning promo",
+      url: "https://archive.org/details/saturday_promo",
+      embedUrl: "https://archive.org/embed/saturday_promo?autoplay=1",
+    },
+  ],
+};
+
+const YOUTUBE_RESOLVED = {
+  provider: "youtube",
+  targetType: "channel",
+  canonicalId: "UC-retro-reels",
+  canonicalUrl: "https://www.youtube.com/channel/UC-retro-reels/videos",
+  title: "Retro Reels",
+  itemCount: 24,
+  alreadyAdded: false,
+  previewItems: [
+    {
+      title: "An hour of vintage station breaks",
+      url: "https://www.youtube.com/watch?v=retro-breaks",
+      embedUrl: "https://www.youtube-nocookie.com/embed/retro-breaks?autoplay=1&playsinline=1",
+      durationMs: 3600000,
+    },
+    {
+      title: "Classic local commercials",
+      url: "https://www.youtube.com/watch?v=local-commercials",
+      embedUrl: "https://www.youtube-nocookie.com/embed/local-commercials?autoplay=1&playsinline=1",
+    },
+    {
+      title: "Network IDs from 1982",
+      url: "https://www.youtube.com/watch?v=network-ids",
+      embedUrl: "https://www.youtube-nocookie.com/embed/network-ids?autoplay=1&playsinline=1",
+    },
+  ],
+};
 
 // Invented channel ideas for the built requests (#1785): the fixture's one live journey, renamed.
 const LIVE_REQUEST_IDEAS = [
@@ -893,6 +952,12 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       });
     }
 
+    // The provider registry is fixed server data, answered whether or not the filler shell is
+    // configured: a spec that mocks the filler pages itself still reads the real registry.
+    if (path === "/v1/filler/providers" && method === "GET") {
+      return json(route, { providers: fillerProviders });
+    }
+
     // --- configured Filler shell -------------------------------------------------
     // Page-level browser contracts need complete empty DTOs, not a loose `{}`: the real
     // client deliberately trusts generated response shapes once the capability is enabled.
@@ -907,8 +972,6 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           held: 0,
         });
       }
-      if (path === "/v1/filler/decisions/activity") return json(route, { rows: [], total: 0 });
-      if (path === "/v1/filler/decisions/diagnostics") return json(route, { rows: [], total: 0 });
       // Manage › Quality reads the defect floor's report (#2034); the `{}` fallback would throw on `verdicts`.
       if (path === "/v1/filler/defects") {
         return json(route, {
@@ -922,8 +985,14 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           rows: [],
         });
       }
+      // The provider tells an address from words: an address comes back as the one source it names,
+      // already checked.
       if (path === "/v1/filler/providers/archive/suggestions" && method === "GET") {
+        if (/archive\.org\/details\//.test(url.searchParams.get("q") ?? "")) {
+          return json(route, { exact: true, suggestions: [ARCHIVE_RESOLVED] });
+        }
         return json(route, {
+          exact: false,
           suggestions: [
             {
               provider: "archive",
@@ -939,33 +1008,14 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         });
       }
       if (path === "/v1/filler/providers/archive/resolve" && method === "POST") {
-        return json(route, {
-          provider: "archive",
-          targetType: "collection",
-          canonicalId: "classic_tv_commercials",
-          canonicalUrl: "https://archive.org/details/classic_tv_commercials",
-          title: "Classic TV Commercials",
-          itemCount: 8457,
-          alreadyAdded: false,
-          previewItems: [
-            {
-              title: "1970s station break",
-              url: "https://archive.org/details/station_break_1978",
-              durationMs: 31500,
-            },
-            {
-              title: "Local weather bumper",
-              url: "https://archive.org/details/weather_bumper",
-            },
-            {
-              title: "Saturday morning promo",
-              url: "https://archive.org/details/saturday_promo",
-            },
-          ],
-        });
+        return json(route, ARCHIVE_RESOLVED);
       }
       if (path === "/v1/filler/providers/youtube/suggestions" && method === "GET") {
+        if (/youtube\.com\//.test(url.searchParams.get("q") ?? "")) {
+          return json(route, { exact: true, suggestions: [YOUTUBE_RESOLVED] });
+        }
         return json(route, {
+          exact: false,
           suggestions: [
             {
               provider: "youtube",
@@ -989,30 +1039,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         });
       }
       if (path === "/v1/filler/providers/youtube/resolve" && method === "POST") {
-        return json(route, {
-          provider: "youtube",
-          targetType: "channel",
-          canonicalId: "UC-retro-reels",
-          canonicalUrl: "https://www.youtube.com/channel/UC-retro-reels/videos",
-          title: "Retro Reels",
-          itemCount: 24,
-          alreadyAdded: false,
-          previewItems: [
-            {
-              title: "An hour of vintage station breaks",
-              url: "https://www.youtube.com/watch?v=retro-breaks",
-              durationMs: 3600000,
-            },
-            {
-              title: "Classic local commercials",
-              url: "https://www.youtube.com/watch?v=local-commercials",
-            },
-            {
-              title: "Network IDs from 1982",
-              url: "https://www.youtube.com/watch?v=network-ids",
-            },
-          ],
-        });
+        return json(route, YOUTUBE_RESOLVED);
       }
       if (path === "/v1/filler/sources/fetch" && method === "POST") {
         const sourceId = url.searchParams.get("id") ?? "";
@@ -1034,6 +1061,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           id: `clip-${index + 1}`,
           title: `Found clip ${index + 1}`,
           url: `https://archive.org/details/clip-${index + 1}`,
+          embedUrl: `https://archive.org/embed/clip-${index + 1}?autoplay=1`,
           date: "1978-01-01",
         }));
         return json(route, { items, total: items.length, licenceNote: "Check each item's licence." });
@@ -1168,6 +1196,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
             {
               id: "archive:long",
               uri: "classic_tv_commercials",
+              pageUrl: "https://archive.org/details/classic_tv_commercials",
               kind: "archive",
               target: "Classic television commercials from a deliberately long collection name",
               detail: "an archive.org collection",
@@ -1203,21 +1232,6 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           preparing: { rows: [], total: 0 },
           needsHelp: { rows: [], total: 0 },
           recentlyReady: { rows: [], total: 0 },
-        });
-      }
-      if (path === "/v1/filler/decisions/overview") {
-        return json(route, {
-          healthy: true,
-          nextAction: "none",
-          actionCount: 0,
-          counts: {
-            admitted: 0,
-            rejected: 0,
-            reviews: 0,
-            unresolvedReviews: 0,
-            operational: 0,
-            retryable: 0,
-          },
         });
       }
       if (path === "/v1/filler/readiness") {
@@ -1451,6 +1465,13 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   group: "filler",
                   kind: "duration",
                   presentation: "filler_download_schedule",
+                  presets: [
+                    { value: "0s", label: "Never" },
+                    { value: "6h0m0s", label: "Every 6 hours" },
+                    { value: "12h0m0s", label: "Every 12 hours" },
+                    { value: "24h0m0s", label: "Daily" },
+                    { value: "168h0m0s", label: "Weekly" },
+                  ],
                   doc: "How often Loomarr checks enabled sources for new clips.",
                   advanced: false,
                   secret: false,

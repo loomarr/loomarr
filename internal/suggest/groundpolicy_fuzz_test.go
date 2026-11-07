@@ -3,14 +3,16 @@ package suggest
 import (
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
-// onLadderCeilings are the canonical rating strings NormalizeRating maps to itself
+// onLadderCeilings are the canonical rating strings rating.Normalize maps to itself
 // (already upper-cased, no separators/variants). groundPolicy may only ever produce
 // a ceiling from this closed set or "" — a hallucinated rating is dropped. Kept in
-// sync with schedule.ladderRank (policy.go §4). If the ladder grows, this must too.
-var onLadderCeilings = map[schedule.Rating]bool{
+// sync with the ladder in internal/rating. If the ladder grows, this must too.
+var onLadderCeilings = map[rating.Rating]bool{
 	"TV-Y": true, "TV-Y7": true,
 	"TV-G": true, "G": true,
 	"TV-PG": true, "PG": true,
@@ -61,7 +63,7 @@ func FuzzGroundPolicy(f *testing.F) {
 		// the property under test is ceiling CANONICALIZATION; the drop-when-no-kids-signal
 		// path (§4/§8) has its own dedicated tests. The no-signal case would simply drop
 		// every ceiling to "", which trivially satisfies Validate but exercises nothing.
-		p := groundPolicy(&raw, nil, nil, Intent{Description: "for kids"}, shipped)
+		p := groundPolicy(&raw, nil, nil, Intent{Intent: proposal.Intent{Description: "for kids"}}, shipped)
 
 		// CORE SAFETY PROPERTY: whatever the model emitted, the returned policy is
 		// always enforcement-valid. groundPolicy's final net drops to the empty
@@ -79,7 +81,7 @@ func FuzzGroundPolicy(f *testing.F) {
 		// The seed intent explicitly says "for kids", so the result must always retain
 		// the deterministic TV-Y7-or-stricter boundary regardless of model output.
 		gotRank, gotOK := p.Audience.Ceiling.Rank()
-		maxRank, _ := schedule.NormalizeRating("TV-Y7").Rank()
+		maxRank, _ := rating.Normalize("TV-Y7").Rank()
 		if !gotOK || gotRank > maxRank {
 			t.Fatalf("child-safety ceiling relaxed: input %q -> result %q", ceiling, p.Audience.Ceiling)
 		}

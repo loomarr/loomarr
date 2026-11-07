@@ -342,6 +342,14 @@ describe("FillerSources provider roll-up", () => {
     }),
   ];
 
+  it("names a paused provider by its own row, not by a kind the page knows", () => {
+    const rows = grouped({ target: "Registry Name", enabled: false }).map((row) =>
+      row.parentId ? { ...row, readiness: "provider_off" as const, effectiveEnabled: false } : row,
+    );
+    render(<FillerSources sources={rows} />);
+    expect(screen.getAllByText("Paused with Registry Name. Existing clips stay here.")).toHaveLength(2);
+  });
+
   it("nests a provider's sources under it, in their own list", () => {
     render(<FillerSources sources={grouped()} />);
 

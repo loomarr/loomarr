@@ -1,4 +1,4 @@
-import { typography } from "@loomarr/tokens";
+import { webType } from "@loomarr/design-system/web-theme";
 
 // Typography — the type system documenting itself (frontend-design §2.2, §5.1a).
 //
@@ -35,7 +35,7 @@ const Typography = () => (
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="border-border flex flex-col gap-2 rounded-md border p-4">
           <div className="text-static-400 font-mono text-[11px] tracking-wide uppercase">Sans</div>
-          <div className="text-lg" style={{ fontFamily: typography.fonts.sans }}>
+          <div className="text-lg" style={{ fontFamily: webType.fonts.sans }}>
             Saturday Morning Cartoons
           </div>
           <p className="text-muted-foreground text-sm">
@@ -44,7 +44,7 @@ const Typography = () => (
         </div>
         <div className="border-border flex flex-col gap-2 rounded-md border p-4">
           <div className="text-static-400 font-mono text-[11px] tracking-wide uppercase">Mono</div>
-          <div className="font-mono text-lg" style={{ fontFamily: typography.fonts.mono }}>
+          <div className="font-mono text-lg" style={{ fontFamily: webType.fonts.mono }}>
             CH 42 · 21:30–22:00
           </div>
           <p className="text-muted-foreground text-sm">
@@ -58,7 +58,7 @@ const Typography = () => (
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Scale</h2>
       <div className="divide-border flex flex-col divide-y">
-        {Object.entries(typography.size).map(([name, px]) => (
+        {Object.entries(webType.size).map(([name, px]) => (
           <div key={name} className="flex items-baseline gap-4 py-3">
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px]">{name}</span>
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px] tabular-nums">
@@ -81,7 +81,7 @@ const Typography = () => (
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Leading</h2>
       <div className="grid gap-4 sm:grid-cols-2">
-        {Object.entries(typography.leading).map(([name, value]) => (
+        {Object.entries(webType.leading).map(([name, value]) => (
           <div key={name} className="border-border flex flex-col gap-2 rounded-md border p-4">
             <div className="text-static-400 font-mono text-[11px] tracking-wide uppercase">
               {`${name} · ${value}`}

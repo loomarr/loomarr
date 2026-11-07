@@ -58,6 +58,9 @@ func (p *Provisioner) Bootstrap(ctx context.Context, username, password string) 
 	if username == "" || password == "" {
 		return identitystore.User{}, ErrInvalidBootstrap
 	}
+	if len(password) < MinPasswordLen {
+		return identitystore.User{}, ErrWeakPassword
+	}
 	// Gate on "no admin exists yet". This is a check-then-act; a UNIQUE-less users
 	// table can't enforce single-bootstrap at the DB, but bootstrap is a rare
 	// first-run action — the CountAdmins gate + the first-writer-wins on the id

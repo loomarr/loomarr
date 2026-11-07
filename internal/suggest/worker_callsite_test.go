@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -36,7 +37,7 @@ func TestSuggest_LLMCallsNameTheirCallSite(t *testing.T) {
 	sug := suggest.New(rec, catalog.New(lib, tm), tm, 10)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = sug.Suggest(ctx, suggest.Intent{Description: "Classic Kettle Kids episodes"})
+	_, _ = sug.Suggest(ctx, proposal.Intent{Description: "Classic Kettle Kids episodes"})
 
 	rec.mu.Lock()
 	defer rec.mu.Unlock()

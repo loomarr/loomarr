@@ -1077,6 +1077,9 @@ func (s *Server) discoverFiller(ctx context.Context, in *discoverFillerInput) (*
 	if out.Body.Items == nil {
 		out.Body.Items = []DiscoveredClip{}
 	}
+	for i := range out.Body.Items {
+		out.Body.Items[i].EmbedURL = s.embedURL("archive", out.Body.Items[i].URL)
+	}
 	out.Body.Total = total
 	out.Body.LicenceNote = "Licence information isn't available for most results. Check before reusing."
 	return out, nil

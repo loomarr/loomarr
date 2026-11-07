@@ -133,17 +133,22 @@ RETIRED=(
   # *-proposal siblings in the same file. The paths moved; this keeps the old ones from coming
   # back in help text an operator would follow to a 404.
   'v1/suggestions|renamed to /v1/proposals (V41) — CONTEXT.md defines the artifact as a Proposal and bans "suggestion"'
+  # The suggest worker had two job lifecycles: raw store.Job writes (runJob/failJob) when no workflow
+  # was wired, and the durable proposal workflow. Production only ever wired the workflow; the raw
+  # path was deleted and suggest.NewService now takes the workflow as a required argument.
+  'WithDurableWorkflow|the durable proposal workflow is a required suggest.NewService argument; the raw store.Job lifecycle path was deleted'
+  'func (s *Service) runJob|the suggest worker runs jobs only through the durable proposal workflow (runWorkflow)'
+  'func (s *Service) failJob|the suggest worker fails jobs only through the durable proposal workflow (failWorkflow)'
   # V47b: renamed the playout "doctor" to "playout status" — same read-only health projection,
   # clearer name. The old operation id and path must not survive in help text an operator would
   # follow to a 404.
   'get-playout-doctor|renamed to get-playout-status — same read-only playout health projection'
   'playout/doctor|renamed to /v1/playout/status — same read-only playout health projection'
-  # V48: the playout copy-audience query changed from ?target=browser|mediaserver to
-  # ?plan=baseline|hevc8|hevc10|full (a client DeviceProfile resolves to an EncodePlan). The VALUE
+  # The playout copy-audience query is retired: every client is served the same variant. The VALUE
   # tokens are the retired identifiers — the bare word "target" survives as the SessionStat/health
   # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
-  'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
-  'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
+  'target=browser|the playout copy-audience query is retired; every client gets the same variant'
+  'target=mediaserver|the playout copy-audience query is retired; every client gets the same variant'
   # The Go block supervisor owns finite Airing advancement and format acknowledgement. Restoring
   # either identifier recreates the anonymous media-tool sequencing seam that stalled at boundaries.
   '/v1/playout/playlist|retired: the block supervisor opens /v1/playout/program directly'
@@ -394,6 +399,18 @@ RETIRED=(
   'GrayFrames(|retired: MediaTools.Fingerprint measures the creative'
   'DupHashThreshold|retired: creative.Compare decides a copy'
   'meanHamming(|retired: creative.Compare aligns over an edge-trim window instead of from frame 0'
+  # #2147 — settings are read through generated typed handles (`settings.X.Get(reader)`), not
+  # string-keyed accessors. The method names are specific enough to ban; the bare `.str(`/`.dur(`
+  # are too common elsewhere to grep for.
+  'LiveConfigBoolOn|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'LiveConfigInt|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'LiveConfigDuration|#2147: api.Options.LiveSettings (a settings.Reader) replaced the per-kind LiveConfig funcs; read settings.X.Get(s.liveSettings)'
+  'Options.LiveConfig|#2147: api.Options.LiveSettings (a settings.Reader) replaced the string-keyed LiveConfig func'
+  '.boolOn(|#2147: resolved.boolOn was deleted; read settings.X.Get(set), which answers the declared default when unanswerable'
+  '.boolv(|#2147: resolved.boolv was deleted; read settings.X.Get(set)'
+  '.intv(|#2147: resolved.intv was deleted; read settings.X.Get(set)'
+  'set.str(|#2147: resolved.str was deleted; read settings.X.Get(set) or .Joined(set) for a list'
+  'set.dur(|#2147: resolved.dur was deleted; read settings.X.Get(set)'
   'dHashAlgorithm|retired: creative.Algorithm keys the fingerprint cache'
   # The on-demand evaluation tools are subcommands of one cmd/eval binary.
   'cmd/channel-recommend-cert|use go run ./cmd/eval recommend-cert (make channel-recommend-cert)'
@@ -406,6 +423,36 @@ RETIRED=(
   # still verifies those artifacts, but no new review is run.
   'cmd/query-mood-review|the mood-review runner is gone; the frozen mood-review artifacts are verified by internal/eval'
   'RunMoodReview|the mood-review runner is gone; CompileMoodReviewAuthority verifies the frozen submissions'
+  # #2147 — POST /v1/channels makes hand-made channels only. Binding a channel to an approved
+  # proposal is approval's write (binder.Plan), never a second route with its own copy of the rules.
+  'LineupFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  'PolicyFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  'RequestFromIntent|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  'ApprovedProposalForJob|#2147: approval binds a proposal to its channel through binder.Plan; POST /v1/channels takes no intentRef'
+  # #2147: the whole-video structure assessment (one call over the complete source) was superseded
+  # by the structure-window pipeline, which plans, assesses and stitches windows. Its record,
+  # reservation ledger, operation publication, v9 prompt and ledger table are gone; the window
+  # call record, window ledger and window prompt own those jobs. Window code uses `directVideo*`
+  # names of its own, so only the whole-video symbols are listed.
+  'filler-temporal-structure-direct-video-v9|retired (#2147): the whole-video prompt is gone; the window pipeline owns fillerstructurewindow.DirectVideoPromptVersion'
+  'filler_structure_assessment_ledger|retired (#2147): the whole-video assessment ledger table was dropped; filler_structure_window_call_ledger is the structure ledger'
+  'NewAssessmentRecord|retired (#2147): the whole-video assessment record is gone; use fillerstructurewindow.NewRecordedAssessment'
+  'fillerstructure.RecordedAssessment|retired (#2147): the whole-video assessment record is gone; use fillerstructurewindow.RecordedAssessment'
+  'AssessmentLedgerEntry|retired (#2147): the whole-video assessment ledger is gone; use fillerstructurewindow.CallLedgerEntry'
+  'NewAssessmentReservation|retired (#2147): the whole-video assessment ledger is gone; use fillerstructurewindow.NewCallReservation'
+  'NewAssessmentPublication|retired (#2147): the whole-video assessment publication is gone; use fillerstructurewindow.NewCallPublication'
+  'ReserveStructureAssessment|retired (#2147): the whole-video assessment ledger is gone; use ReserveStructureWindowCall'
+  'SettleStructureAssessment|retired (#2147): the whole-video assessment ledger is gone; use SettleStructureWindowCall'
+  'PutStructureAssessmentEvidence|retired (#2147): the whole-video evidence store is gone; use PutStructureWindowAssessmentEvidence'
+  'FindStructureAssessmentEvidence|retired (#2147): the whole-video evidence store is gone; use FindStructureWindowAssessmentEvidence'
+  # #2147: nothing wrote an admission decision at runtime, so the ledger, its service and the Filler
+  # Manage Activity and Diagnostics panels that read it were deleted whole with their four tables.
+  'fillerdecision|#2147: the filler admission decision ledger and its service were deleted; readiness evidence is the terminal-ready event'
+  'v1/filler/decisions|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-overview|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-activity|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-diagnostics|#2147: the filler decision routes were deleted with their ledger'
+  'act-on-filler-diagnostic|#2147: the filler decision routes were deleted with their ledger'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than

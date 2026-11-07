@@ -13,7 +13,7 @@ import (
 type encryptionService struct {
 	manager      *secretprotection.Manager
 	store        store.Store
-	destinations *notifications.ProtectedDestinationRepository
+	destinations *notifications.ProtectedRepository
 }
 
 func buildEncryptionService(st store.Store, manager *secretprotection.Manager) api.EncryptionService {
@@ -22,7 +22,7 @@ func buildEncryptionService(st store.Store, manager *secretprotection.Manager) a
 	}
 	return encryptionService{
 		manager: manager, store: st,
-		destinations: notifications.NewProtectedDestinationRepository(st, manager),
+		destinations: notifications.NewProtectedRepository(st, manager),
 	}
 }
 
@@ -47,7 +47,7 @@ func (s encryptionService) RotateDataKey(ctx context.Context) error {
 	}
 	destinations := s.destinations
 	if destinations == nil {
-		destinations = notifications.NewProtectedDestinationRepository(s.store, s.manager)
+		destinations = notifications.NewProtectedRepository(s.store, s.manager)
 	}
 	return destinations.ReencryptAll(ctx)
 }

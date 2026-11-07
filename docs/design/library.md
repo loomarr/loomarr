@@ -90,6 +90,64 @@ plus the keyframe index from Matroska Cues or the MP4 sample tables, which `medi
   summary trusts a partial Matroska `Colour` element over the HEVC parameter set and can call a PQ
   file SDR, which the header reader does not.
 
+## Metadata providers
+
+`internal/metadataprovider` is the registry of systems that already know what a media file is
+(#2151, decision [0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It imports nothing from
+Loomarr. A provider declares capabilities: the item kinds it describes, the `(kind, namespace)` pairs it
+fetches by, the field families it supplies (technical, identity and numbering, descriptive,
+certification, artwork), its **basis** (the kind of evidence it is: manager, sidecar, catalog …), the
+catalog its text comes from, and rate hints. It fetches one item by id and may also list everything
+(`Lister`) or report changes since a cursor (`ChangeFeed`). Provider ids are a closed set (`sonarr`,
+`radarr`, `nfo`, `tmdb`, `localart`), and a guard test fails on any code that compares them.
+
+- **Sonarr and Radarr** (`metadataprovider/arr`) are managers. Sonarr returns a series by TVDB id with
+  every episode: the episode's own TVDB id, its numbering including the air-order position of specials,
+  its current file and the arr's media summary. Radarr returns a movie by TMDB id. Ratings from Radarr
+  carry its configured certification country. The connection is read once per operation.
+- **NFO** (`metadataprovider/nfo`) is a sidecar, resolved by the media path: `<file>.nfo`, `movie.nfo`
+  when the folder holds only that video, or `tvshow.nfo` in a series folder. It reads typed `uniqueid`
+  elements, guide text, `mpaa` and numbering. The default `uniqueid` names its catalog. Reads are capped
+  at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop malformed
+  ids.
+- **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/tmdb` client. A movie or
+  series by TMDB id is one detail call with `append_to_response` (external ids, US release dates or
+  content ratings, keywords, images), so the record carries guide text, genres, keywords, the
+  community rating, series status, the US certification (the strictest of a movie's releases),
+  poster, fanart and logo references, and imdb and tvdb ids. A movie's TMDB collection rides on its
+  descriptive record, since the movie call already returns it. An episode is fetched by its own
+  TVDB episode id through `/find`, never by season and episode number, and its record carries no
+  numbering: TMDB and TVDB lay out many shows differently, so only the id bridges the two. Its
+  `vote_average` is the episode's community rating. Language and country are the installation's
+  `metadata.language` and `metadata.country`; a country other than the US is refused. The change
+  feed reads `/movie/changes` and `/tv/changes` and answers within TMDB's 14-day window; an older
+  cursor is `ErrUnsupported` and the caller refetches. Keywords per item are capped at 40.
+- **Local artwork** (`metadataprovider/localart`) is a sidecar too, found by one listing of the media's
+  folder in Kodi's naming: a movie's `<file>-poster.jpg` (and `-fanart`, `-clearlogo`, `-banner`,
+  `-landscape`, `-clearart`, `-discart`), then the folder's `poster`, `folder`, `fanart`, `clearlogo` …
+  when it holds only that video; a series folder's same names; an episode's `<file>-thumb.jpg`. Any of
+  `.jpg`, `.jpeg`, `.png`, `.webp`, matched whatever the case. Records carry the image's path, never
+  its bytes, and only regular files: the image service imports one, keyed by its content, the first
+  time something shows it. Season art is not read; Loomarr has no season items.
+- **Arr requests never follow a redirect**, so the API key cannot reach another host.
+
+**Precedence** lives in one place, `metadataprovider/precedence`, and ranks bases and catalogs, never
+providers. A field takes the highest-ranked source that has a value for it. Numbering and the file list
+move whole.
+
+| Family | Order |
+| --- | --- |
+| Technical | measured, header, manager |
+| Identity and numbering | manager, id in a name, sidecar, confirmed link |
+| Descriptive (text, genres, keywords, community rating, collection) | a service (catalog or manager) whose text comes from TMDB for movies and series, or TVDB for episodes; then other services; then sidecars, which never outrank a service |
+| Certification | the strictest grounded rating on the US ladder |
+| Artwork | sidecar, catalog, manager, per artwork kind |
+
+Certification uses the audience ladder that enforcement uses. Ratings in another country's system and
+unrated values ground nothing, and a resolver for a country other than the US is refused. An episode
+that no grounded source rates inherits its series' strictest rating. One that a source rates keeps
+that rating, whether it is stricter or not.
+
 ## Cached series episodes
 
 Expanding a series into episodes costs one media-server call per show, which used to dominate guide

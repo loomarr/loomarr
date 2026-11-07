@@ -36,7 +36,7 @@ test-results/
 apps/web/tests/visual/**/*-darwin.png
 apps/web/tests/visual/**/*-win32.png
 
-# packages/tokens/generated/ is COMMITTED on purpose — `make fe-tokens` regenerates
+# packages/design-system/generated/ is COMMITTED on purpose — `make fe-tokens` regenerates
 # it and CI fails on drift (committed-artifact discipline, §2.5).
 # packages/api/generated/ is orval output regenerated deterministically from
 # api/openapi.yaml by `make fe` (pnpm codegen) — gitignored to keep the tree clean;

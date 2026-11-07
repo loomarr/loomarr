@@ -1,7 +1,9 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -49,8 +51,8 @@ const blocksFor = (): (typeof BLOCKS)[number][] => BLOCKS.filter((b) => b.id !==
 // titleFor appends the chosen-provider suffix for the provider-selected blocks (requester,
 // AI), reading the saved value from the settings entries; every other block keeps its title.
 const titleFor = (block: (typeof BLOCKS)[number], entries: SettingEntry[]): string => {
-  if (block.id === "requester") return blockTitle(entries, block.title, "requester.provider");
-  if (block.id === "ai") return blockTitle(entries, block.title, "llm.provider");
+  if (block.id === "requester") return blockTitle(entries, block.title, SettingKey.RequesterProvider);
+  if (block.id === "ai") return blockTitle(entries, block.title, SettingKey.LLMProvider);
   return block.title;
 };
 
@@ -67,11 +69,8 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
   const patch = settingsApi.useSettingsPatch({
     mutation: {
       onSuccess: async () => {
-        // Refresh field values AND the server checklist — a saved key can flip a check.
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-        ]);
+        // Field values AND the server checklist (a saved key can flip a check) refetch together.
+        await invalidateSettings(queryClient);
         setEdits({}); // saved values are the new baseline
       },
     },
@@ -84,12 +83,8 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
   const envOverride = settingsApi.useSettingsEnvOverride({
     mutation: {
       onSuccess: async () => {
-        // Both, for the same reason the patch above refreshes both: taking a key back can
-        // change the resolved value, and a resolved value can flip a check.
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() }),
-        ]);
+        // Taking a key back can change the resolved value, and a resolved value can flip a check.
+        await invalidateSettings(queryClient);
       },
     },
   });

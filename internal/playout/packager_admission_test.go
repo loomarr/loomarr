@@ -34,22 +34,22 @@ func TestPackagerHLS_AViewerTuneEvictsAnIdleWarmBeforeItIsRefused(t *testing.T) 
 	m := newTestPackagerHLS(t, slowItemSource{}, time.Hour)
 	m.WithBudget(budget)
 
-	watched, err := m.acquirePlaylist("watched", PlanBaseline, false, "")
+	watched, err := m.acquirePlaylist("watched", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer watched.release()
-	warm, err := m.acquirePlaylist("neighbour", PlanBaseline, true, "")
+	warm, err := m.acquirePlaylist("neighbour", true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	warm.release() // the warm is done; its packager lingers in its grace, holding a slot
 
 	// Warming only ever uses spare room: a second warm on the full host is refused, displacing nothing.
-	if _, err := m.acquirePlaylist("other-neighbour", PlanBaseline, true, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("other-neighbour", true, ""); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("a warm on a full host: err = %v, want ErrAtCapacity", err)
 	}
-	viewer, err := m.acquirePlaylist("surfed-to", PlanBaseline, false, "")
+	viewer, err := m.acquirePlaylist("surfed-to", false, "")
 	if err != nil {
 		t.Fatalf("a viewer was refused while an idle warm held the ledger: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestPackagerHLS_AViewerTuneEvictsAnIdleWarmBeforeItIsRefused(t *testing.T) 
 		t.Fatalf("ledger after eviction = %+v, want exactly the two watched sessions", use)
 	}
 	// Only watched work is left, so the next viewer is refused rather than evicting a viewer.
-	if _, err := m.acquirePlaylist("third", PlanBaseline, false, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("third", false, ""); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("a viewer with only watched work running: err = %v, want ErrAtCapacity", err)
 	}
 }
@@ -164,7 +164,7 @@ func takePremium(t *testing.T, m *PackagerHLS, viewer, channelID string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(WithViewer(t.Context(), viewer), 200*time.Millisecond)
 	defer cancel()
-	if _, _, err := m.MediaPlaylist(ctx, channelID, PlanBaseline, string(Format4KHDR)+".m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := m.MediaPlaylist(ctx, channelID, string(Format4KHDR)+".m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("premium play on %s: err = %v, want the wait for its first segment", channelID, err)
 	}
 }
@@ -173,7 +173,7 @@ func takePremium(t *testing.T, m *PackagerHLS, viewer, channelID string) {
 // the master through, which waits for the premium lookup and so for any premium warm it started.
 func warmNeighbour(t *testing.T, m *PackagerHLS, viewer, channelID string) (string, error) {
 	t.Helper()
-	lease, err := m.acquirePlaylist(channelID, PlanBaseline, true, viewer)
+	lease, err := m.acquirePlaylist(channelID, true, viewer)
 	if err != nil {
 		return "", err
 	}
@@ -243,7 +243,7 @@ func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
 		}
 		release()
 		ctx, cancel := context.WithTimeout(WithViewer(t.Context(), "tv"), 50*time.Millisecond)
-		_, _, err = m.MediaPlaylist(ctx, "neighbour", PlanBaseline, string(class)+".m3u8", true)
+		_, _, err = m.MediaPlaylist(ctx, "neighbour", string(class)+".m3u8", true)
 		cancel()
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("warm %s: %v", class, err)
@@ -263,7 +263,7 @@ func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
 		{"tv", "cold", FormatBaseline}, {"tv", "cold", Format4KHDR}, {"unknown", "neighbour", Format4KHDR},
 	} {
 		ctx := WithViewer(t.Context(), tc.viewer)
-		if _, ok, err := m.MediaPlaylist(ctx, tc.channel, PlanBaseline, string(tc.class)+".m3u8", true); ok || err != nil {
+		if _, ok, err := m.MediaPlaylist(ctx, tc.channel, string(tc.class)+".m3u8", true); ok || err != nil {
 			t.Fatalf("warm miss %+v = %v, %v", tc, ok, err)
 		}
 	}
@@ -273,7 +273,7 @@ func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
 	// The subsequent real poll still promotes normally and learns the client's actual choice.
 	ctx, cancel := context.WithTimeout(WithViewer(t.Context(), "real"), 50*time.Millisecond)
 	defer cancel()
-	_, _, err = m.MediaPlaylist(ctx, "neighbour", PlanBaseline, string(Format4KHDR)+".m3u8", false)
+	_, _, err = m.MediaPlaylist(ctx, "neighbour", string(Format4KHDR)+".m3u8", false)
 	if !errors.Is(err, context.DeadlineExceeded) || !m.takesPremium("real") {
 		t.Fatalf("real poll: %v", err)
 	}

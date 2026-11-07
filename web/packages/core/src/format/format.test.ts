@@ -13,11 +13,46 @@ import {
   formatRuntime,
   formatUntil,
   formatUptime,
+  goDurationMinutes,
   humanizeRelaxation,
   humanizeSettingKey,
   parseMmSs,
   pluralize,
+  tidyGoDuration,
 } from "./format";
+
+describe("Go-duration wire strings", () => {
+  it("drops the zero units Go's Duration.String() writes", () => {
+    expect(tidyGoDuration("30h0m0s")).toBe("30h");
+    expect(tidyGoDuration("1h30m0s")).toBe("1h30m");
+    expect(tidyGoDuration("168h")).toBe("168h");
+  });
+
+  it("reads a zero or absent duration as empty, for the caller to name", () => {
+    expect(tidyGoDuration(undefined)).toBe("");
+    expect(tidyGoDuration("0s")).toBe("");
+    expect(tidyGoDuration("0h0m0s")).toBe("");
+  });
+
+  it("leaves text that is not a duration visible", () => {
+    expect(tidyGoDuration("a week")).toBe("a week");
+  });
+
+  it("counts minutes in the long and short forms", () => {
+    expect(goDurationMinutes("4h0m0s")).toBe(240);
+    expect(goDurationMinutes("1h30m0s")).toBe(90);
+    expect(goDurationMinutes("2m")).toBe(2);
+    expect(goDurationMinutes("1.5h")).toBe(90);
+    expect(goDurationMinutes("90s")).toBe(1.5);
+    expect(goDurationMinutes(" 4h ")).toBe(240);
+  });
+
+  it("refuses anything else rather than guessing", () => {
+    expect(goDurationMinutes(undefined)).toBeUndefined();
+    expect(goDurationMinutes("")).toBeUndefined();
+    expect(goDurationMinutes("4 hours")).toBeUndefined();
+  });
+});
 
 describe("formatters", () => {
   it("formats durations", () => {

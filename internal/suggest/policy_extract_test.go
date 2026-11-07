@@ -6,13 +6,15 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // kidsIntent is an intent that signals a kids/teen audience, so a proposed audience ceiling
 // is KEPT (§4/§8). Ceiling tests use it; a no-signal Intent{} would drop the ceiling.
-func kidsIntent() Intent { return Intent{Description: "cartoons for kids"} }
+func kidsIntent() Intent { return Intent{Intent: proposal.Intent{Description: "cartoons for kids"}} }
 
 // shipped is the holiday definitions the grounding tests judge by.
 var shipped = holidayvocab.Default()
@@ -86,7 +88,7 @@ func TestGroundPolicy_ModelHolidayIdsAreHeldToTheDefinitions(t *testing.T) {
 		raw := &pickPolicy{}
 		raw.Seasonal.Mode = "exclusive"
 		raw.Seasonal.Holidays = tc.holidays
-		p := groundPolicy(raw, nil, nil, Intent{Description: "cozy festive films"}, shipped)
+		p := groundPolicy(raw, nil, nil, Intent{Intent: proposal.Intent{Description: "cozy festive films"}}, shipped)
 		if !reflect.DeepEqual(p.Seasonal, tc.want) {
 			t.Errorf("%s: seasonal = %+v, want %+v", tc.name, p.Seasonal, tc.want)
 		}
@@ -148,7 +150,7 @@ func TestGroundPolicy_NilIsEmpty(t *testing.T) {
 func TestGroundPolicy_PicksNeverRaiseChildSafetyCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-G" // rank 2 — stricter than the pick
-	lineup := []ProposalItem{
+	lineup := []proposal.ProposalItem{
 		{Name: "The Mudpuddles", OfficialRating: "TV-PG"}, // rank 3
 	}
 	p := groundPolicy(raw, lineup, nil, kidsIntent(), shipped)
@@ -161,7 +163,7 @@ func TestGroundPolicy_PicksNeverRaiseChildSafetyCeiling(t *testing.T) {
 func TestGroundPolicy_ChildSafetyClampsLooserModelCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-PG" // rank 3
-	lineup := []ProposalItem{
+	lineup := []proposal.ProposalItem{
 		{Name: "Kids Show", OfficialRating: "TV-Y7"}, // rank 1 — below the ceiling
 	}
 	p := groundPolicy(raw, lineup, nil, kidsIntent(), shipped)
@@ -174,7 +176,7 @@ func TestGroundPolicy_ChildSafetyClampsLooserModelCeiling(t *testing.T) {
 func TestGroundPolicy_UnratedPickDoesNotChangeCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-Y7"
-	lineup := []ProposalItem{
+	lineup := []proposal.ProposalItem{
 		{Name: "Mystery", OfficialRating: ""},        // unrated → ignored by the guard
 		{Name: "Also Mystery", OfficialRating: "??"}, // off-ladder → ignored
 	}
@@ -185,7 +187,7 @@ func TestGroundPolicy_UnratedPickDoesNotChangeCeiling(t *testing.T) {
 }
 
 func TestGroundPolicy_ChildSafetySurvivesOmittedModelPolicy(t *testing.T) {
-	p := groundPolicy(nil, nil, nil, Intent{Description: "bright, silly, kid-safe cartoons"}, shipped)
+	p := groundPolicy(nil, nil, nil, Intent{Intent: proposal.Intent{Description: "bright, silly, kid-safe cartoons"}}, shipped)
 	if p.Audience.Ceiling != "TV-Y7" {
 		t.Errorf("ceiling = %q, want TV-Y7 when the model omits the safety policy", p.Audience.Ceiling)
 	}
@@ -198,7 +200,7 @@ func TestGroundPolicy_NoKidsSignalDropsProposedCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-14" // a small model reflexively caps "action"
 	// An adult-themed intent with no kids/family/teen words.
-	intent := Intent{Description: "1980s action heroes", Era: "1980s", Tone: "high-energy"}
+	intent := Intent{Intent: proposal.Intent{Description: "1980s action heroes", Era: "1980s", Tone: "high-energy"}}
 	p := groundPolicy(raw, nil, nil, intent, shipped)
 	if p.Audience.Ceiling != "" {
 		t.Errorf("ceiling = %q, want \"\" (no kids signal → no ceiling, adult-default)", p.Audience.Ceiling)
@@ -214,7 +216,7 @@ func TestGroundPolicy_YoungAudienceSignalKeepsOrClampsCeiling(t *testing.T) {
 	} {
 		raw := &pickPolicy{}
 		raw.Audience.Ceiling = "TV-Y7"
-		p := groundPolicy(raw, nil, nil, Intent{Description: desc}, shipped)
+		p := groundPolicy(raw, nil, nil, Intent{Intent: proposal.Intent{Description: desc}}, shipped)
 		if p.Audience.Ceiling != "TV-Y7" {
 			t.Errorf("intent %q: ceiling = %q, want TV-Y7 (kids signal keeps it)", desc, p.Audience.Ceiling)
 		}
@@ -222,7 +224,7 @@ func TestGroundPolicy_YoungAudienceSignalKeepsOrClampsCeiling(t *testing.T) {
 	for _, desc := range []string{"cartoons for kids", "Saturday morning cartoons", "wholesome shows for children"} {
 		raw := &pickPolicy{}
 		raw.Audience.Ceiling = "TV-PG"
-		p := groundPolicy(raw, nil, nil, Intent{Description: desc}, shipped)
+		p := groundPolicy(raw, nil, nil, Intent{Intent: proposal.Intent{Description: desc}}, shipped)
 		if p.Audience.Ceiling != "TV-Y7" {
 			t.Errorf("intent %q: ceiling = %q, want TV-Y7 child-safety clamp", desc, p.Audience.Ceiling)
 		}
@@ -234,7 +236,7 @@ func TestGroundPolicy_KidsSignalFromOtherIntentFields(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-G"
 	// No kids word in the description; the signal is in MustInclude.
-	p := groundPolicy(raw, nil, nil, Intent{Description: "animated films", MustInclude: []string{"kids classics"}}, shipped)
+	p := groundPolicy(raw, nil, nil, Intent{Intent: proposal.Intent{Description: "animated films", MustInclude: []string{"kids classics"}}}, shipped)
 	if p.Audience.Ceiling != "TV-G" {
 		t.Errorf("ceiling = %q, want TV-G (kids signal from mustInclude keeps it)", p.Audience.Ceiling)
 	}
@@ -244,7 +246,7 @@ func TestGroundPolicy_KidsSignalFromOtherIntentFields(t *testing.T) {
 func TestGroundPolicy_AdultPickCannotChangeChildSafetyCeiling(t *testing.T) {
 	raw := &pickPolicy{}
 	raw.Audience.Ceiling = "TV-Y7" // rank 1
-	lineup := []ProposalItem{
+	lineup := []proposal.ProposalItem{
 		{Name: "Cartoon", OfficialRating: "TV-Y7"}, // fine
 		{Name: "A Mistake", OfficialRating: "R"},   // rank 5 — must NOT pull the ceiling up
 	}
@@ -254,11 +256,11 @@ func TestGroundPolicy_AdultPickCannotChangeChildSafetyCeiling(t *testing.T) {
 	}
 }
 
-func series(tmdbID int, name string) ProposalItem {
-	return ProposalItem{MediaType: provision.Series, TMDBID: tmdbID, Name: name}
+func series(tmdbID int, name string) proposal.ProposalItem {
+	return proposal.ProposalItem{MediaType: provision.Series, TMDBID: tmdbID, Name: name}
 }
-func movie(tmdbID int, name string) ProposalItem {
-	return ProposalItem{MediaType: provision.Movie, TMDBID: tmdbID, Name: name}
+func movie(tmdbID int, name string) proposal.ProposalItem {
+	return proposal.ProposalItem{MediaType: provision.Movie, TMDBID: tmdbID, Name: name}
 }
 
 // THE MULTI-SERIES FIX: a lineup with ≥2 distinct series and NO ordering picked by the model
@@ -267,7 +269,7 @@ func movie(tmdbID int, name string) ProposalItem {
 // rerun network rather than a chronological box set.
 func TestGroundPolicy_MultiSeriesDefaultsToSyndication(t *testing.T) {
 	raw := &pickPolicy{} // model omitted ordering
-	lineup := []ProposalItem{series(90000001, "Cold Relay"), series(90000002, "Ferrocene Station"), series(90000003, "Glasshouse Nebula")}
+	lineup := []proposal.ProposalItem{series(90000001, "Cold Relay"), series(90000002, "Ferrocene Station"), series(90000003, "Glasshouse Nebula")}
 	p := groundPolicy(raw, lineup, nil, Intent{}, shipped)
 	if p.Ordering != schedule.OrderSyndication {
 		t.Errorf("ordering = %q, want syndication (multi-series default)", p.Ordering)
@@ -279,7 +281,7 @@ func TestGroundPolicy_MultiSeriesDefaultsToSyndication(t *testing.T) {
 // show to syndication would intermix it with nothing and pointlessly scramble episode order.
 func TestGroundPolicy_SingleSeriesStaysInherit(t *testing.T) {
 	raw := &pickPolicy{}
-	lineup := []ProposalItem{series(90000001, "The Mudpuddles"), series(90000001, "The Mudpuddles")} // same show twice → 1 distinct
+	lineup := []proposal.ProposalItem{series(90000001, "The Mudpuddles"), series(90000001, "The Mudpuddles")} // same show twice → 1 distinct
 	p := groundPolicy(raw, lineup, nil, Intent{}, shipped)
 	if p.Ordering != schedule.OrderInherit {
 		t.Errorf("ordering = %q, want inherit (single distinct series is not multi-series)", p.Ordering)
@@ -290,7 +292,7 @@ func TestGroundPolicy_SingleSeriesStaysInherit(t *testing.T) {
 // it stays inherit. (Conservative reading of §5 — a one-show-plus-movies channel keeps order.)
 func TestGroundPolicy_OneSeriesPlusMoviesStaysInherit(t *testing.T) {
 	raw := &pickPolicy{}
-	lineup := []ProposalItem{series(90000001, "Quasar Quartet"), movie(90000010, "B-Movie A"), movie(90000011, "B-Movie B")}
+	lineup := []proposal.ProposalItem{series(90000001, "Quasar Quartet"), movie(90000010, "B-Movie A"), movie(90000011, "B-Movie B")}
 	p := groundPolicy(raw, lineup, nil, Intent{}, shipped)
 	if p.Ordering != schedule.OrderInherit {
 		t.Errorf("ordering = %q, want inherit (one series + movies is not multi-series)", p.Ordering)
@@ -301,7 +303,7 @@ func TestGroundPolicy_OneSeriesPlusMoviesStaysInherit(t *testing.T) {
 // asks for a chronological multi-show marathon gets sequential, not an override to syndication.
 func TestGroundPolicy_ExplicitOrderingWinsOverMultiSeriesDefault(t *testing.T) {
 	raw := &pickPolicy{Ordering: "sequential"}
-	lineup := []ProposalItem{series(90000001, "Cold Relay"), series(90000002, "Ferrocene Station")}
+	lineup := []proposal.ProposalItem{series(90000001, "Cold Relay"), series(90000002, "Ferrocene Station")}
 	p := groundPolicy(raw, lineup, nil, Intent{}, shipped)
 	if p.Ordering != schedule.OrderSequential {
 		t.Errorf("ordering = %q, want sequential (explicit model choice wins)", p.Ordering)
@@ -319,7 +321,7 @@ func TestGroundRules_WeekendMarathon(t *testing.T) {
 	raw := &pickPolicy{Rules: []pickRule{
 		{When: "weekend", What: "series:" + string(key), How: "marathon"},
 	}}
-	p := groundPolicy(raw, []ProposalItem{relay, series(90000002, "Ferrocene Station")}, nil, Intent{}, shipped)
+	p := groundPolicy(raw, []proposal.ProposalItem{relay, series(90000002, "Ferrocene Station")}, nil, Intent{}, shipped)
 	if len(p.Rules) != 1 {
 		t.Fatalf("want 1 grounded rule, got %d", len(p.Rules))
 	}
@@ -354,7 +356,7 @@ func TestGroundRules_SeriesScopeIntersectedWithGroundedPicks(t *testing.T) {
 	raw := &pickPolicy{Rules: []pickRule{
 		{When: "weekend", What: "series:series:tvdb:90099999", How: "marathon"}, // not a grounded pick
 	}}
-	p := groundPolicy(raw, []ProposalItem{relay}, nil, Intent{}, shipped)
+	p := groundPolicy(raw, []proposal.ProposalItem{relay}, nil, Intent{}, shipped)
 	if len(p.Rules) != 1 {
 		t.Fatalf("rule should survive (timing valid), got %d", len(p.Rules))
 	}
@@ -388,7 +390,7 @@ func TestGroundPolicy_ExplicitAudienceMaximumForms(t *testing.T) {
 					raw.Audience.Ceiling = "R"
 					raw.Audience.Unrated = "allow"
 				}
-				p := groundPolicy(raw, nil, nil, Intent{Description: description}, shipped)
+				p := groundPolicy(raw, nil, nil, Intent{Intent: proposal.Intent{Description: description}}, shipped)
 				if p.Audience.Ceiling != "PG" {
 					t.Fatalf("ceiling = %q, want PG", p.Audience.Ceiling)
 				}
@@ -401,11 +403,11 @@ func TestGroundPolicy_ExplicitUnratedExclusionSurvivesModel(t *testing.T) {
 	for _, description := range []string{"Family movies, capped at PG; exclude unrated titles.", "Action movies; exclude unrated titles."} {
 		raw := &pickPolicy{}
 		raw.Audience.Unrated = "allow"
-		p := groundPolicy(raw, nil, nil, Intent{Description: description}, shipped)
+		p := groundPolicy(raw, nil, nil, Intent{Intent: proposal.Intent{Description: description}}, shipped)
 		if p.Audience.Unrated != schedule.UnratedExclude {
 			t.Fatalf("%q: unrated = %q", description, p.Audience.Unrated)
 		}
-		lineup, acquisitions, refused := refuseUnairable(p.Audience, []ProposalItem{{Name: "Unknown"}}, []ProposalItem{{Name: "Unknown acquisition"}}, false)
+		lineup, acquisitions, refused := refuseUnairable(p.Audience, []proposal.ProposalItem{{Name: "Unknown"}}, []proposal.ProposalItem{{Name: "Unknown acquisition"}}, false)
 		if len(lineup)+len(acquisitions) != 0 || len(refused) != 2 {
 			t.Fatalf("unknown ratings remain actionable: %v %v %v", lineup, acquisitions, refused)
 		}
@@ -415,7 +417,7 @@ func TestGroundPolicy_ExplicitUnratedExclusionSurvivesModel(t *testing.T) {
 func TestGroundPolicy_AudienceMaximumBoundaries(t *testing.T) {
 	for _, tc := range []struct {
 		description string
-		ceiling     schedule.Rating
+		ceiling     rating.Rating
 	}{
 		{"Movies capped at PG-13", "PG-13"}, {"Movies capped at R", "R"},
 		{"Movies capped at R, with a PG maximum", "PG"},
@@ -424,13 +426,13 @@ func TestGroundPolicy_AudienceMaximumBoundaries(t *testing.T) {
 		{"Movies capped at PG-13x", ""},
 		{"Movies capped at R; rated G", "G"},
 	} {
-		p := groundPolicy(nil, nil, nil, Intent{Description: tc.description}, shipped)
+		p := groundPolicy(nil, nil, nil, Intent{Intent: proposal.Intent{Description: tc.description}}, shipped)
 		if p.Audience.Ceiling != tc.ceiling {
 			t.Errorf("%q: ceiling=%q, want %q", tc.description, p.Audience.Ceiling, tc.ceiling)
 		}
 	}
 	for _, description := range []string{"Do not exclude unrated movies", "Don't exclude unrated movies", "Never exclude unrated movies", "Movies about unrated film reviews"} {
-		p := groundPolicy(nil, nil, nil, Intent{Description: description}, shipped)
+		p := groundPolicy(nil, nil, nil, Intent{Intent: proposal.Intent{Description: description}}, shipped)
 		if p.Audience.Unrated != schedule.UnratedDefault {
 			t.Errorf("%q inferred unrated exclusion", description)
 		}
@@ -439,7 +441,7 @@ func TestGroundPolicy_AudienceMaximumBoundaries(t *testing.T) {
 
 func TestAudienceConstraintsInvalidateUnrestrictedProposalCache(t *testing.T) {
 	const old = "cbca5d0b2f22e5e3d30eba2f359606433553057c51482782d6053155ac7a7d1e"
-	intent := Intent{Description: "Family movies, capped at PG; exclude unrated titles. Keep the audience cap on every scheduled movie."}
+	intent := proposal.Intent{Description: "Family movies, capped at PG; exclude unrated titles. Keep the audience cap on every scheduled movie."}
 	if IntentHash(intent) == old {
 		t.Fatal("reused proposal cache identity that lost the requested audience restrictions")
 	}

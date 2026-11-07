@@ -28,9 +28,8 @@ import (
 type AutoSplitPolicy struct {
 	// Enabled reports whether auto-confirm is on at all.
 	//
-	// ⚠ Must be backed by a FAIL-CLOSED read (`boolv`, not `boolOn`). When
-	// the settings service cannot answer, the safe answer is "don't cut" — failing open would
-	// consume compilations unattended precisely when the install is degraded.
+	// Backed by the `filler.autosplit.enabled` handle, so a reader that cannot answer reads the
+	// setting's declared default (on). Without a store there is no catalog for the gate to cut.
 	Enabled func() bool
 	// MinConfidence is the score every segment must reach. Bounded 50-95 by the registry.
 	MinConfidence func() int

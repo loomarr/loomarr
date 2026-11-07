@@ -173,7 +173,6 @@ describe("Incoming", () => {
                 processing: {
                   attempts: 2,
                   nextTryAt: "2026-09-14T20:05:00Z",
-                  diagnosticsHref: "/filler/manage#diagnostics",
                   stages: [
                     {
                       label: "Checking video",
@@ -214,10 +213,7 @@ describe("Incoming", () => {
     await userEvent.click(screen.getByText("Processing details"));
     expect(screen.getByText("This step was tried 2 times.")).toBeVisible();
     expect(screen.getByText("This step did not finish. Loomarr will try again automatically.")).toBeVisible();
-    expect(screen.getByRole("link", { name: "View diagnostics" })).toHaveAttribute(
-      "href",
-      "/filler/manage#diagnostics",
-    );
+    expect(screen.queryByRole("link", { name: "View diagnostics" })).not.toBeInTheDocument();
   });
 
   it("adds the next bounded page without replacing visible rows", async () => {

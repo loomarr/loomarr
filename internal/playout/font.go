@@ -3,6 +3,8 @@ package playout
 import (
 	"os"
 	"sync"
+
+	"github.com/loomarr/loomarr/internal/config"
 )
 
 // Font discovery for the test/offline card's `drawtext` filter.
@@ -52,7 +54,7 @@ const FontPathEnv = "PLAYOUT_FONT_PATH"
 // FindFont returns a usable font file, or "" when there is none. "" is a supported
 // answer, not a failure: the card renders as a plain colour field (see drawTextFilter).
 func FindFont() string {
-	if p := os.Getenv(FontPathEnv); p != "" && fileExists(p) {
+	if p, _ := config.LookupEnv(FontPathEnv); p != "" && fileExists(p) {
 		return p
 	}
 	for _, p := range fontCandidates {

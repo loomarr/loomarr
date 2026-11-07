@@ -36,8 +36,8 @@ func (s Style) Coloured() bool {
 	return s == StyleTint || s == StyleTwotone || s == StyleBadge || s == StyleStripe
 }
 
-// Colour is a design-token colour by its plain name (web/packages/tokens, tokens.ts: the "on" value,
-// the one drawn on dark surfaces, which the mock uses).
+// Colour is a design-token colour by its plain name (web/packages/design-system/src/tokens/web-theme:
+// the "on" value, the one drawn on dark surfaces, which the mock uses).
 type Colour string
 
 const (

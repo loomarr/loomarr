@@ -1,13 +1,13 @@
 package suggest
 
 import (
-	"encoding/json"
 	"regexp"
 	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/textmatch"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -15,9 +15,9 @@ import (
 
 // score describes only surviving grounded picks. Date evidence comes from the
 // validated interpretation used by admission; there is no second date parser.
-func score(intent Intent, lineup, acquisitions []ProposalItem, meaning ValidatedDateMeaning) Scores {
-	items := append(append([]ProposalItem{}, lineup...), acquisitions...)
-	s := Scores{Version: 1}
+func score(intent Intent, lineup, acquisitions []proposal.ProposalItem, meaning ValidatedDateMeaning) proposal.Scores {
+	items := append(append([]proposal.ProposalItem{}, lineup...), acquisitions...)
+	s := proposal.Scores{Version: 1}
 	s.ThemeFit, s.Theme = themeFit(themeIntent(intent, meaning), items)
 	s.EraBalance, s.Era = eraAdherence(items, meaning)
 	if len(items) > 0 {
@@ -26,8 +26,8 @@ func score(intent Intent, lineup, acquisitions []ProposalItem, meaning Validated
 	return s
 }
 
-func themeFit(intent Intent, items []ProposalItem) (*float64, ThemeEvidence) {
-	e := ThemeEvidence{Status: "unassessed", Basis: "none", Qualifiers: []QualifierEvidence{}}
+func themeFit(intent Intent, items []proposal.ProposalItem) (*float64, proposal.ThemeEvidence) {
+	e := proposal.ThemeEvidence{Status: "unassessed", Basis: "none", Qualifiers: []proposal.QualifierEvidence{}}
 	if requiresMembershipEvidence(intent) && allItemsHaveMembershipEvidence(intent, items, nil) {
 		e.Status, e.Basis, e.AssessedItems = "supported", "named_membership", len(items)
 		return scoreValue(1), e
@@ -38,7 +38,7 @@ func themeFit(intent Intent, items []ProposalItem) (*float64, ThemeEvidence) {
 	}
 	e.Basis = "qualifiers"
 	for _, term := range terms {
-		e.Qualifiers = append(e.Qualifiers, QualifierEvidence{Term: term})
+		e.Qualifiers = append(e.Qualifiers, proposal.QualifierEvidence{Term: term})
 	}
 	// Scope is an Intent property. Computing it per item/qualifier repeats Unicode
 	// normalization and phrase matching without changing the answer.
@@ -73,8 +73,8 @@ func themeFit(intent Intent, items []ProposalItem) (*float64, ThemeEvidence) {
 	return scoreValue(value), e
 }
 
-func allItemsHaveMembershipEvidence(intent Intent, lineup, acquisitions []ProposalItem) bool {
-	items := append(append([]ProposalItem{}, lineup...), acquisitions...)
+func allItemsHaveMembershipEvidence(intent Intent, lineup, acquisitions []proposal.ProposalItem) bool {
+	items := append(append([]proposal.ProposalItem{}, lineup...), acquisitions...)
 	if len(items) == 0 || len(intent.membershipKeys) == 0 {
 		return false
 	}
@@ -115,7 +115,7 @@ func canonicalQualifier(term string) string {
 	return term
 }
 
-func supportsQualifier(item ProposalItem, term string) bool {
+func supportsQualifier(item proposal.ProposalItem, term string) bool {
 	hay := strings.Join(append(append(append(append([]string{item.Overview}, item.Genres...), item.Keywords...), item.Networks...), append(item.Cast, item.Creators...)...), " ")
 	variants := qualifierEquivalents[term]
 	if len(variants) == 0 {
@@ -320,8 +320,8 @@ func themeIntent(intent Intent, meaning ValidatedDateMeaning) Intent {
 	return intent
 }
 
-func eraAdherence(items []ProposalItem, meaning ValidatedDateMeaning) (*float64, EraEvidence) {
-	e := EraEvidence{Status: "not_requested"}
+func eraAdherence(items []proposal.ProposalItem, meaning ValidatedDateMeaning) (*float64, proposal.EraEvidence) {
+	e := proposal.EraEvidence{Status: "not_requested"}
 	axes := meaning.ExecutionWindows()
 	if len(axes) == 0 {
 		return nil, e
@@ -367,21 +367,3 @@ func eraAdherence(items []ProposalItem, meaning ValidatedDateMeaning) (*float64,
 }
 
 func scoreValue(value float64) *float64 { return &value }
-
-// UnmarshalJSON applies the assessment contract at the persisted-domain boundary,
-// shared by Proposal lists and Journey responses. Old percentages cannot acquire
-// the new meaning merely by being decoded into fields with the same wire names.
-func (s *Scores) UnmarshalJSON(data []byte) error {
-	type wire Scores
-	var decoded wire
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	*s = Scores(decoded)
-	if s.Version != 1 {
-		s.ThemeFit, s.EraBalance = nil, nil
-		s.Theme = ThemeEvidence{Status: "unassessed", Basis: "none", Qualifiers: []QualifierEvidence{}}
-		s.Era = EraEvidence{Status: "unassessed"}
-	}
-	return nil
-}

@@ -207,7 +207,7 @@ func TestBootstrapSearchStopsOnAMalformedFile(t *testing.T) {
 	if err := WriteBootstrapFile(good, map[string]string{"LOG_LEVEL": "debug"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadBootstrapSearch([]string{bad, good}); err == nil {
+	if _, _, err := loadBootstrapSearch([]string{bad, good}); err == nil {
 		t.Fatal("a malformed first file must fail the boot, not fall through to the second")
 	}
 }
@@ -219,9 +219,12 @@ func TestBootstrapSearchFallsThroughAMissingFile(t *testing.T) {
 	if err := WriteBootstrapFile(good, map[string]string{"DATABASE_URL": "postgres://u:p@db:5432/loomarr"}); err != nil {
 		t.Fatal(err)
 	}
-	values, err := loadBootstrapSearch([]string{missing, good})
+	values, foundIn, err := loadBootstrapSearch([]string{missing, good})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if foundIn != good {
+		t.Errorf("foundIn = %q, want the second directory %q", foundIn, good)
 	}
 	if values["DATABASE_URL"] != "postgres://u:p@db:5432/loomarr" {
 		t.Errorf("DATABASE_URL = %q, want the value from the second directory", values["DATABASE_URL"])
@@ -234,7 +237,7 @@ func TestUpdateBootstrapFilePreservesOtherBootChoices(t *testing.T) {
 		"DATABASE_URL": "sqlite:///data/loomarr.db",
 		"LISTEN_ADDR":  ":9090",
 		"LOG_LEVEL":    "debug",
-		"TZ":           "America/New_York",
+		"DATA_DIR":     "/srv/loomarr",
 		"AUTO_MIGRATE": "false",
 	}); err != nil {
 		t.Fatal(err)
@@ -251,7 +254,7 @@ func TestUpdateBootstrapFilePreservesOtherBootChoices(t *testing.T) {
 	}
 	if values["DATABASE_URL"] != "postgres://u:p@db:5432/loomarr" ||
 		values["LISTEN_ADDR"] != ":9090" || values["LOG_LEVEL"] != "debug" ||
-		values["TZ"] != "America/New_York" || values["AUTO_MIGRATE"] != "false" {
+		values["DATA_DIR"] != "/srv/loomarr" || values["AUTO_MIGRATE"] != "false" {
 		t.Fatalf("updated bootstrap values = %#v", values)
 	}
 }

@@ -7,7 +7,7 @@ place. A new dependency adds its row here in the same PR (AGENTS.md).
 actions use digests or commit SHAs; Renovate proposes the next exact pin. Peer ranges are
 compatibility contracts only. A platform hold (for example Expo's) stays exact and is documented next
 to the dependency. The native clients pin Expo SDK 58 stable and take every native module version
-from its `bundledNativeModules` catalog (React Native 0.88 through `react-native-tvos` 0.88.0-0, which
+from its `bundledNativeModules` catalog (React Native 0.88 through `react-native-tvos` 0.88.1-0, which
 requires React 19.3.0); expo-doctor enforces it. Metro 0.87.1 measures image assets with its own
 parser chosen by the declared asset type, so the former `image-size@1.2.1` source patch (#1162) is
 retired; `web/scripts/metro-asset-size.test.mjs` keeps the malformed ICNS/JXL/HEIF payloads failing,
@@ -46,6 +46,7 @@ exact React Native the app installs.
 | SSO | `coreos/go-oidc/v3`, `x/oauth2`, `go-jose/v4` | JWKS verification, rotation and claim checks are not code to hand-roll |
 | Email | `wneessen/go-mail` | context-aware SMTP with explicit TLS policy and MIME composition, behind the delivery port |
 | Web Push | `SherClockHolmes/webpush-go` | RFC 8291 encryption and VAPID without local crypto code, behind the push adapter |
+| MQTT | `eclipse/paho.mqtt.golang` | the reference MQTT 3.1.1 client, so every broker the notification adapter reaches speaks the same protocol; our own dialer keeps TLS verification and cancellation |
 | Leak detection (tests) | `go.uber.org/goleak` | proves the in-process restart loop leaks no goroutines |
 | Model providers | hand-written clients over plain `net/http` for the Ollama API and OpenAI-compatible endpoints | one compatible client covers hosted providers and local servers; no vendor SDK |
 | Web references, release notes, model discovery | plain `net/http` | public page evidence for Intents; release-note classification; Hugging Face model listing; no SDKs |
@@ -92,7 +93,8 @@ replace local transcription and vision; those modalities stay operator choices.
 | Unused code | `knip` 6 (root devDependency, `web/knip.ts`) and Go `deadcode` (`go run`, never a `go.mod` dependency) | knip fails `make fe` on a new unused file, export or dependency; `deadcode` cannot see code reached only from build-tagged tests, so it reports monthly against a committed baseline (`deadcode.yml`) instead of gating. Neither ships in the product |
 | Web routing | TanStack Router | typed routes sharing the Query client |
 | Legacy web styling | Tailwind + shadcn/ui on Base UI + CVA | only on surfaces not yet migrated (#970); removed when migration completes |
-| Legacy usage ledger | `@babel/parser` (root devDependency; TypeScript 7 has no JS parser API) | `web/scripts/check-legacy-usage.mjs` counts the legacy stack per production file against `web/apps/web/legacy-usage.json`; `make fe` fails when a count rises or a new file appears, and `pnpm legacy:update` only shrinks it (#970). Never ships in the product |
+| Web dialog behaviour | `@base-ui/react` Dialog, behind `@loomarr/design-system`'s `Dialog` (`dialog.web.tsx`; native is a React Native `Modal`) | focus trap, Escape, outside press, labelling, scroll lock and focus return without a hand-rolled modal (#2147). Callers never import Base UI for a dialog |
+| Legacy usage ledger | `@babel/parser` (root devDependency; TypeScript 7 has no JS parser API) | `web/scripts/check-legacy-usage.mjs` counts the legacy stack per production file against `web/apps/web/legacy-usage.json`; `make fe` fails when a count rises or a new file appears, and `pnpm legacy:update` only shrinks it (#970). Its `RETIRED` list names the last files allowed to import a copied component the design system has replaced, or its Base UI primitive; any other file fails, tests and stories included, and an unused allowance fails too (#2147). Never ships in the product |
 | Lineup reordering | `@dnd-kit` | accessible, keyboard-capable sortable list |
 | Web previews | `react-dom` portal behind the shared design system | keep contextual detail outside scrolling and clipping ancestors; native adapters do not load the web renderer |
 | DOM test environment | jsdom 30.0.1 | exercise preview focus, pointer and viewport lifecycles without a browser; the shared UI package uses the same exact pin |

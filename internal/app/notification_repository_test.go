@@ -8,13 +8,13 @@ import (
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-func notificationRepositoryForTest(t *testing.T, st store.Store) notificationServiceRepository {
+func notificationRepositoryForTest(t *testing.T, st store.Store) *notifications.ProtectedRepository {
 	t.Helper()
 	protection, err := buildSecretProtection(t.Context(), st, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	destinations := notifications.NewProtectedDestinationRepository(st, protection)
+	destinations := notifications.NewProtectedRepository(st, protection)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	if err := destinations.SaveNotificationDestination(t.Context(), notifications.Destination{
 		ID: "smtp-test", Means: notifications.MeansEmail, Label: "SMTP",
@@ -28,8 +28,5 @@ func notificationRepositoryForTest(t *testing.T, st store.Store) notificationSer
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return notificationServiceRepository{
-		Store:        st,
-		destinations: destinations,
-	}
+	return destinations
 }

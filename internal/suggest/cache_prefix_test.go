@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -24,7 +24,7 @@ func TestSuggest_EveryTurnSendsIdenticalToolsAndFinalizesWithToolChoiceNone(t *t
 	)
 	model.PrefixCache = true // a self-hosted llama.cpp slot
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action films"}); err != nil {
+	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "action films"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(model.AllOpts) != 3 {
@@ -68,7 +68,7 @@ func TestSuggest_HostedProviderFinalizationStillDropsTools(t *testing.T) {
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{marigoldCandidate()}}
-	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action films"}); err != nil {
+	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), proposal.Intent{Description: "action films"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(model.AllOpts) != 2 || len(model.AllOpts[0].Tools) == 0 || len(model.AllOpts[1].Tools) != 0 || model.AllOpts[1].ToolChoice != "" {

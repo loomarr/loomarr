@@ -47,7 +47,7 @@ func TestInvitationEmailMintsBearerOnlyInsideClaimedAttemptsAndRotatesItBeforeRe
 	ids := 0
 	repository := notificationRepositoryForTest(t, st)
 	notificationService := notifications.NewService(repository, invitationEmailRouter{
-		invitations: invitationService, destinations: repository.destinations,
+		invitations: invitationService, destinations: repository,
 	}, []notifications.Adapter{adapter}, func() string {
 		ids++
 		return fmt.Sprintf("notification-%d", ids)
@@ -188,7 +188,7 @@ func TestPasswordRecoveryEmailUsesSharedWorkerAndKeepsBearerEphemeral(t *testing
 	ids := 0
 	repository := notificationRepositoryForTest(t, st)
 	notificationService := notifications.NewService(repository, invitationEmailRouter{
-		recovery: recoveryService, destinations: repository.destinations,
+		recovery: recoveryService, destinations: repository,
 	}, []notifications.Adapter{adapter}, func() string {
 		ids++
 		return fmt.Sprintf("recovery-notification-%d", ids)
@@ -309,7 +309,7 @@ func TestSMTPProviderRowTestUsesTheCommonDestinationQueue(t *testing.T) {
 		sequence++
 		return fmt.Sprintf("smtp-test-%d", sequence)
 	}, func() time.Time { return now })
-	destinations, err := repository.destinations.ListNotificationDestinationMetadata(ctx)
+	destinations, err := repository.ListNotificationDestinationMetadata(ctx)
 	if err != nil || len(destinations) != 1 {
 		t.Fatalf("SMTP providers = %+v, %v", destinations, err)
 	}

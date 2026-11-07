@@ -1,133 +1,14 @@
 package fillerstructureassessment
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
-
-// recordedAssessmentFixture is one accepted complete-timeline assessment of source, as an assessor
-// records it before the repository persists it.
-func recordedAssessmentFixture(source filler.SplitSourceAsset) fillerstructure.RecordedAssessment {
-	coreSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
-	profile := fillerstructure.AssessorProfile{
-		ID: "assessor-a", ModelFamily: "family-a", Provider: "captured", Model: "video-model",
-		ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),
-		PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1",
-	}
-	recorded, err := fillerstructure.NewAssessmentRecord(fillerstructure.AssessmentRecordInput{
-		Source: coreSource,
-		Media: fillerstructure.AssessmentMedia{
-			SHA256: strings.Repeat("9", 64), Bytes: 1_024, DurationMS: source.DurationMs,
-			ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64),
-		},
-		Assessor:               profile,
-		MetadataSnapshotSHA256: strings.Repeat("f", 64),
-		PromptSHA256:           fillerstructure.DirectVideoPromptSHA256(coreSource.DurationMS),
-		SchemaSHA256:           fillerstructure.DirectVideoSchemaSHA256(coreSource.DurationMS),
-		RequestSHA256:          strings.Repeat("1", 64), RawResponse: []byte(`{"id":"generation"}`),
-		StructuredOutput: `{"segments":[{"endMs":5000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"},{"endMs":10000,"role":"promo","decisiveAtMs":[7000],"reason":"promotion"}]}`,
-		ResolvedProvider: "captured", ResolvedModel: "video-model-revision",
-		UpstreamProvider: "provider", UpstreamProviderSlug: "provider-slug", GenerationID: "generation",
-		Tokens:           fillerstructure.AssessmentTokenUsage{Prompt: 100, Completion: 20, Video: 90},
-		RequestedNanoUSD: 1_000, ReservedNanoUSD: 1_000, ChargedAmountUSD: "0.0000005",
-		ChargedNanoUSD: 500, AccountedNanoUSD: 500, ChargeKnown: true,
-		State:      fillerstructure.AssessmentRecordAccepted,
-		AssessedAt: time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		panic(err)
-	}
-	return recorded
-}
-
-func TestFileStructureAssessmentEvidenceRepositoryRoundTripsAndReplays(t *testing.T) {
-	repository := structureEvidenceRepositoryFixture(t)
-	recorded := recordedAssessmentFixture(structureSource(10_000))
-	if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err != nil {
-		t.Fatal(err)
-	}
-	if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err != nil {
-		t.Fatalf("idempotent put: %v", err)
-	}
-	loaded, err := repository.GetStructureAssessmentEvidence(t.Context(), recorded.Record.SHA256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(loaded.RawResponse, recorded.RawResponse) || loaded.StructuredOutput != recorded.StructuredOutput || loaded.Record.SHA256 != recorded.Record.SHA256 {
-		t.Fatalf("loaded=%+v", loaded)
-	}
-	for _, path := range []string{
-		repository.blobPath("records", recorded.Record.SHA256),
-		repository.blobPath("responses", recorded.Record.ResponseSHA256),
-		repository.blobPath("outputs", recorded.Record.StructuredOutputSHA256),
-		repository.blobPath("assessment-publications", fillerstructure.AssessmentOperationSHA256(recorded.Record.Source, recorded.Record.Media, recorded.Record.Assessor)),
-	} {
-		info, statErr := os.Lstat(path)
-		if statErr != nil {
-			t.Fatalf("evidence path %s: %v", path, statErr)
-		}
-		if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
-			t.Fatalf("evidence path %s mode=%v", path, info.Mode())
-		}
-	}
-	found, ok, err := repository.FindStructureAssessmentEvidence(t.Context(), recorded.Record.Source, recorded.Record.Media, recorded.Record.Assessor)
-	if err != nil || !ok || found.Record.SHA256 != recorded.Record.SHA256 {
-		t.Fatalf("find completed operation=%+v ok=%v error=%v", found.Record, ok, err)
-	}
-}
-
-func TestFileStructureAssessmentEvidenceRepositoryRejectsConflictingOrMissingBlobs(t *testing.T) {
-	recorded := recordedAssessmentFixture(structureSource(10_000))
-	t.Run("conflicting output prevents record publication", func(t *testing.T) {
-		repository := structureEvidenceRepositoryFixture(t)
-		path := repository.blobPath("outputs", recorded.Record.StructuredOutputSHA256)
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("different"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err == nil {
-			t.Fatal("conflicting evidence was accepted")
-		}
-		if _, err := os.Lstat(repository.blobPath("records", recorded.Record.SHA256)); !os.IsNotExist(err) {
-			t.Fatalf("record published after blob conflict: %v", err)
-		}
-	})
-	t.Run("missing response invalidates replay", func(t *testing.T) {
-		repository := structureEvidenceRepositoryFixture(t)
-		if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Remove(repository.blobPath("responses", recorded.Record.ResponseSHA256)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := repository.GetStructureAssessmentEvidence(t.Context(), recorded.Record.SHA256); err == nil {
-			t.Fatal("record replayed without its raw response")
-		}
-	})
-	t.Run("detached publication invalidates resume", func(t *testing.T) {
-		repository := structureEvidenceRepositoryFixture(t)
-		if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err != nil {
-			t.Fatal(err)
-		}
-		operation := fillerstructure.AssessmentOperationSHA256(recorded.Record.Source, recorded.Record.Media, recorded.Record.Assessor)
-		path := repository.blobPath("assessment-publications", operation)
-		if err := os.WriteFile(path, []byte(`{"schemaVersion":1,"contractVersion":"filler-structure-assessment-publication-v1","operationSha256":"drifted"}`), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if _, _, err := repository.FindStructureAssessmentEvidence(t.Context(), recorded.Record.Source, recorded.Record.Media, recorded.Record.Assessor); err == nil {
-			t.Fatal("detached publication resumed")
-		}
-	})
-}
 
 func TestFileStructureAssessmentEvidenceRepositoryRejectsSymlinkedRoot(t *testing.T) {
 	parent := t.TempDir()
@@ -143,8 +24,7 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsSymlinkedRoot(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	recorded := recordedAssessmentFixture(structureSource(10_000))
-	if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err == nil {
+	if err := repository.PutStructureDecisionArtifact(t.Context(), structureDecisionArtifactFixture(t)); err == nil {
 		t.Fatal("symlinked evidence root was accepted")
 	}
 }
@@ -154,6 +34,21 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsMissingOrDriftedDecisio
 	if _, err := repository.GetStructureDecisionArtifact(t.Context(), strings.Repeat("a", 64)); err == nil {
 		t.Fatal("missing decision was accepted")
 	}
+	artifact := structureDecisionArtifactFixture(t)
+	if err := repository.PutStructureDecisionArtifact(t.Context(), artifact); err != nil {
+		t.Fatal(err)
+	}
+	path := repository.blobPath("decisions", artifact.SHA256)
+	if err := os.WriteFile(path, []byte(`{"sha256":"drifted"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.GetStructureDecisionArtifact(t.Context(), artifact.SHA256); err == nil {
+		t.Fatal("drifted decision was accepted")
+	}
+}
+
+func structureDecisionArtifactFixture(t *testing.T) fillerstructure.Artifact {
+	t.Helper()
 	source, input := structureDecisionRepositoryInput(t)
 	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
 		Source: source, Input: input,
@@ -166,16 +61,7 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsMissingOrDriftedDecisio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.PutStructureDecisionArtifact(t.Context(), artifact); err != nil {
-		t.Fatal(err)
-	}
-	path := repository.blobPath("decisions", artifact.SHA256)
-	if err := os.WriteFile(path, []byte(`{"sha256":"drifted"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repository.GetStructureDecisionArtifact(t.Context(), artifact.SHA256); err == nil {
-		t.Fatal("drifted decision was accepted")
-	}
+	return artifact
 }
 
 func structureDecisionRepositoryCandidate(source fillerstructure.Source, inputSHA256, id, family, assessment string) fillerstructure.Candidate {

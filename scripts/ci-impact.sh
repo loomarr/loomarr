@@ -59,6 +59,10 @@ classify() {
     cmd/seed/*|cmd/demo-library/*|internal/demolibrary/*|web/*.stories.tsx|web/apps/web/tests/e2e/mock-backend.ts|web/scripts/tv-emulator-fixture-server.mjs)
       select_gate contracts
       ;;
+    # inventedGoFixtures: Go test fixtures written as invented data.
+    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/movie.json|internal/testkit/fixtures/radarr/config_metadata.json|internal/metadataprovider/nfo/testdata/*)
+      select_gate contracts
+      ;;
     web/packages/fixtures/src/*)
       [[ "$path" == *.test.* ]] || select_gate contracts
       ;;
@@ -217,6 +221,13 @@ classify() {
       select_gate apple_mobile
       select_gate expo_android_mobile
       ;;
+    web/packages/native-app/*)
+      # The bootstrap both native apps call: every native client builds it.
+      known=true
+      select_gate clients
+      select_all_native_clients
+      select_gate android
+      ;;
     web/packages/design-system/*|web/packages/ui/*|web/packages/ui-tv/*)
       known=true
       select_gate clients
@@ -225,6 +236,15 @@ classify() {
       # directly. Their output is therefore part of the committed visual contract.
       select_gate visual
       select_gate android
+      case "$path" in
+        web/packages/design-system/src/tokens/*|web/packages/design-system/web-theme.ts|web/packages/design-system/generated/*|web/packages/design-system/scripts/*)
+          # The web theme tokens generate the production stylesheet (generated/theme.css) that the web
+          # build, its token drift check and the real tuner SPA build consume.
+          select_gate web
+          select_gate image
+          select_gate tuner
+          ;;
+      esac
       ;;
     web/packages/fixtures/src/testcard/*)
       # Test-card filler/guide data is imported only by browser stories and tests. It
@@ -361,14 +381,8 @@ classify() {
           ;;
       esac
       case "$path" in
-        web/packages/tokens/*|web/apps/web/public/*|web/apps/web/tests/visual/*|*.stories.ts|*.stories.tsx|*.snap|*.css)
+        web/apps/web/public/*|web/apps/web/tests/visual/*|*.stories.ts|*.stories.tsx|*.snap|*.css)
           select_gate visual
-          ;;
-      esac
-      case "$path" in
-        web/packages/tokens/*)
-          # Tokens feed the production stylesheet consumed by the real tuner SPA build.
-          select_gate tuner
           ;;
       esac
       case "$path" in

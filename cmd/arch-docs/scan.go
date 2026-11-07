@@ -32,10 +32,6 @@ type Package struct {
 	// Third-party and stdlib imports are dropped: the question this map answers is
 	// how Loomarr's own pieces sit against each other.
 	Imports []string
-	// Layer is the longest path from this package to a leaf. It is the honest
-	// version of "which tier is this" — derived from the graph rather than from a
-	// human's idea of which tier a package ought to be in.
-	Layer int
 }
 
 // scan parses every package recursively under internal/ and returns them sorted by
@@ -93,8 +89,6 @@ func scan(root string) ([]Package, error) {
 		}
 		p.Imports = kept
 	}
-
-	assignLayers(byName)
 
 	out := make([]Package, 0, len(byName))
 	for _, p := range byName {
@@ -168,46 +162,6 @@ func collectInternalImports(f *ast.File, self string, into map[string]bool) {
 			continue
 		}
 		into[rest] = true
-	}
-}
-
-// assignLayers computes each package's longest path to a leaf. Go forbids import
-// cycles, so the graph is a DAG and the recursion terminates; the `visiting` guard
-// exists only so a malformed graph fails loudly instead of hanging.
-func assignLayers(byName map[string]*Package) {
-	var depth func(name string, visiting map[string]bool) int
-	memo := map[string]int{}
-
-	depth = func(name string, visiting map[string]bool) int {
-		if d, ok := memo[name]; ok {
-			return d
-		}
-		if visiting[name] {
-			return 0 // defensive: only reachable if Go's own cycle rule were violated
-		}
-		visiting[name] = true
-		p := byName[name]
-		max := 0
-		for _, dep := range p.Imports {
-			if d := depth(dep, visiting) + 1; d > max {
-				max = d
-			}
-		}
-		delete(visiting, name)
-		memo[name] = max
-		return max
-	}
-
-	// Traverse roots in a stable order so even the defensive cycle break cannot make generated
-	// docs depend on randomized map iteration.
-	names := make([]string, 0, len(byName))
-	for name := range byName {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		p := byName[name]
-		p.Layer = depth(name, map[string]bool{})
 	}
 }
 

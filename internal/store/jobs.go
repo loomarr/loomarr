@@ -3,17 +3,18 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // Job is a persisted suggester generation task (§8). The worker pool claims
-// queued jobs via ClaimDueJobs and runs them; IntentJSON/ProposalJSON blobs
-// carry the suggest.Intent / suggest.Proposal so the store stays domain-neutral
-// (like titles.title_json). IntentHash is the cache key.
+// queued jobs via ClaimDueJobs and runs them; the IntentJSON blob carries the
+// proposal.Intent (like titles.title_json). IntentHash is the cache key.
 type Job struct {
 	ID         string
 	Kind       string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
@@ -62,7 +63,7 @@ type ProposalJob struct {
 
 // Proposal is a persisted suggester output (§8). Status drives the approval queue
 // (submitted → approved/denied); CreatedBy powers My proposals (§12); ApprovedBy
-// records the admin (§8 audit). ProposalJSON carries the suggest.Proposal.
+// records the admin (§8 audit). Body is the proposal.Proposal, persisted as one JSON column.
 type Proposal struct {
 	ID         string
 	JobID      string
@@ -77,8 +78,10 @@ type Proposal struct {
 	// Note is the approver's message to whoever requested it ("swapped Con Air for
 	// Face/Off — we already have that one"). It is why a request coming back altered is
 	// explicable rather than mysterious.
-	Note         string
-	ProposalJSON string
+	Note string
+	// Body is the proposal itself. The store encodes it on write and decodes it once on read,
+	// so nothing above the store handles the stored JSON.
+	Body proposal.Proposal
 	// ApprovedAt is WHEN the gate let this through — the audit rows' ordering key (§7, V27).
 	// Zero = never approved. Deliberately not `UpdatedAt`: three callers write that (approve,
 	// deny, recurate), so a re-curation would silently move an approval's timestamp.
@@ -200,10 +203,14 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 	out.Job.CreatedAt = fromEpoch(jobCreatedAt)
 	out.Job.UpdatedAt = fromEpoch(jobUpdatedAt)
 	if pID.Valid {
+		body, err := decodeProposalBody(pID.String, pJSON.String)
+		if err != nil {
+			return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
+		}
 		out.Proposal = &Proposal{
 			ID: pID.String, JobID: pJobID.String, Status: pStatus.String, CreatedBy: pCreatedBy.String,
 			ApprovedBy: pApprovedBy.String, DenyReason: pDenyReason.String, ModSummary: pModSummary.String,
-			Note: pNote.String, ProposalJSON: pJSON.String,
+			Note: pNote.String, Body: body,
 			ApprovedAt: fromEpoch(pApprovedAt.Int64), CreatedAt: fromEpoch(pCreatedAt.Int64),
 			UpdatedAt: fromEpoch(pUpdatedAt.Int64),
 		}
@@ -405,15 +412,42 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 // --- proposals ---
 
 func (s *sqlStore) CreateProposal(ctx context.Context, p Proposal) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+	body, err := encodeProposalBody(p)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		p.ProposalJSON, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
+		body, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)
 	}
 	return nil
+}
+
+// encodeProposalBody is the one place a proposal becomes its stored JSON.
+func encodeProposalBody(p Proposal) (string, error) {
+	raw, err := json.Marshal(p.Body)
+	if err != nil {
+		return "", fmt.Errorf("encode proposal %s: %w", p.ID, err)
+	}
+	return string(raw), nil
+}
+
+// decodeProposalBody is the one place stored proposal JSON becomes a proposal.Proposal. An empty
+// column is the zero proposal. Malformed JSON is an error: a caller must never act on a proposal it
+// could not read.
+func decodeProposalBody(id, raw string) (proposal.Proposal, error) {
+	var body proposal.Proposal
+	if raw == "" {
+		return body, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		return proposal.Proposal{}, fmt.Errorf("decode proposal %s: %w", id, err)
+	}
+	return body, nil
 }
 
 const proposalSelect = `SELECT id, job_id, status, created_by, approved_by, deny_reason,
@@ -433,7 +467,7 @@ func (s *sqlStore) ListProposalsByStatus(ctx context.Context, status string) ([]
 }
 
 // NewestProposalByStatusForJob returns the most recent proposal for one job in one status —
-// the binder's "which approved proposal does this channel bind to?" query.
+// approval's "which approved proposal does this job's channel bind to?" query.
 //
 // ⚠ NEWEST wins, and that is load-bearing rather than a tiebreak. A job legitimately accrues
 // SEVERAL approved proposals over its life: a refine re-runs the channel's own job, and the
@@ -464,14 +498,18 @@ func (s *sqlStore) ListProposalsByCreator(ctx context.Context, userID string) ([
 func scanProposal(sc scannable) (Proposal, error) {
 	var (
 		p                                Proposal
+		bodyJSON                         string
 		approvedAt, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&p.ID, &p.JobID, &p.Status, &p.CreatedBy, &p.ApprovedBy, &p.DenyReason,
-		&p.ModSummary, &p.Note, &p.ProposalJSON, &approvedAt, &createdAt, &updatedAt)
+		&p.ModSummary, &p.Note, &bodyJSON, &approvedAt, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Proposal{}, ErrNotFound
 	}
 	if err != nil {
+		return Proposal{}, err
+	}
+	if p.Body, err = decodeProposalBody(p.ID, bodyJSON); err != nil {
 		return Proposal{}, err
 	}
 	p.ApprovedAt = fromEpoch(approvedAt)

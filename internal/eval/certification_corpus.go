@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -671,7 +672,7 @@ type frozenCertificationScheduleMaterializer struct {
 	familyByName map[string]string
 }
 
-func (m frozenCertificationScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal suggest.Proposal) ([]MaterializedProgram, error) {
+func (m frozenCertificationScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal proposal.Proposal) ([]MaterializedProgram, error) {
 	fixtureID, ok := m.familyByName[c.Name]
 	if !ok {
 		return nil, fmt.Errorf("certification schedule case %q has no declared fixture binding", c.Name)
@@ -706,10 +707,10 @@ type embeddedCertificationGenerator struct {
 	caseByIntent map[string]string
 }
 
-func (g *embeddedCertificationGenerator) Suggest(ctx context.Context, intent suggest.Intent) (suggest.Proposal, error) {
+func (g *embeddedCertificationGenerator) Suggest(ctx context.Context, intent proposal.Intent) (proposal.Proposal, error) {
 	caseID, ok := g.caseByIntent[certificationIntentKey(intent.Description, intent.MustInclude)]
 	if !ok {
-		return suggest.Proposal{}, fmt.Errorf("Intent is absent from the embedded certification corpus")
+		return proposal.Proposal{}, fmt.Errorf("Intent is absent from the embedded certification corpus")
 	}
 	g.fixture.selectCase(caseID)
 	return g.inner.Suggest(ctx, intent)

@@ -1,7 +1,9 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Search, TriangleAlert } from "lucide-react";
 import { useState } from "react";
@@ -15,17 +17,17 @@ type Provider = "brave" | "searxng";
 
 interface ClipDetailsSettingsProps {
   entries: SettingEntry[];
-  liveValue: (key: string) => string;
-  setEdit: (key: string, value: string) => void;
+  liveValue: (key: SettingKey) => string;
+  setEdit: (key: SettingKey, value: string) => void;
 }
 
 const providerLabel = (provider: string) => (provider === "searxng" ? "SearXNG" : "Brave Search");
 
 const structuredSourceKeys = [
-  "filler.research.wikidata_enabled",
-  "filler.research.wikipedia_enabled",
-  "filler.research.archive_enabled",
-  "filler.research.loc_enabled",
+  SettingKey.FillerResearchWikidataEnabled,
+  SettingKey.FillerResearchWikipediaEnabled,
+  SettingKey.FillerResearchArchiveEnabled,
+  SettingKey.FillerResearchLocEnabled,
 ] as const;
 
 const lastChecked = (value?: string): string | undefined => {
@@ -47,18 +49,18 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
   const [endpoint, setEndpoint] = useState("");
   const [message, setMessage] = useState<string>();
 
-  const monthly = entries.find((entry) => entry.key === "filler.research.monthly_limit");
+  const monthly = entries.find((entry) => entry.key === SettingKey.FillerResearchMonthlyLimit);
   const structuredSources = structuredSourceKeys
     .map((key) => entries.find((entry) => entry.key === key))
     .filter((entry): entry is SettingEntry => entry !== undefined);
-  const enabled = liveValue("filler.research.enabled") === "true";
+  const enabled = liveValue(SettingKey.FillerResearchEnabled) === "true";
   const enabledSourceCount = structuredSources.filter((entry) => liveValue(entry.key) === "true").length;
   const configured = status?.configured === true;
   const currentProvider = status?.provider === "searxng" ? "searxng" : "brave";
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() }),
+      invalidateSettings(queryClient),
       queryClient.invalidateQueries({ queryKey: fillerApi.getFillerResearchStatusQueryKey() }),
     ]);
   };
@@ -67,7 +69,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
     const next = configured ? currentProvider : "brave";
     setProvider(next);
     setAPIKey("");
-    setEndpoint(next === "searxng" ? liveValue("filler.research.searxng_url") : "");
+    setEndpoint(next === "searxng" ? liveValue(SettingKey.FillerResearchSearxngURL) : "");
     setMessage(undefined);
     setOpen(true);
   };
@@ -87,13 +89,13 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
         setMessage(verdict?.message ?? "Loomarr couldn't verify this provider.");
         return;
       }
-      const edits: Record<string, string> = { "filler.research.web_provider": provider };
+      const edits: Partial<Record<SettingKey, string>> = { [SettingKey.FillerResearchWebProvider]: provider };
       if (provider === "brave") {
-        if (apiKey) edits["filler.research.brave_api_key"] = apiKey;
-        edits["filler.research.searxng_url"] = "";
+        if (apiKey) edits[SettingKey.FillerResearchBraveAPIKey] = apiKey;
+        edits[SettingKey.FillerResearchSearxngURL] = "";
       } else {
-        edits["filler.research.searxng_url"] = endpoint;
-        edits["filler.research.brave_api_key"] = "";
+        edits[SettingKey.FillerResearchSearxngURL] = endpoint;
+        edits[SettingKey.FillerResearchBraveAPIKey] = "";
       }
       const saved = await patchSettings.mutateAsync({ data: { edits } });
       const results = unwrap(saved, (body) => body.results) ?? [];
@@ -128,9 +130,9 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
   const remove = async () => {
     setMessage(undefined);
     const edits = {
-      "filler.research.web_provider": "none",
-      "filler.research.brave_api_key": "",
-      "filler.research.searxng_url": "",
+      [SettingKey.FillerResearchWebProvider]: "none",
+      [SettingKey.FillerResearchBraveAPIKey]: "",
+      [SettingKey.FillerResearchSearxngURL]: "",
     };
     try {
       const saved = await patchSettings.mutateAsync({ data: { edits } });

@@ -1,4 +1,4 @@
-import type { JobView } from "@loomarr/api";
+import type { JobView, SettingPreset } from "@loomarr/api";
 import { getSettingsPatchMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -30,6 +30,12 @@ const job: JobView = {
   lastResult: "ok",
   running: false,
 };
+
+// The registry's presets for the job's schedule setting, as its settings entry carries them.
+const presets: SettingPreset[] = [
+  { value: "0 */5 * * * *", label: "Every 5 minutes" },
+  { value: "0 0 * * * *", label: "Every hour" },
+];
 
 // Captures every PATCH /v1/settings body so the test can assert the exact edit.
 //
@@ -68,10 +74,17 @@ describe("JobEditModal", () => {
   it("PATCHes the job's scheduleKey with the chosen preset cron", async () => {
     const user = userEvent.setup();
     const { patches } = captureSettings();
-    render(<JobEditModal job={job} open onOpenChange={() => {}} />, { wrapper: makeWrapper() });
+    render(<JobEditModal job={job} presets={presets} open onOpenChange={() => {}} />, {
+      wrapper: makeWrapper(),
+    });
 
-    // Pick a different preset, then save.
+    // The choices are exactly the setting's presets, then Custom.
     await user.click(await screen.findByRole("combobox", { name: "Frequency" }));
+    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual([
+      "Every 5 minutes",
+      "Every hour",
+      "Custom (advanced)…",
+    ]);
     await user.click(await screen.findByRole("option", { name: "Every hour" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -83,7 +96,9 @@ describe("JobEditModal", () => {
   it("reveals the raw cron field only for the Custom (advanced) choice, and saves its value", async () => {
     const user = userEvent.setup();
     const { patches } = captureSettings();
-    render(<JobEditModal job={job} open onOpenChange={() => {}} />, { wrapper: makeWrapper() });
+    render(<JobEditModal job={job} presets={presets} open onOpenChange={() => {}} />, {
+      wrapper: makeWrapper(),
+    });
 
     // No advanced field until Custom is chosen.
     expect(screen.queryByRole("textbox", { name: "Cron expression" })).not.toBeInTheDocument();
@@ -103,7 +118,9 @@ describe("JobEditModal", () => {
   it("opens straight into the advanced field when the current schedule matches no preset", async () => {
     captureSettings();
     const custom: JobView = { ...job, schedule: "0 15 2 * * 3" };
-    render(<JobEditModal job={custom} open onOpenChange={() => {}} />, { wrapper: makeWrapper() });
+    render(<JobEditModal job={custom} presets={presets} open onOpenChange={() => {}} />, {
+      wrapper: makeWrapper(),
+    });
 
     // A non-preset schedule seeds the dropdown to Custom, so the raw field is visible with it.
     const cronField = await screen.findByRole("textbox", { name: "Cron expression" });

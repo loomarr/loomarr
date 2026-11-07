@@ -58,16 +58,11 @@ func newSessionsHarness(t *testing.T, configs ...sessionsHarnessConfig) *session
 			t.Fatal(err)
 		}
 		return api.Router(defaults.Log, api.Options{
-			Store:    defaults.Store,
-			Auth:     defaults.Auth,
-			Log:      defaults.Log,
-			Sessions: fs,
-			LiveConfigInt: func(key string) int {
-				if key == "suggest.max_acquisitions" {
-					return config.DefaultQuota
-				}
-				return 0
-			},
+			Store:        defaults.Store,
+			Auth:         defaults.Auth,
+			Log:          defaults.Log,
+			Sessions:     fs,
+			LiveSettings: mapSettings{"suggest.max_acquisitions": config.DefaultQuota},
 		})
 	})
 	return &sessionsHarness{apiHarness: base, Sessions: fs}

@@ -88,7 +88,7 @@ type stillSegment struct {
 }
 
 type stillSource interface {
-	newestStillSegment(ctx context.Context, channelID string, plan EncodePlan) (stillSegment, bool, error)
+	newestStillSegment(ctx context.Context, channelID string) (stillSegment, bool, error)
 }
 
 type stillEntry struct {
@@ -115,10 +115,10 @@ func (c *stillCache) slots() chan struct{} {
 
 // Still returns the channel's latest frame. ok=false is a clean miss (no segment, no extractor
 // wired, or the frame could not be decoded) — never a reason to fail the caller's page.
-func (o *Origin) Still(ctx context.Context, channelID string, plan EncodePlan) (Still, bool, error) {
+func (o *Origin) Still(ctx context.Context, channelID string) (Still, bool, error) {
 	var firstErr error
 	for _, source := range o.stillSources {
-		seg, ok, err := source.newestStillSegment(ctx, channelID, plan)
+		seg, ok, err := source.newestStillSegment(ctx, channelID)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -359,7 +359,7 @@ type airingStillSource struct {
 	extract SourceStillExtractor
 }
 
-func (s airingStillSource) newestStillSegment(ctx context.Context, channelID string, _ EncodePlan) (stillSegment, bool, error) {
+func (s airingStillSource) newestStillSegment(ctx context.Context, channelID string) (stillSegment, bool, error) {
 	airing, ok, err := s.resolve(ctx, channelID)
 	if err != nil || !ok || airing.Source == nil {
 		return stillSegment{}, false, err

@@ -1,13 +1,14 @@
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
 import { cn } from "@/lib/utils";
 import type { InstallationLocationProps } from "./installation-location.type";
 import { LanguagePicker } from "./language-picker";
 import { LocationPicker } from "./location-picker";
 
-const COUNTRY_KEY = "filler.home_country";
-const PLACE_KEY = "filler.home_place";
-const RADIUS_KEY = "filler.local_radius_km";
-const LANGUAGE_KEY = "filler.language";
+const COUNTRY_KEY = SettingKey.FillerHomeCountry;
+const PLACE_KEY = SettingKey.FillerHomePlace;
+const RADIUS_KEY = SettingKey.FillerLocalRadiusKm;
+const LANGUAGE_KEY = SettingKey.FillerLanguage;
 
 // Settings adapter around the shared location picker. Persisted setting keys, provenance, and
 // save results stay here; place search and detection belong to LocationPicker.

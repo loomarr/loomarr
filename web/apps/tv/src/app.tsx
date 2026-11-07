@@ -5,8 +5,9 @@ import {
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
-import { BrandLaunch, LoomarrProvider, Surface, Text, ViewportStage } from "@loomarr/design-system";
+import { BrandLaunch, Surface, Text, ViewportStage } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
+import { createNativeApp, NativeAppRoot, useCrashReportUpload } from "@loomarr/native-app";
 import {
   createLastChannelStore,
   createPlaybackMarks,
@@ -61,7 +62,6 @@ import {
   useTVEventHandler,
   View,
 } from "react-native";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
 
 void SplashScreen.preventAutoHideAsync();
@@ -97,7 +97,8 @@ const lastChannel = createLastChannelStore({
   setItem: SecureStore.setItemAsync,
 });
 
-const tvDiagnostics = { clientVersion, platform: "android_tv", source: "android_tv" } as const;
+// Crash capture installs here, before the first render, so a crash while the app starts is reported too.
+const nativeApp = createNativeApp({ clientVersion });
 
 // The Siri Remote has no number keys, so Apple TV has no digit entry: no "0–9 jump" hint and no
 // channel-number wait to tune (#1500 audit #3; maintainer, 2026-10-13: "It doesn't need tuning").
@@ -141,7 +142,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     transport,
   } = usePairedClient({
     credential,
-    diagnostics: tvDiagnostics,
+    diagnostics: nativeApp.diagnostics,
     lastChannel,
     marks: certMarks,
     onTune: ({ attemptId, channel, reason, warm }) => {
@@ -194,6 +195,9 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     return () => subscription.remove();
   }, [active]);
   useTvMenuKey(clientBackDestination(active) !== null);
+  // Pending crash reports (last launch's included) go to this server once paired.
+  useCrashReportUpload(credential, session);
+  useEffect(() => nativeApp.crashReports.recordBreadcrumb("navigation", active), [active]);
   const runRemoteIntent = useCallback(
     (intent: TvWatchingRemoteIntent | undefined) => {
       switch (intent?.kind) {
@@ -454,7 +458,6 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
 
 const TvClient = () => {
   useKeepAwake();
-  const insets = useSafeAreaInsets();
   const [appForeground, setAppForeground] = useState(AppState.currentState === "active");
   const [launchAnimationFinished, setLaunchAnimationFinished] = useState(false);
   const [launchMinimumElapsed, setLaunchMinimumElapsed] = useState(false);
@@ -471,6 +474,12 @@ const TvClient = () => {
       }),
     [],
   );
+  useEffect(() => {
+    const unsubscribe = session.subscribe(({ status }) =>
+      nativeApp.crashReports.recordBreadcrumb("lifecycle", `pairing ${status}`),
+    );
+    return () => void unsubscribe();
+  }, [session]);
   // PairingShell answers Back on its screens; tvOS sends Menu there only while the key is enabled.
   const pairingState = useSyncExternalStore(session.subscribe, session.snapshot, session.snapshot);
   useTvMenuKey(pairingBackAvailable(pairingState));
@@ -491,7 +500,7 @@ const TvClient = () => {
     return () => subscription.remove();
   }, []);
   return (
-    <LoomarrProvider insets={insets} theme="dark">
+    <>
       <ViewportStage>
         <View onLayout={hideNativeSplash} style={{ flex: 1 }}>
           <PairingShell
@@ -513,14 +522,14 @@ const TvClient = () => {
         </View>
       </ViewportStage>
       <StatusBar hidden />
-    </LoomarrProvider>
+    </>
   );
 };
 
 const App = () => (
-  <SafeAreaProvider>
+  <NativeAppRoot app={nativeApp}>
     <TvClient />
-  </SafeAreaProvider>
+  </NativeAppRoot>
 );
 
 export default App;

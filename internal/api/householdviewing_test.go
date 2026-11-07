@@ -28,7 +28,7 @@ type seekCloser struct{ *bytes.Reader }
 
 func (seekCloser) Close() error { return nil }
 
-func (pollPlayout) OpenAsset(context.Context, string, playout.EncodePlan, string, bool) (playout.Asset, bool, error) {
+func (pollPlayout) OpenAsset(context.Context, string, string, bool) (playout.Asset, bool, error) {
 	body := "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\nseg-1.ts\n"
 	return playout.Asset{Content: seekCloser{bytes.NewReader([]byte(body))}, Modified: time.Unix(1, 0), Playlist: true}, true, nil
 }
@@ -82,7 +82,7 @@ func newViewingHarness(t *testing.T) *viewingHarness {
 			Sessions:        mgr,
 			Devices:         devices,
 			CookieSecure:    "false",
-			LiveConfig:      func(key string) string { return cfg[key] },
+			LiveSettings:    stringSettings(func(key string) string { return cfg[key] }),
 			Playout:         sessions,
 			PlayoutObserver: sessions,
 			PlayoutSecret:   func() string { return playoutToken },

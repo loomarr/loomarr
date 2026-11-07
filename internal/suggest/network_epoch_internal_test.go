@@ -1,6 +1,10 @@
 package suggest
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/loomarr/loomarr/internal/proposal"
+)
 
 func TestNetworkReferenceDoesNotTreatChannelCreationPhrasesAsNetworkNames(t *testing.T) {
 	for _, text := range []string{
@@ -8,7 +12,7 @@ func TestNetworkReferenceDoesNotTreatChannelCreationPhrasesAsNetworkNames(t *tes
 		"I'd like you to make a channel from the 1990s with action movies.",
 		"Recreate a channel with British mysteries.",
 	} {
-		intent := Intent{Description: text}
+		intent := Intent{Intent: proposal.Intent{Description: text}}
 		if networkStyleRequest(intent) || networkProgrammingEpochEnd(intent) != 0 {
 			t.Errorf("channel-creation directive became a named network reference: %q", text)
 		}
@@ -27,7 +31,7 @@ func TestNetworkProgrammingEpochEndProjectsOnlyUnambiguousContext(t *testing.T) 
 		{"1990s documentary episodes", "", 0},
 		{"Like the Almanac Channel", "", 0},
 	} {
-		if got := networkProgrammingEpochEnd(Intent{Description: test.description, RefineText: test.refine}); got != test.end {
+		if got := networkProgrammingEpochEnd(Intent{Intent: proposal.Intent{Description: test.description, RefineText: test.refine}}); got != test.end {
 			t.Errorf("%q / %q: epoch end=%d want %d", test.description, test.refine, got, test.end)
 		}
 	}
@@ -48,18 +52,18 @@ func TestNetworkToolKeepsIndependentDateAndOrdinaryLookupInterfaces(t *testing.T
 			t.Fatalf("independent date request lost anchored interpretation: %+v", dateProperties)
 		}
 	}
-	ordinary := catalogToolForIntent(Intent{Description: "Cozy British mysteries"})
+	ordinary := catalogToolForIntent(Intent{Intent: proposal.Intent{Description: "Cozy British mysteries"}})
 	if _, present := ordinary.Parameters["allOf"]; !present {
 		t.Fatal("ordinary discovery lost its existing mode contract")
 	}
-	named := catalogToolForIntent(Intent{Description: "QFUN programming block"})
+	named := catalogToolForIntent(Intent{Intent: proposal.Intent{Description: "QFUN programming block"}})
 	if _, present := named.Parameters["properties"].(map[string]any)["titles"]; !present {
 		t.Fatal("named block lost collection membership lookup")
 	}
 }
 
 func TestNetworkToolRetainsRequestedScalarBounds(t *testing.T) {
-	intent := Intent{Description: "Like the Almanac Channel from the 1990s. At least 50 votes and a rating above 8, with episodes under 60 minutes."}
+	intent := Intent{Intent: proposal.Intent{Description: "Like the Almanac Channel from the 1990s. At least 50 votes and a rating above 8, with episodes under 60 minutes."}}
 	properties := catalogToolForIntent(intent).Parameters["properties"].(map[string]any)
 	for _, field := range []string{"vote_count_min", "vote_average_min", "runtime_min", "runtime_max"} {
 		if _, present := properties[field]; !present || !networkScalarRequested(intent, field) {
@@ -69,7 +73,7 @@ func TestNetworkToolRetainsRequestedScalarBounds(t *testing.T) {
 }
 
 func TestNetworkEpochAnchorsUseRuneCoordinatesAndKeepSeparateDates(t *testing.T) {
-	intent := Intent{Description: "📺 Like the Almanac Channel from the 1990s. Only 2000s episodes."}
+	intent := Intent{Intent: proposal.Intent{Description: "📺 Like the Almanac Channel from the 1990s. Only 2000s episodes."}}
 	text := []rune(intent.Description)
 	for start := 0; start+5 <= len(text); start++ {
 		switch string(text[start : start+5]) {

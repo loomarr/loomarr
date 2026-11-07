@@ -1,4 +1,5 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { invalidateSettings } from "@loomarr/core/events";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { SETUP_COMPLETED_KEY } from "../setup-completed";
@@ -25,7 +26,7 @@ const useCompleteSetup = () => {
       { data: { edits: { [SETUP_COMPLETED_KEY]: "true" } } },
       {
         onSuccess: async () => {
-          await queryClient.invalidateQueries({ queryKey: settingsApi.getSettingsListQueryKey() });
+          await invalidateSettings(queryClient);
           const search = intent ? `?intent=${encodeURIComponent(intent)}` : "";
           router.history.push(`${to}${search}`);
         },

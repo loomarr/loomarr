@@ -29,49 +29,24 @@ type DestinationCommand struct {
 	Audience RecipientKind
 	Topics   []Topic
 	Enabled  bool
-	// Settings is the one public provider input object. When supplied, the server-owned provider
-	// definition classifies every field into Configuration or Credentials.
-	Settings      map[string]string
-	Configuration map[string]string
-	// A nil Credentials update preserves the stored credentials; a non-nil empty map explicitly
-	// clears them. Create treats nil as empty. Credential values never appear in summaries.
-	Credentials *map[string]string
+	// Settings is the only provider input. The server-owned provider definition classifies every
+	// field into configuration or write-only credentials; credential values never appear in summaries.
+	Settings map[string]string
 }
 
 type DestinationUpdateCommand struct {
-	Label         string
-	Audience      RecipientKind
-	Topics        []Topic
-	Enabled       bool
-	Settings      *map[string]string
-	Configuration *map[string]string
-	Credentials   *map[string]string
+	Label    string
+	Audience RecipientKind
+	Topics   []Topic
+	Enabled  bool
+	// Settings merges into the stored provider fields: nil keeps them all, an empty value clears
+	// that one field, and a sensitive field left out keeps its stored credential.
+	Settings *map[string]string
 }
 
 type DestinationValidator interface {
 	Means() Means
-	ValidateDestination(configuration, credentials map[string]string) error
-}
-
-type DestinationRepository interface {
-	SaveNotificationDestination(context.Context, Destination) error
-	ResolveNotificationDestination(context.Context, string) (Destination, error)
-	OpenNotificationDestinationForUpdate(context.Context, string) (Destination, error)
-	GetNotificationDestinationMetadata(context.Context, string) (DestinationMetadata, error)
-	ListNotificationDestinationMetadata(context.Context) ([]DestinationMetadata, error)
-	ListNotificationDestinationHealth(context.Context) (map[string]DestinationHealth, error)
-	DeleteNotificationDestination(context.Context, string) error
-	RetireNotificationDestination(context.Context, string) error
-}
-
-// DestinationRecordRepository is the storage port below credential protection. Implementations
-// must never receive or return plaintext provider credentials.
-type DestinationRecordRepository interface {
-	SaveNotificationDestinationRecord(context.Context, DestinationRecord) error
-	GetNotificationDestinationRecord(context.Context, string) (DestinationRecord, error)
-	ListNotificationDestinationRecords(context.Context) ([]DestinationRecord, error)
-	ListNotificationDestinationHealth(context.Context) (map[string]DestinationHealth, error)
-	DeleteNotificationDestination(context.Context, string) error
+	ValidateDestination(ProviderSettings) error
 }
 
 type DestinationTestResult struct {
@@ -88,7 +63,7 @@ type DestinationTester interface {
 }
 
 type DestinationManager struct {
-	repository DestinationRepository
+	repository Repository
 	validators map[Means]DestinationValidator
 	newID      func() string
 	now        func() time.Time
@@ -103,7 +78,7 @@ func (m *DestinationManager) WithTester(tester DestinationTester) *DestinationMa
 }
 
 func NewDestinationManager(
-	repository DestinationRepository,
+	repository Repository,
 	validators []DestinationValidator,
 	newID func() string,
 	now func() time.Time,
@@ -135,18 +110,13 @@ func (m *DestinationManager) Create(
 	destination := Destination{
 		ID: m.newID(), Means: command.Means, Label: command.Label, Scope: command.Scope,
 		OwnerID: command.OwnerID, Audience: command.Audience, Topics: append([]Topic(nil), command.Topics...),
-		Enabled: command.Enabled, Configuration: cloneStringMap(command.Configuration),
-		CreatedAt: now, UpdatedAt: now,
+		Enabled: command.Enabled, CreatedAt: now, UpdatedAt: now,
 	}
-	if command.Settings != nil {
-		configuration, credentials, err := classifyDestinationSettings(command.Means, command.Settings)
-		if err != nil {
-			return DestinationSummary{}, err
-		}
-		destination.Configuration, destination.Credentials = configuration, credentials
-	} else if command.Credentials != nil {
-		destination.Credentials = cloneStringMap(*command.Credentials)
+	configuration, credentials, err := classifyDestinationSettings(command.Means, command.Settings)
+	if err != nil {
+		return DestinationSummary{}, err
 	}
+	destination.Configuration, destination.Credentials = configuration, credentials
 	setWebPushSubscriptionFingerprint(&destination)
 	if destination.Means == MeansWebPush && destination.SubscriptionFingerprint == "" {
 		return DestinationSummary{}, fmt.Errorf("web push destination requires a subscription endpoint")
@@ -154,7 +124,7 @@ func (m *DestinationManager) Create(
 	if err := destination.Validate(); err != nil {
 		return DestinationSummary{}, err
 	}
-	if err := m.validateEnabled(destination); err != nil {
+	if err := m.validateProvider(destination); err != nil {
 		return DestinationSummary{}, err
 	}
 	if destination.Means == MeansWebPush {
@@ -223,14 +193,7 @@ func (m *DestinationManager) Update(
 	if err != nil {
 		return DestinationSummary{}, err
 	}
-	credentials := current.Credentials
-	if command.Credentials != nil {
-		credentials = cloneStringMap(*command.Credentials)
-	}
-	configuration := current.Configuration
-	if command.Configuration != nil {
-		configuration = cloneStringMap(*command.Configuration)
-	}
+	configuration, credentials := current.Configuration, current.Credentials
 	if command.Settings != nil {
 		configuration, credentials, err = mergeDestinationSettings(
 			current.Means, configuration, credentials, *command.Settings,
@@ -252,8 +215,12 @@ func (m *DestinationManager) Update(
 	if err := updated.Validate(); err != nil {
 		return DestinationSummary{}, err
 	}
-	if err := m.validateEnabled(updated); err != nil {
-		return DestinationSummary{}, err
+	// Turning a destination off or relabelling it never rewrites its settings, so it is always
+	// allowed: a destination whose settings stopped validating can still be switched off.
+	if updated.Enabled || command.Settings != nil {
+		if err := m.validateProvider(updated); err != nil {
+			return DestinationSummary{}, err
+		}
 	}
 	if err := m.repository.SaveNotificationDestination(ctx, updated); err != nil {
 		return DestinationSummary{}, err
@@ -332,7 +299,7 @@ func (m *DestinationManager) Delete(
 			if openErr != nil {
 				return DestinationDeleteResult{}, openErr
 			}
-			fingerprint = webPushSubscriptionFingerprint(opened.Credentials["endpoint"])
+			fingerprint = webPushSubscriptionFingerprint(opened.ProviderSettings().secret(keyEndpoint))
 		}
 		result.UnsubscribeCurrentBrowser = sameFingerprint(
 			fingerprint,
@@ -391,7 +358,7 @@ func (m *DestinationManager) matchingWebPushDestinations(
 			if openErr != nil {
 				return nil, openErr
 			}
-			fingerprint = webPushSubscriptionFingerprint(legacy.Credentials["endpoint"])
+			fingerprint = webPushSubscriptionFingerprint(legacy.ProviderSettings().secret(keyEndpoint))
 		}
 		if sameFingerprint(fingerprint, destination.SubscriptionFingerprint) {
 			matches = append(matches, candidate)
@@ -430,7 +397,7 @@ func (m *DestinationManager) replaceWebPushDestinations(
 
 func setWebPushSubscriptionFingerprint(destination *Destination) {
 	if destination != nil && destination.Means == MeansWebPush {
-		destination.SubscriptionFingerprint = webPushSubscriptionFingerprint(destination.Credentials["endpoint"])
+		destination.SubscriptionFingerprint = webPushSubscriptionFingerprint(destination.ProviderSettings().secret(keyEndpoint))
 	}
 }
 
@@ -474,15 +441,14 @@ func (m *DestinationManager) Test(
 	return m.tester.PublishDestinationTest(ctx, destination, requestID)
 }
 
-func (m *DestinationManager) validateEnabled(destination Destination) error {
-	if !destination.Enabled {
-		return nil
-	}
+// validateProvider runs the provider's own validation, whatever the enabled state, on every write
+// of settings, so saved settings are always ones its adapter can deliver with once it is enabled.
+func (m *DestinationManager) validateProvider(destination Destination) error {
 	validator := m.validators[destination.Means]
 	if validator == nil {
 		return ErrMeansUnavailable
 	}
-	if err := validator.ValidateDestination(destination.Configuration, destination.Credentials); err != nil {
+	if err := validator.ValidateDestination(destination.ProviderSettings()); err != nil {
 		return fmt.Errorf("validate %s destination: %w", destination.Means, err)
 	}
 	return nil

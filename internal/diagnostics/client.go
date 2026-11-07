@@ -51,9 +51,9 @@ var (
 // ClientBatch is the complete wire-safe client submission. Actor, receipt time, level, subsystem,
 // message and arbitrary attributes are deliberately absent: the server owns all of them.
 type ClientBatch struct {
-	Source        Source              `json:"source" enum:"web,android_tv"`
+	Source        Source              `json:"source" enum:"web,android_tv,apple_tv,ios,android"`
 	ClientVersion string              `json:"clientVersion" maxLength:"64"`
-	Platform      string              `json:"platform" enum:"chromium,firefox,webkit,unknown_web,android_tv,shield_tv,unknown_android_tv"`
+	Platform      string              `json:"platform" enum:"chromium,firefox,webkit,unknown_web,android_tv,shield_tv,unknown_android_tv,apple_tv,ios,android"`
 	Events        []ClientObservation `json:"events" minItems:"1" maxItems:"20"`
 }
 
@@ -161,8 +161,8 @@ func validateClientBatch(actorID string, batch ClientBatch, now time.Time) ([]Ev
 	if !validIdentifier(actorID) {
 		return nil, invalidClientBatch("server-derived actor is unavailable")
 	}
-	if batch.Source != SourceWeb && batch.Source != SourceAndroidTV {
-		return nil, invalidClientBatch("source must be web or android_tv")
+	if batch.Source == SourceServer || !batch.Source.valid() {
+		return nil, invalidClientBatch("source must be web, android_tv, apple_tv, ios or android")
 	}
 	if !validClientVersion(batch.ClientVersion) {
 		return nil, invalidClientBatch("clientVersion is invalid")
@@ -415,6 +415,12 @@ func validClientPlatform(source Source, platform string) bool {
 		return platform == "chromium" || platform == "firefox" || platform == "webkit" || platform == "unknown_web"
 	case SourceAndroidTV:
 		return platform == "android_tv" || platform == "shield_tv" || platform == "unknown_android_tv"
+	case SourceAppleTV:
+		return platform == "apple_tv"
+	case SourceIOS:
+		return platform == "ios"
+	case SourceAndroid:
+		return platform == "android"
 	default:
 		return false
 	}

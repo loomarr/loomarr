@@ -158,15 +158,15 @@ func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
 	return m
 }
 
-// acquirePlaylist serves the channel's master playlist. Every plan gets the baseline variant: a
-// PlanBaseline browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2). Beside
+// acquirePlaylist serves the channel's master playlist. Every client gets the baseline variant: a
+// browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2). Beside
 // it the master names the channel's premium format when it airs one here and the ledger has room
 // (#1512 G10). The premium is described from its output alone: only a client that plays it starts
 // its packager. Its lineup lookup runs beside the baseline's cold start, off the tune path. A
 // speculative tune (a neighbour warm) starts the packager only into spare room (#1780), and for a
 // viewer whose client takes the premium it warms the channel's premium too, once the baseline is
 // admitted, so the premium never takes the baseline's room (#1037).
-func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculative bool, viewer string) (hlsPlaylistLease, error) {
+func (m *PackagerHLS) acquirePlaylist(channelID string, speculative bool, viewer string) (hlsPlaylistLease, error) {
 	premium, found := new(*hlsVariant), make(chan struct{})
 	warmPremium := speculative && m.takesPremium(viewer)
 	admitted := make(chan bool, 1) // the baseline's admission, read only by a premium warm
@@ -305,8 +305,8 @@ var premiumAdmission = AdmitRequest{Class: ClassPremium4K, NoRungDrop: true}
 // player polls it, not the master, so each poll counts as a viewer and keeps the packager past its
 // grace. A premium playlist is the client's opt-in (#1512 G10): it starts the channel's premium
 // packager, and only for the premium the channel airs on this host.
-func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string, speculative bool) ([]byte, bool, error) {
-	lease, ok, err := m.acquireMediaPlaylist(ctx, channelID, PlanBaseline, rel, speculative)
+func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, rel string, speculative bool) ([]byte, bool, error) {
+	lease, ok, err := m.acquireMediaPlaylist(ctx, channelID, rel, speculative)
 	if err != nil || !ok {
 		return nil, false, err
 	}
@@ -318,7 +318,7 @@ func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ Enc
 	return body, true, nil
 }
 
-func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
+func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
 	class := FormatClass(strings.TrimSuffix(rel, ".m3u8"))
 	if filepath.Base(rel) != rel || !strings.HasSuffix(rel, ".m3u8") {
 		return hlsPlaylistLease{}, false, nil
@@ -876,7 +876,7 @@ func (m *PackagerHLS) removeLocked(key packagedKey, c *packagedChannel) {
 
 // AssetPath resolves `<format>-<file>`, the init segment or a media segment of one of a running
 // channel's packagers.
-func (m *PackagerHLS) AssetPath(channelID string, _ EncodePlan, rel string) (string, bool) {
+func (m *PackagerHLS) AssetPath(channelID string, rel string) (string, bool) {
 	class, file, ok := strings.Cut(rel, "-"+packager.InitName)
 	if ok && file == "" {
 		file = packager.InitName
@@ -1068,7 +1068,7 @@ func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log
 	if progress != nil {
 		_ = progressW.Close() // the child holds its own copy
 		pid := cmd.Process.Pid
-		go ReadProgress(progress, func(p Progress) {
+		go encode.ReadProgress(progress, func(p encode.Progress) {
 			if cut.stop.Load() {
 				return
 			}
@@ -1261,7 +1261,7 @@ func (l *limitedWriter) Write(b []byte) (int, error) {
 // mediaPlaylister is an hlsOrigin whose Tune answer is a master playlist: its variant playlists are
 // live documents, rendered per request, not files.
 type mediaPlaylister interface {
-	acquireMediaPlaylist(ctx context.Context, channelID string, plan EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error)
+	acquireMediaPlaylist(ctx context.Context, channelID string, rel string, speculative bool) (hlsPlaylistLease, bool, error)
 }
 
 // hlsVariant is one EXT-X-STREAM-INF entry of a channel's master playlist.

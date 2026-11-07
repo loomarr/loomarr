@@ -20,10 +20,15 @@ type Requester struct {
 	Cancelled []provision.Title
 }
 
+// Request records the call. Like Seerr and the arrs, it refuses a title with no usable
+// provider id before anything else.
 func (r *Requester) Request(_ context.Context, t provision.Title) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.Requested = append(r.Requested, t)
+	if _, err := t.Key(); err != nil {
+		return err
+	}
 	return r.RequestErr
 }
 

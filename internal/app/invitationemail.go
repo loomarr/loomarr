@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
@@ -316,7 +317,7 @@ func notificationDeliveryJob(service *notifications.Service) jobs.Job {
 	return jobs.Job{
 		Name: "notification-delivery", Group: jobs.GroupSystem, Title: "Deliver account messages",
 		Description: "Sends queued invitation and recovery messages through their configured delivery means.",
-		DefaultCron: "*/15 * * * * *", ScheduleKey: "job.notification_delivery.schedule",
+		DefaultCron: "*/15 * * * * *", ScheduleKey: settings.JobNotificationDeliverySchedule.Key(),
 		Run: func(ctx context.Context) error {
 			for range notificationWorkerLimit {
 				ran, err := service.RunOne(ctx, "notification-delivery")
@@ -367,7 +368,7 @@ type accountDeliveryBuild struct {
 
 func buildAccountDelivery(
 	st store.Store,
-	destinations notifications.DestinationRepository,
+	repository notifications.Repository,
 	providerAdapters []notifications.Adapter,
 	set resolved,
 	invitationService *invitation.Service,
@@ -381,16 +382,15 @@ func buildAccountDelivery(
 	materializer := invitationEmailMaterializer{
 		invitations: invitationService, recovery: recoveryService,
 		contacts:  st,
-		publicURL: func() string { return set.str("access.public_url") },
+		publicURL: func() string { return settings.AccessPublicURL.Get(set) },
 	}
 	adapter := notifications.NewEmailAdapter(materializer, notifications.NewSMTPSender(15*time.Second))
 	adapters := append([]notifications.Adapter{adapter}, providerAdapters...)
-	repository := notificationServiceRepository{Store: st, destinations: destinations}
 	service := notifications.NewService(repository, combinedNotificationRouter{
 		account: invitationEmailRouter{
-			invitations: invitationService, recovery: recoveryService, destinations: destinations,
+			invitations: invitationService, recovery: recoveryService, destinations: repository,
 		},
-		product: notifications.NewDestinationRouter(destinations, currentNotificationEligibility{users: st}),
+		product: notifications.NewDestinationRouter(repository, currentNotificationEligibility{users: st}),
 	}, adapters, newID, time.Now)
 	if registry != nil {
 		registry.Add(notificationDeliveryJob(service))
@@ -419,20 +419,4 @@ func productNotificationLink(origin string, intent notifications.Intent) string 
 	default:
 		return origin
 	}
-}
-
-type notificationServiceRepository struct {
-	store.Store
-	destinations notifications.DestinationRepository
-}
-
-func (r notificationServiceRepository) ResolveNotificationDestination(
-	ctx context.Context,
-	id string,
-) (notifications.Destination, error) {
-	return r.destinations.ResolveNotificationDestination(ctx, id)
-}
-
-func (r notificationServiceRepository) RetireNotificationDestination(ctx context.Context, id string) error {
-	return r.destinations.RetireNotificationDestination(ctx, id)
 }

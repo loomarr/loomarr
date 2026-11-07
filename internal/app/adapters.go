@@ -13,12 +13,14 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/setup"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/tmdb"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
@@ -29,16 +31,18 @@ import (
 type recurateThresholds struct{ set resolved }
 
 func (t recurateThresholds) MinScorePct(context.Context) int {
-	return t.set.intv("recurate.min_score_pct")
+	return settings.RecurateMinScorePct.Get(t.set)
 }
-func (t recurateThresholds) MaxTitles(context.Context) int { return t.set.intv("recurate.max_titles") }
+func (t recurateThresholds) MaxTitles(context.Context) int {
+	return settings.RecurateMaxTitles.Get(t.set)
+}
 
 // liveTVAdapter answers setup status for the durably applied tuner/listing target. The explicit
 // resolver matters on Postgres: another replica can advance the checkpoint without changing this
 // process's controller Runtime, so request-path status must read DurableView instead.
 type liveTVAdapter struct {
-	c    *setup.LiveTVConnector
-	urls func(context.Context) (setup.LiveTVURLs, error)
+	c    *livetvpublish.LiveTVConnector
+	urls func(context.Context) (tunarr.LiveTVURLs, error)
 }
 
 func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
@@ -58,8 +62,8 @@ func (a liveTVAdapter) Wired(ctx context.Context) (bool, error) {
 // it becomes the applied UI backend, and pause/detach must disappear from that prepared
 // M3U rather than pointlessly rescanning the still-applied Tunarr tuner.
 type transportTunerRescanner struct {
-	c    *setup.LiveTVConnector
-	urls func(context.Context) (setup.LiveTVURLs, error)
+	c    *livetvpublish.LiveTVConnector
+	urls func(context.Context) (tunarr.LiveTVURLs, error)
 }
 
 func (r transportTunerRescanner) RescanTuner(ctx context.Context) error {
@@ -175,7 +179,7 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 				EpisodeEnd:    e.EpisodeEnd, // §5 multi-part: single-file span end
 				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
 				// so the schedule domain only ever compares ladder values (§4).
-				OfficialRating:  schedule.NormalizeRating(e.OfficialRating),
+				OfficialRating:  rating.Normalize(e.OfficialRating),
 				CommunityRating: e.CommunityRating,
 				Overview:        e.Overview,
 				Tags:            append([]string(nil), e.Tags...),
@@ -296,17 +300,17 @@ type approvalAdditionAdapter struct {
 
 func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	ctx context.Context,
-	item suggest.ProposalItem,
-) (suggest.ProposalItem, bool, error) {
+	item proposal.ProposalItem,
+) (proposal.ProposalItem, bool, error) {
 	key, err := (provision.Title{
 		MediaType: item.MediaType, TMDBID: item.TMDBID, TVDBID: item.TVDBID,
 	}).Key()
 	if err != nil {
-		return suggest.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
+		return proposal.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
 	}
 	mediaType, _, _, ok := provision.ParseKey(key)
 	if !ok {
-		return suggest.ProposalItem{}, false, errors.New("invalid title key")
+		return proposal.ProposalItem{}, false, errors.New("invalid title key")
 	}
 	item.InLibrary = false
 	item.LibraryItemID = ""
@@ -321,7 +325,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	}
 	owned, found, err := presence.Present(ctx, mediaType, item.TMDBID, item.TVDBID)
 	if err != nil {
-		return suggest.ProposalItem{}, false, err
+		return proposal.ProposalItem{}, false, err
 	}
 	if !found {
 		return item, false, nil

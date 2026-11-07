@@ -199,14 +199,15 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make config-docs` |  | generate docs/reference/settings.md from the settings registry |
+| `make settings-keys` |  | regenerate internal/settings/keys_gen.go (typed setting handles) from the registry |
 | `make config-docs-verify` | ✅ | regenerated config docs must match committed (CI red on drift) <br>*runs:* `config-docs` |
 
 ## Architecture map (docs/design/package-map.md)
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make arch-docs` |  | regenerate the package map in docs/design/package-map.md from the code |
-| `make arch-docs-verify` | ✅ | regenerated package map must match committed (CI red on drift) <br>*runs:* `arch-docs` |
+| `make arch-docs` |  | regenerate the package map and its area pages in docs/design/ from the code |
+| `make arch-docs-verify` | ✅ | regenerated package map and area pages must match committed (CI red on drift) <br>*runs:* `arch-docs` |
 
 ## Dev docs (the command contract)
 
@@ -232,7 +233,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make fe-install` | ✅ | install the web workspace (pnpm) |
-| `make fe-tokens` |  | regenerate design-token artifacts from packages/tokens (CI diff must be empty) |
+| `make fe-tokens` |  | regenerate the web theme stylesheet from the design-system tokens (CI diff must be empty) |
 | `make fe-tokens-verify` | ✅ | regenerated token artifacts must match committed <br>*runs:* `fe-tokens` |
 | `make brand-assets` |  | regenerate favicon, launcher, TV, and store artwork from the shared brand contract |
 | `make brand-assets-verify` |  | verify every platform brand derivative matches the shared brand contract |

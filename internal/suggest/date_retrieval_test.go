@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -68,7 +69,7 @@ func TestRunToolProjectsAcceptedMovieWindowsBeforeUnionDispatch(t *testing.T) {
 			"axes": []any{map[string]any{"kind": "movie_release", "combine": "any", "intervals": []any{map[string]any{"anchor": 0, "start": 1990, "end": 1999}}}},
 		},
 	}
-	_, _, trace, valid, _ := s.runToolWithDateMeaning(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: arguments}, Intent{Description: "1990s"}, nil, nil, ledger)
+	_, _, trace, valid, _ := s.runToolWithDateMeaning(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: arguments}, Intent{Intent: proposal.Intent{Description: "1990s"}}, nil, nil, ledger)
 	if !valid || trace.WindowsCompleted != 2 || trace.SourceQueriesDispatched != 2 {
 		t.Fatalf("union trace = %+v valid=%v", trace, valid)
 	}
@@ -91,7 +92,7 @@ func TestRunToolRejectsAllDateWindowsBeforeDispatchWhenGenerationCapacityIsShort
 			map[string]any{"anchor": 0, "start": 1990, "end": 1990}, map[string]any{"anchor": 0, "start": 2000, "end": 2000},
 		}}},
 	}
-	_, candidates, trace, valid, _ := s.runToolWithDateMeaning(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"genres": []any{"Drama"}, "dateMeaning": meaning}}, Intent{Description: "1990 or 2000"}, nil, nil, ledger)
+	_, candidates, trace, valid, _ := s.runToolWithDateMeaning(context.Background(), llm.ToolCall{Name: catalogToolName, Arguments: map[string]any{"genres": []any{"Drama"}, "dateMeaning": meaning}}, Intent{Intent: proposal.Intent{Description: "1990 or 2000"}}, nil, nil, ledger)
 	if !valid || trace.Terminal != FailureBudgetExhausted || candidates != nil || ledger.total != 1 || ledger.generation != 1 {
 		t.Fatalf("capacity failure = trace:%+v candidates:%+v ledger:%+v valid:%v", trace, candidates, ledger, valid)
 	}
@@ -115,7 +116,7 @@ func TestDateUnionMembershipFailurePreservesDispatchTrace(t *testing.T) {
 				SearchFunc: func(context.Context, string, int) ([]catalog.Candidate, error) { return nil, failure },
 			}
 			s := New(nil, catalog.New(nil, corpus), nil, 10)
-			intent := Intent{Description: "1980s named programming block with Grand Oak Hotel", membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
+			intent := Intent{Intent: proposal.Intent{Description: "1980s named programming block with Grand Oak Hotel"}, membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
 			arguments := map[string]any{
 				"media_type": "series",
 				"dateMeaning": map[string]any{"kind": "constraints", "anchors": []any{map[string]any{"field": "description", "start": 0, "end": 5}},

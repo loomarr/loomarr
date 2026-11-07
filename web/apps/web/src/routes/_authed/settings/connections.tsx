@@ -1,3 +1,4 @@
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import { createFileRoute } from "@tanstack/react-router";
 import { TmdbAttribution } from "@/components/loomarr/settings/tmdb-attribution";
 import { blockTitle } from "@/settings/provider-title";
@@ -17,7 +18,8 @@ interface ConnectionsSearch {
 const ConnectionsSettings = () => {
   const { focus } = Route.useSearch();
   const entries = useSettingsEntries();
-  const usesTunarrByDefault = entries.find((entry) => entry.key === "playout.backend")?.value === "tunarr";
+  const usesTunarrByDefault =
+    entries.find((entry) => entry.key === SettingKey.PlayoutBackend)?.value === "tunarr";
   return (
     <SettingsPage
       title="Connections"
@@ -36,7 +38,7 @@ const ConnectionsSettings = () => {
         // "Requester (Sonarr + Radarr)" — updating only after Save (§6).
         {
           group: "connections.requester",
-          title: blockTitle(entries, "Requester", "requester.provider"),
+          title: blockTitle(entries, "Requester", SettingKey.RequesterProvider),
           check: "requester",
           optional: true,
           description:

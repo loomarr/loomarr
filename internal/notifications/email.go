@@ -277,8 +277,8 @@ func NewEmailAdapter(materializer EmailMaterializer, sender EmailSender) *EmailA
 
 func (*EmailAdapter) Means() Means { return MeansEmail }
 
-func (*EmailAdapter) ValidateDestination(configuration, credentials map[string]string) error {
-	config, err := emailConfigFromProvider(configuration, credentials)
+func (*EmailAdapter) ValidateDestination(settings ProviderSettings) error {
+	config, err := emailConfigFromProvider(settings)
 	if err != nil {
 		return err
 	}
@@ -292,9 +292,7 @@ func (a *EmailAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 	if delivery.Destination == nil {
 		return emailConfigurationFailure()
 	}
-	config, err := emailConfigFromProvider(
-		delivery.Destination.Configuration, delivery.Destination.Credentials,
-	)
+	config, err := emailConfigFromProvider(delivery.Destination.ProviderSettings())
 	if err != nil {
 		return emailConfigurationFailure()
 	}
@@ -353,16 +351,16 @@ func (a *EmailAdapter) Deliver(ctx context.Context, delivery Delivery) Result {
 	return Result{Status: StatusDelivered, ProviderMessageID: acceptedID}
 }
 
-func emailConfigFromProvider(configuration, credentials map[string]string) (EmailConfig, error) {
-	port, err := strconv.Atoi(configuration["port"])
+func emailConfigFromProvider(settings ProviderSettings) (EmailConfig, error) {
+	port, err := strconv.Atoi(settings.plain(keyPort))
 	if err != nil {
 		return EmailConfig{}, fmt.Errorf("SMTP port must be a number")
 	}
 	return EmailConfig{
-		Enabled: true, Host: configuration["host"], Port: port,
-		Security: EmailSecurity(configuration["security"]), Username: configuration["username"],
-		Password: credentials["password"], FromAddress: configuration["fromAddress"],
-		FromName: configuration["fromName"],
+		Enabled: true, Host: settings.plain(keyHost), Port: port,
+		Security: EmailSecurity(settings.plain(keySecurity)), Username: settings.plain(keyUsername),
+		Password: settings.secret(keyPassword), FromAddress: settings.plain(keyFromAddress),
+		FromName: settings.plain(keyFromName),
 	}, nil
 }
 

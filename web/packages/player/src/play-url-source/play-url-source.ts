@@ -66,14 +66,9 @@ const reach = async <T>(signal: AbortSignal, send: () => Promise<T>): Promise<T>
 };
 
 const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptions): PlayerSourcePort => {
-  const mint: PlayerSourcePort["mint"] = async (channel, profile, signal) => {
+  const mint: PlayerSourcePort["mint"] = async (channel, signal) => {
     const response = await reach(signal, () =>
-      request(getChannelPlayUrlUrl(channel.id), {
-        body: JSON.stringify(profile),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-        signal,
-      }),
+      request(getChannelPlayUrlUrl(channel.id), { method: "POST", signal }),
     );
     if (!response.ok) throw new Error(`Couldn't mint a play URL (${response.status}).`);
 
@@ -121,8 +116,8 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
       return { ...started, mediaUri: new URL(only, response.url || minted.uri).toString() };
     },
     // Warms on the exact signed URL the real tune will reuse (see warmSource for the protocol).
-    warm: async (channel, profile, signal) => {
-      const minted = await mint(channel, profile, signal);
+    warm: async (channel, signal) => {
+      const minted = await mint(channel, signal);
       const { mediaUri, warmed } = await warmSource(minted.uri, (url) =>
         request(url, { method: "GET", signal }),
       );

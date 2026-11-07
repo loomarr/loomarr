@@ -1,4 +1,3 @@
-import { getFillerReadinessQueryKey } from "@loomarr/api/endpoints/filler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -124,9 +123,10 @@ describe("SettingsSaveBarHost", () => {
     expect(screen.getByLabelText("Save results")).toHaveTextContent("filler.home_place:pinned");
   });
 
-  it("refreshes the filler storage summary, which a saved allowance changes", async () => {
+  it("refetches every settings-derived read on save, including AI status", async () => {
     const client = new QueryClient();
-    const invalidate = vi.spyOn(client, "invalidateQueries");
+    await client.prefetchQuery({ queryKey: ["/v1/system/llm"], queryFn: () => "status" });
+    await client.prefetchQuery({ queryKey: ["/v1/settings"], queryFn: () => "list" });
     renderHost({ client });
     await userEvent.click(screen.getByRole("button", { name: "Stage edit" }));
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -137,6 +137,7 @@ describe("SettingsSaveBarHost", () => {
       });
     });
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: getFillerReadinessQueryKey() });
+    expect(client.getQueryState(["/v1/system/llm"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["/v1/settings"])?.isInvalidated).toBe(true);
   });
 });

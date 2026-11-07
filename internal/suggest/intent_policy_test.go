@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -17,21 +19,21 @@ func TestDeriveIntentPolicy(t *testing.T) {
 	}{
 		{
 			name:   "unqualified movie intent",
-			intent: Intent{Description: "1980s action heroes"},
+			intent: Intent{Intent: proposal.Intent{Description: "1980s action heroes"}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
 			},
 		},
 		{
 			name:   "plain episodic intent",
-			intent: Intent{Description: "Mudpuddles episodes"},
+			intent: Intent{Intent: proposal.Intent{Description: "Mudpuddles episodes"}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
 			},
 		},
 		{
 			name:   "sequential intent",
-			intent: Intent{Description: "Mudpuddles from the beginning"},
+			intent: Intent{Intent: proposal.Intent{Description: "Mudpuddles from the beginning"}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
 				sequential:       true,
@@ -39,7 +41,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "curated intent",
-			intent: Intent{Description: "classic Mudpuddles"},
+			intent: Intent{Intent: proposal.Intent{Description: "classic Mudpuddles"}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 				curated:          true,
@@ -47,7 +49,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "curated intent with negated binge",
-			intent: Intent{Description: "Classic Mudpuddles: the best episodes, not a full binge."},
+			intent: Intent{Intent: proposal.Intent{Description: "Classic Mudpuddles: the best episodes, not a full binge."}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 				curated:          true,
@@ -55,7 +57,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "named holiday intent",
-			intent: Intent{Description: "Christmas Mudpuddles episodes"},
+			intent: Intent{Intent: proposal.Intent{Description: "Christmas Mudpuddles episodes"}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
 				seasonal:         schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
@@ -63,25 +65,25 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "child safety intent",
-			intent: Intent{Description: "Saturday morning cartoons for kids"},
+			intent: Intent{Intent: proposal.Intent{Description: "Saturday morning cartoons for kids"}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
-				safetyCeiling:    schedule.Rating("TV-Y7"),
+				safetyCeiling:    rating.Rating("TV-Y7"),
 				kidsSignal:       true,
 			},
 		},
 		{
 			name:   "explicit rating and era intent",
-			intent: Intent{Description: "90s action rated PG-13", Era: "1990s"},
+			intent: Intent{Intent: proposal.Intent{Description: "90s action rated PG-13", Era: "1990s"}},
 			want: deterministicIntentPolicy{
 				episodeSelection:        schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
-				explicitAudienceCeiling: schedule.Rating("PG-13"),
+				explicitAudienceCeiling: rating.Rating("PG-13"),
 				kidsSignal:              true,
 			},
 		},
 		{
 			name:   "negative holiday constraint",
-			intent: Intent{Description: "classic Mudpuddles", MustExclude: []string{"holiday episodes"}},
+			intent: Intent{Intent: proposal.Intent{Description: "classic Mudpuddles", MustExclude: []string{"holiday episodes"}}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 				curated:          true,

@@ -7,12 +7,12 @@ fe-install: ## install the web workspace (pnpm)
 	cd $(WEB) && pnpm install --frozen-lockfile
 
 .PHONY: fe-tokens
-fe-tokens: ## regenerate design-token artifacts from packages/tokens (CI diff must be empty)
-	cd $(WEB) && pnpm --filter @loomarr/tokens generate
+fe-tokens: ## regenerate the web theme stylesheet from the design-system tokens (CI diff must be empty)
+	cd $(WEB) && pnpm --filter @loomarr/design-system generate
 
 .PHONY: fe-tokens-verify
 fe-tokens-verify: fe-tokens ## regenerated token artifacts must match committed
-	@git diff --exit-code web/packages/tokens/generated
+	@git diff --exit-code web/packages/design-system/generated
 
 .PHONY: brand-assets
 brand-assets: ## regenerate favicon, launcher, TV, and store artwork from the shared brand contract
@@ -50,7 +50,7 @@ fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 #
 # ⚠ ONLY apps/web is sharded, and that is not arbitrary. 166 of the 172 test files live there;
 # the other three packages hold 12 between them. More importantly `packages/core` and
-# `packages/tokens` run plain `vitest run` WITHOUT --passWithNoTests, so any shard that handed
+# `packages/design-system` run plain `vitest run` WITHOUT --passWithNoTests, so any shard that handed
 # them zero files would exit non-zero — a red CI caused purely by the split, appearing only at
 # higher shard counts. They stay unsharded, which is both safe and free.
 #

@@ -51,6 +51,32 @@ const formatMmSs = (ms: number): string => {
   return `${String(Math.floor(totalSec / 60)).padStart(2, "0")}:${String(totalSec % 60).padStart(2, "0")}`;
 };
 
+// A Go-duration STRING from the wire ("168h", "30h0m0s"), tidied for display: Go's
+// Duration.String() writes every unit, so the zero ones are dropped ("30h0m0s" → "30h"). A zero
+// duration ("0s", "0h0m0s") or an absent one is "", which each caller names for its own field
+// ("No restriction", built-in spacing). Text that is not an h/m/s duration comes back unchanged,
+// so a bad value stays visible instead of disappearing.
+const tidyGoDuration = (value: string | undefined): string => {
+  if (!value) return "";
+  const m = /^(\d+h)?(\d+m)?(\d+s)?$/.exec(value);
+  if (!m || (!m[1] && !m[2] && !m[3])) return value;
+  return [m[1], m[2], m[3]].filter((unit) => unit && !/^0[hms]$/.test(unit)).join("");
+};
+
+// Total minutes in a Go-duration string, in the long form Go writes ("4h0m0s", "1h30m0s") or the
+// short form a client sends ("2m", "4h"), with ms/s/m/h units and decimals. Undefined for anything
+// else, rather than a guess.
+const goDurationMinutes = (value: string | undefined): number | undefined => {
+  const text = value?.trim() ?? "";
+  if (!/^(?:[0-9]+(?:\.[0-9]+)?(?:ms|s|m|h))+$/.test(text)) return undefined;
+  const perMinute: Record<string, number> = { ms: 1 / 60_000, s: 1 / 60, m: 1, h: 60 };
+  let minutes = 0;
+  for (const [, amount, unit] of text.matchAll(/([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)/g)) {
+    minutes += Number(amount) * (perMinute[unit ?? "m"] ?? 1);
+  }
+  return minutes;
+};
+
 // The inverse of formatMmSs for the cut editor's text inputs. Accepts "m:ss" or "mm:ss"
 // (seconds may exceed 59 — "90" is 90s); returns undefined for anything else rather than
 // guessing, because a wrong cut point is exactly what the review gate exists to catch.
@@ -223,8 +249,10 @@ export {
   formatRuntime,
   formatUntil,
   formatUptime,
+  goDurationMinutes,
   humanizeRelaxation,
   humanizeSettingKey,
   parseMmSs,
   pluralize,
+  tidyGoDuration,
 };

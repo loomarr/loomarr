@@ -39,7 +39,7 @@ const controllerWith = (
     subscribe: vi.fn(() => () => undefined),
   };
   const source: PlayerSourcePort = { mint };
-  return { controller: createPlayerController({ profile: {}, source, transport, ...options }), mint };
+  return { controller: createPlayerController({ source, transport, ...options }), mint };
 };
 
 describe("last channel store", () => {

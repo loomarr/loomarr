@@ -188,7 +188,9 @@ const parseSettingsDocs = (): DocRow[] => {
 };
 
 const isCovered = (key: string, group: string, blocks: readonly SettingsBlock[]): boolean =>
-  blocks.some((block) => block.group === group && (!block.keys || block.keys.includes(key)));
+  blocks.some(
+    (block) => block.group === group && (!block.keys || block.keys.some((declared) => declared === key)),
+  );
 
 let capturedBlocks: SettingsBlock[] | undefined;
 

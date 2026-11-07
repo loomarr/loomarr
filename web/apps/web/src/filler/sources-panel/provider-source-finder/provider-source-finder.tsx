@@ -1,4 +1,5 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -11,45 +12,23 @@ import { cn } from "@/lib/utils";
 import { SourceContentPreview } from "../source-content-preview";
 
 interface ProviderSourceFinderProps {
-  kind: "archive" | "youtube";
+  /** The provider to find a source for. Every word on the finder comes from its description. */
+  provider: FillerProviderDescriptionDTO;
   enabled: boolean;
 }
 
-const COPY = {
-  archive: {
-    label: "Find an Archive.org collection",
-    placeholder: "Search collections or paste an archive.org URL",
-    check: "Check source",
-    add: "Add collection",
-  },
-  youtube: {
-    label: "Find a YouTube channel or playlist",
-    placeholder: "Search channels or paste a channel or playlist URL",
-    check: "Check source",
-    add: "Add source",
-  },
-} as const;
-
-const isExactProviderInput = (kind: ProviderSourceFinderProps["kind"], value: string) => {
-  if (kind === "archive") {
-    return (
-      /^(https?:\/\/)?(www\.)?archive\.org\/(details|metadata)\//i.test(value) ||
-      /^[a-z0-9][a-z0-9_-]*[_-][a-z0-9_-]+$/i.test(value)
-    );
-  }
-  return (
-    /^(https?:\/\/)?((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(value) ||
-    /^@[a-z0-9._-]+$/i.test(value) ||
-    /^UC[a-z0-9_-]{10,}$/i.test(value) ||
-    /^(PL|UU|LL|FL|RD|OLAK5uy_)[a-z0-9_-]{8,}$/i.test(value)
-  );
-};
+// How long typing pauses before the search runs. A pace for the operator's hands, not the
+// provider's rule, so it is the same for every provider.
+const SEARCH_PAUSE_MS = 500;
 
 // One search-or-paste field for one provider. Search and exact resolution are deliberately
 // read-only; the separate final button is the only action that registers background work.
-const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
-  const copy = COPY[kind];
-  const minimumQueryLength = kind === "youtube" ? 3 : 2;
+//
+// What counts as an address is the provider's to say: the server answers a pasted address with the
+// one source it names, already checked, and words with suggestions.
+const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) => {
+  const kind = provider.id;
+  const minimumQueryLength = provider.findMinQuery ?? 2;
   const listID = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const currentInput = useRef("");
@@ -60,26 +39,36 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
   const [active, setActive] = useState(-1);
   const [selected, setSelected] = useState<FillerSourceSuggestionDTO>();
   const [verified, setVerified] = useState(false);
-  const [lastExactInput, setLastExactInput] = useState("");
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(input.trim()), kind === "youtube" ? 600 : 400);
+    const timer = window.setTimeout(() => setDebounced(input.trim()), SEARCH_PAUSE_MS);
     return () => window.clearTimeout(timer);
-  }, [input, kind]);
+  }, [input]);
 
-  const exactProviderInput = isExactProviderInput(kind, debounced);
-  const exactInput = isExactProviderInput(kind, input.trim());
   const suggestionsQuery = fillerApi.useSuggestFillerSources(
     kind,
     { q: debounced, limit: 8 },
     {
       query: {
-        enabled: enabled && !selected && !exactProviderInput && debounced.length >= minimumQueryLength,
+        enabled: enabled && !selected && debounced.length >= minimumQueryLength,
         placeholderData: (previous) => previous,
       },
     },
   );
-  const suggestions = unwrap(suggestionsQuery.data, (body) => body.suggestions) ?? [];
+  const answer = unwrap(suggestionsQuery.data, (body) => body);
+  const exact = answer?.exact === true && !suggestionsQuery.isPlaceholderData;
+  const suggestions = answer?.exact ? [] : (answer?.suggestions ?? []);
+
+  // A pasted address comes back already checked: take it as the chosen source, as if it had been
+  // picked from the list and verified.
+  useEffect(() => {
+    const [source] = answer?.suggestions ?? [];
+    if (!exact || selected || !source || debounced !== input.trim()) return;
+    setSelected(source);
+    setVerified(true);
+    currentInput.current = source.title;
+    setInput(source.title);
+  }, [answer, debounced, exact, input, selected]);
 
   const resolveSource = fillerApi.useResolveFillerSource();
   const resolveInput = useCallback(
@@ -109,11 +98,6 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
     },
     [kind, resolveSource],
   );
-  useEffect(() => {
-    if (!enabled || selected || !exactProviderInput || debounced === lastExactInput) return;
-    setLastExactInput(debounced);
-    resolveInput(debounced);
-  }, [debounced, enabled, exactProviderInput, lastExactInput, resolveInput, selected]);
   const addSource = fillerApi.useAddFillerSource({
     mutation: {
       onSuccess: () => {
@@ -144,7 +128,6 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
     setDebounced("");
     setSelected(undefined);
     setVerified(false);
-    setLastExactInput("");
     setActive(-1);
     inputRef.current?.focus();
   };
@@ -153,9 +136,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
     if (!enabled || !input.trim()) return;
     if (!selected) {
       const value = input.trim();
-      if (isExactProviderInput(kind, value)) {
-        resolveInput(value);
-      } else if (debounced === value) {
+      if (debounced === value) {
         void suggestionsQuery.refetch();
       } else {
         setDebounced(value);
@@ -163,16 +144,11 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
       return;
     }
     if (!verified || selected.alreadyAdded) return;
-    addSource.mutate({
-      data: {
-        kind,
-        uri: kind === "archive" ? selected.canonicalId : selected.canonicalUrl,
-        label: selected.title,
-      },
-    });
+    addSource.mutate({ data: { kind, uri: selected.canonicalUrl, label: selected.title } });
   };
 
-  const showSuggestions = enabled && !selected && !exactInput && input.trim().length >= minimumQueryLength;
+  const searching = !selected && suggestionsQuery.isFetching;
+  const showSuggestions = enabled && !selected && !exact && input.trim().length >= minimumQueryLength;
   const failure = suggestionsQuery.error ?? resolveSource.error ?? addSource.error;
   const problem = failure ? toProblem(failure) : undefined;
 
@@ -195,14 +171,14 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
         <Input
           ref={inputRef}
           role="combobox"
-          aria-label={copy.label}
+          aria-label={provider.findLabel}
           aria-autocomplete="list"
           aria-controls={listID}
           aria-expanded={showSuggestions && suggestions.length > 0}
           aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined}
           autoComplete="off"
           className="min-w-0 flex-1"
-          placeholder={copy.placeholder}
+          placeholder={provider.findPlaceholder}
           value={input}
           disabled={!enabled}
           onChange={(event) => {
@@ -239,7 +215,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
             !input.trim() ||
             resolveSource.isPending ||
             addSource.isPending ||
-            (!selected && !exactInput && suggestionsQuery.isFetching) ||
+            searching ||
             selected?.alreadyAdded ||
             Boolean(selected && !verified)
           }
@@ -248,13 +224,11 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
             ? "Checking…"
             : addSource.isPending
               ? "Adding…"
-              : !selected && !exactInput && suggestionsQuery.isFetching
+              : searching
                 ? "Searching…"
                 : selected
-                  ? copy.add
-                  : exactInput
-                    ? copy.check
-                    : "Search"}
+                  ? provider.findAdd
+                  : "Search"}
         </Button>
       </form>
 
@@ -266,7 +240,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
         <div
           id={listID}
           role="listbox"
-          aria-label={`${copy.label} results`}
+          aria-label={`${provider.findLabel} results`}
           className="border-border bg-popover mt-1 max-h-72 w-full overflow-y-auto rounded-lg border p-1"
         >
           {suggestionsQuery.isFetching && suggestions.length === 0 && (
@@ -275,11 +249,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
           {!suggestionsQuery.isFetching &&
             suggestions.length === 0 &&
             debounced.length >= minimumQueryLength && (
-              <p className="text-muted-foreground px-3 py-2 text-sm">
-                {kind === "archive"
-                  ? "No collections found. Paste the exact URL to check it."
-                  : "No channels found. Paste a channel or playlist URL to check it."}
-              </p>
+              <p className="text-muted-foreground px-3 py-2 text-sm">{provider.findNoMatches}</p>
             )}
           {suggestions.map((suggestion, index) => (
             <button
@@ -325,7 +295,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
             </div>
           </div>
           <SourceContentPreview
-            kind={kind}
+            provider={provider}
             canonicalUrl={selected.canonicalUrl}
             previewItems={verified ? selected.previewItems : undefined}
             loading={resolveSource.isPending && !verified}
@@ -344,7 +314,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
         <p className="text-onair-300 mt-2 text-sm">
           {problem.detail ??
             problem.title ??
-            `${kind === "archive" ? "Archive.org" : "YouTube"} is not responding right now. Try again in a moment.`}
+            `${provider.label} is not responding right now. Try again in a moment.`}
         </p>
       )}
     </div>

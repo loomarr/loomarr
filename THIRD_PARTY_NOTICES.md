@@ -224,10 +224,10 @@ document source distribution mechanics for that image using the public source re
   refuses to sign an index unless both platform images carry a non-empty SPDX SBOM and a build
   provenance naming this repository at the tagged commit);
 - ~~pin the runtime and build base images by digest~~ (done — all four `FROM` bases in
-  [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) ~~and make the Debian
-  package input reproducible~~ (done — the runtime stage repoints apt at a fixed
-  `snapshot.debian.org` timestamp (`DEBIAN_SNAPSHOT`) matching the base image's own build snapshot, so
-  every `apt-get install` resolves the same package versions on every build);
+  [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag). The Debian packages
+  layered onto the runtime base come from Debian stable (`deb.debian.org`) and follow its point
+  releases: a fixed `snapshot.debian.org` timestamp was tried and dropped in 2026-11, when that service
+  refused requests for days and failed every image build;
 - ~~include the required DejaVu font license~~ (done — the Bitstream Vera grant is reproduced above,
   and the image retains the package's own `copyright`) ~~and complete the frontend/Rust transitive
   license-text inventory~~ (done — the Frontend and Rust dependency sections above state the shipped

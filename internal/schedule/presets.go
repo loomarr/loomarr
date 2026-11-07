@@ -6,6 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // Preset lowering (programming-design §6.6): the closed authoring vocabulary. The LLM/UI
@@ -90,7 +91,7 @@ func andPredicate(a, b WhenPredicate) WhenPredicate {
 // stricter-only audience clamp. Unknown → (nil, false), dropped by the caller.
 //
 // A `series:<key>` scope is returned as-is; groundPolicy intersects it with grounded picks.
-func LowerWhat(token string) (scope *ScopePolicy, kidsCeiling Rating, ok bool) {
+func LowerWhat(token string) (scope *ScopePolicy, kidsCeiling rating.Rating, ok bool) {
 	t := strings.ToLower(strings.TrimSpace(token))
 	switch {
 	case t == "all", t == "":
@@ -101,9 +102,9 @@ func LowerWhat(token string) (scope *ScopePolicy, kidsCeiling Rating, ok bool) {
 		// treat as "no extra scope" here; the holiday WHEN already gates the timing.
 		return nil, "", true
 	case t == "kids":
-		return &ScopePolicy{Genres: GenreFilter{Include: kidSafeGenres}}, NormalizeRating("TV-Y7"), true
+		return &ScopePolicy{Genres: GenreFilter{Include: kidSafeGenres}}, rating.Normalize("TV-Y7"), true
 	case t == "family":
-		return &ScopePolicy{Genres: GenreFilter{Include: familyGenres}}, NormalizeRating("TV-PG"), true
+		return &ScopePolicy{Genres: GenreFilter{Include: familyGenres}}, rating.Normalize("TV-PG"), true
 	case strings.HasPrefix(t, "series:"):
 		key := strings.TrimSpace(token[len("series:"):]) // preserve original case for the key
 		if key == "" {

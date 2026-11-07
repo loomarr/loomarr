@@ -2,6 +2,7 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
+import { tidyGoDuration } from "@loomarr/core/format";
 import { Check, Download, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -48,15 +49,9 @@ const datesLabel = (dates?: DateScope): string =>
 const seasonalLabel = (m?: string): string =>
   ({ "": "Auto", auto: "Auto", off: "Off", exclusive: "Exclusive" })[m ?? ""] ?? m ?? "Auto";
 
-// A no-repeat window is a Go-duration STRING on the wire, and the backend's Duration.String()
-// pads zero units ("168h" vs "30h0m0s"). Trim them before comparing, or an unchanged window
-// reads as a diff. Absent/"0s" means no restriction — say so rather than showing an empty cell.
-const noRepeatLabel = (v?: string): string => {
-  if (!v || v === "0s") return "No restriction";
-  const m = v.match(/^(\d+h)?(\d+m)?(\d+s)?$/);
-  if (!m || (!m[1] && !m[2] && !m[3])) return v; // not a duration — show it as-is, don't hide it
-  return [m[1], m[2], m[3]].filter((p) => p && !/^0[hms]$/.test(p)).join("") || "No restriction";
-};
+// A no-repeat window, tidied so an unchanged "168h" and "168h0m0s" do not read as a diff. A zero
+// or absent window means no restriction — say so rather than showing an empty cell.
+const noRepeatLabel = (v?: string): string => tidyGoDuration(v) || "No restriction";
 
 const policyDeltas = (current?: ChannelPolicy, proposed?: ChannelPolicy): PolicyDelta[] => {
   if (!current || !proposed) return [];

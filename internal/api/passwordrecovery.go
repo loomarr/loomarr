@@ -88,7 +88,7 @@ func (s *Server) previewPasswordRecovery(
 type redeemPasswordRecoveryInput struct {
 	Body struct {
 		Grant    string `json:"grant" format:"password"`
-		Password string `json:"password" format:"password"`
+		Password string `json:"password" format:"password" minLength:"8"`
 	}
 }
 
@@ -109,7 +109,7 @@ func passwordRecoveryError(err error) error {
 	case errors.Is(err, auth.ErrInvalidPasswordRecovery):
 		return errGone("Password reset unavailable", "This password reset link is invalid, expired, revoked, or already used. Request a new one.")
 	case errors.Is(err, auth.ErrWeakPassword):
-		return errUnprocessable("Password too short", "Use at least 8 characters.")
+		return errPasswordTooShort()
 	case errors.Is(err, auth.ErrRateLimited):
 		return errTooManyRequests("Too many attempts", "Wait a moment before trying this password reset again.")
 	default:
