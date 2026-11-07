@@ -1,14 +1,12 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
-import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
 import { Surface, Text } from "@loomarr/design-system";
-import { WatchFrame, watchingPanelFromGuide } from "@loomarr/ui";
-import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
+import { WatchFrame } from "@loomarr/ui";
 import { createFileRoute, useCanGoBack, useRouter } from "@tanstack/react-router";
-import { type ReactNode, useCallback, useMemo } from "react";
+import { type ReactNode, useCallback } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelWatch } from "@/channels/channel-watch";
-import { DRAWER_NOW_PERCENT, drawerChannels } from "@/channels/drawer-channels";
+import { useWatchChannels } from "@/channels/use-watch-channels";
 import { useWatchPlayer } from "@/channels/use-watch-player";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -62,46 +60,7 @@ const WatchScreen = () => {
     else void navigate({ to: "/guide" });
   }, [canGoBack, router, navigate]);
 
-  // The channels drawer reads the guide window Home and the Guide already share, and the viewer's
-  // favourites and recents (#1666). A star or a settled tune answers with both lists, which replace
-  // the cached ones.
-  const { nowMs, window: guideWindow } = useGuideWindow();
-  const guide = channelsApi.useChannelGuide(guideWindow, {
-    query: { retry: false, placeholderData: keepPreviousData },
-  });
-  const queryClient = useQueryClient();
-  const mine = channelsApi.useMyChannels({ query: { retry: false } });
-  const mineBody = unwrap(mine.data);
-  const storeMine = {
-    onSuccess: (res: unknown) => queryClient.setQueryData(channelsApi.getMyChannelsQueryKey(), res),
-  };
-  const addFavourite = channelsApi.useAddFavouriteChannel({ mutation: storeMine });
-  const removeFavourite = channelsApi.useRemoveFavouriteChannel({ mutation: storeMine });
-  const recordTune = channelsApi.useRecordChannelTune({ mutation: storeMine });
-  const drawerChannelList = useMemo(
-    () => drawerChannels(unwrap(guide.data)?.channels ?? [], nowMs),
-    [guide.data, nowMs],
-  );
-
-  // A portrait phone's panel under the picture (#1785, mock 5e) reads the same guide the way the
-  // native Watching does: now and next for the tuned channel, the favourites with what each has on,
-  // and Previous as the newest recent that isn't this channel.
-  const favouriteIds = useMemo(() => mineBody?.favourites.map((f) => f.channelId) ?? [], [mineBody]);
-  const recentIds = useMemo(() => mineBody?.recent.map((r) => r.channelId) ?? [], [mineBody]);
-  const tunedId = tunedChannel?.id;
-  const phone = useMemo(() => {
-    if (!tunedId) return undefined;
-    const body = unwrap(guide.data);
-    // Read defensively, as the drawer does: a body without `channels` must not reach the layout.
-    return watchingPanelFromGuide({
-      channelId: tunedId,
-      favouriteIds,
-      layout: body?.channels ? layoutGuide(body, nowMs) : undefined,
-      nowMs,
-      playableChannelIds: (body?.channels ?? []).filter((c) => c.status === "live").map((c) => c.channelId),
-      recentIds,
-    });
-  }, [guide.data, nowMs, tunedId, favouriteIds, recentIds]);
+  const around = useWatchChannels(tunedChannel?.id);
 
   if (channelQuery.error && !tunedChannel) {
     return (
@@ -131,16 +90,7 @@ const WatchScreen = () => {
         isAdmin={isAdmin}
         onLeave={leave}
         player={player}
-        drawer={{
-          channels: drawerChannelList,
-          favourites: favouriteIds,
-          recent: recentIds,
-          nowPercent: DRAWER_NOW_PERCENT,
-          onFavourite: (channelId, favourite) =>
-            (favourite ? addFavourite : removeFavourite).mutate({ channelId }),
-        }}
-        onTuneSettled={(channelId) => recordTune.mutate({ channelId })}
-        phone={phone}
+        channels={around}
       />
     </WatchFrame>
   );
