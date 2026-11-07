@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/releasenotes"
+	"github.com/loomarr/loomarr/internal/platform/releasenotes"
 )
 
 func main() {

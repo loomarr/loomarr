@@ -391,7 +391,7 @@ policy. The Playwright runner selects repository contracts, visual, e2e, tuner, 
 broad Web unit gate is not selected: its `make fe-unit` and `make fe-checks` paths never invoke
 either script, while each container-backed Playwright target and `test-pg` owns an explicit
 prerequisite.
-Any production or test change under `internal/releaseverify` or `cmd/releaseverify` selects both the
+Any production or test change under `internal/platform/releaseverify` or `cmd/releaseverify` selects both the
 policy job and the sharded Go job, because only the latter executes the package's RED-capable tests.
 
 Playwright is the second active job. Its four shards consume the union of `impact_visual` and
@@ -567,7 +567,7 @@ When the issue closes, the test is back in the required step on the next run; th
 prints a notice until someone removes it. Every doubt resolves toward required: an issue whose state
 can't be read, a malformed line, or an unknown mode fails closed. The manual `tuner` scope turns the
 quarantine off, so it measures every test. That non-blocking step is the only source-bound step the
-workflow policy lets set `continue-on-error` (`nonBlocking` in `internal/releaseverify`).
+workflow policy lets set `continue-on-error` (`nonBlocking` in `internal/platform/releaseverify`).
 
 After that portability proof is green, `Apple compilation cache` is the only workflow authorized to
 publish compiler results. It is manual-only, refuses every ref except `refs/heads/main`, and builds

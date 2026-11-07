@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // ladderProgress is a monotone-decreasing scalar over the fields the ladder is

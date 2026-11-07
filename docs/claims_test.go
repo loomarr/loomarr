@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/docs"
-	"github.com/loomarr/loomarr/internal/config"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/config"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // The help set ships INSIDE the binary and is read as instructions. embed_test.go already
@@ -100,9 +100,9 @@ var envVarsOutsideTheRegistry = map[string]string{
 	"LOOMARR_HTTP_BIND":                    "compose-only — selects the address where Traefik publishes HTTP",
 	"LOOMARR_HTTP_PORT":                    "compose-only — selects Traefik's published host port",
 	"PROMETHEUS_URL":                       "Grafana provisioning-only — selects the Prometheus datasource URL; Loomarr never reads it",
-	"API_TOKEN":                            "generated secret (internal/settings/secrets.go SecretAPI), not a registry row — an operator may pin it via env to script /v1/backup, so the install docs name it",
+	"API_TOKEN":                            "generated secret (internal/platform/settings/secrets.go SecretAPI), not a registry row — an operator may pin it via env to script /v1/backup, so the install docs name it",
 	"LOOMARR_ENCRYPTION_KEY":               "boot-only installation key read directly by internal/people/secretprotection before settings can load",
-	"LOOMARR_METRICS_TOKEN_FILE":           "Docker-secrets path for the bootstrap scrape token, resolved in internal/config Load (#1408); the token itself is the declared LOOMARR_METRICS_TOKEN bootstrap key",
+	"LOOMARR_METRICS_TOKEN_FILE":           "Docker-secrets path for the bootstrap scrape token, resolved in internal/platform/config Load (#1408); the token itself is the declared LOOMARR_METRICS_TOKEN bootstrap key",
 	"LOOMARR_ENCRYPTION_KEY_FILE":          "boot-only installation-key file path read directly by internal/people/secretprotection",
 	"LOOMARR_ENCRYPTION_KEY_PREVIOUS":      "one-boot prior installation key used by internal/people/secretprotection for atomic key replacement",
 	"LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE": "one-boot prior installation-key file path used by internal/people/secretprotection for atomic key replacement",
@@ -172,7 +172,7 @@ func knownEnvVars(t *testing.T) map[string]struct{} {
 		}
 	}
 
-	// internal/config declares its keys as `env:"..."` struct tags rather than registry rows,
+	// internal/platform/config declares its keys as `env:"..."` struct tags rather than registry rows,
 	// so reflection is the only way to read them without duplicating the list here.
 	cfg := reflect.TypeOf(config.Config{})
 	for i := range cfg.NumField() {

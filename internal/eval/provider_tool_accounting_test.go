@@ -4,7 +4,7 @@ package eval
 
 import (
 	"context"
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"testing"
 )

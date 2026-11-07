@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/media/tools"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // Scanning FILLER_DIR directly (§10, revised by §9.1).

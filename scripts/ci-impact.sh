@@ -98,7 +98,7 @@ classify() {
       [[ "$path" != *.test.* ]] || select_gate contracts
       ;;
     # migratedGo trees whose Go routing below skips the contracts job.
-    internal/releaseverify/*_test.go|research/*_test.go)
+    internal/platform/releaseverify/*_test.go|research/*_test.go)
       select_gate contracts
       ;;
     web/apps/web/tests/visual/*)
@@ -118,7 +118,7 @@ classify() {
   esac
 
   # Product Go. Release images compile and embed these source families.
-  if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/releaseverify/* ]]; then
+  if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/platform/releaseverify/* ]]; then
     known=true
     select_gate policy
   elif [[ "$path" == research/* ]]; then
@@ -588,7 +588,7 @@ classify() {
       select_gate go
       select_gate image
       ;;
-    internal/releaseverify/testdata/*)
+    internal/platform/releaseverify/testdata/*)
       # Release verification is policy-only above; its golden inputs must retain that boundary
       # instead of falling through to the generic Go-package fixture rule.
       known=true
@@ -609,7 +609,7 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/web/dist/*)
+    internal/platform/web/dist/*)
       known=true
       select_gate contracts
       select_gate go
@@ -628,7 +628,7 @@ classify() {
         scripts/agent*|scripts/changed-paths*|scripts/go-direct-impact*|scripts/test-affected*) select_gate agent; select_gate policy ;;
         scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
         scripts/ci-ffmpeg.sh|scripts/go-mod-download.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
-        # Rewrites the FFmpeg pin evidence that internal/releaseverify (contracts) verifies.
+        # Rewrites the FFmpeg pin evidence that internal/platform/releaseverify (contracts) verifies.
         scripts/ffmpeg-pin-refresh.sh) select_gate contracts; select_gate policy ;;
         scripts/go-certification-lanes.tsv|scripts/go-race-policy.sh|scripts/go-race-weights.tsv|scripts/go-shard.sh|scripts/go-test-lane.sh|scripts/go-test-packages.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;

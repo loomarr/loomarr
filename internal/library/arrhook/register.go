@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 // Name is the connection Loomarr keeps in each arr's Settings → Connect.

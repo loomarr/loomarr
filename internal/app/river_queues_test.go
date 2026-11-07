@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -94,5 +94,5 @@ func TestRiverQueues_ALongJobDoesNotStarveTheCheapOnes(t *testing.T) {
 	}
 }
 
-// The routing invariant is pinned in `internal/jobs` (queues_test.go), where `queueFor` and
+// The routing invariant is pinned in `internal/platform/jobs` (queues_test.go), where `queueFor` and
 // `riverQueues` live — test-only exports would be a worse trade than an internal test.

@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // An owned pick carries its library file size as an exact fact, read from the grounded

@@ -47,10 +47,10 @@ cd "$ROOT"
 # auth, …) are deliberately absent: they are exactly where -race has caught real bugs here.
 RACE_OFF=(
 	internal/catalog
-	internal/config
+	internal/platform/config
 	internal/filler/taxonomy
 	internal/provision
-	internal/activity
+	internal/platform/activity
 	cmd/dev-docs
 	cmd/arch-docs
 	docs

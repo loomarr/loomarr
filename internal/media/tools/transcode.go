@@ -16,8 +16,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 )
 
 // Derivative transcoding (§10 V66) — source masters feed separately identified evidence and

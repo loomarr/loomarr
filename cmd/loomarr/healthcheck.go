@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/platform/config"
 )
 
 // healthcheckTimeout bounds the probe below the interval any sane orchestrator uses.

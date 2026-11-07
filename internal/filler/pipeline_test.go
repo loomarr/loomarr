@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // --- doubles -----------------------------------------------------------------

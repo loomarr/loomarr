@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // memSink is an in-memory fileSink for testing the walk without touching disk.

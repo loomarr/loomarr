@@ -35,7 +35,7 @@ const matches = (entry: SettingEntry, q: string): boolean => {
 
 // Provenance chips. THREE, not the v2 mock's four: the mock adds a `generated` chip, but
 // generated secrets (`playout_token`, the API token) are a separate registry
-// (`internal/settings/secrets.go`) and are not settings entries at all — the API's provenance
+// (`internal/platform/settings/secrets.go`) and are not settings entries at all — the API's provenance
 // enum has exactly env/db/default. Rendering a fourth state would mean inventing a value the
 // backend never sends. Those secrets live under Access and devices, where view/copy/
 // regenerate belong.

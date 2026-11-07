@@ -12,11 +12,11 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/loudness"
 	"github.com/loomarr/loomarr/internal/media/tools"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // The TRANSCODE stage (§10 V66): retains the source and independently produces evidence and

@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// Process environment access has one home: internal/config. Boot parsing takes an explicit
+// Process environment access has one home: internal/platform/config. Boot parsing takes an explicit
 // environment map (config.LoadEnv), secrets come from config.ReadSecret, and code that must
 // consult a variable at runtime goes through config.LookupEnv. A stray os.Getenv elsewhere is
 // how a second, differently-precedenced reading of the same knob starts.
@@ -22,7 +22,7 @@ import (
 // selector `os.Getenv` / `os.LookupEnv` / `os.Setenv` / `os.Unsetenv` / `os.Environ` where `os`
 // is the file's import of the standard "os" package.
 
-const envAccessHome = "internal/config/"
+const envAccessHome = "internal/platform/config/"
 
 var envAccessFuncs = map[string]bool{
 	"Getenv": true, "LookupEnv": true, "Setenv": true, "Unsetenv": true, "Environ": true, "ExpandEnv": true, "Clearenv": true,
@@ -118,7 +118,7 @@ func TestProcessEnvironmentIsReadOnlyInConfig(t *testing.T) {
 	sort.Strings(files)
 	for _, file := range files {
 		if !envAccessAllowed(file) {
-			t.Errorf("%s uses %s — read configuration through internal/config (config.Load / config.LookupEnv / "+
+			t.Errorf("%s uses %s — read configuration through internal/platform/config (config.Load / config.LookupEnv / "+
 				"config.ReadSecret); if it truly must read the process environment, add it to envAccessAllowlist with the reason",
 				file, strings.Join(uses[file], ", "))
 		}

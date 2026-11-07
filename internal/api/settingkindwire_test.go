@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // A setting's kind is the registry's closed set on the wire, so the frontend switches on the

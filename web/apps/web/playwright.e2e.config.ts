@@ -30,13 +30,13 @@ export default defineConfig({
   // responsiveness is already covered at both viewports by the visual suite.
   projects: [{ name: "desktop", use: DESKTOP }],
   webServer: {
-    // Serves the REAL SPA build (internal/web/dist) via the pure-JS http-server bin, for
+    // Serves the REAL SPA build (internal/platform/web/dist) via the pure-JS http-server bin, for
     // the same reason the visual suite does: the bind-mounted node_modules carries the
     // HOST's native binaries, so anything with a platform-specific binding (vite/rollup)
     // cannot run inside the Linux image. The `--proxy …?` form is http-server's SPA
     // history fallback, so deep links like /wizard resolve the way they do from the Go
     // binary's embed rather than 404-ing.
-    command: `node_modules/.bin/http-server ../../../internal/web/dist -p ${PORT} -s -c-1 --proxy http://127.0.0.1:${PORT}?`,
+    command: `node_modules/.bin/http-server ../../../internal/platform/web/dist -p ${PORT} -s -c-1 --proxy http://127.0.0.1:${PORT}?`,
     url: `http://127.0.0.1:${PORT}/`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

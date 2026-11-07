@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 const (

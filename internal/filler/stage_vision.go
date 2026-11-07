@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
-	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // The VISION stage (§10 V51b) — the expensive last tier, unchanged from V44 except for what drives

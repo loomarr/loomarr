@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 func TestNetworkExportNon2xxIsStatusError(t *testing.T) {

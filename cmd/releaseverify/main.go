@@ -20,7 +20,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/releaseverify"
+	"github.com/loomarr/loomarr/internal/platform/releaseverify"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 // decodeError marks a 2xx body that did not parse.

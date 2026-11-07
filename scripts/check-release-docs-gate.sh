@@ -5,7 +5,7 @@ set -euo pipefail
 # change in the same release range (#1682, maintainer decision D3, step 5 of #1572).
 #
 # "User-facing" is NOT a new taxonomy: it reuses the exact seven-category classification
-# scripts/generate-release-notes.sh already assigns every merged PR to (internal/releasenotes).
+# scripts/generate-release-notes.sh already assigns every merged PR to (internal/platform/releasenotes).
 # Four of those categories ship visible behaviour; the other three do not:
 #
 #   user-facing:     New Features, Improvements, Bug Fixes, Security Fixes

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/buildinfo"
+	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 

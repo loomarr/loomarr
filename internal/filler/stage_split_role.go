@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 func structureRoleEvidenceFromVision(source SplitSourceAsset, segment SplitSegment, promptVersion, prompt string, frames [][]byte, response llm.Response, out visionOutput, assessedAt time.Time) (*StructureRoleEvidence, error) {

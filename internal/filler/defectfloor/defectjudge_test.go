@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // scriptedJudge answers Model with model (or err) and each clip from rulings; asked records who

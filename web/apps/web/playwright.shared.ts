@@ -42,7 +42,7 @@ const E2E_WORKERS = onRealCI ? undefined : localWorkers();
 // There are two configs because Playwright boots every configured `webServer` regardless
 // of which project you filter to, and the suites have different build prerequisites —
 // the gallery needs `storybook-static`, the flow suite needs the real SPA in
-// `internal/web/dist`. Merging them would force you to build both to run either.
+// `internal/platform/web/dist`. Merging them would force you to build both to run either.
 //
 // What must NOT be duplicated is this: a tuning change (diff ratio, launch flags) that
 // lands in only one config is a silent divergence between what the gallery gate and the

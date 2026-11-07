@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
+	"github.com/loomarr/loomarr/internal/platform/metrics"
 )
 
 // Connection is one immutable media-server connection snapshot. Flavor, URL,

@@ -286,8 +286,8 @@ var migratedGo = []string{
 	"internal/eval/release_latency_test.go",
 	"internal/eval/runner_accounting_test.go",
 	// The remaining small groups and the archived filler research tooling (slice 17).
-	"internal/people/auth/", "internal/people/contact/", "internal/llm/", "internal/media/tools/", "internal/people/notifications/",
-	"internal/proposals/outlook/", "internal/proposals/quality/", "internal/releaseverify/", "internal/playout/tunarr/",
+	"internal/people/auth/", "internal/people/contact/", "internal/platform/llm/", "internal/media/tools/", "internal/people/notifications/",
+	"internal/proposals/outlook/", "internal/proposals/quality/", "internal/platform/releaseverify/", "internal/playout/tunarr/",
 	"internal/playout/watermark/", "research/",
 	"internal/proposals/suggest/season_window_test.go",
 }
@@ -305,7 +305,7 @@ var realDataGo = map[string]string{
 	"internal/eval/schedule_live_test.go":                   "queries live data on purpose",
 	"internal/filler/enrichment/deterministic_test.go":      "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
 	"internal/filler/station/directory_test.go":             "pins call-sign resolution against the real FCC station seed, whose networks and call signs are real",
-	"internal/llm/ollama_test.go":                           "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
+	"internal/platform/llm/ollama_test.go":                  "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
 	"internal/provision/webhook_parity_test.go":             "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
 	"internal/requester/seerr_contract_test.go":             "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
 	"internal/proposals/suggest/live_latency_test.go":       "drives a real LLM, whose world knowledge of real titles is what it measures",

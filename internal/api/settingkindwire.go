@@ -3,7 +3,7 @@ package api
 import (
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // The components every setting entry reads, so orval emits one SettingKind, SettingPresentation

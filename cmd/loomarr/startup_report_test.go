@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 )
 
 func TestStartupTableNeverWritesToNonInteractiveJSONOutput(t *testing.T) {

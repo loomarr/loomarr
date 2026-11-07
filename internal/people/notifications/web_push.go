@@ -16,7 +16,7 @@ import (
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 
-	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 type WebPushIdentity struct {

@@ -83,7 +83,7 @@ help: ## List targets
 
 # No `## ` comment on purpose: introspection plumbing, not a target anyone runs directly, so it
 # stays out of `make help`. A named target with a literal variable reference, NOT a `%` pattern
-# rule with `$($*)` — internal/releaseverify's CI-container Make policy audits every target and
+# rule with `$($*)` — internal/platform/releaseverify's CI-container Make policy audits every target and
 # variable reference in this file against a closed grammar and rejects both dynamic forms as an
 # unaudited injection surface. Lets scripts (go-impact.sh) read TAGS_CSV straight from this file
 # (`make -s print-tags-csv`) instead of keeping a second, hand-maintained copy of the tag list

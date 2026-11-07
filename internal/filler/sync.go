@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
-	"github.com/loomarr/loomarr/internal/logchange"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/logchange"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // This file is the catalog sync (§10, revised by §9.1): loomarr scans FILLER_DIR

@@ -6,7 +6,7 @@ different kinds of record, each answering one question:
 | Record | Answers | Written by |
 | --- | --- | --- |
 | `activity` | What did Loomarr do? (the Dashboard's Recent activity) | the subsystem making the change, at the domain transition |
-| Diagnostic events and Process runs | What did this part of Loomarr observe? | `internal/diagnostics` |
+| Diagnostic events and Process runs | What did this part of Loomarr observe? | `internal/platform/diagnostics` |
 | Metrics | Is Loomarr operating? | the generation's `metrics.Recorder` |
 
 A fourth, the discovery-quality ledger, answers how far requested Proposals progressed.
@@ -25,7 +25,7 @@ A fourth, the discovery-quality ledger, answers how far requested Proposals prog
 
 ## Diagnostics
 
-`internal/diagnostics` owns retained technical evidence behind a small interface: record one
+`internal/platform/diagnostics` owns retained technical evidence behind a small interface: record one
 structured Diagnostic event, or begin one Process run and report its progress, output and result.
 Callers never choose columns, paths, batching, redaction, retention or export formats. It has SQLite
 and PostgreSQL adapters through the shared store and an in-memory test adapter, and receives a narrow
@@ -168,7 +168,7 @@ targets, paths or user data. Assembly redacts again. Nothing is ever sent anywhe
 ## Metrics
 
 Prometheus metrics are an operator contract, not a mirror of domain events. One generation-scoped
-`internal/metrics.Recorder` owns a private registry, the collectors, HTTP middleware, store collection
+`internal/platform/metrics.Recorder` owns a private registry, the collectors, HTTP middleware, store collection
 and every label classifier; callers use semantic callbacks and never pass label values.
 
 - `/v1/metrics` (alias `/metrics`) is unauthenticated on the trusted-LAN listener; deployments keep it

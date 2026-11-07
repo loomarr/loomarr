@@ -2,9 +2,9 @@
 migration-rehearsal-script	scripts/migration-rehearsal.sh	contracts
 hardware-gate-script	scripts/check-hardware-gate.sh	contracts
 leaf-go	internal/proposals/suggest/score.go	contracts,go,postgres,image
-releaseverify-production	internal/releaseverify/ci_container_downloads.go	policy
-releaseverify-red-tests	internal/releaseverify/ci_container_downloads_test.go	contracts,policy
-releaseverify-policy-fixtures	internal/releaseverify/testdata/make_policy_normalization.mk;internal/releaseverify/testdata/make_policy_normalization.golden	policy
+releaseverify-production	internal/platform/releaseverify/ci_container_downloads.go	policy
+releaseverify-red-tests	internal/platform/releaseverify/ci_container_downloads_test.go	contracts,policy
+releaseverify-policy-fixtures	internal/platform/releaseverify/testdata/make_policy_normalization.mk;internal/platform/releaseverify/testdata/make_policy_normalization.golden	policy
 store-go	internal/store/store.go	contracts,go,postgres,image
 postgres-test-image-authority	internal/testkit/postgresimage/image.txt	contracts,go,go_full,postgres,image,policy
 postgres-test-image-owner	internal/testkit/postgresimage/image.go	contracts,go,go_full,postgres,image,policy
@@ -107,7 +107,7 @@ agent-orca-adapter	orca.yaml	agent,policy
 dev-watchers	scripts/dev/watch-resources.sh;scripts/dev/watch-test.sh	agent
 claude-shared-settings	.claude/settings.json	docs,agent
 affected-test-tooling	scripts/changed-paths.sh;scripts/go-direct-impact.sh;scripts/test-affected.sh	agent,policy
-affected-loop-control-plane	AGENTS.md;docs/agents/harness.md;docs/reference/make.md;docs/contributing/testing.md;docs/contributing/ci.md;mk/agent.mk;scripts/agent-harness-test.sh;scripts/agent.sh;scripts/changed-paths-test.sh;scripts/changed-paths.sh;scripts/ci-impact.sh;scripts/go-direct-impact-test.sh;scripts/go-direct-impact.sh;scripts/test-affected-test.sh;scripts/test-affected.sh;scripts/testdata/ci-impact.tsv;scripts/validate-android-release-source-test.sh;.github/workflows/ci.yml;internal/releaseverify/ci.go;internal/releaseverify/ci_container_bootstrap.go;internal/releaseverify/ci_container_bootstrap_test.go;internal/releaseverify/ci_container_workflow_authority.go;internal/releaseverify/ci_test.go	contracts,docs,agent,policy
+affected-loop-control-plane	AGENTS.md;docs/agents/harness.md;docs/reference/make.md;docs/contributing/testing.md;docs/contributing/ci.md;mk/agent.mk;scripts/agent-harness-test.sh;scripts/agent.sh;scripts/changed-paths-test.sh;scripts/changed-paths.sh;scripts/ci-impact.sh;scripts/go-direct-impact-test.sh;scripts/go-direct-impact.sh;scripts/test-affected-test.sh;scripts/test-affected.sh;scripts/testdata/ci-impact.tsv;scripts/validate-android-release-source-test.sh;.github/workflows/ci.yml;internal/platform/releaseverify/ci.go;internal/platform/releaseverify/ci_container_bootstrap.go;internal/platform/releaseverify/ci_container_bootstrap_test.go;internal/platform/releaseverify/ci_container_workflow_authority.go;internal/platform/releaseverify/ci_test.go	contracts,docs,agent,policy
 release-workflow	.github/workflows/release.yml	policy
 ci-workflow	.github/workflows/ci.yml	policy
 ci-agent-workflow	.github/workflows/ci-agent.yml	agent,policy
@@ -144,7 +144,7 @@ playwright-container-runner	scripts/run-playwright-container.sh	contracts,visual
 tuner-args	scripts/tuner-args.sh;scripts/tuner-args-test.sh	tuner,policy
 merge-queue-policy	scripts/ci-merge-queue-policy.sh;scripts/ci-merge-queue-policy-test.sh	policy
 ci-policy-bootstrap	.github/workflows/ci.yml	policy
-ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/contributing/ci.md	docs,agent,policy
+ci-tooling-bundle	.github/workflows/ci.yml;internal/platform/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/contributing/ci.md	docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/proposals/suggest/score.go;docs/contributing/testing.md	contracts,go,postgres,image,docs
@@ -161,7 +161,7 @@ filler-corpus-locked	internal/fillercorpus/corpus/pilot/locked.json	contracts,go
 installation-location-data	internal/filler/location/places.tsv.gz;internal/filler/location/ip-country.csv.gz;internal/filler/location/location-data.generated.json	contracts,go,image
 broadcast-station-seed	internal/filler/station/stations.tsv.gz;internal/filler/station/station-data.generated.json	contracts,go,postgres,image
 broadcast-station-generator-inputs	cmd/station-data/wikidata-call-signs.rq;cmd/station-data/wikidata-call-signs.tsv	contracts,go
-openrouter-catalog-leaf	internal/openroutercatalog/openrouter_route.go	contracts,go,postgres,image
+openrouter-catalog-leaf	internal/platform/openroutercatalog/openrouter_route.go	contracts,go,postgres,image
 research-archive	research/cmd/filler-corpus-pilot-rights-review/main.go;research/internal/fillerreview/temporal_reviewer_template.go;research/go.mod	docs
 filler-eval-doc	research/docs/filler-certification.md	docs
 ci-ffmpeg-toolchain	scripts/ci-ffmpeg.sh	contracts,go,go_full,policy

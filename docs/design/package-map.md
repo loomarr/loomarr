@@ -61,7 +61,7 @@ Code that exists for tests and never ships in the server: the shared test double
 
 ### From a request to Live TV
 
-A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` (the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from `llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the channel and `channels/edit` writes it through `store`; any title the household lacks becomes a `provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `channels/schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `playout/tunarr`. `playout/livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before publishing it to the media server.
+A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` (the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from `platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the channel and `channels/edit` writes it through `store`; any title the household lacks becomes a `provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `channels/schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `playout/tunarr`. `playout/livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before publishing it to the media server.
 
 ### From a filler source to a break
 
@@ -74,42 +74,42 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | Package | Depends on |
 | --- | --- |
 | `catalog` | `library`, `provision` |
-| `channels/schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
-| `config` | — |
-| `diagnostics` | `storagegovernor` |
-| `filler` | `channels/schedule`, `diagnostics`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `storagegovernor` |
+| `channels/schedule` | `inventory`, `platform/holidayvocab`, `platform/rating`, `provision` |
+| `filler` | `channels/schedule`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/storagegovernor` |
 | `filler/source` | — |
 | `filler/station` | — |
 | `filler/structure` | — |
 | `filler/structure/window` | `filler/structure` |
 | `filler/taxonomy` | — |
-| `holidayvocab` | — |
-| `httpx` | `metrics` |
 | `inventory` | — |
-| `jobs` | `store` |
-| `library` | `httpx`, `inventory`, `metrics` |
-| `llm` | `httpx`, `metrics` |
+| `library` | `inventory`, `platform/httpx`, `platform/metrics` |
 | `media/bgexec` | — |
 | `media/creative` | — |
 | `media/defects` | — |
-| `media/encode` | `config` |
-| `media/tools` | `diagnostics`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode` |
+| `media/encode` | `platform/config` |
+| `media/tools` | `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics` |
 | `metadataprovider` | — |
-| `metrics` | `provision` |
 | `people/contact` | — |
 | `people/invitation` | `people/contact` |
-| `people/notifications` | `httpx` |
+| `people/notifications` | `platform/httpx` |
 | `people/recovery` | — |
-| `playout` | `channels/schedule`, `config`, `diagnostics`, `media/encode`, `provision` |
-| `proposals` | `channels/schedule`, `provision`, `storagegovernor` |
+| `platform/config` | — |
+| `platform/diagnostics` | `platform/storagegovernor` |
+| `platform/holidayvocab` | — |
+| `platform/httpx` | `platform/metrics` |
+| `platform/jobs` | `store` |
+| `platform/llm` | `platform/httpx`, `platform/metrics` |
+| `platform/metrics` | `provision` |
+| `platform/rating` | — |
+| `platform/settings` | `library`, `platform/config` |
+| `platform/storagegovernor` | — |
+| `playout` | `channels/schedule`, `media/encode`, `platform/config`, `platform/diagnostics`, `provision` |
+| `proposals` | `channels/schedule`, `platform/storagegovernor`, `provision` |
 | `proposals/quality` | `provision` |
-| `proposals/suggest` | `catalog`, `channels/schedule`, `holidayvocab`, `llm`, `proposals`, `proposals/quality`, `provision`, `rating`, `store`, `tmdb` |
+| `proposals/suggest` | `catalog`, `channels/schedule`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `proposals`, `proposals/quality`, `provision`, `store`, `tmdb` |
 | `provision` | — |
-| `rating` | — |
-| `settings` | `config`, `library` |
-| `storagegovernor` | — |
-| `store` | `channels/schedule`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposals`, `proposals/quality`, `provision` |
-| `tmdb` | `catalog`, `httpx`, `metrics`, `provision` |
+| `store` | `channels/schedule`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `platform/diagnostics`, `platform/holidayvocab`, `proposals`, `proposals/quality`, `provision` |
+| `tmdb` | `catalog`, `platform/httpx`, `platform/metrics`, `provision` |
 
 ## How the area pages are made
 

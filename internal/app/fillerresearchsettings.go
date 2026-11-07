@@ -9,9 +9,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
-	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
+	"github.com/loomarr/loomarr/internal/platform/metrics"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 type fillerResearchSettingsAdapter struct {

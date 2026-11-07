@@ -6,7 +6,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // durationWire is how a schedule.Duration is described ON THE WIRE (§7.1, §14.1).

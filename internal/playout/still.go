@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"golang.org/x/sync/singleflight"
 )
 

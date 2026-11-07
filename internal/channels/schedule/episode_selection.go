@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 )
 
 // EpisodeSelection is the approved editorial policy for one series entry.

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 )
 
 // deadPublicURL refuses connections at once: the shape of a public URL whose IP the host no longer

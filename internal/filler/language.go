@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/loomarr/loomarr/internal/langcode"
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/langcode"
 
 	"path/filepath"
 	"slices"

@@ -10,7 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/media/tools"
-	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
 // Clip artwork (V39): the still frame AND the animated hover preview, from ONE ffmpeg pass.

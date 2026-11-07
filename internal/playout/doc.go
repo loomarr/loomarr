@@ -39,7 +39,7 @@
 //     never EVICTED to make room, which was viewra's mistake — dropping a watching household to
 //     admit a new one trades a working stream for a broken one.
 //
-//   - A SLOW VIEWER IS DROPPED, NOT BUFFERED. Note this INVERTS internal/events, which drops the
+//   - A SLOW VIEWER IS DROPPED, NOT BUFFERED. Note this INVERTS internal/platform/events, which drops the
 //     MESSAGE and keeps the subscriber: an SSE client can refetch state on reconnect, so a gap
 //     is recoverable. A byte stream with a hole in it is corrupt, not stale — so here the
 //     viewer goes and the stream stays clean.

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 )
 
 // Orphaned `running` rows (#1401) were never finalized across container restarts, and because

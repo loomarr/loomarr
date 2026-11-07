@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
-	"github.com/loomarr/loomarr/internal/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 )
 
 // Holidays (#2030): seeded at boot from the shipped definitions, each owning its seasonal taxon,

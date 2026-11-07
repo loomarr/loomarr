@@ -8,14 +8,14 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
-	"github.com/loomarr/loomarr/internal/jobs"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 // fillerSyncJob declares the filler catalog sync (§10, §18.1).
 //
 // ⚠ **This one job cannot live with its subsystem, and the reason is structural rather than
-// stylistic.** `internal/filler` may never import `internal/jobs`: the jobs package
+// stylistic.** `internal/filler` may never import `internal/platform/jobs`: the jobs package
 // imports `store`, and `store` imports `filler` for the Clip type — so a `Job()` method on
 // Syncer is an import cycle, not a preference. Verified by trying it.
 //

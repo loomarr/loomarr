@@ -23,8 +23,8 @@ import { server } from "@/test/msw/server";
 // task (Connections, AI, Playback, …) will never open. This guard fails the build the moment a
 // non-internal registry key loses coverage, instead of waiting for someone to notice in Advanced.
 //
-// Source of truth: `docs/reference/settings.md`, generated from `internal/settings/declared.go` by
-// `make config-docs` and already drift-checked against it (internal/settings/docs_test.go). Parsing
+// Source of truth: `docs/reference/settings.md`, generated from `internal/platform/settings/declared.go` by
+// `make config-docs` and already drift-checked against it (internal/platform/settings/docs_test.go). Parsing
 // THAT file — rather than hand-copying the key list here — is what keeps this guard honest: a key
 // added to the registry without a `make config-docs` regen fails the Go drift test first, and a key
 // added WITH a regen shows up here automatically.
@@ -35,7 +35,7 @@ interface DocRow {
   group: string;
 }
 
-// Mirrors `groupTitles` in internal/settings/docs.go — the registry Group → doc heading map. Only
+// Mirrors `groupTitles` in internal/platform/settings/docs.go — the registry Group → doc heading map. Only
 // the heading text changes if that map changes, never the key list, so this is a small closed
 // vocabulary (15 entries) rather than the hand-copied registry enumeration the guard exists to avoid.
 const GROUP_HEADING_TO_WIRE: Record<string, string> = {
@@ -58,7 +58,7 @@ const GROUP_HEADING_TO_WIRE: Record<string, string> = {
   Advanced: "advanced",
 };
 
-// Mirrors `ownerTitles` in internal/settings/docs.go crossed with `SETTINGS_DESTINATIONS`' `id` —
+// Mirrors `ownerTitles` in internal/platform/settings/docs.go crossed with `SETTINGS_DESTINATIONS`' `id` —
 // only for the owners whose destination page renders registry keys through `SettingsPage`'s
 // `blocks`. Owners absent here (Advanced settings, Background tasks, Diagnostics) route to pages
 // that don't use `blocks` at all; see OWNER_TASK_SKIP below.
@@ -181,7 +181,7 @@ const parseSettingsDocs = (): DocRow[] => {
     if (group === undefined) {
       throw new Error(
         `settings.md has a table row under unrecognized heading "${heading}" — ` +
-          "add it to GROUP_HEADING_TO_WIRE (mirroring internal/settings/docs.go groupTitles).",
+          "add it to GROUP_HEADING_TO_WIRE (mirroring internal/platform/settings/docs.go groupTitles).",
       );
     }
     rows.push({ key: rowMatch[1] as string, ownerTask: (rowMatch[2] as string).trim(), group });

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/holidayvocab"
-	"github.com/loomarr/loomarr/internal/rating"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 )
 
 func TestLowerWhen(t *testing.T) {

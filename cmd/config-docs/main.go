@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
 func main() {

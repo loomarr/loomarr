@@ -3,7 +3,7 @@ package schedule
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/rating"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 )
 
 func TestDeriveFiller_Audience(t *testing.T) {

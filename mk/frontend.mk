@@ -72,7 +72,7 @@ fe: fe-checks fe-packages fe-unit ## biome + codegen + knip + typecheck + unit t
 fe-checks: fe-codegen ## everything in fe except the tests: biome, knip, typecheck, SPA, storybook
 	cd $(WEB) && pnpm lint && pnpm knip && pnpm --filter @loomarr/web... -r --parallel typecheck \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook
-	@touch internal/web/dist/.gitkeep
+	@touch internal/platform/web/dist/.gitkeep
 
 .PHONY: fe-packages
 fe-packages: fe-codegen ## unit tests of the packages the web app uses, after codegen
@@ -174,7 +174,7 @@ fe-visual-update: storybook-build ensure-playwright-image ## regenerate the comm
 	./scripts/run-playwright-container.sh visual-update
 
 # The e2e suite drives the REAL embedded SPA build, which Vite writes to
-# internal/web/dist — OUTSIDE web/. So unlike fe-visual it mounts the repo ROOT, and
+# internal/platform/web/dist — OUTSIDE web/. So unlike fe-visual it mounts the repo ROOT, and
 # runs from /work/web/apps/web (node_modules still resolves up to /work/web).
 .PHONY: e2e
 e2e: fe-build ensure-playwright-image ## wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate)

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/recommend"
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 func TestRunnerCertifiesOnlyACompleteSuiteMeetingFrozenThresholds(t *testing.T) {

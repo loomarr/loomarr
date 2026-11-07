@@ -17,7 +17,7 @@ exclude_path = [
   "web/node_modules",
   "docs-site/node_modules",
   "docs-site/dist",
-  "internal/web/dist",
+  "internal/platform/web/dist",
   ".agents/skills",   # vendored third-party skills, pinned by hash — not our prose
   # ⚠ NOT the whole design/ directory. Its *.md deltas carry real links into docs/ — one of
   # them broke in the archive move and was caught here — so the Makefile feeds `design/*.md`

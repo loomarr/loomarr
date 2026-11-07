@@ -325,7 +325,7 @@ echo "pinned $build_id from $release; published $release_url" >&2
 [[ "$automate" == true ]] || exit 0
 
 # --- Automate: verify, push the pin branch, open the PR, dispatch full CI -------------------------
-(cd "$repo_root" && go test ./internal/releaseverify/)
+(cd "$repo_root" && go test ./internal/platform/releaseverify/)
 git -C "$repo_root" switch --create "$branch"
 git -C "$repo_root" add Dockerfile THIRD_PARTY_NOTICES.md project/evidence
 git -C "$repo_root" -c user.name='github-actions[bot]' \

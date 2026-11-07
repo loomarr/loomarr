@@ -67,7 +67,7 @@ compatible models, ranked best-first — no search box. `ollama pull hf.co/<repo
 specific chosen quant (verified). Tool-capability is confirmed AFTER pull via the Ollama probe
 (`/api/show capabilities`) — HF has no reliable tool-calling tag.
 
-Contract facts (inform `internal/llm/huggingface.go`):
+Contract facts (inform `internal/platform/llm/huggingface.go`):
 
 1. List response is a **JSON array**; fields bound: `id`, `downloads`, `tags[]`, `pipeline_tag`,
    `private`. Files response: `siblings[].{rfilename,size}` (LFS files carry the real size).

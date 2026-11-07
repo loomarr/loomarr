@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/events"
-	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
-	"github.com/loomarr/loomarr/internal/settings"
+	"github.com/loomarr/loomarr/internal/platform/events"
+	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/metrics"
+	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
 

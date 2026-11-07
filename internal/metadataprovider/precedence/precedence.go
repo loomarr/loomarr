@@ -26,7 +26,7 @@ import (
 	"time"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/rating"
+	"github.com/loomarr/loomarr/internal/platform/rating"
 )
 
 // ErrCountryUnsupported refuses a certification country with no rating ladder (decision 21).

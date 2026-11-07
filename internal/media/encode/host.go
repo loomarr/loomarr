@@ -3,7 +3,7 @@ package encode
 import (
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/platform/config"
 )
 
 // Family is one hardware pipeline implementation.

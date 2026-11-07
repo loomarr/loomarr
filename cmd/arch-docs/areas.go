@@ -189,10 +189,12 @@ var areas = []area{
 			"whole-word text matching.",
 		Packages: []string{
 			"store", "store/storedb", "store/catalogstore", "store/identitystore",
-			"settings", "config", "jobs", "housekeeping", "activity", "diagnostics", "metrics", "httpx",
-			"events", "storagegovernor", "logchange", "releasenotes", "releaseverify", "buildinfo", "web",
-			"devbootstrap", "llm", "openroutercatalog", "openroutermedia", "holidayvocab", "langcode",
-			"rating", "textmatch",
+			"platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
+			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
+			"platform/events", "platform/storagegovernor", "platform/logchange", "platform/releasenotes",
+			"platform/releaseverify", "platform/buildinfo", "platform/web", "platform/devbootstrap",
+			"platform/llm", "platform/openroutercatalog", "platform/openroutermedia",
+			"platform/holidayvocab", "platform/langcode", "platform/rating", "platform/textmatch",
 		},
 		MayImport: map[string]string{
 			"library": "the store persists inventory, provision and episode-evidence values, and settings " +
@@ -246,7 +248,7 @@ var flows = []flow{
 		Text: "A member asks for a channel through `api`. `proposals/workflow` turns the request into a " +
 			"durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` " +
 			"(the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from " +
-			"`llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the " +
+			"`platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the " +
 			"channel and `channels/edit` writes it through `store`; any title the household lacks becomes a " +
 			"`provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. " +
 			"`channels/schedule` turns " +

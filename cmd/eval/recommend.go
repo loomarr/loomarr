@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
 // The provider, ceiling and artifact plumbing shared by recommend-cert and recommend-diagnostic.

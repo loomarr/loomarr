@@ -26,8 +26,8 @@ read the handlers for this): every endpoint in scope, and every **field of every
 body**. Fields matter more than endpoints here: `PATCH /v1/channels/{id}` is obviously
 reachable, while `strategy` inside its body is the thing nobody can set.
 
-Add: settings keys from `internal/settings/declared.go`, and generated secrets from
-`internal/settings/secrets.go`.
+Add: settings keys from `internal/platform/settings/declared.go`, and generated secrets from
+`internal/platform/settings/secrets.go`.
 
 **2. Find the demand.** For each, search `web/apps/web/src` for a component that reads or
 writes it. Trace to a **route** in `src/routes/` — a component that nothing renders is not

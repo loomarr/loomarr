@@ -94,7 +94,7 @@ beside it, because that file is live. Snapshotting a live database needs the `sq
 worktree (an agent lane), unset for the primary worktree. While set, the settings-save Live TV
 transition, the channel-maintenance repair publisher, and the `livetv-reconnect` endpoint all skip
 every `AddTuner`/`RemoveTuner`/listing-provider call and log one line instead — settings still
-save. This is deliberately NOT a declared setting (`internal/settings`): a lane's `library.url`/
+save. This is deliberately NOT a declared setting (`internal/platform/settings`): a lane's `library.url`/
 `library.token` can drift onto the household media server, and this must hold regardless of what
 the Settings UI saves (#1555). `scripts/dev-env.sh show` reports the current state as "livetv
 tuner publishing". Override with `LOOMARR_AGENT_DISABLE_LIVETV_TUNER=` (empty) only to reproduce

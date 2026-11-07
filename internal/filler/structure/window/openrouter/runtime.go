@@ -16,10 +16,10 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure/assessment"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/media/encode"
-	"github.com/loomarr/loomarr/internal/openroutercatalog"
-	"github.com/loomarr/loomarr/internal/openroutermedia"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
+	"github.com/loomarr/loomarr/internal/platform/openroutercatalog"
+	"github.com/loomarr/loomarr/internal/platform/openroutermedia"
 )
 
 const (
