@@ -1,11 +1,11 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { Play, Scissors } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
@@ -253,7 +253,6 @@ const ClipCard = ({
   selected,
   onToggleSelect,
   compact,
-  className,
 }: ClipCardProps) => {
   // Ready is the default and wears no chip (#1817, decided on #1908): a healthy library of a
   // thousand clips shouldn't carry a thousand amber badges. Only a clip that is NOT ready names
@@ -265,13 +264,10 @@ const ClipCard = ({
   const needsDetailsChip = !exception && clip.needsDetails ? <NeedsDetailsChip /> : null;
   return (
     <Card
-      className={cn(
-        "flex flex-col",
-        compact ? "gap-1.5 p-2" : "gap-2.5 p-3",
-        // Selection is neutral (#1909): amber is for focus and the primary action.
-        selected && "ring-foreground ring-1",
-        className,
-      )}
+      // Selection is neutral (#1909): amber is for focus and the primary action.
+      className={cn(selected && "ring-foreground ring-1")}
+      gap={compact ? 6 : 10}
+      padding={compact ? 8 : 12}
     >
       {clip.thumbImage ? (
         <ClipFrame

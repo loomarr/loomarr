@@ -1,7 +1,8 @@
 import type { ChannelPolicy, ProposalItem } from "@loomarr/api";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { eraDates } from "@/lib/era-dates";
+import { render } from "@/test/render";
 import { RefineReview } from "./refine-review";
 import type { CurrentLineupItem } from "./refine-review.type";
 

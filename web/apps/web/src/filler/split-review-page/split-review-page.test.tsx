@@ -16,10 +16,12 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
-import { SplitReviewPage, validateSplitReviewSearch } from "./split-review-page";
+import { render } from "@/test/render";
+import { validateSplitReviewSearch } from "../split-review-search";
+import { SplitReviewPage } from "./split-review-page";
 
 // A MINIMAL router, not the app tree: the page navigates on confirm/back, and TanStack
 // throws navigating to a route the tree doesn't have — so the tree is exactly the two
@@ -256,11 +258,5 @@ describe("SplitReviewPage", () => {
     expect(router.state.location.pathname).toBe("/filler/library");
   });
 
-  it("keeps only the two known origins", () => {
-    expect(validateSplitReviewSearch({ from: "incoming" })).toEqual({ from: "incoming" });
-    expect(validateSplitReviewSearch({ from: "library" })).toEqual({ from: "library" });
-    expect(validateSplitReviewSearch({ from: "/channels" })).toEqual({});
-    expect(validateSplitReviewSearch({})).toEqual({});
-  });
   // §19's member case lives at the route now (AdminOnly, #1977): test/app-router.test.tsx.
 });

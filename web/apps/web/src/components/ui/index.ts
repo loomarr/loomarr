@@ -2,7 +2,6 @@
 export * from "./badge";
 export * from "./button";
 export * from "./caption";
-export * from "./card";
 export * from "./checkbox";
 export * from "./disclosure";
 export * from "./dropdown-menu";

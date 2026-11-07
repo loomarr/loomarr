@@ -1,6 +1,6 @@
+import { Card } from "@loomarr/design-system";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
@@ -140,8 +140,8 @@ const WizardShell = ({
           {description && <p className="text-muted-foreground text-sm">{description}</p>}
         </div>
 
-        <Card>
-          <CardContent className="flex flex-col gap-5 p-6">{children}</CardContent>
+        <Card gap={20} padding={24}>
+          {children}
         </Card>
 
         <div className="flex items-center gap-2">
