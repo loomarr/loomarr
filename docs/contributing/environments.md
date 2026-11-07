@@ -10,6 +10,7 @@
 | Merge queue | Every affected gate on the current base | The change is safe to merge | That the image runs as a deployed app |
 | Demo site | A real image beside the invented demo library | The image starts, seeds, and plays channels | Real data, GPU encoding or load |
 | Staging | The demo site on a cloud server, for a few hours | The same as the demo site, away from your machine, from a commit or a release | Real data, GPU encoding or load |
+| Migration rehearsal | A candidate image on a copy of a real backup, with no network | The migrations run on real data and the server starts | That the app behaves well afterwards |
 | Production | A signed release | Everything, on real data | Nothing: a mistake here reaches a household |
 
 ## Run the demo site
