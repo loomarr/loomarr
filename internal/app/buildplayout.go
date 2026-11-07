@@ -13,7 +13,6 @@ import (
 	"github.com/loomarr/loomarr/internal/backendtransition"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -21,7 +20,8 @@ import (
 	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media"
-	"github.com/loomarr/loomarr/internal/mediameasure"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/settings"
@@ -242,7 +242,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// the app's lifetime; sources are read directly through the path map, never through Emby.
 	ffmpegBin := settings.PlayoutFFmpegPath.Get(set)
 	measurer := playoutRes.newMeasurer(
-		mediameasure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
+		measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
 	playoutRes.measurer = measurer
 	playoutRes.analyses = st
 	go measurer.Run(rootCtx)

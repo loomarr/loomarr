@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // fakeProbeFFmpeg writes an executable that stands in for ffmpeg: it records its pid and reports

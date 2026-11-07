@@ -15,8 +15,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/images"
-	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 )
 
 // certificationCorpusManifest describes the refusals deliberately planted in the repository

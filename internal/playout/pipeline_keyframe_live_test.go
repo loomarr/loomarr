@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // THE FIRST FRAME OF EVERY SLOT IS AN IDR, AND THE CADENCE HOLDS (#1561). The retired chain forced

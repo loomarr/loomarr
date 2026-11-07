@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/encode"
-	"github.com/loomarr/loomarr/internal/loudness"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/loudness"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -53,16 +53,16 @@ type TranscodeStage struct {
 	// bring to it is refused as too_quiet. A closure returning 0 means no target, and no floor.
 	targetLUFS func() float64
 	now        func() time.Time
-	// transcode is a seam around the ffmpeg driver. Production always uses mediatools.Transcode;
+	// transcode is a seam around the ffmpeg driver. Production always uses tools.Transcode;
 	// tests replace it with a byte writer so the lifecycle can be exercised without a host binary.
-	transcode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
+	transcode func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error)
 	// evidenceTranscode and identifyFFmpeg are enabled together by WithMediaDerivatives. Keeping
 	// this explicit lets legacy recovery tests exercise only the historical playback saga while
 	// the production composition root always opts into the V66 two-derivative contract.
-	evidenceTranscode func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error)
-	identifyFFmpeg    func(context.Context, string) (mediatools.MediaToolIdentity, error)
-	verifyDerivative  func(context.Context, string, string, int64, int, bool, float64) (mediatools.DerivativeQC, error)
-	condition         func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error)
+	evidenceTranscode func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error)
+	identifyFFmpeg    func(context.Context, string) (tools.MediaToolIdentity, error)
+	verifyDerivative  func(context.Context, string, string, int64, int, bool, float64) (tools.DerivativeQC, error)
+	condition         func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error)
 	// removeSource is the local-filesystem boundary after durable re-key. Production uses
 	// os.Remove; tests inject its failure to prove the explicit quarantine survives a restart.
 	removeSource func(string) error
@@ -77,9 +77,9 @@ type TranscodeStage struct {
 // always calls it; the method exists so media construction remains a testable boundary.
 func (s *TranscodeStage) WithMediaDerivatives() *TranscodeStage {
 	if s != nil {
-		s.evidenceTranscode = mediatools.Transcode
-		s.identifyFFmpeg = mediatools.IdentifyFFmpeg
-		s.verifyDerivative = mediatools.VerifyDerivative
+		s.evidenceTranscode = tools.Transcode
+		s.identifyFFmpeg = tools.IdentifyFFmpeg
+		s.verifyDerivative = tools.VerifyDerivative
 	}
 	return s
 }
@@ -106,11 +106,11 @@ func (s *TranscodeStage) target() encodeTarget {
 		return encodeTarget{profile: s.profile}
 	}
 	host := s.host()
-	return encodeTarget{profile: mediatools.FileMezzanine(host), host: host}
+	return encodeTarget{profile: tools.FileMezzanine(host), host: host}
 }
 
 // WithConditioning joins the read-only conditioning inspector to this existing pipeline rung.
-func (s *TranscodeStage) WithConditioning(measure func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error)) *TranscodeStage {
+func (s *TranscodeStage) WithConditioning(measure func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error)) *TranscodeStage {
 	if s != nil {
 		s.condition = measure
 	}
@@ -145,12 +145,12 @@ func NewTranscodeStage(store TranscodeClipStore, probe Prober, clipDir string, p
 		now = time.Now
 	}
 	if profile.VideoCodec == "" {
-		profile = mediatools.DefaultMezzanine()
+		profile = tools.DefaultMezzanine()
 	}
 	return &TranscodeStage{
 		store: store, probe: probe, clipDir: clipDir, profile: profile,
 		ffmpegPath: ffmpegPath, targetLUFS: targetLUFS, now: now,
-		transcode:    mediatools.Transcode,
+		transcode:    tools.Transcode,
 		removeSource: os.Remove,
 	}
 }
@@ -295,7 +295,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		defer swap.discardUncommitted(s.clipDir, evidence.Asset.Path)
 	}
 
-	req := mediatools.TranscodeRequest{
+	req := tools.TranscodeRequest{
 		In: inputFull, Out: stageFull,
 		DurationMs: in.DurationMs, HadAudio: !in.Silent,
 		InputProbe: &in,
@@ -376,7 +376,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		out.DurationMs = after.ContainerDurationMs
 		quality = after.Quality
 	}
-	var playbackQC mediatools.DerivativeQC
+	var playbackQC tools.DerivativeQC
 	if evidence != nil {
 		if s.verifyDerivative == nil {
 			return StageResult{}, errors.New("playback derivative verification is unavailable")
@@ -449,8 +449,8 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 		}
 	}
 	if job != nil {
-		sourceEqual, sourceErr := exactFileBytesEqual(ctx, sourceMasterFull, inputFull, mediatools.ConditioningMaxSnapshotBytes)
-		parentEqual, parentErr := exactFileBytesEqual(ctx, job.parentFull, job.req.ParentPath, mediatools.ConditioningMaxSnapshotBytes)
+		sourceEqual, sourceErr := exactFileBytesEqual(ctx, sourceMasterFull, inputFull, tools.ConditioningMaxSnapshotBytes)
+		parentEqual, parentErr := exactFileBytesEqual(ctx, job.parentFull, job.req.ParentPath, tools.ConditioningMaxSnapshotBytes)
 		if sourceErr != nil || parentErr != nil || !sourceEqual || !parentEqual {
 			return conditioningReview(c, "conditioning source or parent changed while evidence was prepared"), nil
 		}
@@ -462,7 +462,7 @@ func (s *TranscodeStage) run(ctx context.Context, c StoreClip, swap *airingSwap)
 	// now occupies the catalog name. Re-open the visible source before publication so a replacement
 	// cannot be re-keyed and then deleted as if it were the bytes we preserved.
 	if sourceMaster.ClipHash == c.Hash {
-		sourceStillOwned, sourceErr := exactFileBytesEqual(ctx, oldFull, sourceMasterFull, mediatools.ConditioningMaxSnapshotBytes)
+		sourceStillOwned, sourceErr := exactFileBytesEqual(ctx, oldFull, sourceMasterFull, tools.ConditioningMaxSnapshotBytes)
 		if sourceErr != nil || !sourceStillOwned {
 			if job != nil {
 				return conditioningReview(c, "conditioning source changed while evidence was prepared"), nil
@@ -643,7 +643,7 @@ func (s *TranscodeStage) ffmpeg() string {
 
 // tooQuietToCorrect is the refusal for a clip no air-time gain can bring to target. ok is false
 // when there is no target, nothing measured the clip, or the correction is reachable.
-func tooQuietToCorrect(target float64, l mediatools.ConditioningLoudness) (StageResult, bool) {
+func tooQuietToCorrect(target float64, l tools.ConditioningLoudness) (StageResult, bool) {
 	if target == 0 || !l.Available {
 		return StageResult{}, false
 	}
@@ -668,8 +668,8 @@ type stagedPlayback struct {
 	profile MezzanineProfile
 	// evidence is nil on the legacy single-derivative path, which records no playback lineage.
 	evidence *MediaDerivativeLineage
-	tool     mediatools.MediaToolIdentity
-	qc       mediatools.DerivativeQC
+	tool     tools.MediaToolIdentity
+	qc       tools.DerivativeQC
 }
 
 // mediaAssets is the manifest the transformed clip publishes with: the retained master, and with
@@ -679,7 +679,7 @@ func (s *TranscodeStage) mediaAssets(sourceMaster MediaAssetIdentity, p stagedPl
 	if p.evidence == nil {
 		return assets, nil
 	}
-	recipe := mediatools.PlaybackDerivativeRecipe(p.profile, 0)
+	recipe := tools.PlaybackDerivativeRecipe(p.profile, 0)
 	recipeDigest, err := recipe.Digest()
 	if err != nil {
 		return MediaAssetManifest{}, err
@@ -741,7 +741,7 @@ func validConditioningPublication(p *ConditioningPublication, sourceHash, target
 }
 
 func conditioningEvidenceMatchesLineage(e ConditioningEvidence, lineage ConditioningLineage) bool {
-	want := mediatools.Interval{StartMs: lineage.IntendedStartMs, EndMs: lineage.IntendedEndMs}
+	want := tools.Interval{StartMs: lineage.IntendedStartMs, EndMs: lineage.IntendedEndMs}
 	return len(e.BeforeRewrite.Cuts) > 0 && len(e.AfterRewrite.Cuts) > 0 &&
 		e.BeforeRewrite.Cuts[0].Intended == want && e.AfterRewrite.Cuts[0].Intended == want
 }
@@ -818,10 +818,10 @@ func validateConditioningPair(e ConditioningEvidence, beforeHash, afterHash stri
 		e.BeforeRewriteHash != beforeHash || e.AfterRewriteHash != afterHash {
 		return fmt.Errorf("persisted conditioning artifact identities are invalid")
 	}
-	if err := mediatools.ValidateConditioningPair(e.BeforeRewrite, e.AfterRewrite); err != nil {
+	if err := tools.ValidateConditioningPair(e.BeforeRewrite, e.AfterRewrite); err != nil {
 		return err
 	}
-	derived, err := mediatools.DeriveConditioningParentEdges(e.BeforeRewrite, e.AfterRewrite)
+	derived, err := tools.DeriveConditioningParentEdges(e.BeforeRewrite, e.AfterRewrite)
 	if err != nil || len(derived.Streams) != len(e.DerivedParentEdgesAfterRewrite.Streams) {
 		return fmt.Errorf("persisted post-rewrite parent edges are invalid")
 	}

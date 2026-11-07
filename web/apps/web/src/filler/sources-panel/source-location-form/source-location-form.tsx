@@ -1,5 +1,6 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
-import { useState } from "react";
+import { fillerSourceCountrySchema } from "@loomarr/core/schemas";
+import { useForm, useStore } from "@tanstack/react-form";
 import { LocationPicker } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
 import type { SourceActions } from "../use-source-actions";
@@ -13,7 +14,17 @@ interface SourceLocationFormProps {
 // Installation geography; an explicit value is for a collection whose real coverage differs. The
 // draft country is seeded from the source once, when the form mounts — remount per source (`key`).
 const SourceLocationForm = ({ source, actions }: SourceLocationFormProps) => {
-  const [country, setCountry] = useState(source.country ?? "");
+  const form = useForm({
+    defaultValues: { country: source.country ?? "" },
+    validators: { onSubmit: fillerSourceCountrySchema },
+    onSubmit: ({ value }) =>
+      actions.updateSource(source.id, {
+        enabled: source.enabled,
+        geography: { country: value.country.trim().toUpperCase() },
+      }),
+  });
+  const country = useStore(form.store, (state) => state.values.country);
+  const clear = () => form.setFieldValue("country", "");
 
   return (
     <div className="border-border flex flex-col gap-3 border-t pt-3">
@@ -22,19 +33,14 @@ const SourceLocationForm = ({ source, actions }: SourceLocationFormProps) => {
       </p>
       <LocationPicker
         value={{ country: country || (source.effectiveCountry ?? "") }}
-        onChange={(location) => setCountry(location.country)}
+        onChange={(location) => form.setFieldValue("country", location.country)}
       />
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           variant="outline"
           disabled={actions.updating || !country.trim()}
-          onClick={() =>
-            actions.updateSource(source.id, {
-              enabled: source.enabled,
-              geography: { country: country.trim().toUpperCase() },
-            })
-          }
+          onClick={() => void form.handleSubmit()}
         >
           Save different area
         </Button>
@@ -45,13 +51,13 @@ const SourceLocationForm = ({ source, actions }: SourceLocationFormProps) => {
             disabled={actions.updating}
             onClick={() => {
               if (source.locationSource !== "source") {
-                setCountry("");
+                clear();
                 return;
               }
               actions.updateSource(
                 source.id,
                 { enabled: source.enabled, geography: { country: "" } },
-                { onSuccess: () => setCountry("") },
+                { onSuccess: clear },
               );
             }}
           >

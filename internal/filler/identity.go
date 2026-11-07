@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // identityFingerprintBudget bounds how long one pass spends decoding. A catalog that needs more
@@ -72,7 +72,7 @@ type IdentityResult struct {
 // catalog that predates it alike: a clip's turn comes when it has a fingerprint.
 type CreativeIdentity struct {
 	store   IdentityStore
-	tools   mediatools.MediaTools
+	tools   tools.MediaTools
 	clipDir string
 	// targetLUFS is the live air-time target; a copy closer to it needs less correction.
 	targetLUFS func() float64
@@ -80,7 +80,7 @@ type CreativeIdentity struct {
 	log        *slog.Logger
 }
 
-func NewCreativeIdentity(store IdentityStore, tools mediatools.MediaTools, clipDir string,
+func NewCreativeIdentity(store IdentityStore, tools tools.MediaTools, clipDir string,
 	targetLUFS func() float64, now func() time.Time, log *slog.Logger) *CreativeIdentity {
 	return &CreativeIdentity{store: store, tools: tools, clipDir: clipDir, targetLUFS: targetLUFS, now: now, log: log}
 }

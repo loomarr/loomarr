@@ -86,7 +86,7 @@ A clip is identified by a hash of its bytes; its path is where it lives (decisio
   says so.
 
 **Creative identity: one copy of each ad (#2033).** The byte hash says two files are the same
-bytes. It cannot say they are the same advert. `internal/creative` answers that from a
+bytes. It cannot say they are the same advert. `internal/media/creative` answers that from a
 fingerprint of picture and sound (`creative-v1-video4fps-gray9x8-audio8k-hk15`): a 64-bit
 difference hash per video frame at 4 fps, and a 15-bit band-energy hash per 64 ms of 8 kHz mono
 audio, which a gain change does not move.
@@ -629,7 +629,7 @@ report is not a finished encode, so the rung encodes it again.
   duration.
 
 **Loudness is measured at ingest and corrected at playout**, target `filler.target_lufs`
-(−23 LUFS), by one rule in `internal/loudness` (#2032). Files are never levelled on disk.
+(−23 LUFS), by one rule in `internal/media/loudness` (#2032). Files are never levelled on disk.
 
 - The playback derivative's integrated loudness and true peak are measured at ingest. Derivative
   verification refuses a clip with audio but no valid measurement, so every new clip is measured.
@@ -674,7 +674,7 @@ The floor judges what a clip actually shows and sounds like, against a bar set b
 inputs. Its verdicts are enforced at admission and on every re-check (see
 [Enforcement](#enforcement-2036) below).
 
-- **One bounded pass per clip** (`mediatools.MeasureDefects`) measures the file that airs. It is
+- **One bounded pass per clip** (`tools.MeasureDefects` in `internal/media/tools`) measures the file that airs. It is
   a pass of its own rather than a branch of the playback transcode. Re-checks have no transcode
   to ride, and `cropdetect` logs every sampled frame, which in the transcode's bounded log would
   push out the black and freeze evidence the publish gate reads.

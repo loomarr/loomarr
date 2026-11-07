@@ -12,11 +12,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/settings"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
@@ -24,9 +23,10 @@ import (
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/filler/station"
-	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -202,18 +202,18 @@ func activeFillerProvider(set resolved, recorder *metrics.Recorder) llm.Provider
 // buildFillerMediaTools selects local whisper or hosted timed transcription behind the same
 // MediaTools interface. Every selector is a closure: changing provider, model, URL or key applies
 // to the next span without restarting, matching the rest of the filler settings contract.
-func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools.FFmpegTools {
+func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *tools.FFmpegTools {
 	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
-	tools := mediatools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
+	mediaTools := tools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
 		settings.IngestWhisperPath.Get(set), settings.IngestWhisperModel.Get(set), "")
-	hosted := &mediatools.HostedTranscriber{
+	hosted := &tools.HostedTranscriber{
 		FFmpegPath: ffmpegPath,
-		Client: func() mediatools.AudioTranscriptionClient {
+		Client: func() tools.AudioTranscriptionClient {
 			return hostedSpeechClient(set, recorder)
 		},
 		Model: func() string { return settings.ASRModel.Get(set) },
 	}
-	return tools.WithTranscriber(func() mediatools.SpanTranscriber {
+	return mediaTools.WithTranscriber(func() tools.SpanTranscriber {
 		if settings.ASRProvider.Get(set) != "hosted" {
 			return nil
 		}
@@ -291,7 +291,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		// should not need a second chat model that happens to accept audio just to answer the same
 		// question. The closures keep URL, model and credential changes live between clips.
 		langDetect = filler.NewHostedLanguage(
-			func() mediatools.AudioTranscriptionClient { return hostedSpeechClient(set, recorder) },
+			func() tools.AudioTranscriptionClient { return hostedSpeechClient(set, recorder) },
 			func() string { return settings.ASRModel.Get(set) },
 			settings.PlayoutFFmpegPath.Get(set), "")
 	} else {
@@ -353,7 +353,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		func() bool { return settings.FillerVisionEnabled.Get(set) }, time.Now)
 	transcodeStage := filler.NewTranscodeStage(
 		fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
-		clipDir, mediatools.DefaultMezzanine(),
+		clipDir, tools.DefaultMezzanine(),
 		func() string { return settings.PlayoutFFmpegPath.Get(set) },
 		// The playback target, for the too_quiet floor only: files are never levelled on
 		// disk, playout corrects them at air time (#2032).
@@ -513,7 +513,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 // hostedSpeechClient resolves one speech-recognition service for both language detection and timed
 // transcripts. A blank dedicated URL reuses the active hosted AI service (the OpenRouter path); an
 // explicit URL never inherits that service's secret, so a custom host cannot receive it by accident.
-func hostedSpeechClient(set resolved, recorder *metrics.Recorder) mediatools.AudioTranscriptionClient {
+func hostedSpeechClient(set resolved, recorder *metrics.Recorder) tools.AudioTranscriptionClient {
 	url := strings.TrimSpace(settings.ASRURL.Get(set))
 	model := strings.TrimSpace(settings.ASRModel.Get(set))
 	provider := "openai"

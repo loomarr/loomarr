@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 func TestBuildVideoToolbox_UnavailableDeinterlacer(t *testing.T) {

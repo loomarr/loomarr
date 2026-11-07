@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // Filler derivatives encode on the channels' hardware (#2121): an operator's pinned encoder wins,

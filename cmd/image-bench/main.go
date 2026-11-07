@@ -25,8 +25,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/images"
-	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 )
 
 const benchmarkRecipe = "loomarr-rendition-v2"

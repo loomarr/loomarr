@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/media/creative"
 )
 
 // The auto-confirm gate has had NO data source since V51g removed the text classifier, so

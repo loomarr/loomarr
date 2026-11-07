@@ -14,7 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // fakeSource is a Tunarr local filler source returning a fixed set of raw clips.
@@ -703,7 +703,7 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 			before := syncConditioningMeasurement(true)
 			after := syncConditioningMeasurement(false)
 			if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{
-				Mezzanine: mediatools.DefaultMezzanine().ID(),
+				Mezzanine: tools.DefaultMezzanine().ID(),
 				ConditioningLineage: &filler.ConditioningLineage{
 					ChildHash: reviewedHash, ParentHash: lineageParentHash, IntendedStartMs: 1_000, IntendedEndMs: 31_000,
 				},
@@ -741,30 +741,30 @@ func TestSync_ConditionedChildStaysHeldAndPromotesOnlyAValidRetainedParent(t *te
 	}
 }
 
-func syncConditioningMeasurement(directEdges bool) mediatools.ConditioningMeasurement {
-	available := func(ms int64) mediatools.OptionalMilliseconds {
-		return mediatools.OptionalMilliseconds{Milliseconds: ms, Available: true}
+func syncConditioningMeasurement(directEdges bool) tools.ConditioningMeasurement {
+	available := func(ms int64) tools.OptionalMilliseconds {
+		return tools.OptionalMilliseconds{Milliseconds: ms, Available: true}
 	}
-	edge := func(kind mediatools.StreamKind, index int) mediatools.ConditioningCutStream {
-		out := mediatools.ConditioningCutStream{Kind: kind, Index: index}
+	edge := func(kind tools.StreamKind, index int) tools.ConditioningCutStream {
+		out := tools.ConditioningCutStream{Kind: kind, Index: index}
 		if directEdges {
 			out.StartError, out.EndError = available(0), available(0)
 		}
 		return out
 	}
-	return mediatools.ConditioningMeasurement{
+	return tools.ConditioningMeasurement{
 		ContainerDurationMs: 30_000,
-		Streams: []mediatools.ConditioningStream{
-			{Kind: mediatools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000), Cadence: &mediatools.Rational{Numerator: 30_000, Denominator: 1001}},
-			{Kind: mediatools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
+		Streams: []tools.ConditioningStream{
+			{Kind: tools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000), Cadence: &tools.Rational{Numerator: 30_000, Denominator: 1001}},
+			{Kind: tools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
 		},
-		AVSkew: mediatools.ConditioningSkew{Start: available(120), End: available(0)},
-		Loudness: mediatools.ConditioningLoudness{IntegratedLUFS: -23, Available: true,
-			TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakFinite, DBTP: -2}},
-		Quality: mediatools.MediaQuality{EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-			Provenance: mediatools.MediaQualityProvenanceFFmpegDetectors, DurationMs: 30_000},
-		Cuts: []mediatools.ConditioningCutMeasurement{{Intended: mediatools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []mediatools.ConditioningCutStream{
-			edge(mediatools.StreamVideo, 0), edge(mediatools.StreamAudio, 1),
+		AVSkew: tools.ConditioningSkew{Start: available(120), End: available(0)},
+		Loudness: tools.ConditioningLoudness{IntegratedLUFS: -23, Available: true,
+			TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakFinite, DBTP: -2}},
+		Quality: tools.MediaQuality{EvidenceVersion: tools.MediaQualityEvidenceV1,
+			Provenance: tools.MediaQualityProvenanceFFmpegDetectors, DurationMs: 30_000},
+		Cuts: []tools.ConditioningCutMeasurement{{Intended: tools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []tools.ConditioningCutStream{
+			edge(tools.StreamVideo, 0), edge(tools.StreamAudio, 1),
 		}}},
 	}
 }
@@ -830,10 +830,10 @@ func TestSync_IncompleteConditioningEvidenceRemainsHeldAfterCatalogRebuild(t *te
 		t.Fatal(err)
 	}
 	if err := filler.WriteSidecarTags(childFull, filler.SidecarTags{
-		Mezzanine: mediatools.DefaultMezzanine().ID(),
+		Mezzanine: tools.DefaultMezzanine().ID(),
 		MediaQuality: &filler.MediaQuality{
-			EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-			Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+			EvidenceVersion: tools.MediaQualityEvidenceV1,
+			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
 		},
 		ConditioningLineage: &filler.ConditioningLineage{
@@ -868,7 +868,7 @@ func TestSync_ConditioningStateWithoutLineageCannotBecomeAnAirableTopLevelClip(t
 			if err := os.WriteFile(media, []byte("clip bytes"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			tags := filler.SidecarTags{Mezzanine: mediatools.DefaultMezzanine().ID()}
+			tags := filler.SidecarTags{Mezzanine: tools.DefaultMezzanine().ID()}
 			if tc.conditioned {
 				tags.Conditioning = &filler.ConditioningEvidence{}
 			}
@@ -958,7 +958,7 @@ func TestSync_OmittedConditioningLineageMemberIsInvalidAndHeld(t *testing.T) {
 			}
 			delete(lineage, omitted)
 			doc := map[string]any{"loomarr": map[string]any{
-				"mezzanine": mediatools.DefaultMezzanine().ID(), "conditioningLineage": lineage,
+				"mezzanine": tools.DefaultMezzanine().ID(), "conditioningLineage": lineage,
 			}}
 			raw, err := json.Marshal(doc)
 			if err != nil {

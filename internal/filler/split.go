@@ -9,7 +9,7 @@ import (
 )
 
 // Compilation splitting (§10, V34) — domain types and the PURE segment logic.
-// The exec boundary (ffmpeg/ffprobe/whisper-cli) lives in mediatools.go behind
+// The exec boundary (ffmpeg/ffprobe/whisper-cli) lives in media/tools/mediatools.go behind
 // MediaTools, and the LLM boundary rescue in splitrescue.go; everything here is
 // deterministic and unit-tested without touching a binary.
 //
@@ -494,7 +494,7 @@ func segmentsFromBoundaries(durationMs int64, gaps []detectedGap, floor segmentF
 // 12 fades in the measured reel were confirmed by both — so throwing it away is what left the
 // confidence ladder (§10 V34) with nothing to read.
 //
-// ⚠ A filler-local type rather than a field on `Interval`: that alias belongs to `mediatools` and
+// ⚠ A filler-local type rather than a field on `Interval`: that alias belongs to `media/tools` and
 // is used in ~110 places, none of which care who found a gap.
 type detectedGap struct {
 	Interval

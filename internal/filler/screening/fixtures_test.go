@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // Test-only fixtures. They mirror helpers of the same name in internal/filler's tests, which an
@@ -26,15 +26,15 @@ func screeningBlobPath(root, kind, digest string) string {
 
 func screeningSubjectManifest(t *testing.T) filler.MediaAssetManifest {
 	t.Helper()
-	tool := mediatools.MediaToolIdentity{
+	tool := tools.MediaToolIdentity{
 		Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("9", 64),
 	}
-	evidenceRecipe := mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine())
+	evidenceRecipe := tools.EvidenceDerivativeRecipe(tools.DefaultMezzanine())
 	evidenceRecipeSHA, err := evidenceRecipe.Digest()
 	if err != nil {
 		t.Fatal(err)
 	}
-	playbackRecipe := mediatools.PlaybackDerivativeRecipe(mediatools.DefaultMezzanine(), 0)
+	playbackRecipe := tools.PlaybackDerivativeRecipe(tools.DefaultMezzanine(), 0)
 	playbackRecipeSHA, err := playbackRecipe.Digest()
 	if err != nil {
 		t.Fatal(err)
@@ -42,8 +42,8 @@ func screeningSubjectManifest(t *testing.T) filler.MediaAssetManifest {
 	input := filler.Probed{DurationMs: 30_000, Height: 480}
 	output := filler.Probed{DurationMs: 30_000, Height: 480}
 	quality := filler.MediaQuality{
-		EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-		Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+		EvidenceVersion: tools.MediaQualityEvidenceV1,
+		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
 	}
 	source := filler.MediaAssetIdentity{
@@ -77,49 +77,49 @@ func screeningSubjectManifest(t *testing.T) filler.MediaAssetManifest {
 	return manifest
 }
 
-func fixtureDerivativeQC(durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) mediatools.DerivativeQC {
-	loudness := mediatools.ConditioningLoudness{TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakUnavailable}}
+func fixtureDerivativeQC(durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) tools.DerivativeQC {
+	loudness := tools.ConditioningLoudness{TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakUnavailable}}
 	if hadAudio {
 		integrated := -21.0
 		if targetLUFS != 0 {
 			integrated = targetLUFS
 		}
-		loudness = mediatools.ConditioningLoudness{
+		loudness = tools.ConditioningLoudness{
 			IntegratedLUFS: integrated, Available: true,
-			TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakFinite, DBTP: -2},
+			TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakFinite, DBTP: -2},
 		}
 	}
 	gap := int64(keyframeSeconds) * 1000
-	return mediatools.DerivativeQC{
-		Version: mediatools.DerivativeQCVersion, FastStart: true, CompleteDecode: true, Seekable: true,
+	return tools.DerivativeQC{
+		Version: tools.DerivativeQCVersion, FastStart: true, CompleteDecode: true, Seekable: true,
 		MaxVideoKeyframeGapMs: gap, TerminalKeyframeGapMs: min(gap, durationMs), Loudness: loudness,
 	}
 }
 
-func completeConditioningMeasurement(lufs float64) mediatools.ConditioningMeasurement {
-	available := func(ms int64) mediatools.OptionalMilliseconds {
-		return mediatools.OptionalMilliseconds{Milliseconds: ms, Available: true}
+func completeConditioningMeasurement(lufs float64) tools.ConditioningMeasurement {
+	available := func(ms int64) tools.OptionalMilliseconds {
+		return tools.OptionalMilliseconds{Milliseconds: ms, Available: true}
 	}
-	return mediatools.ConditioningMeasurement{
+	return tools.ConditioningMeasurement{
 		ContainerDurationMs: 30_000,
-		Streams: []mediatools.ConditioningStream{
-			{Kind: mediatools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000),
-				Cadence: &mediatools.Rational{Numerator: 30_000, Denominator: 1001}},
-			{Kind: mediatools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
+		Streams: []tools.ConditioningStream{
+			{Kind: tools.StreamVideo, Index: 0, Start: available(0), Duration: available(30_000),
+				Cadence: &tools.Rational{Numerator: 30_000, Denominator: 1001}},
+			{Kind: tools.StreamAudio, Index: 1, Start: available(120), Duration: available(29_880)},
 		},
-		AVSkew: mediatools.ConditioningSkew{Start: available(120), End: available(0)},
-		Loudness: mediatools.ConditioningLoudness{
+		AVSkew: tools.ConditioningSkew{Start: available(120), End: available(0)},
+		Loudness: tools.ConditioningLoudness{
 			IntegratedLUFS: lufs, Available: true,
-			TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakFinite, DBTP: -2.1},
+			TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakFinite, DBTP: -2.1},
 		},
 		Quality: filler.MediaQuality{
-			EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-			Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+			EvidenceVersion: tools.MediaQualityEvidenceV1,
+			Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 			DurationMs:      30_000,
 		},
-		Cuts: []mediatools.ConditioningCutMeasurement{{Intended: mediatools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []mediatools.ConditioningCutStream{
-			{Kind: mediatools.StreamVideo, Index: 0, StartError: available(3), EndError: available(-4)},
-			{Kind: mediatools.StreamAudio, Index: 1, StartError: available(5), EndError: available(-2)},
+		Cuts: []tools.ConditioningCutMeasurement{{Intended: tools.Interval{StartMs: 1_000, EndMs: 31_000}, Streams: []tools.ConditioningCutStream{
+			{Kind: tools.StreamVideo, Index: 0, StartError: available(3), EndError: available(-4)},
+			{Kind: tools.StreamAudio, Index: 1, StartError: available(5), EndError: available(-2)},
 		}}},
 	}
 }

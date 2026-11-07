@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 )
 
 func TestRecorderMatchesReviewedMetricManifest(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/media/images"
 )
 
 // The image service's HTTP surface (§22, V52).
@@ -23,7 +23,7 @@ import (
 // behind the single authorization middleware and the CSRF check while still owning the
 // ResponseWriter that `http.ServeContent` needs for Range and conditional requests.
 
-// ImageService is the api package's view of internal/images. Narrow by design: the handlers need
+// ImageService is the api package's view of internal/media/images. Narrow by design: the handlers need
 // to resolve a rendition, read a record, and accept an upload — nothing about disk layout,
 // encoders, or the ladder crosses this line.
 type ImageService interface {
@@ -35,7 +35,7 @@ type ImageService interface {
 	SrcSet(hash string, role images.Role, f images.Format) string
 	// HasFormat reports whether a rendition in this format exists RIGHT NOW. Required because
 	// advertising a job-produced AVIF that does not exist yet is a broken image, not a missed
-	// optimisation — see the method's own comment in internal/images.
+	// optimisation — see the method's own comment in internal/media/images.
 	HasFormat(ctx context.Context, hash string, f images.Format) (bool, error)
 }
 

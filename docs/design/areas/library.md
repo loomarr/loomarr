@@ -22,7 +22,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`library`** · 12 importers · → `episodeevidence`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`library/scan`** · 2 importers · → `inventory`, `library`, `mediaheader`, `metadataprovider`, `metadataprovider/precedence`, `store`
+- **`library/scan`** · 2 importers · → `inventory`, `library`, `media/header`, `metadataprovider`, `metadataprovider/precedence`, `store`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
 - **`metadataprovider`** · 7 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).

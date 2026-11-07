@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // demoteTonemapper drops the GPU tone-mapper a graph used, so the next build takes the next one

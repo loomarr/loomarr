@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // The DEFECTS stage (#2036): the defect floor, enforced at admission. It measures nothing itself.

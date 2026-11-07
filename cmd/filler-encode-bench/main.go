@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/bgexec"
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 func main() {
