@@ -3,10 +3,13 @@ import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
+import { seasonalModeLabel } from "@loomarr/ui";
 import { Check, Download, Minus } from "lucide-react";
+import { seasonalModeOf } from "@/components/loomarr/channels/channel-seasonal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { eraOf } from "@/lib/era-dates";
+import { playOrderLabel } from "@/lib/play-order-copy";
 import { datesMode } from "@/lib/policy-overrides";
 import { cn } from "@/lib/utils";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
@@ -22,11 +25,6 @@ interface PolicyDelta {
   to: string;
   pinned: boolean; // operator set this field → the refine leaves it alone (P3 stickiness)
 }
-
-const orderingLabel = (o?: string): string =>
-  ({ "": "Inherit", sequential: "In order", shuffle: "Shuffled", syndication: "Syndication" })[o ?? ""] ??
-  o ??
-  "Inherit";
 
 const rangeLabel = (range?: Range): string =>
   !range || (!range.from && !range.to) ? "Any" : `${range.from ?? "…"}–${range.to ?? "…"}`;
@@ -45,9 +43,6 @@ const datesLabel = (dates?: DateScope): string =>
     : DATE_AXES.filter(([, axis]) => dates?.[axis]?.length)
         .map(([label, axis]) => `${label} ${(dates?.[axis] ?? []).map(rangeLabel).join(", ")}`)
         .join(" · ");
-
-const seasonalLabel = (m?: string): string =>
-  ({ "": "Auto", auto: "Auto", off: "Off", exclusive: "Exclusive" })[m ?? ""] ?? m ?? "Auto";
 
 // A no-repeat window, tidied so an unchanged "168h" and "168h0m0s" do not read as a diff. A zero
 // or absent window means no restriction — say so rather than showing an empty cell.
@@ -74,8 +69,14 @@ const policyDeltas = (current?: ChannelPolicy, proposed?: ChannelPolicy): Policy
     current.audience?.ceiling || "No limit",
     proposed.audience?.ceiling || "No limit",
   );
-  add("Ordering", "ordering", orderingLabel(current.ordering), orderingLabel(proposed.ordering));
-  add("Seasonal", "seasonal", seasonalLabel(current.seasonal?.mode), seasonalLabel(proposed.seasonal?.mode));
+  // Named as the editor names them, so the review and the setting it changes read the same.
+  add("Ordering", "ordering", playOrderLabel(current.ordering), playOrderLabel(proposed.ordering));
+  add(
+    "Seasonal",
+    "seasonal",
+    seasonalModeLabel(seasonalModeOf(current.seasonal?.mode)),
+    seasonalModeLabel(seasonalModeOf(proposed.seasonal?.mode)),
+  );
   // Separation is refreshed by MergeFromProposal exactly like the four above, so leaving it
   // out meant a refine could silently widen or drop a no-repeat window with nothing shown
   // before Approve. Two rows, not one: the pinned check is per-path, and "which window

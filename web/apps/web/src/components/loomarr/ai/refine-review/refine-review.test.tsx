@@ -250,6 +250,37 @@ describe("RefineReview", () => {
     expect(screen.getByText(/24h/)).toBeInTheDocument();
   });
 
+  it("names ordering and seasonal changes the way the editor's controls do", () => {
+    render(
+      <RefineReview
+        proposed={[cartographer]}
+        current={[currentCartographer]}
+        currentPolicy={{ seasonal: { mode: "auto" } } as ChannelPolicy}
+        proposedPolicy={{ ordering: "shuffle", seasonal: { mode: "exclusive" } } as ChannelPolicy}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Use channel strategy")).toBeInTheDocument();
+    expect(screen.getByText("Shuffled")).toBeInTheDocument();
+    expect(screen.getByText("Use built-in seasonal rotation")).toBeInTheDocument();
+    expect(screen.getByText("Holiday-only channel")).toBeInTheDocument();
+  });
+
+  it("does not report a seasonal delta between the default and its explicit twin", () => {
+    render(
+      <RefineReview
+        proposed={[cartographer]}
+        current={[currentCartographer]}
+        currentPolicy={{ seasonal: { mode: "" } } as ChannelPolicy}
+        proposedPolicy={{ seasonal: { mode: "auto" } } as ChannelPolicy}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Seasonal")).not.toBeInTheDocument();
+  });
+
   it("does not report a separation delta when the backend just pads zero units", () => {
     // "168h" and "168h0m0s" are the same window — Duration.String() pads. Comparing raw
     // strings would show a phantom diff on every refine that touched nothing.

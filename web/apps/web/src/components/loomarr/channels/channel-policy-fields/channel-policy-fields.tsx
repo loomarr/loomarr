@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraDates, eraOf } from "@/lib/era-dates";
-import { describePlayOrder } from "@/lib/play-order-copy";
+import { describePlayOrder, INHERIT_PLAY_ORDER_LABEL, PLAY_ORDER_LABEL } from "@/lib/play-order-copy";
 import {
   datesMode,
   isOverridden,
@@ -300,12 +300,10 @@ const orderingOptions = (strategy?: string): { value: string; label: string }[] 
   {
     value: "inherit",
     label: strategy
-      ? `Use channel strategy (${STRATEGY_LABELS[strategy] ?? strategy})`
-      : "Use channel strategy",
+      ? `${INHERIT_PLAY_ORDER_LABEL} (${STRATEGY_LABELS[strategy] ?? strategy})`
+      : INHERIT_PLAY_ORDER_LABEL,
   },
-  { value: "sequential", label: "In order" },
-  { value: "shuffle", label: "Shuffled" },
-  { value: "syndication", label: "Syndication" },
+  ...Object.entries(PLAY_ORDER_LABEL).map(([value, label]) => ({ value, label })),
 ];
 
 // The rating ladder, mirroring schedule/policy.go's `ladderRank`. Mirrored ONLY so the

@@ -1,4 +1,4 @@
-export { ChannelSeasonalFields } from "./channel-seasonal-fields";
+export { ChannelSeasonalFields, seasonalModeLabel } from "./channel-seasonal-fields";
 export type {
   ChannelSeasonalFieldsProps,
   SeasonalHoliday,
