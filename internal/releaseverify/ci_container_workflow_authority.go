@@ -347,8 +347,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{}),
 		"ci-frontend.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make fe FE_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe"}}),
-			"make fe-tokens-verify": exactWorkflowStep(6, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 1"}),
+			"make fe-unit FE_SHARD=${{ matrix.shard }}/4": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard != 5"}),
+			"make fe-checks":        exactWorkflowStep(6, "", workflowStepAuthority{targets: []string{"fe-checks"}, condition: "matrix.shard == 5"}),
+			"make fe-tokens-verify": exactWorkflowStep(7, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 5"}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),

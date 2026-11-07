@@ -388,8 +388,9 @@ propagation without a registry or network.
 
 The helper's classifier consumers are repository contracts, Postgres, visual, e2e, tuner, and CI
 policy. The Playwright runner selects repository contracts, visual, e2e, tuner, and CI policy. The
-broad Web unit gate is not selected: its `make fe` path never invokes either script, while each
-container-backed Playwright target and `test-pg` owns an explicit prerequisite.
+broad Web unit gate is not selected: its `make fe-unit` and `make fe-checks` paths never invoke
+either script, while each container-backed Playwright target and `test-pg` owns an explicit
+prerequisite.
 Any production or test change under `internal/releaseverify` or `cmd/releaseverify` selects both the
 policy job and the sharded Go job, because only the latter executes the package's RED-capable tests.
 
