@@ -34,6 +34,8 @@ const BLOCKS = [
   // Requester + AI titles gain the SAVED provider suffix at render (see titleFor); the base
   // here carries no suffix until one is chosen + saved (§6).
   { id: "requester", group: "connections.requester", title: "Requester" },
+  { id: "sonarr", group: "connections.sonarr", title: "Sonarr" },
+  { id: "radarr", group: "connections.radarr", title: "Radarr" },
   { id: "tmdb", group: "connections.tmdb", title: "TMDB" },
   { id: "ai", title: "AI", custom: true },
 ] as const;

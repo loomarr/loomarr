@@ -105,6 +105,18 @@ from what you already own.
 - **Re-requesting a title you already have succeeds with nothing queued** — expected. Seerr
   returns the existing media.
 
+## Sonarr and Radarr
+
+**Check:** `sonarr`, `radarr` · **Settings:** Connections → Sonarr, Connections → Radarr
+
+Optional, and separate from the requester: Loomarr reads which shows and movies they manage, and
+they tell it about new downloads, whichever requester you chose. A check that isn't set up is left
+out rather than shown red.
+
+- **401** — wrong API key. It's in Sonarr or Radarr under Settings → General → API Key.
+- **Can't reach it** — same container-networking rule as the media server: use the address
+  Loomarr's container can reach, not `localhost`.
+
 ## Tunarr
 
 **Check:** `tunarr` · **Settings:** Connections → Tunarr
