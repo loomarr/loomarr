@@ -343,9 +343,17 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"TURBO_TELEMETRY_DISABLED": "1",
 				},
 			}),
-			"make clients-bundles CLIENTS_APP=${{ matrix.lane }}": exactWorkflowStep(7, "Bundle the client", workflowStepAuthority{
+			"make clients-tests CLIENTS_APP=${{ matrix.lane == 'tv-tests' && 'tv' || 'mobile' }}": exactWorkflowStep(7, "Typecheck and test the client", workflowStepAuthority{
+				targets:   []string{"clients-tests"},
+				condition: "endsWith(matrix.lane, '-tests')",
+				environment: map[string]string{
+					"TMPDIR":                   "${{ runner.temp }}",
+					"TURBO_TELEMETRY_DISABLED": "1",
+				},
+			}),
+			"make clients-bundles CLIENTS_APP=${{ matrix.lane }}": exactWorkflowStep(8, "Bundle the client", workflowStepAuthority{
 				targets:   []string{"clients-bundles"},
-				condition: "matrix.lane != 'checks'",
+				condition: "matrix.lane == 'mobile' || matrix.lane == 'tv'",
 				environment: map[string]string{
 					"TMPDIR":                   "${{ runner.temp }}",
 					"TURBO_TELEMETRY_DISABLED": "1",

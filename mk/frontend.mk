@@ -83,18 +83,23 @@ fe-unit: fe-codegen ## web unit tests after codegen (FE_SHARD=n/m runs one shard
 	cd $(WEB) && pnpm --filter @loomarr/web test $(FE_SHARD_ARG)
 
 .PHONY: clients
-clients: clients-checks clients-bundles ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
+clients: clients-checks clients-tests clients-bundles ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
 
 .PHONY: clients-checks
-clients-checks: brand-assets-verify knip ## everything in clients except the mobile and TV bundles
+clients-checks: brand-assets-verify knip ## everything in clients except the mobile and TV tests and bundles
 	cd $(WEB) && pnpm exec biome check apps/mobile apps/tv apps/web/client-platform-proof.html \
 	  apps/web/src/client-platform-proof apps/web/tests/client-platform-proof.ssr.test.tsx \
 	  apps/web/vite.client-platform.config.ts \
 	  .rnstorybook native-stories packages/design-system packages/ui turbo.json \
-	  && pnpm imports:check && pnpm lint:boundaries && pnpm native-storybook:check && pnpm clients:check
+	  && pnpm imports:check && pnpm lint:boundaries && pnpm native-storybook:check && pnpm clients:proof
+
+CLIENTS_APP ?=
+
+.PHONY: clients-tests
+clients-tests: fe-codegen ## typecheck and test the mobile and TV clients and the packages they use (CLIENTS_APP=mobile|tv for one)
+	cd $(WEB) && pnpm clients:test $(if $(CLIENTS_APP),--filter=@loomarr/$(CLIENTS_APP)...,--filter=@loomarr/mobile... --filter=@loomarr/tv...)
 
 .PHONY: clients-bundles
-CLIENTS_APP ?=
 clients-bundles: fe-codegen ## bundle the mobile and TV clients for Android, iOS, and their TV platforms (CLIENTS_APP=mobile|tv for one)
 	cd $(WEB) && pnpm clients:bundle $(if $(CLIENTS_APP),--filter=@loomarr/$(CLIENTS_APP),--filter=@loomarr/mobile --filter=@loomarr/tv)
 
