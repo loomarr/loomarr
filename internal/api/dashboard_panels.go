@@ -39,6 +39,8 @@ type ServiceRow struct {
 var fixLocation = map[string]string{
 	"media_server": "media_server",
 	"requester":    "requester",
+	"sonarr":       "sonarr",
+	"radarr":       "radarr",
 	"tunarr":       "tunarr",
 	"llm":          "ai",
 	"filler":       "filler",

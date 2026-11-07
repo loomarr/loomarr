@@ -66,6 +66,8 @@ var connectionChecklist = []struct {
 }{
 	{"media_server", "troubleshooting#media-server", &settings.LibraryURL},
 	{"requester", "troubleshooting#seerr", &settings.SeerrURL},
+	{"sonarr", "troubleshooting#sonarr-radarr", &settings.SonarrURL},
+	{"radarr", "troubleshooting#sonarr-radarr", &settings.RadarrURL},
 	{"tunarr", "troubleshooting#tunarr", &settings.TunarrURL},
 	{"llm", "troubleshooting#llm", &settings.LLMURL},
 	{"tmdb", "troubleshooting#tmdb", nil},
@@ -109,6 +111,10 @@ func (s *Server) runConnectionChecks(ctx context.Context) []SetupCheck {
 	if s.settings != nil {
 		for _, c := range connectionChecklist {
 			if c.name == "filler" && s.configValue(settings.FillerDir) == "" {
+				continue
+			}
+			// Sonarr and Radarr are optional; one not connected is not a failure.
+			if (c.name == "sonarr" || c.name == "radarr") && s.configValue(*c.target) == "" {
 				continue
 			}
 			ok, hint := s.settings.Test(ctx, c.name)
