@@ -34,10 +34,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Cache epoch
-        id: epoch
-        if: steps.go.outputs.changed == 'true'
-        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      # Newest go-contracts cache by prefix: its key carries a week and a linter version this gate
+      # does not depend on, and Go's own caches ignore whatever is stale.
       - name: Restore Go caches
         if: steps.go.outputs.changed == 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -45,9 +43,9 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-${{ hashFiles('go.sum', 'Cargo.lock') }}
+          key: go-contracts-${{ runner.os }}-
           restore-keys: |
-            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-
+            go-contracts-${{ runner.os }}-
       - name: The merged tree compiles, tests included
         if: steps.go.outputs.changed == 'true'
         run: make vet

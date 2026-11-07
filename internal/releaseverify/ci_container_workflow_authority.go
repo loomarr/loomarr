@@ -423,7 +423,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			},
 		},
 		"merge-gate.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make vet": exactWorkflowStep(5, "The merged tree compiles, tests included", workflowStepAuthority{
+			"make vet": exactWorkflowStep(4, "The merged tree compiles, tests included", workflowStepAuthority{
 				targets:   []string{"vet"},
 				condition: "steps.go.outputs.changed == 'true'",
 			}),
