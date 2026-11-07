@@ -146,11 +146,11 @@ floor 1.0/1.5). Host capability profiles are data, so every family is golden-tes
 
 **The encode vocabulary is shared (#2121).** The encoders, their engines and HEVC siblings, the
 host profile (`HostFor`), the GPU decode rule (`HostProfile.DecodeRefusal`), the device and decode
-arguments, and each family's encoder flags and rate control (`VideoArgs`) live in `internal/encode`,
+arguments, and each family's encoder flags and rate control (`VideoArgs`) live in `internal/media/encode`,
 so the filler pipeline encodes on the same hardware path without importing playout. The per-family
 graphs above stay here: every one fits the item to the channel's uniform output, which a filler
 derivative (source geometry and cadence preserved) does not want. Which encoder a host runs is still
-playout's trial encode (`DetectObserved`); `internal/encode` never probes.
+playout's trial encode (`DetectObserved`); `internal/media/encode` never probes.
 
 **Tone mapping is a given, never black and never silent.** Every HDR source is tone-mapped on every
 SDR output. `playout.tone_curve` picks the one curve (`hable` by default; `mobius`, `reinhard`,

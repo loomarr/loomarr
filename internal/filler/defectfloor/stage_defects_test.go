@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 type fakeDefectVerdicts map[string]DefectRecord

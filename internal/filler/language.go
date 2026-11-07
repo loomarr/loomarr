@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/langcode"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
+	"github.com/loomarr/loomarr/internal/media/tools"
 
 	"path/filepath"
 	"slices"
@@ -245,8 +245,8 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 
 	// whisper.cpp wants 16kHz mono wav; ffmpeg extracts just the span. Shared with the hosted
 	// backend (`extractSpanWAV`) — the two carried byte-identical copies of this until V41.
-	wav := mediatools.SpanWAVPath(dir)
-	if err := mediatools.ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
+	wav := tools.SpanWAVPath(dir)
+	if err := tools.ExtractSpanWAV(ctx, w.FFmpegPath, file, startMs, endMs, wav); err != nil {
 		return LangUndetermined, err
 	}
 
@@ -311,7 +311,7 @@ const silenceFloorLUFS = -50.0
 // An error is reported as NOT silent: failing to measure must not become grounds for a verdict in
 // either direction, and the caller keeps the clip either way.
 func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
-	out, err := bgexec.FFmpeg(ctx, mediatools.FFmpegOr(ffmpegPath),
+	out, err := bgexec.FFmpeg(ctx, tools.FFmpegOr(ffmpegPath),
 		"-nostdin", "-i", wav, "-af", "ebur128=framelog=quiet", "-f", "null", "-").CombinedOutput()
 	if err != nil {
 		return false, err

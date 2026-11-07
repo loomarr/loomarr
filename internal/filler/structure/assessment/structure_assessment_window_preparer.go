@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // PrepareWindows renders and verifies every normalized interval in one immutable plan. It returns
@@ -89,7 +89,7 @@ func (p *FFmpegStructureAssessmentMediaPreparer) prepareWindow(ctx context.Conte
 	defer func() { _ = os.Remove(outputPath) }()
 	durationMS := window.MediaEndMS - window.MediaStartMS
 	arguments := cut.PartArguments(prepared.Profile, prepared.SnapshotPath, window.MediaStartMS, durationMS, outputPath)
-	if err := p.run(ctx, mediatools.FFmpegOr(p.ffmpegPath), arguments); err != nil {
+	if err := p.run(ctx, tools.FFmpegOr(p.ffmpegPath), arguments); err != nil {
 		return StructureAssessmentWindowMedia{}, fmt.Errorf("render: %w", err)
 	}
 	probe, err := p.probe(ctx, outputPath)

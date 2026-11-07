@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/defects"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // The library re-encode (#2121, decisions 8, 9 and 11): a clip already on air is re-encoded from

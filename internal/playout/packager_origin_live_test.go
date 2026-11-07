@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // rotatingSource airs short items rotating through generated sources, so a channel crosses an item

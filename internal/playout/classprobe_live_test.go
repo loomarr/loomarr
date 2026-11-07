@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // probeEncoder is the encoder the live class probe runs on: software by default (every CI host),

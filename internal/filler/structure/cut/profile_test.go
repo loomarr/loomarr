@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // The digests are what an authority pins: a change to either recipe is a new profile that needs its

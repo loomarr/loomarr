@@ -9,8 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/jobs"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/settings"
 )
 

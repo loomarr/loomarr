@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // frame is a flat luma frame with an optional square painted in.

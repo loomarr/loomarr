@@ -13,8 +13,8 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/images"
-	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
@@ -23,7 +23,7 @@ import (
 
 // The image service's store bridge (§22, V52).
 //
-// `internal/images` declares the persistence it needs with its OWN types (images.Store), and no
+// `internal/media/images` declares the persistence it needs with its OWN types (images.Store), and no
 // domain package in this codebase imports internal/store. This file is the whole cost of that
 // rule: a type-for-type translation, in the composition root, where the two vocabularies are
 // allowed to meet.
@@ -200,7 +200,7 @@ func (a imageStore) ListDerivatives(ctx context.Context, hash string) ([]images.
 // ⚠ The domain names these methods for what they DO to images (ListOrphans, ListExpiredBefore)
 // while the store names them for the table (ListOrphanImages, ListImagesExpiredBefore), and the
 // rename happens here rather than in either package. That is the same translation the type
-// conversions above perform, one level up: `internal/images` reads as a subsystem talking about
+// conversions above perform, one level up: `internal/media/images` reads as a subsystem talking about
 // its own subject, and `internal/store` reads as a schema, because neither had to compromise to
 // match the other.
 
@@ -359,7 +359,7 @@ func fromStoreImage(rec catalogstore.Image) images.Image {
 // ⚠ **Resolving the artwork cache path is THIS layer's job, and that is why the store returns
 // relative paths.** `internal/store` must not know where FILLER_DIR is — a query that joined a
 // filesystem location onto a row would make the same SQL wrong the moment an operator moved the
-// folder. `internal/images` must not know either; it takes absolute paths and never asks what
+// folder. `internal/media/images` must not know either; it takes absolute paths and never asks what
 // produced them. The two vocabularies meet here, like every other translation in this file.
 type artworkAdoptStore struct {
 	st        store.Store

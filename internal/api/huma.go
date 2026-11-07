@@ -12,12 +12,12 @@ import (
 
 	"github.com/loomarr/loomarr/internal/activity"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/contact"

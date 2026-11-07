@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/mediaheader"
+	"github.com/loomarr/loomarr/internal/media/header"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/store"
@@ -49,7 +49,7 @@ type Importer struct {
 	// Resolver applies precedence.
 	Resolver *precedence.Resolver
 	// Header reads one file's container header.
-	Header func(ctx context.Context, path string) (mediaheader.Header, error)
+	Header func(ctx context.Context, path string) (header.Header, error)
 	// Busy reports whether a playout session is live; header reads wait while it is.
 	Busy func() bool
 	// Enabled is the kill switch, library.scanner.enabled.

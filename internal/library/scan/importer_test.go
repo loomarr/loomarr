@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/mediaheader"
+	"github.com/loomarr/loomarr/internal/media/header"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
@@ -66,9 +66,9 @@ func newHarness(t *testing.T, managers ...Manager) *harness {
 		Store: h.st, Inventory: h.inv, Disk: fakeDisk{readable: map[string]bool{h.root: true}},
 		Managers: func() []Manager { return managers },
 		NFO:      nfo.New(), Resolver: resolver,
-		Header: func(_ context.Context, path string) (mediaheader.Header, error) {
+		Header: func(_ context.Context, path string) (header.Header, error) {
 			h.reads.Add(1)
-			return mediaheader.Header{Container: "matroska,webm", DurationMillis: 1_320_000, Streams: []inventory.Stream{
+			return header.Header{Container: "matroska,webm", DurationMillis: 1_320_000, Streams: []inventory.Stream{
 				{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: 1920, Height: 1080},
 				{Index: 1, Kind: inventory.StreamAudio, Codec: "aac", Channels: 2, Language: "eng"},
 			}}, nil
@@ -474,8 +474,8 @@ func TestImportShareFaultKeepsHeaderPending(t *testing.T) {
 	h := newHarness(t)
 	h.file("Romeo/Romeo.mkv", 10)
 	read := h.im.Header
-	h.im.Header = func(context.Context, string) (mediaheader.Header, error) {
-		return mediaheader.Header{}, &fs.PathError{Op: "read", Path: "Romeo.mkv", Err: syscall.EIO}
+	h.im.Header = func(context.Context, string) (header.Header, error) {
+		return header.Header{}, &fs.PathError{Op: "read", Path: "Romeo.mkv", Err: syscall.EIO}
 	}
 	h.run()
 	rows, err := h.st.LibraryFiles(context.Background(), h.root)

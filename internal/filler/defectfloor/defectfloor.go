@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // defectMeasureBudget bounds how long one pass spends decoding. A pass that runs out leaves the rest
@@ -55,7 +55,7 @@ type DefectStore interface {
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
 }
 
-// FingerprintFunc fingerprints a whole file (mediatools.MediaTools.Fingerprint from its start).
+// FingerprintFunc fingerprints a whole file (tools.MediaTools.Fingerprint from its start).
 type FingerprintFunc func(ctx context.Context, file string, durationMs int64) (creative.Fingerprint, error)
 
 // DefectClip is a catalog clip with its admission time, so a backlog is measured oldest first.
@@ -73,7 +73,7 @@ func (c DefectClip) awaitingFloor() bool {
 	return !c.Held || filler.StageIndex(c.Stage) >= filler.StageIndex(filler.StageDefects)
 }
 
-// MeasureDefectsFunc decodes one file's defect readings (mediatools.MeasureDefects).
+// MeasureDefectsFunc decodes one file's defect readings (tools.MeasureDefects).
 type MeasureDefectsFunc func(ctx context.Context, file string, width, height int, hasAudio bool) (defects.Readings, error)
 
 // DefectFloor is the standing job that keeps every clip's defect record current (#2034) and

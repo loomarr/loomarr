@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // What filters THIS ffmpeg build carries (§9.1).

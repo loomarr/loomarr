@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 

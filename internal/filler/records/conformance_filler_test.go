@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
@@ -19,6 +17,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"

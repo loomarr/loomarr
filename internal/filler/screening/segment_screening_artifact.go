@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 type segmentScreeningArtifactObservation struct {
@@ -29,7 +29,7 @@ func inspectSegmentScreeningArtifact(ctx context.Context, path, expectedSHA256 s
 		return segmentScreeningArtifactObservation{}, false, err
 	}
 	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || !filler.IsContentHash(expectedSHA256) || expectedBytes <= 0 ||
-		expectedBytes > mediatools.ConditioningMaxSnapshotBytes || !filler.IsContentHash(expectedClipHash) {
+		expectedBytes > tools.ConditioningMaxSnapshotBytes || !filler.IsContentHash(expectedClipHash) {
 		return segmentScreeningArtifactObservation{}, false, fmt.Errorf("segment screening artifact request is invalid")
 	}
 	listed, err := os.Lstat(path)
@@ -39,7 +39,7 @@ func inspectSegmentScreeningArtifact(ctx context.Context, path, expectedSHA256 s
 	if err != nil {
 		return segmentScreeningArtifactObservation{}, false, fmt.Errorf("inspect segment screening artifact: %w", err)
 	}
-	if listed.Mode()&os.ModeSymlink != 0 || !listed.Mode().IsRegular() || listed.Size() <= 0 || listed.Size() > mediatools.ConditioningMaxSnapshotBytes {
+	if listed.Mode()&os.ModeSymlink != 0 || !listed.Mode().IsRegular() || listed.Size() <= 0 || listed.Size() > tools.ConditioningMaxSnapshotBytes {
 		return segmentScreeningArtifactObservation{State: "unsafe", Bytes: listed.Size()}, false, nil
 	}
 	file, err := os.Open(path)

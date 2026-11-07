@@ -3,7 +3,7 @@ package playout
 import (
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // Channel formats (#1512 G10). Every channel airs a 1080p SDR H.264 baseline. When its lineup

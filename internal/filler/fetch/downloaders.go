@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/bgexec"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
