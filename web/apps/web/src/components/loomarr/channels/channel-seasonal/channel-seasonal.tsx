@@ -52,10 +52,12 @@ const consequence = (h: HolidayEpisodesDTO, label: string, strength: string): st
 // `loop`) into one choice; writing `default` stores the sentinel.
 const stored = <T extends string>(value: T) => (value === "default" ? "" : value);
 
+const seasonalModeOf = (wire?: string): SeasonalMode =>
+  !wire || wire === "auto" ? "default" : (wire as SeasonalMode);
+
 const ChannelSeasonal = ({ policy, onChange, vocabulary, holidayEpisodes }: ChannelSeasonalProps) => {
   const seasonal = policy.seasonal;
-  const mode: SeasonalMode =
-    !seasonal?.mode || seasonal.mode === "auto" ? "default" : (seasonal.mode as SeasonalMode);
+  const mode = seasonalModeOf(seasonal?.mode);
   const selected = seasonal?.holidays ?? [];
   const strength: SeasonalStrength =
     !seasonal?.strength || seasonal.strength === "featured"
@@ -119,4 +121,4 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, holidayEpisodes }: Chan
   );
 };
 
-export { ChannelSeasonal };
+export { ChannelSeasonal, seasonalModeOf };

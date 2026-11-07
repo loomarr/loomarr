@@ -11,7 +11,7 @@ export type {
   SeasonalOffSeason,
   SeasonalStrength,
 } from "./src/channels";
-export { ChannelAudioSection, ChannelSeasonalFields } from "./src/channels";
+export { ChannelAudioSection, ChannelSeasonalFields, seasonalModeLabel } from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";
