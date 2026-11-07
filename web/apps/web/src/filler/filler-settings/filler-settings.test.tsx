@@ -1,21 +1,28 @@
+import type { FillerSourceDTO, SettingEntry } from "@loomarr/api";
 import {
   getFillerReadinessMockHandler,
+  getListFillerProvidersMockHandler,
   getListFillerSourcesMockHandler,
   getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
+import { fillerProviders, fillerSource } from "@/test/fixtures/filler";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import type { FillerSettingsSection } from "../filler-settings-section";
 import { FillerSettings, FillerSettingsIndex } from "./filler-settings";
 
-const renderSettings = (section: FillerSettingsSection = "downloads") => {
+const renderSettings = (
+  section: FillerSettingsSection = "downloads",
+  sources: FillerSourceDTO[] = [],
+  fetchEvery: Partial<SettingEntry> = {},
+) => {
   server.use(
-    getListFillerSourcesMockHandler({ sources: [], total: 0 }),
+    getListFillerSourcesMockHandler({ sources, total: sources.length }),
     getFillerReadinessMockHandler({
       ready: true,
       nextAction: "none",
@@ -56,6 +63,7 @@ const renderSettings = (section: FillerSettingsSection = "downloads") => {
           value: "6h",
           kind: "duration",
           group: "filler",
+          ...fetchEvery,
         }),
         setting({
           key: "filler.fetch.max_per_run",
@@ -100,6 +108,10 @@ const renderSettings = (section: FillerSettingsSection = "downloads") => {
   );
 };
 
+beforeEach(() => {
+  server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+});
+
 describe("focused Filler settings", () => {
   it("defaults to downloads without showing unrelated storage fields", async () => {
     renderSettings();
@@ -109,6 +121,64 @@ describe("focused Filler settings", () => {
     expect(
       screen.getByText(/No enabled sources are currently downloading automatically/),
     ).toBeInTheDocument();
+  });
+
+  it("names the download interval with the registry's preset label", async () => {
+    renderSettings("downloads", [], {
+      value: "24h0m0s",
+      presets: [{ value: "24h0m0s", label: "Once a day" }],
+    });
+    expect(await screen.findByText(/^Once a day, each source using these defaults/)).toBeVisible();
+  });
+
+  it("spells out a custom download interval, and says when downloads are off", async () => {
+    const { unmount } = renderSettings("downloads", [], {
+      value: "3h0m0s",
+      presets: [{ value: "6h0m0s", label: "Every 6 hours" }],
+    });
+    expect(await screen.findByText(/^Every 3 hours, each source/)).toBeVisible();
+    unmount();
+    renderSettings("downloads", [], { value: "0s" });
+    expect(
+      await screen.findByText(/Automatic downloads are off for sources using these defaults/),
+    ).toBeVisible();
+  });
+
+  it("counts a source toward automatic downloads only when its provider is fetched", async () => {
+    const downloading = [
+      fillerSource({
+        id: "archive:classic",
+        kind: "archive",
+        automaticDownloads: { everySeconds: 3600, maxPerCheck: 4, mode: "custom", summary: "" },
+      }),
+      fillerSource({
+        id: "folder",
+        kind: "folder",
+        automaticDownloads: { everySeconds: 3600, maxPerCheck: 4, mode: "custom", summary: "" },
+      }),
+    ];
+    renderSettings("downloads", downloading);
+    expect(
+      await screen.findByText(/Across 1 enabled source, one full check can add up to 4 clips/),
+    ).toBeVisible();
+  });
+
+  it("counts nothing when the registry says no provider fetches", async () => {
+    server.use(
+      getListFillerProvidersMockHandler({
+        providers: fillerProviders.map((provider) => ({ ...provider, fetched: false })),
+      }),
+    );
+    renderSettings("downloads", [
+      fillerSource({
+        id: "archive:classic",
+        kind: "archive",
+        automaticDownloads: { everySeconds: 3600, maxPerCheck: 4, mode: "custom", summary: "" },
+      }),
+    ]);
+    expect(
+      await screen.findByText(/No enabled sources are currently downloading automatically/),
+    ).toBeVisible();
   });
 
   it("shows automatic storage simply and keeps the catalog ceiling advanced", async () => {

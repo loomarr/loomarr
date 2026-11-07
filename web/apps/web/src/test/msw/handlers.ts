@@ -5,9 +5,6 @@ import {
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
   getDeviceListMockHandler,
-  getFillerDecisionActivityMockHandler,
-  getFillerDecisionDiagnosticsMockHandler,
-  getFillerDecisionOverviewMockHandler,
   getFillerDefectReportMockHandler,
   getFillerPoolMockHandler,
   getFillerReadinessMockHandler,
@@ -18,11 +15,13 @@ import {
   getGuideHighlightsMockHandler,
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
+  getLibraryStatusMockHandler,
   getListActivityMockHandler,
   getListChannelIdeasMockHandler,
   getListChannelsMockHandler,
   getListDocsMockHandler,
   getListFillerMockHandler,
+  getListFillerProvidersMockHandler,
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListInvitationsMockHandler,
@@ -47,6 +46,8 @@ import {
 } from "@loomarr/api/msw";
 import { HttpResponse, http, type RequestHandler } from "msw";
 import { channel } from "../fixtures/channels";
+import { fillerProviders } from "../fixtures/filler";
+import { libraryStatus } from "../fixtures/library";
 
 // appHandlers — the shared baseline for tests that mount the REAL route tree.
 //
@@ -88,6 +89,9 @@ const appHandlers = (): RequestHandler[] => [
   // AppShell reads this once for every authenticated route. `dev` is the honest baseline for a
   // test bundle; tests that exercise release/dirty presentation override the generated handler.
   getSystemVersionMockHandler({ version: "dev", ready: true }),
+  // The Library nav badge (#2151 step 11b): AppShell reads the library status for an admin on
+  // every authenticated route. Caught up, nothing needs you.
+  getLibraryStatusMockHandler(libraryStatus()),
   getGetCurrentHealthMockHandler({
     generationId: "startup-test",
     generation: 1,
@@ -163,6 +167,9 @@ const appHandlers = (): RequestHandler[] => [
   // The generated client is the coupling, and neither diff mentions the other's file.
   getListFillerMockHandler({ clips: [], total: 0 }),
   getListFillerSourcesMockHandler({ sources: [], total: 0 }),
+  // ⚠ The one list that is not empty: the Sources page draws nothing for a provider it has not been
+  // told about, so a route test that landed on it would otherwise find no add form to look for.
+  getListFillerProvidersMockHandler({ providers: fillerProviders }),
   // The guide grid's window read. `fromMs`/`toMs` are required, so an empty grid still has to
   // carry a coherent window rather than `{}`.
   getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
@@ -240,13 +247,6 @@ const appHandlers = (): RequestHandler[] => [
     pool: { channels: [], clips: 0, breakBody: 0, eligible: 0, untagged: 0 },
     acquisitions: [],
   }),
-  getFillerDecisionOverviewMockHandler({
-    healthy: true,
-    nextAction: "none",
-    counts: { admitted: 0, rejected: 0, reviews: 0, unresolvedReviews: 0, operational: 0, retryable: 0 },
-  }),
-  getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
-  getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
   // The defect floor's report (#2034), read by the Manage hub's Quality row: nothing measured yet.
   getFillerDefectReportMockHandler({
     floorVersion: "floor-v3-provisional",

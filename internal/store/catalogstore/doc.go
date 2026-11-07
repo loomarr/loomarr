@@ -11,7 +11,7 @@
 // # Seams
 //
 // A Store runs on a storedb.Handle. Its multi-statement writes begin their own transaction on it;
-// the ones another part of the store composes (ClipTx, which internal/fillerstore uses through
+// the ones another part of the store composes (ClipTx, which internal/filler/records uses through
 // store.Handle.Clips) take the caller's storedb.Querier and never begin or commit.
 //
 // The channels table belongs to programming. Rekeying a clip must carry channel filler pins to the

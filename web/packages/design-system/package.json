@@ -9,13 +9,17 @@
     ".": "./index.ts",
     "./haptics": "./haptics.ts",
     "./native-fonts.json": "./native-fonts.json",
-    "./qr-code-web": "./qr-code-web.ts"
+    "./qr-code-web": "./qr-code-web.ts",
+    "./theme.css": "./generated/theme.css",
+    "./web-theme": "./web-theme.ts"
   },
   "scripts": {
+    "generate": "tsx scripts/generate-web-theme.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@tamagui/core": "3.1.4",
     "lucide-react-native": "1.61.0",
     "qrcode": "1.5.4",
@@ -36,6 +40,9 @@
     }
   },
   "devDependencies": {
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/node": "26.6.5",
     "@types/qrcode": "1.5.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
@@ -45,6 +52,7 @@
     "react-dom": "19.3.0",
     "react-native": "npm:react-native-tvos@0.88.1-0",
     "react-native-web": "0.21.4",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   }

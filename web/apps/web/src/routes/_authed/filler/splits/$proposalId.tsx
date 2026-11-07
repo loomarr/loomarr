@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AdminOnly } from "@/auth/admin-only";
-import { SplitReviewPage, validateSplitReviewSearch } from "@/filler/split-review-page";
+import { SplitReviewPage } from "@/filler/split-review-page";
+import { validateSplitReviewSearch } from "@/filler/split-review-search";
 
 // The split-review gate (§10 V34). The route exists so review survives the detection job:
 // the proposal is persisted, the SSE frame merely hands over its id, and this page reads

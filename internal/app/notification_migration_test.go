@@ -5,14 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestMigrateLegacySMTPProviderCreatesOneEncryptedAccountOnlyProvider(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	protection := testSecretProtection(t, st)
-	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	repository := notifications.NewProtectedRepository(st, protection)
 	set := visionSet(t, map[string]string{
 		"notifications.email.enabled":      "true",
 		"notifications.email.from_address": "loomarr@example.test",
@@ -71,7 +71,7 @@ func TestMigrateLegacySMTPProviderCreatesOneEncryptedAccountOnlyProvider(t *test
 
 func TestMigrateLegacySMTPProviderLeavesAnExistingProviderAuthoritative(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
-	repository := notifications.NewProtectedDestinationRepository(st, testSecretProtection(t, st))
+	repository := notifications.NewProtectedRepository(st, testSecretProtection(t, st))
 	now := time.Unix(1_900_000_000, 0).UTC()
 	existing := notifications.Destination{
 		ID: "smtp-current", Means: notifications.MeansEmail, Label: "Current SMTP",
@@ -105,7 +105,7 @@ func TestCompletedSMTPMigrationNeverReadsStaleLegacyInput(t *testing.T) {
 	if err := st.SetSetting(t.Context(), "migration.notifications.smtp_provider.v1", "true"); err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, testSecretProtection(t, st))
+	repository := notifications.NewProtectedRepository(st, testSecretProtection(t, st))
 	set := visionSet(t, map[string]string{"notifications.smtp.port": "not-a-port"})
 	if err := migrateLegacySMTPProvider(t.Context(), st, repository, set); err != nil {
 		t.Fatalf("completed migration consulted stale legacy input: %v", err)
@@ -114,7 +114,7 @@ func TestCompletedSMTPMigrationNeverReadsStaleLegacyInput(t *testing.T) {
 
 func TestPendingSMTPMigrationRejectsMalformedLegacyInput(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
-	repository := notifications.NewProtectedDestinationRepository(st, testSecretProtection(t, st))
+	repository := notifications.NewProtectedRepository(st, testSecretProtection(t, st))
 	set := visionSet(t, map[string]string{"notifications.smtp.port": "not-a-port"})
 	if err := migrateLegacySMTPProvider(t.Context(), st, repository, set); err == nil {
 		t.Fatal("pending migration accepted malformed legacy input")

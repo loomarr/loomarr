@@ -1,5 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageExclusion";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
@@ -13,7 +14,7 @@ import { SplitReviewEditor } from "@/components/loomarr/filler/split-review-edit
 import { Button } from "@/components/ui/button";
 import { languageList, languageName } from "@/lib/languages";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import type { SplitReviewOrigin, SplitReviewPageProps } from "./split-review-page.type";
+import type { SplitReviewPageProps } from "./split-review-page.type";
 
 const durationSettingMs = (value: string | undefined): number | undefined => {
   if (!value) return undefined;
@@ -55,12 +56,6 @@ const LanguageReceipt = ({
     </details>
   );
 };
-
-// The route's `from=` search param names where review was opened, so Back can return there. Only
-// the two known origins are kept; anything else (a deep link, a hand-edited URL) is dropped and
-// Back falls back to Library, where it always went before. Optional, so a link may omit it.
-const validateSplitReviewSearch = (search: Record<string, unknown>): { from?: SplitReviewOrigin } =>
-  search.from === "incoming" || search.from === "library" ? { from: search.from } : {};
 
 // SplitReviewPage — the /filler/splits/$proposalId screen (§10 V34). Detection persisted
 // a proposal; this page reads it back (the GET is the truth — the SSE frame was only the
@@ -122,7 +117,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
   const minClipDurationMs = durationSettingMs(
     unwrap(
       settings.data,
-      (body) => body.settings.find((entry) => entry.key === "filler.min_duration")?.value,
+      (body) => body.settings.find((entry) => entry.key === SettingKey.FillerMinDuration)?.value,
     ),
   );
   // What intake admits is the channels' commercial languages (#2030 decision 13), so a new channel's
@@ -193,4 +188,4 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
   );
 };
 
-export { SplitReviewPage, validateSplitReviewSearch };
+export { SplitReviewPage };

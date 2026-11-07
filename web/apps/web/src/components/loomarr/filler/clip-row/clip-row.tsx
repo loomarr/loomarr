@@ -1,6 +1,6 @@
 import { formatClipDuration } from "@loomarr/core/format";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
-import { Image } from "@/components/ui/image";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
 import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";
@@ -52,9 +52,7 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
       {/* ⚠ ONE path since V52 phase 8 — the legacy `/v1/filler/thumb/{hash}` fallback retired with
           its route. A clip whose artwork the adoption job has not reached yet renders the empty
           box above, which is the same honest "no frame" state as a clip that never had one. */}
-      {clip.thumbImage && (
-        <Image image={clip.thumbImage} alt="" sizes="54px" className="size-full object-cover" />
-      )}
+      {clip.thumbImage && <ServedImage image={clip.thumbImage} alt="" sizes="54px" />}
     </button>
 
     {/* ⚠ `min-w-0` is what makes the truncate work. A grid item's default `min-width:auto`

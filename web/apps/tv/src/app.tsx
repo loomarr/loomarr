@@ -8,13 +8,8 @@ import {
 import { BrandLaunch, Surface, Text, ViewportStage } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import { createNativeApp, NativeAppRoot, useCrashReportUpload } from "@loomarr/native-app";
-import {
-  createLastChannelStore,
-  createPlaybackMarks,
-  NativePlayerView,
-  PairedNativeImage,
-  usePairedClient,
-} from "@loomarr/player/native";
+import { createLastChannelStore, usePairedClient } from "@loomarr/paired-client";
+import { createPlaybackMarks, NativePlayerView, PairedNativeImage } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
 import {
   clientBackDestination,
@@ -31,22 +26,16 @@ import {
   createTvGuideFocusRegistry,
   createTvSurfFocusRegistry,
   DEFAULT_NUMBER_ENTRY_MS,
-  initialTvWatchingRemoteState,
   isTvLongSelect,
-  reduceTvWatchingRemote,
   restoreTvSurfSelection,
   TV_AUTO_TUNE_CHOICES_MS,
-  type TvWatchingRemoteEvent,
   type TvWatchingRemoteIntent,
-  type TvWatchingRemoteState,
   tvFavouriteToggle,
   tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
   tvNumberEntryPresentation,
-  tvPressIsLongSelectRelease,
   tvSurfFavouriteChannel,
-  tvWatchingRemoteEventFromNative,
 } from "@loomarr/ui-tv";
 import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
@@ -63,6 +52,7 @@ import {
   View,
 } from "react-native";
 import appConfig from "../app.json";
+import { useTvRemote } from "./use-tv-remote";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -161,8 +151,6 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   });
   const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
-  const remoteStateRef = useRef<TvWatchingRemoteState>(initialTvWatchingRemoteState);
-  const [remoteState, setRemoteState] = useState<TvWatchingRemoteState>(initialTvWatchingRemoteState);
   const [autoTuneMs, setAutoTuneMs] = useState<number>(DEFAULT_NUMBER_ENTRY_MS);
   // A choice made before the stored value finishes loading wins over that stale read.
   const autoTuneChosen = useRef(false);
@@ -229,22 +217,14 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     setControlsVisible(true);
     setControlsActivityKey((key) => key + 1);
   }, []);
-  const dispatchRemoteEvent = useCallback(
-    (event: TvWatchingRemoteEvent) => {
-      if (certMarks.enabled && event.key !== "timeout") lastKeyAtMs.current = certMarks.now();
-      const result = reduceTvWatchingRemote(remoteStateRef.current, event, autoTuneMs);
-      remoteStateRef.current = result.state;
-      setRemoteState(result.state);
-      if (result.handled) showControlsForActivity();
-      runRemoteIntent(result.intent);
-    },
-    [autoTuneMs, runRemoteIntent, showControlsForActivity],
-  );
-  useTVEventHandler(({ eventKeyAction, eventType }) => {
-    if (active !== "watching") return;
-    const event = tvWatchingRemoteEventFromNative(eventType, Date.now(), keyActionOf(eventKeyAction));
-    if (event && event.key !== "select") dispatchRemoteEvent(event);
+  const [remote, remoteState] = useTvRemote(autoTuneMs, (event, { handled, intent }) => {
+    if (certMarks.enabled && event.key !== "timeout") lastKeyAtMs.current = certMarks.now();
+    if (handled) showControlsForActivity();
+    runRemoteIntent(intent);
   });
+  useTVEventHandler(({ eventKeyAction, eventType }) =>
+    remote.nativeKey(eventType, keyActionOf(eventKeyAction), active === "watching"),
+  );
   // A long-press of Select on a Guide or Surf row stars or unstars that row's channel (a short
   // press still tunes). The controller shows the change at once and puts it back if the server
   // refuses, so the note reads what the lists say afterwards rather than what was asked for.
@@ -268,18 +248,13 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     [myChannels, snapshot.catalog],
   );
   // tvOS also delivers the held row's own press when the finger lifts; it is not a tune request.
-  const longSelectAtMs = useRef<number | undefined>(undefined);
   const tuneFromList = (channelId: string) => {
-    if (tvPressIsLongSelectRelease(longSelectAtMs.current, Date.now())) {
-      longSelectAtMs.current = undefined;
-      return;
-    }
+    if (remote.consumeLongSelectRelease()) return;
     void controller.tuneChannel(channelId);
     showControlsForActivity();
     setActive("watching");
   };
   useTVEventHandler(({ eventKeyAction, eventType }) => {
-    if (eventType === "longSelect") longSelectAtMs.current = Date.now();
     if (active === "watching" || !isTvLongSelect(eventType, keyActionOf(eventKeyAction))) return;
     const guideSelection = guide.getSnapshot().selection;
     const channelId =
@@ -292,19 +267,8 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     if (channelId) void toggleFavourite(channelId);
   });
   useEffect(() => {
-    const expiresAtMs = remoteState.numberEntry?.expiresAtMs;
-    if (expiresAtMs === undefined || active !== "watching") return;
-    const timeout = setTimeout(
-      () => dispatchRemoteEvent({ atMs: expiresAtMs, key: "timeout" }),
-      Math.max(0, expiresAtMs - Date.now()),
-    );
-    return () => clearTimeout(timeout);
-  }, [active, dispatchRemoteEvent, remoteState.numberEntry?.expiresAtMs]);
-  useEffect(() => {
-    if (active === "watching" || !remoteStateRef.current.numberEntry) return;
-    remoteStateRef.current = initialTvWatchingRemoteState;
-    setRemoteState(initialTvWatchingRemoteState);
-  }, [active]);
+    if (active !== "watching") remote.leaveWatching();
+  }, [active, remote]);
   const [clockMs, setClockMs] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setClockMs(Date.now()), 30_000);
@@ -327,29 +291,17 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         chromeVisible={active === "watching"}
         controlsActivityKey={controlsActivityKey}
         controlsVisible={controlsVisible}
-        density="tv"
         loading={catalogState.loading}
         loadError={catalogState.error}
-        onChannelDown={() => void controller.step(-1)}
-        onChannelUp={() => void controller.step(1)}
         onChangeServer={() => session.chooseServer()}
         onDismissControls={dismissControls}
         onGoLive={() => void controller.goLive()}
-        onOpenGuide={() => {
-          // The release of a long press on Watching is not an OK press.
-          if (tvPressIsLongSelectRelease(longSelectAtMs.current, Date.now()))
-            longSelectAtMs.current = undefined;
-          else dispatchRemoteEvent({ key: "select" });
-        }}
-        onOpenSurf={() => setActive("surf")}
-        onPause={controller.pause}
+        onOpenGuide={remote.select}
         onPlay={() => void controller.play()}
-        onPrevious={() => void controller.previous()}
         onRetry={() => {
           if (catalogState.error) refresh();
           else void controller.retry();
         }}
-        onShowControls={showControlsForActivity}
         onSwitchShown={certMarks.enabled ? markSwitchShown : undefined}
         numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
         player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}

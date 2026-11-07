@@ -122,7 +122,7 @@ RETIRED=(
   # image. Both intermediate answers left instructions behind that read as current — a
   # Sources row literally labelled "ingest sidecar", and copy telling operators to switch to
   # an image tag that is not published. Exactly the docs/help failure this script exists for.
-  'loomarr-ingest|the ingest sidecar was folded into the core (internal/clipfetch); there is no separate service or image'
+  'loomarr-ingest|the ingest sidecar was folded into the core (internal/filler/fetch); there is no separate service or image'
   'loomarr:filler|the two-tag split was replaced by the SINGLE image (§16) — yt-dlp/ffmpeg always ship, so telling an operator to switch tags is a dead end'
   # V38b: clips arrive because you added a SOURCE, not because you pasted a URL. The panel was
   # the odd one out once Sources had registration, per-row search, pulls and auto-fetch — and
@@ -144,12 +144,11 @@ RETIRED=(
   # follow to a 404.
   'get-playout-doctor|renamed to get-playout-status — same read-only playout health projection'
   'playout/doctor|renamed to /v1/playout/status — same read-only playout health projection'
-  # V48: the playout copy-audience query changed from ?target=browser|mediaserver to
-  # ?plan=baseline|hevc8|hevc10|full (a client DeviceProfile resolves to an EncodePlan). The VALUE
+  # The playout copy-audience query is retired: every client is served the same variant. The VALUE
   # tokens are the retired identifiers — the bare word "target" survives as the SessionStat/health
   # DTO field by design, so only the `target=browser`/`target=mediaserver` query strings are banned.
-  'target=browser|the playout copy-audience query is now ?plan= (V48); browser → ?plan=baseline'
-  'target=mediaserver|the playout copy-audience query is now ?plan= (V48); mediaserver → ?plan=full'
+  'target=browser|the playout copy-audience query is retired; every client gets the same variant'
+  'target=mediaserver|the playout copy-audience query is retired; every client gets the same variant'
   # The Go block supervisor owns finite Airing advancement and format acknowledgement. Restoring
   # either identifier recreates the anonymous media-tool sequencing seam that stalled at boundaries.
   '/v1/playout/playlist|retired: the block supervisor opens /v1/playout/program directly'
@@ -424,6 +423,36 @@ RETIRED=(
   # still verifies those artifacts, but no new review is run.
   'cmd/query-mood-review|the mood-review runner is gone; the frozen mood-review artifacts are verified by internal/eval'
   'RunMoodReview|the mood-review runner is gone; CompileMoodReviewAuthority verifies the frozen submissions'
+  # #2147 — POST /v1/channels makes hand-made channels only. Binding a channel to an approved
+  # proposal is approval's write (channels/approval), never a second route with its own copy of the rules.
+  'LineupFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'PolicyFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'RequestFromIntent|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  'ApprovedProposalForJob|#2147: approval binds a proposal to its channel through channels/approval; POST /v1/channels takes no intentRef'
+  # #2147: the whole-video structure assessment (one call over the complete source) was superseded
+  # by the structure-window pipeline, which plans, assesses and stitches windows. Its record,
+  # reservation ledger, operation publication, v9 prompt and ledger table are gone; the window
+  # call record, window ledger and window prompt own those jobs. Window code uses `directVideo*`
+  # names of its own, so only the whole-video symbols are listed.
+  'filler-temporal-structure-direct-video-v9|retired (#2147): the whole-video prompt is gone; the window pipeline owns fillerstructurewindow.DirectVideoPromptVersion'
+  'filler_structure_assessment_ledger|retired (#2147): the whole-video assessment ledger table was dropped; filler_structure_window_call_ledger is the structure ledger'
+  'NewAssessmentRecord|retired (#2147): the whole-video assessment record is gone; use fillerstructurewindow.NewRecordedAssessment'
+  'fillerstructure.RecordedAssessment|retired (#2147): the whole-video assessment record is gone; use fillerstructurewindow.RecordedAssessment'
+  'AssessmentLedgerEntry|retired (#2147): the whole-video assessment ledger is gone; use fillerstructurewindow.CallLedgerEntry'
+  'NewAssessmentReservation|retired (#2147): the whole-video assessment ledger is gone; use fillerstructurewindow.NewCallReservation'
+  'NewAssessmentPublication|retired (#2147): the whole-video assessment publication is gone; use fillerstructurewindow.NewCallPublication'
+  'ReserveStructureAssessment|retired (#2147): the whole-video assessment ledger is gone; use ReserveStructureWindowCall'
+  'SettleStructureAssessment|retired (#2147): the whole-video assessment ledger is gone; use SettleStructureWindowCall'
+  'PutStructureAssessmentEvidence|retired (#2147): the whole-video evidence store is gone; use PutStructureWindowAssessmentEvidence'
+  'FindStructureAssessmentEvidence|retired (#2147): the whole-video evidence store is gone; use FindStructureWindowAssessmentEvidence'
+  # #2147: nothing wrote an admission decision at runtime, so the ledger, its service and the Filler
+  # Manage Activity and Diagnostics panels that read it were deleted whole with their four tables.
+  'fillerdecision|#2147: the filler admission decision ledger and its service were deleted; readiness evidence is the terminal-ready event'
+  'v1/filler/decisions|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-overview|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-activity|#2147: the filler decision routes were deleted with their ledger'
+  'filler-decision-diagnostics|#2147: the filler decision routes were deleted with their ledger'
+  'act-on-filler-diagnostic|#2147: the filler decision routes were deleted with their ledger'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
@@ -483,7 +512,7 @@ done
 # Raw model-tool/prompt schema properties are retired. Persisted/operator era
 # fields remain valid elsewhere, so keep this check limited to these two schema
 # surfaces. Map reads used to reject the property do not restore the schema.
-for path in internal/suggest/tools.go internal/suggest/prompt.go; do
+for path in internal/proposals/suggest/tools.go internal/proposals/suggest/prompt.go; do
   hits="$(grep -nF '"era":' "$path" 2>/dev/null || true)"
   if [[ -n "$hits" ]]; then
     fail=1
@@ -494,7 +523,7 @@ done
 [[ "$fail" -ne 0 ]] && exit 1
 # Separate provider IDs are retired only at the model-selection interface.
 # Public Proposal and Catalog DTOs retain their existing external-ID fields.
-for path in internal/suggest/parse.go internal/suggest/prompt.go; do
+for path in internal/proposals/suggest/parse.go internal/proposals/suggest/prompt.go; do
   for id in 'json:"tmdbId' 'json:"tvdbId' '"tmdbId":' '"tvdbId":'; do
     hits="$(grep -nF "$id" "$path" 2>/dev/null || true)"
     if [[ -n "$hits" ]]; then

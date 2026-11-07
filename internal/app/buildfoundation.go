@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
@@ -126,7 +126,7 @@ func buildFoundation(
 		result.holidays, result.reloadHolidays = holidays.Current, holidays.Reload
 	}
 	if st != nil {
-		protection, err := buildSecretProtection(rootCtx, st, overrides.DataDir)
+		protection, err := buildSecretProtection(rootCtx, st, overrides.DataDir, log)
 		if err != nil {
 			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,
 				"database secret protection could not be initialized", "/settings/system/security", "")

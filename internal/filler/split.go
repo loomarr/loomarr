@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 // Compilation splitting (§10, V34) — domain types and the PURE segment logic.
-// The exec boundary (ffmpeg/ffprobe/whisper-cli) lives in mediatools.go behind
+// The exec boundary (ffmpeg/ffprobe/whisper-cli) lives in media/tools/mediatools.go behind
 // MediaTools, and the LLM boundary rescue in splitrescue.go; everything here is
 // deterministic and unit-tested without touching a binary.
 //
@@ -426,7 +426,7 @@ type SplitProposal struct {
 	Structure *SourceStructureAssessment `json:"-"`
 	// StructureDecision retains the independent complete-video assessments and their replayable
 	// provider-neutral reduction. It cannot authorize publication by itself.
-	StructureDecision *fillerstructure.Artifact `json:"-"`
+	StructureDecision *structure.Artifact `json:"-"`
 	// Spawned remembers children already produced by partial auto-confirm. It is private durable
 	// state, not review UI: final confirmation needs the whole new generation so it can retire
 	// superseded children without also retiring cuts produced on an earlier pass.
@@ -494,7 +494,7 @@ func segmentsFromBoundaries(durationMs int64, gaps []detectedGap, floor segmentF
 // 12 fades in the measured reel were confirmed by both — so throwing it away is what left the
 // confidence ladder (§10 V34) with nothing to read.
 //
-// ⚠ A filler-local type rather than a field on `Interval`: that alias belongs to `mediatools` and
+// ⚠ A filler-local type rather than a field on `Interval`: that alias belongs to `media/tools` and
 // is used in ~110 places, none of which care who found a gap.
 type detectedGap struct {
 	Interval

@@ -10,9 +10,9 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/requester"
-	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -257,7 +257,7 @@ func (r resolved) tunarrConfig() func() tunarr.Config {
 func bootSettings(ctx context.Context, st store.Store, protection *secretprotection.Manager, baseLog *slog.Logger, dataDir string) (resolved, *settings.Secrets, *settings.Redactor, *slog.Logger, error) {
 	reg := settings.NewRegistry()
 	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
-		rows, err := loadProtectedSettings(ctx, st, reg, protection)
+		rows, err := openProtectedSettings(ctx, st, reg, protection)
 		if err != nil {
 			return nil, err
 		}

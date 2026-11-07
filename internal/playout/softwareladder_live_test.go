@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // EVERY SOFTWARE RUNG IS A PICTURE IN ONE FORMAT (#1517). A rung change restarts the item encoder
@@ -238,7 +238,7 @@ func driveLadder(t *testing.T, bin, path, name string, facts MediaFormat, host e
 		timer := time.AfterFunc(time.Until(deadline), stop)
 		next, why := rung, "deadline"
 		var cut time.Duration // the splice point: out_time when the monitor (or the deadline) stopped it
-		ReadProgress(pr, func(p Progress) {
+		encode.ReadProgress(pr, func(p encode.Progress) {
 			at := time.Duration(p.OutTimeMS) * time.Millisecond
 			if !stopped.Load() {
 				cut = at

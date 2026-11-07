@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -59,8 +59,8 @@ func (c ClipTx) EnrichmentRevision(ctx context.Context, hash string) (int64, err
 // answer can relabel a campaign ad, and a corrected rule can take a wrong label back. Enrichment's
 // precedence has already decided the answer wins, so an operator's choice is never overwritten. A
 // specific role, such as a PSA, keeps its kind.
-func (c ClipTx) ClassifyKind(ctx context.Context, hash string, kind clipcatalog.Kind, at time.Time) error {
-	replaceable := []any{string(clipcatalog.Unclassified)}
+func (c ClipTx) ClassifyKind(ctx context.Context, hash string, kind clips.Kind, at time.Time) error {
+	replaceable := []any{string(clips.Unclassified)}
 	if optInGroup[kind] {
 		for k := range optInGroup {
 			replaceable = append(replaceable, string(k))
@@ -73,8 +73,8 @@ func (c ClipTx) ClassifyKind(ctx context.Context, hash string, kind clipcatalog.
 }
 
 // optInGroup is the generic break-body kinds and the opt-in kinds they are filed as (#2037).
-var optInGroup = map[clipcatalog.Kind]bool{
-	clipcatalog.Commercial: true, clipcatalog.Interstitial: true, clipcatalog.Political: true, clipcatalog.News: true,
+var optInGroup = map[clips.Kind]bool{
+	clips.Commercial: true, clips.Interstitial: true, clips.Political: true, clips.News: true,
 }
 
 // SetEra sets the clip's era year.
@@ -186,7 +186,7 @@ func (c ClipTx) RecordVision(ctx context.Context, hash, visibleText string, sugg
 func (c ClipTx) Admit(ctx context.Context, hash string, at time.Time) (bool, error) {
 	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ?
 		WHERE hash = ? AND held = ? AND removed_at = 0 AND kind <> ?`,
-		false, false, epoch(at), hash, true, string(clipcatalog.Unclassified))
+		false, false, epoch(at), hash, true, string(clips.Unclassified))
 }
 
 // Unfile takes a filed clip out of the catalog and holds it for review again.

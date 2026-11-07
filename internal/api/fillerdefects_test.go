@@ -9,38 +9,38 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/defects"
-	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
+	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 type defectReportStore struct {
-	clips   []fillerdefectfloor.DefectClip
-	records map[string]fillerdefectfloor.DefectRecord
-	labels  map[string]fillerdefectfloor.DefectLabel
+	clips   []defectfloor.DefectClip
+	records map[string]defectfloor.DefectRecord
+	labels  map[string]defectfloor.DefectLabel
 }
 
-func (s *defectReportStore) ListDefectClips(context.Context) ([]fillerdefectfloor.DefectClip, error) {
+func (s *defectReportStore) ListDefectClips(context.Context) ([]defectfloor.DefectClip, error) {
 	return s.clips, nil
 }
 
-func (s *defectReportStore) ListClipDefects(context.Context) (map[string]fillerdefectfloor.DefectRecord, error) {
+func (s *defectReportStore) ListClipDefects(context.Context) (map[string]defectfloor.DefectRecord, error) {
 	return s.records, nil
 }
 
-func (s *defectReportStore) ListClipDefectLabels(context.Context) (map[string]fillerdefectfloor.DefectLabel, error) {
+func (s *defectReportStore) ListClipDefectLabels(context.Context) (map[string]defectfloor.DefectLabel, error) {
 	return s.labels, nil
 }
 
 func (s *defectReportStore) SetClipDefectLabel(_ context.Context, hash string, label defects.Label, at time.Time) error {
 	rec, ok := s.records[hash]
 	if !ok {
-		return fillerdefectfloor.ErrDefectNotMeasured
+		return defectfloor.ErrDefectNotMeasured
 	}
 	if label == "" {
 		delete(s.labels, hash)
 		return nil
 	}
-	s.labels[hash] = fillerdefectfloor.DefectLabel{Label: label, Era: rec.Era, LabelledAt: at}
+	s.labels[hash] = defectfloor.DefectLabel{Label: label, Era: rec.Era, LabelledAt: at}
 	return nil
 }
 
@@ -79,19 +79,19 @@ func TestFillerDefectReport_AdminReadsAndLabelsMeasuredClips(t *testing.T) {
 	a := defects.Assess(soft, 1988)
 	verdict, reason := defects.Decide(a, nil)
 	st := &defectReportStore{
-		records: map[string]fillerdefectfloor.DefectRecord{"c1": {ClipHash: "c1", Readings: soft, Era: 1988, Assessment: a,
+		records: map[string]defectfloor.DefectRecord{"c1": {ClipHash: "c1", Readings: soft, Era: 1988, Assessment: a,
 			Verdict: verdict, VerdictReason: reason, MeasuredAt: time.Unix(1_800_000_000, 0)}},
-		labels: map[string]fillerdefectfloor.DefectLabel{},
+		labels: map[string]defectfloor.DefectLabel{},
 	}
 	for _, hash := range []string{"c1", "c2"} {
-		c := fillerdefectfloor.DefectClip{}
+		c := defectfloor.DefectClip{}
 		c.Hash, c.Name = hash, "Clip "+hash
 		st.clips = append(st.clips, c)
 	}
 	harness := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
-			FillerDefects: fillerdefectfloor.NewDefectReports(st, time.Now),
+			FillerDefects: defectfloor.NewDefectReports(st, time.Now),
 		})
 	})
 

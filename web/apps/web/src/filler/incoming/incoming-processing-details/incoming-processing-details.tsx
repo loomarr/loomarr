@@ -86,11 +86,6 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
               : `Show ${skipped === 1 ? "skipped step" : `${skipped} skipped steps`}`}
           </Button>
         ) : null}
-        {processing.diagnosticsHref ? (
-          <Button render={<a href={processing.diagnosticsHref} />} variant="outline" size="sm">
-            View diagnostics
-          </Button>
-        ) : null}
       </div>
     </details>
   );

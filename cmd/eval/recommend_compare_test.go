@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/recommend"
+	"github.com/loomarr/loomarr/internal/channels/recommend"
 )
 
 func TestRecommendCompareWritesOfflineSharedModelDecision(t *testing.T) {

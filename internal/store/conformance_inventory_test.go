@@ -112,6 +112,88 @@ func testInventoryGroundedIdentity(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// An origin written before its ids were known follows them to the item they name, taking its
+// sources, when it is its item's only origin and the kinds agree; otherwise it is a conflict.
+func testInventoryOriginFollowsIDs(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	known := inventorySnapshot("library-a", "known", "source-a", "rev-a", "Known", at)
+	known.ExternalIDs = []inventory.ExternalID{{Namespace: "tvdb", Value: "90000701"}}
+	knownID, err := st.ApplyInventorySnapshot(ctx, known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	late := inventorySnapshot("scan-a", "file-1", "file", "rev-f", "Late", at)
+	late.ExternalIDs = nil
+	lateID, err := st.ApplyInventorySnapshot(ctx, late)
+	if err != nil || lateID == knownID {
+		t.Fatalf("ungrounded apply = (%q, %v)", lateID, err)
+	}
+
+	late.ExternalIDs = []inventory.ExternalID{{Namespace: "tvdb", Value: "90000701"}}
+	movedID, err := st.ApplyInventorySnapshot(ctx, late)
+	if err != nil || movedID != knownID {
+		t.Fatalf("follow = (%q, %v), want %q", movedID, err, knownID)
+	}
+	item, ok, err := st.InventoryItem(ctx, inventory.ItemRef{ID: knownID})
+	if err != nil || !ok || len(item.Origins) != 2 || len(item.Sources) != 2 {
+		t.Fatalf("joined item = %+v, %v, %v", item, ok, err)
+	}
+	if _, ok, err := st.InventoryItem(ctx, inventory.ItemRef{ID: lateID}); err != nil || ok {
+		t.Fatalf("left-behind item still present: %v %v", ok, err)
+	}
+
+	other := inventorySnapshot("scan-a", "file-2", "file", "rev-g", "Other", at)
+	other.ExternalIDs = nil
+	other.Kind = "movie"
+	if _, err := st.ApplyInventorySnapshot(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	other.ExternalIDs = []inventory.ExternalID{{Namespace: "tvdb", Value: "90000701"}}
+	if _, err := st.ApplyInventorySnapshot(ctx, other); !errors.Is(err, inventory.ErrIdentityConflict) {
+		t.Fatalf("follow across kinds = %v, want conflict", err)
+	}
+
+	shared := inventorySnapshot("library-b", "shared", "source-b", "rev-b", "Shared", at)
+	shared.ExternalIDs = []inventory.ExternalID{{Namespace: "tvdb", Value: "90000702"}}
+	sharedID, err := st.ApplyInventorySnapshot(ctx, shared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := inventorySnapshot("scan-a", "file-3", "file", "rev-h", "Second", at)
+	second.ExternalIDs = shared.ExternalIDs
+	if id, err := st.ApplyInventorySnapshot(ctx, second); err != nil || id != sharedID {
+		t.Fatalf("second origin = %q, %v", id, err)
+	}
+	// An origin that joined a shared item by its ids follows them when they change; the item keeps
+	// the origin that founded it.
+	second.ExternalIDs = known.ExternalIDs
+	if id, err := st.ApplyInventorySnapshot(ctx, second); err != nil || id != knownID {
+		t.Fatalf("follow from a joined item = %q, %v, want %q", id, err, knownID)
+	}
+	if item, ok, err := st.InventoryItem(ctx, inventory.ItemRef{ID: sharedID}); err != nil || !ok || len(item.Origins) != 1 {
+		t.Fatalf("item left = %+v, %v, %v, want its founder kept", item, ok, err)
+	}
+	// One whose ids then name nothing goes back to an item of its own; a founder stays put.
+	second.ExternalIDs = nil
+	homeID, err := st.ApplyInventorySnapshot(ctx, second)
+	if err != nil || homeID == knownID || homeID == sharedID {
+		t.Fatalf("back home = %q, %v", homeID, err)
+	}
+	if item, _, _ := st.InventoryItem(ctx, inventory.ItemRef{ID: homeID}); len(item.Origins) != 1 || len(item.Sources) != 1 {
+		t.Fatalf("home item = %+v, want the origin and its source", item)
+	}
+	if item, _, _ := st.InventoryItem(ctx, inventory.ItemRef{ID: knownID}); len(item.Origins) != 2 {
+		t.Fatalf("known item = %+v, want its founder and the late file", item)
+	}
+	known.ExternalIDs = nil
+	if id, err := st.ApplyInventorySnapshot(ctx, known); err != nil || id != knownID {
+		t.Fatalf("founder without ids = %q, %v, want it kept on its item", id, err)
+	}
+}
+
 func testInventoryMeasurementRevision(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	st := newStore(t)

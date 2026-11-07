@@ -1,5 +1,6 @@
 import type { LocationDTO, SettingEntry } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
+import type { SettingKey } from "@loomarr/api/models/settingKey";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,7 +40,7 @@ vi.mock(import("@loomarr/api/endpoints/settings"), async (importOriginal) => {
   };
 });
 
-const entry = (key: string, value = ""): SettingEntry => ({
+const entry = (key: SettingKey, value = ""): SettingEntry => ({
   key,
   label: key.endsWith("country") ? "Country" : "Local area",
   group: "filler",

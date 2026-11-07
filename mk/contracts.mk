@@ -39,12 +39,13 @@ config-docs-verify: config-docs ## regenerated config docs must match committed 
 # marker pair — the page's heading and introduction are hand-written.
 
 .PHONY: arch-docs
-arch-docs: ## regenerate the package map in docs/design/package-map.md from the code
+arch-docs: ## regenerate the package map and its area pages in docs/design/ from the code
 	$(GO) run ./cmd/arch-docs docs/design/package-map.md internal
 
 .PHONY: arch-docs-verify
-arch-docs-verify: arch-docs ## regenerated package map must match committed (CI red on drift)
-	@git diff --exit-code docs/design/package-map.md
+arch-docs-verify: arch-docs ## regenerated package map and area pages must match committed (CI red on drift)
+	@drift="$$(git status --porcelain -- docs/design/package-map.md docs/design/areas)"; \
+	if [ -n "$$drift" ]; then echo "$$drift"; git diff -- docs/design/package-map.md docs/design/areas; exit 1; fi
 
 ## ---- dev docs (the command contract) ------------------------------------
 

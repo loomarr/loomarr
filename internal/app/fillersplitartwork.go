@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/store"
 )
 

@@ -45,13 +45,6 @@ const stubAs = (me: unknown) => {
       return Promise.resolve(json({}));
     }),
   );
-  vi.stubGlobal(
-    "EventSource",
-    class {
-      addEventListener() {}
-      close() {}
-    },
-  );
   return seen;
 };
 

@@ -1,9 +1,10 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
+import type { SettingKey } from "@loomarr/api/models/settingKey";
 import type { ReactNode } from "react";
 
 interface SettingsRenderContext {
-  liveValue: (key: string) => string;
-  setEdit: (key: string, value: string) => void;
+  liveValue: (key: SettingKey) => string;
+  setEdit: (key: SettingKey, value: string) => void;
 }
 
 // A page groups one or more registry groups behind a single save bar (config-design §5).
@@ -16,7 +17,7 @@ interface SettingsBlock {
   description?: string;
   // Optional ordered subset when one registry group has several user-facing sections.
   // The key remains declared once; this is only placement on the owning workflow page.
-  keys?: string[];
+  keys?: SettingKey[];
   // The named connection check this block can run, when it has one (§8 per-block Test).
   check?: string;
   // Override the generic action when the check covers broader readiness than connectivity.

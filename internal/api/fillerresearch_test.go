@@ -12,29 +12,29 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/filler/research"
 )
 
 type fixtureFillerResearch struct {
-	status  fillerresearch.WebStatus
-	config  fillerresearch.WebConfig
+	status  research.WebStatus
+	config  research.WebConfig
 	ok      bool
 	message string
 }
 
-func (f *fixtureFillerResearch) Status(context.Context) (fillerresearch.WebStatus, error) {
+func (f *fixtureFillerResearch) Status(context.Context) (research.WebStatus, error) {
 	return f.status, nil
 }
 
-func (f *fixtureFillerResearch) Test(_ context.Context, config fillerresearch.WebConfig) (fillerresearch.WebStatus, bool, string, error) {
+func (f *fixtureFillerResearch) Test(_ context.Context, config research.WebConfig) (research.WebStatus, bool, string, error) {
 	f.config = config
 	return f.status, f.ok, f.message, nil
 }
 
 func TestFillerResearchRoutesAreAdminOnlyAndNeverEchoSecrets(t *testing.T) {
-	service := &fixtureFillerResearch{ok: true, message: "Web search is ready.", status: fillerresearch.WebStatus{
-		StructuredEnabled: true, Provider: fillerresearch.WebProviderBrave, Configured: true,
-		State: fillerresearch.WebStateReady, Month: "2026-09", RequestCount: 3, RequestLimit: 100,
+	service := &fixtureFillerResearch{ok: true, message: "Web search is ready.", status: research.WebStatus{
+		StructuredEnabled: true, Provider: research.WebProviderBrave, Configured: true,
+		State: research.WebStateReady, Month: "2026-09", RequestCount: 3, RequestLimit: 100,
 		LastSuccessAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
 	}}
 	server := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
@@ -87,7 +87,7 @@ func TestFillerResearchRoutesAreAdminOnlyAndNeverEchoSecrets(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(raw), `"ok":true`) || strings.Contains(string(raw), secret) {
 		t.Fatalf("test status=%d body=%s", resp.StatusCode, raw)
 	}
-	if service.config.Provider != fillerresearch.WebProviderBrave || service.config.BraveAPIKey != secret {
+	if service.config.Provider != research.WebProviderBrave || service.config.BraveAPIKey != secret {
 		t.Fatalf("tested config = %+v", service.config)
 	}
 }

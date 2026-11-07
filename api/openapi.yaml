@@ -217,12 +217,7 @@ components:
           maxLength: 2
           type: string
         kind:
-          description: Which kind of source this is
-          enum:
-            - archive
-            - youtube
-            - folder
-            - library
+          description: The provider's id, as listed by GET /v1/filler/providers, whose sources are added by typing an address
           type: string
         label:
           description: Operator-facing name; falls back to the identifier
@@ -234,6 +229,24 @@ components:
       required:
         - kind
         - uri
+      type: object
+    AddLibraryRootInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/AddLibraryRootInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        path:
+          description: The folder's absolute path on this machine
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
       type: object
     AdjacentContext:
       additionalProperties: false
@@ -548,6 +561,8 @@ components:
           type: string
         password:
           description: The owning admin's password (Argon2id-hashed at rest).
+          format: password
+          minLength: 8
           type: string
         username:
           description: The owning admin's local username.
@@ -1053,7 +1068,7 @@ components:
           format: password
           type: string
         next:
-          description: The new password (min 8 characters).
+          description: The new password.
           format: password
           minLength: 8
           type: string
@@ -2352,6 +2367,24 @@ components:
       required:
         - clips
       type: object
+    ConfirmLibraryRemovalInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ConfirmLibraryRemovalInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        path:
+          description: The folder whose removal to apply
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
+      type: object
     ConstraintMatches:
       additionalProperties: false
       properties:
@@ -2545,8 +2578,6 @@ components:
           description: Loomarr channel id (stable). Optional — omit and the server assigns one (ch_…); pass one to keep a caller-assigned id.
           examples:
             - ch_abc123
-          type: string
-        intentRef:
           type: string
         logo:
           type: string
@@ -3129,37 +3160,6 @@ components:
         - token
         - deviceName
       type: object
-    DeviceProfileBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/DeviceProfileBody.json
-          format: uri
-          readOnly: true
-          type: string
-        audio:
-          description: Audio codecs the client can decode (e.g. ["eac3","ac3"]). aac is always implied.
-          items:
-            type: string
-          type: array
-        hdr:
-          description: Whether the client can display HDR (PQ/HLG).
-          type: boolean
-        maxResolution:
-          description: Tallest video height the client will direct-play (e.g. 1080); 0 = no cap.
-          format: int64
-          type: integer
-        video:
-          description: Video codecs the client can DECODE (e.g. ["hevc"]). h264 is always implied.
-          items:
-            type: string
-          type: array
-        video10bit:
-          description: Whether the client can decode 10-bit (or deeper) video.
-          type: boolean
-      type: object
     DeviceStartInputBody:
       additionalProperties: false
       properties:
@@ -3303,6 +3303,8 @@ components:
         durationMs:
           format: int64
           type: integer
+        embedUrl:
+          type: string
         height:
           format: int64
           type: integer
@@ -3903,192 +3905,6 @@ components:
         - progress
         - disposition
       type: object
-    FillerDecisionActivityOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionActivityOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        rows:
-          items:
-            $ref: "#/components/schemas/FillerDecisionActivityWireDTO"
-          type: array
-        total:
-          format: int64
-          type: integer
-      required:
-        - rows
-        - total
-      type: object
-    FillerDecisionActivityWireDTO:
-      additionalProperties: false
-      properties:
-        actionId:
-          type: string
-        clipHash:
-          type: string
-        createdAt:
-          format: date-time
-          type: string
-        decisionId:
-          type: string
-        id:
-          type: string
-        kind:
-          enum:
-            - automatic_admit
-            - automatic_reject
-            - review_requested
-            - review_admit
-            - review_reject
-            - correction
-            - review_abandoned
-            - restore
-            - reversal
-          type: string
-      required:
-        - id
-        - decisionId
-        - clipHash
-        - kind
-        - createdAt
-      type: object
-    FillerDecisionCountsDTO:
-      additionalProperties: false
-      properties:
-        admitted:
-          format: int64
-          type: integer
-        operational:
-          format: int64
-          type: integer
-        rejected:
-          format: int64
-          type: integer
-        retryable:
-          format: int64
-          type: integer
-        reviews:
-          format: int64
-          type: integer
-        unresolvedReviews:
-          format: int64
-          type: integer
-      required:
-        - admitted
-        - rejected
-        - reviews
-        - operational
-        - retryable
-        - unresolvedReviews
-      type: object
-    FillerDecisionDiagnosticDTO:
-      additionalProperties: false
-      properties:
-        clipHash:
-          type: string
-        code:
-          type: string
-        createdAt:
-          format: date-time
-          type: string
-        id:
-          type: string
-        recovery:
-          $ref: "#/components/schemas/FillerDecisionRecoveryDTO"
-        retryable:
-          type: boolean
-      required:
-        - id
-        - clipHash
-        - code
-        - retryable
-        - recovery
-        - createdAt
-      type: object
-    FillerDecisionDiagnosticsOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionDiagnosticsOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        rows:
-          items:
-            $ref: "#/components/schemas/FillerDecisionDiagnosticDTO"
-          type: array
-        total:
-          format: int64
-          type: integer
-      required:
-        - rows
-        - total
-      type: object
-    FillerDecisionOverviewDTO:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDecisionOverviewDTO.json
-          format: uri
-          readOnly: true
-          type: string
-        actionCount:
-          format: int64
-          type: integer
-        counts:
-          $ref: "#/components/schemas/FillerDecisionCountsDTO"
-        healthy:
-          type: boolean
-        nextAction:
-          enum:
-            - none
-            - repair_processing
-            - retry_processing
-            - review_decisions
-          type: string
-      required:
-        - healthy
-        - nextAction
-        - counts
-      type: object
-    FillerDecisionRecoveryDTO:
-      additionalProperties: false
-      properties:
-        action:
-          enum:
-            - configure_provider
-            - adjust_budget
-            - retry_extraction
-            - inspect_media
-            - update_policy
-          type: string
-        destination:
-          description: Exact application or media destination for configuration and inspection recovery
-          type: string
-        mode:
-          enum:
-            - automatic_retry
-            - manual_retry
-            - configuration
-            - inspection
-          type: string
-        retryAt:
-          description: Exact next-attempt time for automatic recovery
-          format: date-time
-          type: string
-      required:
-        - action
-        - mode
-      type: object
     FillerDefectBandScoreDTO:
       additionalProperties: false
       properties:
@@ -4347,42 +4163,6 @@ components:
         - undecided
         - pending
       type: object
-    FillerDiagnosticRecoveryInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDiagnosticRecoveryInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        action:
-          enum:
-            - retry
-          type: string
-        actionId:
-          maxLength: 128
-          type: string
-      required:
-        - actionId
-        - action
-      type: object
-    FillerDiagnosticRecoveryOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/FillerDiagnosticRecoveryOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        id:
-          type: string
-      required:
-        - id
-      type: object
     FillerFetchStatusDTO:
       additionalProperties: false
       properties:
@@ -4480,12 +4260,34 @@ components:
         addressHint:
           description: An example of the address a source of this provider takes
           type: string
+        addressLabel:
+          description: Names the field a source's address is typed into when the provider has no finder
+          type: string
+        blurb:
+          description: The sentence under the provider's heading on the source page
+          type: string
         discoverable:
           description: Sources can be suggested for a query and an address verified before it is added
           type: boolean
         fetched:
           description: Sources are downloaded on a schedule; false means they are scanned where they are
           type: boolean
+        findAdd:
+          description: The button that registers the source the finder chose
+          type: string
+        findLabel:
+          description: Names the source finder's field; absent unless discoverable
+          type: string
+        findMinQuery:
+          description: The fewest characters a search runs with
+          format: int64
+          type: integer
+        findNoMatches:
+          description: What a search with no results tells the operator to do next
+          type: string
+        findPlaceholder:
+          description: The source finder's placeholder
+          type: string
         id:
           description: The provider's persisted identity, as a source row's kind
           type: string
@@ -4498,9 +4300,15 @@ components:
         openSearchable:
           description: The provider can be searched beyond its registered sources
           type: boolean
+        previewHeading:
+          description: Introduces the examples shown from a source
+          type: string
         searchable:
           description: A registered source can be searched in place
           type: boolean
+        sourceNoun:
+          description: What one registered source is, as the source drawer's subtitle
+          type: string
       required:
         - id
         - label
@@ -4794,11 +4602,7 @@ components:
           format: int64
           type: integer
         kind:
-          enum:
-            - folder
-            - library
-            - archive
-            - youtube
+          description: The provider's id, as listed by GET /v1/filler/providers
           type: string
         lastCheck:
           $ref: "#/components/schemas/FillerSourceCheckSummaryDTO"
@@ -4817,6 +4621,9 @@ components:
           type: string
         onForPlace:
           type: boolean
+        pageUrl:
+          description: The source's own page at its provider; absent when it has none
+          type: string
         parentId:
           type: string
         providerEnabled:
@@ -4869,6 +4676,9 @@ components:
         durationMs:
           format: int64
           type: integer
+        embedUrl:
+          description: Player that plays the item in place; absent when the provider does not allow it
+          type: string
         title:
           type: string
         url:
@@ -4904,9 +4714,7 @@ components:
           maxItems: 3
           type: array
         provider:
-          enum:
-            - archive
-            - youtube
+          description: The provider's id, as listed by GET /v1/filler/providers
           type: string
         targetType:
           enum:
@@ -4934,12 +4742,16 @@ components:
           format: uri
           readOnly: true
           type: string
+        exact:
+          description: "The query was an address, not words: suggestions holds the one source it names, already checked"
+          type: boolean
         suggestions:
           items:
             $ref: "#/components/schemas/FillerSourceSuggestionDTO"
           type: array
       required:
         - suggestions
+        - exact
       type: object
     FillerSourcesOutputBody:
       additionalProperties: false
@@ -5999,9 +5811,6 @@ components:
           description: Attempts of the current processing stage; not a whole-preparation attempt count
           format: int64
           type: integer
-        diagnosticsHref:
-          description: Existing operational owner; absent when no deeper evidence exists
-          type: string
         nextTryAt:
           description: RFC3339; absent unless this work is scheduled to retry
           type: string
@@ -6151,11 +5960,14 @@ components:
             $ref: "#/components/schemas/LineupContext"
           type: array
         description:
+          minLength: 3
           type: string
         era:
           type: string
         maxAcquisitions:
           format: int64
+          maximum: 200
+          minimum: 0
           type: integer
         mustExclude:
           items:
@@ -6169,6 +5981,7 @@ components:
           type: string
         runtimeTargetMin:
           format: int64
+          minimum: 0
           type: integer
         tone:
           type: string
@@ -6512,8 +6325,7 @@ components:
           description: Effective cron expression (settings override or default)
           type: string
         scheduleKey:
-          description: Settings key to PATCH to change the schedule
-          type: string
+          $ref: "#/components/schemas/SettingKey"
         title:
           description: Human label for the Tasks page
           type: string
@@ -6666,6 +6478,42 @@ components:
       required:
         - label
       type: object
+    LibraryCandidateDTO:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+            - movie
+            - series
+          type: string
+        lengthMatches:
+          description: "Movies only: its runtime and the file's length agree"
+          type: boolean
+        name:
+          type: string
+        nameMatches:
+          type: boolean
+        overview:
+          type: string
+        poster:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Absent when it has none, or while it is still being fetched
+        tmdbId:
+          type: string
+        year:
+          description: Absent when unknown
+          format: int64
+          type: integer
+        yearMatches:
+          type: boolean
+      required:
+        - kind
+        - tmdbId
+        - name
+        - nameMatches
+        - yearMatches
+        - lengthMatches
+      type: object
     LibraryCollection:
       additionalProperties: false
       properties:
@@ -6679,6 +6527,587 @@ components:
       required:
         - id
         - name
+      type: object
+    LibraryDetailsFromDTO:
+      additionalProperties: false
+      properties:
+        description:
+          description: Where its description came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        episodeNames:
+          description: Where most of a series' episode names came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        rating:
+          description: Where its rating came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+      type: object
+    LibraryEpisodeDTO:
+      additionalProperties: false
+      properties:
+        end:
+          description: The last episode a multi-episode file holds
+          format: int64
+          type: integer
+        id:
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          type: integer
+        ready:
+          type: boolean
+      required:
+        - id
+        - name
+        - number
+        - ready
+      type: object
+    LibraryFolderNameDTO:
+      additionalProperties: false
+      properties:
+        authority:
+          description: The app that reported the folder
+          enum:
+            - emby
+            - jellyfin
+            - sonarr
+            - radarr
+          type: string
+        path:
+          description: The folder as that app names it
+          type: string
+      required:
+        - authority
+        - path
+      type: object
+    LibraryHeldDTO:
+      additionalProperties: false
+      properties:
+        episodes:
+          description: Episodes the scan no longer found
+          format: int64
+          type: integer
+        movies:
+          description: Movies the scan no longer found
+          format: int64
+          type: integer
+        other:
+          description: Extras the scan no longer found
+          format: int64
+          type: integer
+        path:
+          description: The folder whose scan is waiting
+          type: string
+      required:
+        - path
+        - movies
+        - episodes
+        - other
+      type: object
+    LibraryHookDTO:
+      additionalProperties: false
+      properties:
+        app:
+          enum:
+            - sonarr
+            - radarr
+          type: string
+        error:
+          description: Why registering failed
+          type: string
+        lastEvent:
+          description: The arr's event type, since Loomarr started
+          type: string
+        lastEventAt:
+          format: date-time
+          type: string
+        registeredAt:
+          format: date-time
+          type: string
+        state:
+          enum:
+            - registered
+            - not_configured
+            - no_address
+            - failed
+          type: string
+      required:
+        - app
+        - state
+      type: object
+    LibraryItemDTO:
+      additionalProperties: false
+      properties:
+        files:
+          description: Present files; a series counts its episodes' files
+          format: int64
+          type: integer
+        id:
+          type: string
+        kind:
+          enum:
+            - movie
+            - series
+          type: string
+        name:
+          type: string
+        poster:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its poster; absent when it has none, or while one is still being fetched
+        ready:
+          description: False while some of its files' details aren't read yet
+          type: boolean
+        year:
+          description: Absent when unknown
+          format: int64
+          type: integer
+      required:
+        - id
+        - kind
+        - name
+        - files
+        - ready
+      type: object
+    LibraryItemDetailDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryItemDetailDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        detailsFrom:
+          $ref: "#/components/schemas/LibraryDetailsFromDTO"
+        files:
+          description: A movie's files; empty for a series
+          items:
+            $ref: "#/components/schemas/LibraryItemFileDTO"
+          type: array
+        genres:
+          items:
+            type: string
+          type: array
+        item:
+          $ref: "#/components/schemas/LibraryItemDTO"
+        match:
+          $ref: "#/components/schemas/LibraryMatchDTO"
+        overview:
+          type: string
+        rating:
+          description: The certification, such as TV-14
+          type: string
+        runtimeMillis:
+          format: int64
+          type: integer
+        seasons:
+          description: A series' episodes by season; empty for a movie
+          items:
+            $ref: "#/components/schemas/LibrarySeasonDTO"
+          type: array
+      required:
+        - item
+        - genres
+        - files
+        - seasons
+        - match
+        - detailsFrom
+      type: object
+    LibraryItemFileDTO:
+      additionalProperties: false
+      properties:
+        audioChannels:
+          description: "The channels of the sound that plays: its default audio stream, else its first"
+          format: int64
+          type: integer
+        extra:
+          description: A copy that never plays, because another of the title's files does
+          type: boolean
+        lengthMillis:
+          description: How long it plays, measured from the file
+          format: int64
+          type: integer
+        path:
+          description: The file on this machine
+          type: string
+        picture:
+          $ref: "#/components/schemas/LibraryPictureDTO"
+          description: Its first video stream
+        ready:
+          description: Its details are read
+          type: boolean
+        size:
+          description: Bytes
+          format: int64
+          type: integer
+        subtitles:
+          description: Its subtitle streams in order; empty for none or while unread
+          items:
+            $ref: "#/components/schemas/LibrarySubtitleDTO"
+          type: array
+      required:
+        - path
+        - size
+        - ready
+        - subtitles
+        - extra
+      type: object
+    LibraryMatchDTO:
+      additionalProperties: false
+      properties:
+        app:
+          description: The app, when by is app
+          enum:
+            - sonarr
+            - radarr
+          type: string
+        by:
+          description: "What says which title this is: the app that manages it, the file itself (an id in its name, or an NFO beside it), your answer, or nothing yet"
+          enum:
+            - app
+            - file
+            - you
+            - none
+          type: string
+        page:
+          description: The title's page in that app, when by is app and it has one
+          format: uri
+          type: string
+      required:
+        - by
+      type: object
+    LibraryNeedDTO:
+      additionalProperties: false
+      properties:
+        candidates:
+          description: Best first; empty when a search found nothing
+          items:
+            $ref: "#/components/schemas/LibraryCandidateDTO"
+          type: array
+        files:
+          items:
+            $ref: "#/components/schemas/LibraryNeedFileDTO"
+          type: array
+        item:
+          $ref: "#/components/schemas/LibraryItemDTO"
+        searched:
+          description: False until TMDB has been searched for it
+          type: boolean
+      required:
+        - item
+        - searched
+        - candidates
+        - files
+      type: object
+    LibraryNeedFileDTO:
+      additionalProperties: false
+      properties:
+        path:
+          description: The file on this machine
+          type: string
+        ready:
+          description: Its details are read
+          type: boolean
+        size:
+          description: Bytes
+          format: int64
+          type: integer
+      required:
+        - path
+        - size
+        - ready
+      type: object
+    LibraryPathMappingDTO:
+      additionalProperties: false
+      properties:
+        authority:
+          enum:
+            - emby
+            - jellyfin
+            - sonarr
+            - radarr
+          type: string
+        authorityPath:
+          description: The folder as the app names it
+          type: string
+        byHand:
+          description: Set by the maintainer; discovery leaves it alone
+          type: boolean
+        localPath:
+          description: The folder on this machine; empty when none was found
+          type: string
+      required:
+        - authority
+        - authorityPath
+        - localPath
+        - byHand
+      type: object
+    LibraryPictureDTO:
+      additionalProperties: false
+      properties:
+        hdr:
+          description: High dynamic range
+          type: boolean
+        height:
+          format: int64
+          type: integer
+        width:
+          format: int64
+          type: integer
+      required:
+        - width
+        - height
+        - hdr
+      type: object
+    LibraryRootDTO:
+      additionalProperties: false
+      properties:
+        addedByHand:
+          type: boolean
+        checkedAt:
+          description: The last check; absent when never checked
+          format: date-time
+          type: string
+        foundIn:
+          description: Every app that names this folder, and what it calls it
+          items:
+            $ref: "#/components/schemas/LibraryFolderNameDTO"
+          type: array
+        inUse:
+          description: The maintainer confirmed it for scanning
+          type: boolean
+        path:
+          description: The folder on this machine
+          type: string
+        readable:
+          description: Loomarr opened it at the last check
+          type: boolean
+      required:
+        - path
+        - inUse
+        - readable
+        - addedByHand
+        - foundIn
+      type: object
+    LibraryRootsBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryRootsBody.json
+          format: uri
+          readOnly: true
+          type: string
+        pathMap:
+          items:
+            $ref: "#/components/schemas/LibraryPathMappingDTO"
+          type: array
+        roots:
+          items:
+            $ref: "#/components/schemas/LibraryRootDTO"
+          type: array
+        sources:
+          description: How each app answered; only on a discovery pass
+          items:
+            $ref: "#/components/schemas/LibrarySourceDTO"
+          type: array
+      required:
+        - roots
+        - pathMap
+      type: object
+    LibraryScanDTO:
+      additionalProperties: false
+      properties:
+        arrIncomplete:
+          description: Sonarr or Radarr didn't answer the last scan
+          type: boolean
+        enabled:
+          description: "library.scanner.enabled: false stops every scan"
+          type: boolean
+        headersDone:
+          description: Files read so far in this scan
+          format: int64
+          type: integer
+        headersTotal:
+          description: Files this scan reads
+          format: int64
+          type: integer
+        lastScanAt:
+          description: When the last scan finished; absent before the first
+          format: date-time
+          type: string
+        paused:
+          description: Reading waits while someone is watching
+          type: boolean
+        stage:
+          description: "walking: listing folders; reading: reading new files"
+          enum:
+            - idle
+            - walking
+            - reading
+          type: string
+      required:
+        - enabled
+        - stage
+        - headersDone
+        - headersTotal
+        - paused
+        - arrIncomplete
+      type: object
+    LibrarySearchHitDTO:
+      additionalProperties: false
+      properties:
+        kind:
+          enum:
+            - movie
+            - series
+          type: string
+        name:
+          type: string
+        overview:
+          type: string
+        tmdbId:
+          type: string
+        year:
+          format: int64
+          type: integer
+      required:
+        - kind
+        - tmdbId
+        - name
+      type: object
+    LibrarySeasonDTO:
+      additionalProperties: false
+      properties:
+        episodes:
+          items:
+            $ref: "#/components/schemas/LibraryEpisodeDTO"
+          type: array
+        number:
+          description: 0 is the specials
+          format: int64
+          type: integer
+      required:
+        - number
+        - episodes
+      type: object
+    LibrarySourceDTO:
+      additionalProperties: false
+      properties:
+        authority:
+          enum:
+            - emby
+            - jellyfin
+            - sonarr
+            - radarr
+          type: string
+        error:
+          type: string
+        state:
+          description: "skipped: not set up"
+          enum:
+            - ok
+            - skipped
+            - failed
+          type: string
+      required:
+        - authority
+        - state
+      type: object
+    LibraryStatusOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LibraryStatusOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        files:
+          description: Media files found in folders in use
+          format: int64
+          type: integer
+        headersPending:
+          description: Files not read yet
+          format: int64
+          type: integer
+        health:
+          description: "needs_folders: none in use; folder_offline: one in use didn't open"
+          enum:
+            - needs_folders
+            - folder_offline
+            - ok
+          type: string
+        held:
+          description: Removals waiting for the maintainer, one per folder
+          items:
+            $ref: "#/components/schemas/LibraryHeldDTO"
+          type: array
+        hooks:
+          description: Sonarr's and Radarr's webhooks to Loomarr
+          items:
+            $ref: "#/components/schemas/LibraryHookDTO"
+          type: array
+        inUse:
+          description: Folders in use
+          format: int64
+          type: integer
+        needsYou:
+          description: Titles Loomarr can't tell what they are
+          format: int64
+          type: integer
+        offline:
+          description: Folders in use that didn't open at their last check
+          format: int64
+          type: integer
+        problems:
+          description: Files Loomarr skips, such as disc images
+          format: int64
+          type: integer
+        scan:
+          $ref: "#/components/schemas/LibraryScanDTO"
+        toConfirm:
+          description: Readable folders found but not yet in use
+          format: int64
+          type: integer
+      required:
+        - health
+        - inUse
+        - offline
+        - toConfirm
+        - scan
+        - files
+        - headersPending
+        - problems
+        - needsYou
+        - held
+        - hooks
+      type: object
+    LibrarySubtitleDTO:
+      additionalProperties: false
+      properties:
+        language:
+          description: ISO 639 code; absent when the file doesn't say
+          type: string
       type: object
     LineupContext:
       additionalProperties: false
@@ -6737,6 +7166,25 @@ components:
       required:
         - key
         - name
+      type: object
+    LinkLibraryItemInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/LinkLibraryItemInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        tmdbId:
+          description: The TMDB title it is
+          maxLength: 20
+          minLength: 1
+          pattern: ^[0-9]+$
+          type: string
+      required:
+        - tmdbId
       type: object
     ListActivityOutputBody:
       additionalProperties: false
@@ -6865,6 +7313,45 @@ components:
           type: array
       required:
         - invitations
+      type: object
+    ListLibraryItemsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListLibraryItemsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/LibraryItemDTO"
+          type: array
+        total:
+          description: Titles matching, across every page
+          format: int64
+          type: integer
+      required:
+        - items
+        - total
+      type: object
+    ListLibraryNeedsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ListLibraryNeedsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        needs:
+          items:
+            $ref: "#/components/schemas/LibraryNeedDTO"
+          type: array
+      required:
+        - needs
       type: object
     ListOutputBody:
       additionalProperties: false
@@ -9327,6 +9814,7 @@ components:
           type: string
         password:
           format: password
+          minLength: 8
           type: string
         username:
           type: string
@@ -9349,6 +9837,7 @@ components:
           type: string
         password:
           format: password
+          minLength: 8
           type: string
       required:
         - grant
@@ -9428,6 +9917,24 @@ components:
         - enabled
         - label
         - uri
+      type: object
+    RemoveLibraryExtraCopyInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RemoveLibraryExtraCopyInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        path:
+          description: The extra copy, as the title's files list it
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
       type: object
     RequestChannelIdeaOutputBody:
       additionalProperties: false
@@ -9935,6 +10442,23 @@ components:
         - name
         - inLibrary
       type: object
+    SearchLibraryTitlesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SearchLibraryTitlesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        results:
+          items:
+            $ref: "#/components/schemas/LibrarySearchHitDTO"
+          type: array
+      required:
+        - results
+      type: object
     SearchOutputBody:
       additionalProperties: false
       properties:
@@ -10274,6 +10798,56 @@ components:
         - id
         - enabled
       type: object
+    SetLibraryPathMappingInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SetLibraryPathMappingInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        authority:
+          enum:
+            - emby
+            - jellyfin
+            - sonarr
+            - radarr
+          type: string
+        authorityPath:
+          maxLength: 4096
+          minLength: 1
+          type: string
+        localPath:
+          description: Empty hands the row back to discovery
+          maxLength: 4096
+          type: string
+      required:
+        - authority
+        - authorityPath
+        - localPath
+      type: object
+    SetLibraryRootInUseInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SetLibraryRootInUseInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        inUse:
+          type: boolean
+        path:
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
+        - inUse
+      type: object
     SettingEntry:
       additionalProperties: false
       properties:
@@ -10312,9 +10886,9 @@ components:
         group:
           type: string
         key:
-          type: string
+          $ref: "#/components/schemas/SettingKey"
         kind:
-          type: string
+          $ref: "#/components/schemas/SettingKind"
         label:
           description: Registry-owned human label for workflow forms.
           type: string
@@ -10322,8 +10896,12 @@ components:
           description: Stable task id for the setting's one curated editor. Browser paths are frontend-owned.
           type: string
         presentation:
-          description: Human editor semantics beyond kind, e.g. bytes, path, or language.
-          type: string
+          $ref: "#/components/schemas/SettingPresentation"
+        presets:
+          description: Common choices offered before a custom value, in canonical form. Any value the setting accepts still saves.
+          items:
+            $ref: "#/components/schemas/SettingPreset"
+          type: array
         preview:
           description: "For secrets: masked '…a1b2' tail (§4)."
           type: string
@@ -10372,6 +10950,360 @@ components:
         - doc
       type: object
     SettingEnumOption:
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+      required:
+        - value
+        - label
+      type: object
+    SettingKey:
+      description: A public setting key (config-design §2). Member names match the backend's typed handles.
+      enum:
+        - library.flavor
+        - library.url
+        - library.token
+        - library.path_map
+        - library.scanner.enabled
+        - requester.provider
+        - seerr.url
+        - seerr.api_key
+        - sonarr.url
+        - sonarr.api_key
+        - sonarr.quality_profile
+        - sonarr.root_folder
+        - radarr.url
+        - radarr.api_key
+        - radarr.quality_profile
+        - radarr.root_folder
+        - tunarr.url
+        - tunarr.transcode_config_id
+        - server.public_url
+        - access.public_url
+        - playout.backend
+        - playout.encoder
+        - playout.audio_language
+        - playout.quality_tier
+        - playout.tone_curve
+        - playout.watermark_opacity_pct
+        - playout.watermark_look
+        - playout.ffmpeg_path
+        - playout.hls_dir
+        - playout.state_dir
+        - playout.max_channels
+        - playout.memory_reserve_mb
+        - playout.encode_memory_mb
+        - playout.gpu_cpu_millicores
+        - playout.app_reserve_millicores
+        - guide.timezone
+        - guide.retention_hours
+        - backup.schedule
+        - backup.retain
+        - backup.dir
+        - images.dir
+        - images.max_upload_bytes
+        - images.remote_fetch_enabled
+        - images.cache_budget_mb
+        - tmdb.api_key
+        - llm.provider
+        - llm.url
+        - llm.model
+        - llm.api_key
+        - llm.keep_alive
+        - asr.provider
+        - asr.url
+        - asr.api_key
+        - asr.model
+        - suggest.max_acquisitions
+        - job.recurate.schedule
+        - recurate.min_score_pct
+        - recurate.max_titles
+        - channel.reconcile_every
+        - sched.window_hours
+        - filler.home_country
+        - filler.home_place
+        - filler.local_radius_km
+        - filler.region_fallback
+        - filler.dir
+        - filler.watch_dir
+        - filler.sync_every
+        - filler.source.folder.enabled
+        - filler.transcribe.enabled
+        - filler.vision.enabled
+        - filler.vision.model
+        - filler.vision.provider
+        - filler.vision.url
+        - filler.vision.api_key
+        - filler.defects.judge_look_cents
+        - filler.defects.judge_daily_cents
+        - filler.autosplit.enabled
+        - filler.autosplit.min_confidence
+        - filler.autosplit.max_duration
+        - filler.structure_window_authority_path
+        - filler.structure_window_deployment_path
+        - filler.pipeline.max_clips
+        - filler.transcode.max_per_run
+        - filler.pipeline.max_whisper
+        - filler.pipeline.max_vision
+        - filler.pipeline.max_split_vision
+        - filler.pipeline.max_splits
+        - filler.fetch.every
+        - filler.fetch.max_per_run
+        - filler.acquisition.compilations
+        - filler.fetch.max_catalog_clips
+        - filler.storage.library_budget_gb
+        - filler.research.enabled
+        - filler.research.wikidata_enabled
+        - filler.research.wikipedia_enabled
+        - filler.research.archive_enabled
+        - filler.research.loc_enabled
+        - filler.research.web_provider
+        - filler.research.brave_api_key
+        - filler.research.searxng_url
+        - filler.research.monthly_limit
+        - filler.incoming.ready_window
+        - filler.breaks_per_hour
+        - filler.break_duration
+        - filler.pod_max
+        - filler.cooldown_seconds
+        - filler.min_quality
+        - filler.weight
+        - filler.min_duration
+        - filler.split.review_window
+        - filler.min_clip_duration
+        - filler.max_clip_duration
+        - filler.target_lufs
+        - filler.language
+        - ingest.ytdlp_path
+        - ingest.ffmpeg_path
+        - ingest.timeout
+        - ingest.whisper_path
+        - ingest.whisper_model
+        - filler.language_model
+        - session.ttl
+        - cookie.secure
+        - security.trust_proxy
+        - auth.sso.enabled
+        - auth.sso.issuer
+        - auth.sso.client_id
+        - auth.sso.client_secret
+        - request.ttl
+        - downloading.ttl
+        - job.system_health.schedule
+        - job.notification_delivery.schedule
+        - job.reconcile.schedule
+        - job.channel_maintenance.schedule
+        - job.filler_sync.schedule
+        - job.filler_split_sweep.schedule
+        - job.filler_identity.schedule
+        - job.filler_defects.schedule
+        - job.filler_pipeline.schedule
+        - job.images_fetch.schedule
+        - job.images_adopt_artwork.schedule
+        - job.images_avif.schedule
+        - job.images_maintenance.schedule
+        - job.library_scan.schedule
+        - job.library_full_scan.schedule
+        - job.library_scan.lookback
+        - episodes.max_age
+        - job.arr_queue_poll.schedule
+        - job.seerr_queue_poll.schedule
+        - job.workers
+        - job.timeout
+        - jobs.retention
+        - proposals.retention
+        - activity.retention
+        - diagnostics.dir
+        - diagnostics.retention
+        - diagnostics.max_storage_mb
+        - job.housekeeping.schedule
+        - setup.completed
+      type: string
+      x-enum-varnames:
+        - LibraryFlavor
+        - LibraryURL
+        - LibraryToken
+        - LibraryPathMap
+        - LibraryScannerEnabled
+        - RequesterProvider
+        - SeerrURL
+        - SeerrAPIKey
+        - SonarrURL
+        - SonarrAPIKey
+        - SonarrQualityProfile
+        - SonarrRootFolder
+        - RadarrURL
+        - RadarrAPIKey
+        - RadarrQualityProfile
+        - RadarrRootFolder
+        - TunarrURL
+        - TunarrTranscodeConfigID
+        - ServerPublicURL
+        - AccessPublicURL
+        - PlayoutBackend
+        - PlayoutEncoder
+        - PlayoutAudioLanguage
+        - PlayoutQualityTier
+        - PlayoutToneCurve
+        - PlayoutWatermarkOpacityPct
+        - PlayoutWatermarkLook
+        - PlayoutFFmpegPath
+        - PlayoutHLSDir
+        - PlayoutStateDir
+        - PlayoutMaxChannels
+        - PlayoutMemoryReserveMb
+        - PlayoutEncodeMemoryMb
+        - PlayoutGPUCPUMillicores
+        - PlayoutAppReserveMillicores
+        - GuideTimezone
+        - GuideRetentionHours
+        - BackupSchedule
+        - BackupRetain
+        - BackupDir
+        - ImagesDir
+        - ImagesMaxUploadBytes
+        - ImagesRemoteFetchEnabled
+        - ImagesCacheBudgetMb
+        - TMDBAPIKey
+        - LLMProvider
+        - LLMURL
+        - LLMModel
+        - LLMAPIKey
+        - LLMKeepAlive
+        - ASRProvider
+        - ASRURL
+        - ASRAPIKey
+        - ASRModel
+        - SuggestMaxAcquisitions
+        - JobRecurateSchedule
+        - RecurateMinScorePct
+        - RecurateMaxTitles
+        - ChannelReconcileEvery
+        - SchedWindowHours
+        - FillerHomeCountry
+        - FillerHomePlace
+        - FillerLocalRadiusKm
+        - FillerRegionFallback
+        - FillerDir
+        - FillerWatchDir
+        - FillerSyncEvery
+        - FillerSourceFolderEnabled
+        - FillerTranscribeEnabled
+        - FillerVisionEnabled
+        - FillerVisionModel
+        - FillerVisionProvider
+        - FillerVisionURL
+        - FillerVisionAPIKey
+        - FillerDefectsJudgeLookCents
+        - FillerDefectsJudgeDailyCents
+        - FillerAutosplitEnabled
+        - FillerAutosplitMinConfidence
+        - FillerAutosplitMaxDuration
+        - FillerStructureWindowAuthorityPath
+        - FillerStructureWindowDeploymentPath
+        - FillerPipelineMaxClips
+        - FillerTranscodeMaxPerRun
+        - FillerPipelineMaxWhisper
+        - FillerPipelineMaxVision
+        - FillerPipelineMaxSplitVision
+        - FillerPipelineMaxSplits
+        - FillerFetchEvery
+        - FillerFetchMaxPerRun
+        - FillerAcquisitionCompilations
+        - FillerFetchMaxCatalogClips
+        - FillerStorageLibraryBudgetGb
+        - FillerResearchEnabled
+        - FillerResearchWikidataEnabled
+        - FillerResearchWikipediaEnabled
+        - FillerResearchArchiveEnabled
+        - FillerResearchLocEnabled
+        - FillerResearchWebProvider
+        - FillerResearchBraveAPIKey
+        - FillerResearchSearxngURL
+        - FillerResearchMonthlyLimit
+        - FillerIncomingReadyWindow
+        - FillerBreaksPerHour
+        - FillerBreakDuration
+        - FillerPodMax
+        - FillerCooldownSeconds
+        - FillerMinQuality
+        - FillerWeight
+        - FillerMinDuration
+        - FillerSplitReviewWindow
+        - FillerMinClipDuration
+        - FillerMaxClipDuration
+        - FillerTargetLufs
+        - FillerLanguage
+        - IngestYtdlpPath
+        - IngestFFmpegPath
+        - IngestTimeout
+        - IngestWhisperPath
+        - IngestWhisperModel
+        - FillerLanguageModel
+        - SessionTTL
+        - CookieSecure
+        - SecurityTrustProxy
+        - AuthSSOEnabled
+        - AuthSSOIssuer
+        - AuthSSOClientID
+        - AuthSSOClientSecret
+        - RequestTTL
+        - DownloadingTTL
+        - JobSystemHealthSchedule
+        - JobNotificationDeliverySchedule
+        - JobReconcileSchedule
+        - JobChannelMaintenanceSchedule
+        - JobFillerSyncSchedule
+        - JobFillerSplitSweepSchedule
+        - JobFillerIdentitySchedule
+        - JobFillerDefectsSchedule
+        - JobFillerPipelineSchedule
+        - JobImagesFetchSchedule
+        - JobImagesAdoptArtworkSchedule
+        - JobImagesAvifSchedule
+        - JobImagesMaintenanceSchedule
+        - JobLibraryScanSchedule
+        - JobLibraryFullScanSchedule
+        - JobLibraryScanLookback
+        - EpisodesMaxAge
+        - JobArrQueuePollSchedule
+        - JobSeerrQueuePollSchedule
+        - JobWorkers
+        - JobTimeout
+        - JobsRetention
+        - ProposalsRetention
+        - ActivityRetention
+        - DiagnosticsDir
+        - DiagnosticsRetention
+        - DiagnosticsMaxStorageMb
+        - JobHousekeepingSchedule
+        - SetupCompleted
+    SettingKind:
+      description: "A setting's value type (config-design §2): it decides how the value parses and which control edits it."
+      enum:
+        - string
+        - int
+        - bool
+        - duration
+        - url
+        - enum
+        - secret
+        - string_list
+        - cron
+      type: string
+    SettingPresentation:
+      description: Human editor semantics beyond kind, e.g. bytes, path, or language. Absent for the kind's plain control.
+      enum:
+        - bytes
+        - path
+        - language
+        - switch
+        - filler_download_schedule
+      type: string
+    SettingPreset:
       additionalProperties: false
       properties:
         label:
@@ -11705,7 +12637,7 @@ components:
         key:
           description: Stable identity key
           examples:
-            - movie:tmdb:1111867
+            - movie:tmdb:91111867
           type: string
         lastError:
           description: Why the title was given up on (unavailable only)
@@ -11723,7 +12655,7 @@ components:
           type: string
         name:
           examples:
-            - In Flames
+            - Ashgrove Anomaly
           type: string
         progress:
           description: Download completion 0..1 (arr queue poll)
@@ -11740,7 +12672,7 @@ components:
           type: string
         tmdbId:
           examples:
-            - 1111867
+            - 91111867
           format: int64
           type: integer
         tvdbId:
@@ -11761,11 +12693,11 @@ components:
       properties:
         key:
           examples:
-            - movie:tmdb:1111867
+            - movie:tmdb:91111867
           type: string
         name:
           examples:
-            - In Flames
+            - Ashgrove Anomaly
           type: string
         state:
           enum:
@@ -13073,12 +14005,6 @@ paths:
             examples:
               - auto
             type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DeviceProfileBody"
-        required: true
       responses:
         "200":
           content:
@@ -15042,151 +15968,6 @@ paths:
       summary: Retag a selection of clips
       tags:
         - filler
-  /v1/filler/decisions/activity:
-    get:
-      description: Member-readable bounded audit of automatic semantic decisions and subsequent operator actions (§10 V63).
-      operationId: filler-decision-activity
-      parameters:
-        - explode: false
-          in: query
-          name: limit
-          schema:
-            default: 100
-            format: int64
-            maximum: 100
-            minimum: 1
-            type: integer
-        - description: Created-at value from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeAt
-          schema:
-            description: Created-at value from the last row of the previous page
-            format: date-time
-            type: string
-        - description: Opaque id from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeId
-          schema:
-            description: Opaque id from the last row of the previous page
-            maxLength: 137
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionActivityOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Filler admission decision activity
-      tags:
-        - filler
-  /v1/filler/decisions/diagnostics:
-    get:
-      description: Admin-only operational holds. Raw provider responses, prompts, paths, evidence locations, and secrets are never projected (§10 V63).
-      operationId: filler-decision-diagnostics
-      parameters:
-        - explode: false
-          in: query
-          name: limit
-          schema:
-            default: 100
-            format: int64
-            maximum: 100
-            minimum: 1
-            type: integer
-        - description: Created-at value from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeAt
-          schema:
-            description: Created-at value from the last row of the previous page
-            format: date-time
-            type: string
-        - description: Opaque id from the last row of the previous page
-          explode: false
-          in: query
-          name: beforeId
-          schema:
-            description: Opaque id from the last row of the previous page
-            maxLength: 137
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionDiagnosticsOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Filler admission processing diagnostics
-      tags:
-        - filler
-  /v1/filler/decisions/diagnostics/{id}/actions:
-    post:
-      description: Admin-only idempotent action selected from the current diagnostic recovery plan. The server records the authenticated actor and rejects stale or no-longer-retryable holds (§10 V63).
-      operationId: act-on-filler-diagnostic
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 128
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FillerDiagnosticRecoveryInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDiagnosticRecoveryOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Recover a filler processing hold
-      tags:
-        - filler
-  /v1/filler/decisions/overview:
-    get:
-      description: Member-readable server-owned V63 health and priority projection. Clients render nextAction; they do not reconstruct it from counts.
-      operationId: filler-decision-overview
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FillerDecisionOverviewDTO"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Admission decision health and next action
-      tags:
-        - filler
   /v1/filler/defects:
     get:
       description: Admin only (#2034). What the defect floor would retire on this install, every measured clip's findings, and how the floor and its vision judge score against the maintainer's labels, per era band. Labels stay in this install's database; nothing here leaves the machine.
@@ -15557,13 +16338,12 @@ paths:
       description: Admin only (§10 V51c). Changes provider policy without rewriting child source switches or removing clips already in the catalog.
       operationId: set-filler-provider-enabled
       parameters:
-        - in: path
+        - description: A fetched provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A fetched provider's id, as listed by GET /v1/filler/providers
             type: string
       requestBody:
         content:
@@ -15592,13 +16372,12 @@ paths:
       description: Admin only (§10 V67). Validates one exact provider URL or identifier and returns its canonical target without registering or downloading it.
       operationId: resolve-filler-source
       parameters:
-        - in: path
+        - description: A discoverable provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A discoverable provider's id, as listed by GET /v1/filler/providers
             type: string
       requestBody:
         content:
@@ -15627,13 +16406,12 @@ paths:
       description: Admin only (§10 V67). Searches one provider for source candidates without registering a source, downloading media, or granting background-work authority.
       operationId: suggest-filler-sources
       parameters:
-        - in: path
+        - description: A discoverable provider's id, as listed by GET /v1/filler/providers
+          in: path
           name: kind
           required: true
           schema:
-            enum:
-              - archive
-              - youtube
+            description: A discoverable provider's id, as listed by GET /v1/filler/providers
             type: string
         - explode: false
           in: query
@@ -16840,6 +17618,544 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List media-server collections
+      tags:
+        - library
+  /v1/library/hooks/{app}:
+    post:
+      description: Where Sonarr and Radarr send file events once Loomarr has registered itself with them. Authenticated by the generated secret as the basic-auth password, not by a session.
+      operationId: receiveLibraryHook
+      parameters:
+        - in: path
+          name: app
+          required: true
+          schema:
+            enum:
+              - sonarr
+              - radarr
+            type: string
+        - in: header
+          name: Authorization
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              contentMediaType: application/octet-stream
+              format: binary
+              type: string
+        required: true
+      responses:
+        "202":
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Receive an event from Sonarr or Radarr
+      tags:
+        - library
+  /v1/library/hooks/{app}/test:
+    post:
+      description: Registers Loomarr with the arr again and asks it to send its test event. 502 with the arr's answer when it cannot save or reach Loomarr's connection.
+      operationId: testLibraryHook
+      parameters:
+        - in: path
+          name: app
+          required: true
+          schema:
+            enum:
+              - sonarr
+              - radarr
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Test an arr's webhook
+      tags:
+        - library
+  /v1/library/items:
+    get:
+      description: Movies and series Loomarr found in its media folders, by name. A title still getting ready has files whose details aren't read yet.
+      operationId: listLibraryItems
+      parameters:
+        - description: Only movies or only series; both when absent
+          explode: false
+          in: query
+          name: kind
+          schema:
+            description: Only movies or only series; both when absent
+            enum:
+              - movie
+              - series
+            type: string
+        - description: Part of the name, any case
+          explode: false
+          in: query
+          name: search
+          schema:
+            description: Part of the name, any case
+            maxLength: 200
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 60
+            format: int64
+            maximum: 200
+            minimum: 1
+            type: integer
+        - explode: false
+          in: query
+          name: offset
+          schema:
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLibraryItemsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the library's titles
+      tags:
+        - library
+  /v1/library/items/{id}:
+    get:
+      description: A movie with its files, or a series with its episodes by season. 404 when no file of it is present.
+      operationId: getLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryItemDetailDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: One title
+      tags:
+        - library
+  /v1/library/items/{id}/answer:
+    delete:
+      description: Undoes a link or an ignore. A title nothing else identifies needs you again.
+      operationId: unanswerLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Take back an answer
+      tags:
+        - library
+  /v1/library/items/{id}/check:
+    post:
+      description: Opens the title's files and reads their details again, such as after a file was replaced.
+      operationId: checkLibraryItemFiles
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Check a title's files again
+      tags:
+        - library
+  /v1/library/items/{id}/ignore:
+    post:
+      description: "Says a title isn't one: it leaves the library and Needs you."
+      operationId: ignoreLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Ignore a title
+      tags:
+        - library
+  /v1/library/items/{id}/link:
+    post:
+      description: Links a title to a TMDB title. Its files are read again with it.
+      operationId: linkLibraryItem
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkLibraryItemInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Say which title this is
+      tags:
+        - library
+  /v1/library/items/{id}/refresh:
+    post:
+      description: Fetches the title's details from TMDB now, and reads what its app and its files say again. 503 when TMDB can't be reached.
+      operationId: updateLibraryItemDetails
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update a title's details
+      tags:
+        - library
+  /v1/library/items/{id}/remove-copy:
+    post:
+      description: Moves one of the title's files that never plays into its media folder's trash (.loomarr-trash), which empties after 30 days.
+      operationId: removeLibraryExtraCopy
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemoveLibraryExtraCopyInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove a title's extra copy
+      tags:
+        - library
+  /v1/library/needs:
+    get:
+      description: Titles Loomarr can't tell what they are, each with the best guesses a search found, best first.
+      operationId: listLibraryNeeds
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLibraryNeedsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Titles that need you
+      tags:
+        - library
+  /v1/library/path-map:
+    put:
+      description: Points one folder, as the media server, Sonarr or Radarr names it, at a folder on this machine. An empty localPath hands the row back to discovery.
+      operationId: setLibraryPathMapping
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetLibraryPathMappingInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Map another app's folder to a folder here
+      tags:
+        - library
+  /v1/library/roots:
+    get:
+      description: The folders Loomarr reads media from, where each was found, its last readability check, and the path map.
+      operationId: listLibraryRoots
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List media folders
+      tags:
+        - library
+    post:
+      description: Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it.
+      operationId: addLibraryRoot
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddLibraryRootInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Add a media folder by hand
+      tags:
+        - library
+  /v1/library/roots/confirm-removal:
+    post:
+      description: "Applies a held removal: a scan that would remove many titles from one folder waits for this. 404 when nothing is waiting for that folder; 409 when the scanner is turned off."
+      operationId: confirmLibraryRemoval
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmLibraryRemovalInputBody"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatusOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove the titles a scan no longer found
+      tags:
+        - library
+  /v1/library/roots/discover:
+    post:
+      description: Asks the media server, Sonarr and Radarr for their folders, finds each one locally, and checks every folder can be opened. A source that fails keeps the folders it reported last time.
+      operationId: discoverLibraryRoots
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Look for media folders again
+      tags:
+        - library
+  /v1/library/roots/in-use:
+    put:
+      description: Confirms a folder for scanning, or releases it. Releasing a folder added by hand removes it.
+      operationId: setLibraryRootInUse
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetLibraryRootInUseInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryRootsBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Use or stop using a media folder
+      tags:
+        - library
+  /v1/library/scan:
+    post:
+      description: Starts a scan of every folder in use now. 409 when the scanner is turned off.
+      operationId: rescanLibrary
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatusOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Check the media folders again
+      tags:
+        - library
+  /v1/library/search:
+    get:
+      description: For picking a different title. 503 when TMDB isn't set up.
+      operationId: searchLibraryTitles
+      parameters:
+        - description: The title's name
+          explode: false
+          in: query
+          name: q
+          required: true
+          schema:
+            description: The title's name
+            maxLength: 200
+            minLength: 1
+            type: string
+        - description: Only movies or only series; both when absent
+          explode: false
+          in: query
+          name: kind
+          schema:
+            description: Only movies or only series; both when absent
+            enum:
+              - movie
+              - series
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchLibraryTitlesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Search TMDB for a title
+      tags:
+        - library
+  /v1/library/status:
+    get:
+      description: "The status strip: whether any folder is in use, whether every folder in use opened at its last check, what the scanner is doing, and any removal waiting for the maintainer."
+      operationId: libraryStatus
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatusOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Library status
       tags:
         - library
   /v1/locations:
@@ -19075,7 +20391,7 @@ paths:
           required: true
           schema:
             examples:
-              - movie:tmdb:1111867
+              - movie:tmdb:91111867
             type: string
       responses:
         "200":

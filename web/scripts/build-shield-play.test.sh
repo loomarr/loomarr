@@ -58,7 +58,7 @@ for needle in \
   'ccache-ninja-launchers.txt' \
   'verify-android-ccache-evidence.sh' \
   'LOOMARR_ANDROID_CCACHE_LAUNCHER'; do
-  cat "$build" "$ccache_env" | grep -Fq -- "$needle"
+  grep -Fq -- "$needle" "$build" "$ccache_env"
 done
 # Both wrappers must source the one shared ccache contract literally.
 # shellcheck disable=SC2016

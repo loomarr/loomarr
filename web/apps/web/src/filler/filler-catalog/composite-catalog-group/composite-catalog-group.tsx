@@ -2,9 +2,9 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, pluralize } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
 
 interface CompositeCatalogGroupProps {
@@ -33,7 +33,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
           adds hierarchy without creating a second, weaker representation of the parent. */}
       {renderParent(clip)}
       <Disclosure open={open} onOpenChange={setOpen}>
-        <Card className="overflow-hidden">
+        <Card overflow="hidden">
           <div className="flex flex-wrap items-center gap-3 p-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">Compilation segments</p>

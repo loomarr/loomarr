@@ -7,7 +7,7 @@ import { eraDates, eraOf } from "@/lib/era-dates";
 
 // The rule authoring vocabulary is now SERVED by the backend (GET /v1/programming/vocabulary,
 // §6.6/§8.1) and consumed via a prop — this file no longer hand-mirrors the enumerable
-// WHEN/WHAT/HOW tables from internal/schedule/presets.go (the old byte-for-byte mirror + its
+// WHEN/WHAT/HOW tables from internal/channels/schedule/presets.go (the old byte-for-byte mirror + its
 // drift hazard are gone). What stays here is only the PARAMETRIC lowering the endpoint can't
 // enumerate (series:<key>, genre:<name>, era:<range> are composed from the channel's own
 // lineup) plus the reverse lookups, all parameterized BY the served vocabulary so there is a

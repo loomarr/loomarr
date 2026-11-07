@@ -72,9 +72,9 @@ var realTitles = []string{
 	"Highway Patrol", "Sega Genesis", "TMNT", "Capri Sun", "La Llave", "TV Puls", "NatWest", "Rumbelows",
 	"KCPQ", "WNYW", "WAGA", "Sony", "Lego", "NFL", "CBC",
 	// The channels, store and reconcile tests (slice 13). "Bluey" is left out: it is a kids-signal
-	// keyword in the product's own list (suggest/intent_policy.go), pinned on purpose by a migrated test.
+	// keyword in the product's own list (proposals/suggest/intent_policy.go), pinned on purpose by a migrated test.
 	"Fight Club", "Darkwing Duck", "CBS",
-	// The app, requester, provision and proposalworkflow tests (slice 15). Titles that are ordinary
+	// The app, requester, provision and proposals/workflow tests (slice 15). Titles that are ordinary
 	// words or names ("Them!", "Akira", "Running Man", "Puma") are left out: they would match
 	// ordinary prose.
 	"Greene King", "Calpol", "Lethal Weapon", "Empire Strikes Back",
@@ -85,7 +85,7 @@ var realTitles = []string{
 	// The eval and filler-research tests (slice 16). "Saw" is left out: it would match ordinary
 	// prose.
 	"Pulp Fiction", "Buddy Foster",
-	// The remaining small groups: notifications, llm, watermark, tunarr, mediatools, the ui and ui-tv
+	// The remaining small groups: notifications, llm, watermark, tunarr, media/tools, the ui and ui-tv
 	// tests and the activity feed (slice 17). "A Christmas Carol" is left out: "Christmas carol"
 	// would match ordinary prose.
 	"Rice Krispies", "Fallout Boy", "Nickelodeon", "NBC",
@@ -218,64 +218,64 @@ var migratedTests = []string{
 var migratedGo = []string{
 	"internal/api/", "internal/testkit/",
 	// The mock TMDB catalogue's consumers (slice 6).
-	"internal/suggest/suggester_progress_test.go",
-	"internal/suggest/suggester_test.go",
-	"internal/suggest/worker_callsite_test.go",
-	"internal/suggest/worker_llmcause_test.go",
-	"internal/suggest/worker_test.go",
+	"internal/proposals/suggest/suggester_progress_test.go",
+	"internal/proposals/suggest/suggester_test.go",
+	"internal/proposals/suggest/worker_callsite_test.go",
+	"internal/proposals/suggest/worker_llmcause_test.go",
+	"internal/proposals/suggest/worker_test.go",
 	// The suggest date-execution candidate's callers and the reference/network internals (slice 7).
-	"internal/suggest/cache_prefix_test.go",
-	"internal/suggest/date_execution_test.go",
-	"internal/suggest/date_source_order_test.go",
-	"internal/suggest/date_tool_retirement_test.go",
-	"internal/suggest/finalization_state_test.go",
-	"internal/suggest/lean_final_test.go",
-	"internal/suggest/network_epoch_internal_test.go",
-	"internal/suggest/network_epoch_test.go",
-	"internal/suggest/query_expansion_regression_test.go",
-	"internal/suggest/reference_discovery_internal_test.go",
-	"internal/suggest/reference_discovery_test.go",
+	"internal/proposals/suggest/cache_prefix_test.go",
+	"internal/proposals/suggest/date_execution_test.go",
+	"internal/proposals/suggest/date_source_order_test.go",
+	"internal/proposals/suggest/date_tool_retirement_test.go",
+	"internal/proposals/suggest/finalization_state_test.go",
+	"internal/proposals/suggest/lean_final_test.go",
+	"internal/proposals/suggest/network_epoch_internal_test.go",
+	"internal/proposals/suggest/network_epoch_test.go",
+	"internal/proposals/suggest/query_expansion_regression_test.go",
+	"internal/proposals/suggest/reference_discovery_internal_test.go",
+	"internal/proposals/suggest/reference_discovery_test.go",
 	// The remaining suggest tests (slice 8).
-	"internal/suggest/approval_size_test.go",
-	"internal/suggest/approve_test.go",
-	"internal/suggest/candidate_key_test.go",
-	"internal/suggest/channel_name_test.go",
-	"internal/suggest/date_retrieval_test.go",
-	"internal/suggest/diagnostic_test.go",
-	"internal/suggest/editorial_role_test.go",
-	"internal/suggest/example_fill_test.go",
-	"internal/suggest/failure_test.go",
-	"internal/suggest/named_example_titles_test.go",
-	"internal/suggest/parse_test.go",
-	"internal/suggest/policy_extract_test.go",
-	"internal/suggest/prepare_approval_test.go",
-	"internal/suggest/progress_stream_test.go",
-	"internal/suggest/proposal_size_internal_test.go",
-	"internal/suggest/ranker_test.go",
-	"internal/suggest/score_era_test.go",
-	"internal/suggest/score_intent_test.go",
-	"internal/suggest/tools_internal_test.go",
-	// The integration, tmdb, catalog, binder, library and collection tests, and the last suggest
-	// leftovers (slice 9).
-	"internal/binder/", "internal/catalog/", "internal/ideas/", "internal/integration/", "internal/library/",
-	"internal/moviecollections/", "internal/recommend/", "internal/tmdb/",
-	"internal/suggest/date_meaning_test.go",
-	"internal/suggest/intent_policy_test.go",
-	"internal/suggest/scopenarrows_test.go",
-	"internal/suggest/worker_cache_internal_test.go",
-	// The schedule, playout and recurate tests (slice 11).
-	"internal/playout/", "internal/recurate/", "internal/schedule/",
-	// The filler, fillerenrichment and fillerstore tests (slice 12).
-	"internal/filler/", "internal/fillerenrichment/", "internal/fillerstore/",
-	// The channels, store and provisionbackstop tests (slice 13).
+	"internal/proposals/suggest/approval_size_test.go",
+	"internal/proposals/suggest/approve_test.go",
+	"internal/proposals/suggest/candidate_key_test.go",
+	"internal/proposals/suggest/channel_name_test.go",
+	"internal/proposals/suggest/date_retrieval_test.go",
+	"internal/proposals/suggest/diagnostic_test.go",
+	"internal/proposals/suggest/editorial_role_test.go",
+	"internal/proposals/suggest/example_fill_test.go",
+	"internal/proposals/suggest/failure_test.go",
+	"internal/proposals/suggest/named_example_titles_test.go",
+	"internal/proposals/suggest/parse_test.go",
+	"internal/proposals/suggest/policy_extract_test.go",
+	"internal/proposals/suggest/prepare_approval_test.go",
+	"internal/proposals/suggest/progress_stream_test.go",
+	"internal/proposals/suggest/proposal_size_internal_test.go",
+	"internal/proposals/suggest/ranker_test.go",
+	"internal/proposals/suggest/score_era_test.go",
+	"internal/proposals/suggest/score_intent_test.go",
+	"internal/proposals/suggest/tools_internal_test.go",
+	// The integration, tmdb, catalog, library and collection tests, and the last suggest leftovers
+	// (slice 9).
+	"internal/catalog/", "internal/integration/", "internal/library/",
+	"internal/moviecollections/", "internal/tmdb/",
+	"internal/proposals/suggest/date_meaning_test.go",
+	"internal/proposals/suggest/intent_policy_test.go",
+	"internal/proposals/suggest/scopenarrows_test.go",
+	"internal/proposals/suggest/worker_cache_internal_test.go",
+	// The playout tests (slice 11).
+	"internal/playout/",
+	// The filler tests, every package under internal/filler (slices 12 and 16).
+	"internal/filler/",
+	// The channels tests, every package under internal/channels (slices 9, 11 and 13), and the store
+	// and provisionbackstop tests (slice 13).
 	"internal/channels/", "internal/provisionbackstop/", "internal/store/",
-	// The app, requester, provision and proposalworkflow tests (slice 15).
-	"internal/app/", "internal/proposalworkflow/", "internal/provision/", "internal/requester/",
-	// The filler-research tests and the eval tests with hand-written fixtures (slice 16). The rest
-	// of internal/eval pins its frozen corpora: the certification_* tests use invented names with
-	// synthetic ids that sha256-chained testdata freezes below ProviderIDBase, and the realDataGo
-	// files below exercise real titles on purpose.
-	"internal/fillerresearch/",
+	// The app, requester, provision and proposals/workflow tests (slice 15).
+	"internal/app/", "internal/proposals/workflow/", "internal/provision/", "internal/requester/",
+	// The eval tests with hand-written fixtures (slice 16). The rest of internal/eval pins its frozen
+	// corpora: the certification_* tests use invented names with synthetic ids that sha256-chained
+	// testdata freezes below ProviderIDBase, and the realDataGo files below exercise real titles on
+	// purpose.
 	"internal/eval/budget_attribution_test.go",
 	"internal/eval/corpus_behavior_test.go",
 	"internal/eval/corpus_contract_test.go",
@@ -286,32 +286,33 @@ var migratedGo = []string{
 	"internal/eval/release_latency_test.go",
 	"internal/eval/runner_accounting_test.go",
 	// The remaining small groups and the archived filler research tooling (slice 17).
-	"internal/auth/", "internal/contact/", "internal/llm/", "internal/mediatools/", "internal/notifications/",
-	"internal/proposaloutlook/", "internal/quality/", "internal/releaseverify/", "internal/tunarr/",
+	"internal/people/auth/", "internal/people/contact/", "internal/llm/", "internal/media/tools/", "internal/people/notifications/",
+	"internal/proposals/outlook/", "internal/proposals/quality/", "internal/releaseverify/", "internal/tunarr/",
 	"internal/watermark/", "research/",
-	"internal/suggest/season_window_test.go",
+	"internal/proposals/suggest/season_window_test.go",
 }
 
 // realDataGo are Go tests that exercise real external data on purpose, so #1592 never migrates
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its
 // reason; a file listed here must exist.
 var realDataGo = map[string]string{
-	"internal/app/fillerenrichment_deterministic_test.go": "pins the production brand dictionary in fillerenrichment's deterministic.go end to end, whose phrases are real brands",
-	"internal/eval/corpus_live_test.go":                   "pins corpus.go, the live corpus of real channel intents run against a real LLM, library and TMDB",
-	"internal/eval/mood_review_test.go":                   "pins the frozen mood-review packet, private map and real-model submissions (testdata), real ids",
-	"internal/eval/query_expansion_test.go":               "pins the query-expansion corpus (testdata), whose real network-era titles the model must recognise",
-	"internal/eval/query_pilot_test.go":                   "pins the query-pilot corpus (testdata), whose real network and era titles the model must recognise",
-	"internal/eval/release_gate_test.go":                  "pins the release-gate corpus (testdata), whose real franchises, people and titles the model must recognise",
-	"internal/eval/schedule_live_test.go":                 "queries live data on purpose",
-	"internal/fillerenrichment/deterministic_test.go":     "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
-	"internal/llm/ollama_test.go":                         "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
-	"internal/provision/webhook_parity_test.go":           "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
-	"internal/requester/seerr_contract_test.go":           "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
-	"internal/suggest/live_latency_test.go":               "drives a real LLM, whose world knowledge of real titles is what it measures",
-	"internal/suggest/live_named_titles_test.go":          "drives a real LLM on requests that name real titles",
-	"internal/tmdb/exists_contract_test.go":               "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
-	"internal/tmdb/fixture_test.go":                       "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
-	"internal/watermark/render_samplelogos_test.go":       "calibrates legibility on the real network logos from the #1532 sample sheets, kept out of the repo",
+	"internal/app/fillerenrichment_deterministic_test.go":  "pins the production brand dictionary in fillerenrichment's deterministic.go end to end, whose phrases are real brands",
+	"internal/eval/corpus_live_test.go":                    "pins corpus.go, the live corpus of real channel intents run against a real LLM, library and TMDB",
+	"internal/eval/mood_review_test.go":                    "pins the frozen mood-review packet, private map and real-model submissions (testdata), real ids",
+	"internal/eval/query_expansion_test.go":                "pins the query-expansion corpus (testdata), whose real network-era titles the model must recognise",
+	"internal/eval/query_pilot_test.go":                    "pins the query-pilot corpus (testdata), whose real network and era titles the model must recognise",
+	"internal/eval/release_gate_test.go":                   "pins the release-gate corpus (testdata), whose real franchises, people and titles the model must recognise",
+	"internal/eval/schedule_live_test.go":                  "queries live data on purpose",
+	"internal/filler/enrichment/deterministic_test.go":     "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
+	"internal/filler/station/directory_test.go":            "pins call-sign resolution against the real FCC station seed, whose networks and call signs are real",
+	"internal/llm/ollama_test.go":                          "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
+	"internal/provision/webhook_parity_test.go":            "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
+	"internal/requester/seerr_contract_test.go":            "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
+	"internal/proposals/suggest/live_latency_test.go":      "drives a real LLM, whose world knowledge of real titles is what it measures",
+	"internal/proposals/suggest/live_named_titles_test.go": "drives a real LLM on requests that name real titles",
+	"internal/tmdb/exists_contract_test.go":                "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
+	"internal/tmdb/fixture_test.go":                        "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
+	"internal/watermark/render_samplelogos_test.go":        "calibrates legibility on the real network logos from the #1532 sample sheets, kept out of the repo",
 }
 
 // realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field or a JSON
@@ -498,13 +499,11 @@ func fixtureFiles(t *testing.T, root string) []string {
 }
 
 // inventedGoFixtures are Go test fixtures written as invented data from the start: each entry is
-// a directory (every file under it) or one file. radarr/import_webhook.json is a retained capture
-// for the webhook parity test and is not listed. Keep in step with the matching case in
+// a directory (every file under it) or one file. Keep in step with the matching case in
 // scripts/ci-impact.sh.
 var inventedGoFixtures = []string{
 	"internal/testkit/fixtures/sonarr/",
-	"internal/testkit/fixtures/radarr/movie.json",
-	"internal/testkit/fixtures/radarr/config_metadata.json",
+	"internal/testkit/fixtures/radarr/",
 	"internal/metadataprovider/nfo/testdata/",
 }
 

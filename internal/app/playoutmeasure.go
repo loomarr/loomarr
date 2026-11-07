@@ -5,17 +5,17 @@ import (
 	"os"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/mediameasure"
+	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
-// sourceMeasurer is the part of mediameasure.Measurer the resolver uses.
+// sourceMeasurer is the part of measure.Measurer the resolver uses.
 type sourceMeasurer interface {
-	MeasureFacts(context.Context, mediameasure.SourceRef) (inventory.SourceFacts, error)
-	Submit(mediameasure.SourceRef)
+	MeasureFacts(context.Context, measure.SourceRef) (inventory.SourceFacts, error)
+	Submit(measure.SourceRef)
 }
 
 // measureSink is where measurements land: stream facts through the inventory service, everything
@@ -28,8 +28,8 @@ type measureSink struct {
 // newMeasurer builds Loomarr's measurement job for this resolver: stream facts come from the same
 // prober playout already uses, revisions from the same stat rule local sources are registered
 // with, and the analysis tools from the given (background) runner.
-func (r *playoutResolver) newMeasurer(tools mediameasure.Tools, analysis inventory.AnalysisStore) *mediameasure.Measurer {
-	return mediameasure.New(mediameasure.Deps{
+func (r *playoutResolver) newMeasurer(tools measure.Tools, analysis inventory.AnalysisStore) *measure.Measurer {
+	return measure.New(measure.Deps{
 		Sink:  measureSink{Service: r.inventory, AnalysisStore: analysis},
 		Tools: tools,
 		Facts: func(ctx context.Context, path string) (inventory.SourceFacts, error) {
@@ -59,7 +59,7 @@ func (r *playoutResolver) measureFirstPlay(ctx context.Context, origin inventory
 	if err != nil || !found {
 		return playout.MediaFormat{}, false
 	}
-	ref := mediameasure.SourceRef{ID: source.ID, Revision: source.Revision, Path: input}
+	ref := measure.SourceRef{ID: source.ID, Revision: source.Revision, Path: input}
 	facts, err := r.measurer.MeasureFacts(ctx, ref)
 	if err != nil {
 		if r.log != nil {
@@ -89,7 +89,7 @@ func (r *playoutResolver) activePicture(ctx context.Context, id inventory.Source
 // submitAnalysis queues background analysis for a source whose stream facts are already stored.
 func (r *playoutResolver) submitAnalysis(id inventory.SourceID, revision, input string, facts inventory.SourceFacts) {
 	if r.measurer != nil {
-		r.measurer.Submit(mediameasure.SourceRef{ID: id, Revision: revision, Path: input, Facts: facts})
+		r.measurer.Submit(measure.SourceRef{ID: id, Revision: revision, Path: input, Facts: facts})
 	}
 }
 
@@ -147,7 +147,7 @@ func (n naturalBreaks) NaturalBreaks(libraryItemID string) []schedule.BreakCandi
 // coincidence, or a chapter mark the measurement verified as sitting in one. A chapter mark alone
 // is not a fade: on a remux the chapter at 904.862 s sat in a bright scene (YAVG 88.8 before,
 // 93.4 after, where black reads 16), and cutting there would break mid-picture, which the
-// maintainer's rule forbids. mediameasure.ChapterBreaks verifies marks (#1529); this is the
+// maintainer's rule forbids. measure.ChapterBreaks verifies marks (#1529); this is the
 // scheduler-side guard that nothing unverified is ever cut at.
 func fadeCandidates(breaks []inventory.Break) []schedule.BreakCandidate {
 	var out []schedule.BreakCandidate

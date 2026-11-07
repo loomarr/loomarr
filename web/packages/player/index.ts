@@ -4,8 +4,14 @@ export type {
   CatalogRefreshState,
 } from "./src/catalog-refresher";
 export { createCatalogRefresher } from "./src/catalog-refresher";
-export type { LastChannelStorage, LastChannelStore } from "./src/last-channel";
-export { createLastChannelStore } from "./src/last-channel";
+export type {
+  LiveClock,
+  LiveClockOptions,
+  LivePosition,
+  LiveResume,
+  StallEnd,
+} from "./src/live-clock";
+export { createLiveClock, LIVE_DVR_HORIZON_SECONDS, STALL_REJOIN_LAG_SECONDS } from "./src/live-clock";
 export type { NativeDiagnosticsRecorder, NativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
 export { createNativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
 export type { NeighbourWarmer, NeighbourWarmerOptions } from "./src/neighbour-warmer";
@@ -28,7 +34,6 @@ export type {
 } from "./src/player-controller";
 export { createPlayerController, playableCatalog } from "./src/player-controller";
 export type {
-  DevicePlaybackProfile,
   PlayerChannel,
   PlayerSource,
   PlayerSourcePort,

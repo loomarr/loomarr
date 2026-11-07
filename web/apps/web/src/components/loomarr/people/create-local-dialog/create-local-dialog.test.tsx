@@ -1,9 +1,14 @@
 import { ApiError } from "@loomarr/api";
 import type { CreateLocalUserInputBody } from "@loomarr/api/models/createLocalUserInputBody";
-import { render, screen, waitFor } from "@testing-library/react";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { CreateLocalDialog } from "./create-local-dialog";
+
+// Field errors are design-system FieldHints, which need the theme the app mounts at its root.
+const render = (ui: ReactElement) => rtlRender(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
 describe("CreateLocalDialog", () => {
   it("creates a trimmed local member through the focused dialog", async () => {
@@ -31,7 +36,11 @@ describe("CreateLocalDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add local account" }));
 
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Pick a username.");
+    expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toEqual([
+      "Pick a username.",
+      "Use at least 8 characters.",
+    ]);
+    expect(screen.getByLabelText("Username")).toHaveAttribute("aria-invalid", "true");
     expect(onCreate).not.toHaveBeenCalled();
 
     await userEvent.type(screen.getByLabelText("Username"), "newcomer");

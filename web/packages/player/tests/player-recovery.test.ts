@@ -34,7 +34,6 @@ const harness = (source: PlayerSourcePort = mintedSource()) => {
   const reports: PlayerErrorReport[] = [];
   const controller = createPlayerController({
     onPlayerError: (report) => reports.push(report),
-    profile: {},
     recovery: { backoffMs },
     source,
     transport,
@@ -526,5 +525,68 @@ describe("a start the paired server refuses (#1455)", () => {
       error: "Couldn't reach Loomarr. Check your connection and try again.",
       status: "failed",
     });
+  });
+});
+
+describe("a start the transport itself sees the server refuse", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-25T00:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("shows the server's reason with Retry at once, without spending the retry budget", async () => {
+    const { controller, currentAttempt, emit, reports, source } = harness();
+    await controller.reconcile(channels);
+
+    emit({
+      attemptId: currentAttempt(),
+      error: "The channel is starting. Try again in a moment.",
+      startStatus: 503,
+      type: "error",
+    });
+
+    expect(controller.getSnapshot()).toMatchObject({
+      error: "The channel is starting. Try again in a moment.",
+      status: "failed",
+    });
+    expect(reports).toEqual([expect.objectContaining({ attempt: 1, fatal: true, status: 503 })]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(source.mint).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("live playback state", () => {
+  const state = { lagSeconds: 0, mode: "live", noticeRevision: 0, viewerTimeMs: 1_000 } as const;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-25T00:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("publishes a live position once, not again while it is unchanged", async () => {
+    const { controller, currentAttempt, emit } = harness();
+    await controller.reconcile(channels);
+    const seen: unknown[] = [];
+    controller.subscribe((snapshot) => seen.push(snapshot.livePlayback));
+
+    emit({ attemptId: currentAttempt(), state, type: "live-state" });
+    emit({ attemptId: currentAttempt(), state: { ...state }, type: "live-state" });
+    emit({ attemptId: currentAttempt(), state: { ...state, viewerTimeMs: 2_000 }, type: "live-state" });
+
+    expect(seen).toEqual([state, { ...state, viewerTimeMs: 2_000 }]);
+  });
+
+  it("keeps a viewer's pause through a stall report and a late live position", async () => {
+    const { controller, currentAttempt, emit } = harness();
+    await controller.reconcile(channels);
+    emit({ attemptId: currentAttempt(), type: "first-frame" });
+
+    controller.pause();
+    emit({ attemptId: currentAttempt(), type: "stalled" });
+    emit({ attemptId: currentAttempt(), state: { ...state, mode: "paused" }, type: "live-state" });
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(controller.getSnapshot()).toMatchObject({ livePlayback: { mode: "paused" }, status: "paused" });
   });
 });

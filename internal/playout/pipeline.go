@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // The transcode pipeline builder (#1512 phase 1a).
@@ -33,14 +33,13 @@ import (
 // per stream and 21x, against ~0.16 cores and 11x for the old CPU-filter chain.
 //
 // The host vocabulary (encode.HostProfile, encode.Family, HostFor) and each family's encoder flags
-// (encode.VideoArgs) live in internal/encode, shared with the filler pipeline (#2121). The graphs
+// (encode.VideoArgs) live in internal/media/encode, shared with the filler pipeline (#2121). The graphs
 // below are playout's own: every one fits the item to the channel's uniform output.
 
 // OutputProfile is the channel's uniform output (maintainer decisions, #1512).
 type OutputProfile struct {
 	Width, Height, FPS int
-	// HEVC keeps today's HEVC-plan sessions uniformly HEVC (§9.1 V49), and is the premium format's
-	// codec (formats.go). The beta.8 baseline is H.264.
+	// HEVC is the premium format's codec (formats.go); the baseline format is H.264.
 	HEVC bool
 	// HDR is an HDR10 output: HEVC Main10, BT.2020 PQ. PQ sources pass through; SDR and HLG sources
 	// are converted (sdrToHDR10). Per-item HDR metadata is stripped; the channel's static HDR10 SEI

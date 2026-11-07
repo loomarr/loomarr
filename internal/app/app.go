@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -138,7 +138,7 @@ func trackReplicaSettingsRefresh(
 
 func buildHandler(
 	rootCtx context.Context,
-	st fillerstore.Store,
+	st records.Store,
 	log *slog.Logger,
 	ov Overrides,
 	owner *generationLifecycle,
@@ -232,6 +232,13 @@ func buildHandler(
 		liveSettings:      operations.liveSettings,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,
+		library: buildLibrary(st, foundation.set, libraryBuild{
+			lib: libraryClient, budget: channelsBuilt.resourceBudget,
+			ffmpegPath: settings.PlayoutFFmpegPath.Get(foundation.set), processes: foundation.processDiagnostics,
+			images:     suggestions.images,
+			hookSecret: secrets.ArrWebhookSecret(), notify: libraryNotifierOf(operations.productNotifications),
+			tmdb: tmdbClient, log: log, owner: owner,
+		}),
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only
 	// through this process's writes and needs no polling reads. Postgres permits

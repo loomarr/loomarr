@@ -14,7 +14,25 @@ export {
   brandLaunchMotion,
   resolveBrandLaunchMinHeight,
 } from "./src/brand";
-export { Card, CardContent, CardFooter, CardHeader, CardTitle } from "./src/card";
+export { Card } from "./src/card";
+export type {
+  DialogActionProps,
+  DialogContentProps,
+  DialogFooterProps,
+  DialogProps,
+  DialogSectionProps,
+} from "./src/dialog";
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./src/dialog";
+export { useFocusLook } from "./src/focus-look";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";
 export type {

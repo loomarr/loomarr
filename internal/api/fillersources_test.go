@@ -12,11 +12,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
-	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
-	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
@@ -74,12 +74,12 @@ type sourceSuggestionsBody struct {
 
 func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	if err := st.UpsertFillerSource(context.Background(), fillerstore.NewFillerSource(
+	if err := st.UpsertFillerSource(context.Background(), records.NewFillerSource(
 		"archive:classic_tv_commercials", "archive", "classic_tv_commercials", "Classic TV Commercials", time.Now(),
 	)); err != nil {
 		t.Fatal(err)
 	}
-	ff.sourceSuggestions = []sourceprovider.Suggestion{{
+	ff.sourceSuggestions = []source.Suggestion{{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials", ItemCount: 8362,
 	}}
@@ -109,10 +109,10 @@ func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testi
 
 func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = sourceprovider.Suggestion{
+	ff.resolvedSource = source.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
-		PreviewItems: []sourceprovider.PreviewItem{
+		PreviewItems: []source.PreviewItem{
 			{Title: "First ad", URL: "https://archive.org/details/ad_one", DurationMS: 31500},
 			{Title: "Second ad", URL: "https://archive.org/details/ad_two"},
 		},
@@ -137,7 +137,7 @@ func TestFillerSourceResolutionIsReadOnly(t *testing.T) {
 
 func TestAddArchiveSourceRevalidatesItsCanonicalTarget(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = sourceprovider.Suggestion{
+	ff.resolvedSource = source.Suggestion{
 		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
 		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
 	}
@@ -173,7 +173,7 @@ func TestAddArchiveSourcePersistsNothingWhenRevalidationFails(t *testing.T) {
 
 func TestAddYouTubeSourceRevalidatesAndStoresItsCanonicalTarget(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	ff.resolvedSource = sourceprovider.Suggestion{
+	ff.resolvedSource = source.Suggestion{
 		Provider: "youtube", TargetType: "channel", CanonicalID: "UC-vault",
 		CanonicalURL: "https://www.youtube.com/channel/UC-vault/videos", Title: "Broadcast Vault",
 	}
@@ -249,7 +249,7 @@ func getSources(t *testing.T, srv *httptest.Server) sourcesBody {
 
 func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	src := fillerstore.NewFillerSource("archive:local", "archive", "local", "Local collection", time.Now().UTC())
+	src := records.NewFillerSource("archive:local", "archive", "local", "Local collection", time.Now().UTC())
 	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := t.Context()
-	src := fillerstore.NewFillerSource(
+	src := records.NewFillerSource(
 		"youtube:outcomes", "youtube", "https://www.youtube.com/@outcomes/videos", "Outcome channel", time.Now().UTC(),
 	)
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
@@ -292,13 +292,13 @@ func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *tes
 	}
 	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, filler.SourceCheckCompletion{
 		CheckedAt: checkedAt,
-		Checkpoint: sourceprovider.Checkpoint{
+		Checkpoint: source.Checkpoint{
 			Cursor: "internal-cursor", PendingWatermark: "internal-newest",
 		},
 		ReplaceOutcomes: true,
-		Outcomes: sourceprovider.Outcomes{
-			sourceprovider.OutcomeQueued: 3, sourceprovider.OutcomeTooLong: 12,
-			sourceprovider.OutcomeUnavailable: 2,
+		Outcomes: source.Outcomes{
+			source.OutcomeQueued: 3, source.OutcomeTooLong: 12,
+			source.OutcomeUnavailable: 2,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -362,7 +362,7 @@ func TestFillerSources_CountsHeldClipsByProvenance(t *testing.T) {
 func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
-	registered := fillerstore.NewFillerSource(
+	registered := records.NewFillerSource(
 		"archive:tv_ads", "archive", "tv_ads", "TV Ads", time.Unix(1_700_000_000, 0).UTC(),
 	)
 	if err := st.UpsertFillerSource(ctx, registered); err != nil {
@@ -595,8 +595,8 @@ func TestFillerSources_FetchRequiresOneSelectedSource(t *testing.T) {
 // rows that meant a successful 200 with no download ever queued — exactly the reported symptom.
 func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.fetchResult.Outcomes = sourceprovider.Outcomes{
-		sourceprovider.OutcomeQueued: 2, sourceprovider.OutcomeTooLong: 4,
+	ff.fetchResult.Outcomes = source.Outcomes{
+		source.OutcomeQueued: 2, source.OutcomeTooLong: 4,
 	}
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
@@ -698,13 +698,13 @@ func TestFillerSources_FetchNowReportsUnavailableIngestTooling(t *testing.T) {
 
 // testSourceProviders is the registry a server under test publishes: the production providers'
 // shapes, with no network behind them.
-func testSourceProviders(t *testing.T) *sourceprovider.Registry {
+func testSourceProviders(t *testing.T) *source.Registry {
 	t.Helper()
-	registry, err := sourceprovider.NewRegistry(
+	registry, err := source.NewRegistry(
 		archiveprovider.New(archiveprovider.Config{}),
 		youtubeprovider.New(nil),
-		sourceprovider.Folder(),
-		sourceprovider.Library(),
+		source.Folder(),
+		source.Library(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -753,4 +753,104 @@ func TestListFillerProviders_IsAdminOnly(t *testing.T) {
 	if resp := do(t, srv, http.MethodGet, "/v1/filler/providers", memberToken, ""); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("member GET providers → %d, want 403", resp.StatusCode)
 	}
+}
+
+// Everything the source page used to carry per provider arrives on the descriptor.
+func TestListFillerProviders_CarriesTheWordsTheSourcePageShows(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers", adminToken, "")
+	var got struct {
+		Providers []api.FillerProviderDescriptionDTO `json:"providers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]api.FillerProviderDescriptionDTO{}
+	for _, p := range got.Providers {
+		byID[p.ID] = p
+	}
+	youtube := byID["youtube"]
+	if youtube.SourceNoun != "YouTube channel or playlist" || youtube.FindMinQuery != 3 ||
+		youtube.FindLabel != "Find a YouTube channel or playlist" || youtube.Blurb == "" || youtube.PreviewHeading == "" {
+		t.Errorf("youtube = %+v", youtube)
+	}
+	if folder := byID["folder"]; folder.AddressHint == "" || folder.AddressLabel != "Folder path" || folder.FindLabel != "" {
+		t.Errorf("folder = %+v, want an address field and no finder", folder)
+	}
+}
+
+// An address is checked, not searched for: the finder answers with the one source it names.
+func TestFillerSourceSuggestions_CheckAnAddressInsteadOfSearchingForIt(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	ff.resolvedSource = source.Suggestion{
+		Provider: "archive", TargetType: "collection", CanonicalID: "classic_tv_commercials",
+		CanonicalURL: "https://archive.org/details/classic_tv_commercials", Title: "Classic TV Commercials",
+		PreviewItems: []source.PreviewItem{{Title: "First ad", URL: "https://archive.org/details/ad_one"}},
+	}
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/archive/suggestions?q=classic_tv_commercials", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET suggestions → %d: %s", resp.StatusCode, readBody(t, resp))
+	}
+	var body struct {
+		Exact       bool                            `json:"exact"`
+		Suggestions []api.FillerSourceSuggestionDTO `json:"suggestions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Exact || len(body.Suggestions) != 1 || len(body.Suggestions[0].PreviewItems) != 1 {
+		t.Fatalf("body = %+v", body)
+	}
+	if got := body.Suggestions[0].PreviewItems[0].EmbedURL; got != "https://archive.org/embed/ad_one?autoplay=1" {
+		t.Errorf("embed = %q, want the provider's player", got)
+	}
+	if len(ff.sourceSuggestionCalls) != 0 {
+		t.Fatalf("an address was searched for: %#v", ff.sourceSuggestionCalls)
+	}
+
+	words := do(t, srv, http.MethodGet, "/v1/filler/providers/archive/suggestions?q=cartoons", adminToken, "")
+	if words.StatusCode != http.StatusOK || len(ff.sourceSuggestionCalls) != 1 {
+		t.Fatalf("a word was not searched for: %d %#v", words.StatusCode, ff.sourceSuggestionCalls)
+	}
+}
+
+// The provider decides how short a search may be, so the route no longer needs one number for all.
+func TestFillerSourceSuggestions_HoldAProviderToItsOwnMinimum(t *testing.T) {
+	srv, _, ff := newFillerServer(t)
+	resp := do(t, srv, http.MethodGet, "/v1/filler/providers/youtube/suggestions?q=tv", adminToken, "")
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("2-character YouTube search → %d, want 422", resp.StatusCode)
+	}
+	if len(ff.sourceSuggestionCalls) != 0 {
+		t.Fatalf("a too-short search reached the finder: %#v", ff.sourceSuggestionCalls)
+	}
+}
+
+// A provider the registry does not know is refused by the registry, not by a list in the route.
+func TestFillerProviderRoutes_RefuseAnUnknownProviderByRegistry(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	if resp := do(t, srv, http.MethodGet, "/v1/filler/providers/nonesuch/suggestions?q=classic", adminToken, ""); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("suggestions for an unknown provider → %d, want 422", resp.StatusCode)
+	}
+	if resp := do(t, srv, http.MethodPatch, "/v1/filler/providers/nonesuch", adminToken, `{"enabled":false}`); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("PATCH an unknown provider → %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestFillerSources_LinkARegisteredSourceToItsOwnPage(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	if err := st.UpsertFillerSource(t.Context(), records.NewFillerSource(
+		"archive:tv_ads", "archive", "tv_ads", "TV Ads", time.Now().UTC(),
+	)); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range getSources(t, srv).Sources {
+		if source.ID == "archive:tv_ads" {
+			if source.PageURL != "https://archive.org/details/tv_ads" {
+				t.Fatalf("pageUrl = %q", source.PageURL)
+			}
+			return
+		}
+	}
+	t.Fatal("registered source missing from the list")
 }

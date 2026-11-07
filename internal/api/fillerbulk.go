@@ -8,9 +8,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The Catalog tab's bulk bar (§10 V35): retag a selection, or remove it from the catalog.
@@ -138,12 +138,12 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		}
 		evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.bulk_clip_edit", at: now}
 		if in.Body.Era != nil {
-			if err := evidence.record(ctx, fillerenrichment.AxisEra, fillerenrichment.Value{Year: era}); err != nil {
+			if err := evidence.record(ctx, enrichment.AxisEra, enrichment.Value{Year: era}); err != nil {
 				return nil, huma.Error500InternalServerError("record era evidence", err)
 			}
 		}
 		if in.Body.Audience != nil {
-			if err := evidence.record(ctx, fillerenrichment.AxisAudience, fillerenrichment.Value{Text: string(audience)}); err != nil {
+			if err := evidence.record(ctx, enrichment.AxisAudience, enrichment.Value{Text: string(audience)}); err != nil {
 				return nil, huma.Error500InternalServerError("record audience evidence", err)
 			}
 		}

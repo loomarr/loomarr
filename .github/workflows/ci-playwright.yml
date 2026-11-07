@@ -59,7 +59,7 @@ jobs:
       - run: make fe-install
       # Generate the orval API client + tokens + routes (all gitignored). Without
       # this the Storybook/SPA builds can't resolve the generated endpoints on a
-      # clean checkout — `make fe` does this in the frontend job, but fe-visual's
+      # clean checkout — `make fe-checks` does this in the frontend job, but fe-visual's
       # storybook-build does not.
       - run: make fe-codegen
       # Both drive the pinned Playwright Docker image (the reference rasterizer,

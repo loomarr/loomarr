@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -61,7 +61,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 	if code := h.bootstrap("owner", "owner-pass"); code != http.StatusOK {
 		t.Fatalf("bootstrap → %d, want 200", code)
 	}
-	if code := h.bootstrap("interloper", "nope"); code != http.StatusConflict {
+	if code := h.bootstrap("interloper", "interloper-pass"); code != http.StatusConflict {
 		t.Fatalf("second bootstrap → %d, want 409", code)
 	}
 

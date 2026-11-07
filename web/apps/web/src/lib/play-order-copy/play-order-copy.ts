@@ -39,6 +39,18 @@ const describeSpan = (runtimeMs: number): string => {
   return plural(Math.round(days / 7), "week", "weeks");
 };
 
+// The name each play order goes by in the editor's control and in every summary of a policy. An
+// empty ordering defers to the channel's create-time strategy.
+const PLAY_ORDER_LABEL: Record<string, string> = {
+  sequential: "In order",
+  shuffle: "Shuffled",
+  syndication: "Syndication",
+};
+const INHERIT_PLAY_ORDER_LABEL = "Use channel strategy";
+
+const playOrderLabel = (ordering?: string): string =>
+  ordering ? (PLAY_ORDER_LABEL[ordering] ?? ordering) : INHERIT_PLAY_ORDER_LABEL;
+
 // Option wording, with no numbers: shown while the cycle loads and for a channel with nothing
 // to count. "Syndication" keeps its name (the control names it) but is always explained.
 const PLAY_ORDER_SUMMARY: Record<string, string> = {
@@ -69,4 +81,4 @@ const describePlayOrder = (ordering: string, cycle?: CycleSummaryDTO): string | 
 };
 
 export type { PlayOrderCycle };
-export { describePlayOrder, describeSpan };
+export { describePlayOrder, describeSpan, INHERIT_PLAY_ORDER_LABEL, PLAY_ORDER_LABEL, playOrderLabel };

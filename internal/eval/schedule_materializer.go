@@ -8,10 +8,11 @@ import (
 	"slices"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -19,7 +20,7 @@ import (
 // scheduler and returns the concrete program identities a viewer would receive.
 // The live and fixture adapters differ only in where playable metadata comes from.
 type ScheduleMaterializer interface {
-	Materialize(context.Context, Case, proposal.Proposal) ([]MaterializedProgram, error)
+	Materialize(context.Context, Case, proposals.Proposal) ([]MaterializedProgram, error)
 }
 
 // MaterializedProgram is the bounded-by-Judge construction input for one
@@ -52,7 +53,7 @@ type snapshotBoundScheduleMaterializer struct {
 	caseLibraryIDs map[string]map[provision.Key]string
 }
 
-func (m snapshotBoundScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal proposal.Proposal) ([]MaterializedProgram, error) {
+func (m snapshotBoundScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal proposals.Proposal) ([]MaterializedProgram, error) {
 	allowed, ok := m.caseLibraryIDs[c.Name]
 	if !ok {
 		return nil, fmt.Errorf("live schedule case %q has no snapshot lineup binding", c.Name)
@@ -124,7 +125,7 @@ func NewFixtureScheduleMaterializer(titles map[provision.Key]FixtureTitle) Sched
 }
 
 func (m fixtureScheduleMaterializer) Materialize(
-	_ context.Context, c Case, proposal proposal.Proposal,
+	_ context.Context, c Case, proposal proposals.Proposal,
 ) ([]MaterializedProgram, error) {
 	return materializeSchedule(c, proposal, m.titles)
 }
@@ -141,7 +142,7 @@ func NewLiveScheduleMaterializer(lib *library.Client, tm *tmdb.Client) ScheduleM
 	return liveScheduleMaterializer{library: lib, tmdb: tm}
 }
 
-func (m liveScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal proposal.Proposal) ([]MaterializedProgram, error) {
+func (m liveScheduleMaterializer) Materialize(ctx context.Context, c Case, proposal proposals.Proposal) ([]MaterializedProgram, error) {
 	if m.library == nil || m.tmdb == nil {
 		return nil, fmt.Errorf("live schedule materializer requires Library and TMDB clients")
 	}
@@ -189,7 +190,7 @@ func (m liveScheduleMaterializer) Materialize(ctx context.Context, c Case, propo
 
 // materializeSchedule is the one pure fixture/live projection. All I/O and
 // provider-specific payloads are resolved before this boundary.
-func materializeSchedule(c Case, proposal proposal.Proposal, titles map[provision.Key]FixtureTitle) ([]MaterializedProgram, error) {
+func materializeSchedule(c Case, proposal proposals.Proposal, titles map[provision.Key]FixtureTitle) ([]MaterializedProgram, error) {
 	entries := make([]schedule.LineupEntry, 0, len(proposal.Lineup))
 	for _, item := range proposal.Lineup {
 		key, err := item.Key()
@@ -204,7 +205,7 @@ func materializeSchedule(c Case, proposal proposal.Proposal, titles map[provisio
 			Key: key, Title: item.Name, DurationMs: fixture.DurationMs,
 			SeasonMin: item.SeasonMin, SeasonMax: item.SeasonMax,
 			EpisodeSelection: item.EpisodeSelection,
-			OfficialRating:   schedule.NormalizeRating(item.OfficialRating),
+			OfficialRating:   rating.Normalize(item.OfficialRating),
 			Genres:           item.Genres, Year: item.Year, CollectionID: fixture.CollectionID,
 		})
 	}

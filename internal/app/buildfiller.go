@@ -10,26 +10,26 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/structure/cut"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/settings"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
-	"github.com/loomarr/loomarr/internal/clipfetch"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
-	"github.com/loomarr/loomarr/internal/fillerscreening"
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/screening"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
+	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
-	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
-	youtubeprovider "github.com/loomarr/loomarr/internal/sourceprovider/youtube"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -50,7 +50,7 @@ import (
 // offerCuratedSources offers this build's curated sources the install has not been offered, switched
 // off (#2035). Enabling one is the operator's consent to fetch from it. A failure costs only the
 // offer, never the boot: the next start tries again.
-func offerCuratedSources(ctx context.Context, st fillerstore.Store, log *slog.Logger) {
+func offerCuratedSources(ctx context.Context, st records.Store, log *slog.Logger) {
 	if st == nil {
 		return
 	}
@@ -78,7 +78,7 @@ func offerCuratedSources(ctx context.Context, st fillerstore.Store, log *slog.Lo
 // ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
-func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger,
+func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog.Logger,
 	fillerProg tunarr.Adapter, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := filler.DirSource{
 		Layout: layout,
@@ -138,7 +138,7 @@ func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *
 // ⚠ An UNSET path falls back to a PATH lookup, matching `settings.toolRunnable` — §15 has always
 // described these as defaulting to the vendored binaries, and only the Docker image set them, so
 // a source build had ingest off with the tools installed.
-func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifacts clipfetch.ArtifactWriter, governor *storagegovernor.Governor) *clipfetch.Ingestor {
+func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifacts fetch.ArtifactWriter, governor *storagegovernor.Governor) *fetch.Ingestor {
 	ytPath := resolveTool(settings.IngestYtdlpPath.Get(set), "yt-dlp")
 	ffPath := resolveTool(settings.IngestFFmpegPath.Get(set), "ffmpeg")
 	if ffPath == "" {
@@ -149,12 +149,12 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 	// provider and counts that source as failed rather than dying. So a box with ffmpeg and no yt-dlp fetches
 	// archive collections (the seeded ones) and reports honestly on playlists, instead of
 	// refusing everything.
-	downloaders := clipfetch.Downloaders{archiveprovider.ID: clipfetch.NewArchiveDownloader()}
+	downloaders := fetch.Downloaders{archiveprovider.ID: fetch.NewArchiveDownloader()}
 	if ytPath != "" {
-		downloaders[youtubeprovider.ID] = clipfetch.NewYtDlpDownloader(ytPath, ffPath)
+		downloaders[youtubeprovider.ID] = fetch.NewYtDlpDownloader(ytPath, ffPath)
 	}
 	log.Info("filler ingest available", "ytdlp", orNone(ytPath), "ffmpeg", ffPath)
-	return clipfetch.New(downloaders, layout.WatchDir(), log).
+	return fetch.New(downloaders, layout.WatchDir(), log).
 		WithArtifactWriter(artifacts).
 		WithStorageGovernor(governor)
 }
@@ -168,7 +168,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 // rather than guessed (§15).
 //
 // The LLM provider wires whenever one is configured because splitting is operator-invoked.
-func buildSplitter(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
+func buildSplitter(st records.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
@@ -202,18 +202,18 @@ func activeFillerProvider(set resolved, recorder *metrics.Recorder) llm.Provider
 // buildFillerMediaTools selects local whisper or hosted timed transcription behind the same
 // MediaTools interface. Every selector is a closure: changing provider, model, URL or key applies
 // to the next span without restarting, matching the rest of the filler settings contract.
-func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools.FFmpegTools {
+func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *tools.FFmpegTools {
 	ffmpegPath := settings.PlayoutFFmpegPath.Get(set)
-	tools := mediatools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
+	mediaTools := tools.NewFFmpegTools(ffmpegPath, filler.FFprobePathNextTo(ffmpegPath),
 		settings.IngestWhisperPath.Get(set), settings.IngestWhisperModel.Get(set), "")
-	hosted := &mediatools.HostedTranscriber{
+	hosted := &tools.HostedTranscriber{
 		FFmpegPath: ffmpegPath,
-		Client: func() mediatools.AudioTranscriptionClient {
+		Client: func() tools.AudioTranscriptionClient {
 			return hostedSpeechClient(set, recorder)
 		},
 		Model: func() string { return settings.ASRModel.Get(set) },
 	}
-	return tools.WithTranscriber(func() mediatools.SpanTranscriber {
+	return mediaTools.WithTranscriber(func() tools.SpanTranscriber {
 		if settings.ASRProvider.Get(set) != "hosted" {
 			return nil
 		}
@@ -266,7 +266,7 @@ func intakeLanguages(st interface {
 // one that is present says why it skipped in the operator's own terms. That is what makes the
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
-func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
+func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
@@ -291,7 +291,7 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		// should not need a second chat model that happens to accept audio just to answer the same
 		// question. The closures keep URL, model and credential changes live between clips.
 		langDetect = filler.NewHostedLanguage(
-			func() mediatools.AudioTranscriptionClient { return hostedSpeechClient(set, recorder) },
+			func() tools.AudioTranscriptionClient { return hostedSpeechClient(set, recorder) },
 			func() string { return settings.ASRModel.Get(set) },
 			settings.PlayoutFFmpegPath.Get(set), "")
 	} else {
@@ -353,7 +353,7 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		func() bool { return settings.FillerVisionEnabled.Get(set) }, time.Now)
 	transcodeStage := filler.NewTranscodeStage(
 		fillerPipelineClipAdapter{st}, filler.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
-		clipDir, mediatools.DefaultMezzanine(),
+		clipDir, tools.DefaultMezzanine(),
 		func() string { return settings.PlayoutFFmpegPath.Get(set) },
 		// The playback target, for the too_quiet floor only: files are never levelled on
 		// disk, playout corrects them at air time (#2032).
@@ -380,8 +380,8 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 		// until the five certified authorities are wired. The qualification runtime records the
 		// exact rights and playback answers plus explicit holds for the three uncertified safety
 		// axes. Terminal release remains nil, so no qualification aggregate can authorize airplay.
-		fillerscreening.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
-		fillerdefectfloor.NewDefectsStage(fillerDefectStoreAdapter{st: st}),
+		screening.NewSegmentScreeningStage(screeningRuntime, nil, clipDir),
+		defectfloor.NewDefectsStage(fillerDefectStoreAdapter{st: st}),
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir, wantLanguages, time.Now),
 		transcribeStage,
 		visionStage,
@@ -421,7 +421,7 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 				if deploymentErr != nil {
 					log.Error("long-reel deployment was not loaded; structure inference and certified splitting remain disabled", "err", deploymentErr)
 				}
-				cutFamily := func() encode.Family { return fillerstructuremedia.CutFamily(encodeHost()) }
+				cutFamily := func() encode.Family { return cut.CutFamily(encodeHost()) }
 				windowRuntime, runtimeErr := buildCertifiedWindowStructureRuntime(st, set, layout, windowAuthority, windowDeployment, cutFamily)
 				if runtimeErr != nil {
 					log.Error("long-reel runtime was not activated; structure inference and certified splitting remain disabled", "err", runtimeErr)
@@ -513,7 +513,7 @@ func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log
 // hostedSpeechClient resolves one speech-recognition service for both language detection and timed
 // transcripts. A blank dedicated URL reuses the active hosted AI service (the OpenRouter path); an
 // explicit URL never inherits that service's secret, so a custom host cannot receive it by accident.
-func hostedSpeechClient(set resolved, recorder *metrics.Recorder) mediatools.AudioTranscriptionClient {
+func hostedSpeechClient(set resolved, recorder *metrics.Recorder) tools.AudioTranscriptionClient {
 	url := strings.TrimSpace(settings.ASRURL.Get(set))
 	model := strings.TrimSpace(settings.ASRModel.Get(set))
 	provider := "openai"
@@ -552,7 +552,7 @@ func buildPodAdapter(st store.Store, set resolved, calendar func() schedule.Cale
 	// resolves per call and says so. This is that contract, honoured by the pod path too.
 	// The radius is read per call like the rest of the policy; the resolver memoises per radius.
 	// A closure, not the method value: the store is read only when a place is set.
-	list := func(ctx context.Context) ([]broadcaststation.Station, error) { return st.ListBroadcastStations(ctx) }
+	list := func(ctx context.Context) ([]station.Station, error) { return st.ListBroadcastStations(ctx) }
 	local := &localStations{stations: &stationDirectory{list: list},
 		radiusKM: func() int { return settings.FillerLocalRadiusKm.Get(set) }, log: log}
 	podAdapter := filler.NewPodAdapter(clipCatalogAdapter{st}, clipExposureAdapter{st}, func() filler.Policy {

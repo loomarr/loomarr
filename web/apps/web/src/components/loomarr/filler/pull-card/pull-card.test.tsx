@@ -1,7 +1,8 @@
 import type { PullDTO } from "@loomarr/api";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { PullCard } from "./pull-card";
 
 const pull = (over: Partial<PullDTO> = {}): PullDTO => ({

@@ -13,7 +13,7 @@ hard-coded 500 px poster served every surface, third-party origins loaded in the
 
 ## Decision
 
-One service, `internal/images`, owns ingest, storage, derivatives and serving for every image, keyed
+One service, `internal/media/images`, owns ingest, storage, derivatives and serving for every image, keyed
 by content hash. Fetching a remote URL re-keys it to the hash of its bytes. Go owns identity, policy
 and serving; a required Rust worker owns every pixel operation, with no Go codec fallback.
 

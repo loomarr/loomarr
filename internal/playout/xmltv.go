@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // XMLTV listings (§9.1) — the second half of what internal playout serves.

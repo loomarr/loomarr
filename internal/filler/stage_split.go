@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The SPLIT stage (§10 V51b): a compilation is cut into the adverts it holds.

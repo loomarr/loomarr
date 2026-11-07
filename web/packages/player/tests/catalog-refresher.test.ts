@@ -17,7 +17,6 @@ const deferred = <T>() => {
 
 const setup = () => {
   const controller = createPlayerController({
-    profile: {},
     source: { mint: vi.fn(() => Promise.resolve({ uri: "https://loomarr.test/a.m3u8" })) },
     transport: {
       dispose: vi.fn(),

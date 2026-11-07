@@ -45,7 +45,7 @@ const EXEMPT_DIRS = new Set(["test", "routes", "generated", "node_modules", "dis
 const ROOT_FILES = new Set(["main.tsx", "routeTree.gen.ts"]);
 
 // An executable entry point is not a module: it runs on import, so a barrel re-exporting
-// it would fire its side effects (packages/tokens' generator writes files). Rather than
+// it would fire its side effects (a generator script writes files). Rather than
 // keep a hand-maintained exception list — the mistake this whole test exists to fix —
 // entry points are DISCOVERED from the package's own scripts.
 const entryPoints = (pkgRoot: string): Set<string> => {
@@ -128,20 +128,5 @@ describe("folder-per-module conformance", () => {
     ]);
     const stray = dirsIn(APP).filter((d) => !known.has(d) && !d.startsWith("."));
     expect(stray, "source belongs under src/ (or tests/ for Playwright suites)").toEqual([]);
-  });
-});
-
-describe("production application root", () => {
-  it("mounts the shared design-system provider without changing the dark production theme", () => {
-    const source = readFileSync(join(APP, "src", "main.tsx"), "utf8");
-    const providerStart = source.indexOf('<LoomarrProvider theme="dark">');
-    const queryProvider = source.indexOf("<QueryClientProvider", providerStart);
-    const routerProvider = source.indexOf("<RouterProvider", queryProvider);
-    const providerEnd = source.indexOf("</LoomarrProvider>", routerProvider);
-
-    expect(providerStart).toBeGreaterThan(-1);
-    expect(queryProvider).toBeGreaterThan(providerStart);
-    expect(routerProvider).toBeGreaterThan(queryProvider);
-    expect(providerEnd).toBeGreaterThan(routerProvider);
   });
 });

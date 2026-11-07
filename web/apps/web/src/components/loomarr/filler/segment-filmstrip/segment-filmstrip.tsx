@@ -1,6 +1,6 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
 import { useId } from "react";
-import { Image } from "@/components/ui/image";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
@@ -117,7 +117,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                         the start time is the part the tile shows only to assistive tech. */}
                     <span className="sr-only">{formatMmSs(item.startMs)} ·</span>{" "}
                     {item.artwork ? (
-                      <Image image={item.artwork} alt="" sizes="240px" className="size-full object-cover" />
+                      <ServedImage image={item.artwork} alt="" sizes="240px" />
                     ) : (
                       <span className="text-muted-foreground flex size-full items-center justify-center px-2 text-center text-[10px]">
                         Preview unavailable

@@ -11,9 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/proposal"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -643,7 +644,7 @@ func TestQueryExpansionIndependentCausalOutcomeControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ownedAndMissing := func(keys ...string) proposal.Proposal {
+	ownedAndMissing := func(keys ...string) proposals.Proposal {
 		proposal := proposalWithKeys(t, keys...)
 		proposal.Acquisitions, proposal.Lineup = proposal.Lineup[2:], proposal.Lineup[:2]
 		return proposal
@@ -661,7 +662,7 @@ func TestQueryExpansionIndependentCausalOutcomeControls(t *testing.T) {
 	wrongAxis.Policy.Scope.Dates = &schedule.DateScope{SeriesPremiere: []schedule.Range{{From: 1990, To: 1999}}}
 	controls := []struct {
 		name, caseID, failure string
-		positive, negative    proposal.Proposal
+		positive, negative    proposals.Proposal
 	}{
 		{"missing-anchor", "exp-tgif-minimum", "605", positive, missing},
 		{"wrong-member", "exp-tgif-minimum", "31183", positive, wrong},
@@ -724,7 +725,7 @@ func TestQueryExpansionHistoryIndependentCausalOutcomeControls(t *testing.T) {
 	wrongAxis.Policy.Scope.Dates = &schedule.DateScope{SeriesPremiere: []schedule.Range{{From: 1996, To: 1999}}}
 	controls := []struct {
 		name, caseID, failure string
-		positive, negative    proposal.Proposal
+		positive, negative    proposals.Proposal
 	}{
 		{"missing-anchor", "exp-history-minimum", "grounded titles", owned, proposalWithKeys(t)},
 		{"later-era-ancient-aliens", "exp-history-minimum", "outside the acceptable set", owned, laterAncient},
@@ -773,7 +774,7 @@ func TestQueryExpansionMCUIndependentCausalOutcomeControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ownedAndMissing := func(owned int, keys ...string) proposal.Proposal {
+	ownedAndMissing := func(owned int, keys ...string) proposals.Proposal {
 		proposal := proposalWithKeys(t, keys...)
 		proposal.Acquisitions, proposal.Lineup = proposal.Lineup[owned:], proposal.Lineup[:owned]
 		return proposal
@@ -791,7 +792,7 @@ func TestQueryExpansionMCUIndependentCausalOutcomeControls(t *testing.T) {
 	wrongAxis.Policy.Scope.Dates = &schedule.DateScope{SeriesPremiere: []schedule.Range{{From: 2010, To: 2012}}}
 	controls := []struct {
 		name, caseID, failure string
-		positive, negative    proposal.Proposal
+		positive, negative    proposals.Proposal
 	}{
 		{"missing-regional-alias", "exp-mcu-minimum", "24428", positive, missingAlias},
 		{"phase-two-padding", "exp-mcu-minimum", "68721", positive, wrongPhase},
@@ -840,16 +841,16 @@ func TestQueryExpansionMovieIndependentCausalOutcomeControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ownedAndMissing := func(owned int, keys ...string) proposal.Proposal {
+	ownedAndMissing := func(owned int, keys ...string) proposals.Proposal {
 		proposal := proposalWithKeys(t, keys...)
 		proposal.Acquisitions, proposal.Lineup = proposal.Lineup[owned:], proposal.Lineup[:owned]
 		return proposal
 	}
-	withMovieDates := func(proposal proposal.Proposal, ranges ...schedule.Range) proposal.Proposal {
+	withMovieDates := func(proposal proposals.Proposal, ranges ...schedule.Range) proposals.Proposal {
 		proposal.Policy.Scope.Dates = &schedule.DateScope{MovieRelease: ranges}
 		return proposal
 	}
-	withSeriesDates := func(proposal proposal.Proposal, ranges ...schedule.Range) proposal.Proposal {
+	withSeriesDates := func(proposal proposals.Proposal, ranges ...schedule.Range) proposals.Proposal {
 		proposal.Policy.Scope.Dates = &schedule.DateScope{SeriesPremiere: ranges}
 		return proposal
 	}
@@ -866,27 +867,27 @@ func TestQueryExpansionMovieIndependentCausalOutcomeControls(t *testing.T) {
 	intenseAdventure := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:329")
 	intenseAdventureWithPaddington := ownedAndMissing(2, "movie:tmdb:578", "movie:tmdb:346648", "movie:tmdb:329")
 	warmPG := ownedAndMissing(0, "movie:tmdb:862")
-	warmPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	warmPG.Policy.Audience.Ceiling = rating.Rating("PG")
 	warmPG.Acquisitions[0].OfficialRating = "G"
 	warmPGWithJaws := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:862")
-	warmPGWithJaws.Policy.Audience.Ceiling = schedule.Rating("PG")
+	warmPGWithJaws.Policy.Audience.Ceiling = rating.Rating("PG")
 	warmPGWithJaws.Lineup[0].OfficialRating = "PG"
 	warmPGWithJaws.Acquisitions[0].OfficialRating = "G"
 	pg := proposalWithKeys(t, "movie:tmdb:578", "movie:tmdb:601")
-	pg.Policy.Audience.Ceiling = schedule.Rating("PG")
+	pg.Policy.Audience.Ceiling = rating.Rating("PG")
 	for i := range pg.Lineup {
 		pg.Lineup[i].OfficialRating = "PG"
 	}
 	overPG := proposalWithKeys(t, "movie:tmdb:578", "movie:tmdb:601")
-	overPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	overPG.Policy.Audience.Ceiling = rating.Rating("PG")
 	overPG.Lineup[0].OfficialRating = "PG"
 	overPG.Lineup[1].OfficialRating = "PG-13"
 	mpaPG := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:862")
-	mpaPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	mpaPG.Policy.Audience.Ceiling = rating.Rating("PG")
 	mpaPG.Lineup[0].OfficialRating = "PG"
 	mpaPG.Acquisitions[0].OfficialRating = "G"
 	mpaOverPG := ownedAndMissing(1, "movie:tmdb:578", "movie:tmdb:862", "movie:tmdb:329")
-	mpaOverPG.Policy.Audience.Ceiling = schedule.Rating("PG")
+	mpaOverPG.Policy.Audience.Ceiling = rating.Rating("PG")
 	mpaOverPG.Lineup[0].OfficialRating = "PG"
 	mpaOverPG.Acquisitions[0].OfficialRating = "G"
 	mpaOverPG.Acquisitions[1].OfficialRating = "PG-13"
@@ -906,7 +907,7 @@ func TestQueryExpansionMovieIndependentCausalOutcomeControls(t *testing.T) {
 	refineKeepsRemoved := withMovieDates(ownedAndMissing(1, "movie:tmdb:194", "movie:tmdb:129"), schedule.Range{From: 2000, To: 2009})
 	controls := []struct {
 		name, caseID, failure string
-		positive, negative    proposal.Proposal
+		positive, negative    proposals.Proposal
 	}{
 		{"disjoint-wrong-date-axis", "exp-movie-epoch-disjoint", "date", disjoint, wrongDisjointAxis},
 		{"director-role-producer-padding", "exp-movie-director-spielberg", "outside the acceptable set", spielberg, spielbergWithProducerCredit},

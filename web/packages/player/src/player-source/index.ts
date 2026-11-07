@@ -1,5 +1,4 @@
 export type {
-  DevicePlaybackProfile,
   PlayerChannel,
   PlayerSource,
   PlayerSourcePort,

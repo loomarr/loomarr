@@ -37,6 +37,15 @@ interface LiveRung {
 }
 
 /**
+ * The rungs a channel offers that this browser plays, and the height on air now; empty until the
+ * manifest is read, and on native HLS, which picks for itself.
+ */
+interface LiveLadder {
+  height?: number;
+  rungs: readonly LiveRung[];
+}
+
+/**
  * The rungs a viewer may choose among: every level the master offers that this browser can play —
  * the baseline always, the premium only where it decodes. Nothing new is encoded: these are the
  * channel's own formats, and choosing the premium is the same opt-in Auto makes.
@@ -59,5 +68,5 @@ const selectQualityLevel = (
   return rung?.index ?? selectLiveLevel(levels, canPlay);
 };
 
-export type { LiveLevel, LiveQuality, LiveRung };
+export type { LiveLadder, LiveLevel, LiveQuality, LiveRung };
 export { playableRungs, selectLiveLevel, selectQualityLevel };

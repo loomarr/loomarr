@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/rating"
 )
 
 // The Judge seam stays bounded even when a caller supplies unusually large
@@ -35,7 +36,7 @@ type JudgeEvidence struct {
 	Policy            schedule.ProposalPolicy `json:"policy"`
 	Observation       Observation             `json:"observation"`
 	ScheduledPrograms []MaterializedProgram   `json:"scheduledPrograms"`
-	DecisionTrace     proposal.DecisionTrace  `json:"decisionTrace"`
+	DecisionTrace     proposals.DecisionTrace `json:"decisionTrace"`
 }
 
 // JudgeTitleEvidence is the grounded, auditable subset of a ProposalItem.
@@ -61,7 +62,7 @@ const (
 
 // NewJudgeEvidence projects the facts already owned by Runner into the Judge
 // contract. Bounding is enforced here rather than delegated to model adapters.
-func NewJudgeEvidence(c Case, proposal proposal.Proposal, observation Observation, scheduledPrograms []MaterializedProgram) (JudgeEvidence, error) {
+func NewJudgeEvidence(c Case, proposal proposals.Proposal, observation Observation, scheduledPrograms []MaterializedProgram) (JudgeEvidence, error) {
 	trace, err := boundedDecisionTrace(proposal.Trace)
 	if err != nil {
 		return JudgeEvidence{}, err
@@ -86,11 +87,11 @@ func NewJudgeEvidence(c Case, proposal proposal.Proposal, observation Observatio
 	})
 }
 
-func boundedDecisionTrace(trace proposal.DecisionTrace) (proposal.DecisionTrace, error) {
+func boundedDecisionTrace(trace proposals.DecisionTrace) (proposals.DecisionTrace, error) {
 	if trace.Version == 0 {
-		return proposal.DecisionTrace{}, nil
+		return proposals.DecisionTrace{}, nil
 	}
-	trace.Candidates = append([]proposal.DecisionCandidate(nil), trace.Candidates...)
+	trace.Candidates = append([]proposals.DecisionCandidate(nil), trace.Candidates...)
 	if len(trace.Candidates) > JudgeMaxTraceCandidates {
 		trace.Candidates = trace.Candidates[:JudgeMaxTraceCandidates]
 		trace.Truncated = true
@@ -106,12 +107,12 @@ func boundedDecisionTrace(trace proposal.DecisionTrace) (proposal.DecisionTrace,
 	}
 	trace.Terminal = boundedJudgeText(trace.Terminal)
 	if err := suggest.ValidateDecisionTrace(trace); err != nil {
-		return proposal.DecisionTrace{}, fmt.Errorf("decision trace mismatch: %w", err)
+		return proposals.DecisionTrace{}, fmt.Errorf("decision trace mismatch: %w", err)
 	}
 	return trace, nil
 }
 
-func judgeTitles(items []proposal.ProposalItem, ownership JudgeOwnership) ([]JudgeTitleEvidence, error) {
+func judgeTitles(items []proposals.ProposalItem, ownership JudgeOwnership) ([]JudgeTitleEvidence, error) {
 	out := make([]JudgeTitleEvidence, 0, len(items))
 	for _, item := range items {
 		key, err := item.Key()
@@ -180,7 +181,7 @@ func boundJudgeTitles(items []JudgeTitleEvidence, ownership JudgeOwnership) []Ju
 
 func boundJudgePolicy(policy schedule.ProposalPolicy) schedule.ProposalPolicy {
 	policy.Scope = boundJudgeScope(policy.Scope)
-	policy.Audience.Ceiling = schedule.Rating(boundedJudgeText(string(policy.Audience.Ceiling)))
+	policy.Audience.Ceiling = rating.Rating(boundedJudgeText(string(policy.Audience.Ceiling)))
 	policy.Audience.Unrated = schedule.UnratedPolicy(boundedJudgeText(string(policy.Audience.Unrated)))
 	policy.Ordering = schedule.OrderingMode(boundedJudgeText(string(policy.Ordering)))
 	policy.Seasonal.Mode = schedule.SeasonalMode(boundedJudgeText(string(policy.Seasonal.Mode)))

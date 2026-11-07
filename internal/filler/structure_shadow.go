@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 const (
@@ -163,7 +163,7 @@ func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified S
 	}
 	if proposal.StructureDecision != nil {
 		artifact := *proposal.StructureDecision
-		if err := fillerstructure.ValidateArtifact(artifact); err != nil ||
+		if err := structure.ValidateArtifact(artifact); err != nil ||
 			artifact.Decision.Source.SHA256 != proposal.Source.SHA256 ||
 			artifact.Decision.Source.Bytes != proposal.Source.Bytes ||
 			artifact.Decision.Source.DurationMS != proposal.Source.DurationMs {

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
-	"github.com/loomarr/loomarr/internal/defects"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
+	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/store/storedb"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // Clip is the persisted form of a filler clip (§10). It embeds the catalog's value type,
@@ -27,7 +27,7 @@ import (
 // Several methods below are still path-keyed on purpose (a scan job carries a path,
 // not a hash); read each one's doc rather than assuming a single key.
 type Clip struct {
-	clipcatalog.Clip
+	clips.Clip
 	UpdatedAt time.Time
 	// CreatedAt is when the clip ENTERED the catalog (§10 V51d, migration 00046) — the "recently
 	// added" sort order, and the only honest answer to "what arrived while I was away?".
@@ -46,11 +46,11 @@ type Clip struct {
 // ClipFilter narrows a ListClips query. Any zero-value field is a wildcard, so a
 // zero ClipFilter lists everything (the pod-assembly catalog load).
 type ClipFilter struct {
-	Kind            clipcatalog.Kind
+	Kind            clips.Kind
 	Era             int
-	Audience        clipcatalog.Audience
+	Audience        clips.Audience
 	Category        string
-	GeographicScope clipcatalog.GeographicScope
+	GeographicScope clips.GeographicScope
 	Country         string
 	// Taxon matches the denormalised full tag set, so selecting a parent includes descendants.
 	Taxon string
@@ -491,7 +491,6 @@ var clipReferences = []clipReference{
 	{"filler_acquisition_artifacts", "clip_hash", rekeyMove},
 	// Screening verdicts, enrichment, research and their cost ledgers judge the content. A Ready
 	// clip re-encoded from its master keeps them; its new evidence is screened again on its own.
-	{"filler_admission_decisions", "clip_hash", rekeyMove},
 	{"filler_spoken_safety_runs", "clip_hash", rekeyMove},
 	{"filler_split_shadow_decisions", "clip_hash", rekeyMove},
 	{"filler_enrichment_axes", "clip_hash", rekeyMove},
@@ -550,7 +549,7 @@ func (s *Store) rekeyClipReferencesTx(ctx context.Context, tx storedb.Tx, oldHas
 
 // AdoptConditionedClip closes the catalog half of the owner-bound conditioning saga: the clip at
 // sourceHash becomes target. The caller has already proved the exact source/target byte pair and
-// its ownership (internal/fillerstore's CommitConditioningPublication). This transaction permits
+// its ownership (internal/filler/records's CommitConditioningPublication). This transaction permits
 // only the three catalog shapes that proof can own: an ordinary source-only re-key, a source plus
 // the held row Sync reconstructed from that sidecar, or the exact target-only state left by a
 // re-key that committed before process loss.
@@ -762,23 +761,23 @@ func clipCreatedAt(c Clip) time.Time {
 // could not classify, so the column never holds a second spelling of "not recorded".
 func clipNameSource(c Clip) string {
 	if !c.NameSource.Known() {
-		return string(clipcatalog.NameFromUnknown)
+		return string(clips.NameFromUnknown)
 	}
 	return string(c.NameSource)
 }
 
 func clipGeographicScope(c Clip) string {
 	if c.GeographicScope == "" {
-		return string(clipcatalog.GeographicUnknown)
+		return string(clips.GeographicUnknown)
 	}
 	return string(c.GeographicScope)
 }
 
 // clipPlacement gives a direct insert of an already-unheld known role its natural placement. Real
 // intake inserts held rows and therefore starts not_playable until CommitFillerReady.
-func clipPlacement(c Clip) clipcatalog.Placement {
+func clipPlacement(c Clip) clips.Placement {
 	if c.Held {
-		return clipcatalog.PlacementNotPlayable
+		return clips.PlacementNotPlayable
 	}
 	return c.EffectivePlacement()
 }
@@ -1024,7 +1023,7 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 		where = append(where, "held = ?")
 		args = append(args, false)
 		where = append(where, "placement <> ?")
-		args = append(args, string(clipcatalog.PlacementNotPlayable))
+		args = append(args, string(clips.PlacementNotPlayable))
 	}
 	// ⚠ THE composite chokepoint (§10 V45), the same shape as the held block above and for the same
 	// reason: pod assembly loads the catalog here with a zero filter, so a composite excluded ONCE
@@ -1052,7 +1051,7 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 	}
 	if f.UntaggedOnly {
 		where = append(where, needsDetailsWhere)
-		args = append(args, string(clipcatalog.Commercial))
+		args = append(args, string(clips.Commercial))
 	}
 	return where, args
 }
@@ -1169,21 +1168,21 @@ func (s *Store) RecordClipPlay(ctx context.Context, channelID, id string, at, re
 // younger than fillerAiringsTrimAge, which it always keeps.
 const (
 	fillerAiringsKept    = 4
-	fillerAiringsTrimAge = clipcatalog.AiringHistoryAge
+	fillerAiringsTrimAge = clips.AiringHistoryAge
 )
 
 // FillerAirings returns the household's stored clip airings, every channel's (§10 rotation). The
 // per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
-func (s *Store) FillerAirings(ctx context.Context) ([]clipcatalog.Airing, error) {
+func (s *Store) FillerAirings(ctx context.Context) ([]clips.Airing, error) {
 	rows, err := s.h.QueryContext(ctx, `SELECT channel_id, clip_hash, aired_at, recorded_at FROM filler_airings`)
 	if err != nil {
 		return nil, fmt.Errorf("list filler airings: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	var out []clipcatalog.Airing
+	var out []clips.Airing
 	for rows.Next() {
-		var a clipcatalog.Airing
+		var a clips.Airing
 		var airedMs, recordedMs int64
 		if err := rows.Scan(&a.ChannelID, &a.ClipHash, &airedMs, &recordedMs); err != nil {
 			return nil, fmt.Errorf("scan filler airing: %w", err)
@@ -1224,7 +1223,7 @@ func (s *Store) UpdateClipKind(ctx context.Context, id, kind string, updatedAt t
 
 // RenameClip sets a clip's name and its provenance together (#1990): name_source travels with
 // name, as in UpsertClip.
-func (s *Store) RenameClip(ctx context.Context, hash, name string, source clipcatalog.NameSource, updatedAt time.Time) error {
+func (s *Store) RenameClip(ctx context.Context, hash, name string, source clips.NameSource, updatedAt time.Time) error {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET name = ?, name_source = ?, updated_at = ? WHERE hash = ?`),
 		name, string(source), epoch(updatedAt), hash)
@@ -1358,7 +1357,7 @@ func (s *Store) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, er
 	defer func() { _ = s.pruneOrphanClipFingerprints(ctx); _ = s.pruneOrphanClipDefects(ctx) }()
 
 	// The pipeline rows and split proposals, the no-foreign-key siblings of `clips`, are the filler
-	// store's: its DeleteClipsNotIn runs this one and then prunes them (internal/fillerstore).
+	// store's: its DeleteClipsNotIn runs this one and then prunes them (internal/filler/records).
 
 	if len(keepIDs) == 0 {
 		// ⚠ Reaped composites survive an EMPTY scan too. This branch fires when the drop folder is
@@ -1439,8 +1438,8 @@ func scanClip(sc scannable) (Clip, error) {
 	if err != nil {
 		return Clip{}, err
 	}
-	c.Kind = clipcatalog.Kind(kind)
-	c.Audience = clipcatalog.Audience(audience)
+	c.Kind = clips.Kind(kind)
+	c.Audience = clips.Audience(audience)
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
 	c.AITagged = aiTagged
 	c.VisionTagged = visionTagged

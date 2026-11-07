@@ -59,9 +59,10 @@ type Secrets struct {
 	store SecretStore
 	env   func(string) (string, bool)
 
-	mu      sync.RWMutex
-	values  map[GeneratedSecret]string // resolved live values (for redaction + reads)
-	webPush WebPushIdentity
+	mu         sync.RWMutex
+	values     map[GeneratedSecret]string // resolved live values (for redaction + reads)
+	webPush    WebPushIdentity
+	arrWebhook string
 }
 
 // WebPushIdentity is the installation's stable RFC 8292 application-server identity. The public
@@ -71,7 +72,10 @@ type WebPushIdentity struct {
 	PublicKey  string `json:"publicKey"`
 }
 
-const webPushIdentityKey = "secret.web_push_vapid_identity"
+const (
+	webPushIdentityKey  = "secret.web_push_vapid_identity"
+	arrWebhookSecretKey = "secret.arr_webhook"
+)
 
 // allGenerated is the fixed set, in display order.
 func allGenerated() []GeneratedSecret {
@@ -94,6 +98,9 @@ func NewSecrets(ctx context.Context, store SecretStore, env func(string) (string
 		s.values[g] = v
 	}
 	if err := s.resolveWebPushIdentity(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.resolveArrWebhookSecret(ctx); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -272,7 +279,49 @@ func (s *Secrets) RedactionValues() []string {
 	if s.webPush.PrivateKey != "" {
 		out = append(out, s.webPush.PrivateKey)
 	}
+	if s.arrWebhook != "" {
+		out = append(out, s.arrWebhook)
+	}
 	return out
+}
+
+// ArrWebhookSecret is the password Sonarr and Radarr send with each webhook (#2151 decision 10).
+// Loomarr registers it in each arr itself, so it is minted once and never shown or demanded.
+// "" without secrets (no store), which refuses every delivery.
+func (s *Secrets) ArrWebhookSecret() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.arrWebhook
+}
+
+// resolveArrWebhookSecret reads the arr webhook secret, minting it on first boot. Under the
+// store's lock when it has one, so Postgres replicas booting together agree on one value.
+func (s *Secrets) resolveArrWebhookSecret(ctx context.Context) error {
+	resolve := func(lockCtx context.Context) error {
+		v, ok, err := s.store.Get(lockCtx, arrWebhookSecretKey)
+		if err != nil {
+			return fmt.Errorf("read arr webhook secret: %w", err)
+		}
+		if !ok || v == "" {
+			if v, err = generateSecret(); err != nil {
+				return err
+			}
+			if err := s.store.Set(lockCtx, arrWebhookSecretKey, v); err != nil {
+				return fmt.Errorf("persist arr webhook secret: %w", err)
+			}
+		}
+		s.arrWebhook = v
+		return nil
+	}
+	if locker, ok := s.store.(interface {
+		WithLock(context.Context, string, func(context.Context) error) error
+	}); ok {
+		return locker.WithLock(ctx, arrWebhookSecretKey, resolve)
+	}
+	return resolve(ctx)
 }
 
 // generateSecret is 256-bit base64url randomness (config-design §4).

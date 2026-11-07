@@ -13,7 +13,7 @@ import (
 )
 
 // "Which provider is this source from, and what does that mean?" has one answer: the provider
-// registered under that ID (internal/sourceprovider). A comparison of a source's kind against
+// registered under that ID (internal/filler/source). A comparison of a source's kind against
 // "youtube" or "archive" is how a second answer starts: it works for the providers the author
 // remembered, and a provider added later is silently treated as the else branch. Ask the registry:
 // Registry.Get, Describe().Fetched, or a capability interface (Lister, Searcher, Finder, Addresser).
@@ -24,23 +24,23 @@ import (
 // says it is a kind or a provider. It cannot see types, so an unrelated "library" compared with
 // something named kind is also flagged and belongs in the allowlist with the reason.
 
-const sourceProviderHome = "internal/sourceprovider/"
+const sourceProviderHome = "internal/filler/source/"
 
-// providerIDLiterals are the persisted provider IDs. Constants (sourceprovider.FolderID,
-// archiveprovider.ID, clipfetch.YouTube) are not flagged: they name a provider where one is
+// providerIDLiterals are the persisted provider IDs. Constants (source.FolderID,
+// archiveprovider.ID, fetch.YouTube) are not flagged: they name a provider where one is
 // structurally involved, which a literal does invisibly.
 var providerIDLiterals = map[string]bool{"youtube": true, "archive": true, "folder": true, "library": true}
 
 // providerLiteralAllowlist maps a repo-relative file to why it still compares a provider-ID
 // literal. It is a ratchet: a file leaves it when it stops, and cannot join it without a reason.
 var providerLiteralAllowlist = map[string]string{
-	"internal/api/fillerwatch.go":           "drop-folder watch projection; follow-up moves it onto the registry",
-	"internal/filler/compilations.go":       "filler domain rule keyed on the folder kind; follow-up passes the provider's Description instead",
-	"internal/filler/curated.go":            "filler domain rule keyed on fetched kinds; follow-up passes the provider's Description instead",
-	"internal/filler/sync.go":               "scan dispatch by kind; follow-up moves scanning onto the scanned providers",
-	"internal/filler/fetch.go":              "fetch plan excludes scanned kinds; follow-up asks the registry",
-	"internal/fillerresearch/model.go":      "maps a research model's provider names, which include aliases such as archive.org",
-	"internal/fillerstore/fillersources.go": "the store's Fetchable/Scannable split by kind; follow-up asks the registry",
+	"internal/api/fillerwatch.go":              "drop-folder watch projection; follow-up moves it onto the registry",
+	"internal/filler/compilations.go":          "filler domain rule keyed on the folder kind; follow-up passes the provider's Description instead",
+	"internal/filler/curated.go":               "filler domain rule keyed on fetched kinds; follow-up passes the provider's Description instead",
+	"internal/filler/sync.go":                  "scan dispatch by kind; follow-up moves scanning onto the scanned providers",
+	"internal/filler/fetch.go":                 "fetch plan excludes scanned kinds; follow-up asks the registry",
+	"internal/filler/research/model.go":        "maps a research model's provider names, which include aliases such as archive.org",
+	"internal/filler/records/fillersources.go": "the store's Fetchable/Scannable split by kind; follow-up asks the registry",
 }
 
 // kindishName reports whether an expression is named like a source kind or a provider: the final
@@ -121,7 +121,7 @@ func providerLiteralComparisons(t *testing.T, filename string, src any) []string
 }
 
 // productionProviderLiteralUses maps each repo-relative production file outside
-// internal/sourceprovider to its provider-ID literal comparisons.
+// internal/filler/source to its provider-ID literal comparisons.
 func productionProviderLiteralUses(t *testing.T, pkgs map[string]*build.Package) map[string][]string {
 	t.Helper()
 	uses := map[string][]string{}

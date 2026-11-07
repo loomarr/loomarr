@@ -146,11 +146,11 @@ floor 1.0/1.5). Host capability profiles are data, so every family is golden-tes
 
 **The encode vocabulary is shared (#2121).** The encoders, their engines and HEVC siblings, the
 host profile (`HostFor`), the GPU decode rule (`HostProfile.DecodeRefusal`), the device and decode
-arguments, and each family's encoder flags and rate control (`VideoArgs`) live in `internal/encode`,
+arguments, and each family's encoder flags and rate control (`VideoArgs`) live in `internal/media/encode`,
 so the filler pipeline encodes on the same hardware path without importing playout. The per-family
 graphs above stay here: every one fits the item to the channel's uniform output, which a filler
 derivative (source geometry and cadence preserved) does not want. Which encoder a host runs is still
-playout's trial encode (`DetectObserved`); `internal/encode` never probes.
+playout's trial encode (`DetectObserved`); `internal/media/encode` never probes.
 
 **Tone mapping is a given, never black and never silent.** Every HDR source is tone-mapped on every
 SDR output. `playout.tone_curve` picks the one curve (`hable` by default; `mobius`, `reinhard`,
@@ -304,7 +304,7 @@ development briefly built a second one to serve it:
   with the continuous-stream design (#1460, #1507). Phase 4 of #1512 (#1547) removed its code
   (decision [0040](decisions/0040-prepared-media-withdrawn.md)).
 - **Load certification** (`playout-load-cert`, `internal/playoutcert`) retired with the chain.
-- **Per-client `EncodePlan` sessions**, direct-play stream copy and the HEVC-follows-content rule
+- **Per-client encode plans**, direct-play stream copy and the HEVC-follows-content rule
   (V47, V48, V50) are **SUPERSEDED** by the uniform-output packager above: a channel's format follows
   its lineup, never the watching device, and there is no copy path.
 
@@ -483,7 +483,8 @@ It plays the HLS pair above. Two facts make this a real feature and not just a `
   existing `playout_token`: **no new secret**, the token never leaves the server, and the URL
   self-expires (the mock's "signed with the playout token, good for 8 hours"). The HLS routes accept
   **either** the device token (a media server) **or** a valid signed URL (a browser/native app);
-  everything else about segment auth below is unchanged.
+  everything else about segment auth below is unchanged. The op takes no request body and no
+  device capabilities: the optional `quality` query is its only per-viewer input.
 
 **Audio track selection is ours to make, because nobody else is left to make it.** With no explicit
 `-map`, ffmpeg picks one stream per type by "best" — for audio that means **the most channels**,

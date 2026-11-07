@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // MeasuredCosts is the class probe's persisted answer for one encoder on one host.

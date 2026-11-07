@@ -11,9 +11,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -106,7 +106,10 @@ type FillerSourceDTO struct {
 	//
 	// ⚠ `packs` is deliberately absent: there is no pack index to read (no URL, no manifest, no
 	// fetcher), and §10 forbids a row that dims and changes nothing.
-	Kind string `json:"kind" enum:"folder,library,archive,youtube"`
+	Kind string `json:"kind" doc:"The provider's id, as listed by GET /v1/filler/providers"`
+	// PageURL is where the source lives in the provider's own service, for a link out. Absent
+	// when the provider has no pages or the source no address.
+	PageURL string `json:"pageUrl,omitempty" doc:"The source's own page at its provider; absent when it has none"`
 	// Searchable marks a source whose catalog can be searched in place — the Sources tab's
 	// per-row search expander. Only `archive` today; the mock draws the same restriction.
 	Searchable bool `json:"searchable"`
@@ -198,7 +201,7 @@ type FillerSourceCheckSummaryDTO struct {
 	MetadataIncomplete int `json:"metadataIncomplete"`
 }
 
-func fillerSourceCheckSummaryDTO(summary sourceprovider.Outcomes) *FillerSourceCheckSummaryDTO {
+func fillerSourceCheckSummaryDTO(summary source.Outcomes) *FillerSourceCheckSummaryDTO {
 	var total int
 	for _, count := range summary {
 		total += count
@@ -207,15 +210,15 @@ func fillerSourceCheckSummaryDTO(summary sourceprovider.Outcomes) *FillerSourceC
 		return nil
 	}
 	return &FillerSourceCheckSummaryDTO{
-		Queued:             summary[sourceprovider.OutcomeQueued],
-		AlreadyKnown:       summary[sourceprovider.OutcomeAlreadyKnown],
-		TooShort:           summary[sourceprovider.OutcomeTooShort],
-		TooLong:            summary[sourceprovider.OutcomeTooLong],
-		Live:               summary[sourceprovider.OutcomeLive],
-		Upcoming:           summary[sourceprovider.OutcomeUpcoming],
-		Private:            summary[sourceprovider.OutcomePrivate],
-		Unavailable:        summary[sourceprovider.OutcomeUnavailable],
-		MetadataIncomplete: summary[sourceprovider.OutcomeMetadataIncomplete],
+		Queued:             summary[source.OutcomeQueued],
+		AlreadyKnown:       summary[source.OutcomeAlreadyKnown],
+		TooShort:           summary[source.OutcomeTooShort],
+		TooLong:            summary[source.OutcomeTooLong],
+		Live:               summary[source.OutcomeLive],
+		Upcoming:           summary[source.OutcomeUpcoming],
+		Private:            summary[source.OutcomePrivate],
+		Unavailable:        summary[source.OutcomeUnavailable],
+		MetadataIncomplete: summary[source.OutcomeMetadataIncomplete],
 	}
 }
 
@@ -286,8 +289,8 @@ func automaticDownloadSummary(mode string, every time.Duration, maxPerCheck int)
 	return strings.ToUpper(policy[:1]) + policy[1:] + "."
 }
 
-func (s *Server) sourceAutomaticDownloads(src fillerstore.FillerSource, eligible bool) *SourceAutomaticDownloadsDTO {
-	if !s.sourceProviders.Fetched(sourceprovider.ID(src.Kind)) {
+func (s *Server) sourceAutomaticDownloads(src records.FillerSource, eligible bool) *SourceAutomaticDownloadsDTO {
+	if !s.sourceProviders.Fetched(source.ID(src.Kind)) {
 		return nil
 	}
 	every, pollable := src.FetchEvery(s.fillerFetchEvery())
@@ -363,7 +366,7 @@ type RemoteSourceDTO struct {
 // FillerSourceSuggestionDTO is a transient provider result. It deliberately has no source id or
 // enabled state: those exist only after the separate registration command succeeds.
 type FillerSourceSuggestionDTO struct {
-	Provider     string                       `json:"provider" enum:"archive,youtube"`
+	Provider     string                       `json:"provider" doc:"The provider's id, as listed by GET /v1/filler/providers"`
 	TargetType   string                       `json:"targetType" enum:"collection,channel,playlist"`
 	CanonicalID  string                       `json:"canonicalId"`
 	CanonicalURL string                       `json:"canonicalUrl"`
@@ -379,6 +382,8 @@ type FillerSourcePreviewItemDTO struct {
 	Title      string `json:"title"`
 	URL        string `json:"url"`
 	DurationMS int64  `json:"durationMs,omitempty"`
+	// EmbedURL plays the item in the provider's own player; absent when it cannot be embedded.
+	EmbedURL string `json:"embedUrl,omitempty" doc:"Player that plays the item in place; absent when the provider does not allow it"`
 }
 
 // FillerProviderDescriptionDTO is one registered source provider and what it can do.
@@ -393,6 +398,16 @@ type FillerProviderDescriptionDTO struct {
 	Discoverable   bool `json:"discoverable" doc:"Sources can be suggested for a query and an address verified before it is added"`
 	OpenSearchable bool `json:"openSearchable" doc:"The provider can be searched beyond its registered sources"`
 	Addable        bool `json:"addable" doc:"An operator can register a source of this provider by typing its address"`
+	// The words the source page shows for the provider, so no client carries a copy per provider.
+	Blurb           string `json:"blurb,omitempty" doc:"The sentence under the provider's heading on the source page"`
+	SourceNoun      string `json:"sourceNoun,omitempty" doc:"What one registered source is, as the source drawer's subtitle"`
+	AddressLabel    string `json:"addressLabel,omitempty" doc:"Names the field a source's address is typed into when the provider has no finder"`
+	PreviewHeading  string `json:"previewHeading,omitempty" doc:"Introduces the examples shown from a source"`
+	FindLabel       string `json:"findLabel,omitempty" doc:"Names the source finder's field; absent unless discoverable"`
+	FindPlaceholder string `json:"findPlaceholder,omitempty" doc:"The source finder's placeholder"`
+	FindAdd         string `json:"findAdd,omitempty" doc:"The button that registers the source the finder chose"`
+	FindNoMatches   string `json:"findNoMatches,omitempty" doc:"What a search with no results tells the operator to do next"`
+	FindMinQuery    int    `json:"findMinQuery,omitempty" doc:"The fewest characters a search runs with"`
 }
 
 type fillerProvidersOutput struct {
@@ -406,19 +421,22 @@ func (s *Server) listFillerProviders(context.Context, *struct{}) (*fillerProvide
 	out.Body.Providers = []FillerProviderDescriptionDTO{}
 	for _, p := range s.sourceProviders.All() {
 		d := p.Describe()
-		c := sourceprovider.CapabilitiesOf(p)
-		_, addable := p.(sourceprovider.Addresser)
+		c := source.CapabilitiesOf(p)
+		_, addable := p.(source.Addresser)
 		out.Body.Providers = append(out.Body.Providers, FillerProviderDescriptionDTO{
 			ID: string(p.ID()), Label: d.Label, AddressHint: d.AddressHint, Fetched: d.Fetched,
 			Listable: c.Listable, Searchable: c.Searchable, Discoverable: c.Discoverable,
 			OpenSearchable: c.OpenSearchable, Addable: addable,
+			Blurb: d.Blurb, SourceNoun: d.SourceNoun, AddressLabel: d.AddressLabel, PreviewHeading: d.PreviewHeading,
+			FindLabel: d.Find.Label, FindPlaceholder: d.Find.Placeholder, FindAdd: d.Find.Add,
+			FindNoMatches: d.Find.NoMatches, FindMinQuery: d.Find.MinQuery,
 		})
 	}
 	return out, nil
 }
 
 type fillerSourceSuggestionsInput struct {
-	Kind  string `path:"kind" enum:"archive,youtube"`
+	Kind  string `path:"kind" doc:"A discoverable provider's id, as listed by GET /v1/filler/providers"`
 	Query string `query:"q" minLength:"2" maxLength:"120" required:"true"`
 	Limit int    `query:"limit" minimum:"1" maximum:"8" default:"8"`
 }
@@ -426,11 +444,12 @@ type fillerSourceSuggestionsInput struct {
 type fillerSourceSuggestionsOutput struct {
 	Body struct {
 		Suggestions []FillerSourceSuggestionDTO `json:"suggestions"`
+		Exact       bool                        `json:"exact" doc:"The query was an address, not words: suggestions holds the one source it names, already checked"`
 	}
 }
 
 type resolveFillerSourceInput struct {
-	Kind string `path:"kind" enum:"archive,youtube"`
+	Kind string `path:"kind" doc:"A discoverable provider's id, as listed by GET /v1/filler/providers"`
 	Body struct {
 		Input string `json:"input" minLength:"1" maxLength:"500"`
 	}
@@ -565,11 +584,29 @@ func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSugge
 	if err := s.requireFillerProviderEnabled(ctx, in.Kind); err != nil {
 		return nil, err
 	}
+	query := strings.TrimSpace(in.Query)
+	if minimum := s.providerDescription(in.Kind).Find.MinQuery; len([]rune(query)) < minimum {
+		return nil, errUnprocessable("That search is too short", fmt.Sprintf("Type at least %d characters.", minimum))
+	}
+	// An address is checked rather than searched for: it names one source, and a search for it
+	// would return whatever else happens to match.
+	if recognizer, ok := s.sourceProviders.Recognizer(source.ID(in.Kind)); ok && recognizer.Recognizes(query) {
+		resolve := &resolveFillerSourceInput{Kind: in.Kind}
+		resolve.Body.Input = query
+		resolved, err := s.resolveFillerSource(ctx, resolve)
+		if err != nil {
+			return nil, err
+		}
+		out := &fillerSourceSuggestionsOutput{}
+		out.Body.Exact = true
+		out.Body.Suggestions = []FillerSourceSuggestionDTO{resolved.Body}
+		return out, nil
+	}
 	limit := in.Limit
 	if limit <= 0 || limit > 8 {
 		limit = 8
 	}
-	results, err := s.filler.SuggestSources(ctx, in.Kind, strings.TrimSpace(in.Query), limit)
+	results, err := s.filler.SuggestSources(ctx, in.Kind, query, limit)
 	if err != nil {
 		if errors.Is(err, filler.ErrInvalidSourceReference) {
 			return nil, errUnprocessable("That search could not be used", err.Error())
@@ -585,7 +622,7 @@ func (s *Server) suggestFillerSources(ctx context.Context, in *fillerSourceSugge
 	}
 	out := &fillerSourceSuggestionsOutput{}
 	for _, result := range results {
-		out.Body.Suggestions = append(out.Body.Suggestions, sourceSuggestionDTO(result, registered))
+		out.Body.Suggestions = append(out.Body.Suggestions, s.sourceSuggestionDTO(result, registered))
 	}
 	return out, nil
 }
@@ -611,16 +648,16 @@ func (s *Server) resolveFillerSource(ctx context.Context, in *resolveFillerSourc
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list registered filler sources", err)
 	}
-	return &resolveFillerSourceOutput{Body: sourceSuggestionDTO(result, registered)}, nil
+	return &resolveFillerSourceOutput{Body: s.sourceSuggestionDTO(result, registered)}, nil
 }
 
 // providerDescription is the registered provider's description; the zero value for a kind nothing
 // is registered under.
-func (s *Server) providerDescription(kind string) sourceprovider.Description {
-	if p, ok := s.sourceProviders.Get(sourceprovider.ID(kind)); ok {
+func (s *Server) providerDescription(kind string) source.Description {
+	if p, ok := s.sourceProviders.Get(source.ID(kind)); ok {
 		return p.Describe()
 	}
-	return sourceprovider.Description{}
+	return source.Description{}
 }
 
 // discoverableLabels names the providers an operator can search or verify a source with, for
@@ -628,7 +665,7 @@ func (s *Server) providerDescription(kind string) sourceprovider.Description {
 func (s *Server) discoverableLabels() string {
 	var labels []string
 	for _, p := range s.sourceProviders.All() {
-		if _, ok := p.(sourceprovider.Finder); ok {
+		if _, ok := p.(source.Finder); ok {
 			labels = append(labels, p.Describe().Label)
 		}
 	}
@@ -660,7 +697,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 	if err != nil {
 		return nil, huma.Error500InternalServerError("read filler source", err)
 	}
-	var selected *fillerstore.FillerSource
+	var selected *records.FillerSource
 	for i := range sources {
 		if sources[i].ID == in.ID {
 			selected = &sources[i]
@@ -670,7 +707,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 	if selected == nil {
 		return nil, huma.Error404NotFound("Filler source not found")
 	}
-	if !s.sourceProviders.Fetched(sourceprovider.ID(selected.Kind)) {
+	if !s.sourceProviders.Fetched(source.ID(selected.Kind)) {
 		return nil, errUnprocessable("That source has no online catalog", "Choose an "+s.discoverableLabels()+" source.")
 	}
 	if !selected.Enabled {
@@ -680,7 +717,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 		return nil, errConflict("That source service is paused", "Turn it back on before adding a clip from it.")
 	}
 
-	jobID, err := s.filler.IngestSourceItems(ctx, selected.ID, selected.Kind, []sourceprovider.Item{{
+	jobID, err := s.filler.IngestSourceItems(ctx, selected.ID, selected.Kind, []source.Item{{
 		ID: in.Body.RemoteID, URL: in.Body.URL,
 	}})
 	if errors.Is(err, filler.ErrProviderPaused) {
@@ -710,14 +747,14 @@ func (s *Server) registeredFillerSourceTargets(ctx context.Context) (map[string]
 	return registered, nil
 }
 
-func sourceSuggestionDTO(source sourceprovider.Suggestion, registered map[string]bool) FillerSourceSuggestionDTO {
+func (s *Server) sourceSuggestionDTO(source source.Suggestion, registered map[string]bool) FillerSourceSuggestionDTO {
+	provider := string(source.Provider)
 	previewItems := make([]FillerSourcePreviewItemDTO, 0, len(source.PreviewItems))
 	for _, item := range source.PreviewItems {
 		previewItems = append(previewItems, FillerSourcePreviewItemDTO{
-			Title: item.Title, URL: item.URL, DurationMS: item.DurationMS,
+			Title: item.Title, URL: item.URL, DurationMS: item.DurationMS, EmbedURL: s.embedURL(provider, item.URL),
 		})
 	}
-	provider := string(source.Provider)
 	return FillerSourceSuggestionDTO{
 		Provider: provider, TargetType: source.TargetType, CanonicalID: source.CanonicalID,
 		CanonicalURL: source.CanonicalURL, Title: source.Title, Description: source.Description,
@@ -739,7 +776,7 @@ func sourceSuggestionDTO(source sourceprovider.Suggestion, registered map[string
 //     "Fetch now" runs the same sync the scheduler does.
 //   - DOWNLOADED (archive, youtube) need BOTH a target to fetch (the store's `Fetchable()`,
 //     which is false on an empty uri) and the ingest route to hand it to.
-func canFetchRow(src fillerstore.FillerSource, ingestAvailable bool) bool {
+func canFetchRow(src records.FillerSource, ingestAvailable bool) bool {
 	if src.Scannable() {
 		return true
 	}
@@ -753,7 +790,7 @@ type addFillerSourceInput struct {
 		// hardcoded "archive", so the archive identifier rule — which rejects anything containing a dot —
 		// was applied to every URI, and a YouTube playlist URL 400'd on a message about
 		// archive.org collections. One validator cannot serve two vocabularies.
-		Kind    string `json:"kind" enum:"archive,youtube,folder,library" doc:"Which kind of source this is"`
+		Kind    string `json:"kind" doc:"The provider's id, as listed by GET /v1/filler/providers, whose sources are added by typing an address"`
 		URI     string `json:"uri" minLength:"1" doc:"An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name"`
 		Label   string `json:"label,omitempty" doc:"Operator-facing name; falls back to the identifier"`
 		Country string `json:"country,omitempty" maxLength:"2" doc:"ISO 3166-1 alpha-2 source country"`
@@ -774,7 +811,7 @@ type addFillerSourceInput struct {
 // 2026-08-02 decision returned `library` to being scanned for real (§10). The singleton index is
 // gone (migration 00032), so the guard that used to 409 them is gone with it.
 func (s *Server) normalizeSourceURI(kind, raw string) string {
-	addresser, ok := s.sourceProviders.Addresser(sourceprovider.ID(kind))
+	addresser, ok := s.sourceProviders.Addresser(source.ID(kind))
 	if !ok {
 		return ""
 	}
@@ -802,12 +839,12 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 		// been the pre-V37 behaviour that told a YouTube user about archive.org collections.
 		problem := s.providerDescription(kind).BadAddress
 		if problem.Title == "" {
-			problem = sourceprovider.Problem{Title: "That kind of source can't be added", Detail: "Choose one of the source services listed."}
+			problem = source.Problem{Title: "That kind of source can't be added", Detail: "Choose one of the source services listed."}
 		}
 		return nil, errBadRequest(problem.Title, problem.Detail)
 	}
 	var resolvedTitle string
-	if _, discoverable := s.sourceProviders.Finder(sourceprovider.ID(kind)); discoverable {
+	if _, discoverable := s.sourceProviders.Finder(source.ID(kind)); discoverable {
 		if s.filler == nil {
 			return nil, huma.Error501NotImplemented("source verification is not available on this instance")
 		}
@@ -821,7 +858,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 			}
 			return nil, huma.Error502BadGateway("verify source", err)
 		}
-		if resolved.Provider != sourceprovider.ID(kind) {
+		if resolved.Provider != source.ID(kind) {
 			return nil, huma.Error502BadGateway("verify source", errors.New("provider returned the wrong source kind"))
 		}
 		// The provider's own address rule reads the canonical target, whichever of its identifier
@@ -848,7 +885,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	rowID := kind + ":" + id
 	// NewFillerSource, never a struct literal: `Enabled` is a bool, so a literal that omits it
 	// registers the collection SWITCHED OFF (see the store).
-	src := fillerstore.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
+	src := records.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
 	src.Geography = filler.Geography{Country: in.Body.Country}.Normalize()
 	if err := src.Geography.Validate(); err != nil {
 		return nil, errUnprocessable("Invalid source geography", err.Error())
@@ -907,7 +944,7 @@ type setFillerSourceEnabledOutput struct {
 }
 
 type setFillerProviderEnabledInput struct {
-	Kind string `path:"kind" enum:"archive,youtube"`
+	Kind string `path:"kind" doc:"A fetched provider's id, as listed by GET /v1/filler/providers"`
 	Body struct {
 		Enabled bool `json:"enabled"`
 	}
@@ -989,7 +1026,7 @@ func (s *Server) setFillerSourceEnabled(ctx context.Context, in *setFillerSource
 	}
 
 	switch in.ID {
-	case string(sourceprovider.FolderID):
+	case string(source.FolderID):
 		if s.settings == nil {
 			return nil, huma.Error501NotImplemented("settings are not available on this instance")
 		}
@@ -1095,7 +1132,7 @@ func (s *Server) deleteFillerSource(ctx context.Context, in *deleteFillerSourceI
 			"This row groups the sources you've added — remove them individually.")
 	}
 	switch in.ID {
-	case string(sourceprovider.FolderID), string(sourceprovider.LibraryID):
+	case string(source.FolderID), string(source.LibraryID):
 		// ⚠ The config-backed SINGLETONS are not registrations, so there is nothing to
 		// un-register. Deleting one would have to mean "unset filler.dir", which belongs in
 		// Settings where the consequence is legible — and since migration 00029 materialises
@@ -1196,7 +1233,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 			if !src.Configured() {
 				continue
 			}
-			if src.Kind == string(sourceprovider.FolderID) && src.URI == dir {
+			if src.Kind == string(source.FolderID) && src.URI == dir {
 				continue // the config-backed drop-folder; rendered from configuration above
 			}
 			label := src.Label
@@ -1215,6 +1252,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				Removable:        true,
 				Target:           label,
 				URI:              src.URI,
+				PageURL:          s.sourcePageURL(src.Kind, src.URI),
 				Detail:           s.sourceDetail(src.Kind, src.URI),
 				Count:            bySource[src.ID],
 				Incoming:         incomingBySource[src.ID],
@@ -1262,8 +1300,8 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	out.Body.Total = totalClips
 	out.Body.Sources = []FillerSourceDTO{
 		{
-			ID:   string(sourceprovider.FolderID),
-			Kind: string(sourceprovider.FolderID),
+			ID:   string(source.FolderID),
+			Kind: string(source.FolderID),
 			// The folder's switch is a SETTING, because the folder itself is derived from one.
 			// The handle answers the declared default (on) when the reader cannot, so a
 			// settings service that cannot answer does not silently stop the scan.
@@ -1291,7 +1329,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// row appended below with its own target, switch and counts. Rendering this one unconditionally
 	// alongside those would put two different things called "library" in one list, one of them
 	// inert — which is the competing-descriptions problem this file's header exists to prevent.
-	library := string(sourceprovider.LibraryID)
+	library := string(source.LibraryID)
 	if n, incoming := bySource[library], incomingBySource[library]; n > 0 || incoming > 0 {
 		out.Body.Sources = append(out.Body.Sources, FillerSourceDTO{
 			ID:         library,
@@ -1330,7 +1368,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 }
 
 func (s *Server) projectSourceReadiness(row *FillerSourceDTO, home filler.Geography) {
-	fetched := s.sourceProviders.Fetched(sourceprovider.ID(row.Kind))
+	fetched := s.sourceProviders.Fetched(source.ID(row.Kind))
 	row.Actions = []FillerSourceAction{}
 	if row.Group {
 		// Provider rows summarize children visually but do not perform work themselves.
@@ -1474,12 +1512,28 @@ func providerNode(id, kind, label, detail string, enabled bool, children []Fille
 // automatic downloads can currently run.
 // sourceSearchable reports whether a source of this kind can be searched in place.
 func (s *Server) sourceSearchable(kind string) bool {
-	_, ok := s.sourceProviders.Searcher(sourceprovider.ID(kind))
+	_, ok := s.sourceProviders.Searcher(source.ID(kind))
 	return ok && s.filler != nil
 }
 
+// sourcePageURL is the source's page at its provider, or "" when the provider has none.
+func (s *Server) sourcePageURL(kind, uri string) string {
+	if linker, ok := s.sourceProviders.Linker(source.ID(kind)); ok {
+		return linker.SourceURL(uri)
+	}
+	return ""
+}
+
+// embedURL is a player for an item of the provider's, or "" when the provider offers none.
+func (s *Server) embedURL(kind, itemURL string) string {
+	if linker, ok := s.sourceProviders.Linker(source.ID(kind)); ok {
+		return linker.EmbedURL(itemURL)
+	}
+	return ""
+}
+
 func (s *Server) sourceDetail(kind, uri string) string {
-	if p, ok := s.sourceProviders.Get(sourceprovider.ID(kind)); ok && p.Describe().SourceDetail != "" {
+	if p, ok := s.sourceProviders.Get(source.ID(kind)); ok && p.Describe().SourceDetail != "" {
 		return p.Describe().SourceDetail
 	}
 	return uri

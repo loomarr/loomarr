@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# On-demand staging: one cloud server running the demo site, destroyed when it expires.
+#
+#   scripts/staging.sh up      create it (VERSION=<release>, or STAGING_IMAGE + STAGING_COMMIT)
+#   scripts/staging.sh down    destroy it now
+#   scripts/staging.sh sweep   destroy anything past its expiry
+#
+# STAGING_HOURS=keep makes the long-running demo site: the sweep leaves it alone, and only `down`
+# destroys it. It is opt-in by name, so an unreadable expiry still means destroy.
+#
+# The provider bills a stopped server, so destroying is the only way to stop paying. The cloud
+# account also holds unrelated servers and its key can reach them, so this acts only on a server
+# carrying both our tag and our label prefix.
+
+set -euo pipefail
+
+ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)"
+API="${VULTR_API_URL:-https://api.vultr.com/v2}"
+TAG=loomarr-staging
+LABEL_PREFIX=loomarr-staging-
+PLAN=vc2-4c-8gb
+REGION=ewr
+OS_ID=2284 # Ubuntu 24.04 LTS x64
+MAX_HOURS=24
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+die() {
+	printf 'staging: %s\n' "$1" >&2
+	exit 1
+}
+
+# The key goes through curl's config on stdin, so it never appears in a process list.
+api() {
+	local method="$1" path="$2" body="${3:-}"
+	local args=(--fail-with-body -sS --max-time 30 -X "$method" -K -)
+	if [ -n "$body" ]; then
+		args+=(-H 'Content-Type: application/json' --data "@$body")
+	else
+		# Never retry a create: a retry after a lost response would make a second billed server.
+		args+=(--retry 3)
+	fi
+	printf 'header = "Authorization: Bearer %s"\n' "$VULTR_API_KEY" | curl "${args[@]}" "$API$path"
+}
+
+# ours prints one "id expiry power" line per staging server. The expiry is "keep" for the demo
+# site, and 0 when it is unreadable. Callers assign it first and check the status: a failure read
+# through a pipe or process substitution looks like an empty account, and the sweep would go green
+# while a server keeps billing.
+ours() {
+	local response
+	# Only a refusal is printed: a good response lists every server in the account, and logs are public.
+	if ! response="$(api GET '/instances?per_page=500')"; then
+		printf 'staging: the provider refused the listing: %s\n' "${response:0:300}" >&2
+		return 1
+	fi
+	jq -r --arg tag "$TAG" --arg prefix "$LABEL_PREFIX" '
+		.instances[]
+		| ((.tags // []) | map(tostring)) as $tags
+		| select(($tags | index($tag)) and ((.label // "") | startswith($prefix)))
+		| [.id, (if ($tags | index("keep")) then "keep"
+			else ([$tags[] | select(test("^expires-[0-9]+$")) | ltrimstr("expires-")][0] // "0") end),
+		   (.power_status // "unknown")]
+		| @tsv' <<<"$response"
+}
+
+destroy() {
+	api DELETE "/instances/$1" >/dev/null
+	printf 'staging: destroyed %s\n' "$1"
+}
+
+up() {
+	local hours="${STAGING_HOURS:-4}" version="${VERSION:-}" image="${STAGING_IMAGE:-}" commit="${STAGING_COMMIT:-}"
+	local database="${STAGING_DATABASE:-sqlite}" public_url="${STAGING_PUBLIC_URL:-}" tunnel_token='' admin_password=''
+	[ -n "${VULTR_API_KEY:-}" ] || die 'VULTR_API_KEY is not set'
+	[ -n "${TS_AUTHKEY:-}" ] || die 'TS_AUTHKEY is not set'
+	[[ "$database" =~ ^(sqlite|postgres)$ ]] || die 'STAGING_DATABASE must be sqlite or postgres'
+	if [ -n "$public_url" ]; then
+		[[ "$public_url" =~ ^https://[a-z0-9.-]+$ ]] || die "invalid STAGING_PUBLIC_URL: $public_url"
+		[ -n "${CF_TUNNEL_TOKEN:-}" ] || die 'a public site needs CF_TUNNEL_TOKEN'
+		# Checked here too, so a bad secret fails the run instead of a server that then powers off.
+		[[ "${DEMO_ADMIN_PASSWORD:-}" =~ ^[A-Za-z0-9._~-]{16,}$ ]] ||
+			die 'a public site needs DEMO_ADMIN_PASSWORD: 16 or more letters, digits or ._~-'
+		# Only a public server gets these: a staging run has no use for them.
+		tunnel_token="$CF_TUNNEL_TOKEN"
+		admin_password="$DEMO_ADMIN_PASSWORD"
+	fi
+	if [ "$hours" != keep ]; then
+		[[ "$hours" =~ ^[0-9]+$ ]] && [ "$hours" -ge 1 ] && [ "$hours" -le "$MAX_HOURS" ] ||
+			die "STAGING_HOURS must be 1 to $MAX_HOURS, or keep"
+	fi
+
+	local name
+	if [ -n "$version" ]; then
+		[ -z "$image$commit" ] || die 'set VERSION, or STAGING_IMAGE and STAGING_COMMIT, not both'
+		[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "invalid VERSION: $version"
+		name="$LABEL_PREFIX$(printf '%s' "$version" | tr -c '0-9A-Za-z' '-')"
+	else
+		[ -n "$image" ] || die 'set VERSION, or STAGING_IMAGE and STAGING_COMMIT'
+		[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || die 'STAGING_COMMIT must be a full commit id'
+		[[ "$image" =~ ^[a-z0-9./-]+:[0-9A-Za-z._-]+$ ]] || die "invalid STAGING_IMAGE: $image"
+		name="$LABEL_PREFIX${commit:0:12}"
+	fi
+	local existing
+	existing="$(ours)" || die 'could not list servers, so nothing was created'
+	[ -z "$existing" ] || die 'a staging server already exists; run down first'
+
+	local lifetime=keep
+	if [ "$hours" != keep ]; then
+		lifetime="expires-$(($(date +%s) + hours * 3600))"
+	fi
+	{
+		printf '#!/bin/bash\n'
+		printf 'STAGING_NAME=%q\nVERSION=%q\nSTAGING_IMAGE=%q\nSTAGING_COMMIT=%q\nSTAGING_DATABASE=%q\n' \
+			"$name" "$version" "$image" "$commit" "$database"
+		printf 'STAGING_PUBLIC_URL=%q\nTS_AUTHKEY=%q\nCF_TUNNEL_TOKEN=%q\nDEMO_ADMIN_PASSWORD=%q\n' \
+			"$public_url" "$TS_AUTHKEY" "$tunnel_token" "$admin_password"
+		cat "$ROOT/docker/staging-boot.sh.tmpl"
+	} >"$TMP/boot"
+	# Through a file, because the boot script holds the tailnet key and argv is visible.
+	base64 -w0 "$TMP/boot" >"$TMP/boot.b64"
+	jq -n --arg region "$REGION" --arg plan "$PLAN" --argjson os "$OS_ID" --arg label "$name" \
+		--arg tag "$TAG" --arg lifetime "$lifetime" --rawfile boot "$TMP/boot.b64" \
+		'{region: $region, plan: $plan, os_id: $os, label: $label, hostname: $label, backups: "disabled",
+		  tags: [$tag, $lifetime], user_data: $boot}' >"$TMP/body.json"
+	local id
+	id="$(api POST /instances "$TMP/body.json" | jq -r .instance.id)"
+	printf 'staging: created %s (%s), lifetime %s\n' "$name" "$id" "$lifetime"
+	printf 'staging: when it has booted, open http://%s:8080 on the tailnet\n' "$name"
+}
+
+down() {
+	[ -n "${VULTR_API_KEY:-}" ] || die 'VULTR_API_KEY is not set'
+	local list id _rest
+	list="$(ours)" || die 'could not list servers, so nothing was destroyed'
+	[ -n "$list" ] || printf 'staging: no server to destroy\n'
+	while IFS=$'\t' read -r id _rest; do
+		[ -z "$id" ] || destroy "$id"
+	done <<<"$list"
+}
+
+sweep() {
+	if [ -z "${VULTR_API_KEY:-}" ]; then
+		printf 'staging: VULTR_API_KEY is not set, so nothing to sweep\n'
+		return
+	fi
+	local list id expiry power now
+	list="$(ours)" || die 'could not list servers, so nothing was swept'
+	now="$(date +%s)"
+	while IFS=$'\t' read -r id expiry power; do
+		[ -n "$id" ] || continue
+		# A failed boot powers the server off, the one signal it can send without a cloud key.
+		if [ "$power" = stopped ]; then
+			printf 'staging: %s is powered off, so its boot failed\n' "$id"
+			destroy "$id"
+		elif [ "$expiry" != keep ] && [ "$expiry" -le "$now" ]; then
+			destroy "$id"
+		fi
+	done <<<"$list"
+}
+
+case "${1:-}" in
+up) up ;;
+down) down ;;
+sweep) sweep ;;
+*) die 'usage: staging.sh up|down|sweep' ;;
+esac

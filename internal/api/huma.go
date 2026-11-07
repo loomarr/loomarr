@@ -11,36 +11,35 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/activity"
-	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/contact"
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
-	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/people/contact"
+	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/proposal"
-	"github.com/loomarr/loomarr/internal/proposaloutlook"
-	"github.com/loomarr/loomarr/internal/recovery"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/outlook"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
-	"github.com/loomarr/loomarr/internal/suggest"
-	"github.com/loomarr/loomarr/internal/viewing"
 )
 
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
 // (§7.1, §14: code-first OpenAPI 3.1 via humago — no third-party router).
 type Server struct {
-	store fillerstore.Store
+	store records.Store
 	// stations is the broadcast station directory, read once from the store (it changes only
 	// with a seed revision at boot).
 	stations stationCache
@@ -95,28 +94,32 @@ type Server struct {
 	// collections backs the scope.collections picker; nil ⇒ the route 501s, the same
 	// nil-semantics every other optional service here uses.
 	collections CollectionService
-	ideaLibrary IdeaLibrary
+	// libraryRoots backs /v1/library/roots*, /v1/library/path-map and /v1/library/status (#2151);
+	// nil ⇒ those routes 409 as not configured.
+	libraryRoots LibraryRootService
+	// libraryHooks backs /v1/library/hooks/* (#2151 decision 10); nil ⇒ those routes 409.
+	libraryHooks LibraryHookService
+	ideaLibrary  IdeaLibrary
 	// icons backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate poster
 	// URLs drawn from the channel's own lineup titles. nil ⇒ 501 (TMDB unconfigured).
 	icons IconService
 	// images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the
 	// byte route 404s and the record route reports the image absent, which is the honest answer
 	// for an instance where the service is not wired.
-	images          ImageService
-	events          EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
-	shutdown        <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
-	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	fillerResearch  FillerResearchService
-	fillerDecisions *fillerdecision.Service          // durable V63 admission audit and projections
-	fillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
-	pods            PodPreviewer                     // /v1/channels/{id}/pods (§12); nil ⇒ 501
-	taxonomy        TaxonomyEditor                   // taxonomy impact + graph convergence; nil keeps store-only test wiring
+	images         ImageService
+	events         EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
+	shutdown       <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
+	filler         FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
+	fillerResearch FillerResearchService
+	fillerDefects  *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	pods           PodPreviewer               // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy       TaxonomyEditor             // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
 	// sourceProviders is every provider a filler source can name. It answers what each one is and
 	// can do; nil names none, so no source is fetched and none can be added.
-	sourceProviders *sourceprovider.Registry
+	sourceProviders *source.Registry
 	// intakeLanguages is Options.IntakeLanguages; nil reports no intake language.
 	intakeLanguages func(context.Context) (string, error)
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
@@ -357,6 +360,13 @@ type SettingEnumOption struct {
 	Label string `json:"label"`
 }
 
+// SettingPreset is one common choice for an open-ended setting, offered ahead of a custom value.
+// Value is canonical, so it equals a resolved value that matches it.
+type SettingPreset struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 type SettingEntry struct {
 	Key          string              `json:"key"`
 	Label        string              `json:"label,omitempty" doc:"Registry-owned human label for workflow forms."`
@@ -378,6 +388,7 @@ type SettingEntry struct {
 	Secret       bool                `json:"secret"`
 	Enum         []string            `json:"enum,omitempty" doc:"Enum values (the closed set) — labels are in enumOptions."`
 	EnumOptions  []SettingEnumOption `json:"enumOptions,omitempty" doc:"Enum choices with display labels (config-design §5)."`
+	Presets      []SettingPreset     `json:"presets,omitempty" doc:"Common choices offered before a custom value, in canonical form. Any value the setting accepts still saves."`
 	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
 	RequiredFor  string              `json:"requiredFor,omitempty"`
 	Doc          string              `json:"doc"`
@@ -409,8 +420,8 @@ type FillerService interface {
 	Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error)
 	// SuggestSources and ResolveSource are read-only provider discovery. They create no registry
 	// row and grant no acquisition authority; POST /v1/filler/sources remains that boundary.
-	SuggestSources(ctx context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error)
-	ResolveSource(ctx context.Context, provider, input string) (sourceprovider.Suggestion, error)
+	SuggestSources(ctx context.Context, provider, query string, limit int) ([]source.Suggestion, error)
+	ResolveSource(ctx context.Context, provider, input string) (source.Suggestion, error)
 	// Ingest downloads clips from the given source URLs into the drop-folder, returning
 	// a job id immediately (§10). Downloads take minutes to hours, so this is
 	// fire-and-report: progress arrives on the SSE bus as `filler_ingest` frames, the
@@ -422,7 +433,7 @@ type FillerService interface {
 	// IngestSourceItems queues exact candidates discovered inside one registered source. The
 	// source identity and provider kind are server-owned policy; RemoteID preserves provider
 	// deduplication and this path never registers an item as another source.
-	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (jobID string, err error)
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []source.Item) (jobID string, err error)
 	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
 	// before launching the ordinary downloader. A failed commit must not start any work.
 	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (jobID string, err error)
@@ -478,8 +489,8 @@ type FillerService interface {
 // clip-detail research. Search results remain internal pipeline evidence; this seam intentionally
 // exposes no query or per-clip command.
 type FillerResearchService interface {
-	Status(context.Context) (fillerresearch.WebStatus, error)
-	Test(context.Context, fillerresearch.WebConfig) (fillerresearch.WebStatus, bool, string, error)
+	Status(context.Context) (research.WebStatus, error)
+	Test(context.Context, research.WebConfig) (research.WebStatus, bool, string, error)
 }
 
 // TaxonomyEditor is the deep graph-edit module used by taxonomy writes. The store still owns the
@@ -547,6 +558,8 @@ type DiscoveredClip struct {
 	// ThumbnailURL is archive.org's own item thumbnail. Free — a stable URL pattern needing no
 	// API call — which is why it is built here rather than fetched.
 	ThumbnailURL string `json:"thumbnailUrl,omitempty"`
+	// EmbedURL plays the item in its provider's own player; absent when it cannot be embedded.
+	EmbedURL string `json:"embedUrl,omitempty"`
 }
 
 // DiscoveredClipStats is what a per-item metadata call learns about one result (§10, V35) —
@@ -663,17 +676,17 @@ type GuideReader interface {
 type SuggestService interface {
 	// Submit enqueues a suggestion job for an intent and returns the job id. It takes
 	// the DOMAIN intent rather than flat args: the flat form was "dependency-light",
-	// but this package already imports suggest (ProposalDTO carries proposal.Proposal),
+	// but this package already imports suggest (ProposalDTO carries proposals.Proposal),
 	// and the flat mirror had silently dropped RuntimeTgt — a knob the suggester
 	// honors (suggester.go prompt + scoring) that no client could set.
-	Submit(ctx context.Context, intent proposal.Intent, createdBy string) (jobID string, err error)
+	Submit(ctx context.Context, intent proposals.Intent, createdBy string) (jobID string, err error)
 	// Refine submits a new job for the channel with a refine-flavored intent, so its
 	// proposal binds back to the same channel (§7 POST /v1/channels/{id}/refine) and is
 	// listed as the refining admin's own request. Returns the job id to poll.
-	Refine(ctx context.Context, channelID string, intent proposal.Intent, requestedBy string) (string, error)
+	Refine(ctx context.Context, channelID string, intent proposals.Intent, requestedBy string) (string, error)
 	// SubmitBuilt queues a proposal that needed no generation (a library channel idea, #1720)
 	// as the requester's own request, and returns its job id. The model never runs.
-	SubmitBuilt(ctx context.Context, intent proposal.Intent, proposal proposal.Proposal, createdBy string) (jobID string, err error)
+	SubmitBuilt(ctx context.Context, intent proposals.Intent, proposal proposals.Proposal, createdBy string) (jobID string, err error)
 }
 
 // SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM
@@ -884,7 +897,7 @@ type TunarrConnector interface {
 
 // ProposalOutlook observes pending content without approval or persistence.
 type ProposalOutlook interface {
-	Assess(context.Context, store.Proposal, *suggest.ApprovalEdit) (proposaloutlook.Assessment, error)
+	Assess(context.Context, store.Proposal, *suggest.ApprovalEdit) (outlook.Assessment, error)
 }
 
 // ProposalApprover is the complete approval gate. Its implementation plans the
@@ -896,7 +909,7 @@ type ProposalApprover interface {
 	// (manual/AI-off channel creation, #1817 G2), splitting it into owned titles and titles to
 	// acquire. It shares the one approval-addition resolver with Approve's edit.Add, so a
 	// manually submitted proposal gets the same "client presence is not authority" guarantee.
-	ResolveManualLineup(ctx context.Context, items []proposal.ProposalItem) (lineup, acquisitions []proposal.ProposalItem, err error)
+	ResolveManualLineup(ctx context.Context, items []proposals.ProposalItem) (lineup, acquisitions []proposals.ProposalItem, err error)
 }
 
 // ProposalDecisionQuality receives a denial only after its submitted-to-denied
@@ -905,13 +918,9 @@ type ProposalDecisionQuality interface {
 	ProposalDeclined(context.Context, string, time.Time)
 }
 
-// ChannelBinder resolves the legacy explicit POST /v1/channels intent helpers and
-// shares channel-number occupancy with manually typed channel numbers. Approval
-// uses ProposalApprover instead of reaching through this lower-level seam.
+// ChannelBinder shares channel-number occupancy with manually typed channel numbers.
+// Approval uses ProposalApprover instead of reaching through this lower-level seam.
 type ChannelBinder interface {
-	LineupFromIntent(ctx context.Context, intentRef string) ([]schedule.LineupEntry, error)
-	PolicyFromIntent(ctx context.Context, intentRef string) (schedule.ChannelPolicy, error)
-	RequestFromIntent(ctx context.Context, intentRef string) (intentJSON, requestedBy string, err error)
 	// NumberInUse answers the SAME question the approve path's numbering asks — is this
 	// channel number free in Loomarr's store AND in Tunarr? — so an operator who types a
 	// number gets the same answer the server gives itself when it picks one. Best-effort:
@@ -1019,7 +1028,7 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store                fillerstore.Store
+	Store                records.Store
 	Auth                 Authorizer
 	Log                  *slog.Logger
 	Metrics              *metrics.Recorder
@@ -1058,21 +1067,22 @@ type Options struct {
 	Search           SearchService          // /v1/search (Phase 11); nil ⇒ search route 501
 	MovieCollections MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
 	Collections      CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
+	LibraryRoots     LibraryRootService     // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
+	LibraryHooks     LibraryHookService     // /v1/library/hooks/* (#2151); nil ⇒ 409
 	IdeaLibrary      IdeaLibrary            // /v1/discovery/ideas (#1665); nil ⇒ route 501
 	Icons            IconService            // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
 	Images          ImageService
-	Events          EventSource                      // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Shutdown        <-chan struct{}                  // generation lifetime; closes SSE so http.Server.Shutdown can drain
-	Filler          FillerService                    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	SourceProviders *sourceprovider.Registry         // /v1/filler/providers and source validation; nil ⇒ none registered
-	FillerResearch  FillerResearchService            // optional structured-first web-search status and validation
-	FillerDecisions *fillerdecision.Service          // /v1/filler/decisions* (§10 V63)
-	FillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
-	Pods            PodPreviewer                     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	Taxonomy        TaxonomyEditor                   // taxonomy impact + committed channel convergence
+	Events          EventSource                // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Shutdown        <-chan struct{}            // generation lifetime; closes SSE so http.Server.Shutdown can drain
+	Filler          FillerService              // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	SourceProviders *source.Registry           // /v1/filler/providers and source validation; nil ⇒ none registered
+	FillerResearch  FillerResearchService      // optional structured-first web-search status and validation
+	FillerDefects   *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	Pods            PodPreviewer               // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	Taxonomy        TaxonomyEditor             // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
 	FillerLayout filler.Layout

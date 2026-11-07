@@ -2,6 +2,7 @@ import { createNeighbourWarmer } from "../neighbour-warmer";
 import type { PlayerChannel } from "../player-source";
 import { StartFailure } from "../start-failure";
 import type {
+  LivePlaybackState,
   PlayerController,
   PlayerControllerOptions,
   PlayerSnapshot,
@@ -19,6 +20,12 @@ const STALL_NOTICE_MS = 3_000;
 const STALL_FAIL_MS = 20_000;
 const STALL_FAILURE = "Lost the connection to the server.";
 
+const sameLivePlayback = (left: LivePlaybackState | undefined, right: LivePlaybackState) =>
+  left?.lagSeconds === right.lagSeconds &&
+  left.mode === right.mode &&
+  left.noticeRevision === right.noticeRevision &&
+  left.viewerTimeMs === right.viewerTimeMs;
+
 const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
   [...channels]
     .filter((channel) => channel.inAppPlayable)
@@ -29,7 +36,6 @@ const createPlayerController = ({
   onPlayerError,
   onTune,
   prefetchStill,
-  profile,
   recovery,
   restoreChannelId,
   source,
@@ -52,7 +58,7 @@ const createPlayerController = ({
     status: "empty",
   };
   const listeners = new Set<(next: PlayerSnapshot) => void>();
-  const warmer = createNeighbourWarmer({ prefetchStill, profile, radius: warmRadius, source });
+  const warmer = createNeighbourWarmer({ prefetchStill, radius: warmRadius, source });
 
   const publish = (next: PlayerSnapshot) => {
     snapshot = next;
@@ -226,7 +232,7 @@ const createPlayerController = ({
       if (replacing) {
         await replacing;
       } else {
-        const nextSource = warmedSource ?? (await source.mint(channel, profile, request.signal));
+        const nextSource = warmedSource ?? (await source.mint(channel, request.signal));
         if (!isCurrentAttempt(attemptId, request.signal)) return;
         // A channel nobody warmed gets its picture from its own mint: the server decodes a cold
         // channel's still on demand, so the overlay can show it while the stream starts.
@@ -286,6 +292,7 @@ const createPlayerController = ({
   const unsubscribeTransport = transport.subscribe((event) => {
     if (!isCurrentAttempt(event.attemptId) || event.attemptId !== snapshot.attemptId) return;
     if (event.type === "live-state") {
+      if (sameLivePlayback(snapshot.livePlayback, event.state)) return;
       publish({ ...snapshot, livePlayback: event.state });
       return;
     }
@@ -297,7 +304,12 @@ const createPlayerController = ({
     if (event.type === "error") {
       // A retry is already scheduled for this failure; a second error from the same dead player
       // must not spend budget or report twice.
-      if (!retryTimer) recordFailure(event.error);
+      if (!retryTimer) {
+        recordFailure(
+          event.error,
+          event.startStatus === undefined ? undefined : new StartFailure(event.error, event.startStatus),
+        );
+      }
       return;
     }
     if (event.type === "paused") {
@@ -400,6 +412,10 @@ const createPlayerController = ({
     },
     retry: async () => {
       if (snapshot.channel) await tune(snapshot.channel, "retry", true);
+    },
+    seek: async (wallClockMs) => {
+      if (disposed || !snapshot.channel) return;
+      await transport.seek?.(wallClockMs);
     },
     step: async (direction) => {
       const channel = findAdjacent(direction);

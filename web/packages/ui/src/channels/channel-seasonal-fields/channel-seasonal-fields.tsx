@@ -29,6 +29,10 @@ const MODE_OPTIONS: readonly ChoiceOption<SeasonalMode>[] = [
   },
 ];
 
+// The mode's name as the editor shows it, for screens that summarise a policy rather than edit it.
+const seasonalModeLabel = (mode: SeasonalMode): string =>
+  MODE_OPTIONS.find((o) => o.value === mode)?.label ?? mode;
+
 // How many holiday episodes of an ordinary series the built-in rotation features per day.
 const STRENGTH_OPTIONS: readonly ChoiceOption<SeasonalStrength>[] = [
   { value: "light", label: "Light", description: "About one holiday episode a day while a holiday is on." },
@@ -169,4 +173,4 @@ const ChannelSeasonalFields = ({
   </Surface>
 );
 
-export { ChannelSeasonalFields };
+export { ChannelSeasonalFields, seasonalModeLabel };

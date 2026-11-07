@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
@@ -122,7 +122,7 @@ func (s *Server) setupState(ctx context.Context, _ *struct{}) (*setupStateOutput
 type bootstrapInput struct {
 	Body struct {
 		Username string `json:"username" doc:"The owning admin's local username."`
-		Password string `json:"password" doc:"The owning admin's password (Argon2id-hashed at rest)."`
+		Password string `json:"password" format:"password" minLength:"8" doc:"The owning admin's password (Argon2id-hashed at rest)."`
 	}
 }
 
@@ -140,6 +140,9 @@ func (s *Server) bootstrap(ctx context.Context, in *bootstrapInput) (*bootstrapO
 	u, err := s.provision.Bootstrap(ctx, in.Body.Username, in.Body.Password)
 	if errors.Is(err, auth.ErrBootstrapClosed) {
 		return nil, errConflict("Already set up", "An admin account already exists, so first-run setup is closed.")
+	}
+	if errors.Is(err, auth.ErrWeakPassword) {
+		return nil, errPasswordTooShort()
 	}
 	if errors.Is(err, auth.ErrInvalidBootstrap) {
 		return nil, errUnprocessable("Details required", "Enter both a username and a password to create the admin account.")

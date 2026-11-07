@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // phase is a stretch of a scripted encoder: ffmpeg's realtime speed and the cores it burns.
@@ -44,8 +46,8 @@ func runScript(t *testing.T, m *RungMonitor, phases ...phase) []decision {
 			block := fmt.Sprintf("frame=%d\nfps=25.00\nout_time_us=%d\nout_time_ms=%d\nout_time=00:00:00.000000\n"+
 				"dup_frames=0\ndrop_frames=0\nspeed=%.3gx\nprogress=continue\n",
 				frame, int64(out*1e6), int64(out*1e6), out/wall.Seconds())
-			var parsed []Progress
-			ReadProgress(io.NopCloser(strings.NewReader(block)), func(pr Progress) { parsed = append(parsed, pr) })
+			var parsed []encode.Progress
+			encode.ReadProgress(io.NopCloser(strings.NewReader(block)), func(pr encode.Progress) { parsed = append(parsed, pr) })
 			if len(parsed) != 1 {
 				t.Fatalf("the progress parser returned %d blocks for %q", len(parsed), block)
 			}

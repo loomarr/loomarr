@@ -14,18 +14,43 @@
 // fails with `Type 'true' is not assignable to type 'never'` on that line. It means exactly
 // one thing: *that field does not exist on the wire schema.*
 //
-// ⚠ **Generation carries NAMES and TYPES, not RULES.** The spec declares almost no constraints
-// (5 `minimum`, 3 `maximum`, 7 `minLength` across ~9k lines; `maxAcquisitions` has no bounds at
-// all), and OpenAPI has nowhere to put a user-facing message. So every product rule below —
-// the trims, the lengths, the 0–200 cap, the password confirmation — is deliberately
-// hand-authored and must STAY that way. Do not "simplify" these into the generated schema.
+// ⚠ **A limit the server declares is read from the generated constant; the MESSAGE stays here.**
+// The password minimum, the description minimum and the acquisition cap are generated constants
+// (`bootstrapBodyPasswordMin`, `submitProposalBodyDescriptionMin`, …) from the server's struct
+// tags, so the form and the API cannot disagree about them. OpenAPI has nowhere to put a
+// user-facing message, so every message is authored below. Rules the server does not declare —
+// the trims, the password confirmation — are still hand-authored here; moving one to the server
+// means a struct tag there and its generated constant here.
 // ⚠ PascalCase because orval 8.24 renamed generated zod SCHEMA exports (`loginBody` →
 // `LoginBody`). Scalar constraint constants kept their camelCase (`changePasswordBodyNextMin`),
 // so the casing here is not a blanket rule — it tracks what the generator emits per symbol.
-import { LoginBody } from "@loomarr/api/zod/auth";
+import {
+  ChangePasswordBody,
+  changePasswordBodyNextMin,
+  LoginBody,
+  RedeemPasswordRecoveryBody,
+  RequestPasswordRecoveryBody,
+  redeemPasswordRecoveryBodyPasswordMin,
+  requestPasswordRecoveryBodyUsernameMax,
+} from "@loomarr/api/zod/auth";
+import { AddFillerSourceBody, setFillerSourceEnabledBodyGeographyCountryMax } from "@loomarr/api/zod/filler";
+import { RedeemInvitationBody, redeemInvitationBodyPasswordMin } from "@loomarr/api/zod/invitations";
 import { NotificationProvidersUpdateBody } from "@loomarr/api/zod/notifications";
-import { SubmitProposalBody } from "@loomarr/api/zod/proposals";
-import { BootstrapBody } from "@loomarr/api/zod/setup";
+import {
+  SubmitProposalBody,
+  submitProposalBodyDescriptionMin,
+  submitProposalBodyMaxAcquisitionsMax,
+  submitProposalBodyMaxAcquisitionsMin,
+} from "@loomarr/api/zod/proposals";
+import { BootstrapBody, bootstrapBodyPasswordMin } from "@loomarr/api/zod/setup";
+import {
+  CreateLocalUserBody,
+  createLocalUserBodyPasswordMin,
+  PutUserContactAddressBody,
+  putUserContactAddressBodyEmailMax,
+  ResetUserPasswordBody,
+  resetUserPasswordBodyNextMin,
+} from "@loomarr/api/zod/users";
 import { z } from "zod";
 
 // The channel-intent form behind IntentInput (§3). description is the only
@@ -44,11 +69,21 @@ const intentShape = SubmitProposalBody.pick({
 });
 
 const intentSchema = intentShape.extend({
-  description: z.string().trim().min(3, "Describe the channel you want (a sentence is plenty)."),
+  description: z
+    .string()
+    .trim()
+    .min(submitProposalBodyDescriptionMin, "Describe the channel you want (a sentence is plenty)."),
   era: z.string().trim().optional(),
   tone: z.string().trim().optional(),
+  // positive, not the spec's minimum of 0: the server reads 0 as "no target", which the form
+  // expresses by leaving the field empty.
   runtimeTargetMin: z.number().int().positive().optional(),
-  maxAcquisitions: z.number().int().min(0).max(200).optional(),
+  maxAcquisitions: z
+    .number()
+    .int()
+    .min(submitProposalBodyMaxAcquisitionsMin)
+    .max(submitProposalBodyMaxAcquisitionsMax)
+    .optional(),
   mustInclude: z.array(z.string().trim()).optional(),
   mustExclude: z.array(z.string().trim()).optional(),
 });
@@ -61,7 +96,7 @@ const intentSchema = intentShape.extend({
 const bootstrapSchema = BootstrapBody.pick({ username: true, password: true })
   .extend({
     username: z.string().trim().min(1, "Pick a username."),
-    password: z.string().min(8, "At least 8 characters."),
+    password: z.string().min(bootstrapBodyPasswordMin, `At least ${bootstrapBodyPasswordMin} characters.`),
     confirm: z.string(),
   })
   .refine((v) => v.password === v.confirm, { message: "Passwords don't match.", path: ["confirm"] });
@@ -70,6 +105,84 @@ const bootstrapSchema = BootstrapBody.pick({ username: true, password: true })
 const loginSchema = LoginBody.pick({ username: true, password: true }).extend({
   username: z.string().trim().min(1, "Enter your username."),
   password: z.string().min(1, "Enter your password."),
+});
+
+const atLeast = (min: number) => `Use at least ${min} characters.`;
+
+// Change your own password (Your account, §11). `confirm` is form-only, as in bootstrapSchema.
+const changePasswordSchema = ChangePasswordBody.pick({ current: true, next: true })
+  .extend({
+    current: z.string().min(1, "Enter your current password."),
+    next: z.string().min(changePasswordBodyNextMin, atLeast(changePasswordBodyNextMin)),
+    confirm: z.string(),
+  })
+  .refine((v) => v.next === v.confirm, { message: "New passwords don't match.", path: ["confirm"] });
+
+// An admin adds a local account (People). The role is the wire's own enum, required here because
+// the form always shows a choice; the server's default (member) is the form's default value.
+const createLocalUserSchema = CreateLocalUserBody.pick({ username: true, password: true, role: true }).extend(
+  {
+    username: z.string().trim().min(1, "Pick a username."),
+    password: z.string().min(createLocalUserBodyPasswordMin, atLeast(createLocalUserBodyPasswordMin)),
+    role: CreateLocalUserBody.shape.role.unwrap(),
+  },
+);
+
+// Redeeming an invitation. A Library invitation signs in with the invited Emby or Jellyfin
+// account, so it needs that username and checks the existing password; a local one creates a
+// password, so it confirms it instead. One shape for both keeps one form: the field a path does
+// not show is simply never checked.
+const redeemInvitationSchema = (library: boolean) =>
+  RedeemInvitationBody.pick({ username: true, password: true })
+    .extend({
+      username: library
+        ? z.string().trim().min(1, "Enter the username for the invited Library account.")
+        : z.string(),
+      password: z.string().min(redeemInvitationBodyPasswordMin, atLeast(redeemInvitationBodyPasswordMin)),
+      confirm: z.string(),
+    })
+    .refine((v) => library || v.password === v.confirm, {
+      message: "Passwords need to match.",
+      path: ["confirm"],
+    });
+
+// Forgot password: ask for a reset link by username.
+const passwordRecoveryRequestSchema = RequestPasswordRecoveryBody.pick({ username: true }).extend({
+  username: z
+    .string()
+    .trim()
+    .min(1, "Enter your username.")
+    .max(
+      requestPasswordRecoveryBodyUsernameMax,
+      `Use ${requestPasswordRecoveryBodyUsernameMax} characters or fewer.`,
+    ),
+});
+
+// Redeem a reset link with a new password.
+const passwordRecoveryResetSchema = RedeemPasswordRecoveryBody.pick({ password: true })
+  .extend({
+    password: z
+      .string()
+      .min(redeemPasswordRecoveryBodyPasswordMin, atLeast(redeemPasswordRecoveryBodyPasswordMin)),
+    confirm: z.string(),
+  })
+  .refine((v) => v.password === v.confirm, { message: "Passwords need to match.", path: ["confirm"] });
+
+// An admin sets a replacement password for a local account.
+const resetUserPasswordSchema = ResetUserPasswordBody.pick({ next: true }).extend({
+  next: z.string().min(resetUserPasswordBodyNextMin, atLeast(resetUserPasswordBodyNextMin)),
+});
+
+// A person's contact email. Deliberately looser than z.email(): the server proves the mailbox by
+// delivering to it, so the form only catches an obviously incomplete address.
+const completeEmail = (email: string) =>
+  email.includes("@") && !email.startsWith("@") && !email.endsWith("@");
+const contactAddressSchema = PutUserContactAddressBody.pick({ email: true }).extend({
+  email: z
+    .string()
+    .trim()
+    .max(putUserContactAddressBodyEmailMax, `Use ${putUserContactAddressBodyEmailMax} characters or fewer.`)
+    .refine(completeEmail, "Enter one complete email address."),
 });
 
 interface NotificationProviderRequiredField {
@@ -113,5 +226,31 @@ const notificationProviderFormSchema = (
   });
 };
 
+// A source typed by its address. A blank one never reaches the server; the submit button says so
+// by staying disabled, so there is no message.
+const addFillerSourceSchema = AddFillerSourceBody.pick({ kind: true, uri: true }).extend({
+  uri: z.string().trim().min(1),
+});
+
+// A source's own area. An empty one isn't saved here: "Use my location" clears it, and the save
+// button is disabled until a country is chosen.
+const fillerSourceCountrySchema = z.object({
+  country: z.string().trim().min(1).max(setFillerSourceEnabledBodyGeographyCountryMax),
+});
+
 export type { NotificationProviderRequiredField };
-export { bootstrapSchema, intentSchema, loginSchema, notificationProviderFormSchema };
+export {
+  addFillerSourceSchema,
+  bootstrapSchema,
+  changePasswordSchema,
+  contactAddressSchema,
+  createLocalUserSchema,
+  fillerSourceCountrySchema,
+  intentSchema,
+  loginSchema,
+  notificationProviderFormSchema,
+  passwordRecoveryRequestSchema,
+  passwordRecoveryResetSchema,
+  redeemInvitationSchema,
+  resetUserPasswordSchema,
+};

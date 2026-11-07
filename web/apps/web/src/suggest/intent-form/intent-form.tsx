@@ -3,9 +3,41 @@ import { intentSchema } from "@loomarr/core/schemas";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { useState } from "react";
 import { IntentInput } from "@/components/loomarr/ai/intent-input";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import type { IntentFormProps } from "./intent-form.type";
+
+// "" → undefined (omitted), never [] — an empty array is a claim ("nothing required"),
+// absence is the truth ("the user didn't say").
+const terms = (v: string): string[] | undefined => {
+  const list = v
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return list.length > 0 ? list : undefined;
+};
+
+interface IntentDraft {
+  description: string;
+  era: string;
+  tone: string;
+  runtime: string;
+  maxAcq: string;
+  mustInclude: string;
+  mustExclude: string;
+}
+
+// The schema is the same one packages/core shares with mobile, and its field names
+// are the wire's (guarded by intent-contract.test.ts).
+const parseIntent = (draft: IntentDraft) =>
+  intentSchema.safeParse({
+    description: draft.description,
+    era: draft.era.trim() || undefined,
+    tone: draft.tone.trim() || undefined,
+    runtimeTargetMin: draft.runtime ? Number(draft.runtime) : undefined,
+    maxAcquisitions: draft.maxAcq ? Number(draft.maxAcq) : undefined,
+    mustInclude: terms(draft.mustInclude),
+    mustExclude: terms(draft.mustExclude),
+  });
 
 // The hero (§3) plus the constraints §13 calls "intent-writing hints": era, tone,
 // runtime target, and an acquisition cap. They stay behind a disclosure because the
@@ -18,67 +50,56 @@ const IntentForm = ({
   onSubmit,
   submitting = false,
 }: IntentFormProps) => {
-  const [description, setDescription] = useState(initialIntent?.description ?? initialDescription);
   const [refining, setRefining] = useState(false);
-  const [era, setEra] = useState(initialIntent?.era ?? "");
-  const [tone, setTone] = useState(initialIntent?.tone ?? "");
-  const [runtime, setRuntime] = useState(initialIntent?.runtimeTargetMin?.toString() ?? "");
-  const [maxAcq, setMaxAcq] = useState(initialIntent?.maxAcquisitions?.toString() ?? "");
-  // mustInclude/mustExclude have been in the shared schema and consumed by the scorer
-  // (score.go weights a must-include match) since the beginning — with no way to set
-  // them short of hand-crafting an API call. Comma-separated because these are a few
-  // titles or terms, not a managed list; a tag editor would be more UI than the job needs.
-  const [mustInclude, setMustInclude] = useState(initialIntent?.mustInclude?.join(", ") ?? "");
-  const [mustExclude, setMustExclude] = useState(initialIntent?.mustExclude?.join(", ") ?? "");
-  const [validationError, setValidationError] = useState<string | undefined>();
-
-  // "" → undefined (omitted), never [] — an empty array is a claim ("nothing required"),
-  // absence is the truth ("the user didn't say").
-  const terms = (v: string): string[] | undefined => {
-    const list = v
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    return list.length > 0 ? list : undefined;
-  };
-
-  const submit = () => {
-    // The schema is the same one packages/core shares with mobile, and its field names
-    // are the wire's (guarded by intent-contract.test.ts).
-    const parsed = intentSchema.safeParse({
-      description,
-      era: era.trim() || undefined,
-      tone: tone.trim() || undefined,
-      runtimeTargetMin: runtime ? Number(runtime) : undefined,
-      maxAcquisitions: maxAcq ? Number(maxAcq) : undefined,
-      mustInclude: terms(mustInclude),
-      mustExclude: terms(mustExclude),
-    });
-    if (parsed.success) {
-      setValidationError(undefined);
-      onSubmit(parsed.data as Intent);
-    } else {
-      setValidationError(parsed.error.issues[0]?.message ?? "Check the channel request and try again.");
-    }
-  };
+  const form = useAppForm({
+    defaultValues: {
+      description: initialIntent?.description ?? initialDescription,
+      era: initialIntent?.era ?? "",
+      tone: initialIntent?.tone ?? "",
+      runtime: initialIntent?.runtimeTargetMin?.toString() ?? "",
+      maxAcq: initialIntent?.maxAcquisitions?.toString() ?? "",
+      // mustInclude/mustExclude have been in the shared schema and consumed by the scorer
+      // (score.go weights a must-include match) since the beginning — with no way to set
+      // them short of hand-crafting an API call. Comma-separated because these are a few
+      // titles or terms, not a managed list; a tag editor would be more UI than the job needs.
+      mustInclude: initialIntent?.mustInclude?.join(", ") ?? "",
+      mustExclude: initialIntent?.mustExclude?.join(", ") ?? "",
+    },
+    validators: {
+      onSubmit: ({ value }) => {
+        const parsed = parseIntent(value);
+        if (parsed.success) return undefined;
+        return parsed.error.issues[0]?.message ?? "Check the channel request and try again.";
+      },
+    },
+    onSubmit: ({ value }) => {
+      const parsed = parseIntent(value);
+      if (parsed.success) onSubmit(parsed.data as Intent);
+    },
+  });
 
   return (
     <div className="flex flex-col gap-4">
-      <IntentInput
-        value={description}
-        onValueChange={(value) => {
-          setDescription(value);
-          setValidationError(undefined);
-        }}
-        onSubmit={submit}
-        submitting={submitting}
-        templates={CHANNEL_TEMPLATES.map((t) => ({ label: t.label, value: t.description }))}
-      />
-      {validationError && (
-        <p role="alert" className="text-onair-300 text-sm">
-          {validationError}
-        </p>
-      )}
+      <form.Field name="description">
+        {(field) => (
+          <IntentInput
+            value={field.state.value}
+            onValueChange={field.handleChange}
+            onSubmit={() => void form.handleSubmit()}
+            submitting={submitting}
+            templates={CHANNEL_TEMPLATES.map((t) => ({ label: t.label, value: t.description }))}
+          />
+        )}
+      </form.Field>
+      <form.Subscribe selector={(state) => state.errorMap.onSubmit}>
+        {(validationError) =>
+          validationError ? (
+            <p role="alert" className="text-onair-300 text-sm">
+              {validationError}
+            </p>
+          ) : null
+        }
+      </form.Subscribe>
 
       <button
         type="button"
@@ -90,57 +111,32 @@ const IntentForm = ({
 
       {refining && (
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="intent-era">Era</Label>
-            <Input id="intent-era" value={era} placeholder="1990s" onChange={(e) => setEra(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="intent-tone">Tone</Label>
-            <Input
-              id="intent-tone"
-              value={tone}
-              placeholder="high-energy"
-              onChange={(e) => setTone(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="intent-runtime">Target length (minutes)</Label>
-            <Input
-              id="intent-runtime"
-              type="number"
-              value={runtime}
-              placeholder="180"
-              onChange={(e) => setRuntime(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="intent-max">Maximum new titles</Label>
-            <Input
-              id="intent-max"
-              type="number"
-              value={maxAcq}
-              placeholder="10"
-              onChange={(e) => setMaxAcq(e.target.value)}
-            />
-          </div>
-          <div className="col-span-2 flex flex-col gap-1.5">
-            <Label htmlFor="intent-must-include">Must include</Label>
-            <Input
-              id="intent-must-include"
-              value={mustInclude}
-              placeholder="Point Break, Heat"
-              onChange={(e) => setMustInclude(e.target.value)}
-            />
-          </div>
-          <div className="col-span-2 flex flex-col gap-1.5">
-            <Label htmlFor="intent-must-exclude">Must exclude</Label>
-            <Input
-              id="intent-must-exclude"
-              value={mustExclude}
-              placeholder="anything with clowns"
-              onChange={(e) => setMustExclude(e.target.value)}
-            />
-          </div>
+          <form.AppField name="era">
+            {(field) => <field.TextField label="Era" placeholder="1990s" />}
+          </form.AppField>
+          <form.AppField name="tone">
+            {(field) => <field.TextField label="Tone" placeholder="high-energy" />}
+          </form.AppField>
+          <form.AppField name="runtime">
+            {(field) => <field.TextField label="Target length (minutes)" placeholder="180" type="number" />}
+          </form.AppField>
+          <form.AppField name="maxAcq">
+            {(field) => <field.TextField label="Maximum new titles" placeholder="10" type="number" />}
+          </form.AppField>
+          <form.AppField name="mustInclude">
+            {(field) => (
+              <field.TextField className="col-span-2" label="Must include" placeholder="Point Break, Heat" />
+            )}
+          </form.AppField>
+          <form.AppField name="mustExclude">
+            {(field) => (
+              <field.TextField
+                className="col-span-2"
+                label="Must exclude"
+                placeholder="anything with clowns"
+              />
+            )}
+          </form.AppField>
         </div>
       )}
     </div>

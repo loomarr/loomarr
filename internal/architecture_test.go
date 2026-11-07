@@ -86,7 +86,7 @@ func TestProductionPackagesDoNotImportAPI(t *testing.T) {
 // Production packages must not import the HTTP FRAMEWORK either, which is the same rule one level
 // down. The same exhaustive source-derived package set keeps the two gates aligned.
 //
-// ⚠ **The gate above bans `internal/api` and that was not enough.** `internal/schedule` — 4,000-odd
+// ⚠ **The gate above bans `internal/api` and that was not enough.** `internal/channels/schedule` — 4,000-odd
 // lines of I/O-free scheduling logic, the purest package in the tree — imported `huma/v2` to
 // describe one field's JSON encoding (`func (Duration) Schema(huma.Registry) *huma.Schema`). It
 // passed every gate: it does not import `internal/api`, so the dependency-direction test was
@@ -146,13 +146,13 @@ func TestProductionCommandsDoNotLinkTestkit(t *testing.T) {
 // Research, evaluation and bake-off tooling never ships (#1747). The filler research tools live
 // in the research/ module (#1560); these names are the main-module packages that once carried
 // them, and the planner evaluation harness, which runs only under `make eval*`. Recreating one
-// and wiring it into the server is the regression this gate refuses. internal/fillerresearch is
+// and wiring it into the server is the regression this gate refuses. internal/filler/research is
 // deliberately absent: it is the production web-research enrichment step, not tooling.
 var serverForbiddenToolingPackages = []string{
 	modulePath + "/internal/eval",
 	modulePath + "/internal/fillerbakeoff",
 	modulePath + "/internal/fillercorpus",
-	modulePath + "/internal/fillereval",
+	modulePath + "/internal/filler/eval",
 	modulePath + "/internal/fillervisualsafety",
 }
 
@@ -168,21 +168,28 @@ func TestServerDoesNotLinkResearchOrEvalTooling(t *testing.T) {
 }
 
 // The core store persists the clip catalog without the filler domain (#1747). Filler persistence
-// is internal/fillerstore, which extends the core store; the clip value types are
-// internal/clipcatalog, which imports no Loomarr package. Dependencies point filler → core only.
+// is internal/filler/records, which extends the core store; the clip value types are
+// internal/filler/clips, which imports no Loomarr package. Dependencies point filler → core only,
+// except for the value packages the store persists: clips, the taxonomy and the station seed.
 // Test files are exempt: core's migration tests seed filler's pipeline table with filler's values.
 func TestCoreStoreDoesNotImportFiller(t *testing.T) {
 	pkgs := loomarrPackages(t)
-	for _, path := range []string{modulePath + "/internal/store", modulePath + "/internal/clipcatalog"} {
+	clips := modulePath + "/internal/filler/clips"
+	persisted := map[string]bool{
+		clips:                                    true,
+		modulePath + "/internal/filler/taxonomy": true,
+		modulePath + "/internal/filler/station":  true,
+	}
+	for _, path := range []string{modulePath + "/internal/store", clips} {
 		pkg, ok := pkgs[path]
 		if !ok {
 			t.Fatalf("%s is not in the import graph", path)
 		}
 		for _, imported := range pkg.Imports {
-			if strings.HasPrefix(imported, modulePath+"/internal/filler") ||
-				(path == modulePath+"/internal/clipcatalog" && strings.HasPrefix(imported, modulePath+"/")) {
-				t.Errorf("%s imports %s — filler persistence belongs in internal/fillerstore and the clip "+
-					"values in internal/clipcatalog, so dependencies point filler → core (#1747)", path, imported)
+			if (strings.HasPrefix(imported, modulePath+"/internal/filler") && !persisted[imported]) ||
+				(path == clips && strings.HasPrefix(imported, modulePath+"/")) {
+				t.Errorf("%s imports %s — filler persistence belongs in internal/filler/records and the clip "+
+					"values in internal/filler/clips, so dependencies point filler → core (#1747)", path, imported)
 			}
 		}
 	}
@@ -199,13 +206,13 @@ func TestStoreDBImportsNoLoomarrPackage(t *testing.T) {
 			"belongs in a store package, not in the kernel")
 }
 
-// internal/sourceprovider is the contract every filler source provider implements. filler,
-// fillerstore, api and the provider packages all name it; the moment it imports one of them, the
+// internal/filler/source is the contract every filler source provider implements. filler,
+// filler/records, api and the provider packages all name it; the moment it imports one of them, the
 // others can no longer import it without a cycle. Test files are exempt; only the production import
 // set counts.
 func TestSourceProviderImportsNoLoomarrPackage(t *testing.T) {
-	requireLeafPackage(t, loomarrPackages(t), modulePath+"/internal/sourceprovider",
-		"sourceprovider is the provider contract filler, api and every provider share; a type it "+
+	requireLeafPackage(t, loomarrPackages(t), modulePath+"/internal/filler/source",
+		"filler/source is the provider contract filler, api and every provider share; a type it "+
 			"needs from Loomarr moves into it, or the contract is drawn in the wrong place")
 }
 
@@ -284,7 +291,7 @@ func aggregateStoreImports(pkg *build.Package) []string {
 // does not mistake the kernel or a sibling cluster for the aggregate.
 func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
 	store := modulePath + "/internal/store"
-	filler := modulePath + "/internal/fillerstore"
+	filler := modulePath + "/internal/filler/records"
 	kernel := modulePath + "/internal/store/storedb"
 	sibling := modulePath + "/internal/store/identitystore"
 	catalog := modulePath + "/internal/store/catalogstore"
@@ -292,7 +299,7 @@ func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
 	if got, want := aggregateStoreImports(pkg), []string{filler, store}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("aggregate imports = %v, want %v", got, want)
 	}
-	clean := &build.Package{Imports: []string{kernel, sibling, modulePath + "/internal/invitation"}}
+	clean := &build.Package{Imports: []string{kernel, sibling, modulePath + "/internal/people/invitation"}}
 	if got := aggregateStoreImports(clean); len(got) != 0 {
 		t.Fatalf("kernel and cluster imports flagged as the aggregate: %v", got)
 	}
@@ -304,7 +311,7 @@ func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
 // frame analysis independently; this gate is specifically the Image service boundary.
 func TestImageServiceDoesNotImportGoPixelCode(t *testing.T) {
 	pkgs := loomarrPackages(t)
-	imageService := modulePath + "/internal/images"
+	imageService := modulePath + "/internal/media/images"
 	pkg, ok := pkgs[imageService]
 	if !ok {
 		t.Fatalf("%s is not in the import graph", imageService)

@@ -1,6 +1,6 @@
 package filler
 
-import "github.com/loomarr/loomarr/internal/schedule"
+import "github.com/loomarr/loomarr/internal/channels/schedule"
 
 // Holidays in a break (§10, #2030 decision 5). A clip is seasonal when a tag names a holiday with
 // dates (Window.Season). Out of season it never airs, bookends included; in season at most half of

@@ -247,6 +247,8 @@ type SourceRequest struct {
 	RequiredCoverage []string      `json:"requiredCoverage,omitempty"`
 }
 
+// ResolvedSource is a playable source and its facts: the importer's observation, or a measurement
+// of this exact revision when that is fresher. A measurement of an older revision never reaches it.
 type ResolvedSource struct {
 	ID          SourceID                 `json:"id"`
 	ItemID      ItemID                   `json:"itemId"`
@@ -254,7 +256,6 @@ type ResolvedSource struct {
 	Revision    string                   `json:"revision"`
 	Locator     Locator                  `json:"-"`
 	Observation Observation[SourceFacts] `json:"observation"`
-	Measurement *Measurement             `json:"measurement,omitempty"`
 }
 
 // Service is the consumer-facing Media Inventory port from design §5 V66.

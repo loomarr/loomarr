@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 func TestHolidaySeedAppliesOnceAndKeepsOperatorChoices(t *testing.T) {

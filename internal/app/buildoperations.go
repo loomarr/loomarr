@@ -10,17 +10,17 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -100,7 +100,7 @@ func buildOperations(
 	authResult := buildAuth(st, set, secrets, readGeneratedSecret, libraryClient, log)
 	invitationService, _ := authResult.invitations.(*invitation.Service)
 	recoveryService := authResult.passwordRecovery
-	destinationRepository := notifications.NewProtectedDestinationRepository(st, protection).
+	destinationRepository := notifications.NewProtectedRepository(st, protection).
 		WithCredentialRedactor(secretRedactor)
 	if destinationRepository != nil {
 		if err := destinationRepository.SeedCredentialRedaction(rootCtx); err != nil {
@@ -175,7 +175,7 @@ func buildOperations(
 func migrateLegacySMTPProvider(
 	ctx context.Context,
 	st store.Store,
-	repository notifications.DestinationRepository,
+	repository notifications.Repository,
 	set resolved,
 ) error {
 	if st == nil || repository == nil || set.svc == nil {
@@ -222,7 +222,7 @@ func migrateLegacySMTPProvider(
 }
 
 func buildNotificationDestinations(
-	repository notifications.DestinationRepository,
+	repository notifications.Repository,
 	validators []notifications.DestinationValidator,
 	tester notifications.DestinationTester,
 ) api.NotificationDestinationService {

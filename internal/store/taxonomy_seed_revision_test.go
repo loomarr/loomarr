@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 func TestTaxonomySeedRevisionConvergesOnceWithoutOverwritingOperatorChoice(t *testing.T) {

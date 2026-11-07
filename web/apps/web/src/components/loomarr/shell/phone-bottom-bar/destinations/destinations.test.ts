@@ -26,8 +26,14 @@ describe("phoneBarPrimary", () => {
 });
 
 describe("phoneBarOverflow", () => {
-  it("gives an admin exactly Filler, People, Settings, Help", () => {
-    expect(phoneBarOverflow(true).map((d) => d.key)).toEqual(["filler", "people", "settings", "help"]);
+  it("gives an admin exactly Library, Filler, People, Settings, Help", () => {
+    expect(phoneBarOverflow(true).map((d) => d.key)).toEqual([
+      "library",
+      "filler",
+      "people",
+      "settings",
+      "help",
+    ]);
   });
 
   it("gives a member exactly Notifications, Help — never the admin-only surfaces", () => {

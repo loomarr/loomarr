@@ -3,6 +3,8 @@ import * as usersApi from "@loomarr/api/endpoints/users";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
+import { changePasswordSchema } from "@loomarr/core/schemas";
+import { Card, FieldHint } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -10,9 +12,7 @@ import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Your account (§11). The self-service half of local account management: change your
@@ -26,14 +26,17 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 // A viewer sees exactly what an admin sees here. Nothing on this page is privileged:
 // it only ever acts on the caller's own account, which is why it takes no user id.
 
+const PASSWORD_FIELDS = [
+  { name: "current", label: "Current password", autoComplete: "current-password" },
+  { name: "next", label: "New password", autoComplete: "new-password" },
+  { name: "confirm", label: "Confirm new password", autoComplete: "new-password" },
+] as const;
+
 const AccountScreen = () => {
   const { user } = useAuth();
   useDocumentTitle("Your account");
 
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [formError, setFormError] = useState("");
+  const [serverError, setServerError] = useState("");
 
   // A media-server account does not own an independent Loomarr password. Its captured
   // verifier is an outage fallback, not a credential this page may change.
@@ -47,17 +50,26 @@ const AccountScreen = () => {
   const changePassword = authApi.useChangePassword({
     mutation: {
       onSuccess: () => {
-        setCurrent("");
-        setNext("");
-        setConfirm("");
-        setFormError("");
+        form.reset();
+        setServerError("");
         // Every session ends, including this one — the backend revokes all of them
         // rather than sparing the caller's, because keeping a session means trusting
         // the request that might itself be the compromise. Say that plainly instead
         // of the friendlier-but-weaker "other sessions revoked, this one kept".
         toast.success("Password changed. Sign in again with the new one.");
       },
-      onError: (e) => setFormError(toProblem(e).detail ?? "Couldn't change your password."),
+      onError: (e) => setServerError(toProblem(e).detail ?? "Couldn't change your password."),
+    },
+  });
+
+  // Checked here as well as server-side: a mismatch is the user's typo, and making
+  // them wait for a round-trip to learn it is worse than saying so immediately.
+  const form = useAppForm({
+    defaultValues: { current: "", next: "", confirm: "" },
+    validators: { onSubmit: changePasswordSchema },
+    onSubmit: ({ value }) => {
+      setServerError("");
+      changePassword.mutate({ data: { current: value.current, next: value.next } });
     },
   });
 
@@ -71,16 +83,6 @@ const AccountScreen = () => {
     },
   });
 
-  const submit = () => {
-    // Checked here as well as server-side: a mismatch is the user's typo, and making
-    // them wait for a round-trip to learn it is worse than saying so immediately.
-    if (!current) return setFormError("Enter your current password.");
-    if (next.length < 8) return setFormError("Use at least 8 characters.");
-    if (next !== confirm) return setFormError("New passwords don't match.");
-    setFormError("");
-    changePassword.mutate({ data: { current, next } });
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
@@ -89,7 +91,7 @@ const AccountScreen = () => {
       />
 
       <div className="max-w-form mx-auto flex w-full flex-1 flex-col gap-4 overflow-auto p-6">
-        <Card className="flex items-center gap-3 p-5">
+        <Card alignItems="center" flexDirection="row" gap={12} padding={20}>
           <div className="bg-muted flex size-10 items-center justify-center rounded-full font-medium">
             {(user?.name ?? "?").slice(0, 2).toUpperCase()}
           </div>
@@ -104,45 +106,34 @@ const AccountScreen = () => {
           </div>
         </Card>
 
-        <Card className="flex flex-col gap-3 p-5">
+        <Card gap={12} padding={20}>
           <h2 className="font-medium">Password</h2>
           {isLocal ? (
-            <>
+            <form
+              className="flex flex-col gap-3"
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                void form.handleSubmit();
+              }}
+            >
               <p className="text-muted-foreground text-sm">
                 This is a local Loomarr account, so Loomarr stores the password and you can change it here.
               </p>
               <div className="flex flex-col gap-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="acct-current">Current password</Label>
-                  <Input
-                    id="acct-current"
-                    type="password"
-                    value={current}
-                    onChange={(e) => setCurrent(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="acct-next">New password</Label>
-                  <Input
-                    id="acct-next"
-                    type="password"
-                    value={next}
-                    onChange={(e) => setNext(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="acct-confirm">Confirm new password</Label>
-                  <Input
-                    id="acct-confirm"
-                    type="password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                  />
-                </div>
+                {PASSWORD_FIELDS.map(({ name, label, autoComplete }) => (
+                  <form.AppField key={name} name={name}>
+                    {(field) => <field.TextField autoComplete={autoComplete} label={label} type="password" />}
+                  </form.AppField>
+                ))}
               </div>
-              {formError && <p className="text-onair-300 text-sm">{formError}</p>}
+              {serverError && (
+                <FieldHint role="alert" tone="error">
+                  {serverError}
+                </FieldHint>
+              )}
               <div className="flex items-center gap-3">
-                <Button onClick={submit} disabled={changePassword.isPending}>
+                <Button type="submit" disabled={changePassword.isPending}>
                   Change password
                 </Button>
                 {/* The honest consequence, stated before the click rather than after. */}
@@ -150,7 +141,7 @@ const AccountScreen = () => {
                   changing it signs you out everywhere, including here
                 </span>
               </div>
-            </>
+            </form>
           ) : (
             <p className="text-muted-foreground text-sm">
               Your media server owns this password. Loomarr stores only a non-reversible verifier after a
@@ -166,7 +157,7 @@ const AccountScreen = () => {
             per-session city is dropped (geo-IP; the map's call on #1659). A session the API hasn't
             labelled yet keeps today's "Signed in …" title. */}
         {/* shrink-0: in the scrolling column, an overflow-hidden card would shrink and clip its rows (#1785). */}
-        <Card className="flex shrink-0 flex-col overflow-hidden">
+        <Card flexShrink={0} overflow="hidden">
           <h2 className="border-border border-b px-4 py-3.5 text-sm font-semibold">Where you're signed in</h2>
           {sessions.isLoading && <p className="text-muted-foreground px-4 py-3 text-sm">Loading sessions…</p>}
           {!sessions.isLoading && sessionRows.length === 0 && (

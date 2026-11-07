@@ -6,15 +6,16 @@ import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { SourceSearch } from "@/components/loomarr/filler/source-search";
 import { Disclosure } from "@/components/ui/disclosure";
+import { useFillerProviders } from "../../use-filler-providers";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 import { useQueuedClipJobs } from "../use-queued-clip-jobs";
 
 interface SourceClipSearchProps {
-  /** An Archive.org source whose actions include `search`. Remount per source (`key`). */
+  /** A source whose actions include `search`. Remount per source (`key`). */
   source: FillerSourceDTO;
 }
 
-// "Find a specific clip": search one Archive.org collection, preview a hit, queue it for download.
+// "Find a specific clip": search one source, preview a hit, queue it for download.
 // Owns the whole flow — the query, the lazily measured runtimes, the queued jobs and the preview
 // dialog — so none of it re-renders the rest of the drawer on a keystroke.
 const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
@@ -22,6 +23,8 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<FillerSourcePreviewItemDTO>();
   const queuedJobs = useQueuedClipJobs(source.id);
+  const provider = useFillerProviders().discoverable(source.kind);
+  const searchable = Boolean(provider?.searchable);
 
   // Searching a source for clips to add (V35). ⚠ `submittedQuery` is a SEPARATE state from what the
   // operator is typing: the query runs on submit, not on keystroke. Each search costs archive.org
@@ -35,8 +38,7 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
     // enabled query with an empty q would 422 on mount.
     {
       query: {
-        enabled:
-          isAdmin && submittedQuery.trim().length >= 2 && source.kind === "archive" && Boolean(source.uri),
+        enabled: isAdmin && submittedQuery.trim().length >= 2 && searchable && Boolean(source.uri),
       },
     },
   );
@@ -62,7 +64,7 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
       <Disclosure open={open} onOpenChange={setOpen} className="border-border border-t pt-5">
         <Disclosure.SectionTrigger
           title="Find a specific clip"
-          description="Search this Archive.org collection by title or keyword."
+          description={`Search this ${provider?.sourceNoun ?? "source"} by title or keyword.`}
         />
         <Disclosure.Panel className="pt-4">
           <SourceSearch
@@ -86,6 +88,7 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
               setPreview({
                 title: clip.title || clip.id,
                 url: clip.url,
+                embedUrl: clip.embedUrl,
                 durationMs: stats[clip.id]?.durationMs ?? clip.durationMs,
               })
             }
@@ -97,7 +100,13 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
           />
         </Disclosure.Panel>
       </Disclosure>
-      <SourceItemPreviewDialog item={preview} kind="archive" onClose={() => setPreview(undefined)} />
+      {provider && (
+        <SourceItemPreviewDialog
+          item={preview}
+          providerLabel={provider.label}
+          onClose={() => setPreview(undefined)}
+        />
+      )}
     </>
   );
 };

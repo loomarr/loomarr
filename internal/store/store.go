@@ -11,24 +11,24 @@ import (
 	"errors"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
-	"github.com/loomarr/loomarr/internal/clipcatalog"
-	"github.com/loomarr/loomarr/internal/contact"
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/station"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/invitation"
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/people/contact"
+	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/recovery"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/quality"
-	"github.com/loomarr/loomarr/internal/recovery"
-	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // ErrNotFound reports that a requested durable identity does not exist. Besides Get* reads,
@@ -199,7 +199,7 @@ type SeriesEpisodeStore interface {
 
 // ProposalRepository is the one persistence surface for proposals and the suggestion jobs that
 // produce them (§8): the job queue, the proposals it yields, and the approval decisions on them.
-// A proposal's body is the typed proposal.Proposal; the repository is the only place its JSON is
+// A proposal's body is the typed proposals.Proposal; the repository is the only place its JSON is
 // encoded or decoded.
 type ProposalRepository interface {
 	CreateJob(ctx context.Context, j Job) error
@@ -467,7 +467,7 @@ type ClipStore interface {
 	ListHolidays(ctx context.Context) ([]holidayvocab.Holiday, error)
 	// ListBroadcastStations returns the shipped broadcast station directory (#2060) with each
 	// station's dated call signs. Boot seeds it; nothing else writes it.
-	ListBroadcastStations(ctx context.Context) ([]broadcaststation.Station, error)
+	ListBroadcastStations(ctx context.Context) ([]station.Station, error)
 	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
 	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
 	// SetClipTags REPLACES one clip's asserted tags and derives its rollups and category shadow from
@@ -495,7 +495,7 @@ type ClipStore interface {
 	// RenameClip records a name an operator gave a clip, with its provenance (#1990). Hash-keyed;
 	// the caller validates the name and writes the sidecar so a rescan keeps it. Returns ErrNotFound
 	// if absent.
-	RenameClip(ctx context.Context, hash, name string, source clipcatalog.NameSource, updatedAt time.Time) error
+	RenameClip(ctx context.Context, hash, name string, source clips.NameSource, updatedAt time.Time) error
 	// UpdateClipGeography records grounded broadcast applicability and context. It is hash-keyed;
 	// callers validate scope/country/date and provide the evidence attribution.
 	UpdateClipGeography(ctx context.Context, hash, scope, country, network, station, airDate, evidence string, updatedAt time.Time) error
@@ -563,7 +563,7 @@ type AiringStore interface {
 	// FillerAirings returns the household's stored clip airings across every channel. A break's
 	// snapshot is cut from them by filler.ExposuresBefore, so one read serves every break in a
 	// window (#1420).
-	FillerAirings(ctx context.Context) ([]clipcatalog.Airing, error)
+	FillerAirings(ctx context.Context) ([]clips.Airing, error)
 	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
 	// the programme analogue of RecordClipPlay. Written from playout only, when a programme is
 	// actually resolved for streaming; one row per airing of a unit (episode or film), written
@@ -757,7 +757,7 @@ type InventoryStore interface {
 // interfaces above, which is what the composition root and the conformance suite
 // hold. Callers that need one domain should depend on that domain's interface
 // instead: the narrow role interfaces domain packages already declare for
-// themselves (binder.Store, filler.Store, jobs.ScheduleStore, …) are the
+// themselves (approval.Store, filler.Store, jobs.ScheduleStore, …) are the
 // pattern, and these groups exist so a consumer has something to name without
 // re-declaring one.
 //
@@ -790,6 +790,11 @@ type Store interface {
 	HiddenIdeaStore
 	DiscoveryQualityStore
 	InventoryStore
+	LibraryRootStore
+	LibraryFileStore
+	LibraryItemStore
+	LibraryCatalogStore
+	LibraryNeedsStore
 
 	// Close releases the underlying database handle.
 	Close() error

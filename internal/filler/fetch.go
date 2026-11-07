@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/sourceprovider"
+	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
 // Auto-fetch (§10 V38b): a registered, enabled source is polled on a schedule and new items
@@ -87,15 +87,15 @@ type FetchSource struct {
 	MaxPerRun int
 	// ScanCheckpoint is durable progress through the provider's bounded listing. A provider that
 	// does not resume leaves it empty.
-	ScanCheckpoint sourceprovider.Checkpoint
+	ScanCheckpoint source.Checkpoint
 }
 
 // SourceCheckCompletion is committed atomically with lease release. ReplaceOutcomes begins a new
 // sweep; otherwise Outcomes extend the summary retained by an in-progress cursor.
 type SourceCheckCompletion struct {
 	CheckedAt       time.Time
-	Checkpoint      sourceprovider.Checkpoint
-	Outcomes        sourceprovider.Outcomes
+	Checkpoint      source.Checkpoint
+	Outcomes        source.Outcomes
 	ReplaceOutcomes bool
 }
 
@@ -179,14 +179,14 @@ type FetchIngestor interface {
 // IdentifiedFetchIngestor is the V66 production seam: scheduled selection retains provider item
 // identity into the durable manifest. The URL-only interface remains for narrow older embeddings.
 type IdentifiedFetchIngestor interface {
-	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (string, error)
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []source.Item) (string, error)
 }
 
 // Fetcher polls registered sources.
 type Fetcher struct {
 	store FetchStore
 	// providers lists each source; Kind names the provider that does.
-	providers *sourceprovider.Registry
+	providers *source.Registry
 	ingest    FetchIngestor
 	limits    FetchLimits
 	log       *slog.Logger
@@ -224,7 +224,7 @@ func (f *Fetcher) WithOpenSearch(open OpenSearcher) *Fetcher {
 // NewFetcher builds the automatic-download worker. Source policy, including whether any source
 // should run at all, arrives through ListFetchSources on every pass so global and per-source edits
 // hot-apply through one authority.
-func NewFetcher(store FetchStore, providers *sourceprovider.Registry, ingest FetchIngestor, limits FetchLimits, log *slog.Logger) *Fetcher {
+func NewFetcher(store FetchStore, providers *source.Registry, ingest FetchIngestor, limits FetchLimits, log *slog.Logger) *Fetcher {
 	return &Fetcher{
 		store: store, providers: providers, ingest: ingest, limits: limits, log: log, now: time.Now,
 	}
@@ -244,7 +244,7 @@ type FetchResult struct {
 	// Skipped counts items already in the catalog.
 	Skipped int
 	// Outcomes is the closed explanation of the items considered by this pass.
-	Outcomes sourceprovider.Outcomes
+	Outcomes source.Outcomes
 	// MaxPerCheck is the selected source's effective cap on a manual run.
 	MaxPerCheck int
 	// StoppedBy names the limit that ended the pass early ("catalog", "provider", "target" for a
@@ -270,8 +270,8 @@ func (f *Fetcher) Status(ctx context.Context) (FetchStatus, error) {
 	if err != nil {
 		return status, fmt.Errorf("list sources: %w", err)
 	}
-	for _, source := range sources {
-		if _, fetched := f.providers.Lister(sourceprovider.ID(source.Kind)); fetched && source.Enabled && !source.NeverFetch && source.URI != "" {
+	for _, src := range sources {
+		if _, fetched := f.providers.Lister(source.ID(src.Kind)); fetched && src.Enabled && !src.NeverFetch && src.URI != "" {
 			status.Enabled = true
 			break
 		}
@@ -426,8 +426,8 @@ func (f *Fetcher) dueSources(srcs []FetchSource, sourceID string, scheduled bool
 			}
 			continue
 		}
-		if _, fetched := f.providers.Lister(sourceprovider.ID(src.Kind)); !fetched {
-			if _, registered := f.providers.Get(sourceprovider.ID(src.Kind)); !registered {
+		if _, fetched := f.providers.Lister(source.ID(src.Kind)); !fetched {
+			if _, registered := f.providers.Get(source.ID(src.Kind)); !registered {
 				f.reportInert(src)
 			}
 			continue
@@ -533,7 +533,7 @@ func (p *fetchPass) budget(src FetchSource) (b sourceBudget, ok bool) {
 // checkSource is one due source's bounded check: claim it, then list, select and queue. done
 // reports that the pool's shortfall is already queued, which ends the pass.
 func (p *fetchPass) checkSource(ctx context.Context, src FetchSource) (done bool, err error) {
-	lister, _ := p.f.providers.Lister(sourceprovider.ID(src.Kind))
+	lister, _ := p.f.providers.Lister(source.ID(src.Kind))
 	if p.providerQueued[src.Kind] >= p.providerLimit {
 		p.res.StoppedBy = "provider"
 		return false, nil
@@ -546,7 +546,7 @@ func (p *fetchPass) checkSource(ctx context.Context, src FetchSource) (done bool
 	checkAt := p.f.now()
 	c := &sourceCheck{
 		pass: p, src: src, leaseUntil: checkAt.Add(SourceCheckLease),
-		checkpoint: src.ScanCheckpoint, outcomes: sourceprovider.Outcomes{}, replaceOutcomes: true,
+		checkpoint: src.ScanCheckpoint, outcomes: source.Outcomes{}, replaceOutcomes: true,
 	}
 	claimed, err := p.f.store.ClaimCheck(ctx, src.ID, src.LastCheckedAt, checkAt, c.leaseUntil)
 	if err != nil {
@@ -579,16 +579,16 @@ type sourceCheck struct {
 	pass            *fetchPass
 	src             FetchSource
 	leaseUntil      time.Time
-	checkpoint      sourceprovider.Checkpoint
-	outcomes        sourceprovider.Outcomes
+	checkpoint      source.Checkpoint
+	outcomes        source.Outcomes
 	replaceOutcomes bool
 }
 
 // run lists the source through its provider, selects from the listing and queues the selection.
-func (c *sourceCheck) run(ctx context.Context, lister sourceprovider.Lister, b sourceBudget) error {
+func (c *sourceCheck) run(ctx context.Context, lister source.Lister, b sourceBudget) error {
 	p, src := c.pass, c.src
 	listing, err := lister.List(ctx,
-		sourceprovider.Source{ID: src.ID, URI: src.URI, Checkpoint: src.ScanCheckpoint}, c.listRequest(b))
+		source.Source{ID: src.ID, URI: src.URI, Checkpoint: src.ScanCheckpoint}, c.listRequest(b))
 	if err != nil {
 		return c.fail(ctx, "check", "list", "filler auto-fetch: source could not be listed", err)
 	}
@@ -596,7 +596,7 @@ func (c *sourceCheck) run(ctx context.Context, lister sourceprovider.Lister, b s
 	for outcome, count := range listing.Outcomes {
 		c.outcomes[outcome] += count
 	}
-	p.res.Skipped += listing.Outcomes[sourceprovider.OutcomeAlreadyKnown]
+	p.res.Skipped += listing.Outcomes[source.OutcomeAlreadyKnown]
 
 	// The scheduled path uses the same deterministic selector as explicit pulls. There are no
 	// hard semantic constraints here—the remote listing cannot certify them—but declared rights,
@@ -616,7 +616,7 @@ func (c *sourceCheck) run(ctx context.Context, lister sourceprovider.Lister, b s
 		switch decision.Disposition {
 		case CandidateAlreadyCatalogued, CandidateAlreadyQueued, CandidatePreviouslyDeclined:
 			p.res.Skipped++
-			c.outcomes[sourceprovider.OutcomeAlreadyKnown]++
+			c.outcomes[source.OutcomeAlreadyKnown]++
 		}
 	}
 	if len(selection.Selected) == 0 {
@@ -628,14 +628,14 @@ func (c *sourceCheck) run(ctx context.Context, lister sourceprovider.Lister, b s
 // listRequest is this check's terms for its provider: the budget, the station searches of a short
 // pass, the clip envelope, and the two rules the provider cannot know — the rejection every
 // provider is held to, and what the pass already has.
-func (c *sourceCheck) listRequest(b sourceBudget) sourceprovider.ListRequest {
+func (c *sourceCheck) listRequest(b sourceBudget) source.ListRequest {
 	p, f, src := c.pass, c.pass.f, c.src
-	req := sourceprovider.ListRequest{
+	req := source.ListRequest{
 		Take: b.take, List: b.list, Now: f.now(),
-		Reject: func(item sourceprovider.Item) (sourceprovider.Outcome, bool) {
+		Reject: func(item source.Item) (source.Outcome, bool) {
 			return f.sharedRejection(src, item)
 		},
-		Known: func(item sourceprovider.Item) bool {
+		Known: func(item source.Item) bool {
 			return p.inPass[c.identity(item).Key()] != ""
 		},
 	}
@@ -651,12 +651,12 @@ func (c *sourceCheck) listRequest(b sourceBudget) sourceprovider.ListRequest {
 	return req
 }
 
-func (c *sourceCheck) identity(item sourceprovider.Item) RemoteIdentity {
+func (c *sourceCheck) identity(item source.Item) RemoteIdentity {
 	return RemoteIdentity{Provider: c.src.Kind, SourceID: c.src.ID, RemoteID: item.ID}
 }
 
 // candidates are the items the provider offered, as the selector takes them.
-func (c *sourceCheck) candidates(items []sourceprovider.Item) []AcquisitionCandidate {
+func (c *sourceCheck) candidates(items []source.Item) []AcquisitionCandidate {
 	candidates := make([]AcquisitionCandidate, 0, len(items))
 	for _, item := range items {
 		candidates = append(candidates, AcquisitionCandidate{
@@ -675,10 +675,10 @@ func (c *sourceCheck) candidates(items []sourceprovider.Item) []AcquisitionCandi
 func (c *sourceCheck) queue(ctx context.Context, selected []AcquisitionDecision, b sourceBudget) error {
 	p, f, src := c.pass, c.pass.f, c.src
 	urls := make([]string, 0, len(selected))
-	items := make([]sourceprovider.Item, 0, len(selected))
+	items := make([]source.Item, 0, len(selected))
 	for _, decision := range selected {
 		urls = append(urls, decision.Candidate.URL)
-		items = append(items, sourceprovider.Item{
+		items = append(items, source.Item{
 			ID: decision.Candidate.Identity.RemoteID, URL: decision.Candidate.URL,
 			Title: decision.Candidate.Title, License: decision.Candidate.License,
 			ObservedYear: decision.Candidate.ObservedYear, PublishedAt: decision.Candidate.PublishedAt,
@@ -695,7 +695,7 @@ func (c *sourceCheck) queue(ctx context.Context, selected []AcquisitionDecision,
 	if err != nil {
 		return c.fail(ctx, "queue", "queue", "filler auto-fetch: queueing failed", err)
 	}
-	c.outcomes[sourceprovider.OutcomeQueued] += len(urls)
+	c.outcomes[source.OutcomeQueued] += len(urls)
 	// Only a successful queue becomes in-pass state. A failed queue must leave an exact
 	// identity eligible for a healthy retry later in this pass.
 	for _, decision := range selected {
@@ -733,7 +733,7 @@ func (c *sourceCheck) complete(ctx context.Context) error {
 		return fmt.Errorf("complete source %q check: %w", c.src.ID, err)
 	}
 	if len(c.outcomes) > 0 && res.Outcomes == nil {
-		res.Outcomes = sourceprovider.Outcomes{}
+		res.Outcomes = source.Outcomes{}
 	}
 	for outcome, count := range c.outcomes {
 		res.Outcomes[outcome] += count
@@ -789,9 +789,9 @@ func (p *fetchPass) searchOpen(ctx context.Context) error {
 
 // sharedRejection is the rejection every provider's items are held to: a compilation reel waits
 // for certified splitting (#1773). What a provider's own metadata rules out is the provider's.
-func (f *Fetcher) sharedRejection(source FetchSource, item sourceprovider.Item) (sourceprovider.Outcome, bool) {
-	if f.limits.Compilations.Defers(source.Kind, int64(item.DurationMS)) {
-		return sourceprovider.OutcomeTooLong, true
+func (f *Fetcher) sharedRejection(src FetchSource, item source.Item) (source.Outcome, bool) {
+	if f.limits.Compilations.Defers(src.Kind, int64(item.DurationMS)) {
+		return source.OutcomeTooLong, true
 	}
 	return "", false
 }
@@ -851,12 +851,12 @@ func (f *Fetcher) openSearch(ctx context.Context, gaps CoverageGaps, inPass map[
 		f.log.Warn("filler auto-fetch: open-search hits could not be selected", "err", err)
 		return 0, nil
 	}
-	items := make([]sourceprovider.Item, 0, len(selection.Selected))
+	items := make([]source.Item, 0, len(selection.Selected))
 	urls := make([]string, 0, len(selection.Selected))
 	for _, decision := range selection.Selected {
 		c := decision.Candidate
 		urls = append(urls, c.URL)
-		items = append(items, sourceprovider.Item{ID: c.Identity.RemoteID, URL: c.URL, Title: c.Title,
+		items = append(items, source.Item{ID: c.Identity.RemoteID, URL: c.URL, Title: c.Title,
 			License: c.License, ObservedYear: c.ObservedYear, PublishedAt: c.PublishedAt,
 			DurationMS: c.DurationMS, Height: c.Height, Gap: decision.Gap})
 	}

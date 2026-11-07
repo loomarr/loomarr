@@ -13,11 +13,11 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -442,8 +442,8 @@ func TestRunnerScoresWrongCertificationToolRouteAsQuality(t *testing.T) {
 }
 
 func TestCertificationRunnerScoresPolicyProposalAndRecoveryQuality(t *testing.T) {
-	proposal := proposal.Proposal{
-		Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 10019, Name: "Synthetic Recovery"}},
+	proposal := proposals.Proposal{
+		Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 10019, Name: "Synthetic Recovery"}},
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 			Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
 		}},
@@ -504,7 +504,7 @@ func TestCertificationCountsOnlyEncounteredRepairRecoveryOpportunities(t *testin
 		{ModelCalls: 3, ToolCalls: 1, GroundingStage: "grounded"},
 		{ModelCalls: 2, ToolCalls: 1, GroundingStage: "grounded"},
 	}}
-	card := NewRunner(scriptedGenerator{proposal: proposal.Proposal{Lineup: []proposal.ProposalItem{{
+	card := NewRunner(scriptedGenerator{proposal: proposals.Proposal{Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 10020, Name: "Synthetic Repair",
 	}}}}, RunnerConfig{Contract: &CertificationContract{Thresholds: CertificationThresholds{
 		MinRecoveryRate: 1,

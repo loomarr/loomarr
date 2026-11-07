@@ -4,7 +4,7 @@ import { surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
-import { Image } from "@/components/ui/image";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import type { StatusTone } from "@/components/ui/status-dot";
@@ -19,12 +19,11 @@ const MAX_CHANNELS = 6;
 const AiringArtwork = ({ airing, channel, sizes }: AiringArtworkProps) => {
   if (airing.thumbImage) {
     return (
-      <Image
+      <ServedImage
         image={airing.thumbImage}
         alt=""
         sizes={sizes}
         fallback={<ArtworkFallback channel={channel} />}
-        className="size-full object-cover"
       />
     );
   }

@@ -10,22 +10,22 @@ import (
 	"github.com/loomarr/loomarr/internal/buildinfo"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/httpx"
-	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/moviecollections"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
-	"github.com/loomarr/loomarr/internal/recurate"
-	"github.com/loomarr/loomarr/internal/reference"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/webreference"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -33,7 +33,7 @@ type suggestionBuild struct {
 	suggest          api.SuggestService
 	progress         api.ProposalProgress // the same *suggest.Service, read for live generation progress
 	workflow         api.ProposalWorkflow
-	durableWorkflow  *proposalworkflow.Workflow
+	durableWorkflow  *workflow.Workflow
 	search           api.SearchService
 	movieCollections api.MovieCollectionService
 	collections      api.CollectionService
@@ -71,7 +71,7 @@ func buildSuggestions(
 		return result, nil
 	}
 
-	result.durableWorkflow = proposalworkflow.New(st, newID, time.Now)
+	result.durableWorkflow = workflow.New(st, newID, time.Now)
 	result.workflow = result.durableWorkflow
 
 	var err error
@@ -118,7 +118,7 @@ func buildSuggestions(
 		WithCalendar(householdCalendar(set, holidays, log)).
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
-		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved(httpx.TargetReference, httpx.TimeoutReference, metricRecorder)))
+		WithReferences(webreference.NewWeb(httpx.NewPublicNamedObserved(httpx.TargetReference, httpx.TimeoutReference, metricRecorder)))
 	service := suggest.NewService(st, result.durableWorkflow, suggester, suggest.Config{
 		Workers: settings.JobWorkers.Get(set), Timeout: settings.JobTimeout.Get(set), CacheTTL: 24 * time.Hour,
 	}, time.Now, log).

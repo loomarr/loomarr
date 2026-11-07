@@ -51,11 +51,30 @@ func newRegistry(list []Setting) *Registry {
 		default:
 			panic("settings: invalid apply timing for " + s.Key + ": " + string(s.Apply))
 		}
+		s.Presets = canonicalPresets(s)
 		r.byKey[s.Key] = s
 		r.byEnv[s.EnvVar] = s
 		r.ordered = append(r.ordered, s)
 	}
 	return r
+}
+
+// canonicalPresets parses every preset as the setting's own value would be parsed and returns
+// them in canonical form. A preset the setting would refuse is a declaration bug: offering it
+// could only produce an invalid save, so the registry refuses to build.
+func canonicalPresets(s Setting) []Preset {
+	if len(s.Presets) == 0 {
+		return nil
+	}
+	out := make([]Preset, len(s.Presets))
+	for i, p := range s.Presets {
+		v, err := s.parse(p.Value)
+		if err != nil {
+			panic(fmt.Sprintf("settings: preset %q of %s does not parse: %v", p.Value, s.Key, err))
+		}
+		out[i] = Preset{Value: ValueString(v), Label: p.Label}
+	}
+	return out
 }
 
 // Get returns the Setting for a key, or false if the key is not declared.

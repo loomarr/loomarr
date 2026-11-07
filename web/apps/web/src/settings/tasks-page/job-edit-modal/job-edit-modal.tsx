@@ -1,11 +1,6 @@
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { invalidateSettings } from "@loomarr/core/events";
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { toast } from "sonner";
-import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -13,10 +8,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@loomarr/design-system";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CRON_PRESETS, CUSTOM_VALUE, isPreset } from "../cron-presets";
+import { CUSTOM_VALUE, isPreset } from "../cron-presets";
 import type { JobEditModalProps } from "./job-edit-modal.type";
 
 // The "Modify Job" dialog (§18.1): edit a scheduled job's cron. Human-readable PRESETS are the
@@ -25,11 +25,13 @@ import type { JobEditModalProps } from "./job-edit-modal.type";
 // validates the cron, so an invalid advanced expression comes back as a field error. The
 // scheduler hot-applies the new cron on its next tick and emits a `job` SSE frame, so the
 // Tasks list refreshes without a manual reload.
-const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
+const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) => {
   const queryClient = useQueryClient();
   // The picked preset value (a cron string) or CUSTOM_VALUE; seeded from the job's current
   // schedule — a matching preset if there is one, else Custom (advanced).
-  const [choice, setChoice] = useState<string>(() => (isPreset(job.schedule) ? job.schedule : CUSTOM_VALUE));
+  const [choice, setChoice] = useState<string>(() =>
+    isPreset(job.schedule, presets) ? job.schedule.trim() : CUSTOM_VALUE,
+  );
   const [advancedCron, setAdvancedCron] = useState<string>(job.schedule);
   const advanced = choice === CUSTOM_VALUE;
 
@@ -68,9 +70,9 @@ const JobEditModal = ({ job, open, onOpenChange }: JobEditModalProps) => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {CRON_PRESETS.map((p) => (
-                  <SelectItem key={p.cron} value={p.cron}>
-                    {p.label}
+                {presets.map((preset) => (
+                  <SelectItem key={preset.value} value={preset.value}>
+                    {preset.label}
                   </SelectItem>
                 ))}
                 <SelectItem value={CUSTOM_VALUE}>Custom (advanced)…</SelectItem>

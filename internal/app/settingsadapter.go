@@ -14,9 +14,9 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/requester"
-	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
@@ -434,6 +434,19 @@ func probeWritableDirectory(dir string) error {
 	return nil
 }
 
+// toAPIPresets carries the registry's common choices for an open-ended setting to the API, so
+// the UI offers them without keeping its own list.
+func toAPIPresets(presets []settings.Preset) []api.SettingPreset {
+	if len(presets) == 0 {
+		return nil
+	}
+	out := make([]api.SettingPreset, len(presets))
+	for i, p := range presets {
+		out[i] = api.SettingPreset{Value: p.Value, Label: p.Label}
+	}
+	return out
+}
+
 // toAPIEnumOptions carries the registry's {value, label} enum choices to the API
 // so the UI shows registry-owned labels ("OpenAI") instead of re-deriving them.
 func toAPIEnumOptions(opts []settings.EnumOption) []api.SettingEnumOption {
@@ -469,6 +482,7 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		Secret:       e.Setting.IsSecret(),
 		Enum:         e.Setting.EnumValues(),
 		EnumOptions:  toAPIEnumOptions(e.Setting.Enum),
+		Presets:      toAPIPresets(e.Setting.Presets),
 		ShowWhen:     e.Setting.ShowWhen,
 		RequiredFor:  string(e.Setting.Required),
 		Doc:          e.Setting.Doc,

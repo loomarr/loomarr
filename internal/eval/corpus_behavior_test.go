@@ -7,18 +7,18 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func TestActionMarathonCorpusRejectsAnySeriesIdentity(t *testing.T) {
 	c := corpusCase(t, "template_action_marathon")
-	proposal := proposal.Proposal{
-		Lineup: []proposal.ProposalItem{
+	proposal := proposals.Proposal{
+		Lineup: []proposals.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Genres: []string{"Action"}, OfficialRating: "PG-13"},
 			{MediaType: provision.Series, TMDBID: 90000456, Name: "The Mudpuddles", Genres: []string{"Action"}, OfficialRating: "TV-PG"},
 		},
-		Scores: proposal.Scores{ThemeFit: new(0.9)},
+		Scores: proposals.Scores{ThemeFit: new(0.9)},
 	}
 	judge := &sequenceJudge{scores: []JudgeScores{{
 		Overall: 0.9, Relevance: 0.9, Serendipity: 0.8, Reason: "Otherwise strong.",
@@ -34,7 +34,7 @@ func TestActionMarathonCorpusRejectsAnySeriesIdentity(t *testing.T) {
 }
 
 func TestRunnerRejectsMissingRequiredExactGroundedTitle(t *testing.T) {
-	card := NewRunner(scriptedGenerator{proposal: proposal.Proposal{Lineup: []proposal.ProposalItem{{
+	card := NewRunner(scriptedGenerator{proposal: proposals.Proposal{Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000680, Name: "Brass Diner",
 	}}}}, RunnerConfig{}).Run(context.Background(), []Case{{
 		Name: "required_exact_title", TitleEvidence: TitleEvidenceGrounded,
@@ -49,7 +49,7 @@ func TestRunnerRejectsMissingRequiredExactGroundedTitle(t *testing.T) {
 }
 
 func TestRunnerRejectsForbiddenExactGroundedTitle(t *testing.T) {
-	card := NewRunner(scriptedGenerator{proposal: proposal.Proposal{Lineup: []proposal.ProposalItem{{
+	card := NewRunner(scriptedGenerator{proposal: proposals.Proposal{Lineup: []proposals.ProposalItem{{
 		MediaType: provision.Movie, TMDBID: 90000176, Name: "  lARk\t",
 	}}}}, RunnerConfig{}).Run(context.Background(), []Case{{
 		Name: "forbidden_exact_title", TitleEvidence: TitleEvidenceGrounded,
@@ -64,7 +64,7 @@ func TestRunnerRejectsForbiddenExactGroundedTitle(t *testing.T) {
 }
 
 func TestRunnerExactGroundedTitlesDoNotMatchNearOrSubstringTitles(t *testing.T) {
-	proposal := proposal.Proposal{Lineup: []proposal.ProposalItem{
+	proposal := proposals.Proposal{Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 90000215, Name: "Lark II"},
 		{MediaType: provision.Movie, TMDBID: 90999001, Name: "Skylark"},
 	}}
@@ -99,9 +99,9 @@ func TestRequiredThemeFloorRejectsUnknownAndPartialEvidence(t *testing.T) {
 		{"unknown", nil, false}, {"partial", new(0.25), false}, {"at floor", new(0.5), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			card := NewRunner(scriptedGenerator{proposal: proposal.Proposal{
-				Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
-				Scores: proposal.Scores{Version: 1, ThemeFit: tc.value},
+			card := NewRunner(scriptedGenerator{proposal: proposals.Proposal{
+				Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
+				Scores: proposals.Scores{Version: 1, ThemeFit: tc.value},
 			}}, RunnerConfig{}).Run(context.Background(), []Case{{Name: "theme_floor", MinThemeFit: 0.5}})
 			if card.Results[0].Passed() != tc.pass {
 				t.Fatalf("required floor result: %+v", card.Results[0])

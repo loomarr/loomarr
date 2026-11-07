@@ -1,0 +1,165 @@
+package scan
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+)
+
+func touch(t *testing.T, root, rel string) {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A walk lists media and disc images, skips by-products and ignored folders, marks extras, and
+// follows a symlink only inside the root.
+func TestWalkRoot(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	touch(t, root, "India/India.mkv")
+	touch(t, root, "India/India.nfo")
+	touch(t, root, "India/trailers/Teaser.mp4")
+	touch(t, root, "India/India-featurette.mkv")
+	touch(t, root, "India/trickplay/India.mkv")
+	touch(t, root, "@eaDir/India.mkv")
+	touch(t, root, "Juliet/.ignore")
+	touch(t, root, "Juliet/Juliet.mkv")
+	touch(t, root, "Kilo/VIDEO_TS/VTS_01_1.VOB")
+	touch(t, root, "Lima/Lima.iso")
+	touch(t, root, "Lima/notes.txt")
+	touch(t, outside, "Mike/Mike.mkv")
+	touch(t, root, "November/November.mkv")
+	touch(t, root, "November/Papa.nfo")
+	touch(t, root, "#recycle/Quebec.mkv")
+	touch(t, root, ".Trash-1000/files/Romeo.mkv")
+	touch(t, root, "lost+found/Sierra.mkv")
+	if err := os.Symlink(filepath.Join(outside, "Mike"), filepath.Join(root, "Mike")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "November"), filepath.Join(root, "Oscar")); err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := walkRoot(context.Background(), root, nil)
+	if err != nil || !w.Complete {
+		t.Fatalf("walk: %v complete=%v", err, w.Complete)
+	}
+	got := map[string]File{}
+	for _, f := range w.Files {
+		got[f.Rel] = f
+	}
+	want := []string{
+		"India/India-featurette.mkv", "India/India.mkv", "India/trailers/Teaser.mp4",
+		"Kilo/VIDEO_TS", "Lima/Lima.iso", "November/November.mkv",
+	}
+	var rels []string
+	for rel := range got {
+		rels = append(rels, rel)
+	}
+	slices.Sort(rels)
+	if !slices.Equal(rels, want) {
+		t.Fatalf("walked %v, want %v", rels, want)
+	}
+	if got["India/India.mkv"].Extra || !got["India/trailers/Teaser.mp4"].Extra || !got["India/India-featurette.mkv"].Extra {
+		t.Error("extras not marked")
+	}
+	if got["Kilo/VIDEO_TS"].Problem != ProblemDiscImage || got["Lima/Lima.iso"].Problem != ProblemDiscImage {
+		t.Error("disc images not listed as problems")
+	}
+	if _, ok := got["India/India.mkv"].Sidecars[filepath.Join(root, "India", "India.nfo")]; !ok {
+		t.Errorf("sidecars = %v", got["India/India.mkv"].Sidecars)
+	}
+	// A sibling's NFO says nothing about the file, so its changes do not touch it.
+	if s := got["November/November.mkv"].Sidecars; len(s) != 0 {
+		t.Errorf("a sibling's NFO is a sidecar: %v", s)
+	}
+}
+
+// An unreadable folder makes the walk incomplete, so its files are not taken as removed.
+func TestWalkUnreadableFolderIsIncomplete(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every folder")
+	}
+	root := t.TempDir()
+	touch(t, root, "Papa/Papa.mkv")
+	if err := os.Chmod(filepath.Join(root, "Papa"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "Papa"), 0o755) })
+	w, err := walkRoot(context.Background(), root, nil)
+	if err != nil || w.Complete {
+		t.Fatalf("walk: %v complete=%v", err, w.Complete)
+	}
+}
+
+func TestIDsAndNumberingInNames(t *testing.T) {
+	ids := idsIn("Alpha (1999) {tmdb-90000603} [imdbid-tt90000603] {tvdb-0} [tmdbid-x1]")
+	want := []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000603"}, {Namespace: mp.NamespaceIMDB, Value: "tt90000603"}}
+	if !slices.Equal(ids, want) {
+		t.Errorf("ids = %v", ids)
+	}
+	cases := map[string]mp.Numbering{
+		"Show S01E02.mkv":         {Season: 1, Episode: 2},
+		"Show.s10e100.mkv":        {Season: 10, Episode: 100},
+		"Show - S02E03-E05.mkv":   {Season: 2, Episode: 3, EpisodeEnd: 5},
+		"Show S02E03E04.mkv":      {Season: 2, Episode: 3, EpisodeEnd: 4},
+		"Show 3x07 Title.mkv":     {Season: 3, Episode: 7},
+		"Show S00E01 Special.mkv": {Season: 0, Episode: 1},
+	}
+	for name, want := range cases {
+		if got, ok := numberingIn(name); !ok || got != want {
+			t.Errorf("%s = %+v %v, want %+v", name, got, ok, want)
+		}
+	}
+	for _, name := range []string{"Movie (2001).mkv", "Movie 1080x720.mkv", "Pressed (2011).mkv"} {
+		if got, ok := numberingIn(name); ok {
+			t.Errorf("%s parsed as %+v", name, got)
+		}
+	}
+}
+
+// An episode's series folder is the one above its season folder, else the nearest named by an id,
+// else its own; it is never assumed to be the root's first folder.
+func TestSeriesFolder(t *testing.T) {
+	cases := map[string]string{
+		"Kilo/Season 02/Kilo S02E01.mkv":                      "Kilo",
+		"TV/Kilo {tvdb-90081190}/Season 2/Kilo S02E01.mkv":    "TV/Kilo {tvdb-90081190}",
+		"TV/Kilo {tvdb-90081190}/Kilo S02E01.mkv":             "TV/Kilo {tvdb-90081190}",
+		"TV/Kids/Lima {tvdb-90081191}/S01/Lima S01E01.mkv":    "TV/Kids/Lima {tvdb-90081191}",
+		"TV/Kids/Lima {tvdb-90081191}/Disc 1/Lima S01E01.mkv": "TV/Kids/Lima {tvdb-90081191}",
+		"Mike/Mike S01E01.mkv":                                "Mike",
+		"Mike S01E01.mkv":                                     "",
+		"Season 1/Mike S01E01.mkv":                            "Season 1",
+	}
+	for rel, want := range cases {
+		if got := seriesFolder(rel); got != want {
+			t.Errorf("%s = %q, want %q", rel, got, want)
+		}
+	}
+}
+
+// A movie takes ids from its own name or folder: not from a collection or series folder above it,
+// and never a tvdb id.
+func TestMovieIDsComeFromItsOwnFolder(t *testing.T) {
+	cases := map[string][]mp.ExternalID{
+		"Saga {tmdb-90000700}/November (2001)/November (2001).mkv":   nil,
+		"Saga/November (2001) {tmdb-90000701}/November (2001).mkv":   {{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+		"Saga/November (2001)/November (2001) {imdb-tt90000702}.mkv": {{Namespace: mp.NamespaceIMDB, Value: "tt90000702"}},
+		"Oscar {tvdb-90081192}/Oscar.mkv":                            nil,
+	}
+	for rel, want := range cases {
+		rec, _ := embeddedRecord(File{Rel: rel})
+		if rec.Kind != mp.KindMovie || !slices.Equal(rec.IDs, want) {
+			t.Errorf("%s = %v %v, want %v", rel, rec.Kind, rec.IDs, want)
+		}
+	}
+}

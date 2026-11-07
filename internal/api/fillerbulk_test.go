@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -75,8 +75,8 @@ func TestBulkTagFiller_OmittedFieldsAreLeftAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(states) != 1 || states[0].Axis != fillerenrichment.AxisAudience ||
-		states[0].Evidence.Kind != fillerenrichment.EvidenceOperator || states[0].Value.Text != "kids" {
+	if len(states) != 1 || states[0].Axis != enrichment.AxisAudience ||
+		states[0].Evidence.Kind != enrichment.EvidenceOperator || states[0].Value.Text != "kids" {
 		t.Fatalf("bulk operator evidence = %+v", states)
 	}
 }

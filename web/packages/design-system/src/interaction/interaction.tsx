@@ -7,12 +7,12 @@ import type {
   ReactNode,
   RefAttributes,
 } from "react";
-import { cloneElement, forwardRef, isValidElement, useState } from "react";
+import { cloneElement, forwardRef, isValidElement, useId, useState } from "react";
 import { Platform, Pressable, TextInput } from "react-native";
 
+import { useFocusLook } from "../focus-look";
 import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
-import { useBehindModal } from "../modal-layer";
 import { lineHeightPx, Surface, Text } from "../primitives";
 import { TamaguiText } from "../text-base";
 import {
@@ -144,10 +144,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     ref,
   ) => {
     const theme = useTheme();
-    const [hasFocus, setFocused] = useState(false);
-    // A native Modal never blurs its opener, so a control behind an open modal drops its focus look.
-    const behindModal = useBehindModal();
-    const focused = hasFocus && !behindModal;
+    const focusLook = useFocusLook({ onBlur, onFocus });
+    const focused = focusLook.focused;
     const isDisabled = disabled === true;
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
@@ -320,9 +318,9 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           {
             ...restProps,
             "aria-disabled": isDisabled || undefined,
-            onBlur: () => setFocused(false),
+            onBlur: focusLook.onBlur,
             onClick: onPress,
-            onFocus: () => setFocused(true),
+            onFocus: focusLook.onFocus,
             ref,
             role,
             style: {
@@ -350,14 +348,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         aria-pressed={role === "button" && selected ? true : undefined}
         aria-selected={role === "tab" ? selected : undefined}
         disabled={isDisabled}
-        onBlur={(event) => {
-          setFocused(false);
-          onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          onFocus?.(event);
-        }}
+        onBlur={focusLook.onBlur}
+        onFocus={focusLook.onFocus}
         ref={ref}
         tabIndex={isDisabled ? -1 : tabIndex}
         style={(state) => [
@@ -388,21 +380,73 @@ type FieldProps = Omit<ComponentProps<typeof TextInput>, "editable"> & {
   label?: string;
 };
 
+// A password Field's button: the label names what a press does, so it flips with the state.
+const RevealButton = ({
+  density,
+  disabled,
+  onPress,
+  revealed,
+}: {
+  density: Density;
+  disabled: boolean;
+  onPress: () => void;
+  revealed: boolean;
+}) => {
+  const { focused, ...focusHandlers } = useFocusLook();
+  return (
+    <Pressable
+      accessibilityLabel={revealed ? "Hide password" : "Show password"}
+      accessibilityRole="button"
+      aria-pressed={revealed}
+      disabled={disabled}
+      {...focusHandlers}
+      onPress={onPress}
+      style={{
+        alignItems: "center",
+        bottom: 0,
+        justifyContent: "center",
+        // The ring around the glyph is the one focus look. Chrome's `auto` ring ignores a zero
+        // width, so the style is named too.
+        outlineStyle: "solid",
+        outlineWidth: 0,
+        position: "absolute",
+        right: 0,
+        top: 0,
+        width: semanticTargets[density],
+      }}
+    >
+      <View borderRadius="control" padding={2} {...boxFocusRing(focused, density)}>
+        <Icon
+          decorative
+          glyph={revealed ? icons.conceal : icons.reveal}
+          size={density === "tv" ? "control" : "compact"}
+          tone={focused ? "content" : "muted"}
+        />
+      </View>
+    </Pressable>
+  );
+};
+
 const Field = ({
   accessibilityLabel,
   density = "pointer",
   description,
   disabled = false,
   error,
+  id,
   invalid = false,
   label,
   onBlur,
   onFocus,
+  secureTextEntry = false,
   style,
   ...props
 }: FieldProps) => {
   const theme = useTheme();
-  const [focused, setFocused] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook({ onBlur, onFocus });
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
+  const [revealed, setRevealed] = useState(false);
   const hasError = invalid || Boolean(error);
   const borderColor = hasError
     ? theme.stateDanger.val
@@ -413,45 +457,59 @@ const Field = ({
   return (
     <View gap="inline" width="100%">
       {label ? (
-        <Text density={density} textRole="label">
+        <Text
+          as={isWeb ? "label" : undefined}
+          density={density}
+          textRole="label"
+          {...(isWeb ? { htmlFor: inputId } : {})}
+        >
           {label}
         </Text>
       ) : null}
-      <TextInput
-        {...props}
-        accessibilityLabel={accessibilityLabel ?? label}
-        accessibilityState={{ disabled }}
-        aria-disabled={disabled || undefined}
-        aria-invalid={hasError || undefined}
-        editable={!disabled}
-        onBlur={(event) => {
-          setFocused(false);
-          onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          onFocus?.(event);
-        }}
-        placeholderTextColor={theme.contentMuted.val}
-        style={[
-          {
-            backgroundColor: disabled ? theme.surfaceRaised.val : theme.surfaceCanvas.val,
-            borderColor,
-            borderRadius: semanticRadius.control,
-            borderWidth: focused ? 3 : 2,
-            color: theme.contentPrimary.val,
-            // A raw TextInput: Tamagui's per-weight face swap doesn't reach it, so name the file.
-            fontFamily: isWeb
-              ? typography.family.data.web
-              : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
-            fontSize: typography[density].body.size,
-            minHeight: semanticTargets[density],
-            opacity: disabled ? 0.62 : 1,
-            paddingHorizontal: semanticSpace.control,
-          },
-          style,
-        ]}
-      />
+      <View position="relative" width="100%">
+        <TextInput
+          {...props}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={{ disabled }}
+          aria-disabled={disabled || undefined}
+          aria-invalid={hasError || undefined}
+          editable={!disabled}
+          id={inputId}
+          secureTextEntry={secureTextEntry && !revealed}
+          {...focusHandlers}
+          placeholderTextColor={theme.contentMuted.val}
+          style={[
+            {
+              backgroundColor: disabled ? theme.surfaceRaised.val : theme.surfaceCanvas.val,
+              borderColor,
+              borderRadius: semanticRadius.control,
+              borderWidth: focused ? 3 : 2,
+              color: theme.contentPrimary.val,
+              // A raw TextInput: Tamagui's per-weight face swap doesn't reach it, so name the file.
+              fontFamily: isWeb
+                ? typography.family.data.web
+                : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
+              fontSize: typography[density].body.size,
+              minHeight: semanticTargets[density],
+              opacity: disabled ? 0.62 : 1,
+              // The amber border is the focus look; the browser would add its own ring outside it.
+              outlineStyle: "solid",
+              outlineWidth: 0,
+              paddingHorizontal: semanticSpace.control,
+              paddingRight: secureTextEntry ? semanticTargets[density] : semanticSpace.control,
+            },
+            style,
+          ]}
+        />
+        {secureTextEntry ? (
+          <RevealButton
+            density={density}
+            disabled={disabled}
+            onPress={() => setRevealed((shown) => !shown)}
+            revealed={revealed}
+          />
+        ) : null}
+      </View>
       {error ? (
         <Text aria-live="polite" density={density} textRole="metadata" tone="danger">
           {error}
@@ -544,9 +602,7 @@ const Toggle = ({
 }: ToggleProps) => {
   const switchWidth = density === "tv" ? 72 : density === "touch" ? 56 : 48;
   const controlSize = density === "tv" ? 36 : density === "touch" ? 28 : 24;
-  const [hasFocus, setFocused] = useState(false);
-  const behindModal = useBehindModal();
-  const focused = hasFocus && !behindModal;
+  const { focused, ...focusHandlers } = useFocusLook();
   return (
     <Pressable
       accessibilityLabel={label}
@@ -555,8 +611,7 @@ const Toggle = ({
       aria-checked={checked}
       aria-disabled={disabled || undefined}
       disabled={disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
+      {...focusHandlers}
       onPress={() => onCheckedChange(!checked)}
       style={{
         alignItems: "center",
@@ -637,8 +692,7 @@ const ChoiceRow = ({
   onPress: () => void;
   option: ChoiceOption<string>;
 }) => {
-  const [hasFocus, setFocused] = useState(false);
-  const behindModal = useBehindModal();
+  const { focused, ...focusHandlers } = useFocusLook();
   return (
     <Pressable
       accessibilityLabel={option.label}
@@ -647,8 +701,7 @@ const ChoiceRow = ({
       aria-checked={checked}
       aria-disabled={option.disabled || undefined}
       disabled={option.disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
+      {...focusHandlers}
       onPress={onPress}
       style={{
         alignItems: "center",
@@ -667,7 +720,7 @@ const ChoiceRow = ({
         height={density === "tv" ? 36 : 24}
         justifyContent="center"
         width={density === "tv" ? 36 : 24}
-        {...boxFocusRing(hasFocus && !behindModal, density)}
+        {...boxFocusRing(focused, density)}
       >
         {checked ? (
           <View backgroundColor="contentPrimary" borderRadius="round" height="45%" width="45%" />

@@ -4,12 +4,12 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
-// Answer 1 (#1512 phase 2): every client and plan gets the H.264 1080p SDR baseline; a PlanBaseline
-// browser on a channel whose profile encoder is HEVC must not be handed HEVC. ChannelOutput alone
-// follows the profile's encoder (today's HEVC-plan sessions), so the packager keys by format.
+// Answer 1 (#1512 phase 2): every client gets the H.264 1080p SDR baseline; a browser on a channel
+// whose profile encoder is HEVC must not be handed HEVC. ChannelOutput alone follows the profile's
+// encoder, so the packager keys by format.
 func TestFormatOutputBaselineIsH264OnAnHEVCProfile(t *testing.T) {
 	p := Resolve(TierFor("balanced"), encode.EncoderNVENCHEVC, 0)
 	if !ChannelOutput(p).HEVC {

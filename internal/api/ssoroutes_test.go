@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // fakeSSO scripts the credential path so the ROUTES can be tested without an OIDC provider.
-// The flow itself is covered against a real signing IdP in internal/auth.
+// The flow itself is covered against a real signing IdP in internal/people/auth.
 type fakeSSO struct {
 	available bool
 	authURL   string

@@ -1,4 +1,7 @@
 import { toProblem } from "@loomarr/api/mutator";
+import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
+import { FieldHint } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { KeyRound, Mail, Server } from "lucide-react";
 import { useId, useState } from "react";
 import { SessionList } from "@/components/loomarr/people/session-list";
@@ -8,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAppForm } from "@/lib/app-form";
 import type { PersonDetailProps } from "./person-detail.type";
 
 const PersonDetail = ({
@@ -30,60 +34,51 @@ const PersonDetail = ({
   const roleId = useId();
   const quotaId = useId();
   const autoId = useId();
-  const passwordId = useId();
-  const contactId = useId();
   const [resetOpen, setResetOpen] = useState(false);
-  const [password, setPassword] = useState("");
   const [resetError, setResetError] = useState("");
-  const [resetting, setResetting] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
-  const [contactEmail, setContactEmail] = useState("");
   const [contactError, setContactError] = useState("");
   const [contactSaving, setContactSaving] = useState(false);
 
-  const submitReset = async () => {
-    if (!onResetPassword) return;
-    if (password.length < 8) {
-      setResetError("Use at least 8 characters.");
-      return;
-    }
-    setResetError("");
-    setResetting(true);
-    try {
-      await onResetPassword(password);
-      setPassword("");
-      setResetOpen(false);
-    } catch (error) {
-      setResetError(toProblem(error).detail ?? "Couldn't reset that password.");
-    } finally {
-      setResetting(false);
-    }
-  };
+  const resetForm = useAppForm({
+    defaultValues: { next: "" },
+    validators: { onSubmit: resetUserPasswordSchema },
+    onSubmit: async ({ value }) => {
+      if (!onResetPassword) return;
+      setResetError("");
+      try {
+        await onResetPassword(value.next);
+        resetForm.reset();
+        setResetOpen(false);
+      } catch (error) {
+        setResetError(toProblem(error).detail ?? "Couldn't reset that password.");
+      }
+    },
+  });
+  const resetting = useStore(resetForm.store, (state) => state.isSubmitting);
+
+  const contactForm = useAppForm({
+    defaultValues: { email: "" },
+    validators: { onSubmit: contactAddressSchema },
+    onSubmit: async ({ value }) => {
+      if (!onSetContactAddress) return;
+      setContactError("");
+      setContactSaving(true);
+      try {
+        await onSetContactAddress(contactAddressSchema.parse(value).email);
+        setContactOpen(false);
+      } catch (error) {
+        setContactError(toProblem(error).detail ?? "Couldn't save that contact email.");
+      } finally {
+        setContactSaving(false);
+      }
+    },
+  });
 
   const openContact = () => {
-    setContactEmail(user.contactReplacement?.email ?? user.contactAddress?.email ?? "");
+    contactForm.reset({ email: user.contactReplacement?.email ?? user.contactAddress?.email ?? "" });
     setContactError("");
     setContactOpen(true);
-  };
-
-  const submitContact = async () => {
-    if (!onSetContactAddress) return;
-    const email = contactEmail.trim();
-    if (!email.includes("@") || email.startsWith("@") || email.endsWith("@")) {
-      setContactError("Enter one complete email address.");
-      return;
-    }
-    setContactError("");
-    setContactSaving(true);
-    try {
-      await onSetContactAddress(email);
-      setContactEmail("");
-      setContactOpen(false);
-    } catch (error) {
-      setContactError(toProblem(error).detail ?? "Couldn't save that contact email.");
-    } finally {
-      setContactSaving(false);
-    }
   };
 
   const runContactAction = async (action: (() => Promise<void>) | undefined) => {
@@ -178,41 +173,42 @@ const PersonDetail = ({
         )}
 
         {contactOpen ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={contactId}>Contact email</Label>
-              <Input
-                id={contactId}
-                type="email"
-                autoComplete="off"
-                value={contactEmail}
-                onChange={(event) => setContactEmail(event.target.value)}
-              />
-            </div>
+          <form
+            className="flex flex-col gap-3"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              void contactForm.handleSubmit();
+            }}
+          >
+            <contactForm.AppField name="email">
+              {(field) => <field.TextField autoComplete="off" label="Contact email" type="email" />}
+            </contactForm.AppField>
             <p className="text-muted-foreground text-xs">
               Saving creates an unverified address. Invitation or verification delivery will prove possession.
             </p>
             {contactError && (
-              <p className="text-onair-300 text-sm" role="alert">
+              <FieldHint role="alert" tone="error">
                 {contactError}
-              </p>
+              </FieldHint>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => void submitContact()} disabled={contactSaving}>
+              <Button type="submit" disabled={contactSaving}>
                 Save email
               </Button>
               <Button
+                type="button"
                 variant="ghost"
                 onClick={() => {
                   setContactOpen(false);
-                  setContactEmail("");
+                  contactForm.reset({ email: "" });
                   setContactError("");
                 }}
               >
                 Cancel
               </Button>
             </div>
-          </div>
+          </form>
         ) : (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={openContact} disabled={contactSaving}>
@@ -231,9 +227,9 @@ const PersonDetail = ({
           </div>
         )}
         {!contactOpen && contactError && (
-          <p className="text-onair-300 text-sm" role="alert">
+          <FieldHint role="alert" tone="error">
             {contactError}
-          </p>
+          </FieldHint>
         )}
       </section>
 
@@ -347,37 +343,41 @@ const PersonDetail = ({
         {user.local &&
           onResetPassword &&
           (resetOpen ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={passwordId}>New password</Label>
-                <Input
-                  id={passwordId}
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </div>
+            <form
+              className="flex flex-col gap-3"
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void resetForm.handleSubmit();
+              }}
+            >
+              <resetForm.AppField name="next">
+                {(field) => (
+                  <field.TextField autoComplete="new-password" label="New password" type="password" />
+                )}
+              </resetForm.AppField>
               {resetError && (
-                <p className="text-onair-300 text-sm" role="alert">
+                <FieldHint role="alert" tone="error">
                   {resetError}
-                </p>
+                </FieldHint>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void submitReset()} disabled={resetting}>
+                <Button type="submit" disabled={resetting}>
                   Set new password
                 </Button>
                 <Button
+                  type="button"
                   variant="ghost"
                   onClick={() => {
                     setResetOpen(false);
-                    setPassword("");
+                    resetForm.reset();
                     setResetError("");
                   }}
                 >
                   Cancel
                 </Button>
               </div>
-            </div>
+            </form>
           ) : (
             <Button variant="outline" className="self-start" onClick={() => setResetOpen(true)}>
               <KeyRound aria-hidden />

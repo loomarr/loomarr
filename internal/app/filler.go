@@ -12,23 +12,22 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/clipfetch"
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
-	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
@@ -118,7 +117,7 @@ func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]f
 }
 
 // fillerStoreAdapter bridges the store's clip methods → filler.Store (the sync).
-type fillerStoreAdapter struct{ st fillerstore.Store }
+type fillerStoreAdapter struct{ st records.Store }
 
 func (a fillerStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, catalogstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
@@ -144,7 +143,7 @@ func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string)
 // directly, because those five methods already speak `filler.ClipPipeline`. This adapter exists
 // only for the clip-row translation (`store.Clip` ⇄ `filler.StoreClip`) every other filler
 // adapter here performs.
-type fillerPipelineClipAdapter struct{ st fillerstore.Store }
+type fillerPipelineClipAdapter struct{ st records.Store }
 
 func (a fillerPipelineClipAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
 	return fillerStoreAdapter(a).GetClip(ctx, id)
@@ -161,7 +160,7 @@ func (a fillerPipelineClipAdapter) ReplaceAiringClip(ctx context.Context, oldHas
 
 // fillerAiringClipsAdapter lists the clips on air for the library re-encode (#2121): the default
 // filter leaves out held, removed and composite clips.
-type fillerAiringClipsAdapter struct{ st fillerstore.Store }
+type fillerAiringClipsAdapter struct{ st records.Store }
 
 func (a fillerAiringClipsAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
 	return listWorkClips(ctx, a.st, f)
@@ -185,7 +184,7 @@ func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash st
 // ⚠ Every method here is an EXISTING single writer, called with the "not yet" value it already
 // defines. Rewind introduces no new writer of any clip column, which is what keeps the
 // single-writer story the store conformance suite pins.
-type fillerRewindAdapter struct{ st fillerstore.Store }
+type fillerRewindAdapter struct{ st records.Store }
 
 func (a fillerRewindAdapter) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
 	return a.st.SetClipLanguage(ctx, path, language, at)
@@ -212,7 +211,7 @@ func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string)
 // ⚠ It exists for ONE translation: `store.SweepableProposal` → `filler.SweepableProposal`. The
 // domain must not import the store (Tier 3), and the store's row type is a query result rather
 // than a domain concept, so the two are deliberately separate structs with the same shape.
-type fillerSweepStoreAdapter struct{ st fillerstore.Store }
+type fillerSweepStoreAdapter struct{ st records.Store }
 
 func (a fillerSweepStoreAdapter) ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]filler.SweepableProposal, error) {
 	rows, err := a.st.ListSweepableSplitProposals(ctx, before)
@@ -243,7 +242,7 @@ func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash 
 
 // fillerIdentityStoreAdapter bridges the store → filler.IdentityStore (#2033). It translates the
 // catalog listing, which carries admission time, and the merge record; the rest passes through.
-type fillerIdentityStoreAdapter struct{ fillerstore.Store }
+type fillerIdentityStoreAdapter struct{ records.Store }
 
 func (a fillerIdentityStoreAdapter) ListIdentityClips(ctx context.Context) ([]filler.IdentityClip, error) {
 	clips, err := a.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true, IncludeComposites: true, IncludeRemoved: true})
@@ -288,7 +287,7 @@ func (a fillerIdentityStoreAdapter) MergeInferiorCopy(ctx context.Context, c fil
 // fetch path puts its `Enabled && Fetchable()` check. Both predicates are the store's domain
 // knowledge about a row; re-deriving them inside the job is how the two start disagreeing about
 // what a source is for.
-type fillerScanSourceAdapter struct{ st fillerstore.FillerSourceStore }
+type fillerScanSourceAdapter struct{ st records.FillerSourceStore }
 
 func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.ScanSource, error) {
 	srcs, err := a.st.ListFillerSources(ctx)
@@ -466,7 +465,7 @@ func (a fillerVisionStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxo
 
 // fetchStoreAdapter bridges the store → filler.FetchStore (auto-fetch, §10 V38b).
 type fetchStoreAdapter struct {
-	st fillerstore.Store
+	st records.Store
 	// fetchEvery is the GLOBAL poll interval a source's override resolves against (§10 V38c).
 	// A closure so it hot-applies — an operator changing it expects the next pass to honour it.
 	fetchEvery func() time.Duration
@@ -575,7 +574,7 @@ func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error)
 // proposal methods pass filler.SplitProposal straight through — the store
 // persists exactly that type, so there is nothing to translate.
 type fillerSplitStoreAdapter struct {
-	st   fillerstore.Store
+	st   records.Store
 	wake *fillerChannelWake
 }
 
@@ -713,7 +712,7 @@ type fillerServiceAdapter struct {
 	// fetcher is nil unless the running image carries the ingest tooling (the single image
 	// — §16). nil is the normal state on loomarr:latest, not a misconfiguration.
 	fetcher interface {
-		Prepare(context.Context, []clipfetch.Source, storagegovernor.Mode) (clipfetch.AcquisitionPlan, error)
+		Prepare(context.Context, []fetch.Source, storagegovernor.Mode) (fetch.AcquisitionPlan, error)
 	}
 	// afterIngest closes the watch-folder → catalog → pipeline loop before a successful ingest
 	// event is published (§10 V56). Optional only in narrow unit tests.
@@ -729,7 +728,7 @@ type fillerServiceAdapter struct {
 	// to reach persistence.
 	sources fillerSourceRegistry
 	// providers suggests and verifies the sources an operator is about to register.
-	providers *sourceprovider.Registry
+	providers *source.Registry
 	home      func() filler.Geography
 	// acquisitions is the reconnect truth for background downloads. nil is allowed only in
 	// narrow tests; production always supplies the store before any job can be accepted.
@@ -752,34 +751,33 @@ type fillerServiceAdapter struct {
 	storage          *storagegovernor.Governor
 	storagePath      string
 	storageAutomatic func() bool
-	storageCleanup   *clipfetch.AcquisitionCleaner
+	storageCleanup   *fetch.AcquisitionCleaner
 }
 
-func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error) {
-	finder, ok := a.providers.Finder(sourceprovider.ID(provider))
+func (a fillerServiceAdapter) SuggestSources(ctx context.Context, provider, query string, limit int) ([]source.Suggestion, error) {
+	finder, ok := a.providers.Finder(source.ID(provider))
 	if !ok {
 		return nil, fmt.Errorf("source suggestions are not implemented for %s", provider)
 	}
 	return finder.Suggest(ctx, query, limit)
 }
 
-func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input string) (sourceprovider.Suggestion, error) {
-	finder, ok := a.providers.Finder(sourceprovider.ID(provider))
+func (a fillerServiceAdapter) ResolveSource(ctx context.Context, provider, input string) (source.Suggestion, error) {
+	finder, ok := a.providers.Finder(source.ID(provider))
 	if !ok {
-		return sourceprovider.Suggestion{}, fmt.Errorf("source resolution is not implemented for %s", provider)
+		return source.Suggestion{}, fmt.Errorf("source resolution is not implemented for %s", provider)
 	}
 	return finder.Resolve(ctx, input)
 }
 
 var _ api.FillerRewinder = fillerServiceAdapter{}
-var _ fillerdecision.DiagnosticRecoveryExecutor = fillerServiceAdapter{}
 
 // fillerSourceRegistry is the acquisition-side source slice. Readiness is deliberately absent:
 // this adapter registers and fetches sources but cannot publish a Clip by itself.
 type fillerSourceRegistry interface {
-	ListFillerProviders(context.Context) ([]fillerstore.FillerProvider, error)
-	ListFillerSources(context.Context) ([]fillerstore.FillerSource, error)
-	UpsertFillerSource(context.Context, fillerstore.FillerSource) error
+	ListFillerProviders(context.Context) ([]records.FillerProvider, error)
+	ListFillerSources(context.Context) ([]records.FillerSource, error)
+	UpsertFillerSource(context.Context, records.FillerSource) error
 }
 
 type fillerAcquisitionWriter interface {
@@ -893,33 +891,6 @@ func (a fillerServiceAdapter) RetryFailure(ctx context.Context, hash string) err
 	return a.pipeline.RetryFailure(ctx, hash)
 }
 
-func (a fillerServiceAdapter) DiagnosticRetryStatus(ctx context.Context, hash string) (fillerdecision.DiagnosticRetryStatus, error) {
-	if a.pipeline == nil {
-		return fillerdecision.DiagnosticRetryStatus{}, nil
-	}
-	status, err := a.pipeline.DiagnosticRetryStatus(ctx, hash)
-	return fillerdecision.DiagnosticRetryStatus{Automatic: status.Automatic, RetryAt: status.RetryAt}, err
-}
-
-func (a fillerServiceAdapter) RetryDiagnostic(ctx context.Context, hash string) error {
-	if a.pipeline == nil {
-		return errors.New("filler pipeline is not configured")
-	}
-	status, err := a.pipeline.DiagnosticRetryStatus(ctx, hash)
-	if err != nil {
-		return err
-	}
-	if status.Automatic {
-		return nil
-	}
-	if err := a.pipeline.RetryFailure(ctx, hash); err == nil {
-		return nil
-	} else if !errors.Is(err, filler.ErrPipelineNotRetryable) {
-		return err
-	}
-	return a.pipeline.Rewind(ctx, hash, filler.StageScore, false)
-}
-
 func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, error) {
 	res, err := a.syncer.Sync(ctx)
 	return res.Total, res.Added, res.Updated, res.Pruned, err
@@ -941,7 +912,7 @@ func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID, source
 	return a.ingest(ctx, filler.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls), nil)
 }
 
-func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (string, error) {
+func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []source.Item) (string, error) {
 	targets := make([]filler.AcquisitionTarget, 0, len(items))
 	for _, item := range items {
 		targets = append(targets, filler.AcquisitionTarget{
@@ -1007,19 +978,19 @@ func (a fillerServiceAdapter) ingest(
 		}
 	}
 	jobID := a.newID()
-	sources := make([]clipfetch.Source, 0, len(targets))
+	sources := make([]fetch.Source, 0, len(targets))
 	for _, target := range targets {
-		kind := clipfetch.Kind(target.Kind)
+		kind := fetch.Kind(target.Kind)
 		if kind == "" {
 			// Only the deliberate one-off admin path lacks registered source policy.
-			kind = clipfetch.KindForURL(target.URL)
+			kind = fetch.KindForURL(target.URL)
 		} else if !a.providers.Fetched(kind) {
 			return "", fmt.Errorf("unsupported registered filler source kind %q", target.Kind)
 		}
 		if enabled, known := providerEnabled[string(kind)]; known && !enabled {
 			return "", fmt.Errorf("%w: %s", filler.ErrProviderPaused, kind)
 		}
-		sources = append(sources, clipfetch.Source{
+		sources = append(sources, fetch.Source{
 			ID: target.SourceID, AcquisitionID: jobID,
 			Kind: kind, URL: target.URL, RemoteID: target.RemoteID,
 			DurationMS: target.DurationMS, Height: target.Height, Gap: target.Gap,
@@ -1055,13 +1026,13 @@ func (a fillerServiceAdapter) ingest(
 			return "", fmt.Errorf("queue filler acquisition: %w", err)
 		}
 	}
-	var res clipfetch.Result
+	var res fetch.Result
 	operationTimeout := a.timeout * time.Duration(len(sources))
 	err = a.start(operationTimeout, func(operationCtx context.Context) error {
 		run.Status = filler.AcquisitionRunning
 		run.UpdatedAt = now().UTC()
 		a.persistAcquisition(operationCtx, run)
-		a.publishIngest(jobID, "starting", clipfetch.Result{}, "")
+		a.publishIngest(jobID, "starting", fetch.Result{}, "")
 		res = plan.Run(operationCtx)
 		run.Fetched, run.Skipped = res.Fetched, res.Skipped
 		run.Failed, run.Empty = res.Failed, res.Empty
@@ -1127,7 +1098,7 @@ func (a fillerServiceAdapter) persistAcquisition(ctx context.Context, run filler
 // publishIngest emits one ingest-progress frame (§7, type=filler_ingest). Empty counts
 // sources that yielded nothing without erroring — a typo'd Archive id returns 200 with no
 // items, so without surfacing it the operator sees "fetched:0 failed:0" and no reason.
-func (a fillerServiceAdapter) publishIngest(jobID, status string, res clipfetch.Result, errMsg string) {
+func (a fillerServiceAdapter) publishIngest(jobID, status string, res fetch.Result, errMsg string) {
 	if a.bus == nil {
 		return
 	}
@@ -1463,7 +1434,7 @@ func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, s
 // see what exists — they simply cannot fetch it. Refusing the search too would hide the reason
 // the fetch is unavailable behind a second, unrelated-looking wall.
 func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit int) ([]api.DiscoveredClip, int, error) {
-	res, err := clipfetch.NewArchiveDownloader().Search(ctx, query, limit)
+	res, err := fetch.NewArchiveDownloader().Search(ctx, query, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1481,9 +1452,9 @@ func (a fillerServiceAdapter) Discover(ctx context.Context, query string, limit 
 // `filler_sources` (V33) and the eight instances before it. Worth naming, because the
 // function looking finished is exactly what made it easy to leave unwired.
 func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query string, limit int) ([]api.DiscoveredClip, int, error) {
-	discoverer := clipfetch.NewArchiveDownloader()
+	discoverer := fetch.NewArchiveDownloader()
 	var (
-		res clipfetch.DiscoveryResult
+		res fetch.DiscoveryResult
 		err error
 	)
 	if strings.TrimSpace(query) == "" {
@@ -1504,11 +1475,11 @@ func (a fillerServiceAdapter) DiscoverCollection(ctx context.Context, ref, query
 // OMITTED rather than returned as zero — 0 renders as "0:00", which claims a clip is empty,
 // and absence is what lets a client render "—" instead.
 func (a fillerServiceAdapter) EnrichDiscovered(ctx context.Context, ids []string) (map[string]api.DiscoveredClipStats, error) {
-	items := make([]clipfetch.DiscoveredItem, len(ids))
+	items := make([]fetch.DiscoveredItem, len(ids))
 	for i, id := range ids {
 		items[i].ID = id
 	}
-	clipfetch.NewArchiveDownloader().Enrich(ctx, items)
+	fetch.NewArchiveDownloader().Enrich(ctx, items)
 	return discoveredStats(items), nil
 }
 
@@ -1518,7 +1489,7 @@ func (a fillerServiceAdapter) EnrichDiscovered(ctx context.Context, ids []string
 // own ArchiveDownloader (there is no seam to stub), so a test through the adapter would have to
 // reach archive.org. Without this the rule was covered only by the API's fake, which implements
 // the rule itself — a test that proves the fake works, not the code.
-func discoveredStats(items []clipfetch.DiscoveredItem) map[string]api.DiscoveredClipStats {
+func discoveredStats(items []fetch.DiscoveredItem) map[string]api.DiscoveredClipStats {
 	out := make(map[string]api.DiscoveredClipStats, len(items))
 	for _, it := range items {
 		if it.DurationMS == 0 && it.Height == 0 {
@@ -1531,7 +1502,7 @@ func discoveredStats(items []clipfetch.DiscoveredItem) map[string]api.Discovered
 
 // discoveredClips maps a clipfetch result to the DTO. Shared by both discovery modes so a
 // field added for one cannot silently go missing from the other.
-func discoveredClips(res clipfetch.DiscoveryResult) ([]api.DiscoveredClip, int) {
+func discoveredClips(res fetch.DiscoveryResult) ([]api.DiscoveredClip, int) {
 	out := make([]api.DiscoveredClip, 0, len(res.Items))
 	for _, it := range res.Items {
 		out = append(out, api.DiscoveredClip{
@@ -1568,7 +1539,7 @@ func (a fillerServiceAdapter) rememberSources(ctx context.Context, urls []string
 		return
 	}
 	for _, u := range urls {
-		if clipfetch.KindForURL(u) != clipfetch.Archive {
+		if fetch.KindForURL(u) != fetch.Archive {
 			continue
 		}
 		id := archiveIDFrom(u)
@@ -1587,7 +1558,7 @@ func (a fillerServiceAdapter) rememberSources(ctx context.Context, urls []string
 		// proceeds either way, which is the property that matters.
 		// NewFillerSource, not a struct literal: `Enabled` is a bool, so a literal that omits
 		// it registers the source SWITCHED OFF (see the store).
-		_ = a.sources.UpsertFillerSource(ctx, fillerstore.NewFillerSource(id, string(clipfetch.Archive), u, id, now()))
+		_ = a.sources.UpsertFillerSource(ctx, records.NewFillerSource(id, string(fetch.Archive), u, id, now()))
 	}
 }
 
@@ -1637,34 +1608,34 @@ func orNone(path string) string {
 	return path
 }
 
-// hostedSTTAdapter maps the OpenAI-compatible transcription wire into mediatools' timed segment
+// hostedSTTAdapter maps the OpenAI-compatible transcription wire into media/tools' timed segment
 // seam, including the service's detected language.
 type hostedSTTAdapter struct{ oa *llm.OpenAI }
 
-func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) (mediatools.AudioTranscription, error) {
+func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) (tools.AudioTranscription, error) {
 	result, err := a.oa.TranscribeAudio(ctx, llm.TranscriptionRequest{
 		Model: model, Audio: audio, Format: format, Language: language,
 	})
 	if err != nil {
-		return mediatools.AudioTranscription{}, err
+		return tools.AudioTranscription{}, err
 	}
-	out := make([]mediatools.TranscriptSegment, 0, len(result.Segments))
+	out := make([]tools.TranscriptSegment, 0, len(result.Segments))
 	for _, seg := range result.Segments {
-		out = append(out, mediatools.TranscriptSegment{
+		out = append(out, tools.TranscriptSegment{
 			StartMs: seg.StartMs, EndMs: seg.EndMs, Text: seg.Text,
 		})
 	}
-	return mediatools.AudioTranscription{Language: result.Language, Segments: out}, nil
+	return tools.AudioTranscription{Language: result.Language, Segments: out}, nil
 }
 
 // fillerDefectStoreAdapter bridges the store to the defect floor (#2034) and its enforcement
 // (#2036). Held clips are listed: admission waits at the defects rung for their verdict.
-type fillerDefectStoreAdapter struct{ st fillerstore.Store }
+type fillerDefectStoreAdapter struct{ st records.Store }
 
 func (a fillerDefectStoreAdapter) RetireDefectiveCopy(ctx context.Context, hash string, at time.Time) error {
 	err := a.st.RetireDefectiveCopy(ctx, hash, at)
 	if errors.Is(err, store.ErrNotFound) {
-		return fillerdefectfloor.ErrCopyGone
+		return defectfloor.ErrCopyGone
 	}
 	return err
 }
@@ -1693,7 +1664,7 @@ func (a fillerDefectStoreAdapter) UpsertClipFingerprint(ctx context.Context, cli
 	return a.st.UpsertClipFingerprint(ctx, clipHash, algorithm, fp)
 }
 
-func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]fillerdefectfloor.DefectClip, error) {
+func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]defectfloor.DefectClip, error) {
 	clips, err := a.st.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true})
 	if err != nil {
 		return nil, err
@@ -1706,45 +1677,45 @@ func (a fillerDefectStoreAdapter) ListDefectClips(ctx context.Context) ([]filler
 	for _, r := range rows {
 		stage[r.ClipHash] = r.Stage
 	}
-	out := make([]fillerdefectfloor.DefectClip, len(clips))
+	out := make([]defectfloor.DefectClip, len(clips))
 	for i, c := range clips {
-		out[i] = fillerdefectfloor.DefectClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt,
+		out[i] = defectfloor.DefectClip{StoreClip: fillerClip(c), CreatedAt: c.CreatedAt,
 			Stage: stage[c.Hash]}
 	}
 	return out, nil
 }
 
-func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]fillerdefectfloor.DefectRecord, error) {
+func (a fillerDefectStoreAdapter) ListClipDefects(ctx context.Context) (map[string]defectfloor.DefectRecord, error) {
 	rows, err := a.st.ListClipDefects(ctx)
 	if errors.Is(err, catalogstore.ErrCorruptClipDefects) {
-		err = fmt.Errorf("%w: %w", fillerdefectfloor.ErrDefectRecordsCorrupt, err)
+		err = fmt.Errorf("%w: %w", defectfloor.ErrDefectRecordsCorrupt, err)
 	} else if err != nil {
 		return nil, err
 	}
-	out := make(map[string]fillerdefectfloor.DefectRecord, len(rows))
+	out := make(map[string]defectfloor.DefectRecord, len(rows))
 	for hash, r := range rows {
-		out[hash] = fillerdefectfloor.DefectRecord(r)
+		out[hash] = defectfloor.DefectRecord(r)
 	}
 	return out, err
 }
 
-func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash string) (fillerdefectfloor.DefectRecord, bool, error) {
+func (a fillerDefectStoreAdapter) GetClipDefects(ctx context.Context, clipHash string) (defectfloor.DefectRecord, bool, error) {
 	r, ok, err := a.st.GetClipDefects(ctx, clipHash)
-	return fillerdefectfloor.DefectRecord(r), ok, err
+	return defectfloor.DefectRecord(r), ok, err
 }
 
-func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r fillerdefectfloor.DefectRecord) error {
+func (a fillerDefectStoreAdapter) UpsertClipDefects(ctx context.Context, r defectfloor.DefectRecord) error {
 	return a.st.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord(r))
 }
 
-func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map[string]fillerdefectfloor.DefectLabel, error) {
+func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map[string]defectfloor.DefectLabel, error) {
 	rows, err := a.st.ListClipDefectLabels(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]fillerdefectfloor.DefectLabel, len(rows))
+	out := make(map[string]defectfloor.DefectLabel, len(rows))
 	for hash, l := range rows {
-		out[hash] = fillerdefectfloor.DefectLabel(l)
+		out[hash] = defectfloor.DefectLabel(l)
 	}
 	return out, nil
 }
@@ -1752,7 +1723,7 @@ func (a fillerDefectStoreAdapter) ListClipDefectLabels(ctx context.Context) (map
 func (a fillerDefectStoreAdapter) SetClipDefectLabel(ctx context.Context, clipHash string, label defects.Label, at time.Time) error {
 	err := a.st.SetClipDefectLabel(ctx, clipHash, label, at)
 	if errors.Is(err, store.ErrNotFound) {
-		return fillerdefectfloor.ErrDefectNotMeasured
+		return defectfloor.ErrDefectNotMeasured
 	}
 	return err
 }

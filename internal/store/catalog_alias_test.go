@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
@@ -140,7 +140,7 @@ func TestChannelPoliciesHookRewritesAndBumpsRevision(t *testing.T) {
 	}
 
 	clip := Clip{UpdatedAt: now}
-	clip.Hash, clip.Path, clip.Name, clip.Kind = "old", "ol/d0/old.mp4", "Old", clipcatalog.Commercial
+	clip.Hash, clip.Path, clip.Name, clip.Kind = "old", "ol/d0/old.mp4", "Old", clips.Commercial
 	clip.DurationMs, clip.Source = 30_000, "archive"
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)

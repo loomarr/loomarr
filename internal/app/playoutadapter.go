@@ -14,15 +14,15 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -247,7 +247,7 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 
 	// Resolve the input ffmpeg reads: the FILE directly (direct play, V47) when a path mapping
 	// resolves a readable local file, else the media server's HTTP stream (fallback). This is where
-	// direct play begins — reading the file lets the encoder `-c copy` it (playout.PlanCopy).
+	// direct play begins — reading the file lets the encoder `-c copy` it.
 	var pm library.PathMap
 	if r.pathMap != nil {
 		pm = r.pathMap()
@@ -1508,27 +1508,16 @@ func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout
 	return tracks, nil
 }
 
-// PlanFor decides the copy/transcode plan for an input against a target (§9.1 direct play, V47) —
-// probe the source, then PlanCopy. This is what makes a program direct-play: an h264 file to the
-// browser copies the video and transcodes at most the audio.
+// FormatOf probes an input once and returns everything the probe measured: geometry, framerate,
+// pixel format, colour transfer, audio shape, duration, bitrate (playout.MediaFormat).
 //
-// BEST-EFFORT, and it fails SAFE toward TRANSCODE: no prober wired, no input, or a probe error all
-// return the zero CopyPlan (copy nothing → transcode both). A copy of an unprobed source could ship
-// a codec the target cannot play — a black frame — whereas an unnecessary transcode is merely slow.
-// So when we cannot know, we transcode.
-//
-// It returns the PROBE ALONGSIDE THE PLAN, and that is the point of the second return value. This
-// function used to reduce a fully-parsed MediaFormat — geometry, framerate, pixel format, colour
-// transfer, duration, bitrate — to two booleans and discard the rest, which is why copyplan.go's
-// "Probe once, keep it all… so later features need no second ffprobe" was a promise nothing
-// collected on, and why its HDR() had no production caller. The zero MediaFormat travels with the
-// zero CopyPlan on every failure path, so an unprobed source reads as SDR/unknown rather than as
-// anything asserted.
-func (r *playoutResolver) PlanFor(
-	ctx context.Context, input string, target playout.EncodePlan,
-) (playout.CopyPlan, playout.MediaFormat) {
+// BEST-EFFORT, and it fails SAFE: no prober wired, no input, or a probe error all return the zero
+// MediaFormat, which reads as SDR/unknown rather than as anything asserted, so the item transcodes.
+// A copy of an unprobed source could ship a codec the output cannot play — a black frame — whereas
+// an unnecessary transcode is merely slow.
+func (r *playoutResolver) FormatOf(ctx context.Context, input string) playout.MediaFormat {
 	if input == "" {
-		return playout.CopyPlan{}, playout.MediaFormat{} // transcode both
+		return playout.MediaFormat{}
 	}
 	if r.inventory != nil {
 		if origin, ok := r.ensureLocalInventorySource(ctx, input); ok {
@@ -1540,24 +1529,24 @@ func (r *playoutResolver) PlanFor(
 				format := playoutFormatOf(source.Observation.Facts)
 				format.Active = r.activePicture(ctx, source.ID)
 				r.submitAnalysis(source.ID, source.Revision, input, source.Observation.Facts)
-				return playout.PlanCopy(format, target), format
+				return format
 			}
 			if format, ok := r.measureFirstPlay(ctx, origin, input); ok {
-				return playout.PlanCopy(format, target), format
+				return format
 			}
 		}
 	}
 	if r.probeFormat == nil {
-		return playout.CopyPlan{}, playout.MediaFormat{} // transcode both
+		return playout.MediaFormat{}
 	}
 	f, err := r.probeFormat(ctx, input)
 	if err != nil {
 		if r.log != nil {
 			r.log.Debug("playout: format not probed, transcoding", "input", library.RedactStreamURL(input), "err", err)
 		}
-		return playout.CopyPlan{}, playout.MediaFormat{}
+		return playout.MediaFormat{}
 	}
-	return playout.PlanCopy(f, target), f
+	return f
 }
 
 func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile {

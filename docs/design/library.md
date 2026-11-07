@@ -71,11 +71,11 @@ type Service interface {
 
 ## Header facts
 
-`internal/mediaheader` is the only code that parses container bytes (decision
+`internal/media/header` is the only code that parses container bytes (decision
 [0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It reads a file's duration, streams
 (codec, size, frame rate, pixel format, colour and HDR, field order, languages, default and forced
 flags, channels, sample rate) and chapters from the Matroska/WebM header or the MP4/MOV `moov`,
-plus the keyframe index from Matroska Cues or the MP4 sample tables, which `mediameasure` uses.
+plus the keyframe index from Matroska Cues or the MP4 sample tables, which `media/measure` uses.
 
 - **Reads are few and random.** Most Matroska files take one 64 KiB read; the SeekHead points to
   anything past it. An MP4's `moov` is found by box headers, never by reading `mdat`. Files are
@@ -127,8 +127,8 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   `-landscape`, `-clearart`, `-discart`), then the folder's `poster`, `folder`, `fanart`, `clearlogo` …
   when it holds only that video; a series folder's same names; an episode's `<file>-thumb.jpg`. Any of
   `.jpg`, `.jpeg`, `.png`, `.webp`, matched whatever the case. Records carry the image's path, never
-  its bytes, and only regular files: the image service imports one, keyed by its content, the first
-  time something shows it. Season art is not read; Loomarr has no season items.
+  its bytes, and only regular files: the image service imports a poster when the scanner writes its
+  title (see Posters below). Season art is not read; Loomarr has no season items.
 - **Arr requests never follow a redirect**, so the API key cannot reach another host.
 
 **Precedence** lives in one place, `metadataprovider/precedence`, and ranks bases and catalogs, never
@@ -147,6 +147,214 @@ Certification uses the audience ladder that enforcement uses. Ratings in another
 unrated values ground nothing, and a resolver for a country other than the US is refused. An episode
 that no grounded source rates inherits its series' strictest rating. One that a source rates keeps
 that rating, whether it is stricter or not.
+
+## Media folders
+
+`internal/library/scan` keeps the folders Loomarr reads media from (decision
+[0046](decisions/0046-loomarr-scans-its-own-media-files.md); #2151 decision 6), shown on
+**Settings → Library**.
+
+- **Discovered, then confirmed.** One pass asks the media server (`/Library/VirtualFolders`, video
+  libraries only) and Sonarr and Radarr (`/api/v3/rootfolder`, whatever requester is chosen) for
+  their folders. Each folder maps to a local folder: the same path when Loomarr can open it, else
+  the `library.path_map` translation, else the one mount whose folder carries the same trailing
+  names. A root is always absolute; an ambiguous or missing folder stays unmapped. A discovered
+  folder waits for the maintainer's **Use this folder**; one typed by hand is in use at once and
+  must open.
+- **One path map.** `library_root_paths` holds every authority's name for every folder. A row the
+  maintainer edits under "Folders have different names in other apps" is never rewritten by
+  discovery; clearing it hands it back.
+- **A failing source forgets nothing.** Only an authority that answered drops the folders it no
+  longer reports, and only a folder that is neither in use, typed by hand nor named by any mapping
+  disappears. Every folder is re-checked on each pass, within 5 s, so an offline NAS shows as
+  "Loomarr can't open this folder" rather than hanging the page.
+- `GET /v1/library/status` reports `needs_folders`, `folder_offline` or `ok`, with counts.
+
+## Scanner
+
+`scan.Importer` writes what is on disk to the inventory, alongside the media server's origin (#2151
+step 5). Nothing reads the scanner's origins until the cutover.
+
+- **One origin per file.** Each root is an authority (`scan:<digest>`); each media file under it
+  is an origin keyed by its path within the root. Files that carry the same ids join one item, as
+  the media server's origin of the same title does. A series is an origin keyed by its folder.
+- **Identity** is the precedence resolver's, over Sonarr's or Radarr's record for the file (its
+  path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
+  file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
+  file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
+  season folder, else the nearest folder named by an id, else its own. A file nothing grounds is
+  still written, with no ids. Extras (trailers, `extras/` folders and the like) are their own
+  items, related to the movie beside them. An origin whose ids later name another item of its kind
+  moves to it, when it is its item's only origin or joined the item by its ids rather than founding
+  it. A joined origin whose ids then name nothing goes back to an item of its own, so taking back a
+  Needs you link splits the copy out again; the founding origin never leaves.
+- **Unchanged files are never opened.** `library_files` keeps each file's stat and a digest of
+  its identity inputs (the arr record, names, its sidecars' stat). A pass writes a file only when
+  either changed, and reads its header only when its bytes changed. While an arr fails to list,
+  new and changed files wait and nothing is marked missing, rather than writing what the arr's
+  absence would leave.
+- **Header reads** (`mediaheader.Probe`) run four at a time after the walk, wanted items first,
+  and wait while any playout session is live. A file whose header does not parse is marked failed
+  until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
+- **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
+  missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
+  status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
+  maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
+- **Passes.** `scan.Scanner` makes one when the app starts, hourly, and on
+  `POST /v1/library/scan`; `library.scanner.enabled` (on by default) stops passes, folder passes
+  and header reads. Sonarr and Radarr are its managers when connected; one with no connection
+  manages nothing rather than counting as down. Header reads fall back to the same ffprobe playout
+  uses, and wait while playout's admission budget holds any session, copies included. A root
+  inside another in-use root is walked as part of it. Walks skip `trickplay/`,
+  `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, names that are not UTF-8 and folders holding
+  an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+- **Change signals.** Each signal names folders, and `Scanner.PassFolders` passes over only those
+  (`Importer.RunFolders`): it writes and removes what is under them, under the same removal guard,
+  and still counts every file outside them as present. A folder deleted whole is a change to the
+  one above it. Each folder waits on its own until its changes have been quiet for 5 s, or have
+  waited 2 minutes, so a long copy into one folder holds back no other. Changes to files still
+  being written (`.part`, `.partial`, `.tmp`, `.crdownload`, `.!qb` …), to desktop leftovers
+  (`Thumbs.db`, `.DS_Store`, `._*`) and permission-only changes are dropped before they queue.
+  - `scan.Watcher` watches each in-use root on a local filesystem with inotify. A kernel queue
+    overflow asks for a full pass. inotify sees only changes made through this machine, so an NFS
+    or FUSE root is not watched.
+  - **SMB change notifications.** A root on a CIFS mount is watched through the server instead:
+    one `CIFS_IOC_NOTIFY_INFO` call per root, over the whole tree, reporting names added, removed,
+    renamed and written by any client. Each name's folder is passed; a report with no names (the
+    server's batch overflowed) passes the whole root. A server or kernel without notifications is
+    logged once and left to the hourly walk; any other failure retries after a minute and passes
+    the whole root. The call cannot be interrupted, so after shutdown the one in flight ends with
+    the share's next change.
+  - **Arr webhooks** (`internal/library/arrhook`, `scan.ArrHooks`). At start and hourly, Loomarr
+    keeps one webhook connection named "Loomarr" in each connected Sonarr and Radarr, posting
+    the file events (download, upgrade, rename, file and series/movie delete) to
+    `POST /v1/library/hooks/{app}` at `server.public_url`. The arr tests a connection before saving
+    it, so a saved one could reach Loomarr. Each event's folders map through that arr's path map.
+    The route is public: an arr holds no session, so the credential is a generated secret
+    (`secret.arr_webhook`, never shown) sent as the basic-auth password. `GET /v1/library/status`
+    lists each arr's state (registered, not connected, no address, failed) and its last event,
+    and `POST /v1/library/hooks/{app}/test` registers again and asks the arr to send its test.
+- **Arr listings are reused.** A full pass lists every connected arr (Sonarr's listing is two
+  requests per series); a folder pass reuses that listing. An arr's webhook names the series (TVDB
+  id) or movie (TMDB id) it changed, and the next folder pass reads just that one again, dropping
+  it when the arr no longer has it. A change naming no item, a read that fails, a changed path
+  map, a changed arr address, or a listing an arr failed lists the arrs again.
+- **Renames keep their header.** A file the walk no longer finds and a new one with the same size
+  and modification time are the same bytes renamed or moved: the new path takes the header read
+  at the old one rather than opening the file again. A size and time two vanished files share
+  matches neither.
+- **A stuck share does not stall the scanner.** A walk that lists no folder and reads no file for 2
+  minutes is given up on: the root reads as offline and nothing in it is marked missing. A call
+  blocked on a dead mount cannot be cancelled, so the root is not walked again until that one ends.
+- **Notifications** (decision 32) go to operators. Each pass records every root's readability
+  (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
+  `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
+  registration starts failing publishes `library_changes_degraded`, at most once a day. Once a pass
+  has settled, `library_needs_you` says how many titles Needs you holds, at most once a day and
+  only when one is new since the last notice: `scan.NeedsNotice` marks each title it counted
+  (`library_items.needs_noticed`), so a restart neither repeats a notice nor loses one.
+- **Library → Items** (step 10, decisions 22 and 25) reads a small list the importer keeps as it
+  writes, rather than decoding every inventory observation: `library_items` holds each movie and
+  series it wrote (id, kind, resolved name, sort name, year), and each `library_files` row records
+  the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
+  while it has a present, importable file, and is "getting ready" while any of those files'
+  headers is unread. A file row from before these columns has no item, so the next pass writes it
+  again. `GET /v1/library/items` pages and searches the list (admin-only);
+  `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
+  files, or a series' episodes by season.
+- **Posters** (step 10b). When the importer writes a title it hands the resolved poster to the
+  image service, and the title owns it through an `image_refs` row (owner `library_item`, role
+  `poster`); that ref is the one record of which image is its poster. A sidecar file is imported
+  then, keyed by its content, opened only as a regular file and never through a symlink, and
+  skipped when the service already holds those bytes; it is `extracted`, since the file beside the
+  media is its source. A manager's https URL is adopted, and the fetch job moves the ref onto the
+  bytes when they arrive; until then the API leaves the poster out. A new poster replaces the old
+  ref, and a title with none lets it go. An artwork file beside the media is one of its sidecars,
+  so adding or changing one rewrites the title; a folder's own art (`poster.jpg`) counts only for
+  the folder's one video. A poster that fails to import leaves the title as it was, and the next
+  write tries again.
+- **Catalog details** (decision 20). A movie or series whose ids include a TMDB id takes its
+  details from TMDB: the guide text, genres, rating, poster and fanart, ranked by precedence like
+  any other source. The walk never calls TMDB. `library_catalog` caches each record by provider,
+  kind and id, and the importer reads it when it writes a title. A title not cached yet is written
+  without it and its key noted as wanted, and `library_items.catalog` names the row each title's
+  details come from. `scan.Enricher` fetches every minute: titles never fetched first (up to 200
+  a tick), then a share of the oldest, so the whole cache is fetched again within 90 days, spread
+  out. It keeps to the provider's rate hint. A record that changed forgets the identity digest of
+  its titles' present files (a series' episodes too) and passes over their folders, so they are
+  written again with it. A title TMDB does not know is cached empty until the refresh. A failed
+  fetch holds that title back for 6 hours, and with no TMDB key nothing is fetched or held back.
+  The kill switch stops it too. Episodes take their text from Sonarr; TMDB episode records (by
+  TVDB episode id) are not fetched yet. The identity digest carries a write version; raising it
+  makes every file written once more, keeping its header, so a title written before this names
+  its catalog row on the next pass.
+- **Needs you** (step 11a, decision 27). A movie or series is grounded when anything gives it a
+  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
+  title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
+  `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
+  answered, up to 20 a tick at the provider's rate hint. It searches by the name up to the release
+  words (quality, source, codec) and the last year-like word after the first, or the year a
+  sidecar gave. It looks at the first five results of the title's kind, fetching each one's
+  details, and keeps three in `library_candidates`, best first: the name counts most, then the
+  year (a year apart at most), then the length (movies only: within five minutes or 8% of the
+  runtime). `library_items.searched` notes what was searched, so a title is searched again only
+  when its name or year changes. With no TMDB key nothing is searched or marked. An answer lives
+  in `library_answers` by scan origin, so it outlives rewrites: a link (`POST
+  /v1/library/items/{id}/link`) is a `link` record below what the files say, so its details then
+  come from the catalog, and an ignore (`…/ignore`) leaves the Library and Needs you. `DELETE
+  …/answer` takes either back. An answer forgets the title's files' identity digests and passes
+  over their folders, as a changed catalog record does. `GET /v1/library/needs` lists each title
+  with its candidates and files, `GET /v1/library/search` searches TMDB for Pick a different
+  title (503 without a key), and the status counts `needsYou`. The API says which facts agree;
+  the sentence is the UI's. A candidate's poster is adopted by the image service under the
+  title, and the API leaves it out until its bytes are here.
+- **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
+  is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
+  line from `GET /v1/library/status`: caught up, adding with a bar, paused, a held removal or an
+  offline folder with Check again, or dead air before any folder is chosen. Below it are All ·
+  Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by window width. The filter and
+  search live in the URL (`?kind=&q=`); the grid loads 60 titles at a time as it scrolls, and
+  while the scanner is busy the status and the loaded titles refetch every 5 s, so "Getting
+  ready" clears on its own (decision 35, until a `library` SSE frame exists). A title's page
+  (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
+  overview, each season's episodes in a disclosure (specials last), and Technical details. Still
+  to come: Collections (step 12); On these channels, once channels name library items (step 15's
+  id migration).
+- **Needs you on the page** (step 11b). The Library page's strip asks about the first four
+  titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
+  different title, or Find it with no guess); `/library/needs` holds one card each with the
+  reason line, the other guesses, a TMDB search, Ignore this, and the files behind a disclosure.
+  An answer locks in and leaves once seen; one that fails puts the question back. The Library nav
+  badge is the status's `needsYou`, the same number as the heading.
+- **A title's actions** (step 11c, decision 26). Each title row records what decided which title
+  it is: the basis and provider of its highest-ranked catalog id (`match_basis`, `match_app`), and
+  for an arr its page there (`match_page`, from the arr's `titleSlug`). `GET /v1/library/items/{id}`
+  says `match.by`: `app` (Sonarr or Radarr), `file` (an id in its name, or an NFO), `you` (an
+  answer) or `none`. Wrong title? follows it: an arr's title opens its page there ("Sonarr decides
+  what this is"); a file's says to rename it or change its NFO, since an answer ranks below what
+  the file says; any other opens the same search as Needs you, with Forget my answer when the
+  household answered. Update details (`POST …/refresh`) fetches the title's TMDB record at once
+  (503 when TMDB fails) and writes the title again, so what its arr and sidecars say now is read
+  too. Check files again (`POST …/check`) puts its files' headers back to pending and passes over
+  their folders, so they are opened and read again.
+- **Technical details** (step 10d, design review point 3). Each scan origin keeps the provider its
+  name, description and rating came from in its observation's `extension` (`{"from": …}`), so
+  the page says "Description and rating from TMDB. Episode names from Sonarr." (a series takes
+  the provider that named most of its episodes). It then says the title match in words
+  ("Recognised from Radarr", "You picked it"), and for each movie file its path, size, and once
+  its header is read the picture (4K, 1080p HD, 720p HD or standard, "extra-rich colour" for
+  HDR), the sound that plays (its default audio stream), each subtitle language, and the
+  measured length.
+- **Extra copies** (step 10e, decision 37). When a movie has several files, one plays: the file
+  its arr lists (each file origin's extension notes `managed`), else the sharpest picture, else
+  the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
+  extra copy is taking 4.0 GB") with Remove extra copy (`POST …/remove-copy`, 409 for the copy
+  that plays). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
+  same share, so it is a rename and can be undone by moving it back; the trash holds a `.ignore`,
+  so walks and watches skip it. Loomarr marks the file missing at once, so no removal guard holds
+  it. A complete walk of the folder deletes each day's trash 30 days on; a folder there that isn't
+  a date is left alone. A read-only folder answers 409, and the card says Loomarr may not be
+  allowed to change it.
 
 ## Cached series episodes
 

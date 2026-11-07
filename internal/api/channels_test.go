@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -29,7 +29,7 @@ import (
 // Embedding the real store keeps the test on the production SQL contract; the hook performs one
 // winning mutation immediately before the handler attempts to save its older snapshot.
 type staleOnceChannelStore struct {
-	fillerstore.Store
+	records.Store
 	once   sync.Once
 	before func(context.Context, store.Channel) error
 }
@@ -179,10 +179,9 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 			Log:      defaults.Log,
 			Channels: chSvc,
 			LiveTV:   ltv,
-			// chSvc satisfies binder.Reconciler (Reconcile(ctx, id) error), so createChannel's
-			// intent lineup/policy (channeledit asks the binder) resolve real approved proposals
-			// in these tests, same as production wiring.
-			Binder: binder.New(defaults.Store, chSvc, nil, defaults.Log),
+			// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
+			// (channeledit asks the binder) matches production wiring.
+			Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
 		})
 	})
 	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv}
@@ -191,7 +190,7 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 // newInternalServerWithoutTunarr exercises the production-facing setting shape that exposed the
 // bug: internal playout is selected and tunarr.url is empty, but channel convergence is still a
 // real local operation rather than an unconfigured route.
-func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeChannelSvc) {
+func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, records.Store, *fakeChannelSvc) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/internal-no-tunarr.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -199,7 +198,7 @@ func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, fillerstore
 	log := slog.New(slog.DiscardHandler)
 	h := api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
-		Binder: binder.New(st, chSvc, nil, log),
+		Binder: approval.New(st, chSvc, nil, log),
 		// In particular: tunarr.url is unconfigured.
 		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	})
@@ -393,33 +392,6 @@ func TestCreateChannelDuplicateNumber(t *testing.T) {
 		`{"id":"c2","name":"B","number":5,"strategy":"sequential"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("duplicate number → %d, want 409", resp.StatusCode)
-	}
-}
-
-func TestCreateChannelDuplicateIntentRef(t *testing.T) {
-	harness := newChannelsHarness(t)
-	srv, st := harness.Server, harness.Store
-	ctx := context.Background()
-	if _, err := st.SaveChannel(ctx, store.Channel{
-		Channel: schedule.Channel{
-			ID: "bound", Name: "Already bound", Number: 41, Strategy: schedule.Sequential,
-			IntentRef: "job-bound", Status: schedule.StatusBuilding,
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	resp := do(t, srv, http.MethodPost, "/v1/channels", adminToken,
-		`{"id":"duplicate","name":"Duplicate","number":42,"strategy":"sequential","intentRef":"job-bound"}`)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("duplicate intent create -> %d, want 409", resp.StatusCode)
-	}
-	channels, err := st.ListChannels(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(channels) != 1 || channels[0].ID != "bound" {
-		t.Fatalf("channels after duplicate create = %+v, want only the original binding", channels)
 	}
 }
 
@@ -893,7 +865,7 @@ func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) 
 // channelPatchBody attaches the revision an editor read to a PATCH payload. Keeping this in the
 // HTTP tests makes every successful edit exercise the real optimistic-concurrency contract while
 // letting each case keep its payload focused on the field whose behavior it asserts.
-func channelPatchBody(t *testing.T, st fillerstore.Store, id, body string) string {
+func channelPatchBody(t *testing.T, st records.Store, id, body string) string {
 	t.Helper()
 	ch, err := st.GetChannel(context.Background(), id)
 	if err != nil {
@@ -908,7 +880,7 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 // newServerWithSchedulerAndSuggest wires BOTH the channel service and a fake suggest
 // service, so refine (which needs the suggester) can be exercised end to end.
-func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeSuggest) {
+func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, records.Store, *fakeSuggest) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/refine.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -1569,7 +1541,7 @@ func TestUpdateChannel_NotFound(t *testing.T) {
 // seedChannelWithLineup writes a channel carrying a lineup directly (the create endpoint
 // needs an approved proposal for a real lineup; these tests exercise the edit path, so
 // they seed the starting state in the store).
-func seedChannelWithLineup(t *testing.T, st fillerstore.Store, id string, entries ...schedule.LineupEntry) {
+func seedChannelWithLineup(t *testing.T, st records.Store, id string, entries ...schedule.LineupEntry) {
 	t.Helper()
 	_, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{

@@ -1,10 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  DEFAULT_APPLICATION_FILTERS,
-  DiagnosticsPage,
-  type DiagnosticsSearch,
-  eventSources,
-} from "@/diagnostics";
+// The search defaults come from their own module: this route's config loads with the app, and the
+// diagnostics barrel would bring the whole page (and its dialogs) along with it.
+import { DiagnosticsPage, type DiagnosticsSearch } from "@/diagnostics";
+import { DEFAULT_APPLICATION_FILTERS, eventSources } from "@/diagnostics/application-filters";
 import { PlayoutDiagnostics } from "@/diagnostics/playout-diagnostics";
 import { ServerStatus } from "@/diagnostics/server-status";
 

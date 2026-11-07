@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // AN HDR PROGRAM MUST COME OUT AS A PICTURE on every tone-mapper the host can run (#1516).

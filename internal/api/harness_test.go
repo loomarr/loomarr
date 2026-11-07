@@ -7,11 +7,9 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -21,14 +19,14 @@ import (
 type apiHarness struct {
 	t      *testing.T
 	Server *httptest.Server
-	Store  fillerstore.Store
+	Store  records.Store
 }
 
 // apiHarnessDefaults is the invariant input available to focused route-family
 // harnesses. It intentionally does not expose api.Options: each family still
 // names only the production dependency and behavior it varies.
 type apiHarnessDefaults struct {
-	Store fillerstore.Store
+	Store records.Store
 	Auth  api.Authorizer
 	Log   *slog.Logger
 }
@@ -50,17 +48,11 @@ func startAPIHarness(t *testing.T, build func(apiHarnessDefaults) http.Handler) 
 func newAPIHarness(t *testing.T) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		decisions, err := fillerdecision.New(defaults.Store)
-		if err != nil {
-			t.Fatal(err)
-		}
-		decisions.WithDiagnosticRecovery(&apiDiagnosticRecovery{retrying: make(map[string]time.Time)})
 		return api.Router(defaults.Log, api.Options{
-			Store:           defaults.Store,
-			Auth:            defaults.Auth,
-			Log:             defaults.Log,
-			BackupSQLite:    store.SQLiteBackuper(defaults.Store),
-			FillerDecisions: decisions,
+			Store:        defaults.Store,
+			Auth:         defaults.Auth,
+			Log:          defaults.Log,
+			BackupSQLite: store.SQLiteBackuper(defaults.Store),
 		})
 	})
 }

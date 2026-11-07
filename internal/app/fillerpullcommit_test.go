@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
 func TestIngestPull_RequiresApprovalCommit(t *testing.T) {
@@ -48,7 +48,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			dsn := "sqlite://" + filepath.Join(t.TempDir(), "pull.db")
-			st, err := fillerstore.Open(t.Context(), dsn, true)
+			st, err := records.Open(t.Context(), dsn, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -60,7 +60,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 				t.Fatal(err)
 			}
 			p.Status, p.DecidedAt, p.DecidedBy, p.Note = filler.PullApproved, now, "admin", "keep this exact item"
-			fetched := make(chan []clipfetch.Source, 1)
+			fetched := make(chan []fetch.Source, 1)
 			interruption := errors.New("application stopped before launch")
 			a := fillerServiceAdapter{
 				fetcher: recordingClipIngestor{sources: fetched}, acquisitions: st, providers: testFillerProviders(),
@@ -99,7 +99,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 			if err := st.Close(); err != nil {
 				t.Fatal(err)
 			}
-			st, err = fillerstore.Open(t.Context(), dsn, true)
+			st, err = records.Open(t.Context(), dsn, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -107,7 +107,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 				t.Fatal(err)
 			}
 			a.acquisitions = st
-			if _, err := a.IngestPull(t.Context(), p.ID, targets, commit); !errors.Is(err, fillerstore.ErrPullNotPending) {
+			if _, err := a.IngestPull(t.Context(), p.ID, targets, commit); !errors.Is(err, records.ErrPullNotPending) {
 				t.Fatalf("retry after reopening = %v, want conflict before launch", err)
 			}
 			decision, err := st.GetPull(t.Context(), p.ID)

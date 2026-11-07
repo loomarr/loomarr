@@ -8,14 +8,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
+	"github.com/loomarr/loomarr/internal/filler/structure/window"
 )
 
 const maximumWindowStructureAuthorityBytes int64 = 1 << 20
 
 // loadWindowStructureAuthority treats a configured authority as bounded immutable input. A path
 // is only a locator; the validated content digest remains the policy identity.
-func loadWindowStructureAuthority(path string) (*fillerstructurewindow.MaterializationAuthority, error) {
+func loadWindowStructureAuthority(path string) (*window.MaterializationAuthority, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -33,7 +33,7 @@ func loadWindowStructureAuthority(path string) (*fillerstructurewindow.Materiali
 	defer func() { _ = file.Close() }()
 	decoder := json.NewDecoder(io.LimitReader(file, maximumWindowStructureAuthorityBytes+1))
 	decoder.DisallowUnknownFields()
-	var authority fillerstructurewindow.MaterializationAuthority
+	var authority window.MaterializationAuthority
 	if err := decoder.Decode(&authority); err != nil {
 		return nil, fmt.Errorf("decode long-reel materialization authority: %w", err)
 	}
@@ -41,7 +41,7 @@ func loadWindowStructureAuthority(path string) (*fillerstructurewindow.Materiali
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return nil, errors.New("long-reel materialization authority contains trailing JSON")
 	}
-	if err := fillerstructurewindow.ValidateMaterializationAuthority(authority); err != nil {
+	if err := window.ValidateMaterializationAuthority(authority); err != nil {
 		return nil, err
 	}
 	return &authority, nil

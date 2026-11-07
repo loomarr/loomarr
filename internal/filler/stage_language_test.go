@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The language rung (§10 V40's gate, V51b's stage). Its whole risk is that it REFUSES clips, so
@@ -286,10 +286,10 @@ func TestLanguageStage_AFailedRecordIsNotAReject(t *testing.T) {
 // LIVE rather than captured when the detector was built.
 type recordingRecognizer struct {
 	models []string
-	result mediatools.AudioTranscription
+	result tools.AudioTranscription
 }
 
-func (r *recordingRecognizer) TranscribeAudio(_ context.Context, model, _, _ string, _ []byte) (mediatools.AudioTranscription, error) {
+func (r *recordingRecognizer) TranscribeAudio(_ context.Context, model, _, _ string, _ []byte) (tools.AudioTranscription, error) {
 	r.models = append(r.models, model)
 	return r.result, nil
 }
@@ -305,13 +305,13 @@ func (r *recordingRecognizer) TranscribeAudio(_ context.Context, model, _, _ str
 // Language policy reads live even though the storage layout is generation-scoped. The one setting
 // that decides whether this backend can work has to remain live too.
 func TestHostedLanguage_ReadsItsModelLivePerCall(t *testing.T) {
-	rec := &recordingRecognizer{result: mediatools.AudioTranscription{
-		Language: "en", Segments: []mediatools.TranscriptSegment{{StartMs: 0, EndMs: 1000, Text: "hello"}},
+	rec := &recordingRecognizer{result: tools.AudioTranscription{
+		Language: "en", Segments: []tools.TranscriptSegment{{StartMs: 0, EndMs: 1000, Text: "hello"}},
 	}}
 	model := "stale-model-with-no-audio"
 
 	det := filler.NewHostedLanguage(
-		func() mediatools.AudioTranscriptionClient { return rec },
+		func() tools.AudioTranscriptionClient { return rec },
 		func() string { return model }, // read per call, like a settings closure
 		"", t.TempDir())
 
@@ -346,7 +346,7 @@ func TestHostedLanguage_ReadsItsModelLivePerCall(t *testing.T) {
 
 // A nil recognizer (hosted selected, nothing configured) keeps every clip rather than erroring.
 func TestHostedLanguage_UnconfiguredIsInertNotBroken(t *testing.T) {
-	det := filler.NewHostedLanguage(func() mediatools.AudioTranscriptionClient { return nil }, func() string { return "" }, "", t.TempDir())
+	det := filler.NewHostedLanguage(func() tools.AudioTranscriptionClient { return nil }, func() string { return "" }, "", t.TempDir())
 	got, err := det.DetectLanguage(context.Background(), "/nonexistent.mp4", 0, 10_000)
 	if err != nil || got != filler.LangUndetermined {
 		t.Errorf("got (%q, %v), want (undetermined, nil) — an unconfigured backend must not reject", got, err)
@@ -354,10 +354,10 @@ func TestHostedLanguage_UnconfiguredIsInertNotBroken(t *testing.T) {
 }
 
 func TestHostedLanguage_UsesTheSpeechServicesDetectedLanguage(t *testing.T) {
-	rec := &recordingRecognizer{result: mediatools.AudioTranscription{
-		Language: "es", Segments: []mediatools.TranscriptSegment{{StartMs: 0, EndMs: 1000, Text: "compre ahora"}},
+	rec := &recordingRecognizer{result: tools.AudioTranscription{
+		Language: "es", Segments: []tools.TranscriptSegment{{StartMs: 0, EndMs: 1000, Text: "compre ahora"}},
 	}}
-	det := filler.NewHostedLanguage(func() mediatools.AudioTranscriptionClient { return rec }, func() string { return "whisper" }, "", t.TempDir())
+	det := filler.NewHostedLanguage(func() tools.AudioTranscriptionClient { return rec }, func() string { return "whisper" }, "", t.TempDir())
 	dir := t.TempDir()
 	clip := filepath.Join(dir, "c.wav")
 	if err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-ac", "1", "-ar", "16000", "-y", clip).Run(); err != nil {

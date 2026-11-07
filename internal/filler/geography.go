@@ -5,16 +5,16 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // GeographicScope is the clip catalog's broadcast reach (see clip.go for why filler names it).
-type GeographicScope = clipcatalog.GeographicScope
+type GeographicScope = clips.GeographicScope
 
 const (
-	GeographicUnknown  = clipcatalog.GeographicUnknown
-	GeographicNational = clipcatalog.GeographicNational
-	GeographicLocal    = clipcatalog.GeographicLocal
+	GeographicUnknown  = clips.GeographicUnknown
+	GeographicNational = clips.GeographicNational
+	GeographicLocal    = clips.GeographicLocal
 )
 
 // Geography identifies the audience location a Channel serves: a country and, optionally, a Place

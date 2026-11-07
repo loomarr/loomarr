@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/people/invitation"
 )
 
 // Role is a user's authorization level (§11).

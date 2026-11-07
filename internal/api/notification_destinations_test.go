@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
@@ -64,7 +64,7 @@ func TestNotificationProvidersUseOneRedactedAdminWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	repository := notifications.NewProtectedRepository(st, protection)
 	manager := notifications.NewDestinationManager(
 		repository, []notifications.DestinationValidator{acceptingDestinationValidator{means: notifications.MeansSlack}},
 		func() string { return "destination-1" }, func() time.Time { return now },
@@ -192,7 +192,7 @@ func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := notifications.NewProtectedDestinationRepository(st, protection)
+	repository := notifications.NewProtectedRepository(st, protection)
 	nextID := 0
 	manager := notifications.NewDestinationManager(repository, []notifications.DestinationValidator{
 		acceptingDestinationValidator{means: notifications.MeansWebPush},

@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/loomarr/loomarr/internal/images/rustgen"
+	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 )
 
 // Options identifies one application generation to its metrics Recorder.

@@ -7,7 +7,7 @@ research-verify: ## compile the archived filler research module against its pinn
 	$(GO) -C research vet -tags '$(CUSTOM_TAGS)' ./...
 
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
-	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./internal/recommend/ ./cmd/eval/
+	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./internal/channels/recommend/ ./cmd/eval/
 
 eval: ## semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate)
 	$(GO) test -tags=eval -v -timeout 20m ./internal/eval/
@@ -784,7 +784,7 @@ filler-eval-cert: ## score captured filler decisions; never contacts a model or 
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_FILLER_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-certification.json}"; \
 	  $(RESEARCH_RUN) filler-cert \
-	    --manifest "$${LOOMARR_FILLER_EVAL_MANIFEST:-internal/fillereval/corpus/seed-v1.json}" \
+	    --manifest "$${LOOMARR_FILLER_EVAL_MANIFEST:-internal/filler/eval/corpus/seed-v1.json}" \
 	    --predictions "$$LOOMARR_FILLER_EVAL_PREDICTIONS" --report "$$report" \
 	    --profile "$${LOOMARR_FILLER_EVAL_PROFILE:-replay}" \
 	    --split "$${LOOMARR_FILLER_EVAL_SPLIT:-holdout}" \

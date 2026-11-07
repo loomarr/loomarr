@@ -1,0 +1,83 @@
+# The demo site: real Loomarr beside the invented demo library. No media server, LLM or TMDB key,
+# and nothing here is household data. Staging runs this same stack. Use `make demo-site`.
+#
+# The demo sign-in is public (it is in this repository), so the port binds to loopback by default.
+# Only widen DEMO_SITE_BIND on a private network.
+
+x-demo-image: &demo-image
+  build:
+    context: ${LOOMARR_DEMO_SOURCE:-..}
+    dockerfile: docker/demo.Dockerfile
+    args:
+      LOOMARR_IMAGE: ${LOOMARR_IMAGE:?Name the Loomarr image the demo site runs}
+  security_opt: [no-new-privileges:true]
+
+services:
+  loomarr:
+    <<: *demo-image
+    ports: ["${DEMO_SITE_BIND:-127.0.0.1}:${DEMO_SITE_PORT:-8088}:8080"]
+    environment:
+      DATABASE_URL: sqlite:///data/loomarr.db
+      AUTO_MIGRATE: "true"
+      # The seeder does the setup, so sign-in opens the app rather than the first-run wizard.
+      SETUP_COMPLETED: "true"
+      SERVER_PUBLIC_URL: ${DEMO_SITE_URL:-http://localhost:8088}
+    volumes:
+      - demo-data:/data
+      - demo-assets:/demo:ro
+    cpus: ${DEMO_SITE_CPUS:-4}
+    healthcheck:
+      test: ["CMD", "/loomarr", "healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    restart: unless-stopped
+
+  demo-library:
+    <<: *demo-image
+    entrypoint: ["demo-library", "serve", "--dir", "/demo", "--addr", "0.0.0.0:8096"]
+    volumes:
+      - demo-assets:/demo
+    cpus: ${DEMO_SITE_CPUS:-4}
+    # The image has no curl. The first start generates every asset before it listens, which is why
+    # this window is long.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8096/System/Info/Public').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 240
+    restart: unless-stopped
+
+  # One-shot and idempotent: rerunning it finds its channels already in place.
+  demo-seed:
+    <<: *demo-image
+    entrypoint:
+      - demo-library
+      - seed
+      - --dir
+      - /demo
+      - --base
+      - http://loomarr:8080
+      - --library-url
+      - http://demo-library:8096
+    environment:
+      DATABASE_URL: sqlite:///data/loomarr.db
+      DEMO_WEB_URL: ${DEMO_SITE_URL:-http://localhost:8088}
+    volumes:
+      - demo-data:/data
+      - demo-assets:/demo
+    depends_on:
+      loomarr:
+        condition: service_healthy
+      demo-library:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  demo-data:
+  demo-assets:

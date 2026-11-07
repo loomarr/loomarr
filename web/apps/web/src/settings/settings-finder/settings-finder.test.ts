@@ -30,14 +30,6 @@ const entries: SettingEntry[] = [
     kind: "duration",
     doc: "How long you stay signed in.",
   }),
-  setting({
-    key: "notifications.browser.enabled",
-    label: "Browser notifications",
-    envVar: "NOTIFICATIONS_BROWSER_ENABLED",
-    owner: "settings.notifications",
-    group: "notifications",
-    doc: "Notify this person in their browser.",
-  }),
 ];
 
 const first = (query: string, isAdmin = true) => findSettings({ query, entries, isAdmin })[0];

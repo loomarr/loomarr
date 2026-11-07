@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
@@ -28,11 +28,11 @@ type fakeHLSOrigin struct {
 
 var errFakeAcquire = errors.New("fake acquire")
 
-func (f *fakeHLSOrigin) acquirePlaylist(ch string, _ EncodePlan, _ bool, _ string) (hlsPlaylistLease, error) {
+func (f *fakeHLSOrigin) acquirePlaylist(ch string, _ bool, _ string) (hlsPlaylistLease, error) {
 	f.acquired = append(f.acquired, ch)
 	return hlsPlaylistLease{}, errFakeAcquire
 }
-func (f *fakeHLSOrigin) AssetPath(_ string, _ EncodePlan, rel string) (string, bool) {
+func (f *fakeHLSOrigin) AssetPath(_ string, rel string) (string, bool) {
 	p, ok := f.assets[rel]
 	return p, ok
 }
@@ -55,11 +55,11 @@ func TestPackagerHLSAssetPathServesOnlyItsOwnFiles(t *testing.T) {
 		"init.mp4": "", "seg00000007.m4s": "", "4k-hevc-sdr-init.mp4": "", "1080p-h264-sdr.m3u8": "",
 		"../secret": "", "1080p-h264-sdr-seg/../../x.m4s": "", "1080p-h264-sdr-init.mp4.bak": "", "seg-1.ts": "",
 	} {
-		if got, ok := m.AssetPath("ch", PlanBaseline, rel); got != want || ok != (want != "") {
+		if got, ok := m.AssetPath("ch", rel); got != want || ok != (want != "") {
 			t.Errorf("AssetPath(%q) = %q, %v, want %q", rel, got, ok, want)
 		}
 	}
-	if _, ok := m.AssetPath("other", PlanBaseline, "1080p-h264-sdr-init.mp4"); ok {
+	if _, ok := m.AssetPath("other", "1080p-h264-sdr-init.mp4"); ok {
 		t.Error("an asset of a channel with no packager resolved")
 	}
 }
@@ -449,7 +449,7 @@ func TestChannelStartDoesNotWaitForTheSlate(t *testing.T) {
 	t.Cleanup(m.Stop)
 	started := make(chan error, 1)
 	go func() {
-		lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+		lease, err := m.acquirePlaylist("ch", false, "")
 		if err == nil {
 			lease.release()
 		}
@@ -490,7 +490,7 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -535,7 +535,7 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	lease, err := m.acquirePlaylist("ch1", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch1", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +554,7 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 		t.Fatalf("ledger = %+v, want one HDR transcode at rung 1", use)
 	}
 	// A second channel: even SDR keyframes-only (0.297) does not fit beside 3.42 on 3.5.
-	if _, err := m.acquirePlaylist("ch2", PlanBaseline, false, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("ch2", false, ""); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("second channel: err = %v, want ErrAtCapacity", err)
 	}
 	m.StopChannel("ch1")
@@ -601,7 +601,7 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	if _, err := m.acquirePlaylist("ch", PlanBaseline, false, ""); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("ch", false, ""); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("4K HDR first item on a nearly full host: err = %v, want ErrAtCapacity", err)
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -611,7 +611,7 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 
 	held.Release()
 	allowance = 3.5
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -705,7 +705,7 @@ type fakeVariantOrigin struct {
 	asked []string
 }
 
-func (f *fakeVariantOrigin) acquireMediaPlaylist(_ context.Context, _ string, _ EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
+func (f *fakeVariantOrigin) acquireMediaPlaylist(_ context.Context, _ string, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
 	f.asked = append(f.asked, rel)
 	return hlsPlaylistLease{
 		await: func(context.Context) error { return nil }, release: func() {},
@@ -720,17 +720,17 @@ func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
 	pk := &fakeVariantOrigin{fakeHLSOrigin: fakeHLSOrigin{assets: map[string]string{}}}
 	o := newOrigin(nil, pk)
 
-	asset, ok, err := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr.m3u8", false)
+	asset, ok, err := o.OpenAsset(context.Background(), "ch", "1080p-h264-sdr.m3u8", false)
 	if err != nil || !ok || !asset.Playlist {
 		t.Fatalf("variant: ok %v playlist %v err %v", ok, asset.Playlist, err)
 	}
 	if b, _ := io.ReadAll(asset.Content); string(b) != "#EXTM3U\n1080p-h264-sdr.m3u8\n" {
 		t.Fatalf("variant body %q", b)
 	}
-	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); ok {
+	if _, ok, _ := o.OpenAsset(context.Background(), "ch", "4k-hevc-hdr.m3u8", false); ok {
 		t.Fatal("a variant the packager does not serve resolved")
 	}
-	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr-seg00000001.m4s", false); ok {
+	if _, ok, _ := o.OpenAsset(context.Background(), "ch", "1080p-h264-sdr-seg00000001.m4s", false); ok {
 		t.Fatal("a segment went to MediaPlaylist, or resolved with no file")
 	}
 	if len(pk.asked) != 2 {
@@ -796,7 +796,7 @@ func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -850,7 +850,7 @@ func TestPackagerHLSMasterDoesNotWaitPastThePremiumLookupBound(t *testing.T) {
 	m.premiumLookup = 100 * time.Millisecond
 	t.Cleanup(m.Stop)
 
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
+	lease, err := m.acquirePlaylist("ch", false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -880,12 +880,12 @@ func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	if _, ok, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-sdr.m3u8", false); ok || err != nil {
+	if _, ok, err := m.MediaPlaylist(t.Context(), "ch", "4k-hevc-sdr.m3u8", false); ok || err != nil {
 		t.Fatalf("4k-hevc-sdr on a 4K HDR channel = %v, %v; want not found", ok, err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
-	if _, _, err := m.MediaPlaylist(ctx, "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := m.MediaPlaylist(ctx, "ch", "4k-hevc-hdr.m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("premium playlist err = %v, want the wait for its first segment", err)
 	}
 	m.mu.Lock()
@@ -936,7 +936,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 			m.WithBudget(budget)
 			t.Cleanup(m.Stop)
 
-			if _, _, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); !errors.Is(err, ErrAtCapacity) {
+			if _, _, err := m.MediaPlaylist(t.Context(), "ch", "4k-hevc-hdr.m3u8", false); !errors.Is(err, ErrAtCapacity) {
 				t.Fatalf("premium play err = %v, want ErrAtCapacity", err)
 			}
 			time.Sleep(200 * time.Millisecond)
@@ -953,7 +953,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 func TestPackagerHLSMediaPlaylistServesOnlyTheChannelsFormats(t *testing.T) {
 	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{}, source: &premiumSource{}}
 	for _, rel := range []string{"4k-hevc-sdr.m3u8", "4k-hevc-hdr.m3u8", "../1080p-h264-sdr.m3u8", "live.m3u8", "1080p-h264-sdr"} {
-		if _, ok, err := m.MediaPlaylist(context.Background(), "ch", PlanBaseline, rel, false); ok || err != nil {
+		if _, ok, err := m.MediaPlaylist(context.Background(), "ch", rel, false); ok || err != nil {
 			t.Errorf("MediaPlaylist(%q, false) = %v, %v; want not found, without starting a packager", rel, ok, err)
 		}
 	}

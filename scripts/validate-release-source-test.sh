@@ -31,7 +31,7 @@ STUB
 chmod +x "$test_root/bin/git" "$test_root/bin/gh"
 
 common_jobs=$'CI\tsuccess\nImage — release build / Image — release build (linux/amd64)\tsuccess\nImage — release build / Image — release build (linux/arm64)\tsuccess'
-candidate_jobs=$'Release candidate — exact main scope\tsuccess\nGo — repository contracts / Go — repository contracts\tsuccess\nRust — repository contracts / Rust — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess'
+candidate_jobs=$'Release candidate — exact main scope\tsuccess\nGo — repository contracts / Go — repository contracts (1/2)\tsuccess\nGo — repository contracts / Go — repository contracts (2/2)\tsuccess\nRust — repository contracts / Rust — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess'
 
 run_case() {
   local name=$1 event=$2 jobs=$3 expected=$4
@@ -63,8 +63,10 @@ run_case candidate-evidence workflow_dispatch "$common_jobs"$'\n'"$candidate_job
 run_case full-evidence workflow_dispatch "$common_jobs"$'\nManual CI — full scope\tsuccess' fail
 run_case candidate-missing-contract workflow_dispatch \
   "$common_jobs"$'\nRelease candidate — exact main scope\tsuccess\nRust — repository contracts / Rust — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess' fail
+run_case candidate-missing-contract-shard workflow_dispatch \
+  "$common_jobs"$'\nRelease candidate — exact main scope\tsuccess\nGo — repository contracts / Go — repository contracts (1/2)\tsuccess\nRust — repository contracts / Rust — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess' fail
 run_case candidate-missing-rust-contract workflow_dispatch \
-  "$common_jobs"$'\nRelease candidate — exact main scope\tsuccess\nGo — repository contracts / Go — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess' fail
+  "$common_jobs"$'\nRelease candidate — exact main scope\tsuccess\nGo — repository contracts / Go — repository contracts (1/2)\tsuccess\nGo — repository contracts / Go — repository contracts (2/2)\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess' fail
 run_case dispatch-missing-marker workflow_dispatch "$common_jobs" fail
 run_case unsupported-event pull_request "$common_jobs" fail
 run_case missing-aggregate push \

@@ -99,7 +99,7 @@ reshuffle on each pass, so it holds whether or not the shuffle reseeds per pass.
   are named in the status filter, never encoded as a magic deadline. A failed first reconcile is
   logged at ERROR and written to `activity`.
 - **Channel numbers must be free in Tunarr too.** Every path that assigns a number (approval, create,
-  renumber) asks `binder.NumberInUse`, which unions the store with Tunarr's channel list. On a
+  renumber) asks `approval.Binder.NumberInUse`, which unions the store with Tunarr's channel list. On a
   collision Loomarr renumbers its own channel, never the occupant, and reports the move. An
   unreachable Tunarr falls back to store-only numbering.
 - **Ownership:** Loomarr is authoritative for local desired state and, on Tunarr channels, for the

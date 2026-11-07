@@ -11,7 +11,7 @@ export type {
   SeasonalOffSeason,
   SeasonalStrength,
 } from "./src/channels";
-export { ChannelAudioSection, ChannelSeasonalFields } from "./src/channels";
+export { ChannelAudioSection, ChannelSeasonalFields, seasonalModeLabel } from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";
@@ -54,6 +54,40 @@ export type {
   ProgrammeIdentityProps,
 } from "./src/identity";
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
+export type {
+  LibraryAuthority,
+  LibraryFilter,
+  LibraryFolder,
+  LibraryHealth,
+  LibraryHeldRemoval,
+  LibraryHook,
+  LibraryKind,
+  LibraryNeed,
+  LibraryNeedCandidate,
+  LibraryNeedSearch,
+  LibraryNeedsAnswers,
+  LibraryNeedsCardsProps,
+  LibraryNeedsStripProps,
+  LibraryPathMapping,
+  LibraryScan,
+  LibrarySettingsProps,
+  LibraryShelfProps,
+  LibraryShelfStatus,
+  LibraryShelfTitle,
+  LibraryTitleDetail,
+  LibraryTitleEpisode,
+  LibraryTitleFile,
+  LibraryTitleMatch,
+  LibraryTitleProps,
+  LibraryTitleSeason,
+} from "./src/library";
+export {
+  LibraryNeedsCards,
+  LibraryNeedsStrip,
+  LibrarySettings,
+  LibraryShelf,
+  LibraryTitle,
+} from "./src/library";
 export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,

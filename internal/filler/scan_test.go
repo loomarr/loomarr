@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // fakeProbe reports a fixed duration, so the scanner is testable without ffmpeg.
@@ -125,32 +125,32 @@ func TestScanDir_RecordsNameSource(t *testing.T) {
 	for _, tc := range []struct {
 		name, file, sidecar string
 		wantName            string
-		wantSource          clipcatalog.NameSource
+		wantSource          clips.NameSource
 	}{
-		{"bare filename", "Widgetmax Ad 1991.mp4", "", "Widgetmax Ad 1991", clipcatalog.NameFromFilename},
+		{"bare filename", "Widgetmax Ad 1991.mp4", "", "Widgetmax Ad 1991", clips.NameFromFilename},
 		{"arrival filename", "ab/cd/hash.mp4", `{"loomarr":{"originalName":"Widgetmax Ad 1991.mp4"}}`,
-			"Widgetmax Ad 1991", clipcatalog.NameFromFilename},
+			"Widgetmax Ad 1991", clips.NameFromFilename},
 		{"info-JSON title", "ab/cd/hash.mp4", `{"title":"Fizzbolt Summer Sale","loomarr":{"originalName":"fizzbolt-1991.mp4"}}`,
-			"Fizzbolt Summer Sale", clipcatalog.NameFromSidecar},
+			"Fizzbolt Summer Sale", clips.NameFromSidecar},
 		{"grounded before provenance", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"spot 1993.mp4","displayName":"Fizzbolt — 1993","nameSource":"brand"}}`,
-			"Fizzbolt — 1993", clipcatalog.NameFromGrounded},
+			"Fizzbolt — 1993", clips.NameFromGrounded},
 		{"operator-named segment", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"Zap Cola.mp4","displayName":"Zap Cola","nameProvenance":"curated","splitPublicationToken":"tok"}}`,
-			"Zap Cola", clipcatalog.NameFromCurated},
+			"Zap Cola", clips.NameFromCurated},
 		{"fallback segment", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"Clip 2 from widgetmax tape.mp4","nameProvenance":"filename","splitPublicationToken":"tok"}}`,
-			"Clip 2 from widgetmax tape", clipcatalog.NameFromFilename},
+			"Clip 2 from widgetmax tape", clips.NameFromFilename},
 		{"segment before provenance", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"Zap Cola.mp4","splitPublicationToken":"tok"}}`,
-			"Zap Cola", clipcatalog.NameFromUnknown},
+			"Zap Cola", clips.NameFromUnknown},
 		// An operator's rename (#1990) outranks the source title it replaced.
 		{"renamed over an info-JSON title", "ab/cd/hash.mp4",
 			`{"title":"fizzbolt_upload_v2","loomarr":{"originalName":"fizzbolt-1991.mp4","displayName":"Fizzbolt Summer Sale","nameProvenance":"curated"}}`,
-			"Fizzbolt Summer Sale", clipcatalog.NameFromCurated},
+			"Fizzbolt Summer Sale", clips.NameFromCurated},
 		{"unrecognised provenance reads as grounded", "ab/cd/hash.mp4",
 			`{"loomarr":{"originalName":"spot.mp4","displayName":"Zap Cola","nameProvenance":"bogus"}}`,
-			"Zap Cola", clipcatalog.NameFromGrounded},
+			"Zap Cola", clips.NameFromGrounded},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -184,15 +184,15 @@ func TestScanDir_KeepsACuratedRename(t *testing.T) {
 	if err := filler.WriteCuratedName(filepath.Join(dir, "ab/cd/hash.mp4"), "Fizzbolt Summer Sale"); err != nil {
 		t.Fatal(err)
 	}
-	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+	found, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(clips) != 1 || clips[0].Name != "Fizzbolt Summer Sale" || clips[0].NameSource != clipcatalog.NameFromCurated {
-		t.Fatalf("clips = %+v, want the curated rename", clips)
+	if len(found) != 1 || found[0].Name != "Fizzbolt Summer Sale" || found[0].NameSource != clips.NameFromCurated {
+		t.Fatalf("clips = %+v, want the curated rename", found)
 	}
-	if clips[0].Era != 1991 {
-		t.Errorf("era = %d, want 1991 still grounded from the arrival filename", clips[0].Era)
+	if found[0].Era != 1991 {
+		t.Errorf("era = %d, want 1991 still grounded from the arrival filename", found[0].Era)
 	}
 	if filler.SidecarTitle(filepath.Join(dir, "ab/cd/hash.mp4")) != "fizzbolt_upload_v2" {
 		t.Error("the rename dropped the source's info-JSON title")

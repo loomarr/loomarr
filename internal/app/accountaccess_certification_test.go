@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/invitation"
-	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/recovery"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -60,7 +60,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 	notificationService := notifications.NewService(repository, invitationEmailRouter{
 		invitations:  invitationService,
 		recovery:     recoveryService,
-		destinations: repository.destinations,
+		destinations: repository,
 	}, []notifications.Adapter{adapter}, func() string {
 		sequence++
 		return fmt.Sprintf("certification-notification-%d", sequence)

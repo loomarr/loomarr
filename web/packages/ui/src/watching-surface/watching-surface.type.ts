@@ -1,4 +1,3 @@
-import type { Density } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
 import type { ReactNode } from "react";
 
@@ -37,24 +36,17 @@ interface WatchingSurfaceProps {
   controlsVisible?: boolean;
   /** Changes only after handled Watching activity, not while live playback presentation updates. */
   controlsActivityKey?: number;
-  density: Density;
   /** True only while the authoritative Channel catalog request is unresolved. */
   loading?: boolean;
   loadError?: string;
   numberEntry?: ChannelNumberEntry;
-  onChannelDown: () => void;
-  onChannelUp: () => void;
   /** Returns to server selection while preserving the current credential as a restart fallback. */
   onChangeServer?: () => void;
   onDismissControls: () => void;
   onGoLive: () => void;
   onOpenGuide: () => void;
-  onOpenSurf: () => void;
-  onPause: () => void;
   onPlay: () => void;
-  onPrevious: () => void;
   onRetry: () => void;
-  onShowControls: () => void;
   /** Instrumentation (TV): the channel switch overlay showed its readout or its still. */
   onSwitchShown?: (what: "osd" | "still") => void;
   player: ReactNode;

@@ -67,6 +67,62 @@ if printf '%s\n' "$sqlite" | grep -q 'target: 8082'; then
 	exit 1
 fi
 
+# The demo sign-in is public, so the demo site must stay on loopback unless an operator widens it.
+demo="$(LOOMARR_IMAGE=loomarr-test docker compose -f "$ROOT/docker/compose.demo.yaml" config --format json)" || {
+	echo 'compose-verify: docker/compose.demo.yaml does not render' >&2
+	exit 1
+}
+if ! printf '%s\n' "$demo" | grep -q '"host_ip": "127.0.0.1"'; then
+	echo 'compose-verify: the demo site publishes beyond loopback by default' >&2
+	exit 1
+fi
+
+# Both the server and the seeder must move to Postgres: a seeder left on SQLite would seed nothing
+# the server can see, and the site would boot empty.
+demo_postgres="$(
+	LOOMARR_IMAGE=loomarr-test docker compose -f "$ROOT/docker/compose.demo.yaml" \
+		-f "$ROOT/docker/compose.demo.postgres.yaml" config --format json
+)" || {
+	echo 'compose-verify: docker/compose.demo.postgres.yaml does not render' >&2
+	exit 1
+}
+for service in loomarr demo-seed; do
+	if ! printf '%s\n' "$demo_postgres" | jq -e --arg s "$service" \
+		'.services[$s].environment.DATABASE_URL | startswith("postgres://")' >/dev/null; then
+		echo "compose-verify: the Postgres demo site leaves $service off Postgres" >&2
+		exit 1
+	fi
+done
+if printf '%s\n' "$demo_postgres" | jq -e '.services.postgres.ports' >/dev/null; then
+	echo 'compose-verify: the demo site publishes its database' >&2
+	exit 1
+fi
+
+# The tunnel must never start with the rest of the stack: demo-site.sh starts it only after retiring
+# the public admin password, and a plain `up` would skip that.
+demo_public="$(
+	LOOMARR_IMAGE=loomarr-test docker compose -f "$ROOT/docker/compose.demo.yaml" \
+		-f "$ROOT/docker/compose.demo.public.yaml" config --format json
+)" || {
+	echo 'compose-verify: docker/compose.demo.public.yaml does not render' >&2
+	exit 1
+}
+if printf '%s\n' "$demo_public" | jq -e '.services.cloudflared' >/dev/null; then
+	echo 'compose-verify: the demo tunnel starts without its profile' >&2
+	exit 1
+fi
+
+# make db-view serves a database copy with no sign-in, so it must publish only on loopback.
+db_view="$(DB_VIEW_RUN_DIR=/run DB_VIEW_ADMIN_PASSWORD=x DB_VIEW_PG_PASSWORD=x DB_VIEW_SQLITE_FILE=/db \
+	docker compose -f "$ROOT/docker/compose.db-view.yaml" --profile postgres config --format json)" || {
+	echo 'compose-verify: docker/compose.db-view.yaml does not render' >&2
+	exit 1
+}
+if ! printf '%s\n' "$db_view" | jq -e '[.services[].ports[]?.host_ip] | length > 0 and all(. == "127.0.0.1")' >/dev/null; then
+	echo 'compose-verify: make db-view publishes beyond loopback' >&2
+	exit 1
+fi
+
 postgres="$(
 	LOOMARR_VERSION="$VERSION" SERVER_PUBLIC_URL="$PUBLIC_URL" docker compose \
 		-f "$ROOT/docker/compose.yaml" \

@@ -86,7 +86,7 @@ A clip is identified by a hash of its bytes; its path is where it lives (decisio
   says so.
 
 **Creative identity: one copy of each ad (#2033).** The byte hash says two files are the same
-bytes. It cannot say they are the same advert. `internal/creative` answers that from a
+bytes. It cannot say they are the same advert. `internal/media/creative` answers that from a
 fingerprint of picture and sound (`creative-v1-video4fps-gray9x8-audio8k-hk15`): a 64-bit
 difference hash per video frame at 4 fps, and a 15-bit band-energy hash per 64 ms of 8 kHz mono
 audio, which a gain change does not move.
@@ -394,7 +394,7 @@ An enabled source is checked on its effective policy and new items download with
   - Clips queued but not yet through the pipeline do not count toward the target. A pass
     six hours later can queue the same shortfall again, so a slow pipeline can overshoot by up
     to one pass.
-  - To serve this, airings are kept whole for eight weeks (`clipcatalog.AiringHistoryAge`), not
+  - To serve this, airings are kept whole for eight weeks (`clips.AiringHistoryAge`), not
     one day; beyond that a clip keeps its newest four.
   - A short pass also **searches each enabled archive.org source for nearby stations** (#2066).
     The search covers the call signs of stations in a place's radius that were held during a short
@@ -440,7 +440,7 @@ Unattended fetching can fill a disk, so it is bounded by limits that fail toward
   too long, live, upcoming, private, unavailable, incomplete).
 - **Archive.org and YouTube are peers.** Each registered remote is enumerated by its stored `kind`
   (Archive's bounded collection API; yt-dlp flat-playlist listing) through enumeration and download.
-  Listing belongs to the provider (`internal/sourceprovider`: its window, cursor, duration-cut
+  Listing belongs to the provider (`internal/filler/source`: its window, cursor, duration-cut
   choice, station searches and metadata screen); the fetch pass owns the budget, lease, shared
   rejection, dedupe, selection and queueing. A source whose provider is not registered is inert:
   a scheduled pass skips it, a manual check refuses it, and the row is kept. The folder and the
@@ -448,8 +448,14 @@ Unattended fetching can fill a disk, so it is bounded by limits that fail toward
   API and the Sources page need to know about a kind: its label and address hint, how an operator's
   address is read (`Addresser`), how sources are suggested and verified (`Finder`), whether a
   source can be searched in place (`Searcher`), and what is shown under its rows.
-  `GET /v1/filler/providers` publishes each registered provider with its capabilities, so a
-  provider added to the registry reaches the client without a client change.
+  `GET /v1/filler/providers` publishes each registered provider with its capabilities and the
+  words the Sources page shows for it (heading blurb, source noun, finder copy and minimum
+  query, address label and hint), so a provider added to the registry reaches the client without
+  a client change. The web names no provider: provider ids on the wire are plain strings checked
+  against the registry, a source row carries its provider's page (`pageUrl`) and each example its
+  player (`embedUrl`), and the suggestions route answers an address with the one source it names
+  (`exact`) because only the provider (`Recognizer`) can tell an address from words to search for.
+  A web test fails on an `"archive"` or `"youtube"` literal in production source.
   URL inference is kept only for a URL an admin typed. Both share the same bounds, governor,
   acquisition record, held lifecycle, sidecar and admission authority.
 - **Look for new clips** runs one bounded fetch pass for the selected source and then scans local
@@ -592,8 +598,8 @@ within `filler.incoming.ready_window`, default `24h`, one hour to 30 days, hot-a
 window is returned with the projection). Each group is counted by the predicate that returns its
 rows, and row arrays are capped at 100 with separately counted totals. Ready clips age out of
 Incoming but stay in the Library. Rejections, retries, provider failures and optional enrichment
-belong in Activity or Diagnostics. Bumpers, station IDs and compilations are never "add tags"
-tasks.
+stay in the preparing group's processing details. Bumpers, station IDs and compilations are never
+"add tags" tasks.
 
 A row carries one server-owned sentence. Its panel may reveal **Processing details**: the server's
 ordered stages, each with a name, outcome, time and safe explanation, routine skipped stages behind
@@ -623,7 +629,7 @@ report is not a finished encode, so the rung encodes it again.
   duration.
 
 **Loudness is measured at ingest and corrected at playout**, target `filler.target_lufs`
-(−23 LUFS), by one rule in `internal/loudness` (#2032). Files are never levelled on disk.
+(−23 LUFS), by one rule in `internal/media/loudness` (#2032). Files are never levelled on disk.
 
 - The playback derivative's integrated loudness and true peak are measured at ingest. Derivative
   verification refuses a clip with audio but no valid measurement, so every new clip is measured.
@@ -668,7 +674,7 @@ The floor judges what a clip actually shows and sounds like, against a bar set b
 inputs. Its verdicts are enforced at admission and on every re-check (see
 [Enforcement](#enforcement-2036) below).
 
-- **One bounded pass per clip** (`mediatools.MeasureDefects`) measures the file that airs. It is
+- **One bounded pass per clip** (`tools.MeasureDefects` in `internal/media/tools`) measures the file that airs. It is
   a pass of its own rather than a branch of the playback transcode. Re-checks have no transcode
   to ride, and `cropdetect` logs every sampled frame, which in the transcode's bounded log would
   push out the black and freeze evidence the publish gate reads.

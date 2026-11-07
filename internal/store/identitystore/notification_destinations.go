@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 )
 
 const notificationDestinationSelect = `SELECT id, means, label, scope, owner_id, audience,

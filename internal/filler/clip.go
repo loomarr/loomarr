@@ -26,43 +26,43 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
-// The clip catalog's value types are defined in internal/clipcatalog, which the core store persists
+// The clip catalog's value types are defined in internal/filler/clips, which the core store persists
 // without importing this package (#1747). Filler names them here, as aliases of the same types, so
 // the domain that discovers, prepares and schedules clips speaks one vocabulary in its own terms.
 // Their documentation lives on the definitions.
 type (
 	// Clip is one filler item in the catalog. Identity is Hash; see clipcatalog.Clip.
-	Clip = clipcatalog.Clip
+	Clip = clips.Clip
 	// Kind is what a clip is. A clip is never a program.
-	Kind = clipcatalog.Kind
+	Kind = clips.Kind
 	// Placement says where a Ready clip may be scheduled, separate from Kind.
-	Placement = clipcatalog.Placement
+	Placement = clips.Placement
 	// Audience is who a clip suits.
-	Audience = clipcatalog.Audience
+	Audience = clips.Audience
 )
 
 const (
-	Unclassified = clipcatalog.Unclassified
-	Commercial   = clipcatalog.Commercial
-	Bumper       = clipcatalog.Bumper
-	StationID    = clipcatalog.StationID
-	PSA          = clipcatalog.PSA
-	Trailer      = clipcatalog.Trailer
-	Interstitial = clipcatalog.Interstitial
-	Political    = clipcatalog.Political
-	News         = clipcatalog.News
+	Unclassified = clips.Unclassified
+	Commercial   = clips.Commercial
+	Bumper       = clips.Bumper
+	StationID    = clips.StationID
+	PSA          = clips.PSA
+	Trailer      = clips.Trailer
+	Interstitial = clips.Interstitial
+	Political    = clips.Political
+	News         = clips.News
 
-	PlacementNotPlayable = clipcatalog.PlacementNotPlayable
-	PlacementBreakBody   = clipcatalog.PlacementBreakBody
-	PlacementBookend     = clipcatalog.PlacementBookend
+	PlacementNotPlayable = clips.PlacementNotPlayable
+	PlacementBreakBody   = clips.PlacementBreakBody
+	PlacementBookend     = clips.PlacementBookend
 
-	Kids      = clipcatalog.Kids
-	Family    = clipcatalog.Family
-	General   = clipcatalog.General
-	LateNight = clipcatalog.LateNight
+	Kids      = clips.Kids
+	Family    = clips.Family
+	General   = clips.General
+	LateNight = clips.LateNight
 )
 
 // PlacementForRole derives scheduling placement without inventing a descriptive role. An enrolled

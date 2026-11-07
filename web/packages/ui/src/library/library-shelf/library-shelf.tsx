@@ -1,0 +1,243 @@
+import {
+  Action,
+  Badge,
+  BrandMark,
+  Field,
+  ProgressTrack,
+  StatusDot,
+  Surface,
+  Tabs,
+  Text,
+  useWindowWidth,
+} from "@loomarr/design-system";
+import { type ComponentProps, useState } from "react";
+import { Pressable } from "react-native";
+
+import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
+import { folderName, heldTitle, scanHeadline } from "../library-words";
+import type { LibraryFilter, LibraryShelfProps, LibraryShelfTitle } from "./library-shelf.type";
+
+// LIBRARY (#2151 decision 22, design/library variant D): one line about the library, the tabs and a
+// search, then the poster grid. Presentational: the app owns the requests and draws the artwork.
+// Plain words per the mock's word sheet: "Getting ready", never a facts state.
+
+// The grid is 6 across on a desktop, 4 on a tablet and 3 on a phone, by the window as in the mock.
+const columnsFor = (width: number) => (width >= 1024 ? 6 : width >= 768 ? 4 : 3);
+
+// The one line under the heading: what's going on, the one action it needs, and the way to Settings.
+const StatusLine = ({
+  status,
+  checking,
+  onCheckAgain,
+  onRescan,
+  onOpenSettings,
+}: Pick<LibraryShelfProps, "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings">) => {
+  const scan = scanHeadline(status.scan);
+  const held = status.held[0];
+  const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
+  const [tone, text]: [ComponentProps<typeof StatusDot>["tone"], string] =
+    status.health === "needs_folders"
+      ? ["off", "Tell Loomarr where your media is"]
+      : held
+        ? ["warn", heldTitle(held)]
+        : offline
+          ? ["warn", `Can't reach your ${folderName(offline)} folder`]
+          : [scan.tone, scan.text];
+  return (
+    <Line columnGap="control" paddingVertical="inline" rowGap="inline">
+      <Line>
+        <StatusDot label={text} tone={tone} />
+        <Text textRole="label">{text}</Text>
+      </Line>
+      {scan.reading ? (
+        <Stack flexBasis={120} flexGrow={1} minWidth={96}>
+          {/* Adding media is preparation (`tune`); paused drops to the neutral fill. */}
+          <ProgressTrack
+            height={6}
+            label={`Adding your media, ${scan.percent} percent`}
+            percent={scan.percent}
+            tone={status.scan.paused ? "elapsed" : "tune"}
+          />
+        </Stack>
+      ) : null}
+      {held ? (
+        <Action onPress={onRescan} tone="primary">
+          Check again
+        </Action>
+      ) : offline ? (
+        <Action disabled={checking} onPress={onCheckAgain} tone="primary">
+          {checking ? "Checking…" : "Check again"}
+        </Action>
+      ) : null}
+      <Stack marginLeft="auto">
+        <Action onPress={onOpenSettings} variant="ghost">
+          Library settings
+        </Action>
+      </Stack>
+    </Line>
+  );
+};
+
+// No folder chosen yet: the shelf is dead air until Loomarr knows where the media is.
+const DeadAir = ({ onOpenSettings }: { onOpenSettings: () => void }) => (
+  <Surface alignItems="center" gap="control" padding="section">
+    <BrandMark contained={false} decorative size={6} width={120} />
+    <Text textAlign="center" textRole="title">
+      Dead air — tell Loomarr where your media is.
+    </Text>
+    <Text textAlign="center" textRole="body" tone="secondary">
+      Point it at your movie and show folders and your shelf fills up on its own.
+    </Text>
+    <Action onPress={onOpenSettings} tone="primary">
+      Tell Loomarr where your media is
+    </Action>
+  </Surface>
+);
+
+const subtitle = (title: LibraryShelfTitle) => {
+  const kind = title.kind === "series" ? "Show" : "Movie";
+  return title.year ? `${title.year} · ${kind}` : kind;
+};
+
+const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void }) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Pressable
+      accessibilityLabel={title.ready ? title.name : `${title.name}, getting ready`}
+      accessibilityRole="button"
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPress={onOpen}
+      style={{ minWidth: 0, width: "100%" }}
+    >
+      <Stack gap="inline">
+        <Surface
+          backgroundColor="transparent"
+          borderColor={focused ? "actionFocus" : "transparent"}
+          borderRadius="control"
+          borderWidth={2}
+        >
+          <LibraryPoster art={title.poster} dim={!title.ready} name={title.name}>
+            {title.ready ? null : (
+              <Stack left={8} position="absolute" top={8}>
+                <Badge tone="neutral">Getting ready</Badge>
+              </Stack>
+            )}
+          </LibraryPoster>
+        </Surface>
+        <Stack gap={2} minHeight={56} minWidth={0}>
+          {/* Left-aligned: on the web the tile is a <button>, which centres its text. */}
+          <Text numberOfLines={2} textAlign="left" textRole="label">
+            {title.name}
+          </Text>
+          <Text textAlign="left" textRole="compact" tone="secondary">
+            {subtitle(title)}
+          </Text>
+        </Stack>
+      </Stack>
+    </Pressable>
+  );
+};
+
+// The grid as rows, each filled out with empty cells so the last row's posters keep their width.
+const Grid = ({ titles, onOpenTitle }: Pick<LibraryShelfProps, "titles" | "onOpenTitle">) => {
+  const columns = columnsFor(useWindowWidth());
+  const rows: LibraryShelfTitle[][] = [];
+  for (let i = 0; i < titles.length; i += columns) rows.push(titles.slice(i, i + columns));
+  const slots = Array.from({ length: columns }, (_, i) => `slot-${i}`);
+  return (
+    <Stack aria-label="Titles" gap="section" role="list">
+      {rows.map((row) => (
+        // A row is layout only; the titles are the list's items.
+        <Line alignItems="flex-start" flexWrap="nowrap" gap="control" key={row[0]?.id} role="none">
+          {row.map((title) => (
+            <Stack flexBasis={0} flexGrow={1} key={title.id} minWidth={0} role="listitem">
+              <Tile onOpen={() => onOpenTitle(title.id)} title={title} />
+            </Stack>
+          ))}
+          {slots.slice(row.length).map((slot) => (
+            <Stack aria-hidden flexBasis={0} flexGrow={1} key={slot} />
+          ))}
+        </Line>
+      ))}
+    </Stack>
+  );
+};
+
+const FILTERS: { label: string; value: LibraryFilter }[] = [
+  { label: "All", value: "all" },
+  { label: "Movies", value: "movie" },
+  { label: "Shows", value: "series" },
+];
+
+const LibraryShelf = ({
+  status,
+  checking,
+  onCheckAgain,
+  onRescan,
+  onOpenSettings,
+  filter,
+  onFilterChange,
+  search,
+  onSearchChange,
+  titles,
+  loading,
+  onOpenTitle,
+  needs,
+  showTitles = true,
+}: LibraryShelfProps) => {
+  const fresh = status.health === "needs_folders";
+  // From a tablet up the search sits beside the tabs; on a phone it takes its own full-width line.
+  const wide = useWindowWidth() >= 768;
+  return (
+    <Stack
+      alignSelf="center"
+      gap="section"
+      maxWidth={1152 + 2 * PAGE_GUTTER.wide}
+      padding={wide ? PAGE_GUTTER.wide : PAGE_GUTTER.phone}
+      width="100%"
+    >
+      <Stack gap="control">
+        <Text as="h1" textRole="display">
+          Library
+        </Text>
+        <StatusLine
+          checking={checking}
+          onCheckAgain={onCheckAgain}
+          onOpenSettings={onOpenSettings}
+          onRescan={onRescan}
+          status={status}
+        />
+      </Stack>
+      {fresh ? (
+        <DeadAir onOpenSettings={onOpenSettings} />
+      ) : (
+        <>
+          {needs}
+          <Line columnGap="control" justifyContent="space-between" rowGap="control">
+            <Tabs label="What to show" onValueChange={onFilterChange} options={FILTERS} value={filter} />
+            {showTitles ? (
+              <Stack width={wide ? 288 : "100%"}>
+                <Field
+                  accessibilityLabel="Search your library"
+                  onChangeText={onSearchChange}
+                  placeholder="Search your library"
+                  value={search}
+                />
+              </Stack>
+            ) : null}
+          </Line>
+          {!showTitles || loading ? null : titles.length === 0 && search.trim() !== "" ? (
+            <Text textRole="body" tone="secondary">
+              {`Nothing here matches "${search.trim()}".`}
+            </Text>
+          ) : (
+            <Grid onOpenTitle={onOpenTitle} titles={titles} />
+          )}
+        </>
+      )}
+    </Stack>
+  );
+};
+
+export { LibraryShelf };

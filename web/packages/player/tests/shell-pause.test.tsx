@@ -11,7 +11,6 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
 
 const { createShellPause, useShellPause } = await import("@loomarr/player/native");
@@ -39,7 +38,6 @@ const idleController = () => {
     },
   };
   const controller = createPlayerController({
-    profile: {},
     source: { mint: async (channel) => ({ uri: `${channel.id}.m3u8` }) },
     transport,
   });

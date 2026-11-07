@@ -13,8 +13,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/loomarr/loomarr/internal/channels/viewing"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/viewing"
 	"github.com/loomarr/loomarr/internal/web"
 )
 
@@ -55,7 +55,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		store:     opts.Store, auth: opts.Auth, log: log, metrics: recorder, backupSQLite: opts.BackupSQLite,
 		login: opts.Login, sessions: opts.Sessions, passwords: opts.Passwords, userSync: opts.UserSync, invitations: opts.Invitations, invitationDelivery: opts.InvitationDelivery, invitationRedemption: opts.InvitationRedemption, passwordRecovery: opts.PasswordRecovery, accessPublicURL: opts.AccessPublicURL, devices: opts.Devices, deviceLimiter: opts.DeviceLimiter, cookieSecure: opts.CookieSecure, trustProxy: opts.TrustProxy, devLogin: opts.DevLogin,
 		channels: opts.Channels, livetv: opts.LiveTV, tunerRescanner: opts.TunerRescanner, tunarrConnect: opts.TunarrConnect,
-		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, proposalProgress: opts.ProposalProgress, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDecisions: opts.FillerDecisions, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
+		suggest: opts.Suggest, proposalWorkflow: opts.ProposalWorkflow, proposalProgress: opts.ProposalProgress, search: opts.Search, movieCollections: opts.MovieCollections, collections: opts.Collections, libraryRoots: opts.LibraryRoots, libraryHooks: opts.LibraryHooks, icons: opts.Icons, images: opts.Images, events: opts.Events, shutdown: opts.Shutdown, filler: opts.Filler, fillerResearch: opts.FillerResearch, fillerDefects: opts.FillerDefects, pods: opts.Pods, taxonomy: opts.Taxonomy,
 		fillerLayout:     opts.FillerLayout,
 		sourceProviders:  opts.SourceProviders,
 		intakeLanguages:  opts.IntakeLanguages,
@@ -118,8 +118,8 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSearch(humaAPI)
 	srv.registerMovieCollections(humaAPI)
 	srv.registerCollections(humaAPI)
+	srv.registerLibrary(humaAPI)
 	srv.registerFiller(humaAPI)
-	srv.registerFillerDecisions(humaAPI)
 	srv.registerFillerDefects(humaAPI)
 	srv.registerFillerSources(humaAPI)
 	srv.registerFillerWatch(humaAPI)
@@ -202,7 +202,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// endpoint make" without serialising traffic and diffing a global counter by hand.
 	// It must be outside because it routes a request copy carrying that counter; the Recorder and
 	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
-	return withRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux))))
+	return withSecurityHeaders(withRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux)))))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

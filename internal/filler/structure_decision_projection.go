@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 const structureDecisionObservationPrefix = "complete-decision-"
@@ -13,7 +13,7 @@ const structureDecisionObservationPrefix = "complete-decision-"
 // ProjectConfirmedStructureDecision constructs the V67 complete-plan assessment from one replayed
 // provider-neutral decision. Detector observations remain inspectable context but cannot create,
 // move, or resolve a boundary in the projected plan.
-func ProjectConfirmedStructureDecision(source SplitSourceAsset, detector *SourceStructureAssessment, artifact fillerstructure.Artifact) (SourceStructureAssessment, error) {
+func ProjectConfirmedStructureDecision(source SplitSourceAsset, detector *SourceStructureAssessment, artifact structure.Artifact) (SourceStructureAssessment, error) {
 	authority, err := newStructureDecisionProjectionAuthority(source, artifact)
 	if err != nil {
 		return SourceStructureAssessment{}, fmt.Errorf("project structure decision: %w", err)
@@ -39,7 +39,7 @@ func ProjectConfirmedStructureDecision(source SplitSourceAsset, detector *Source
 		})
 		claims = append(claims, StructureRoleClaim{
 			StartMs: segment.StartMS, EndMs: segment.EndMS, Role: role,
-			EvidenceIDs: []string{intervalID}, Reason: fillerstructure.ReasonAgreement,
+			EvidenceIDs: []string{intervalID}, Reason: structure.ReasonAgreement,
 		})
 		if segment.EndMS < source.DurationMs {
 			observations = append(observations, StructureObservation{
@@ -62,7 +62,7 @@ func ProjectConfirmedStructureDecision(source SplitSourceAsset, detector *Source
 	return assessment, nil
 }
 
-func projectedDetectorContext(source SplitSourceAsset, detector *SourceStructureAssessment, artifact fillerstructure.Artifact) ([]StructureObservation, time.Time, error) {
+func projectedDetectorContext(source SplitSourceAsset, detector *SourceStructureAssessment, artifact structure.Artifact) ([]StructureObservation, time.Time, error) {
 	assessedAt := artifact.DecidedAt
 	if detector == nil {
 		return nil, assessedAt, nil

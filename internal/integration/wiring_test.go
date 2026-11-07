@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -117,7 +117,7 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	admin := h.asAdmin()
 	healthRuns := jobRunCount(t, h, admin, "system-health")
 	if err := h.store.UpsertFillerSource(t.Context(),
-		fillerstore.NewFillerSource("library-movies", "library", "Movies", "Commercials", time.Now())); err != nil {
+		records.NewFillerSource("library-movies", "library", "Movies", "Commercials", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,6 +129,7 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 		t.Fatalf("empty connection made %d media-server requests, want none", got)
 	}
 
+	h.ms.SetAdminToken("jellyfin-token-one")
 	if code := h.patchSettings(admin, map[string]string{
 		"library.flavor": "jellyfin",
 		"library.url":    h.ms.URL,
@@ -145,6 +146,8 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	assertJellyfinUserAuth(t, requests, "jellyfin-token-one")
 	assertFillerLibraryScanned(t, requests, "jellyfin-token-one")
 
+	// The operator rotates the key on the media server, then in Loomarr: the old key now fails.
+	h.ms.SetAdminToken("jellyfin-token-two")
 	if code := h.patchSettings(admin, map[string]string{"library.token": "jellyfin-token-two"}); code != http.StatusOK {
 		t.Fatalf("rotate Jellyfin token → %d, want 200", code)
 	}
@@ -311,7 +314,7 @@ func TestWiring_FreshInstall(t *testing.T) {
 		method, path, body string
 		want               int
 	}{
-		{http.MethodPost, "/v1/proposals", `{"description":"x"}`, http.StatusConflict},
+		{http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, http.StatusConflict},
 		{http.MethodGet, "/v1/search?q=matrix", "", http.StatusNotImplemented},
 		{http.MethodPost, "/v1/setup/tunarr-connect", "", http.StatusNotImplemented},
 	}
@@ -369,7 +372,7 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 		method, path, body string
 		want               int
 	}{
-		{http.MethodPost, "/v1/proposals", `{"description":"x"}`, http.StatusConflict},
+		{http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, http.StatusConflict},
 		{http.MethodGet, "/v1/search?q=matrix", "", http.StatusNotImplemented},
 	}
 	for _, r := range preCheck {
@@ -402,7 +405,7 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	}
 
 	// ...AND the routes are enabled WITH NO RESTART — the whole point of the fix.
-	if code := h.status(http.MethodPost, "/v1/proposals", `{"description":"x"}`, admin); code == http.StatusNotImplemented {
+	if code := h.status(http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, admin); code == http.StatusNotImplemented {
 		t.Error("POST /v1/proposals still 501 after saving config — not live-enabled (would need a restart)")
 	}
 	if code := h.status(http.MethodGet, "/v1/search?q=matrix", "", admin); code != http.StatusOK {

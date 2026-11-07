@@ -4,15 +4,15 @@ import {
   getChannelTracksMockHandler,
   getChannelUpcomingMockHandler,
   getDiscoverFillerMockHandler,
-  getFillerDecisionActivityMockHandler,
-  getFillerDecisionDiagnosticsMockHandler,
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetFillerSplitMockHandler,
+  getGetLibraryItemMockHandler,
   getGetPlayoutStatusMockHandler,
   getGetProgrammingVocabularyMockHandler,
   getGetProposalJobMockHandler,
   getImportCandidatesMockHandler,
+  getLibraryStatusMockHandler,
   getListChannelsMockHandler,
   getListDiagnosticEventsMockHandler,
   getListDiscoveryFeedbackMockHandler,
@@ -21,6 +21,9 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListLibraryCollectionsMockHandler,
+  getListLibraryItemsMockHandler,
+  getListLibraryNeedsMockHandler,
+  getListLibraryRootsMockHandler,
   getListTaxonomyMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
@@ -44,6 +47,7 @@ import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
 import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { libraryStatus } from "@/test/fixtures/library";
 import { setting } from "@/test/fixtures/settings";
 import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -184,19 +188,6 @@ const stubReachable = () => {
       },
       recentlyReady: { rows: [], total: 0 },
     } as never),
-    getFillerDecisionActivityMockHandler({
-      rows: [
-        {
-          id: "automatic-admit-event",
-          decisionId: "automatic-admit-decision",
-          clipHash: "auto-hash",
-          kind: "automatic_admit",
-          createdAt: "2026-08-25T12:00:00Z",
-        },
-      ],
-      total: 1,
-    }),
-    getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
     // Both catalog shapes, not an empty catalog: Split belongs to the composite source reel,
     // while pinning belongs to an airable clip. A composite is deliberately excluded from pods,
     // so using one row to assert both doors would require the UI to offer an action that cannot
@@ -302,6 +293,46 @@ const stubReachable = () => {
     getChannelUpcomingMockHandler({ upcoming: [] }),
     getListFillerPullsMockHandler({ pulls: [], total: 0 }),
     getListLibraryCollectionsMockHandler({ collections: [] }),
+    // Settings → Library: one folder in use, so the page renders its folder card rather than
+    // auto-running a discovery pass.
+    getListLibraryRootsMockHandler({
+      roots: [
+        {
+          path: "/media/movies",
+          inUse: true,
+          readable: true,
+          addedByHand: false,
+          checkedAt: "2026-07-25T19:55:00Z",
+          foundIn: [{ authority: "radarr", path: "/media/movies" }],
+        },
+      ],
+      pathMap: [],
+    }),
+    getLibraryStatusMockHandler(libraryStatus()),
+    // Library and a title's page: one movie, served under any id.
+    getListLibraryItemsMockHandler({
+      items: [{ id: "ch-1", kind: "movie", name: "Paper Kites", year: 1996, files: 1, ready: true }],
+      total: 1,
+    }),
+    // Needs you: one file nothing identifies, with no guess.
+    getListLibraryNeedsMockHandler({
+      needs: [
+        {
+          item: { id: "ch-2", kind: "movie", name: "title_t01", files: 1, ready: false },
+          files: [{ path: "/media/movies/disc2/title_t01.mkv", size: 1, ready: false }],
+          candidates: [],
+          searched: true,
+        },
+      ],
+    }),
+    getGetLibraryItemMockHandler({
+      item: { id: "ch-1", kind: "movie", name: "Paper Kites", year: 1996, files: 1, ready: true },
+      genres: [],
+      files: [],
+      seasons: [],
+      match: { by: "app", app: "radarr", page: "http://radarr.invalid/movie/paper-kites" },
+      detailsFrom: {},
+    }),
     getGetPlayoutStatusMockHandler({
       running: false,
       capability: { encoder: "", hardware: false, maxChannels: 0 },
@@ -476,9 +507,6 @@ describe("feature-gated panels mount when their flag is on", () => {
     // V35: the queue of clips waiting on a human decision. Same reason as the ingest panel —
     // this suite exists because eight things were built, unit-tested and imported by nothing.
     ["/filler/incoming", /where should this compilation be split/i, "the genuine Incoming choice"],
-    // Automatic outcomes remain visible as plain activity without exposing the runtime mode that
-    // produced them. Keeping this route-level assertion prevents unattended work from disappearing.
-    ["/filler/manage", /added automatically/i, "automatic filler activity"],
     // ⚠ And Incoming itself must be reachable FROM Filler's own navigation, or the assertions
     // above only prove a deep link works. This is the V1/V17a/V23 failure in tab form. The web
     // mock moved it off the tab bar into the Manage hub (#1659), so its entry point is there.

@@ -1,6 +1,6 @@
+import { Card } from "@loomarr/design-system";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,7 +37,14 @@ const CatalogToolbar = ({
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   return (
-    <Card className={cn("flex flex-wrap", phone ? "items-center gap-2 px-3 py-2.5" : "items-end gap-3 p-4")}>
+    <Card
+      alignItems={phone ? "center" : "flex-end"}
+      flexDirection="row"
+      flexWrap="wrap"
+      gap={phone ? 8 : 12}
+      paddingHorizontal={phone ? 12 : 16}
+      paddingVertical={phone ? 10 : 16}
+    >
       {/* ⚠ Capped. `flex-1` alone stretched a clip-name box to ~900px on a 1440
           viewport — a text field far wider than anything typed into it, which reads
           as a layout bug rather than a generous input. It still grows on narrow

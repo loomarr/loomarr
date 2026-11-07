@@ -24,8 +24,6 @@ type TvGuideMoveResult = {
   state: TvGuideNavigationState;
 };
 
-type TvGuideActivation = { filter: string; kind: "filter" } | { kind: "tune"; selection: GuideSelection };
-
 type TvGuideRowWindow = {
   end: number;
   positionLabel: string;
@@ -33,7 +31,6 @@ type TvGuideRowWindow = {
 };
 
 export type {
-  TvGuideActivation,
   TvGuideFilterOption,
   TvGuideFocus,
   TvGuideMoveResult,

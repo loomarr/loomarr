@@ -145,9 +145,6 @@ func (s *Server) serveFillerMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", ctype)
-	// nosniff belongs here even with the allowlist above: it is what stops a browser
-	// re-interpreting the BYTES as HTML when it disagrees with our declared type.
-	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// Never render inline as a document. A `<video src>` is unaffected — the attachment
 	// disposition governs navigation, not media loading — but following the URL directly
 	// downloads rather than opens.

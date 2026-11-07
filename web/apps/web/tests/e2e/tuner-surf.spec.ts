@@ -614,7 +614,14 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     current = target;
   }
 
-  expect(p95(osd), `OSD p95: ${p95(osd).toFixed(1)}ms`).toBeLessThan(100);
+  // With 20 presses the p95 is the slowest press or close to it, so the evidence carries every
+  // sample and its phase trace: one stalled press and a uniformly slow tuner need different fixes.
+  expect(
+    p95(osd),
+    `OSD p95: ${p95(osd).toFixed(1)}ms; samples: ${osd
+      .map((sample) => sample.toFixed(1))
+      .join(", ")}; traces: ${adjacentTraces.join(" | ")}`,
+  ).toBeLessThan(100);
   const adjacentP95 = p95(adjacentFrames);
   const adjacentEvidence = `warmed adjacent first-frame p95: ${adjacentP95.toFixed(
     1,

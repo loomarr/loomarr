@@ -15,7 +15,6 @@ interface RequestCardProps {
   // Injectable clock (§5.2) for the relative "Requested 2h ago", so stories and their visual
   // snapshots don't drift as real time moves past a fixed `createdAt`.
   now?: number;
-  className?: string;
 }
 
 export type { RequestCardProps };

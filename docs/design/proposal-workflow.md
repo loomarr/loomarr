@@ -16,7 +16,7 @@ channel reconciliation. Any ordering or quota-read failure leaves the Proposal `
 
 ## Proposal Jobs and the Journey
 
-A **Proposal Job** is the caller-owned durable execution of an Intent. `internal/proposalworkflow`
+A **Proposal Job** is the caller-owned durable execution of an Intent. `internal/proposals/workflow`
 owns its lifecycle, attempt recovery, caller visibility and the First-channel **Journey** projection.
 Its interface is small: submit an Intent (fresh, or for an existing Channel), claim bounded work, complete or fail one claimed
 Attempt, and read or list Journeys. The workflow's one `Repository` (backed by `store.ProposalRepository`,
@@ -24,7 +24,7 @@ the single persistence surface for Proposals and their Jobs) and the model runne
 and frontend never rebuild lifecycle rules from raw rows.
 
 The Intent, the Proposal and the evidence they carry (Scores, Decision Trace) are the value types of the
-leaf package `internal/proposal`. The store is the one place a Proposal's JSON is encoded and
+leaf package `internal/proposals`. The store is the one place a Proposal's JSON is encoded and
 decoded: `store.Proposal.Body` is the typed value, an empty column reads as the zero Proposal, and
 a column the store cannot decode is an error rather than an empty Proposal. Everything above the
 store passes the typed value.
@@ -123,7 +123,7 @@ active Job and its approval edits are restored after reload until an explicit di
 | `provider_timeout`, `provider_unavailable` | `retry_later` | an actual provider-turn deadline or outage |
 | `generation_failed` | `retry_later` | anything else |
 
-The mapping and its copy live in `internal/proposalworkflow/workflow.go`. Only allowlisted typed
+The mapping and its copy live in `internal/proposals/workflow/workflow.go`. Only allowlisted typed
 evidence captured at the rejecting branch selects a specific reason. `check_ai` is offered only for an AI-stage failure, and a member is
 never told to change an admin-only setting. No projection exposes raw provider errors, prompts,
 responses, fetched text, credentials, private titles or candidate identities.

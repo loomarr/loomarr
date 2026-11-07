@@ -18,11 +18,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -82,9 +82,9 @@ type fakeFiller struct {
 	cleanupResult         filler.StorageCleanupResult
 	pullID                string
 	pullTargets           []filler.AcquisitionTarget
-	sourceSuggestions     []sourceprovider.Suggestion
+	sourceSuggestions     []source.Suggestion
 	sourceSuggestionErr   error
-	resolvedSource        sourceprovider.Suggestion
+	resolvedSource        source.Suggestion
 	sourceResolutionErr   error
 	sourceSuggestionCalls []struct {
 		Provider string
@@ -120,7 +120,7 @@ func (f *fakeFiller) Fetch(_ context.Context, sourceID string) (filler.FetchResu
 	return f.fetchResult, nil
 }
 
-func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error) {
+func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, limit int) ([]source.Suggestion, error) {
 	f.sourceSuggestionCalls = append(f.sourceSuggestionCalls, struct {
 		Provider string
 		Query    string
@@ -132,25 +132,25 @@ func (f *fakeFiller) SuggestSources(_ context.Context, provider, query string, l
 	return f.sourceSuggestions, nil
 }
 
-func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (sourceprovider.Suggestion, error) {
+func (f *fakeFiller) ResolveSource(_ context.Context, provider, input string) (source.Suggestion, error) {
 	f.sourceResolutionCalls = append(f.sourceResolutionCalls, struct {
 		Provider string
 		Input    string
 	}{provider, input})
 	if f.sourceResolutionErr != nil {
-		return sourceprovider.Suggestion{}, f.sourceResolutionErr
+		return source.Suggestion{}, f.sourceResolutionErr
 	}
 	if f.resolvedSource.CanonicalID != "" {
 		return f.resolvedSource, nil
 	}
 	if provider == "youtube" {
-		return sourceprovider.Suggestion{
-			Provider: sourceprovider.ID(provider), TargetType: "playlist", CanonicalID: input,
+		return source.Suggestion{
+			Provider: source.ID(provider), TargetType: "playlist", CanonicalID: input,
 			CanonicalURL: input, Title: input,
 		}, nil
 	}
-	return sourceprovider.Suggestion{
-		Provider: sourceprovider.ID(provider), TargetType: "collection", CanonicalID: input,
+	return source.Suggestion{
+		Provider: source.ID(provider), TargetType: "collection", CanonicalID: input,
 		CanonicalURL: "https://archive.org/details/" + input, Title: input,
 	}, nil
 }
@@ -233,7 +233,7 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	return "job-1", nil
 }
 
-func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (string, error) {
+func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []source.Item) (string, error) {
 	if f.unavailable {
 		return "", api.ErrIngestUnavailable
 	}
@@ -310,23 +310,23 @@ func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments
 	return nil
 }
 
-func newFillerServer(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeFiller) {
+func newFillerServer(t *testing.T) (*httptest.Server, records.Store, *fakeFiller) {
 	return newFillerServerWithImages(t, nil)
 }
 
-func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, fillerstore.Store, *fakeFiller) {
+func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, records.Store, *fakeFiller) {
 	return newFillerServerWithConfig(t, imageService, nil)
 }
 
-func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, fillerstore.Store, *fakeFiller) {
+func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, records.Store, *fakeFiller) {
 	return newFillerServerWithRuntimeConfig(t, imageService, stringSettings(liveConfig), nil)
 }
 
-func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, fillerstore.Store, *fakeFiller) {
+func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, records.Store, *fakeFiller) {
 	return newFillerServerWithRuntimeConfig(t, nil, mapSettings{"filler.incoming.ready_window": readyWindow}, func() time.Time { return now })
 }
 
-func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, fillerstore.Store, *fakeFiller) {
+func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, live settings.Reader, now func() time.Time) (*httptest.Server, records.Store, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -408,7 +408,7 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 
 func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	source := fillerstore.NewFillerSource(
+	source := records.NewFillerSource(
 		"youtube:https://www.youtube.com/channel/UC123/videos",
 		"youtube", "https://www.youtube.com/channel/UC123/videos", "Friendly Channel", time.Now().UTC(),
 	)
@@ -442,7 +442,7 @@ func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *test
 }
 
 // clearSeededSources drops whatever migrations pre-populated, so a test describes a state it built.
-func clearSeededSources(t *testing.T, st fillerstore.Store) {
+func clearSeededSources(t *testing.T, st records.Store) {
 	t.Helper()
 	seeded, err := st.ListFillerSources(context.Background())
 	if err != nil {
@@ -455,7 +455,7 @@ func clearSeededSources(t *testing.T, st fillerstore.Store) {
 	}
 }
 
-func seedClip(t *testing.T, st fillerstore.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
+func seedClip(t *testing.T, st records.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
 	t.Helper()
 	c := catalogstore.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
@@ -634,13 +634,13 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	byAxis := make(map[fillerenrichment.Axis]fillerenrichment.State, len(states))
+	byAxis := make(map[enrichment.Axis]enrichment.State, len(states))
 	for _, state := range states {
 		byAxis[state.Axis] = state
 	}
-	if byAxis[fillerenrichment.AxisEra].Evidence.Kind != fillerenrichment.EvidenceOperator ||
-		byAxis[fillerenrichment.AxisBrand].Value.Text != "Brightfield's" ||
-		len(byAxis[fillerenrichment.AxisProduct].Value.Tags) != 1 || byAxis[fillerenrichment.AxisProduct].Value.Tags[0] != "cereal" {
+	if byAxis[enrichment.AxisEra].Evidence.Kind != enrichment.EvidenceOperator ||
+		byAxis[enrichment.AxisBrand].Value.Text != "Brightfield's" ||
+		len(byAxis[enrichment.AxisProduct].Value.Tags) != 1 || byAxis[enrichment.AxisProduct].Value.Tags[0] != "cereal" {
 		t.Fatalf("operator enrichment evidence = %+v", states)
 	}
 	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1994,"audience":"kids","brand":""}`)
@@ -656,7 +656,7 @@ func TestPatchClip_AdminEditsTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, state := range states {
-		if state.Axis == fillerenrichment.AxisBrand && (state.Value.Text != "" || state.Evidence.Kind != fillerenrichment.EvidenceOperator) {
+		if state.Axis == enrichment.AxisBrand && (state.Value.Text != "" || state.Evidence.Kind != enrichment.EvidenceOperator) {
 			t.Fatalf("cleared brand evidence = %+v", state)
 		}
 	}
@@ -698,11 +698,11 @@ func TestPatchClip_AdminGroundsGeography(t *testing.T) {
 	}
 	foundGeography := false
 	for _, state := range states {
-		if state.Axis != fillerenrichment.AxisGeography {
+		if state.Axis != enrichment.AxisGeography {
 			continue
 		}
 		foundGeography = true
-		if state.Evidence.Kind != fillerenrichment.EvidenceOperator || state.Value.Geography.Country != "US" ||
+		if state.Evidence.Kind != enrichment.EvidenceOperator || state.Value.Geography.Country != "US" ||
 			state.Value.Geography.Station != "fcc:59441" || state.Value.Geography.AirDate != "1991-03-10" {
 			t.Fatalf("geography evidence = %+v", state)
 		}
@@ -870,13 +870,13 @@ func TestFiller_PatchCorrectsKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var kindState fillerenrichment.State
+	var kindState enrichment.State
 	for _, state := range states {
-		if state.Axis == fillerenrichment.AxisKind {
+		if state.Axis == enrichment.AxisKind {
 			kindState = state
 		}
 	}
-	if kindState.Value.Text != "trailer" || kindState.Evidence.Kind != fillerenrichment.EvidenceOperator {
+	if kindState.Value.Text != "trailer" || kindState.Evidence.Kind != enrichment.EvidenceOperator {
 		t.Fatalf("operator kind evidence = %+v", kindState)
 	}
 
@@ -924,7 +924,7 @@ func TestFiller_Ingest(t *testing.T) {
 // source and preserves the provider's stable item id for deduplication and provenance.
 func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	source := fillerstore.NewFillerSource(
+	source := records.NewFillerSource(
 		"archive:classic",
 		"archive",
 		"https://archive.org/details/classic_tv_commercials",

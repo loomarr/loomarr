@@ -34,6 +34,30 @@ another destination. Do not commit or paste the key. A tag-specific
 `project/release/<tag>.md` file, when present, is prepended for human-authored framing and known
 limitations.
 
+## Check a candidate on real data and real GPUs
+
+Do both before a final tag. Neither runs by itself yet.
+
+**Rehearse the migrations.** Run this where the household backup lives, so the data stays there:
+
+```bash
+make migration-rehearsal BACKUP=<backup directory> IMAGE=<candidate image>
+```
+
+It boots the candidate on a copy of the backup and reports whether it came up. The backup is only
+read, and the container has no network, because the database names the household's real services.
+
+**Check the hardware.** Software, Intel and NVIDIA block a release; AMD is best-effort. Software is
+covered by required CI. For the others, dispatch `playout-bench.yml` with `run_arc` and
+`run_geforce`, then run:
+
+```bash
+make hardware-gate COMMIT=<full commit id>
+```
+
+A skipped leg counts as missing. `release.yml` doesn't enforce this yet, because the Intel and
+NVIDIA runners aren't registered. Wire it in once they are, or every release would stop.
+
 ## Docs pass
 
 The docs ship with every release (#1682, maintainer decision D3; step 5 of #1572). Two things
@@ -301,13 +325,13 @@ failure distribution, then reproduce it through the certification or benchmark s
 does not move merely because it handles media or because a Rust implementation is possible. The
 Image service itself imports no Go `image` package; its deterministic corpus generator lives only in
 `cmd/image-cert`, and a source architecture test keeps that boundary closed. Filler-era frame hints
-remain in `internal/mediatools`: they sample at most 1,024 pixels per keyframe in background work and
+remain in `internal/media/tools`: they sample at most 1,024 pixels per keyframe in background work and
 no captured Image-worker evidence identifies them as a bottleneck. Therefore V59b selects no next
 capability. A future measured case extends this worker protocol and resource boundary rather than
 creating a second Rust service.
 
 `make image-bench` is the performance companion to certification. It drives the installed release
-worker through `internal/images/rustgen` with deterministic poster, backdrop, and icon sources and
+worker through `internal/media/images/rustgen` with deterministic poster, backdrop, and icon sources and
 the complete AVIF width ladder for each role. Source creation and the capabilities self-test happen
 outside the timed region. After one warm-up per role, three runs record the recipe, host architecture
 and logical CPU count, process/Rendition counts, output bytes, complete-ladder throughput,
@@ -323,7 +347,7 @@ protocol, output, and resource-ceiling correctness.
 
 The consumer half of the gate is observable through public seams. Guide programme art, Watch
 timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
-render through the shared frontend `Image` primitive. An animated filler hover must offer an
+render through the shared frontend `ServedImage` primitive. An animated filler hover must offer an
 animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.

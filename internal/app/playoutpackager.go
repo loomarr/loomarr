@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // packagerSource is the channel packager's view of the schedule and the host (#1512 phase 2). It
@@ -52,7 +52,7 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	t1 := time.Now()
 	item.AudioTrack = s.res.AudioTrackFor(ctx, channelID, airing.LibraryItemID, streamURL)
 	t2 := time.Now()
-	_, item.Format = s.res.PlanFor(ctx, streamURL, playout.PlanBaseline)
+	item.Format = s.res.FormatOf(ctx, streamURL)
 	t3 := time.Now()
 	// A tune-in seeks from here rather than decoding up to a source GOP to reach the offset (#1595).
 	item.Keyframe, item.KeyframeIndexed = s.res.indexedKeyframe(ctx, streamURL, airing.Offset)

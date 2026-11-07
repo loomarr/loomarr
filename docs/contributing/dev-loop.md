@@ -65,6 +65,29 @@ make seed
 
 Populates a store through the real domain paths, honoring the approval gate.
 
+## Look at a database
+
+```bash
+make db-view                    # this worktree's database, SQLite or Postgres
+make db-view FILE=backup.db     # a SQLite file at rest, such as a nightly backup
+make db-view URL=postgres://…   # a copy of that Postgres database
+make db-view ENGINE=postgres    # the Postgres schema, built by the migrations and seeded
+```
+
+CloudBeaver runs in Docker at the loopback address the command prints, and opens in your browser
+on a desktop session (`DB_VIEW_NO_BROWSER=1` skips that). It stops on Ctrl-C.
+
+The viewer only ever sees a copy, and the copy is removed on exit: a `VACUUM INTO` snapshot, the
+file you pass, or a `pg_dump` restored into a throwaway Postgres. Don't point any viewer at a live
+SQLite file. Its directory holds `encryption.key`, and a long read holds off WAL checkpoints.
+CloudBeaver's read-only flag on Postgres is a session setting its SQL editor can switch off, so it
+signs in to the copy as a `pg_read_all_data` role instead. On Docker Desktop, a `URL=` naming
+`localhost` must say `host.docker.internal`. A `$` in a URL is written `$$` for Make.
+
+For production, pass a backup: the newest nightly from `backup.dir`, or a download from
+**Settings → System → Backup** when you need current data. `FILE=` refuses a file with a `-wal`
+beside it, because that file is live. Snapshotting a live database needs the `sqlite3` CLI.
+
 ## Agent lanes never publish or retire a Live TV tuner
 
 `scripts/dev-env.sh export` sets `LOOMARR_AGENT_DISABLE_LIVETV_TUNER=1` for every secondary

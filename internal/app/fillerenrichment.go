@@ -12,29 +12,29 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/station"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
-type fillerEnrichmentRepository struct{ st fillerstore.Store }
+type fillerEnrichmentRepository struct{ st records.Store }
 
 type fillerResearchRepository struct {
-	st fillerstore.FillerResearchStore
+	st records.FillerResearchStore
 }
 
-func activeFillerTextSelection(set resolved, recorder *metrics.Recorder) fillerenrichment.TextSelection {
+func activeFillerTextSelection(set resolved, recorder *metrics.Recorder) enrichment.TextSelection {
 	selection := resolveSelection(set)
 	if selection.URL == "" || selection.Model == "" {
-		return fillerenrichment.TextSelection{}
+		return enrichment.TextSelection{}
 	}
-	return fillerenrichment.TextSelection{Provider: buildProviderFor(selection, recorder),
+	return enrichment.TextSelection{Provider: buildProviderFor(selection, recorder),
 		ProviderName: selection.Provider, Model: selection.Model}
 }
 
@@ -43,9 +43,9 @@ func capabilityVersion(version string, identity ...string) string {
 	return version + ":" + hex.EncodeToString(sum[:8])
 }
 
-func activeFillerTranscriptCapability(set resolved) fillerenrichment.CapabilitySelection {
+func activeFillerTranscriptCapability(set resolved) enrichment.CapabilitySelection {
 	if !settings.FillerTranscribeEnabled.Get(set) {
-		return fillerenrichment.CapabilitySelection{}
+		return enrichment.CapabilitySelection{}
 	}
 	if settings.ASRProvider.Get(set) == "hosted" {
 		model := strings.TrimSpace(settings.ASRModel.Get(set))
@@ -56,36 +56,36 @@ func activeFillerTranscriptCapability(set resolved) fillerenrichment.CapabilityS
 			url, identity = selection.URL, selection.Provider
 		}
 		if url == "" || model == "" || identity == "" {
-			return fillerenrichment.CapabilitySelection{}
+			return enrichment.CapabilitySelection{}
 		}
-		return fillerenrichment.CapabilitySelection{Available: true,
+		return enrichment.CapabilitySelection{Available: true,
 			Producer: "transcript:" + identity,
 			ProducerVersion: capabilityVersion(filler.TranscriptionPassVersion,
 				identity, url, model)}
 	}
 	model := strings.TrimSpace(settings.IngestWhisperModel.Get(set))
 	if model == "" {
-		return fillerenrichment.CapabilitySelection{}
+		return enrichment.CapabilitySelection{}
 	}
-	return fillerenrichment.CapabilitySelection{Available: true, Producer: "transcript:whisper",
+	return enrichment.CapabilitySelection{Available: true, Producer: "transcript:whisper",
 		ProducerVersion: capabilityVersion(filler.TranscriptionPassVersion,
 			settings.IngestWhisperPath.Get(set), model)}
 }
 
-func activeFillerVisionCapability(set resolved) fillerenrichment.CapabilitySelection {
+func activeFillerVisionCapability(set resolved) enrichment.CapabilitySelection {
 	if !settings.FillerVisionEnabled.Get(set) {
-		return fillerenrichment.CapabilitySelection{}
+		return enrichment.CapabilitySelection{}
 	}
 	wiring := visionEndpoint(set)
 	if wiring.url == "" || strings.TrimSpace(wiring.model) == "" ||
 		(wiring.provider != "openai" && wiring.provider != "ollama") {
-		return fillerenrichment.CapabilitySelection{}
+		return enrichment.CapabilitySelection{}
 	}
 	identity := wiring.identity
 	if identity == "" {
 		identity = wiring.provider
 	}
-	return fillerenrichment.CapabilitySelection{Available: true, Producer: "vision:" + identity,
+	return enrichment.CapabilitySelection{Available: true, Producer: "vision:" + identity,
 		ProducerVersion: capabilityVersion(filler.VisionPromptVersion,
 			identity, wiring.url, wiring.model)}
 }
@@ -102,72 +102,72 @@ type fillerVisionObserver interface {
 // already decided that useful work remains, and this adapter can load media and produce observations
 // but has no readiness, persistence, or conveyor mutation in its interface.
 type fillerMediaExecutor struct {
-	store      fillerstore.Store
+	store      records.Store
 	transcript fillerTranscriptObserver
 	vision     fillerVisionObserver
-	kind       fillerenrichment.Capability
+	kind       enrichment.Capability
 }
 
-func (e fillerMediaExecutor) Run(ctx context.Context, candidate fillerenrichment.Candidate) (fillerenrichment.CapabilityResult, error) {
+func (e fillerMediaExecutor) Run(ctx context.Context, candidate enrichment.Candidate) (enrichment.CapabilityResult, error) {
 	if e.store == nil {
-		return fillerenrichment.CapabilityResult{}, nil
+		return enrichment.CapabilityResult{}, nil
 	}
 	clip, err := e.store.GetClip(ctx, candidate.ClipHash)
 	if err != nil {
-		return fillerenrichment.CapabilityResult{}, fmt.Errorf("load filler clip: %w", err)
+		return enrichment.CapabilityResult{}, fmt.Errorf("load filler clip: %w", err)
 	}
 	storeClip := fillerClip(clip)
-	if e.kind == fillerenrichment.CapabilityTranscript {
+	if e.kind == enrichment.CapabilityTranscript {
 		if e.transcript == nil {
-			return fillerenrichment.CapabilityResult{}, nil
+			return enrichment.CapabilityResult{}, nil
 		}
 		_, transcript, err := e.transcript.Observe(ctx, storeClip)
 		if err != nil {
-			return fillerenrichment.CapabilityResult{}, err
+			return enrichment.CapabilityResult{}, err
 		}
-		return fillerenrichment.CapabilityResult{Observation: &fillerenrichment.MediaObservation{
+		return enrichment.CapabilityResult{Observation: &enrichment.MediaObservation{
 			Transcript: &transcript,
 		}}, nil
 	}
-	if e.kind != fillerenrichment.CapabilityVision || e.vision == nil {
-		return fillerenrichment.CapabilityResult{}, nil
+	if e.kind != enrichment.CapabilityVision || e.vision == nil {
+		return enrichment.CapabilityResult{}, nil
 	}
 	currentStates, err := e.store.ListFillerEnrichment(ctx, candidate.ClipHash)
 	if err != nil {
-		return fillerenrichment.CapabilityResult{}, fmt.Errorf("load filler enrichment before vision: %w", err)
+		return enrichment.CapabilityResult{}, fmt.Errorf("load filler enrichment before vision: %w", err)
 	}
-	current := make(map[fillerenrichment.Axis]fillerenrichment.State, len(currentStates))
+	current := make(map[enrichment.Axis]enrichment.State, len(currentStates))
 	for _, state := range currentStates {
 		current[state.Axis] = state
 	}
 	_, observation, err := e.vision.Observe(ctx, storeClip)
 	if err != nil {
-		return fillerenrichment.CapabilityResult{}, err
+		return enrichment.CapabilityResult{}, err
 	}
-	var states []fillerenrichment.State
-	evidence := func(reference string) fillerenrichment.Evidence {
-		return fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceContent,
+	var states []enrichment.State
+	evidence := func(reference string) enrichment.Evidence {
+		return enrichment.Evidence{Kind: enrichment.EvidenceContent,
 			Reference: reference, Confidence: 100}
 	}
 	if observation.Brand != "" {
-		states = append(states, fillerenrichment.State{Axis: fillerenrichment.AxisBrand,
-			Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: observation.Brand},
+		states = append(states, enrichment.State{Axis: enrichment.AxisBrand,
+			Status: enrichment.StatusComplete, Value: enrichment.Value{Text: observation.Brand},
 			Evidence: evidence("frame.visible_text")})
 	}
 	if observation.Era > 0 {
-		states = append(states, fillerenrichment.State{Axis: fillerenrichment.AxisEra,
-			Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Year: observation.Era},
+		states = append(states, enrichment.State{Axis: enrichment.AxisEra,
+			Status: enrichment.StatusComplete, Value: enrichment.Value{Year: observation.Era},
 			Evidence: evidence("frame.visible_text")})
 	}
 	taxa, err := e.store.ListTaxa(ctx)
 	if err != nil {
-		return fillerenrichment.CapabilityResult{}, fmt.Errorf("load filler taxonomy after vision: %w", err)
+		return enrichment.CapabilityResult{}, fmt.Errorf("load filler taxonomy after vision: %w", err)
 	}
-	tagAxes := make(map[string]fillerenrichment.Axis, len(taxa))
+	tagAxes := make(map[string]enrichment.Axis, len(taxa))
 	for _, taxon := range taxa {
-		tagAxes[taxon.Slug] = fillerenrichment.Axis(taxon.Axis)
+		tagAxes[taxon.Slug] = enrichment.Axis(taxon.Axis)
 	}
-	byAxis := map[fillerenrichment.Axis][]string{}
+	byAxis := map[enrichment.Axis][]string{}
 	for _, tag := range observation.Tags {
 		axis := tagAxes[tag]
 		if axis.Valid() {
@@ -178,41 +178,41 @@ func (e fillerMediaExecutor) Run(ctx context.Context, candidate fillerenrichment
 		if accepted, ok := current[axis]; ok {
 			tags = append(append([]string(nil), accepted.Value.Tags...), tags...)
 		}
-		states = append(states, fillerenrichment.State{Axis: axis, Status: fillerenrichment.StatusComplete,
-			Value: fillerenrichment.Value{Tags: tags}, Evidence: evidence("frame.taxonomy_grounded")})
+		states = append(states, enrichment.State{Axis: axis, Status: enrichment.StatusComplete,
+			Value: enrichment.Value{Tags: tags}, Evidence: evidence("frame.taxonomy_grounded")})
 	}
-	return fillerenrichment.CapabilityResult{
+	return enrichment.CapabilityResult{
 		States: states,
-		Observation: &fillerenrichment.MediaObservation{Vision: &fillerenrichment.VisionObservation{
+		Observation: &enrichment.MediaObservation{Vision: &enrichment.VisionObservation{
 			VisibleText: observation.VisibleText, SuggestedEra: observation.SuggestedEra,
 		}},
 	}, nil
 }
 
-func (r fillerEnrichmentRepository) ListCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]fillerenrichment.Candidate, error) {
+func (r fillerEnrichmentRepository) ListCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]enrichment.Candidate, error) {
 	clips, err := r.st.ListFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit)
 	return fillerEnrichmentCandidates(clips, err)
 }
 
-func (r fillerEnrichmentRepository) ListCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]fillerenrichment.Candidate, error) {
+func (r fillerEnrichmentRepository) ListCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]enrichment.Candidate, error) {
 	clips, err := r.st.ListFillerEnrichmentCapabilityCandidates(ctx, producer, producerVersion, taxonomyVersion, limit)
 	return fillerEnrichmentCandidates(clips, err)
 }
 
-func fillerEnrichmentCandidates(clips []catalogstore.Clip, err error) ([]fillerenrichment.Candidate, error) {
+func fillerEnrichmentCandidates(clips []catalogstore.Clip, err error) ([]enrichment.Candidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]fillerenrichment.Candidate, len(clips))
+	out := make([]enrichment.Candidate, len(clips))
 	for i, clip := range clips {
-		out[i] = fillerenrichment.Candidate{ClipHash: clip.Hash, Path: clip.Path, Name: clip.Name,
+		out[i] = enrichment.Candidate{ClipHash: clip.Hash, Path: clip.Path, Name: clip.Name,
 			Kind: string(clip.Kind), Transcript: clip.Transcript, VisibleText: clip.VisibleText,
 			VisionTagged: clip.VisionTagged}
 	}
 	return out, nil
 }
 
-func (r fillerEnrichmentRepository) ListStates(ctx context.Context, clipHash string) ([]fillerenrichment.State, error) {
+func (r fillerEnrichmentRepository) ListStates(ctx context.Context, clipHash string) ([]enrichment.State, error) {
 	return r.st.ListFillerEnrichment(ctx, clipHash)
 }
 
@@ -220,16 +220,16 @@ func (r fillerEnrichmentRepository) ListTaxa(ctx context.Context) ([]taxonomy.Ta
 	return r.st.ListTaxa(ctx)
 }
 
-func (r fillerEnrichmentRepository) ApplyPass(ctx context.Context, pass fillerenrichment.Pass) (int, error) {
+func (r fillerEnrichmentRepository) ApplyPass(ctx context.Context, pass enrichment.Pass) (int, error) {
 	return r.st.ApplyFillerEnrichmentPass(ctx, pass)
 }
 
 func (r fillerResearchRepository) ListCandidates(ctx context.Context, producer, producerVersion,
-	adapter, adapterVersion string, limit int) ([]fillerresearch.Candidate, error) {
+	adapter, adapterVersion string, limit int) ([]research.Candidate, error) {
 	return r.st.ListFillerResearchCandidates(ctx, producer, producerVersion, adapter, adapterVersion, limit)
 }
 
-func (r fillerResearchRepository) SaveReport(ctx context.Context, report fillerresearch.Report) error {
+func (r fillerResearchRepository) SaveReport(ctx context.Context, report research.Report) error {
 	return r.st.SaveFillerResearchReport(ctx, report)
 }
 
@@ -239,8 +239,8 @@ func (r fillerResearchRepository) PromoteStoredCountries(ctx context.Context, li
 
 type fillerResearchSignals struct{ files fs.FS }
 
-func (l fillerResearchSignals) Load(_ context.Context, candidate fillerresearch.Candidate) (fillerresearch.Input, error) {
-	input := fillerresearch.Input{Title: candidate.Name}
+func (l fillerResearchSignals) Load(_ context.Context, candidate research.Candidate) (research.Input, error) {
+	input := research.Input{Title: candidate.Name}
 	if metadata, ok := filler.ReadSourceMetadataFS(l.files, candidate.Path); ok {
 		input.Title = metadata.Title
 		input.Description = metadata.Description
@@ -254,18 +254,18 @@ func (l fillerResearchSignals) Load(_ context.Context, candidate fillerresearch.
 // enrichment writes verified axes; research writes only cited suggestions.
 type fillerDetailRunner struct {
 	enrichment fillerEnrichmentRunner
-	research   *fillerresearch.Runner
+	research   *research.Runner
 	retire     *fillerGeographyRetirement // runs last, once geography has had every pass
 }
 
-func (r fillerDetailRunner) Run(ctx context.Context) (fillerenrichment.RunResult, error) {
-	var out fillerenrichment.RunResult
+func (r fillerDetailRunner) Run(ctx context.Context) (enrichment.RunResult, error) {
+	var out enrichment.RunResult
 	var enrichmentErr, researchErr, retireErr error
 	if r.enrichment != nil {
 		out, enrichmentErr = r.enrichment.Run(ctx)
 	}
 	if r.research != nil {
-		var researched fillerresearch.RunResult
+		var researched research.RunResult
 		researched, researchErr = r.research.Run(ctx)
 		out.Considered += researched.Considered
 		out.Updated += researched.Updated
@@ -278,7 +278,7 @@ func (r fillerDetailRunner) Run(ctx context.Context) (fillerenrichment.RunResult
 }
 
 type fillerEnrichmentSignals struct {
-	store    fillerstore.FillerSourceStore
+	store    records.FillerSourceStore
 	files    fs.FS
 	stations *stationDirectory // nil: no station is ever named
 }
@@ -286,12 +286,12 @@ type fillerEnrichmentSignals struct {
 // stationDirectory loads the broadcast station directory on first use. Boot seeds it and nothing
 // rewrites it while the process runs, so one load serves every pass; a failed load is retried.
 type stationDirectory struct {
-	list func(context.Context) ([]broadcaststation.Station, error)
+	list func(context.Context) ([]station.Station, error)
 	mu   sync.Mutex
-	dir  *broadcaststation.Directory
+	dir  *station.Directory
 }
 
-func (s *stationDirectory) get(ctx context.Context) (*broadcaststation.Directory, error) {
+func (s *stationDirectory) get(ctx context.Context) (*station.Directory, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.dir == nil {
@@ -299,14 +299,14 @@ func (s *stationDirectory) get(ctx context.Context) (*broadcaststation.Directory
 		if err != nil {
 			return nil, fmt.Errorf("load broadcast stations: %w", err)
 		}
-		s.dir = broadcaststation.NewDirectory(stations)
+		s.dir = station.NewDirectory(stations)
 	}
 	return s.dir, nil
 }
 
 // resolveDuring adapts the directory for research, which names a call sign and a span. An
 // unreadable directory resolves nothing, so the named station answers no geography.
-func (s *stationDirectory) resolveDuring(log *slog.Logger) fillerresearch.StationResolver {
+func (s *stationDirectory) resolveDuring(log *slog.Logger) research.StationResolver {
 	return func(callSign, from, to string) (string, string, bool) {
 		dir, err := s.get(context.Background())
 		if err != nil {
@@ -318,8 +318,8 @@ func (s *stationDirectory) resolveDuring(log *slog.Logger) fillerresearch.Statio
 	}
 }
 
-func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenrichment.Candidate, observedAt time.Time) (fillerenrichment.Signals, error) {
-	signals := fillerenrichment.Signals{ClipHash: candidate.ClipHash, Kind: candidate.Kind,
+func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.Candidate, observedAt time.Time) (enrichment.Signals, error) {
+	signals := enrichment.Signals{ClipHash: candidate.ClipHash, Kind: candidate.Kind,
 		Title: candidate.Name, OriginalName: candidate.Name, Transcript: candidate.Transcript,
 		VisibleText: candidate.VisibleText, ObservedAt: observedAt}
 	metadata, ok := filler.ReadSourceMetadataFS(l.files, candidate.Path)
@@ -333,7 +333,7 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenric
 	if l.stations != nil {
 		directory, err := l.stations.get(ctx)
 		if err != nil {
-			return fillerenrichment.Signals{}, err
+			return enrichment.Signals{}, err
 		}
 		// The transcript is speech, where a spoken "WJW" is rarer than a misheard word; the item and
 		// on-screen text are where archives and stations write call signs.
@@ -346,7 +346,7 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenric
 	}
 	sources, err := l.store.ListFillerSources(ctx)
 	if err != nil {
-		return fillerenrichment.Signals{}, err
+		return enrichment.Signals{}, err
 	}
 	for _, source := range sources {
 		if source.ID != signals.SourceID {
@@ -361,7 +361,7 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenric
 		// station makes a clip local.
 		geography := source.Geography.Normalize()
 		if geography.Country != "" {
-			signals.Source = fillerenrichment.Geography{Scope: string(filler.GeographicNational), Country: geography.Country}
+			signals.Source = enrichment.Geography{Scope: string(filler.GeographicNational), Country: geography.Country}
 		}
 		break
 	}

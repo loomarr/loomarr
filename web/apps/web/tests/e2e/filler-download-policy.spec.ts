@@ -45,7 +45,7 @@ test("automatic downloads expose simple defaults with optional per-source contro
   await expect
     .poll(() => backend.state.edits)
     .toMatchObject({
-      "filler.fetch.every": "12h",
+      "filler.fetch.every": "12h0m0s",
       "filler.fetch.max_per_run": "4",
     });
 

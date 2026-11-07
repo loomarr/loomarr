@@ -3,8 +3,8 @@ package playout
 import (
 	"strconv"
 
-	"github.com/loomarr/loomarr/internal/encode"
-	"github.com/loomarr/loomarr/internal/loudness"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/loudness"
 )
 
 // ffmpeg argument construction for internal playout (§9.1).
@@ -20,7 +20,7 @@ import (
 //
 //	global → per-input (opts then -i) → filter → per-output → output target
 //
-// The encoder vocabulary (encode.Encoder, its engines and HEVC siblings) lives in internal/encode,
+// The encoder vocabulary (encode.Encoder, its engines and HEVC siblings) lives in internal/media/encode,
 // shared with the filler pipeline (#2121).
 
 // Profile is the operator-facing output target: a ladder rung's size, frame rate and bitrates on

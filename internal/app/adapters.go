@@ -11,14 +11,15 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/livetvpublish"
 	"github.com/loomarr/loomarr/internal/moviecollections"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/tmdb"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -178,7 +179,7 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 				EpisodeEnd:    e.EpisodeEnd, // §5 multi-part: single-file span end
 				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
 				// so the schedule domain only ever compares ladder values (§4).
-				OfficialRating:  schedule.NormalizeRating(e.OfficialRating),
+				OfficialRating:  rating.Normalize(e.OfficialRating),
 				CommunityRating: e.CommunityRating,
 				Overview:        e.Overview,
 				Tags:            append([]string(nil), e.Tags...),
@@ -299,17 +300,17 @@ type approvalAdditionAdapter struct {
 
 func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	ctx context.Context,
-	item proposal.ProposalItem,
-) (proposal.ProposalItem, bool, error) {
+	item proposals.ProposalItem,
+) (proposals.ProposalItem, bool, error) {
 	key, err := (provision.Title{
 		MediaType: item.MediaType, TMDBID: item.TMDBID, TVDBID: item.TVDBID,
 	}).Key()
 	if err != nil {
-		return proposal.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
+		return proposals.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
 	}
 	mediaType, _, _, ok := provision.ParseKey(key)
 	if !ok {
-		return proposal.ProposalItem{}, false, errors.New("invalid title key")
+		return proposals.ProposalItem{}, false, errors.New("invalid title key")
 	}
 	item.InLibrary = false
 	item.LibraryItemID = ""
@@ -324,7 +325,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	}
 	owned, found, err := presence.Present(ctx, mediaType, item.TMDBID, item.TVDBID)
 	if err != nil {
-		return proposal.ProposalItem{}, false, err
+		return proposals.ProposalItem{}, false, err
 	}
 	if !found {
 		return item, false, nil
@@ -336,7 +337,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	return item.WithLibrarySize(owned.SizeBytes), true, nil
 }
 
-// tunarrNumbers adapts a Programmer to binder.NumberSource: it answers "which channel numbers
+// tunarrNumbers adapts a Programmer to approval.NumberSource: it answers "which channel numbers
 // does Tunarr already use?" and nothing else (§9 V54).
 //
 // ⚠ The narrowing is the point, and it lives HERE rather than in the binder. The binder needs one

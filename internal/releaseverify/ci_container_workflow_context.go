@@ -67,11 +67,12 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci-apple-cache-validation.yml", job: "producer"}: {name: "Apple compilation cache — produce on Xcode 27", runsOn: "xcode-27", timeoutMinutes: 75},
 		{workflow: "ci-apple-cache-validation.yml", job: "consumer"}: {name: "Apple compilation cache — consume on distinct Xcode 27 runner", runsOn: "xcode-27", needsList: []string{"producer"}, timeoutMinutes: 75},
 
-		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — lint + test + browser/iOS/Android/TV bundles", runsOn: "ubuntu-latest"},
+		{workflow: "ci-clients.yml", job: "run"}:             {name: "Shared clients — ${{ matrix.lane }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{lanes: []string{"checks", "mobile-tests", "tv-tests", "mobile", "tv"}}},
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
-		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
-		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts", runsOn: "ubuntu-latest"},
+		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — ${{ matrix.shard == 7 && 'biome + typecheck + build' || matrix.shard == 8 && 'package tests' || format('web unit ({0}/6)', matrix.shard) }}", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5, 6, 7, 8}}},
+		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
 		{workflow: "ci-go-cache-warm.yml", job: "run"}:       {name: "Warm Go build cache (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 30, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2", "postgres"}}},
+		{workflow: "ci-go-cache-warm.yml", job: "contracts"}: {name: "Warm Go contracts cache", runsOn: "ubuntu-latest", timeoutMinutes: 30},
 		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: goWorkflowSelfHostedRunsOn, timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2"}}},
 		{workflow: "ci-image-certification.yml", job: "run"}: {name: "Rust image — runtime certification", runsOn: "ubuntu-latest"},
 		{workflow: "ci-image.yml", job: "run"}: {
@@ -92,7 +93,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci.yml", job: "ci-policy"}:                         {name: "CI policy — workflow, harness, and docs contracts", runsOn: "ubuntu-latest", needs: "changes"},
 		{workflow: "ci.yml", job: "changes"}:                           {name: "What changed", runsOn: "ubuntu-latest"},
 		{workflow: "ci.yml", job: "ci-ok"}: {
-			name: "CI", runsOn: "ubuntu-latest",
+			name: "${{ github.event_name == 'merge_group' && 'CI assurance' || 'CI' }}", runsOn: "ubuntu-latest",
 			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android", "playout-bench"},
 		},
 		{workflow: "image-benchmark.yml", job: "benchmark"}: {
@@ -114,7 +115,11 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		},
 		{workflow: "release.yml", job: "publish"}:                {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
 		{workflow: "curated-sources.yml", job: "check"}:          {name: "Check the curated sources", runsOn: "ubuntu-24.04", timeoutMinutes: 15},
+		{workflow: "staging.yml", job: "build-image"}:            {name: "Build the commit's image", runsOn: "ubuntu-24.04", timeoutMinutes: 45},
+		{workflow: "staging.yml", job: "control"}:                {name: "Run the staging action", runsOn: "ubuntu-24.04", needs: "build-image", timeoutMinutes: 10},
 		{workflow: "deadcode.yml", job: "report"}:                {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
+		{workflow: "merge-gate.yml", job: "run"}:                 {name: "CI", runsOn: "ubuntu-latest", timeoutMinutes: 10},
+		{workflow: "merge-gate-cache.yml", job: "run"}:           {name: "Warm merge gate cache", runsOn: "ubuntu-latest", timeoutMinutes: 15},
 		{workflow: "go-maintenance.yml", job: "vulnerabilities"}: {name: "Reachable known vulnerabilities", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh"}:     {name: "Refresh the FFmpeg pin", runsOn: "ubuntu-24.04", timeoutMinutes: 120},
 		{workflow: "rust-maintenance.yml", job: "supply-chain"}:  {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},

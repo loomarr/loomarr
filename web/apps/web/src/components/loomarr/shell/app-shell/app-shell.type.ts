@@ -8,6 +8,7 @@ type NavTo =
   | "/dashboard"
   | "/guide"
   | "/requests"
+  | "/library"
   | "/filler"
   | "/people"
   | "/settings"

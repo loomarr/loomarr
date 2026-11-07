@@ -20,7 +20,6 @@ import (
 
 const (
 	OpenRouterSnapshotSchemaVersion = 3
-	legacyOpenRouterSnapshotSchema  = 2
 	maxSnapshotModels               = 16
 	maxSnapshotEndpoints            = 256
 	maxSnapshotPricingOverrides     = 4

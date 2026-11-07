@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
@@ -20,10 +21,10 @@ import (
 // sundayNoon is a Sunday, so a Sunday-evening rule lands inside a 24h horizon from it.
 var sundayNoon = time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
 
-func film(key, title, rating string, genres ...string) schedule.LineupEntry {
+func film(key, title, official string, genres ...string) schedule.LineupEntry {
 	return schedule.LineupEntry{
 		Key: provision.Key(key), Title: title, DurationMs: time.Hour.Milliseconds(),
-		OfficialRating: schedule.Rating(rating), Genres: genres,
+		OfficialRating: rating.Rating(official), Genres: genres,
 	}
 }
 

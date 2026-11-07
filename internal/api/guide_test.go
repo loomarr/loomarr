@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
@@ -187,6 +187,15 @@ func gridBlock(kind schedule.SlotKind, title string, offset time.Duration, mins 
 	}
 }
 
+// gridBlockAfter starts exactly where prev stopped. Two gridBlock calls read the clock twice, so
+// blocks meant to touch can land a millisecond apart.
+func gridBlockAfter(prev playout.Broadcast, kind schedule.SlotKind, title string, mins int) playout.Broadcast {
+	return playout.Broadcast{
+		Kind: kind, Title: title,
+		Start: prev.Stop, Stop: prev.Stop.Add(time.Duration(mins) * time.Minute),
+	}
+}
+
 // THE GATE'S CENTRAL CLAUSE: a pending slot and a filler pod must be DISTINGUISHABLE. The
 // endpoint this replaces collapsed both to `gap: true`, so the grid had no way to draw
 // "commercials are playing" differently from "we are still acquiring this" — two completely
@@ -254,12 +263,10 @@ func TestGuide_PendingBlocksAreMarkedNominal(t *testing.T) {
 // right for a "what's on next" strip and fatal for a grid — every later block silently slides
 // into the hole, so the timeline stops matching the clock.
 func TestGuide_GapsArePreservedNotFiltered(t *testing.T) {
+	programme := gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)
+	brk := gridBlockAfter(programme, schedule.SlotFiller, "Break", 2)
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
-		"ch1": {
-			gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60),
-			gridBlock(schedule.SlotFiller, "Break", time.Hour, 2),
-			gridBlock(schedule.SlotProgram, "Emberfall Canyon", 62*time.Minute, 30),
-		},
+		"ch1": {programme, brk, gridBlockAfter(brk, schedule.SlotProgram, "Emberfall Canyon", 30)},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
 	srv, st := harness.Server, harness.Store
@@ -510,11 +517,11 @@ func TestGuide_FillerPodWithholdsFilenameByProvenance(t *testing.T) {
 		MatchLevel: filler.MatchExact,
 		TotalMs:    90000,
 		Entries: []filler.PodEntry{
-			{Hash: "h-stem", Name: "Widgetmax Ad 1991", NameSource: clipcatalog.NameFromFilename,
+			{Hash: "h-stem", Name: "Widgetmax Ad 1991", NameSource: clips.NameFromFilename,
 				Kind: filler.Commercial, DurationMs: 30000},
-			{Hash: "h-curated", Name: "Zap Cola", NameSource: clipcatalog.NameFromCurated,
+			{Hash: "h-curated", Name: "Zap Cola", NameSource: clips.NameFromCurated,
 				Kind: filler.Commercial, DurationMs: 30000},
-			{Hash: "h-sidecar", Name: "zx-qt", NameSource: clipcatalog.NameFromSidecar,
+			{Hash: "h-sidecar", Name: "zx-qt", NameSource: clips.NameFromSidecar,
 				Kind: filler.Commercial, DurationMs: 30000},
 		},
 	}}

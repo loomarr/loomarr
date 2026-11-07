@@ -3,6 +3,7 @@ import type { NotificationProviderDTO } from "@loomarr/api/models/notificationPr
 import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificationProviderFieldDTO";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
+import { Card } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, Plus, X } from "lucide-react";
@@ -10,7 +11,6 @@ import { useId, useMemo, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -199,7 +199,7 @@ const ProviderForm = ({
         void form.handleSubmit().catch(() => undefined);
       }}
     >
-      <Card className="grid gap-5 p-5">
+      <Card gap={20} padding={20}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-semibold">
@@ -229,7 +229,6 @@ const ProviderForm = ({
                   value={field.state.value}
                   aria-invalid={fieldError ? "true" : undefined}
                   aria-describedby={fieldError ? `${inputId}-error` : undefined}
-                  onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 {fieldError ? (
@@ -446,7 +445,7 @@ const WebPushForm = ({
         void form.handleSubmit().catch(() => undefined);
       }}
     >
-      <Card className="grid gap-5 p-5">
+      <Card gap={20} padding={20}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : "Add Browser Push"}</h3>
@@ -472,7 +471,6 @@ const WebPushForm = ({
                   value={field.state.value}
                   aria-invalid={fieldError ? "true" : undefined}
                   aria-describedby={fieldError ? `${inputId}-error` : undefined}
-                  onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 {fieldError ? (
@@ -626,7 +624,7 @@ const ProviderRow = ({
 
   return (
     <li>
-      <Card className="p-4">
+      <Card padding={16}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
