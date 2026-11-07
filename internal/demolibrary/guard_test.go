@@ -255,19 +255,20 @@ var migratedGo = []string{
 	"internal/proposals/suggest/score_era_test.go",
 	"internal/proposals/suggest/score_intent_test.go",
 	"internal/proposals/suggest/tools_internal_test.go",
-	// The integration, tmdb, catalog, binder, library and collection tests, and the last suggest
-	// leftovers (slice 9).
-	"internal/binder/", "internal/catalog/", "internal/ideas/", "internal/integration/", "internal/library/",
-	"internal/moviecollections/", "internal/recommend/", "internal/tmdb/",
+	// The integration, tmdb, catalog, library and collection tests, and the last suggest leftovers
+	// (slice 9).
+	"internal/catalog/", "internal/integration/", "internal/library/",
+	"internal/moviecollections/", "internal/tmdb/",
 	"internal/proposals/suggest/date_meaning_test.go",
 	"internal/proposals/suggest/intent_policy_test.go",
 	"internal/proposals/suggest/scopenarrows_test.go",
 	"internal/proposals/suggest/worker_cache_internal_test.go",
-	// The schedule, playout and recurate tests (slice 11).
-	"internal/playout/", "internal/recurate/", "internal/schedule/",
+	// The playout tests (slice 11).
+	"internal/playout/",
 	// The filler tests, every package under internal/filler (slices 12 and 16).
 	"internal/filler/",
-	// The channels, store and provisionbackstop tests (slice 13).
+	// The channels tests, every package under internal/channels (slices 9, 11 and 13), and the store
+	// and provisionbackstop tests (slice 13).
 	"internal/channels/", "internal/provisionbackstop/", "internal/store/",
 	// The app, requester, provision and proposals/workflow tests (slice 15).
 	"internal/app/", "internal/proposals/workflow/", "internal/provision/", "internal/requester/",

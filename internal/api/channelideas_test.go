@@ -13,15 +13,15 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
-	"github.com/loomarr/loomarr/internal/ideas"
+	"github.com/loomarr/loomarr/internal/channels/approval"
+	"github.com/loomarr/loomarr/internal/channels/ideas"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -369,7 +369,7 @@ func newManualChannelHarness(
 		newID := func() string { return fmt.Sprintf("manual-%d", next.Add(1)) }
 		flow := workflow.New(defaults.Store, newID, func() time.Time { return now })
 		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log)
-		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
+		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
 		approver := suggest.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
 			WithApprovalAdditionResolver(resolver)
 		return api.Router(defaults.Log, api.Options{

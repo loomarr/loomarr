@@ -60,7 +60,7 @@ internal/store/     one interface, SQLite and Postgres behind it
 internal/settings/  the typed registry: env > database > default
 internal/playout/   the streaming engine
 internal/proposals/suggest/ intent → grounded proposal
-internal/schedule/  the scheduler domain
+internal/channels/schedule/ the scheduler domain
 internal/filler/    clip catalog and pod assembly
 internal/testkit/   shared doubles and pinned fixtures
 

@@ -26,7 +26,7 @@ var ErrSuperseded = store.ErrProposalSuperseded
 // ErrProposalJobGone reports a proposal whose job no longer exists, so approving it cannot create
 // its channel: housekeeping once purged done jobs while their proposals were still submitted. It is
 // a refusal the admin can act on (deny the proposal, ask again), not a server fault. The binder
-// returns it; the suggest package owns it so callers need not import the binder.
+// returns it; the suggest package owns it so callers need not import channels/approval.
 var ErrProposalJobGone = errors.New("suggest: the proposal's job no longer exists")
 
 // ErrRevisionActive reports a proposal whose replacement generation currently
@@ -173,7 +173,7 @@ type ApproveStore interface {
 type approvalCommit func(context.Context, store.ProposalApproval) (int, error)
 
 // ChannelBinder plans the local channel mutation that approval commits, then runs the
-// best-effort work that is only legal after that commit. *binder.Binder implements this
+// best-effort work that is only legal after that commit. *approval.Binder implements this
 // structurally; suggest declares the seam so it never imports binder back.
 type ChannelBinder interface {
 	// PlanApprovedChannel is read-only. It receives the exact effective proposal the gate is

@@ -9,7 +9,7 @@ internal/filler/fetch	261
 internal/api	216
 internal/store	191
 internal/integration	178
-internal/schedule	151
+internal/channels/schedule	151
 internal/images	149
 internal/releaseverify	124
 cmd/image-cert	117
@@ -26,11 +26,11 @@ internal/people/notifications	31
 cmd/demo-library	24
 internal/provisionbackstop	23
 internal/people/invitation	20
-internal/binder	19
+internal/channels/approval	19
 internal/devbootstrap	17
 internal	15
 internal/backendtransition	15
-internal/recurate	14
+internal/channels/recurate	14
 internal/jobs	14
 internal/mediatools	12
 internal/proposals/outlook	11

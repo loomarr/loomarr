@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr"
@@ -1482,7 +1482,7 @@ func (e errPokeType) Error() string { return string(e) }
 //
 // Driven through the availability gate (no entry resolves to a library id) because it
 // is the simplest way to empty a deck; the seasonal path that actually hit this in the
-// wild is covered in internal/schedule.
+// wild is covered in internal/channels/schedule.
 func TestReconcile_EmptyDeckIsNotLive(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()

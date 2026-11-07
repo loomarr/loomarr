@@ -10,11 +10,11 @@ One area of the [package map](../package-map.md#start-here).
 
 - **media** · 15 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
 - **platform** · 15 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
-- **channels** · 1 import — the holiday season and filler selection a channel's `schedule` asks for
+- **channels** · 1 import — the holiday season and filler selection a channel's `channels/schedule` asks for
 
 ## Packages
 
-- **`filler`** · 10 importers · → `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `filler/clips`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `schedule`, `storagegovernor`
+- **`filler`** · 10 importers · → `bgexec`, `channels/schedule`, `creative`, `defects`, `diagnostics`, `encode`, `filler/clips`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `langcode`, `llm`, `logchange`, `loudness`, `mediatools`, `storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`filler/admission`**
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.

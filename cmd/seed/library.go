@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/store"
@@ -39,7 +39,7 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 	if err != nil {
 		return err
 	}
-	approver := suggest.NewApprover(st, binder.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
+	approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 	// One minter per kind for the run, prefixed by the run's start so a later run never reuses an id.
 	run := time.Now().Unix()
 	jobIDs, propIDs := newID(fmt.Sprintf("job_lib%d", run)), newID(fmt.Sprintf("prop_lib%d", run))

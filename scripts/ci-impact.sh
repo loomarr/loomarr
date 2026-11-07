@@ -522,7 +522,7 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/recommend/testdata/*)
+    internal/channels/recommend/testdata/*)
       known=true
       select_gate contracts
       select_gate go

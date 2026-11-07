@@ -678,11 +678,11 @@ was still insufficient. Both certification jobs passed in 5m57s and 7m15s from q
 ordinary test steps took 10m23s and 10m41s and completed 11m18s and 11m35s after queue creation.
 Their 18-second spread ruled out shard imbalance. The executable package order was the real defect:
 the sharder modeled longest-processing-time workers, then restored `go list` order, and the race
-policy sorted that order lexically again. `internal/store` and `internal/recurate` consequently
+policy sorted that order lexically again. `internal/store` and `internal/channels/recurate` consequently
 started about 6m21s and 6m34s into their test steps. Four large, fixture-isolated packages also ran
 all top-level tests serially. The runner now emits and preserves descending measured-cost order,
 and `research/internal/fillerreview`, `internal/backendtransition`'s non-integration tests,
-`internal/recurate`, and `internal/binder` use bounded `t.Parallel` execution. The PostgreSQL-tagged
+`internal/channels/recurate`, and `internal/channels/approval` use bounded `t.Parallel` execution. The PostgreSQL-tagged
 backend tests remain serial because they mutate process environment. Same-machine four-CPU race
 controls measured `fillerreview` at 115.237s serial versus 41.154s parallel; the other three
 packages completed together in 58.83s versus 82.61s with their internal parallelism disabled.

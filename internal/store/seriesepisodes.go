@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/episodeevidence"
-	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // SeriesEpisodes is one show's cached episode list (§5, §9 series expansion).
