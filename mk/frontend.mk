@@ -80,12 +80,19 @@ fe-unit: fe-codegen ## web unit tests after codegen (FE_SHARD=n/m runs one shard
 	cd $(WEB) && pnpm --filter @loomarr/web test $(FE_SHARD_ARG)
 
 .PHONY: clients
-clients: brand-assets-verify knip ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
+clients: clients-checks clients-bundles ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
+
+.PHONY: clients-checks
+clients-checks: brand-assets-verify knip ## everything in clients except the mobile and TV bundles
 	cd $(WEB) && pnpm exec biome check apps/mobile apps/tv apps/web/client-platform-proof.html \
 	  apps/web/src/client-platform-proof apps/web/tests/client-platform-proof.ssr.test.tsx \
 	  apps/web/vite.client-platform.config.ts \
 	  .rnstorybook native-stories packages/design-system packages/ui turbo.json \
 	  && pnpm imports:check && pnpm lint:boundaries && pnpm native-storybook:check && pnpm clients:check
+
+.PHONY: clients-bundles
+clients-bundles: fe-codegen ## bundle the mobile and TV clients for Android, iOS, and their TV platforms
+	cd $(WEB) && pnpm clients:bundle
 
 CLIENT_APP ?= mobile
 .PHONY: client-android-debug
