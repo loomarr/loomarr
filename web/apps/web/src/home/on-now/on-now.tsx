@@ -1,5 +1,6 @@
 import type { GuideChannelState } from "@loomarr/core/guide";
 import { guideChannelState } from "@loomarr/core/guide";
+import type { StatusTone } from "@loomarr/design-system";
 import { surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -7,7 +8,6 @@ import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
-import type { StatusTone } from "@loomarr/design-system";
 import type { AiringArtworkProps, OnNowProps } from "./on-now.type";
 
 const MAX_CHANNELS = 6;

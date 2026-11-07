@@ -4,6 +4,7 @@ import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEve
 import { ListDiagnosticEventsOrder } from "@loomarr/api/models/listDiagnosticEventsOrder";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
+import { StatusDot, type StatusTone } from "@loomarr/design-system";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -21,7 +22,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   type ApplicationFilters,

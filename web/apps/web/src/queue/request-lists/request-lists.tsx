@@ -3,6 +3,7 @@ import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
+import type { StatusTone } from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -11,7 +12,6 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { buttonVariants } from "@/components/ui/button";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
-import type { StatusTone } from "@loomarr/design-system";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
 

@@ -4,7 +4,7 @@ import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests";
-import { Badge } from "@loomarr/design-system";
+import { Badge, StatusDot } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { RefreshCcw, X } from "lucide-react";
@@ -12,7 +12,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
-import { StatusDot } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ChannelIdeasProps, IdeaCardProps } from "./channel-ideas.type";
 

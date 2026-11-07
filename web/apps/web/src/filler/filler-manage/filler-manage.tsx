@@ -1,10 +1,10 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
+import { StatusDot, type StatusTone } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { Button } from "@/components/ui/button";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
 
 type HubRow = {
   title: string;

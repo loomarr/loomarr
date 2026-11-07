@@ -1,8 +1,8 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
+import { StatusDot, type StatusTone } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { Caption } from "@/components/ui/caption";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { CoverageMeterProps } from "./coverage-meter.type";
 
