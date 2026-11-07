@@ -112,6 +112,42 @@ func testLibraryRootDiscovery(t *testing.T, newStore NewStoreFunc) {
 
 // Hand-typed roots are confirmed; hand-set mappings survive discovery; releasing a hand-typed root
 // nothing names removes it.
+// A pass's readability check flips a root only against an earlier check, so one notification goes
+// out per change rather than per pass.
+func testLibraryRootCheck(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	t0 := time.UnixMilli(1_800_000_000_000).UTC()
+	found := LibraryRootDiscovery{
+		Found: []LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: "/media/movies"}}, Complete: []string{"radarr"},
+	}
+	if err := s.RecordLibraryRootDiscovery(ctx, found, t0); err != nil {
+		t.Fatal(err)
+	}
+	for i, step := range []struct {
+		readable, flipped bool
+	}{
+		{readable: true, flipped: false},  // the first check sets a baseline
+		{readable: true, flipped: false},  // no change
+		{readable: false, flipped: true},  // went offline
+		{readable: false, flipped: false}, // still offline
+		{readable: true, flipped: true},   // back
+	} {
+		at := t0.Add(time.Duration(i+1) * time.Hour)
+		flipped, err := s.CheckLibraryRoot(ctx, LibraryRootCheck{Path: "/media/movies", Readable: step.readable}, at)
+		if err != nil || flipped != step.flipped {
+			t.Fatalf("check %d (readable=%v) = %v, %v; want flipped=%v", i, step.readable, flipped, err, step.flipped)
+		}
+		root, _ := rootByPath(t, mustLibraryRoots(t, s), "/media/movies")
+		if root.Readable != step.readable || !root.CheckedAt.Equal(at) {
+			t.Fatalf("check %d left %+v", i, root)
+		}
+	}
+	if _, err := s.CheckLibraryRoot(ctx, LibraryRootCheck{Path: "/nowhere", Readable: true}, t0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("check of an unknown root = %v, want ErrNotFound", err)
+	}
+}
+
 func testLibraryRootByHand(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

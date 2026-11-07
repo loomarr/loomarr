@@ -224,6 +224,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
     and `POST /v1/library/hooks/{app}/test` registers again and asks the arr to send its test.
   - SMB change notifications for CIFS roots are not built yet; until then the arrs' webhooks and
     the hourly walk cover a network share.
+- **Notifications** (decision 32) go to operators. Each pass records every root's readability
+  (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
+  `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
+  registration starts failing publishes `library_changes_degraded`, at most once a day. The daily
+  batch of unmatched files waits for Library → Unmatched (step 11).
 
 ## Cached series episodes
 

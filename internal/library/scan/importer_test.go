@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -307,19 +308,36 @@ func TestImportRemovalGuard(t *testing.T) {
 // An unreadable root is an incomplete scan: nothing under it is marked missing.
 func TestImportUnreadableRootMarksNothing(t *testing.T) {
 	h := newHarness(t)
+	var heard []bool
+	h.im.RootReadability = func(_ context.Context, root string, readable bool) {
+		if root != h.root {
+			t.Errorf("heard about %s", root)
+		}
+		heard = append(heard, readable)
+	}
 	h.file("Echo/Echo.mkv", 10)
 	h.run()
+	disk := h.im.Disk
 	h.im.Disk = fakeDisk{}
 	if err := os.Remove(filepath.Join(h.root, "Echo", "Echo.mkv")); err != nil {
 		t.Fatal(err)
 	}
 	h.run()
+	h.run() // still offline: heard once, not per pass
 	origin := fileOrigin(h.root, "Echo/Echo.mkv")
 	if o := h.origin(h.item(origin), origin); !o.MissingAt.IsZero() {
 		t.Error("unreadable root marked a file missing")
 	}
 	if r := h.im.Progress().Roots; r[0].State != RootUnreadable {
 		t.Errorf("state = %s", r[0].State)
+	}
+	if roots, _ := h.st.LibraryRoots(context.Background()); roots.Roots[0].Readable {
+		t.Error("the status strip still reads the offline root as readable")
+	}
+	h.im.Disk = disk
+	h.run()
+	if !slices.Equal(heard, []bool{false, true}) {
+		t.Errorf("heard %v, want offline then back", heard)
 	}
 }
 
