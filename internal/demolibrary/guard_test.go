@@ -287,8 +287,8 @@ var migratedGo = []string{
 	"internal/eval/runner_accounting_test.go",
 	// The remaining small groups and the archived filler research tooling (slice 17).
 	"internal/people/auth/", "internal/people/contact/", "internal/llm/", "internal/media/tools/", "internal/people/notifications/",
-	"internal/proposals/outlook/", "internal/proposals/quality/", "internal/releaseverify/", "internal/tunarr/",
-	"internal/watermark/", "research/",
+	"internal/proposals/outlook/", "internal/proposals/quality/", "internal/releaseverify/", "internal/playout/tunarr/",
+	"internal/playout/watermark/", "research/",
 	"internal/proposals/suggest/season_window_test.go",
 }
 
@@ -296,23 +296,23 @@ var migratedGo = []string{
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its
 // reason; a file listed here must exist.
 var realDataGo = map[string]string{
-	"internal/app/fillerenrichment_deterministic_test.go":  "pins the production brand dictionary in fillerenrichment's deterministic.go end to end, whose phrases are real brands",
-	"internal/eval/corpus_live_test.go":                    "pins corpus.go, the live corpus of real channel intents run against a real LLM, library and TMDB",
-	"internal/eval/mood_review_test.go":                    "pins the frozen mood-review packet, private map and real-model submissions (testdata), real ids",
-	"internal/eval/query_expansion_test.go":                "pins the query-expansion corpus (testdata), whose real network-era titles the model must recognise",
-	"internal/eval/query_pilot_test.go":                    "pins the query-pilot corpus (testdata), whose real network and era titles the model must recognise",
-	"internal/eval/release_gate_test.go":                   "pins the release-gate corpus (testdata), whose real franchises, people and titles the model must recognise",
-	"internal/eval/schedule_live_test.go":                  "queries live data on purpose",
-	"internal/filler/enrichment/deterministic_test.go":     "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
-	"internal/filler/station/directory_test.go":            "pins call-sign resolution against the real FCC station seed, whose networks and call signs are real",
-	"internal/llm/ollama_test.go":                          "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
-	"internal/provision/webhook_parity_test.go":            "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
-	"internal/requester/seerr_contract_test.go":            "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
-	"internal/proposals/suggest/live_latency_test.go":      "drives a real LLM, whose world knowledge of real titles is what it measures",
-	"internal/proposals/suggest/live_named_titles_test.go": "drives a real LLM on requests that name real titles",
-	"internal/tmdb/exists_contract_test.go":                "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
-	"internal/tmdb/fixture_test.go":                        "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
-	"internal/watermark/render_samplelogos_test.go":        "calibrates legibility on the real network logos from the #1532 sample sheets, kept out of the repo",
+	"internal/app/fillerenrichment_deterministic_test.go":   "pins the production brand dictionary in fillerenrichment's deterministic.go end to end, whose phrases are real brands",
+	"internal/eval/corpus_live_test.go":                     "pins corpus.go, the live corpus of real channel intents run against a real LLM, library and TMDB",
+	"internal/eval/mood_review_test.go":                     "pins the frozen mood-review packet, private map and real-model submissions (testdata), real ids",
+	"internal/eval/query_expansion_test.go":                 "pins the query-expansion corpus (testdata), whose real network-era titles the model must recognise",
+	"internal/eval/query_pilot_test.go":                     "pins the query-pilot corpus (testdata), whose real network and era titles the model must recognise",
+	"internal/eval/release_gate_test.go":                    "pins the release-gate corpus (testdata), whose real franchises, people and titles the model must recognise",
+	"internal/eval/schedule_live_test.go":                   "queries live data on purpose",
+	"internal/filler/enrichment/deterministic_test.go":      "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
+	"internal/filler/station/directory_test.go":             "pins call-sign resolution against the real FCC station seed, whose networks and call signs are real",
+	"internal/llm/ollama_test.go":                           "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
+	"internal/provision/webhook_parity_test.go":             "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
+	"internal/requester/seerr_contract_test.go":             "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
+	"internal/proposals/suggest/live_latency_test.go":       "drives a real LLM, whose world knowledge of real titles is what it measures",
+	"internal/proposals/suggest/live_named_titles_test.go":  "drives a real LLM on requests that name real titles",
+	"internal/tmdb/exists_contract_test.go":                 "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
+	"internal/tmdb/fixture_test.go":                         "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
+	"internal/playout/watermark/render_samplelogos_test.go": "calibrates legibility on the real network logos from the #1532 sample sheets, kept out of the repo",
 }
 
 // realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field or a JSON

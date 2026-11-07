@@ -11,12 +11,12 @@ One area of the [package map](../package-map.md#start-here).
 - **platform** · 16 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday, language and audience-rating vocabularies
 - **library** · 8 imports — the titles a channel plays: `provision` keys and states, `inventory` break analysis, and `catalog` candidates for re-curation
 - **proposals** · 4 imports — binding an approved proposal into a channel, and re-curating a self-updating channel through the suggester
-- **playout** · 2 imports — handing reconciled programming to the backend that plays it: Loomarr's own `playout` engine or `tunarr`
+- **playout** · 2 imports — handing reconciled programming to the backend that plays it: Loomarr's own `playout` engine or `playout/tunarr`
 - **filler** · 1 import — asking the filler engine for the pod that fills a break
 
 ## Packages
 
-- **`channels`** · 3 importers · → `channels/schedule`, `filler`, `jobs`, `playout`, `provision`, `rating`, `settings`, `store`, `tunarr`
+- **`channels`** · 3 importers · → `channels/schedule`, `filler`, `jobs`, `playout`, `playout/tunarr`, `provision`, `rating`, `settings`, `store`
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`channels/approval`** · 2 importers · → `channels/schedule`, `proposals`, `proposals/suggest`, `provision`, `rating`, `store`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.

@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
-	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 func TestMediaSourceConnect_SnapshotsConnectionAndUsersOnce(t *testing.T) {

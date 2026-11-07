@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
 // Now/next selection is a containment test, not "take the first entry" — a guide that

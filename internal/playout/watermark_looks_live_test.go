@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/watermark"
+	"github.com/loomarr/loomarr/internal/playout/watermark"
 )
 
 // EVERY LOOK AIRS AS RENDERED (#1617). The self-check proves each host's blend with its own test

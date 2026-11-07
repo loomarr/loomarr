@@ -41,9 +41,10 @@ for sub, pkgs in {
     "library sync": "library inventory requester provision provisionbackstop",
     "images": "media/images",
     "database": "store fillerstore",
-    "playout": "playout watermark channels/viewing playoutbench",
+    "playout": "playout playout/watermark channels/viewing playout/bench",
     "platform": "settings config notifications diagnostics recovery retention storagegovernor events activity app "
-                "landiscovery installationlocation logchange releasenotes buildinfo backendtransition media/proctree",
+                "playout/landiscovery installationlocation logchange releasenotes buildinfo playout/backendtransition "
+                "media/proctree",
     "llm": "llm openroutercatalog openroutermedia eval",
     "metrics scrape": "metrics",
 }.items():

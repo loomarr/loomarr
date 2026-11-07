@@ -42,7 +42,7 @@ evidence and cannot be compared or accepted as schema-2 baselines. Thresholds, q
 distribution, whole-clip speed and CPU methodology are unchanged; hardware must be remeasured.
 
 **Known failures.** A check that fails until referenced work lands is listed in `expectedFailures`
-(`internal/playoutbench/compare.go`) and reported as *expected fail* with that reference, never skipped.
+(`internal/playout/bench/compare.go`) and reported as *expected fail* with that reference, never skipped.
 Once the fix lands the check passes, which the bench reports as an *unexpected pass* and fails on, so the
 entry is deleted in the same change. The list is empty: `break/sps_variants` (an 854×480 source scaled to
 SAR 1281:1280 in the SPS) passes since the packager's items encode with `setsar=1` (#1526).
@@ -97,7 +97,7 @@ git add docs/engineering/playout-bench/<family>.json
 ```
 
 The bench refuses to accept a report that fails a threshold or regresses. Fix the cause, or change
-the threshold in `internal/playoutbench/compare.go` in the same PR that explains why. A baseline is
+the threshold in `internal/playout/bench/compare.go` in the same PR that explains why. A baseline is
 tied to the schema and corpus version; bumping either forces a re-accept.
 
 ## CI

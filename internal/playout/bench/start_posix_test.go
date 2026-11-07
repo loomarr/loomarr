@@ -1,6 +1,6 @@
 //go:build !windows
 
-package playoutbench
+package bench
 
 import (
 	"context"

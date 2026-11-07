@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/playoutbench"
+	"github.com/loomarr/loomarr/internal/playout/bench"
 )
 
 func main() {
@@ -40,10 +40,10 @@ func run() error {
 		corpus     = flag.String("corpus", filepath.Join(artifacts, "playout-bench-corpus"), "directory for the generated corpus")
 		reportDir  = flag.String("report-dir", artifacts, "where the JSON and markdown reports are written")
 		baselines  = flag.String("baseline-dir", "docs/engineering/playout-bench", "directory of accepted baselines, one <family>.json each")
-		mode       = flag.String("thresholds", string(playoutbench.ModeFull), "full: every beta.8 threshold; correctness: gaps, SPS, loudness only (virtualised hosts); off")
+		mode       = flag.String("thresholds", string(bench.ModeFull), "full: every beta.8 threshold; correctness: gaps, SPS, loudness only (virtualised hosts); off")
 		startRuns  = flag.Int("start-runs", 20, "fresh-process start-latency runs per class")
 		maxStream  = flag.Int("max-streams", 16, "highest concurrency to try")
-		tolerance  = flag.Float64("tolerance", playoutbench.DefaultTolerance().Relative, "relative regression tolerance against the baseline")
+		tolerance  = flag.Float64("tolerance", bench.DefaultTolerance().Relative, "relative regression tolerance against the baseline")
 		films      = flag.String("films", "", "directory of open films fetched by scripts/playout-bench-open-films.sh (optional)")
 		noVMAF     = flag.Bool("no-vmaf", false, "skip the VMAF measurement")
 		accept     = flag.Bool("accept", false, "write this report as the family's baseline (refused if a threshold fails)")
@@ -62,9 +62,9 @@ func run() error {
 	defer stop()
 
 	if *corpusOnly {
-		dir := playoutbench.CorpusDir(*corpus)
+		dir := bench.CorpusDir(*corpus)
 		start := time.Now()
-		clips, skipped, err := playoutbench.Generate(ctx, *ffmpeg, dir)
+		clips, skipped, err := bench.Generate(ctx, *ffmpeg, dir)
 		if err != nil {
 			return err
 		}
@@ -75,7 +75,7 @@ func run() error {
 		return nil
 	}
 
-	rep, err := playoutbench.Run(ctx, playoutbench.Options{
+	rep, err := bench.Run(ctx, bench.Options{
 		FFmpeg: *ffmpeg, Dir: *corpus, Family: *family, Height: *height,
 		StartRuns: *startRuns, MaxStreams: *maxStream, VMAF: !*noVMAF, Films: *films, Commit: *commit,
 		Log: func(f string, a ...any) { fmt.Fprintf(os.Stderr, f+"\n", a...) },
@@ -84,17 +84,17 @@ func run() error {
 		return err
 	}
 
-	var verdicts []playoutbench.Verdict
-	if playoutbench.Mode(*mode) != "off" {
-		verdicts = playoutbench.Judge(rep, playoutbench.Mode(*mode))
+	var verdicts []bench.Verdict
+	if bench.Mode(*mode) != "off" {
+		verdicts = bench.Judge(rep, bench.Mode(*mode))
 	}
 	baselinePath := filepath.Join(*baselines, rep.Family+".json")
-	var deltas []playoutbench.Delta
+	var deltas []bench.Delta
 	regressed := false
-	if base, err := playoutbench.Read(baselinePath); err == nil {
-		tol := playoutbench.DefaultTolerance()
+	if base, err := bench.Read(baselinePath); err == nil {
+		tol := bench.DefaultTolerance()
 		tol.Relative = *tolerance
-		if deltas, regressed, err = playoutbench.Compare(base, rep, tol); err != nil {
+		if deltas, regressed, err = bench.Compare(base, rep, tol); err != nil {
 			return err
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -117,7 +117,7 @@ func run() error {
 		}
 	}
 
-	failures := playoutbench.Failures(verdicts)
+	failures := bench.Failures(verdicts)
 	var problems []string
 	if failures != "" {
 		problems = append(problems, "thresholds failed:\n"+failures)

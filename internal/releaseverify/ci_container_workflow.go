@@ -25,7 +25,7 @@ func postgresWorkflowActionAuthorities() map[string]map[string]struct{} {
 const postgresTestCommand = "make test-pg TEST_PG_SUITE=${{ matrix.lane }}"
 
 func postgresSuites() []string {
-	return []string{"store", "backendtransition", "app", "filler/records"}
+	return []string{"store", "playout/backendtransition", "app", "filler/records"}
 }
 
 func postgresWorkflowRunAuthorities() map[string]struct{} {

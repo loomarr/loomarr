@@ -231,7 +231,7 @@ Settings → Playback labels say so). The approved design (`project/prototypes/w
 answers recorded in `project/evidence/watermark-2026-10-13.md`) adds six looks to the four:
 `tint` (Colour plate), `twotone` (Number + name), `badge` (Number badge), `lockup` (Number | name,
 white), `glass` (frosted plate, white, gradient alpha) and `stripe` (Era stripe). They are drawn by
-`internal/watermark` (`RenderDesign`) from the mock's own geometry, supersampled and reduced, and are
+`internal/playout/watermark` (`RenderDesign`) from the mock's own geometry, supersampled and reduced, and are
 still one still PNG with straight alpha. A number look on a channel without a number draws the
 callsign instead (Colour plate, or Text for Number | name). A built look with no holiday picture is
 byte-identical to before and keeps its cache key. Colours come only from the design tokens:

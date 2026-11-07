@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
+	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 )
 
 func TestPrepareInheritedBackendUsesSuppliedTarget(t *testing.T) {

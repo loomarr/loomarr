@@ -20,7 +20,7 @@ test-pg: rust-dev-build ensure-postgres-test-image ## all real-Postgres integrat
 #
 # TEST_PG_SUITE runs one suite (CI gives each its own runner, #1570); unset, all four run. A name
 # that is not a suite fails as "no matching packages" rather than passing with nothing run.
-	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m $(if $(TEST_PG_SUITE),./internal/$(TEST_PG_SUITE)/,./internal/store/ ./internal/backendtransition/ ./internal/app/ ./internal/filler/records/)
+	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m $(if $(TEST_PG_SUITE),./internal/$(TEST_PG_SUITE)/,./internal/store/ ./internal/playout/backendtransition/ ./internal/app/ ./internal/filler/records/)
 
 .PHONY: test-db-lifecycle
 test-db-lifecycle: test-pg ## certify Postgres conformance plus fresh-PG and SQLite→PG deployment lifecycles (Docker)

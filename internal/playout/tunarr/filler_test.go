@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/tunarr"
-	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 )
 
 // fillerMock is a Tunarr double for the §10 filler endpoints: `local` media-source

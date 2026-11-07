@@ -4,7 +4,7 @@
 //
 // Methodology (draft PR #1513): measure the time to the first N seconds of media, never bytes, and
 // count CPU as child rusage per second of media, never a sampled percentage.
-package playoutbench
+package bench
 
 import (
 	"encoding/json"

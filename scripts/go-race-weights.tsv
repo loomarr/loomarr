@@ -2,7 +2,7 @@
 # lane jobs of merge-group runs 38536549839 38767340706 38740334450 38722225365, rounded up. Regenerate with
 # `make go-race-weights RUNS="..."` (scripts/go-race-weights-refresh.sh); never edit by hand.
 # Packages below five seconds use the one-second floor in go-shard.sh.
-internal/watermark	407
+internal/playout/watermark	407
 internal/demolibrary	379
 internal/app	281
 internal/filler/fetch	261
@@ -29,7 +29,7 @@ internal/people/invitation	20
 internal/channels/approval	19
 internal/devbootstrap	17
 internal	15
-internal/backendtransition	15
+internal/playout/backendtransition	15
 internal/channels/recurate	14
 internal/jobs	14
 internal/media/tools	12

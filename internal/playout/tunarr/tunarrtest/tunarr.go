@@ -1,7 +1,7 @@
 // Package tunarrtest holds the shared Tunarr test double and HTTP fixture server
 // (AGENTS.md testing rules: unit tests never touch the network; extend this
 // package rather than inventing a private mock). It lives alongside the real
-// internal/tunarr adapter so the double and the production client can't drift
+// internal/playout/tunarr adapter so the double and the production client can't drift
 // independently.
 package tunarrtest
 
@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
 // Tunarr is the shared Programmer test double (AGENTS.md: one mock per service,

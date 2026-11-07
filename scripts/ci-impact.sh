@@ -148,8 +148,12 @@ classify() {
   # The playout bench runs the real pipeline builder, so a change to the builder, the bench itself
   # or its corpus scripts selects it. Independent of the Go gates above: a builder edit still runs
   # those too.
+  # The Playout area's other packages sit under internal/playout too; the builder never imports them.
   case "$path" in
-    internal/playout/*|internal/playoutbench/*|cmd/playout-bench/*)
+    internal/playout/tunarr/*|internal/playout/livetvpublish/*|internal/playout/backendtransition/*|\
+    internal/playout/landiscovery/*|internal/playout/watermark/*)
+      ;;
+    internal/playout/*|cmd/playout-bench/*)
       select_gate playout_bench
       ;;
   esac
@@ -568,7 +572,7 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/watermark/fonts/*)
+    internal/playout/watermark/fonts/*)
       # The Plate bug's typeface and its licence, embedded by render.go. They change the rendered
       # watermark and the production image, but no native client reads them.
       known=true

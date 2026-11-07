@@ -5,7 +5,7 @@
 // so strategy math (sequential / shuffle / time-slot) and the pending-slot
 // policy are exhaustively unit-testable with an explicit seed. The reconcile
 // engine (reconcile.go's callers, Phase 10) and the Programmer adapter
-// (internal/tunarr) supply the outside world; this package only *decides
+// (internal/playout/tunarr) supply the outside world; this package only *decides
 // what should play*.
 package schedule
 

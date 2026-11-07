@@ -61,7 +61,7 @@ func TestPreviewCandidates(t *testing.T) {
 .chk{background:repeating-conic-gradient(#888 0 25%%,#bbb 0 50%%) 0 0/16px 16px;display:inline-block}
 td{vertical-align:top;padding:4px}h2{margin-top:32px}small{color:#aaa}</style>
 <h1>Bug looks (#1617)</h1>
-<p>Callsign %q, size 0.06, opacity 0.40, rendered by internal/watermark; composited in RGB over
+<p>Callsign %q, size 0.06, opacity 0.40, rendered by internal/playout/watermark; composited in RGB over
 synthetic frames at the default placement (top-right, margin 0.05). Crops are 1:1 pixels of the frame's top-right third.</p>`,
 		callsign)
 	for _, res := range []int{1080, 2160} {
