@@ -272,7 +272,7 @@
       "legacyUi": 4
     },
     "src/components/loomarr/people/person-detail/person-detail.tsx": {
-      "tailwindClasses": 159,
+      "tailwindClasses": 153,
       "legacyUi": 6
     },
     "src/components/loomarr/people/session-list/session-list.tsx": {
