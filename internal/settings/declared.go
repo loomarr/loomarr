@@ -373,18 +373,8 @@ func declared() []Setting {
 			Doc:      "Your Seerr API key.",
 			ShowWhen: map[string][]string{"requester.provider": {"seerr"}},
 		},
-		{
-			Key: "sonarr.url", EnvVar: "SONARR_URL", Group: GroupRequester,
-			Kind: KindURL, Default: "",
-			Doc:      "Sonarr address (for TV), e.g. http://sonarr:8989.",
-			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
-		},
-		{
-			Key: "sonarr.api_key", EnvVar: "SONARR_API_KEY", Group: GroupRequester,
-			Kind: KindSecret, Default: "",
-			Doc:      "Your Sonarr API key (Settings → General in Sonarr).",
-			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
-		},
+		// Where Sonarr and Radarr live is in their own connections below; these overrides only
+		// shape what the direct requester asks them for.
 		{
 			Key: "sonarr.quality_profile", Label: "Sonarr quality profile override", EnvVar: "SONARR_QUALITY_PROFILE", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
@@ -398,18 +388,6 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
-			Key: "radarr.url", EnvVar: "RADARR_URL", Group: GroupRequester,
-			Kind: KindURL, Default: "",
-			Doc:      "Radarr address (for movies), e.g. http://radarr:7878.",
-			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
-		},
-		{
-			Key: "radarr.api_key", EnvVar: "RADARR_API_KEY", Group: GroupRequester,
-			Kind: KindSecret, Default: "",
-			Doc:      "Your Radarr API key (Settings → General in Radarr).",
-			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
-		},
-		{
 			Key: "radarr.quality_profile", Label: "Radarr quality profile override", EnvVar: "RADARR_QUALITY_PROFILE", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Radarr quality profile (name or id). Blank = Radarr's first profile.",
@@ -420,6 +398,30 @@ func declared() []Setting {
 			Kind: KindString, Default: "", Advanced: true,
 			Doc:      "Optional Radarr root folder path. Blank = Radarr's first root folder.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
+		},
+
+		// --- Connections: Sonarr and Radarr (#2151 decisions 2 and 29) ---
+		// Their own connections, whichever requester is chosen: the library reads their folders
+		// and what each file is, and they tell Loomarr about new downloads.
+		{
+			Key: "sonarr.url", EnvVar: "SONARR_URL", Group: GroupSonarr,
+			Kind: KindURL, Default: "",
+			Doc: "Your Sonarr address, e.g. http://sonarr:8989. Loomarr learns your shows from it and hears about new episodes.",
+		},
+		{
+			Key: "sonarr.api_key", EnvVar: "SONARR_API_KEY", Group: GroupSonarr,
+			Kind: KindSecret, Default: "",
+			Doc: "Your Sonarr API key (Settings → General in Sonarr).",
+		},
+		{
+			Key: "radarr.url", EnvVar: "RADARR_URL", Group: GroupRadarr,
+			Kind: KindURL, Default: "",
+			Doc: "Your Radarr address, e.g. http://radarr:7878. Loomarr learns your movies from it and hears about new ones.",
+		},
+		{
+			Key: "radarr.api_key", EnvVar: "RADARR_API_KEY", Group: GroupRadarr,
+			Kind: KindSecret, Default: "",
+			Doc: "Your Radarr API key (Settings → General in Radarr).",
 		},
 
 		// --- Connections: Tunarr (§15, Phase 10) ---

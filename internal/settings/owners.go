@@ -26,7 +26,7 @@ func ownerFor(setting Setting) Owner {
 	}
 
 	switch setting.Group {
-	case GroupMediaServer, GroupRequester, GroupTunarr, GroupTMDB:
+	case GroupMediaServer, GroupRequester, GroupSonarr, GroupRadarr, GroupTunarr, GroupTMDB:
 		return OwnerConnections
 	case GroupGeneral:
 		return OwnerSharing
