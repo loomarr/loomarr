@@ -23,9 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Shallow: the selector fetches only the queue base, which took a full-history clone 13s.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0 # need the queue base to diff against
       - name: Does this candidate change Go
         id: go
         run: ./scripts/ci-merge-gate-select.sh merge_group "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"
