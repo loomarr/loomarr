@@ -50,7 +50,8 @@ const config: KnipConfig = {
       entry: ["scripts/*.{mjs,cjs}"],
       // The app config tests run the app's own .bin/expo-modules-autolinking on purpose: they
       // assert what the native build loads, so declaring a second copy would test the wrong one.
-      ignoreDependencies: ["expo-modules-autolinking"],
+      // dependency-cruiser loads @swc/core by name for `parser: "swc"` in .dependency-cruiser.cjs.
+      ignoreDependencies: ["expo-modules-autolinking", "@swc/core"],
       // Written by `sb-rn-get-stories` (native-storybook:check) and gitignored.
       ignoreUnresolved: ["./storybook.requires"],
     },

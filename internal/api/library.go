@@ -16,13 +16,20 @@ import (
 // map that names them for each authority, and the status strip. Admin-only: folder paths describe
 // the household's storage, which members never need.
 
-// LibraryRootService discovers, checks and records scan roots (scan.Roots).
+// LibraryRootService discovers, checks and records scan roots, and runs the scanner over them
+// (scan.Library).
 type LibraryRootService interface {
 	List(ctx context.Context) (store.LibraryRoots, error)
 	Discover(ctx context.Context) (store.LibraryRoots, []scan.SourceResult, error)
 	Add(ctx context.Context, path string) error
 	SetInUse(ctx context.Context, path string, inUse bool) error
 	SetMapping(ctx context.Context, authority, authorityPath, local string) error
+
+	Enabled() bool
+	Progress() scan.Progress
+	Counts(ctx context.Context) (store.LibraryFileCounts, error)
+	Rescan() error
+	ConfirmRemovals(ctx context.Context, root string) error
 }
 
 func (s *Server) registerLibrary(api huma.API) {
@@ -60,10 +67,24 @@ func (s *Server) registerLibrary(api huma.API) {
 	}, RoleAdmin), s.setLibraryPathMapping)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "libraryStatus", Method: http.MethodGet, Path: "/v1/library/status",
-		Summary:     "Library status",
-		Description: "The status strip: whether any folder is in use, and whether every folder in use opened at its last check.",
-		Tags:        []string{"library"},
+		Summary: "Library status",
+		Description: "The status strip: whether any folder is in use, whether every folder in use opened at its last check, " +
+			"what the scanner is doing, and any removal waiting for the maintainer.",
+		Tags: []string{"library"},
 	}, RoleAdmin), s.libraryStatus)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "rescanLibrary", Method: http.MethodPost, Path: "/v1/library/scan",
+		Summary:     "Check the media folders again",
+		Description: "Starts a scan of every folder in use now. 409 when the scanner is turned off.",
+		Tags:        []string{"library"}, DefaultStatus: http.StatusAccepted,
+	}, RoleAdmin), s.rescanLibrary)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "confirmLibraryRemoval", Method: http.MethodPost, Path: "/v1/library/roots/confirm-removal",
+		Summary: "Remove the titles a scan no longer found",
+		Description: "Applies a held removal: a scan that would remove many titles from one folder waits for this. " +
+			"404 when nothing is waiting for that folder; 409 when the scanner is turned off.",
+		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
+	}, RoleAdmin), s.confirmLibraryRemoval)
 }
 
 type libraryFolderNameDTO struct {
@@ -232,12 +253,37 @@ func (s *Server) setLibraryPathMapping(ctx context.Context, in *setLibraryPathMa
 	return s.listLibraryRoots(ctx, nil)
 }
 
+type libraryScanDTO struct {
+	Enabled bool   `json:"enabled" doc:"library.scanner.enabled: false stops every scan"`
+	Stage   string `json:"stage" enum:"idle,walking,reading" doc:"walking: listing folders; reading: reading new files"`
+	// HeadersDone and HeadersTotal are the reading stage's progress.
+	HeadersDone  int  `json:"headersDone" doc:"Files read so far in this scan"`
+	HeadersTotal int  `json:"headersTotal" doc:"Files this scan reads"`
+	Paused       bool `json:"paused" doc:"Reading waits while someone is watching"`
+	// ArrIncomplete is true when Sonarr or Radarr did not answer the last scan.
+	ArrIncomplete bool       `json:"arrIncomplete" doc:"Sonarr or Radarr didn't answer the last scan"`
+	LastScanAt    *time.Time `json:"lastScanAt,omitempty" doc:"When the last scan finished; absent before the first"`
+}
+
+type libraryHeldDTO struct {
+	Path     string `json:"path" doc:"The folder whose scan is waiting"`
+	Movies   int    `json:"movies" doc:"Movies the scan no longer found"`
+	Episodes int    `json:"episodes" doc:"Episodes the scan no longer found"`
+	Other    int    `json:"other" doc:"Extras the scan no longer found"`
+}
+
 type libraryStatusOutput struct {
 	Body struct {
 		Health    string `json:"health" enum:"needs_folders,folder_offline,ok" doc:"needs_folders: none in use; folder_offline: one in use didn't open"`
 		InUse     int    `json:"inUse" doc:"Folders in use"`
 		Offline   int    `json:"offline" doc:"Folders in use that didn't open at their last check"`
 		ToConfirm int    `json:"toConfirm" doc:"Readable folders found but not yet in use"`
+
+		Scan           libraryScanDTO   `json:"scan"`
+		Files          int              `json:"files" doc:"Media files found in folders in use"`
+		HeadersPending int              `json:"headersPending" doc:"Files not read yet"`
+		Problems       int              `json:"problems" doc:"Files Loomarr skips, such as disc images"`
+		Held           []libraryHeldDTO `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
 	}
 }
 
@@ -250,8 +296,80 @@ func (s *Server) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStatus
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
 	}
+	counts, err := svc.Counts(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+	}
 	st := scan.StatusOf(all)
 	out := &libraryStatusOutput{}
-	out.Body.Health, out.Body.InUse, out.Body.Offline, out.Body.ToConfirm = string(st.Health), st.InUse, st.Offline, st.ToConfirm
+	b := &out.Body
+	b.Health, b.InUse, b.Offline, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.ToConfirm
+	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems
+	b.Held = heldView(counts.Held)
+
+	p := svc.Progress()
+	b.Scan = libraryScanDTO{
+		Enabled: svc.Enabled(), Stage: string(p.Stage), HeadersDone: p.HeadersDone, HeadersTotal: p.HeadersAll,
+		Paused: p.Waiting, ArrIncomplete: p.ArrIncomplete,
+	}
+	if !p.CompletedAt.IsZero() {
+		at := p.CompletedAt
+		b.Scan.LastScanAt = &at
+	}
 	return out, nil
+}
+
+// heldView groups held counts by folder, in folder order.
+func heldView(counts []store.LibraryHeldCount) []libraryHeldDTO {
+	out := []libraryHeldDTO{}
+	for _, c := range counts {
+		if len(out) == 0 || out[len(out)-1].Path != c.Root {
+			out = append(out, libraryHeldDTO{Path: c.Root})
+		}
+		h := &out[len(out)-1]
+		switch c.Kind {
+		case "movie":
+			h.Movies += c.Count
+		case "episode":
+			h.Episodes += c.Count
+		default:
+			h.Other += c.Count
+		}
+	}
+	return out
+}
+
+func (s *Server) rescanLibrary(ctx context.Context, _ *struct{}) (*libraryStatusOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	if err := svc.Rescan(); errors.Is(err, scan.ErrScannerOff) {
+		return nil, errConflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
+	} else if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't start a scan", "Try again in a moment.", err)
+	}
+	return s.libraryStatus(ctx, nil)
+}
+
+type confirmLibraryRemovalInput struct {
+	Body struct {
+		Path string `json:"path" minLength:"1" maxLength:"4096" doc:"The folder whose removal to apply"`
+	}
+}
+
+func (s *Server) confirmLibraryRemoval(ctx context.Context, in *confirmLibraryRemovalInput) (*libraryStatusOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	switch err := svc.ConfirmRemovals(ctx, in.Body.Path); {
+	case errors.Is(err, scan.ErrNothingHeld):
+		return nil, errNotFound("Nothing is waiting", "No removal is waiting for that folder.")
+	case errors.Is(err, scan.ErrScannerOff):
+		return nil, errConflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
+	case err != nil:
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't remove them", "Try again in a moment.", err)
+	}
+	return s.libraryStatus(ctx, nil)
 }

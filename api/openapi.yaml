@@ -2367,6 +2367,24 @@ components:
       required:
         - clips
       type: object
+    ConfirmLibraryRemovalInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ConfirmLibraryRemovalInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        path:
+          description: The folder whose removal to apply
+          maxLength: 4096
+          minLength: 1
+          type: string
+      required:
+        - path
+      type: object
     ConstraintMatches:
       additionalProperties: false
       properties:
@@ -6492,6 +6510,30 @@ components:
         - authority
         - path
       type: object
+    LibraryHeldDTO:
+      additionalProperties: false
+      properties:
+        episodes:
+          description: Episodes the scan no longer found
+          format: int64
+          type: integer
+        movies:
+          description: Movies the scan no longer found
+          format: int64
+          type: integer
+        other:
+          description: Extras the scan no longer found
+          format: int64
+          type: integer
+        path:
+          description: The folder whose scan is waiting
+          type: string
+      required:
+        - path
+        - movies
+        - episodes
+        - other
+      type: object
     LibraryPathMappingDTO:
       additionalProperties: false
       properties:
@@ -6574,6 +6616,45 @@ components:
         - roots
         - pathMap
       type: object
+    LibraryScanDTO:
+      additionalProperties: false
+      properties:
+        arrIncomplete:
+          description: Sonarr or Radarr didn't answer the last scan
+          type: boolean
+        enabled:
+          description: "library.scanner.enabled: false stops every scan"
+          type: boolean
+        headersDone:
+          description: Files read so far in this scan
+          format: int64
+          type: integer
+        headersTotal:
+          description: Files this scan reads
+          format: int64
+          type: integer
+        lastScanAt:
+          description: When the last scan finished; absent before the first
+          format: date-time
+          type: string
+        paused:
+          description: Reading waits while someone is watching
+          type: boolean
+        stage:
+          description: "walking: listing folders; reading: reading new files"
+          enum:
+            - idle
+            - walking
+            - reading
+          type: string
+      required:
+        - enabled
+        - stage
+        - headersDone
+        - headersTotal
+        - paused
+        - arrIncomplete
+      type: object
     LibrarySourceDTO:
       additionalProperties: false
       properties:
@@ -6607,6 +6688,14 @@ components:
           format: uri
           readOnly: true
           type: string
+        files:
+          description: Media files found in folders in use
+          format: int64
+          type: integer
+        headersPending:
+          description: Files not read yet
+          format: int64
+          type: integer
         health:
           description: "needs_folders: none in use; folder_offline: one in use didn't open"
           enum:
@@ -6614,6 +6703,11 @@ components:
             - folder_offline
             - ok
           type: string
+        held:
+          description: Removals waiting for the maintainer, one per folder
+          items:
+            $ref: "#/components/schemas/LibraryHeldDTO"
+          type: array
         inUse:
           description: Folders in use
           format: int64
@@ -6622,6 +6716,12 @@ components:
           description: Folders in use that didn't open at their last check
           format: int64
           type: integer
+        problems:
+          description: Files Loomarr skips, such as disc images
+          format: int64
+          type: integer
+        scan:
+          $ref: "#/components/schemas/LibraryScanDTO"
         toConfirm:
           description: Readable folders found but not yet in use
           format: int64
@@ -6631,6 +6731,11 @@ components:
         - inUse
         - offline
         - toConfirm
+        - scan
+        - files
+        - headersPending
+        - problems
+        - held
       type: object
     LineupContext:
       additionalProperties: false
@@ -17119,6 +17224,32 @@ paths:
       summary: Add a media folder by hand
       tags:
         - library
+  /v1/library/roots/confirm-removal:
+    post:
+      description: "Applies a held removal: a scan that would remove many titles from one folder waits for this. 404 when nothing is waiting for that folder; 409 when the scanner is turned off."
+      operationId: confirmLibraryRemoval
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmLibraryRemovalInputBody"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatusOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Remove the titles a scan no longer found
+      tags:
+        - library
   /v1/library/roots/discover:
     post:
       description: Asks the media server, Sonarr and Radarr for their folders, finds each one locally, and checks every folder can be opened. A source that fails keeps the folders it reported last time.
@@ -17165,9 +17296,29 @@ paths:
       summary: Use or stop using a media folder
       tags:
         - library
+  /v1/library/scan:
+    post:
+      description: Starts a scan of every folder in use now. 409 when the scanner is turned off.
+      operationId: rescanLibrary
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatusOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Check the media folders again
+      tags:
+        - library
   /v1/library/status:
     get:
-      description: "The status strip: whether any folder is in use, and whether every folder in use opened at its last check."
+      description: "The status strip: whether any folder is in use, whether every folder in use opened at its last check, what the scanner is doing, and any removal waiting for the maintainer."
       operationId: libraryStatus
       responses:
         "200":

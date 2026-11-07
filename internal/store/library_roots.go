@@ -21,6 +21,8 @@ type LibraryRoot struct {
 	// ByHand marks a folder the maintainer typed rather than one an authority reported.
 	ByHand  bool
 	AddedAt time.Time
+	// ScannedAt is when a walk of the root last completed; zero means never.
+	ScannedAt time.Time
 }
 
 // LibraryRootPath is where one authority (a media server or an arr) calls a root: one row of the
@@ -80,20 +82,23 @@ type LibraryRootStore interface {
 
 func (s *sqlStore) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
 	var out LibraryRoots
-	rows, err := s.db.QueryContext(ctx, `SELECT path, in_use, readable, checked_at, by_hand, added_at
+	rows, err := s.db.QueryContext(ctx, `SELECT path, in_use, readable, checked_at, by_hand, added_at, scanned_at
 		FROM library_roots ORDER BY path`)
 	if err != nil {
 		return out, fmt.Errorf("list library roots: %w", err)
 	}
 	for rows.Next() {
 		var r LibraryRoot
-		var checked, added int64
-		if err := rows.Scan(&r.Path, &r.InUse, &r.Readable, &checked, &r.ByHand, &added); err != nil {
+		var checked, added, scanned int64
+		if err := rows.Scan(&r.Path, &r.InUse, &r.Readable, &checked, &r.ByHand, &added, &scanned); err != nil {
 			_ = rows.Close()
 			return out, fmt.Errorf("list library roots: %w", err)
 		}
 		if checked > 0 {
 			r.CheckedAt = time.UnixMilli(checked).UTC()
+		}
+		if scanned > 0 {
+			r.ScannedAt = time.UnixMilli(scanned).UTC()
 		}
 		r.AddedAt = time.UnixMilli(added).UTC()
 		out.Roots = append(out.Roots, r)

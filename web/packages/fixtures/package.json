@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Deterministic \"test card\" fixtures for Storybook stories + tests (web + future mobile).",
+  "description": "Deterministic \"test card\" fixtures for Storybook stories and tests on web, phone and TV.",
   "exports": {
     ".": "./index.ts"
   },
