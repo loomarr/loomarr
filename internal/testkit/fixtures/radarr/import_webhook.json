@@ -28,7 +28,6 @@
       "1 - household"
     ],
     "originalLanguage": {
-      "id": 54,
       "name": "Urdu"
     }
   },
@@ -51,7 +50,6 @@
     "dateAdded": "2026-07-13T20:02:00.2791415Z",
     "languages": [
       {
-        "id": 54,
         "name": "Urdu"
       }
     ],
@@ -88,7 +86,6 @@
       "dateAdded": "2024-10-16T02:50:00.319612Z",
       "languages": [
         {
-          "id": 1,
           "name": "English"
         }
       ],
