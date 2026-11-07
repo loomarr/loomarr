@@ -50,7 +50,7 @@ func (s *Store) SaveNotificationDestinationRecord(ctx context.Context, destinati
 			credentials_encrypted = excluded.credentials_encrypted,
 			updated_at = excluded.updated_at`),
 		destination.ID, destination.Means, destination.Label, destination.Scope, destination.OwnerID,
-		destination.Audience, string(topicsJSON), notificationBool(destination.Enabled), string(configurationJSON),
+		destination.Audience, string(topicsJSON), destination.Enabled, string(configurationJSON),
 		destination.SubscriptionFingerprint, string(credentialKeysJSON), destination.CredentialsEncrypted,
 		epoch(destination.CreatedAt), epoch(destination.UpdatedAt))
 	if err != nil {
@@ -161,11 +161,10 @@ func scanNotificationDestinationRecord(sc scannable) (notifications.DestinationR
 	var destination notifications.DestinationRecord
 	var means, scope, audience, topicsJSON, configurationJSON string
 	var credentialKeysJSON sql.NullString
-	var enabled int
 	var createdAt, updatedAt int64
 	if err := sc.Scan(
 		&destination.ID, &means, &destination.Label, &scope, &destination.OwnerID, &audience,
-		&topicsJSON, &enabled, &configurationJSON, &destination.SubscriptionFingerprint,
+		&topicsJSON, &destination.Enabled, &configurationJSON, &destination.SubscriptionFingerprint,
 		&credentialKeysJSON, &destination.CredentialsEncrypted, &createdAt, &updatedAt,
 	); errors.Is(err, sql.ErrNoRows) {
 		return notifications.DestinationRecord{}, notifications.ErrNotFound
@@ -175,7 +174,6 @@ func scanNotificationDestinationRecord(sc scannable) (notifications.DestinationR
 	destination.Means = notifications.Means(means)
 	destination.Scope = notifications.DestinationScope(scope)
 	destination.Audience = notifications.RecipientKind(audience)
-	destination.Enabled = enabled != 0
 	destination.CreatedAt = fromEpoch(createdAt)
 	destination.UpdatedAt = fromEpoch(updatedAt)
 	if err := json.Unmarshal([]byte(topicsJSON), &destination.Topics); err != nil {
@@ -197,11 +195,4 @@ func orEmptyStringMap(values map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return values
-}
-
-func notificationBool(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }

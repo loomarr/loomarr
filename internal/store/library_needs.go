@@ -70,7 +70,7 @@ type LibraryNeedsStore interface {
 
 func (s *sqlStore) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT DISTINCT i.id FROM library_items i JOIN `+presentFiles+`
-		f ON f.id = i.id WHERE `+needWhere+` AND i.needs_noticed = 0 ORDER BY i.id`))
+		f ON f.id = i.id WHERE `+needWhere+` AND i.needs_noticed = FALSE ORDER BY i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("unnoticed library needs: %w", err)
 	}
@@ -91,7 +91,7 @@ func (s *sqlStore) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) 
 
 func (s *sqlStore) NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error {
 	for _, id := range itemIDs {
-		if _, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_items SET needs_noticed = 1 WHERE id = ?`), id); err != nil {
+		if _, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_items SET needs_noticed = TRUE WHERE id = ?`), id); err != nil {
 			return fmt.Errorf("notice library needs: %w", err)
 		}
 	}
@@ -100,7 +100,7 @@ func (s *sqlStore) NoticeLibraryNeeds(ctx context.Context, itemIDs []string) err
 
 // needWhere is a title that needs the maintainer: a movie or series nothing grounds, with a scan
 // origin, and no answer for it.
-const needWhere = `i.kind IN ('movie', 'series') AND i.grounded = 0 AND i.origin_key <> ''
+const needWhere = `i.kind IN ('movie', 'series') AND i.grounded = FALSE AND i.origin_key <> ''
 	AND NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
 		AND a.origin_key = i.origin_key)`
 
