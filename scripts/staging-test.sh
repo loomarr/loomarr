@@ -25,6 +25,7 @@ cat >"$FAKE_DIR/auth.last"
 printf '%s %s\n' "$method" "${url#https://api.example.test/v2}" >>"$FAKE_DIR/requests"
 if [ -n "$data" ]; then cp "$data" "$FAKE_DIR/body.json"; fi
 if [ -e "$FAKE_DIR/api-down" ]; then
+	printf '{"error":"Invalid API token.","status":401}\n'
 	exit 22
 fi
 case "$method" in
@@ -154,6 +155,9 @@ touch "$WORK/api-down"
 if "$ROOT/scripts/staging.sh" sweep >/dev/null 2>&1; then fail 'sweep went green with the API down'; fi
 if "$ROOT/scripts/staging.sh" down >/dev/null 2>&1; then fail 'down went green with the API down'; fi
 expect_refused 'an unreadable account' VERSION=1.0.0
+# The provider's reason is the only clue to a bad key, so it has to reach the run's log.
+reason="$("$ROOT/scripts/staging.sh" sweep 2>&1 >/dev/null || true)"
+[[ "$reason" == *'Invalid API token.'* ]] || fail "the provider's reason was lost: $reason"
 rm "$WORK/api-down"
 reset 'not json'
 if "$ROOT/scripts/staging.sh" sweep >/dev/null 2>&1; then fail 'sweep went green on a bad response'; fi

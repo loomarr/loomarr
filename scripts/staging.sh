@@ -48,14 +48,20 @@ api() {
 # through a pipe or process substitution looks like an empty account, and the sweep would go green
 # while a server keeps billing.
 ours() {
-	api GET '/instances?per_page=500' | jq -r --arg tag "$TAG" --arg prefix "$LABEL_PREFIX" '
+	local response
+	# Only a refusal is printed: a good response lists every server in the account, and logs are public.
+	if ! response="$(api GET '/instances?per_page=500')"; then
+		printf 'staging: the provider refused the listing: %s\n' "${response:0:300}" >&2
+		return 1
+	fi
+	jq -r --arg tag "$TAG" --arg prefix "$LABEL_PREFIX" '
 		.instances[]
 		| ((.tags // []) | map(tostring)) as $tags
 		| select(($tags | index($tag)) and ((.label // "") | startswith($prefix)))
 		| [.id, (if ($tags | index("keep")) then "keep"
 			else ([$tags[] | select(test("^expires-[0-9]+$")) | ltrimstr("expires-")][0] // "0") end),
 		   (.power_status // "unknown")]
-		| @tsv'
+		| @tsv' <<<"$response"
 }
 
 destroy() {
