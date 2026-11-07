@@ -162,31 +162,21 @@ type searchDoc struct {
 	Date string `json:"date"`
 }
 
-type registeredSourceContextKey struct{}
-
-type acquisitionContext struct {
+// archiveAcquisition is the one acquisition a walk downloads for: the source and acquisition the
+// sidecars are marked with, the publication folder an earlier fetch already landed in, and the
+// write guard every file it stages counts against. The zero value is an unregistered fetch with no
+// ceiling.
+type archiveAcquisition struct {
 	sourceID       string
 	acquisitionID  string
 	publicationDir string
-	writeGuard     *writeGuard
-}
-
-func withAcquisition(ctx context.Context, sourceID, acquisitionID, publicationDir string, guard *writeGuard) context.Context {
-	return context.WithValue(ctx, registeredSourceContextKey{}, acquisitionContext{
-		sourceID: sourceID, acquisitionID: acquisitionID, publicationDir: publicationDir,
-		writeGuard: guard,
-	})
-}
-
-func acquisitionFrom(ctx context.Context) acquisitionContext {
-	acquisition, _ := ctx.Value(registeredSourceContextKey{}).(acquisitionContext)
-	return acquisition
+	guard          *writeGuard
 }
 
 // walk resolves an Archive URL/id and downloads its video content. Returns
 // (fetched, skipped, error). A per-item failure inside a collection is logged by
 // the caller via the aggregate error; here a collection continues past a bad item.
-func (c *archiveClient) walk(ctx context.Context, rawURL, dropDir string) (int, int, []Output, error) {
+func (c *archiveClient) walk(ctx context.Context, acquisition archiveAcquisition, rawURL, dropDir string) (int, int, []Output, error) {
 	id := archiveIDFromURL(rawURL)
 	if id == "" {
 		return 0, 0, nil, fmt.Errorf("archive: cannot extract id from %q", rawURL)
@@ -196,9 +186,9 @@ func (c *archiveClient) walk(ctx context.Context, rawURL, dropDir string) (int, 
 		return 0, 0, nil, err
 	}
 	if meta.Metadata.MediaType == "collection" {
-		return c.walkCollection(ctx, id, dropDir)
+		return c.walkCollection(ctx, acquisition, id, dropDir)
 	}
-	return c.downloadItem(ctx, id, meta, dropDir)
+	return c.downloadItem(ctx, acquisition, id, meta, dropDir)
 }
 
 func (c *archiveClient) estimate(ctx context.Context, rawURL string) (storagegovernor.MediaBudget, error) {
@@ -269,7 +259,7 @@ func estimateArchiveItem(meta metadataResp) (storagegovernor.MediaBudget, error)
 }
 
 // walkCollection lists a collection's member items and walks each (capped).
-func (c *archiveClient) walkCollection(ctx context.Context, collID, dropDir string) (int, int, []Output, error) {
+func (c *archiveClient) walkCollection(ctx context.Context, acquisition archiveAcquisition, collID, dropDir string) (int, int, []Output, error) {
 	ids, err := c.collectionItems(ctx, collID)
 	if err != nil {
 		return 0, 0, nil, err
@@ -288,7 +278,7 @@ func (c *archiveClient) walkCollection(ctx context.Context, collID, dropDir stri
 			failures = errors.Join(failures, err)
 			continue // skip a bad item, keep the collection going
 		}
-		f, s, itemOutputs, err := c.downloadItem(ctx, id, meta, dropDir)
+		f, s, itemOutputs, err := c.downloadItem(ctx, acquisition, id, meta, dropDir)
 		fetched += f
 		skipped += s
 		outputs = append(outputs, itemOutputs...)
@@ -301,7 +291,7 @@ func (c *archiveClient) walkCollection(ctx context.Context, collID, dropDir stri
 }
 
 // downloadItem picks the best video derivative and downloads it + a sidecar.
-func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metadataResp, dropDir string) (int, int, []Output, error) {
+func (c *archiveClient) downloadItem(ctx context.Context, acquisition archiveAcquisition, id string, meta metadataResp, dropDir string) (int, int, []Output, error) {
 	file, ok := pickVideoFile(meta.Files)
 	if !ok {
 		return 0, 0, nil, nil // no video file (e.g. audio-only) → nothing to fetch
@@ -311,7 +301,6 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 	mediaPath := filepath.Join(dropDir, base)
 	sidecarPath := strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 
-	acquisition := acquisitionFrom(ctx)
 	existingPath := mediaPath
 	if acquisition.publicationDir != "" {
 		existingPath = filepath.Join(acquisition.publicationDir, base)
@@ -323,7 +312,7 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 	// Download from <scheme>://<server><dir>/<url-encoded file name> (prod: https;
 	// the server host + dir come from the metadata response).
 	dlURL := c.scheme + "://" + meta.Server + meta.Dir + "/" + url.PathEscape(file.Name)
-	if err := c.fetchTo(ctx, dlURL, mediaPath); err != nil {
+	if err := c.fetchTo(ctx, dlURL, mediaPath, acquisition.guard); err != nil {
 		return 0, 0, nil, fmt.Errorf("archive download %s: %w", id, err)
 	}
 	digest, size, clipHash, err := c.fs.Inspect(mediaPath)
@@ -353,7 +342,7 @@ func (c *archiveClient) downloadItem(ctx context.Context, id string, meta metada
 		acquisition.sourceID, acquisition.acquisitionID,
 	)
 	sidecar, _ := json.MarshalIndent(fields, "", "  ")
-	if err := acquisition.writeGuard.Add(ctx, int64(len(sidecar))); err != nil {
+	if err := acquisition.guard.Add(ctx, int64(len(sidecar))); err != nil {
 		output.SidecarPath = ""
 		output.Repair = "archive sidecar exceeded reserved storage: " + err.Error()
 		return 1, 0, []Output{output}, err
@@ -420,7 +409,7 @@ func (c *archiveClient) getJSON(ctx context.Context, u string, out any) error {
 	return json.Unmarshal(data, out)
 }
 
-func (c *archiveClient) fetchTo(ctx context.Context, u, path string) error {
+func (c *archiveClient) fetchTo(ctx context.Context, u, path string, guard *writeGuard) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return err
@@ -433,7 +422,7 @@ func (c *archiveClient) fetchTo(ctx context.Context, u, path string) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("GET %s: status %d", u, resp.StatusCode)
 	}
-	return c.fs.WriteStream(ctx, path, resp.Body, acquisitionFrom(ctx).writeGuard)
+	return c.fs.WriteStream(ctx, path, resp.Body, guard)
 }
 
 // archiveIDFromURL extracts the Archive item/collection id from a URL or bare id.
