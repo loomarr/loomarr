@@ -28,8 +28,9 @@ on:
 permissions:
   contents: read
 
+# Per event, because a group keeps one pending run: a sweep must not displace a queued down.
 concurrency:
-  group: staging
+  group: staging-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:

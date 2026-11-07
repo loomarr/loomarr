@@ -43,14 +43,18 @@ api() {
 	printf 'header = "Authorization: Bearer %s"\n' "$VULTR_API_KEY" | curl "${args[@]}" "$API$path"
 }
 
-# ours prints one "id expiry" line per staging server. The expiry is "keep" for the demo site, and
-# 0 when it is unreadable.
+# ours prints one "id expiry power" line per staging server. The expiry is "keep" for the demo
+# site, and 0 when it is unreadable. Callers assign it first and check the status: a failure read
+# through a pipe or process substitution looks like an empty account, and the sweep would go green
+# while a server keeps billing.
 ours() {
 	api GET '/instances?per_page=500' | jq -r --arg tag "$TAG" --arg prefix "$LABEL_PREFIX" '
 		.instances[]
-		| select((.tags | index($tag)) and (.label | startswith($prefix)))
-		| [.id, (if (.tags | index("keep")) then "keep"
-			else ([.tags[] | select(test("^expires-[0-9]+$")) | ltrimstr("expires-")][0] // "0") end)]
+		| ((.tags // []) | map(tostring)) as $tags
+		| select(($tags | index($tag)) and ((.label // "") | startswith($prefix)))
+		| [.id, (if ($tags | index("keep")) then "keep"
+			else ([$tags[] | select(test("^expires-[0-9]+$")) | ltrimstr("expires-")][0] // "0") end),
+		   (.power_status // "unknown")]
 		| @tsv'
 }
 
@@ -79,7 +83,9 @@ up() {
 		[[ "$image" =~ ^[a-z0-9./-]+:[0-9A-Za-z._-]+$ ]] || die "invalid STAGING_IMAGE: $image"
 		name="$LABEL_PREFIX${commit:0:12}"
 	fi
-	[ -z "$(ours)" ] || die 'a staging server already exists; run down first'
+	local existing
+	existing="$(ours)" || die 'could not list servers, so nothing was created'
+	[ -z "$existing" ] || die 'a staging server already exists; run down first'
 
 	local lifetime=keep
 	if [ "$hours" != keep ]; then
@@ -91,8 +97,10 @@ up() {
 			"$name" "$version" "$image" "$commit" "$TS_AUTHKEY"
 		cat "$ROOT/docker/staging-boot.sh.tmpl"
 	} >"$TMP/boot"
+	# Through a file, because the boot script holds the tailnet key and argv is visible.
+	base64 -w0 "$TMP/boot" >"$TMP/boot.b64"
 	jq -n --arg region "$REGION" --arg plan "$PLAN" --argjson os "$OS_ID" --arg label "$name" \
-		--arg tag "$TAG" --arg lifetime "$lifetime" --arg boot "$(base64 -w0 "$TMP/boot")" \
+		--arg tag "$TAG" --arg lifetime "$lifetime" --rawfile boot "$TMP/boot.b64" \
 		'{region: $region, plan: $plan, os_id: $os, label: $label, hostname: $label, backups: "disabled",
 		  tags: [$tag, $lifetime], user_data: $boot}' >"$TMP/body.json"
 	local id
@@ -103,10 +111,12 @@ up() {
 
 down() {
 	[ -n "${VULTR_API_KEY:-}" ] || die 'VULTR_API_KEY is not set'
-	local id _expiry
-	while IFS=$'\t' read -r id _expiry; do
-		destroy "$id"
-	done < <(ours)
+	local list id _rest
+	list="$(ours)" || die 'could not list servers, so nothing was destroyed'
+	[ -n "$list" ] || printf 'staging: no server to destroy\n'
+	while IFS=$'\t' read -r id _rest; do
+		[ -z "$id" ] || destroy "$id"
+	done <<<"$list"
 }
 
 sweep() {
@@ -114,13 +124,19 @@ sweep() {
 		printf 'staging: VULTR_API_KEY is not set, so nothing to sweep\n'
 		return
 	fi
-	local id expiry now
+	local list id expiry power now
+	list="$(ours)" || die 'could not list servers, so nothing was swept'
 	now="$(date +%s)"
-	while IFS=$'\t' read -r id expiry; do
-		if [ "$expiry" != keep ] && [ "$expiry" -le "$now" ]; then
+	while IFS=$'\t' read -r id expiry power; do
+		[ -n "$id" ] || continue
+		# A failed boot powers the server off, the one signal it can send without a cloud key.
+		if [ "$power" = stopped ]; then
+			printf 'staging: %s is powered off, so its boot failed\n' "$id"
+			destroy "$id"
+		elif [ "$expiry" != keep ] && [ "$expiry" -le "$now" ]; then
 			destroy "$id"
 		fi
-	done < <(ours)
+	done <<<"$list"
 }
 
 case "${1:-}" in
