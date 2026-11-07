@@ -351,18 +351,28 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-tokens-verify": exactWorkflowStep(6, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 1"}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify eval-contract": exactWorkflowStep(5, "Static analysis and repository contracts", workflowStepAuthority{targets: []string{"fmt", "shellcheck", "privacy-verify", "vet", "tags-verify", "vet-tags", "lint", "agent-harness-test", "compose-verify", "release-verify", "go-race-verify", "eval-contract"}, environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
-			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}}),
-			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}}),
-			"make config-docs-verify":       exactWorkflowStep(8, "Config docs are committed and current", workflowStepAuthority{targets: []string{"config-docs-verify"}}),
-			"make arch-docs-verify":         exactWorkflowStep(9, "The §2 package map is committed and current", workflowStepAuthority{targets: []string{"arch-docs-verify"}}),
-			"make dev-docs-verify":          exactWorkflowStep(10, "Command reference is committed and current", workflowStepAuthority{targets: []string{"dev-docs-verify"}}),
-			"make retired-verify":           exactWorkflowStep(11, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}}),
-			"make ci-lint":                  exactWorkflowStep(12, "Workflows are valid", workflowStepAuthority{targets: []string{"ci-lint"}}),
-			"make observability-verify":     exactWorkflowStep(13, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true})}),
-		"ci-go-cache-warm.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
-		}),
+			"make vet vet-tags lint": exactWorkflowStep(4, "Static analysis", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "matrix.shard == 1"}),
+			"make fmt shellcheck privacy-verify tags-verify agent-harness-test compose-verify release-verify go-race-verify eval-contract": exactWorkflowStep(5, "Repository contracts", workflowStepAuthority{targets: []string{"fmt", "shellcheck", "privacy-verify", "tags-verify", "agent-harness-test", "compose-verify", "release-verify", "go-race-verify", "eval-contract"}, condition: "matrix.shard == 2", environment: map[string]string{"MAKEFLAGS": "-j4 --output-sync=target"}}),
+			"make go-shard-verify SHARDS=2": exactWorkflowStep(6, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}, condition: "matrix.shard == 2"}),
+			"make openapi-verify":           exactWorkflowStep(7, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}, condition: "matrix.shard == 2"}),
+			"make config-docs-verify":       exactWorkflowStep(8, "Config docs are committed and current", workflowStepAuthority{targets: []string{"config-docs-verify"}, condition: "matrix.shard == 2"}),
+			"make arch-docs-verify":         exactWorkflowStep(9, "The §2 package map is committed and current", workflowStepAuthority{targets: []string{"arch-docs-verify"}, condition: "matrix.shard == 2"}),
+			"make dev-docs-verify":          exactWorkflowStep(10, "Command reference is committed and current", workflowStepAuthority{targets: []string{"dev-docs-verify"}, condition: "matrix.shard == 2"}),
+			"make retired-verify":           exactWorkflowStep(11, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}, condition: "matrix.shard == 2"}),
+			"make ci-lint":                  exactWorkflowStep(12, "Workflows are valid", workflowStepAuthority{targets: []string{"ci-lint"}, condition: "matrix.shard == 2"}),
+			"make observability-verify":     exactWorkflowStep(13, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, condition: "matrix.shard == 2", allowsAcquisition: true})}),
+		"ci-go-cache-warm.yml": {
+			environment: standardWorkflowEnvironment(),
+			permissions: standardWorkflowPermissions(),
+			jobs: map[string]workflowJobAuthority{
+				"run": {steps: map[string]workflowStepAuthority{
+					"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+				}},
+				"contracts": {steps: map[string]workflowStepAuthority{
+					"make vet vet-tags lint": exactWorkflowStep(4, "Compile what the contracts analyse", workflowStepAuthority{targets: []string{"vet", "vet-tags", "lint"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+				}},
+			},
+		},
 		"ci-go.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make test GO_TEST_LANE=${{ matrix.lane }}": exactWorkflowStep(11, "", workflowStepAuthority{targets: []string{"test"}}),
 		}),

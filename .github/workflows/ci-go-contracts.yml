@@ -12,29 +12,33 @@ env:
 
 jobs:
   run:
-    name: Go — repository contracts
+    name: Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
+    # Two runners for wall clock: this job sets PR time for Go changes. Shard 1 owns the compile-heavy
+    # analysis, shard 2 the repository contracts, and every check runs in exactly one of them.
+    strategy:
+      fail-fast: false # one shard's failures must not hide the other's
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Cache epoch
-        id: epoch
-        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      # Newest go-contracts cache by prefix. The Go cache warm workflow alone saves it, once per ISO
+      # week and go.sum. The path list must match that job and merge-gate.yml exactly: GitHub
+      # versions a cache by its paths.
       - name: Restore contract caches
-        id: cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.14.0-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
+          key: go-contracts-${{ runner.os }}-
           restore-keys: |
-            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.14.0-${{ hashFiles('go.sum', 'Cargo.lock') }}-
-            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.14.0-
+            go-contracts-${{ runner.os }}-
       # On a cache miss this job's module cache is empty, and `release-verify` runs
       # TestGoImpactSelector, whose scripts/go-impact.sh shells out to `go list ./...` over the
       # whole repo — the one call in this job that needs the FULL module graph at once. Download
@@ -43,32 +47,35 @@ jobs:
       # same bounded policy as container pulls (#1900; run 38418263494 lost the job to one reset).
       - name: Download Go modules
         run: ./scripts/go-mod-download.sh
-      - name: Static analysis and repository contracts
-        run: make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify eval-contract
+      - name: Static analysis
+        if: matrix.shard == 1
+        run: make vet vet-tags lint # serial: each already uses every core, and -j4 was slower
+      - name: Repository contracts
+        if: matrix.shard == 2
+        run: make fmt shellcheck privacy-verify tags-verify agent-harness-test compose-verify release-verify go-race-verify eval-contract
         env:
-          MAKEFLAGS: -j4 --output-sync=target # independent checks; this job sets PR time for Go changes
+          MAKEFLAGS: -j4 --output-sync=target # independent checks
       - name: The test lanes cover every package
+        if: matrix.shard == 2
         run: make go-shard-verify SHARDS=2
       - name: OpenAPI spec is committed and current
+        if: matrix.shard == 2
         run: make openapi-verify
       - name: Config docs are committed and current
+        if: matrix.shard == 2
         run: make config-docs-verify
       - name: The §2 package map is committed and current
+        if: matrix.shard == 2
         run: make arch-docs-verify
       - name: Command reference is committed and current
+        if: matrix.shard == 2
         run: make dev-docs-verify
       - name: Retired identifiers are gone from prose
+        if: matrix.shard == 2
         run: make retired-verify
       - name: Workflows are valid
+        if: matrix.shard == 2
         run: make ci-lint
       - name: Observability artifacts are provisionable
+        if: matrix.shard == 2
         run: make observability-verify
-      - name: Save contract caches (main only)
-        if: always() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/.cache/golangci-lint
-          key: ${{ steps.cache.outputs.cache-primary-key }}
