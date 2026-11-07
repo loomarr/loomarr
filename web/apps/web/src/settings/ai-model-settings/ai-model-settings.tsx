@@ -1,65 +1,206 @@
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { SettingKey } from "@loomarr/api/models/settingKey";
+import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
+import type { SettingKey } from "@loomarr/api/models/settingKey";
+import type { SystemLLMStatus } from "@loomarr/api/models/systemLLMStatus";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useState } from "react";
+import { useState } from "react";
 import { HostedModelPicker } from "@/components/loomarr/ai/hosted-model-picker";
 import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { useLoomarrEventListener } from "@/events/events-provider";
+import { useModelPull } from "@/settings/use-model-pull";
+import {
+  REUSE_LINEUP,
+  sameVisionChoice,
+  type VisionChoice,
+  visionChoiceOf,
+  visionChoiceSettings,
+} from "@/settings/vision-choice";
 
-type RoleOption = {
-  id: string;
-  label: string;
-  detail: string;
+// A hosted provider's lineup: test its credentials, then pick a tool-capable model from its
+// live /models list.
+const HostedLineup = ({
+  status,
+  provider,
+  onModelChange,
+}: {
+  status: SystemLLMStatus;
+  provider?: HostedProviderView;
+  onModelChange: () => void;
+}) => {
+  const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: onModelChange } });
+  const testProvider = systemApi.useSystemLlmTest();
+  const testResult = unwrap(testProvider.data);
+  const modelReady = Boolean(
+    status.model && provider?.models?.some((model) => model.id === status.model && model.tools),
+  );
+  const providers = provider
+    ? [{ ...provider, models: provider.models?.filter((model) => model.tools) }]
+    : [];
+
+  return (
+    <div className="flex flex-col gap-3">
+      {select.error != null && <ErrorState error={select.error} />}
+      {provider?.keyConfigured && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            disabled={testProvider.isPending}
+            onClick={() =>
+              testProvider.mutate({
+                data: {
+                  provider: provider.key,
+                  ...(provider.key === "custom" ? { baseUrl: provider.baseUrl } : {}),
+                },
+              })
+            }
+          >
+            {testProvider.isPending ? "Testing credentials…" : "Test provider credentials"}
+          </Button>
+          {testResult?.ok && (
+            <p role="status" className="text-lock text-sm">
+              {provider.label} credentials authorized.{" "}
+              {modelReady
+                ? `${status.model} is selected as the lineup model.`
+                : "Choose a tool-capable lineup model to finish AI setup."}
+            </p>
+          )}
+          {testResult && !testResult.ok && (
+            <p role="status" className="text-onair-300 text-sm">
+              {testResult.error ?? `${provider.label} rejected these credentials.`}
+            </p>
+          )}
+        </div>
+      )}
+      <HostedModelPicker
+        providers={providers}
+        activeModel={status.model}
+        busy={select.isPending}
+        onSelect={(sel) => select.mutate({ data: sel })}
+      />
+    </div>
+  );
 };
 
-const RolePicker = ({
-  title,
-  description,
+// A local Ollama's lineup gets two lists: the INSTALLED models (fit-ranked, tool-capable, select
+// or grey-out) and the ones compatible to DOWNLOAD (popular Hugging Face GGUF models sized
+// against this machine's VRAM, best-first). Ollama ships no "what can I download" API, so the
+// catalog is what you've pulled plus a machine-ranked browse, never a hardcoded list.
+const OllamaLineup = ({ status, onModelChange }: { status: SystemLLMStatus; onModelChange: () => void }) => {
+  const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: onModelChange } });
+  const pull = useModelPull();
+  const discover = systemApi.useSystemLlmDiscover({ query: { retry: false } });
+  const discoverBody = unwrap(discover.data);
+  const discoverFailed =
+    (discover.data !== undefined && discover.data.status !== 200) || discoverBody?.sourceOk === false;
+  const installed = (status.catalog ?? []).filter((model) => model.tools);
+
+  return (
+    <div className="flex flex-col gap-5">
+      {select.error != null && <ErrorState error={select.error} />}
+      {discover.error != null && <ErrorState error={discover.error} onRetry={() => discover.refetch()} />}
+      {pull.error != null && <ErrorState error={pull.error} />}
+      {installed.length > 0 ? (
+        <ModelPicker
+          catalog={installed}
+          active={status.model}
+          gpuName={status.gpuName}
+          vramGiB={status.vramGiB}
+          busy={select.isPending}
+          pulling={pull.pulling}
+          onSelect={(model) => select.mutate({ data: { model } })}
+          onPull={pull.start}
+        />
+      ) : (
+        <p className="text-muted-foreground text-sm">
+          No tool-capable models installed yet. Download one below to get started.
+        </p>
+      )}
+      <ModelDiscover
+        results={discoverBody?.models ?? undefined}
+        loading={discover.isFetching}
+        sourceError={discoverFailed}
+        pulling={pull.pulling}
+        onPull={pull.start}
+      />
+    </div>
+  );
+};
+
+const TmdbNotice = ({ configured }: { configured: boolean }) => (
+  <section className="border-border bg-muted/40 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+    <div>
+      <p className="text-sm font-medium">
+        {configured ? "TMDB key configured" : "TMDB grounding is still needed"}
+      </p>
+      <p className="text-muted-foreground text-sm">
+        {configured
+          ? "Loomarr can use TMDB to ground channel suggestions in real titles."
+          : "Your AI connection is separate. Connect TMDB before building a channel from a description."}
+      </p>
+    </div>
+    {!configured && (
+      <Link
+        to="/settings/connections"
+        search={{ focus: "tmdb" }}
+        className={buttonVariants({ variant: "outline", size: "sm" })}
+      >
+        Connect TMDB
+      </Link>
+    )}
+  </section>
+);
+
+type VisionOption = { choice: VisionChoice; label: string; detail: string };
+
+// The first three choices are guided; the rest wait behind "Show all", except the active one,
+// which always shows.
+const VisionPicker = ({
   options,
   active,
   onSelect,
 }: {
-  title: string;
-  description: string;
-  options: RoleOption[];
-  active: string;
-  onSelect: (id: string) => void;
+  options: VisionOption[];
+  active: VisionChoice;
+  onSelect: (choice: VisionChoice) => void;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const guided = options.slice(0, 3);
   const current = options.find(
-    (option) => option.id === active && !guided.some((item) => item.id === active),
+    (option) =>
+      sameVisionChoice(option.choice, active) &&
+      !guided.some((item) => sameVisionChoice(item.choice, active)),
   );
   const shown = expanded ? options : current ? [...guided, current] : guided;
 
   return (
     <section
-      aria-labelledby={`role-${title.toLowerCase()}`}
+      aria-labelledby="role-vision"
       className="border-border flex flex-col gap-2 rounded-md border p-3"
     >
       <div>
-        <h3 id={`role-${title.toLowerCase()}`} className="text-sm font-medium">
-          {title}
+        <h3 id="role-vision" className="text-sm font-medium">
+          Vision
         </h3>
-        <p className="text-muted-foreground text-sm">{description}</p>
+        <p className="text-muted-foreground text-sm">
+          Reads sampled filler frames. It inherits the lineup model unless you choose a vision-capable model.
+        </p>
       </div>
       <div className="grid gap-2">
         {shown.map((option) => {
-          const selected = option.id === active;
+          const selected = sameVisionChoice(option.choice, active);
           return (
             <Button
-              key={option.id}
+              key={`${option.choice.provider}:${option.choice.model}`}
               type="button"
               variant={selected ? "secondary" : "outline"}
               className="h-auto min-h-10 justify-start px-3 py-2 text-left whitespace-normal"
-              onClick={() => onSelect(option.id)}
+              onClick={() => onSelect(option.choice)}
               disabled={selected}
             >
               <span>
@@ -85,26 +226,77 @@ const RolePicker = ({
   );
 };
 
-// The §8.1 model picker, wired. Selecting hot-swaps the running suggester (no restart),
-// which is why this sits beside the AI settings form rather than inside it: the form
-// writes llm.* through PATCH, while select/pull are actions with their own lifecycles.
+// The vision role: reuse the lineup model, or name a vision-capable model from the local
+// catalog or, with a hosted lineup, from that provider.
+const VisionSection = ({
+  status,
+  hosted,
+  provider,
+  active,
+  onChange,
+}: {
+  status: SystemLLMStatus;
+  hosted: boolean;
+  provider?: HostedProviderView;
+  active: VisionChoice;
+  onChange: (choice: VisionChoice) => void;
+}) => {
+  const catalog = status.catalog ?? [];
+  const lineup = hosted
+    ? provider?.models?.find((model) => model.id === status.model)
+    : catalog.find((model) => model.tag === status.model);
+  const options: VisionOption[] = [
+    {
+      choice: REUSE_LINEUP,
+      label: "Reuse the text-role choice",
+      detail: lineup?.vision
+        ? "This model advertises image input, so no separate vision model is needed."
+        : "Inherits the text role. Choose a vision model below when that model cannot see images.",
+    },
+    ...catalog
+      .filter((model) => model.vision)
+      .map((model) => ({
+        choice: { provider: "ollama" as const, model: model.tag },
+        label: model.label,
+        detail: `Local Ollama · ${model.fit.replace("_", " ")} · ${model.why}`,
+      })),
+    ...(hosted && provider?.keyConfigured
+      ? (provider.models ?? [])
+          .filter((model) => model.vision)
+          .map((model) => ({
+            choice: { provider: "inherit" as const, model: model.id },
+            label: model.label,
+            detail: `${provider.label} · vision capable`,
+          }))
+      : []),
+  ];
+
+  return (
+    <CollapsibleSection
+      title="Advanced vision model"
+      description="Choose a separate model only when the lineup model cannot read clip frames."
+    >
+      <div className="flex flex-col gap-4">
+        <VisionPicker options={options} active={active} onSelect={onChange} />
+      </div>
+    </CollapsibleSection>
+  );
+};
+
+// The model picker (config-design §8.1), wired. Selecting hot-swaps the running suggester (no
+// restart), which is why this sits beside the AI settings form rather than inside it: the form
+// writes llm.* through PATCH, while select and pull are actions with their own lifecycles.
 //
-// Local Ollama gets two surfaces: the INSTALLED list (fit-ranked, tool-capable, select or
-// grey-out) and a compatible-to-DOWNLOAD list (popular HF GGUF models sized against this
-// machine's VRAM, best-first) — because Ollama ships no "what can I download" API, the
-// catalog is what you've pulled plus a machine-ranked browse, never a hardcoded list. A
-// hosted (OpenAI-compatible) provider instead gets a live model picker over its /models.
+// `provider` is the LIVE (possibly unsaved) provider from the settings form, so the right lineup
+// appears the instant the dropdown flips. It doesn't wait for Save, matching how the URL and key
+// fields already react live.
 //
-// Pull progress is authoritative at the operation GET returned by POST /pull. `llm_pull` SSE
-// frames only accelerate that polling path, so a dropped frame or reconnect loses nothing.
+// onModelChange fires after a successful model select: the seam a host (the wizard) uses to
+// refresh what this component doesn't own, like the setup checklist whose `llm` verdict flips
+// green once a model is active. Settings passes nothing; its own status invalidation is enough.
 //
-// `provider` is the LIVE (possibly unsaved) provider from the settings form, so the right
-// surface appears the instant the dropdown flips — it doesn't wait for Save, matching how
-// the URL/key fields already react live.
-// onModelChange fires after a successful model select OR a completed pull — the seam a host
-// (e.g. the wizard) uses to refresh things this component doesn't own, like the setup-status
-// checklist whose `llm` verdict flips green once a model is active. Settings passes nothing
-// (its own status invalidation is enough); the wizard passes a setup-status invalidation.
+// onRoleSettingChange stages the vision role into the host's settings edit buffer. Without it
+// only the lineup renders (the wizard).
 const AiModelSettings = ({
   provider,
   baseUrl,
@@ -123,240 +315,38 @@ const AiModelSettings = ({
   tmdbConfigured?: boolean;
 }) => {
   const queryClient = useQueryClient();
-  const [pulling, setPulling] = useState<{ tag: string; percent?: number }>();
-  // A failed download must SAY so. Clearing the progress on error looked identical to
-  // success, leaving the operator to notice the row still said "Download".
-  const [pullError, setPullError] = useState<string>();
-  const [pullJobId, setPullJobId] = useState<string>();
-
-  const isHosted = provider === "openai";
   // Status carries BOTH the local catalog and the hosted-provider catalog, so it's always
-  // fetched — the branch below picks which surface to render from the same payload.
+  // fetched; the lineup below picks which to render from the same payload.
   const llm = systemApi.useSystemLlmStatus({ query: { retry: false } });
   const status = unwrap(llm.data);
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() });
-  // A model became active: refresh our own status AND notify the host (setup-status, etc.).
   const modelChanged = () => {
-    invalidate();
+    void queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() });
     void queryClient.invalidateQueries({ queryKey: setupApi.getSetupStatusQueryKey() });
     onModelChange?.();
-  };
-
-  const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: modelChanged } });
-  const testProvider = systemApi.useSystemLlmTest();
-  const pull = systemApi.useSystemLlmPull({
-    mutation: {
-      onSuccess: (response) => {
-        const body = unwrap(response);
-        if (body?.jobId) setPullJobId(body.jobId);
-      },
-    },
-  });
-  const pullOperation = systemApi.useSystemLlmPullOperation(pullJobId ?? "", {
-    query: {
-      enabled: Boolean(pullJobId),
-      retry: false,
-      refetchInterval: pullJobId ? 1_000 : false,
-    },
-  });
-
-  // The compatible-to-download list: the BE ranks popular HF models against this
-  // machine's VRAM. Fetched only on the Ollama branch (a hosted provider downloads
-  // nothing); a pull success invalidates it so a freshly-pulled model leaves the list.
-  const discover = systemApi.useSystemLlmDiscover({ query: { retry: false, enabled: !isHosted } });
-
-  const operation = unwrap(pullOperation.data);
-  useEffect(() => {
-    if (!operation || !pullJobId || operation.jobId !== pullJobId) return;
-    if (operation.status === "error") {
-      setPullError(operation.error ?? `Downloading ${operation.model} failed.`);
-      setPulling(undefined);
-      setPullJobId(undefined);
-      return;
-    }
-    if (operation.status === "success") {
-      setPulling(undefined);
-      setPullJobId(undefined);
-      void queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmStatusQueryKey() });
-      void queryClient.invalidateQueries({ queryKey: systemApi.getSystemLlmDiscoverQueryKey() });
-      return;
-    }
-    setPulling({
-      tag: operation.model,
-      percent: operation.percent >= 0 ? operation.percent : undefined,
-    });
-  }, [operation, pullJobId, queryClient]);
-
-  useLoomarrEventListener({
-    onLlmPull: (e) => {
-      if (!e.model) return;
-      if (pullJobId && e.jobId && e.jobId !== pullJobId) return;
-      if (e.status === "error") {
-        setPullError(e.error ?? `Downloading ${e.model} failed.`);
-      }
-      setPulling({ tag: e.model, percent: e.percent && e.percent >= 0 ? e.percent : undefined });
-      if (pullJobId) {
-        void queryClient.invalidateQueries({
-          queryKey: systemApi.getSystemLlmPullOperationQueryKey(pullJobId),
-        });
-      }
-    },
-  });
-
-  const startPull = (model: string) => {
-    setPullError(undefined);
-    setPulling({ tag: model });
-    setPullJobId(undefined);
-    pull.mutate({ data: { model } });
   };
 
   if (llm.error) return <ErrorState error={llm.error} onRetry={() => llm.refetch()} />;
   if (!status) return <p className="text-muted-foreground text-sm">Checking your AI provider…</p>;
 
-  const hosted = status.hosted ?? [];
+  const hosted = provider === "openai";
+  const candidates = status.hosted ?? [];
   const activeProvider =
-    hosted.find((candidate) => candidate.active) ??
-    hosted.find((candidate) => candidate.baseUrl === baseUrl) ??
-    hosted.find((candidate) => candidate.key === "openrouter");
-  const catalog = status.catalog ?? [];
-  const lineupCatalog = catalog.filter((model) => model.tools);
-  const discoverBody = unwrap(discover.data);
-  const discovered = discoverBody?.models ?? undefined;
-  const discoverFailed =
-    (discover.data !== undefined && discover.data.status !== 200) || discoverBody?.sourceOk === false;
+    candidates.find((candidate) => candidate.active) ??
+    candidates.find((candidate) => candidate.baseUrl === baseUrl) ??
+    candidates.find((candidate) => candidate.key === "openrouter");
 
-  let lineup: ReactNode;
-  if (isHosted) {
-    const testResult = unwrap(testProvider.data);
-    const modelReady = Boolean(
-      status.model && activeProvider?.models?.some((model) => model.id === status.model && model.tools),
-    );
-    const lineupProviders = activeProvider
-      ? [
-          {
-            ...activeProvider,
-            models: activeProvider.models?.filter((model) => model.tools),
-          },
-        ]
-      : [];
-    lineup = (
-      <div className="flex flex-col gap-3">
-        {select.error != null && <ErrorState error={select.error} />}
-        {activeProvider?.keyConfigured && (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="outline"
-              disabled={testProvider.isPending}
-              onClick={() =>
-                testProvider.mutate({
-                  data: {
-                    provider: activeProvider.key,
-                    ...(activeProvider.key === "custom" ? { baseUrl: activeProvider.baseUrl } : {}),
-                  },
-                })
-              }
-            >
-              {testProvider.isPending ? "Testing credentials…" : "Test provider credentials"}
-            </Button>
-            {testResult?.ok && (
-              <p role="status" className="text-lock text-sm">
-                {activeProvider.label} credentials authorized.{" "}
-                {modelReady
-                  ? `${status.model} is selected as the lineup model.`
-                  : "Choose a tool-capable lineup model to finish AI setup."}
-              </p>
-            )}
-            {testResult && !testResult.ok && (
-              <p role="status" className="text-onair-300 text-sm">
-                {testResult.error ?? `${activeProvider.label} rejected these credentials.`}
-              </p>
-            )}
-          </div>
-        )}
-        <HostedModelPicker
-          providers={lineupProviders}
-          activeModel={status.model}
-          busy={select.isPending}
-          onSelect={(sel) => select.mutate({ data: sel })}
-        />
-      </div>
-    );
-  } else if (!status.reachable) {
-    lineup = (
-      <p className="text-onair-300 text-sm">
-        Couldn't reach the Ollama host. Fix the URL above, then re-run the connection test.
-      </p>
-    );
-  } else {
-    lineup = (
-      <div className="flex flex-col gap-5">
-        {(select.error ?? pull.error) != null && <ErrorState error={select.error ?? pull.error} />}
-        {discover.error != null && <ErrorState error={discover.error} onRetry={() => discover.refetch()} />}
-        {pullError && <ErrorState error={new Error(pullError)} />}
-        {lineupCatalog.length > 0 ? (
-          <ModelPicker
-            catalog={lineupCatalog}
-            active={status.model}
-            gpuName={status.gpuName}
-            vramGiB={status.vramGiB}
-            busy={select.isPending}
-            pulling={pulling}
-            onSelect={(model) => select.mutate({ data: { model } })}
-            onPull={startPull}
-          />
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            No tool-capable models installed yet. Download one below to get started.
-          </p>
-        )}
-        <ModelDiscover
-          results={discovered}
-          loading={discover.isFetching}
-          sourceError={discoverFailed}
-          pulling={pulling}
-          onPull={startPull}
-        />
-      </div>
-    );
-  }
+  const lineup = hosted ? (
+    <HostedLineup status={status} provider={activeProvider} onModelChange={modelChanged} />
+  ) : !status.reachable ? (
+    <p className="text-onair-300 text-sm">
+      Couldn't reach the Ollama host. Fix the URL above, then re-run the connection test.
+    </p>
+  ) : (
+    <OllamaLineup status={status} onModelChange={modelChanged} />
+  );
 
   if (!onRoleSettingChange) return lineup;
 
-  const activeLineup = isHosted
-    ? activeProvider?.models?.find((model) => model.id === status.model)
-    : catalog.find((model) => model.tag === status.model);
-  const visionOptions: RoleOption[] = [
-    {
-      id: "inherit",
-      label: "Reuse the text-role choice",
-      detail: activeLineup?.vision
-        ? "This model advertises image input, so no separate vision model is needed."
-        : "Inherits the text role. Choose a vision model below when that model cannot see images.",
-    },
-    ...catalog
-      .filter((model) => model.vision)
-      .map((model) => ({
-        id: `ollama:${model.tag}`,
-        label: model.label,
-        detail: `Local Ollama · ${model.fit.replace("_", " ")} · ${model.why}`,
-      })),
-    ...(isHosted && activeProvider?.keyConfigured
-      ? (activeProvider?.models ?? [])
-          .filter((model) => model.vision)
-          .map((model) => ({
-            id: `hosted:${model.id}`,
-            label: model.label,
-            detail: `${activeProvider?.label ?? "Hosted"} · vision capable`,
-          }))
-      : []),
-  ];
-  const activeVision =
-    visionProvider === "inherit" && visionModel === ""
-      ? "inherit"
-      : visionProvider === "ollama" || (!isHosted && visionProvider === "inherit")
-        ? `ollama:${visionModel}`
-        : `hosted:${visionModel}`;
   return (
     <div className="flex flex-col gap-4">
       <section aria-labelledby="role-lineup" className="border-border flex flex-col gap-3 border-t pt-4">
@@ -370,55 +360,16 @@ const AiModelSettings = ({
         </div>
         {lineup}
       </section>
-      {tmdbConfigured !== undefined && (
-        <section className="border-border bg-muted/40 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
-          <div>
-            <p className="text-sm font-medium">
-              {tmdbConfigured ? "TMDB key configured" : "TMDB grounding is still needed"}
-            </p>
-            <p className="text-muted-foreground text-sm">
-              {tmdbConfigured
-                ? "Loomarr can use TMDB to ground channel suggestions in real titles."
-                : "Your AI connection is separate. Connect TMDB before building a channel from a description."}
-            </p>
-          </div>
-          {!tmdbConfigured && (
-            <Link
-              to="/settings/connections"
-              search={{ focus: "tmdb" }}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Connect TMDB
-            </Link>
-          )}
-        </section>
-      )}
-      <CollapsibleSection
-        title="Advanced vision model"
-        description="Choose a separate model only when the lineup model cannot read clip frames."
-      >
-        <div className="flex flex-col gap-4">
-          <RolePicker
-            title="Vision"
-            description="Reads sampled filler frames. It inherits the lineup model unless you choose a vision-capable model."
-            options={visionOptions}
-            active={activeVision}
-            onSelect={(id) => {
-              if (id === "inherit") {
-                onRoleSettingChange(SettingKey.FillerVisionProvider, "inherit");
-                onRoleSettingChange(SettingKey.FillerVisionModel, "");
-              } else {
-                const [kind, ...parts] = id.split(":");
-                onRoleSettingChange(
-                  SettingKey.FillerVisionProvider,
-                  kind === "ollama" ? "ollama" : "inherit",
-                );
-                onRoleSettingChange(SettingKey.FillerVisionModel, parts.join(":"));
-              }
-            }}
-          />
-        </div>
-      </CollapsibleSection>
+      {tmdbConfigured !== undefined && <TmdbNotice configured={tmdbConfigured} />}
+      <VisionSection
+        status={status}
+        hosted={hosted}
+        provider={activeProvider}
+        active={visionChoiceOf(visionProvider, visionModel, hosted)}
+        onChange={(choice) => {
+          for (const [key, value] of visionChoiceSettings(choice)) onRoleSettingChange(key, value);
+        }}
+      />
     </div>
   );
 };
