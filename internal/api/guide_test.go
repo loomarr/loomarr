@@ -187,6 +187,15 @@ func gridBlock(kind schedule.SlotKind, title string, offset time.Duration, mins 
 	}
 }
 
+// gridBlockAfter starts exactly where prev stopped. Two gridBlock calls read the clock twice, so
+// blocks meant to touch can land a millisecond apart.
+func gridBlockAfter(prev playout.Broadcast, kind schedule.SlotKind, title string, mins int) playout.Broadcast {
+	return playout.Broadcast{
+		Kind: kind, Title: title,
+		Start: prev.Stop, Stop: prev.Stop.Add(time.Duration(mins) * time.Minute),
+	}
+}
+
 // THE GATE'S CENTRAL CLAUSE: a pending slot and a filler pod must be DISTINGUISHABLE. The
 // endpoint this replaces collapsed both to `gap: true`, so the grid had no way to draw
 // "commercials are playing" differently from "we are still acquiring this" — two completely
@@ -254,12 +263,10 @@ func TestGuide_PendingBlocksAreMarkedNominal(t *testing.T) {
 // right for a "what's on next" strip and fatal for a grid — every later block silently slides
 // into the hole, so the timeline stops matching the clock.
 func TestGuide_GapsArePreservedNotFiltered(t *testing.T) {
+	programme := gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60)
+	brk := gridBlockAfter(programme, schedule.SlotFiller, "Break", 2)
 	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
-		"ch1": {
-			gridBlock(schedule.SlotProgram, "Midnight at the Mapleton", 0, 60),
-			gridBlock(schedule.SlotFiller, "Break", time.Hour, 2),
-			gridBlock(schedule.SlotProgram, "Emberfall Canyon", 62*time.Minute, 30),
-		},
+		"ch1": {programme, brk, gridBlockAfter(brk, schedule.SlotProgram, "Emberfall Canyon", 30)},
 	}}
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
 	srv, st := harness.Server, harness.Store
