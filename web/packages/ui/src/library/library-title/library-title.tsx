@@ -1,8 +1,8 @@
-import { formatBytes } from "@loomarr/core/format";
 import { Action, Badge, Disclosure, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
 import { PickTitle } from "../pick-title";
+import { lengthPhrase, TechnicalDetails } from "../technical-details";
 import type { LibraryTitleDetail, LibraryTitleProps, LibraryTitleSeason } from "./library-title.type";
 
 // A TITLE'S PAGE (#2151 decisions 25–26, design/library variant D): big artwork, the facts in plain
@@ -11,14 +11,6 @@ import type { LibraryTitleDetail, LibraryTitleProps, LibraryTitleSeason } from "
 
 // The poster sits beside the story from a tablet up, above it on a phone, as in the mock.
 const SIDE_BY_SIDE = 768;
-
-// 5,880,000 ms → "1 h 38 min"; 2,580,000 → "43 min".
-const lengthPhrase = (ms: number) => {
-  const minutes = Math.round(ms / 60000);
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h > 0 ? `${h} h ${m} min` : `${m} min`;
-};
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -81,36 +73,6 @@ const Season = ({ season }: { season: LibraryTitleSeason }) => {
               </Text>
             )}
           </Line>
-        ))}
-      </Stack>
-    </Disclosure>
-  );
-};
-
-const Row = ({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) => (
-  <Line alignItems="flex-start" columnGap="section" rowGap={4}>
-    <Stack width={208}>
-      <Text textRole="compact" tone="muted">
-        {label}
-      </Text>
-    </Stack>
-    <Stack flexBasis={240} flexGrow={1} minWidth={0}>
-      <Text textRole={mono ? "data" : "compact"}>{value}</Text>
-    </Stack>
-  </Line>
-);
-
-const TechnicalDetails = ({ title }: { title: LibraryTitleDetail }) => {
-  const [open, setOpen] = useState(false);
-  if (title.files.length === 0) return null;
-  return (
-    <Disclosure expanded={open} label="Technical details" onExpandedChange={setOpen}>
-      <Stack gap="control">
-        {title.files.map((file) => (
-          <Stack gap="control" key={file.path}>
-            <Row label="File" mono value={file.path} />
-            <Row label="Size" value={formatBytes(file.size)} />
-          </Stack>
         ))}
       </Stack>
     </Disclosure>

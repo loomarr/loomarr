@@ -70,7 +70,15 @@ type libraryNeedDTO struct {
 	Item       libraryItemDTO        `json:"item"`
 	Searched   bool                  `json:"searched" doc:"False until TMDB has been searched for it"`
 	Candidates []libraryCandidateDTO `json:"candidates" doc:"Best first; empty when a search found nothing"`
-	Files      []libraryItemFileDTO  `json:"files"`
+	Files      []libraryNeedFileDTO  `json:"files"`
+}
+
+// libraryNeedFileDTO is a file as a Needs you card lists it: no stream facts, which a title's page
+// carries instead.
+type libraryNeedFileDTO struct {
+	Path  string `json:"path" doc:"The file on this machine"`
+	Size  int64  `json:"size" doc:"Bytes"`
+	Ready bool   `json:"ready" doc:"Its details are read"`
 }
 
 type listLibraryNeedsOutput struct {
@@ -99,7 +107,7 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 		dto := libraryNeedDTO{
 			Item: libraryItemOf(n.LibraryItemSummary, posters), Searched: n.Searched != "",
 			Candidates: make([]libraryCandidateDTO, 0, len(n.Candidates)),
-			Files:      make([]libraryItemFileDTO, 0, len(n.Present)),
+			Files:      make([]libraryNeedFileDTO, 0, len(n.Present)),
 		}
 		for _, c := range n.Candidates {
 			dto.Candidates = append(dto.Candidates, libraryCandidateDTO{
@@ -109,7 +117,7 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 			})
 		}
 		for _, f := range n.Present {
-			dto.Files = append(dto.Files, libraryItemFileDTO{Path: f.Path, Size: f.Size, Ready: f.Header != store.LibraryHeaderPending})
+			dto.Files = append(dto.Files, libraryNeedFileDTO{Path: f.Path, Size: f.Size, Ready: f.Header != store.LibraryHeaderPending})
 		}
 		out.Body.Needs = append(out.Body.Needs, dto)
 	}

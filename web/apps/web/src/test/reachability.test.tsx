@@ -331,6 +331,7 @@ const stubReachable = () => {
       files: [],
       seasons: [],
       match: { by: "app", app: "radarr", page: "http://radarr.invalid/movie/paper-kites" },
+      detailsFrom: {},
     }),
     getGetPlayoutStatusMockHandler({
       running: false,

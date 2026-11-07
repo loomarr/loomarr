@@ -185,9 +185,19 @@ const Movie: Story = {
         genres: ["Crime", "Thriller"],
         rating: "R",
         runtimeMillis: 5_880_000,
-        files: [{ path: "/media/movies/Paper Kites (1996)/Paper Kites (1996).mkv", size: 8_100_000_000 }],
+        files: [
+          {
+            path: "/media/movies/Paper Kites (1996)/Paper Kites (1996).mkv",
+            size: 8_100_000_000,
+            lengthMillis: 5_880_000,
+            picture: { width: 3840, height: 2160, hdr: true },
+            audioChannels: 6,
+            subtitles: [{ language: "en" }, { language: "es" }],
+          },
+        ],
         seasons: [],
         match: { by: "app", app: "Radarr" },
+        detailsFrom: { description: "TMDB", rating: "TMDB" },
       }}
     />
   ),
@@ -216,6 +226,7 @@ const Series: Story = {
           })),
         })),
         match: { by: "you" },
+        detailsFrom: { description: "TMDB", rating: "TMDB", episodeNames: "Sonarr" },
       }}
     />
   ),

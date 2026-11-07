@@ -77,6 +77,18 @@ func TestLibraryItemsListAndPage(t *testing.T) {
 		t.Fatalf("series page = %+v", page)
 	}
 
+	// A file whose header nothing has measured still lists its subtitles, as none.
+	var movie struct {
+		Files []struct {
+			Subtitles []any `json:"subtitles"`
+		} `json:"files"`
+		DetailsFrom *struct{} `json:"detailsFrom"`
+	}
+	decode(t, h.Do(http.MethodGet, "/v1/library/items/90000001", adminToken, ""), &movie)
+	if len(movie.Files) != 1 || movie.Files[0].Subtitles == nil || movie.DetailsFrom == nil {
+		t.Fatalf("movie page = %+v", movie)
+	}
+
 	if resp := h.Do(http.MethodGet, "/v1/library/items/90000099", adminToken, ""); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown title = %d, want 404", resp.StatusCode)
 	}

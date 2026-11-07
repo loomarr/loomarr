@@ -2,11 +2,27 @@ import type { ReactNode } from "react";
 import type { LibraryNeedSearch } from "../library-needs/library-needs.type";
 import type { LibraryKind } from "../library-shelf/library-shelf.type";
 
-/** One of a movie's files. */
+/** One of a movie's files, with what its header says once read. */
 interface LibraryTitleFile {
   path: string;
   /** Bytes. */
   size: number;
+  /** How long it plays, measured from the file. */
+  lengthMillis?: number;
+  /** Its first video stream. */
+  picture?: { width: number; height: number; hdr: boolean };
+  /** The channels of the sound that plays. */
+  audioChannels?: number;
+  /** Each subtitle stream; a language is an ISO 639 code, absent when the file doesn't say. */
+  subtitles: readonly { language?: string }[];
+}
+
+/** Where a title's details came from, each as a name to show ("TMDB", "Sonarr"). */
+interface LibraryTitleDetailsFrom {
+  description?: string;
+  rating?: string;
+  /** Where most of a series' episode names came from. */
+  episodeNames?: string;
 }
 
 interface LibraryTitleEpisode {
@@ -41,6 +57,7 @@ interface LibraryTitleDetail {
   /** A series' episodes by season; empty for a movie. */
   seasons: readonly LibraryTitleSeason[];
   match: LibraryTitleMatch;
+  detailsFrom: LibraryTitleDetailsFrom;
 }
 
 /**
