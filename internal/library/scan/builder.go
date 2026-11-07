@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // builder turns one root's walked files into inventory snapshots for one pass.
@@ -25,6 +26,8 @@ type builder struct {
 	series map[string]*seriesSeen
 	// movies is the cheaply known ids of the main video in each folder, for the extras beside it.
 	movies map[string][]inventory.ExternalID
+	// items is each movie and series the pass wrote, for Library → Items.
+	items []store.LibraryItem
 }
 
 type seriesSeen struct {
@@ -32,6 +35,17 @@ type seriesSeen struct {
 	managed *mp.Record
 	ids     []mp.ExternalID
 	write   bool
+	// itemID is the series item writeSeries wrote, "" until then.
+	itemID string
+}
+
+// listed records a movie or series the pass wrote, under its resolved name.
+func (b *builder) listed(id string, snapshot inventory.Snapshot) {
+	facts := snapshot.Observation.Facts
+	b.items = append(b.items, store.LibraryItem{
+		ID: id, Kind: string(snapshot.Kind), Name: facts.Name,
+		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
+	})
 }
 
 // identity is what the cheap sources say a file is: no file is opened to learn it.
@@ -218,19 +232,23 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			facts.Name = strings.TrimSpace(embeddedID.ReplaceAllString(s.dir, ""))
 		}
 		coverage["sources"] = inventory.CoverageEmpty
-		err := b.im.apply(ctx, inventory.Snapshot{
+		snapshot := inventory.Snapshot{
 			Origin: seriesOrigin(b.root, s.dir), Kind: kindSeries,
 			Observation: inventory.Observation[inventory.ItemFacts]{
 				SchemaVersion: 1, ObservedAt: now, Coverage: coverage, Facts: facts,
 			},
 			ExternalIDs: externalIDs(resolved.IDs),
-		})
+		}
+		id, err := b.im.apply(ctx, snapshot)
 		if err != nil && !errors.Is(err, inventory.ErrIdentityConflict) {
 			return err
 		}
 		if err != nil {
 			b.im.log().Warn("library scan: a series' ids name two items", "series", s.dir)
+			continue
 		}
+		s.itemID = string(id)
+		b.listed(s.itemID, snapshot)
 	}
 	return nil
 }

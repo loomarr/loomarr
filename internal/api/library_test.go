@@ -83,8 +83,9 @@ func newScanLibrary(t *testing.T, st records.Store, sonarrFolders ...string) *sc
 		Disk:    scan.OSDisk{MountInfo: filepath.Join(t.TempDir(), "no-mounts")},
 		Now:     time.Now,
 	}
-	return &scan.Library{Roots: roots, Scanner: scan.NewScanner(&scan.Importer{
-		Store: st, Inventory: inventory.New(st), Disk: roots.Disk,
+	inv := inventory.New(st)
+	return &scan.Library{Roots: roots, ItemStore: st, Inventory: inv, Scanner: scan.NewScanner(&scan.Importer{
+		Store: st, Inventory: inv, Disk: roots.Disk,
 		Resolver: resolver, Enabled: func() bool { return true },
 	}, 0)}
 }
