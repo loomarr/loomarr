@@ -1,10 +1,10 @@
 import { ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import type { ComponentRef, ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { Pressable } from "react-native";
 import { AutoTuneSettingAction } from "../../auto-tune-setting";
 import { DeviceDisconnectAction } from "../../device-disconnect";
-import type { FocusTargetRegistry } from "../../focus-target";
+import { type FocusTargetRegistry, focusTargetProps, useSelectionOutlivesFocus } from "../../focus-target";
 import { SurfChannelCard } from "../surf-channel-card";
 import type { SurfChannelData, SurfGroupKind, SurfRailProps } from "../surf-rail.type";
 
@@ -33,9 +33,8 @@ const TvSurfChannel = ({
     accessibilityRole="button"
     accessibilityState={{ selected }}
     hasTVPreferredFocus={selected}
-    onFocus={onFocus}
+    {...focusTargetProps(focusRegistry, { channelId: channel.id, group }, onFocus)}
     onPress={onTune}
-    ref={(handle) => focusRegistry?.register({ channelId: channel.id, group }, handle)}
   >
     <SurfChannelCard
       channel={channel}
@@ -63,10 +62,8 @@ const TvSurfRail = ({
   serverVersion,
 }: SurfRailProps) => {
   const scrollFrame = useRef<ComponentRef<typeof ScrollFrame>>(null);
-  // The selection outlives focus: a rail action below the list takes the remote while the last
-  // channel stays the one OK returns to. Only the list's own focus lights it (#1887).
-  const [listFocused, setListFocused] = useState(true);
-  const leaveList = () => setListFocused(false);
+  // A rail action below the list takes the remote while the last channel stays the one OK returns to.
+  const { focusEnteredList, focusInList: listFocused, focusLeftList } = useSelectionOutlivesFocus();
   const selectable = groups.flatMap((group) =>
     group.channels.map((channel) => ({ channel, group: group.kind })),
   );
@@ -128,7 +125,7 @@ const TvSurfRail = ({
                       listFocused={listFocused}
                       logo={renderChannelLogo?.(channel)}
                       onFocus={() => {
-                        setListFocused(true);
+                        focusEnteredList();
                         onFocusSelection({ channelId: channel.id, group: group.kind });
                       }}
                       onTune={() => onTune(channel.id)}
@@ -139,12 +136,12 @@ const TvSurfRail = ({
               )}
             </Surface>
           ))}
-          {autoTune ? <AutoTuneSettingAction density="tv" {...autoTune} onFocus={leaveList} /> : null}
+          {autoTune ? <AutoTuneSettingAction density="tv" {...autoTune} onFocus={focusLeftList} /> : null}
           {onDisconnect ? (
             <DeviceDisconnectAction
               density="tv"
               onDisconnect={onDisconnect}
-              onFocus={leaveList}
+              onFocus={focusLeftList}
               onForget={onForget}
               serverName={serverName}
             />

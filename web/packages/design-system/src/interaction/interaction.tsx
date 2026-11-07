@@ -7,12 +7,12 @@ import type {
   ReactNode,
   RefAttributes,
 } from "react";
-import { cloneElement, forwardRef, isValidElement, useState } from "react";
+import { cloneElement, forwardRef, isValidElement } from "react";
 import { Platform, Pressable, TextInput } from "react-native";
 
+import { useFocusLook } from "../focus-look";
 import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
-import { useBehindModal } from "../modal-layer";
 import { lineHeightPx, Surface, Text } from "../primitives";
 import { TamaguiText } from "../text-base";
 import {
@@ -144,10 +144,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     ref,
   ) => {
     const theme = useTheme();
-    const [hasFocus, setFocused] = useState(false);
-    // A native Modal never blurs its opener, so a control behind an open modal drops its focus look.
-    const behindModal = useBehindModal();
-    const focused = hasFocus && !behindModal;
+    const focusLook = useFocusLook({ onBlur, onFocus });
+    const focused = focusLook.focused;
     const isDisabled = disabled === true;
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
@@ -320,9 +318,9 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           {
             ...restProps,
             "aria-disabled": isDisabled || undefined,
-            onBlur: () => setFocused(false),
+            onBlur: focusLook.onBlur,
             onClick: onPress,
-            onFocus: () => setFocused(true),
+            onFocus: focusLook.onFocus,
             ref,
             role,
             style: {
@@ -350,14 +348,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         aria-pressed={role === "button" && selected ? true : undefined}
         aria-selected={role === "tab" ? selected : undefined}
         disabled={isDisabled}
-        onBlur={(event) => {
-          setFocused(false);
-          onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          onFocus?.(event);
-        }}
+        onBlur={focusLook.onBlur}
+        onFocus={focusLook.onFocus}
         ref={ref}
         tabIndex={isDisabled ? -1 : tabIndex}
         style={(state) => [
@@ -402,7 +394,7 @@ const Field = ({
   ...props
 }: FieldProps) => {
   const theme = useTheme();
-  const [focused, setFocused] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook({ onBlur, onFocus });
   const hasError = invalid || Boolean(error);
   const borderColor = hasError
     ? theme.stateDanger.val
@@ -424,14 +416,7 @@ const Field = ({
         aria-disabled={disabled || undefined}
         aria-invalid={hasError || undefined}
         editable={!disabled}
-        onBlur={(event) => {
-          setFocused(false);
-          onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          onFocus?.(event);
-        }}
+        {...focusHandlers}
         placeholderTextColor={theme.contentMuted.val}
         style={[
           {
@@ -544,9 +529,7 @@ const Toggle = ({
 }: ToggleProps) => {
   const switchWidth = density === "tv" ? 72 : density === "touch" ? 56 : 48;
   const controlSize = density === "tv" ? 36 : density === "touch" ? 28 : 24;
-  const [hasFocus, setFocused] = useState(false);
-  const behindModal = useBehindModal();
-  const focused = hasFocus && !behindModal;
+  const { focused, ...focusHandlers } = useFocusLook();
   return (
     <Pressable
       accessibilityLabel={label}
@@ -555,8 +538,7 @@ const Toggle = ({
       aria-checked={checked}
       aria-disabled={disabled || undefined}
       disabled={disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
+      {...focusHandlers}
       onPress={() => onCheckedChange(!checked)}
       style={{
         alignItems: "center",
@@ -637,8 +619,7 @@ const ChoiceRow = ({
   onPress: () => void;
   option: ChoiceOption<string>;
 }) => {
-  const [hasFocus, setFocused] = useState(false);
-  const behindModal = useBehindModal();
+  const { focused, ...focusHandlers } = useFocusLook();
   return (
     <Pressable
       accessibilityLabel={option.label}
@@ -647,8 +628,7 @@ const ChoiceRow = ({
       aria-checked={checked}
       aria-disabled={option.disabled || undefined}
       disabled={option.disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
+      {...focusHandlers}
       onPress={onPress}
       style={{
         alignItems: "center",
@@ -667,7 +647,7 @@ const ChoiceRow = ({
         height={density === "tv" ? 36 : 24}
         justifyContent="center"
         width={density === "tv" ? 36 : 24}
-        {...boxFocusRing(hasFocus && !behindModal, density)}
+        {...boxFocusRing(focused, density)}
       >
         {checked ? (
           <View backgroundColor="contentPrimary" borderRadius="round" height="45%" width="45%" />

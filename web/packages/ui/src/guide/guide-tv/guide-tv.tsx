@@ -1,10 +1,11 @@
 import { formatGuideTime, formatGuideTimeRange, guideAiringLabel } from "@loomarr/core/guide";
-import { ArtworkFrame, Surface, Text } from "@loomarr/design-system";
+import { ArtworkFrame, Surface, Text, useFocusLook } from "@loomarr/design-system";
 import type { ComponentRef } from "react";
-import { forwardRef, useState } from "react";
+import { forwardRef } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
 import { ChannelIdent } from "../../channel-ident";
+import { focusTargetProps, useSelectionOutlivesFocus } from "../../focus-target";
 import type { GuideFilterOption, GuideSurfaceProps } from "../guide.type";
 import { guideFilterText } from "../guide-filter";
 
@@ -38,7 +39,7 @@ type FilterButtonProps = {
 
 const FilterButton = forwardRef<ComponentRef<typeof Pressable>, FilterButtonProps>(
   ({ accessibilityLabel, children, disabled = false, onFocus, onPress, selected }, ref) => {
-    const [focused, setFocused] = useState(false);
+    const { focused, ...focusHandlers } = useFocusLook({ onFocus });
     return (
       <Pressable
         accessibilityLabel={accessibilityLabel}
@@ -47,11 +48,7 @@ const FilterButton = forwardRef<ComponentRef<typeof Pressable>, FilterButtonProp
         aria-disabled={disabled || undefined}
         aria-pressed={selected || undefined}
         disabled={disabled}
-        onBlur={() => setFocused(false)}
-        onFocus={() => {
-          setFocused(true);
-          onFocus();
-        }}
+        {...focusHandlers}
         onPress={onPress}
         ref={ref}
       >
@@ -113,9 +110,8 @@ const TvGuideSurface = ({
   renderChannelLogo,
   selection,
 }: GuideSurfaceProps & { filters: readonly GuideFilterOption[] }) => {
-  // The selection outlives focus: ▲ to the filters keeps the programme the grid returns to. Only
-  // the grid's own focus lights it, so a focused filter is the one amber (#1887).
-  const [gridFocused, setGridFocused] = useState(true);
+  // ▲ to the filters keeps the programme the grid returns to.
+  const { focusEnteredList, focusInList: gridFocused, focusLeftList } = useSelectionOutlivesFocus();
   const selectedChannel = layout.channels.find((channel) => channel.source.channelId === selection.channelId);
   const selectedAiring = selectedChannel?.airings.find(
     (airing) => airing.scheduleBlockId === selection.scheduleBlockId,
@@ -170,12 +166,8 @@ const TvGuideSurface = ({
               accessibilityLabel={accessibilityLabel}
               disabled={option.disabled}
               key={option.value}
-              onFocus={() => {
-                setGridFocused(false);
-                focusRegistry?.focused?.(target);
-              }}
+              {...focusTargetProps(focusRegistry, target, focusLeftList)}
               onPress={() => onFilterChange?.(option.value)}
-              ref={(handle) => focusRegistry?.register(target, handle)}
               selected={filter === option.value}
             >
               {label}
@@ -285,16 +277,14 @@ const TvGuideSurface = ({
                           accessibilityRole="button"
                           hasTVPreferredFocus={selected}
                           key={airing.scheduleBlockId}
-                          onFocus={() => {
-                            setGridFocused(true);
-                            focusRegistry?.focused?.(target);
+                          {...focusTargetProps(focusRegistry, target, () => {
+                            focusEnteredList();
                             onSelectionChange(next);
-                          }}
+                          })}
                           onPress={() => {
                             onSelectionChange(next);
                             onTune?.(next);
                           }}
-                          ref={(handle) => focusRegistry?.register(target, handle)}
                           style={{
                             height: rowHeight,
                             left: `${airing.startRatio * 100}%`,

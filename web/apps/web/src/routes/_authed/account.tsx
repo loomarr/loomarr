@@ -2,12 +2,15 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { changePasswordBodyNextMin } from "@loomarr/api/zod/auth";
 import { formatRelative } from "@loomarr/core/format";
+import { changePasswordSchema } from "@loomarr/core/schemas";
+import { FieldHint } from "@loomarr/design-system";
+import { useForm } from "@tanstack/react-form";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
+import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,14 +30,17 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 // A viewer sees exactly what an admin sees here. Nothing on this page is privileged:
 // it only ever acts on the caller's own account, which is why it takes no user id.
 
+const PASSWORD_FIELDS = [
+  { name: "current", label: "Current password", autoComplete: "current-password" },
+  { name: "next", label: "New password", autoComplete: "new-password" },
+  { name: "confirm", label: "Confirm new password", autoComplete: "new-password" },
+] as const;
+
 const AccountScreen = () => {
   const { user } = useAuth();
   useDocumentTitle("Your account");
 
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [formError, setFormError] = useState("");
+  const [serverError, setServerError] = useState("");
 
   // A media-server account does not own an independent Loomarr password. Its captured
   // verifier is an outage fallback, not a credential this page may change.
@@ -48,17 +54,26 @@ const AccountScreen = () => {
   const changePassword = authApi.useChangePassword({
     mutation: {
       onSuccess: () => {
-        setCurrent("");
-        setNext("");
-        setConfirm("");
-        setFormError("");
+        form.reset();
+        setServerError("");
         // Every session ends, including this one — the backend revokes all of them
         // rather than sparing the caller's, because keeping a session means trusting
         // the request that might itself be the compromise. Say that plainly instead
         // of the friendlier-but-weaker "other sessions revoked, this one kept".
         toast.success("Password changed. Sign in again with the new one.");
       },
-      onError: (e) => setFormError(toProblem(e).detail ?? "Couldn't change your password."),
+      onError: (e) => setServerError(toProblem(e).detail ?? "Couldn't change your password."),
+    },
+  });
+
+  // Checked here as well as server-side: a mismatch is the user's typo, and making
+  // them wait for a round-trip to learn it is worse than saying so immediately.
+  const form = useForm({
+    defaultValues: { current: "", next: "", confirm: "" },
+    validators: { onSubmit: changePasswordSchema },
+    onSubmit: ({ value }) => {
+      setServerError("");
+      changePassword.mutate({ data: { current: value.current, next: value.next } });
     },
   });
 
@@ -71,17 +86,6 @@ const AccountScreen = () => {
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't revoke that session"),
     },
   });
-
-  const submit = () => {
-    // Checked here as well as server-side: a mismatch is the user's typo, and making
-    // them wait for a round-trip to learn it is worse than saying so immediately.
-    if (!current) return setFormError("Enter your current password.");
-    if (next.length < changePasswordBodyNextMin)
-      return setFormError(`Use at least ${changePasswordBodyNextMin} characters.`);
-    if (next !== confirm) return setFormError("New passwords don't match.");
-    setFormError("");
-    changePassword.mutate({ data: { current, next } });
-  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -109,42 +113,45 @@ const AccountScreen = () => {
         <Card className="flex flex-col gap-3 p-5">
           <h2 className="font-medium">Password</h2>
           {isLocal ? (
-            <>
+            <form
+              className="flex flex-col gap-3"
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                void form.handleSubmit();
+              }}
+            >
               <p className="text-muted-foreground text-sm">
                 This is a local Loomarr account, so Loomarr stores the password and you can change it here.
               </p>
               <div className="flex flex-col gap-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="acct-current">Current password</Label>
-                  <Input
-                    id="acct-current"
-                    type="password"
-                    value={current}
-                    onChange={(e) => setCurrent(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="acct-next">New password</Label>
-                  <Input
-                    id="acct-next"
-                    type="password"
-                    value={next}
-                    onChange={(e) => setNext(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="acct-confirm">Confirm new password</Label>
-                  <Input
-                    id="acct-confirm"
-                    type="password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                  />
-                </div>
+                {PASSWORD_FIELDS.map(({ name, label, autoComplete }) => (
+                  <form.Field key={name} name={name}>
+                    {(field) => (
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor={`acct-${name}`}>{label}</Label>
+                        <Input
+                          id={`acct-${name}`}
+                          name={field.name}
+                          type="password"
+                          autoComplete={autoComplete}
+                          value={field.state.value}
+                          aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                        />
+                        <FieldError errors={field.state.meta.errors} />
+                      </div>
+                    )}
+                  </form.Field>
+                ))}
               </div>
-              {formError && <p className="text-onair-300 text-sm">{formError}</p>}
+              {serverError && (
+                <FieldHint role="alert" tone="error">
+                  {serverError}
+                </FieldHint>
+              )}
               <div className="flex items-center gap-3">
-                <Button onClick={submit} disabled={changePassword.isPending}>
+                <Button type="submit" disabled={changePassword.isPending}>
                   Change password
                 </Button>
                 {/* The honest consequence, stated before the click rather than after. */}
@@ -152,7 +159,7 @@ const AccountScreen = () => {
                   changing it signs you out everywhere, including here
                 </span>
               </div>
-            </>
+            </form>
           ) : (
             <p className="text-muted-foreground text-sm">
               Your media server owns this password. Loomarr stores only a non-reversible verifier after a
