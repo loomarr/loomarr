@@ -1,50 +1,30 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { GuidePage } from "@/channels/guide-page";
 import { defaultGuideWindow } from "@/channels/guide-window";
+import { isOriginating, parseOriginationSearch, rememberedOrigination } from "@/suggest/origination-flow";
 
 // The channels surface (§12) — headed "Channels", it is both the cross-channel time grid and
 // the app's one origination door. Readable by any authenticated user: the guide is
 // viewer-facing, and GET /v1/guide is likewise not admin-gated.
 //
-// `?intent=` is part of the route contract. The wizard's guided first channel hands off here
-// with a template prefilled (§13's blank-page killer) — the page forwards it into the inline
-// describe panel and opens it, so the handoff lands on a filled form rather than an empty grid
-// with the operator wondering where their template went.
-interface GuideSearch {
-  intent?: string;
-  job?: string;
-  // `?new=1` opens the empty describe panel — the Requests page's "Request a channel" door.
-  new?: "1";
-  // `?manual=1` opens straight into the manual/AI-off builder (#1817, G2) — Home's Channel
-  // ideas "Describe your own channel", which explicitly skips a retry of AI suggestions.
-  manual?: "1";
-  // `?ideaId=` seeds the manual builder from one idea — Home's "Edit first".
-  ideaId?: string;
-}
-
-const GuideScreen = () => {
-  const { intent, job, new: openNew, manual, ideaId } = Route.useSearch();
-  return (
-    <GuidePage
-      initialIntent={intent}
-      initialJobId={job}
-      openOnArrival={openNew === "1"}
-      openManualOnArrival={manual === "1"}
-      initialIdeaId={ideaId}
-    />
-  );
-};
+// The search params are origination's state (OriginationSearch), and part of the route
+// contract. The wizard's guided first channel hands off with `?intent=` (§13's blank-page
+// killer), so the handoff lands on a filled form rather than an empty grid with the operator
+// wondering where their template went; Requests links `?new=1` and `?job=`, Home `?manual=1`.
+const GuideScreen = () => <GuidePage search={Route.useSearch()} />;
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
-  validateSearch: (search: Record<string, unknown>): GuideSearch => ({
-    intent: typeof search.intent === "string" ? search.intent : undefined,
-    job: typeof search.job === "string" ? search.job : undefined,
-    new: search.new === "1" || search.new === 1 ? "1" : undefined,
-    manual: search.manual === "1" || search.manual === 1 ? "1" : undefined,
-    ideaId: typeof search.ideaId === "string" ? search.ideaId : undefined,
-  }),
+  validateSearch: parseOriginationSearch,
+  // Arriving with no origination params resumes what this tab was doing: the Job it follows, or
+  // a draft kept across the AI/TMDB setup trip. Only on ENTRY: Close stays on the route and must
+  // not reopen the panel, and a hover preload must not redirect.
+  beforeLoad: ({ search, cause }) => {
+    if (cause !== "enter" || isOriginating(search)) return;
+    const remembered = rememberedOrigination();
+    if (remembered) throw redirect({ to: "/guide", search: remembered, replace: true });
+  },
   // Warm the guide before the component mounts, so arriving from the nav paints rows rather
   // than a spinner. With `defaultPreload: "intent"` this runs on HOVER, which buys the whole
   // round trip: the request is already in flight (or done) by the time the click lands.

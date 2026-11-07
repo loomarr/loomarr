@@ -28,12 +28,9 @@ import { Image } from "@/components/ui/image";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
-import { type ChannelSuggestionStage, ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
-import {
-  clearSuggestionDraft,
-  readActiveSuggestionJob,
-  readSuggestionDraft,
-} from "@/suggest/suggestion-draft";
+import { ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
+import { originationHeading } from "@/suggest/origination-flow";
+import { useOriginationFlow } from "@/suggest/use-origination-flow";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 import type { GuidePageProps } from "./guide-page.type";
@@ -120,13 +117,7 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = ({
-  initialIntent,
-  initialJobId,
-  openOnArrival,
-  openManualOnArrival,
-  initialIdeaId,
-}: GuidePageProps) => {
+const GuidePage = ({ search }: GuidePageProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -156,54 +147,16 @@ const GuidePage = ({
   const hasCustomView = startHour !== null;
   // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
   // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
-  // dialog. `adding` toggles it open.
-  //
-  // Opens on arrival when the wizard handed off a template (§13), a setup round trip retained
-  // a draft, or this tab owns an active Proposal Job. The last case makes a reload return to the
-  // current review rather than a bare grid; closing still hides it for the current page lifetime.
-  const [adding, setAdding] = useState(() =>
-    Boolean(
-      initialIntent ||
-        initialJobId ||
-        openOnArrival ||
-        openManualOnArrival ||
-        readActiveSuggestionJob() ||
-        readSuggestionDraft(),
-    ),
-  );
-  const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>("describe");
-
-  // Closing also CLEARS `?intent=`. Leaving it would make a refresh silently re-open the
-  // panel with a template the operator already dismissed — and right after the wizard, on a
-  // first-run install, a refresh is likely rather than exotic. `replace: true` keeps the
-  // dismissal out of history: closing a panel is not a place you navigate back to.
-  const closePanel = () => {
-    setAdding(false);
-    clearSuggestionDraft();
-    if (initialIntent || initialJobId || openOnArrival || openManualOnArrival || initialIdeaId)
-      void navigate({ to: "/guide", search: {}, replace: true });
-  };
-
-  // A recovered job is deliberately resumable from the URL, but a user who explicitly starts
-  // another channel must not resume that old job on reload. Keep the panel open while replacing
-  // only this handoff's search fields; route-owned search remains free to retain any unrelated
-  // parameters it grows in future.
-  const startFresh = () => {
-    setAdding(true);
-    void navigate({
-      to: "/guide",
-      search: (search) => ({ ...search, intent: undefined, job: undefined }),
-      replace: true,
-    });
-  };
+  // dialog. Its state is the route's search params (useOriginationFlow); the header names its
+  // current step from the same run the panel renders.
+  const flow = useOriginationFlow(search);
+  const adding = flow.open;
+  const heading = originationHeading(flow.stage, isAdmin);
 
   // The inline panel approved a proposal, which created the channel — drop the operator on
   // its page, and refresh the guide behind them.
   const onCreated = (id: string) => {
-    setAdding(false);
     void queryClient.invalidateQueries({ queryKey: channelsApi.getListChannelsQueryKey() });
-    // Navigating away to the new channel drops `?intent=` with the rest of the URL, so this
-    // needs no explicit clear the way closePanel does.
     void navigate({ to: "/channels/$id", params: { id } });
   };
 
@@ -326,34 +279,8 @@ const GuidePage = ({
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
-        title={
-          !adding
-            ? "Channels"
-            : suggestionStage === "review"
-              ? "Review your channel"
-              : suggestionStage === "updating"
-                ? "Updating suggestions"
-                : suggestionStage === "generating"
-                  ? "Finding titles"
-                  : suggestionStage === "failed"
-                    ? "Channel suggestion"
-                    : isAdmin
-                      ? "Add a channel"
-                      : "Request a channel"
-        }
-        description={
-          adding
-            ? suggestionStage === "review"
-              ? "Choose what belongs. Nothing is created until you continue."
-              : suggestionStage === "updating"
-                ? "Your current lineup stays in place while Loomarr refreshes its suggestions."
-                : suggestionStage === "generating"
-                  ? "Loomarr is finding titles that match your brief."
-                  : suggestionStage === "failed"
-                    ? "Your brief is saved. Choose a recovery option below."
-                    : "Describe what you want to watch. You'll choose the final titles before anything is created."
-            : "Every channel Loomarr manages, and what's on right now."
-        }
+        title={adding ? heading.title : "Channels"}
+        description={adding ? heading.description : "Every channel Loomarr manages, and what's on right now."}
         actions={
           /* THE origination door (§12) — for both roles, since `/suggest` folded in here and
             this is now the only one in the app. Toggles the ChannelSuggestPanel open below:
@@ -375,7 +302,7 @@ const GuidePage = ({
           (!isEmpty || adding) && (
             <Button
               variant={adding ? "outline" : "suggest"}
-              onClick={() => (adding ? closePanel() : setAdding(true))}
+              onClick={adding ? flow.close : flow.openPanel}
               aria-expanded={adding}
             >
               {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
@@ -390,16 +317,7 @@ const GuidePage = ({
           page-edge contract's 24 px gutter (16 below `sm`). */}
       {adding && (
         <div className="border-border bg-card border-b px-4 py-4.5 sm:px-6">
-          <ChannelSuggestPanel
-            className="max-w-form mx-auto"
-            initialIntent={initialIntent}
-            initialJobId={initialJobId}
-            initialManual={openManualOnArrival}
-            initialIdeaId={initialIdeaId}
-            onCreated={onCreated}
-            onStartFresh={startFresh}
-            onStageChange={setSuggestionStage}
-          />
+          <ChannelSuggestPanel className="max-w-form mx-auto" flow={flow} onCreated={onCreated} />
         </div>
       )}
 
@@ -617,7 +535,7 @@ const GuidePage = ({
               description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
               action={{
                 label: isAdmin ? "Add a channel" : "Request a channel",
-                onClick: () => setAdding(true),
+                onClick: flow.openPanel,
               }}
             />
           </div>
