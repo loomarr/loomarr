@@ -6,6 +6,7 @@ import {
   getDiscoverFillerMockHandler,
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
+  getGetCollectionMockHandler,
   getGetFillerSplitMockHandler,
   getGetLibraryItemMockHandler,
   getGetPlayoutStatusMockHandler,
@@ -14,6 +15,7 @@ import {
   getImportCandidatesMockHandler,
   getLibraryStatusMockHandler,
   getListChannelsMockHandler,
+  getListCollectionsMockHandler,
   getListDiagnosticEventsMockHandler,
   getListDiscoveryFeedbackMockHandler,
   getListDocsMockHandler,
@@ -361,6 +363,18 @@ const stubReachable = () => {
       seasons: [],
       match: { by: "app", app: "radarr", page: "http://radarr.invalid/movie/paper-kites" },
       detailsFrom: {},
+    }),
+    // Collections and a collection's editor: one of the household's, served under any id.
+    getListCollectionsMockHandler({
+      collections: [{ id: "ch-1", name: "Rainy Sundays", description: "", titles: [], usedBy: [] }],
+      sets: [],
+    }),
+    getGetCollectionMockHandler({
+      id: "ch-1",
+      name: "Rainy Sundays",
+      description: "",
+      titles: [],
+      usedBy: [],
     }),
     getGetPlayoutStatusMockHandler({
       running: false,

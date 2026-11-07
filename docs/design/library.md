@@ -378,6 +378,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `/v1/collections` list also returns `sets`: each set the library has a movie of, with its owned
   movies in the set's order and how many it has in all. `POST /v1/collections/sets/{id}/copy`
   makes the household's own collection from one. A set can't be changed, only copied.
+- **The Collections tab and editor** (steps 12c–12d). `/library/collections` is the Library's
+  fourth tab: Yours, with New collection and Edit, then Ready-made sets with Make my own copy.
+  `/library/collections/$id` (and `/new`) edits the name, the description and the titles in order,
+  saved together; a row moves by its grip with a pointer or the keyboard, and Add a title searches
+  the library. Delete waits, with the reason, while a channel uses the collection.
 
 ## Cached series episodes
 

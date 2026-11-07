@@ -3,6 +3,7 @@ import type { LibraryItemDTO } from "@loomarr/api/models/libraryItemDTO";
 import type { LibraryStatusOutputBody } from "@loomarr/api/models/libraryStatusOutputBody";
 import { unwrap } from "@loomarr/api/unwrap";
 import {
+  LibraryCollections,
   type LibraryFilter,
   LibraryNeedsCards,
   LibraryNeedsStrip,
@@ -14,6 +15,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
+import { useLibraryCollections } from "../use-library-collections";
 import { useLibraryNeeds } from "../use-library-needs";
 
 // LIBRARY (#2151 decision 22): the titles Loomarr found in its media folders, as a poster grid
@@ -55,8 +57,11 @@ const useSettled = (value: string) => {
 interface LibraryPageProps {
   filter: LibraryFilter;
   search: string;
-  /** "needs" is Needs you's own screen: its cards in place of the strip, and no grid. */
-  view?: "titles" | "needs";
+  /**
+   * "needs" is Needs you's own screen: its cards in place of the strip, and no grid.
+   * "collections" is the Collections tab: the collections in place of the search and the grid.
+   */
+  view?: "titles" | "needs" | "collections";
 }
 
 const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
@@ -65,7 +70,9 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
   const [typed, setTyped] = useState(search);
   const settled = useSettled(typed.trim());
   const needs = useLibraryNeeds();
+  const collections = useLibraryCollections(view === "collections");
   const titlesView = view === "titles";
+  const kind = filter === "movie" || filter === "series" ? filter : undefined;
 
   const status = libraryApi.useLibraryStatus({
     query: { refetchInterval: (query) => (isBusy(unwrap(query.state.data)) ? BUSY_REFETCH_MS : false) },
@@ -85,13 +92,13 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
     synced.current = settled;
     void navigate({
       to: "/library",
-      search: { kind: filter === "all" ? undefined : filter, q: settled || undefined },
+      search: { kind, q: settled || undefined },
       replace: true,
     });
-  }, [settled, filter, navigate, titlesView]);
+  }, [settled, kind, navigate, titlesView]);
 
   const params = {
-    kind: filter === "all" ? undefined : filter,
+    kind,
     search: settled || undefined,
     limit: PAGE,
   };
@@ -140,43 +147,60 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
 
   const openNeeds = () => void navigate({ to: "/library/needs" });
   const openTitle = (id: string) => void navigate({ to: "/library/$id", params: { id } });
-  const needsSlot = titlesView ? (
-    <LibraryNeedsStrip
-      needs={needs.needs}
-      onLink={needs.answers.onLink}
-      onOpenNeeds={openNeeds}
-      onOpenTitle={openTitle}
-      problems={needs.problems}
-    />
-  ) : needs.loaded ? (
-    <LibraryNeedsCards
-      needs={needs.needs}
-      onIgnore={needs.answers.onIgnore}
-      onLink={needs.answers.onLink}
-      onOpenTitle={openTitle}
-      onSearch={needs.onSearch}
-      problems={needs.problems}
-    />
-  ) : null;
+  const needsSlot =
+    view !== "needs" ? (
+      <LibraryNeedsStrip
+        needs={needs.needs}
+        onLink={needs.answers.onLink}
+        onOpenNeeds={openNeeds}
+        onOpenTitle={openTitle}
+        problems={needs.problems}
+      />
+    ) : needs.loaded ? (
+      <LibraryNeedsCards
+        needs={needs.needs}
+        onIgnore={needs.answers.onIgnore}
+        onLink={needs.answers.onLink}
+        onOpenTitle={openTitle}
+        onSearch={needs.onSearch}
+        problems={needs.problems}
+      />
+    ) : null;
 
   return (
     <>
       {items.error ? <ErrorState error={items.error} onRetry={() => void items.refetch()} /> : null}
-      {needs.error && !titlesView ? (
+      {needs.error && view === "needs" ? (
         <ErrorState error={needs.error} onRetry={() => void needs.refetch()} />
       ) : null}
+      {collections.error && view === "collections" ? (
+        <ErrorState error={collections.error} onRetry={() => void collections.refetch()} />
+      ) : null}
       <LibraryShelf
+        collections={
+          collections.loaded ? (
+            <LibraryCollections
+              collections={collections.collections}
+              onCopy={collections.onCopy}
+              onEdit={(id) => void navigate({ to: "/library/collections/$id", params: { id } })}
+              onNew={() => void navigate({ to: "/library/collections/new" })}
+              sets={collections.sets}
+            />
+          ) : null
+        }
         needs={needsSlot}
         showTitles={titlesView}
         checking={discover.isPending}
-        filter={filter}
+        filter={view === "collections" ? "collections" : filter}
         loading={items.isPending}
         onCheckAgain={() => discover.mutate()}
         onFilterChange={(next) =>
-          void navigate({
-            to: "/library",
-            search: { kind: next === "all" ? undefined : next, q: settled || undefined },
-          })
+          void (next === "collections"
+            ? navigate({ to: "/library/collections" })
+            : navigate({
+                to: "/library",
+                search: { kind: next === "all" ? undefined : next, q: settled || undefined },
+              }))
         }
         onOpenSettings={() => void navigate({ to: "/settings/library" })}
         onOpenTitle={openTitle}

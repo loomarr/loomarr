@@ -1,5 +1,6 @@
 import {
   getLibraryStatusMockHandler,
+  getListCollectionsMockHandler,
   getListLibraryItemsMockHandler,
   getListLibraryNeedsMockHandler,
 } from "@loomarr/api/msw";
@@ -88,6 +89,32 @@ describe("LibraryPage", () => {
       search: { kind: "movie", q: "alp" },
       replace: true,
     });
+  });
+
+  it("shows the collections on the Collections tab, and opens one to edit", async () => {
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      getListCollectionsMockHandler({
+        collections: [{ id: "c1", name: "Rainy Sundays", description: "", titles: [alpha], usedBy: [] }],
+        sets: [],
+      }),
+    );
+    renderPage({ filter: "collections", search: "", view: "collections" });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit Rainy Sundays" }));
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/collections/$id", params: { id: "c1" } });
+    expect(screen.queryByLabelText("Search your library")).not.toBeInTheDocument();
+  });
+
+  it("goes to the Collections tab's own address", async () => {
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      getListLibraryItemsMockHandler({ items: [alpha], total: 1 }),
+    );
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Collections" }));
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/collections" });
   });
 
   it("shows why the library couldn't be read", async () => {

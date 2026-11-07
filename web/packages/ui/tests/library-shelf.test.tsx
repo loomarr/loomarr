@@ -109,6 +109,14 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("shows the collections in place of the search and the grid on Collections", () => {
+    const { host, cleanup } = render({ filter: "collections", collections: <p>the collections</p> });
+    expect(host.textContent).toContain("the collections");
+    expect(host.textContent).not.toContain("Harbour Lights");
+    expect(host.querySelector('[aria-label="Search your library"]')).toBeNull();
+    cleanup();
+  });
+
   it("says when a search matches nothing", () => {
     const { host, cleanup } = render({ search: "zebra", titles: [] });
     expect(host.textContent).toContain('Nothing here matches "zebra".');
