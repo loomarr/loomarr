@@ -10971,14 +10971,14 @@ components:
         - requester.provider
         - seerr.url
         - seerr.api_key
-        - sonarr.url
-        - sonarr.api_key
         - sonarr.quality_profile
         - sonarr.root_folder
-        - radarr.url
-        - radarr.api_key
         - radarr.quality_profile
         - radarr.root_folder
+        - sonarr.url
+        - sonarr.api_key
+        - radarr.url
+        - radarr.api_key
         - tunarr.url
         - tunarr.transcode_config_id
         - server.public_url
@@ -11131,14 +11131,14 @@ components:
         - RequesterProvider
         - SeerrURL
         - SeerrAPIKey
-        - SonarrURL
-        - SonarrAPIKey
         - SonarrQualityProfile
         - SonarrRootFolder
-        - RadarrURL
-        - RadarrAPIKey
         - RadarrQualityProfile
         - RadarrRootFolder
+        - SonarrURL
+        - SonarrAPIKey
+        - RadarrURL
+        - RadarrAPIKey
         - TunarrURL
         - TunarrTranscodeConfigID
         - ServerPublicURL
