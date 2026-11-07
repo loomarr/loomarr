@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/binder"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // Bind is a pure function: every case below states its whole input and its whole expected
@@ -20,8 +20,8 @@ import (
 
 var bindNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 
-func item(n int, name string) proposal.ProposalItem {
-	return proposal.ProposalItem{MediaType: provision.Movie, TMDBID: 90000000 + n, Name: name}
+func item(n int, name string) proposals.ProposalItem {
+	return proposals.ProposalItem{MediaType: provision.Movie, TMDBID: 90000000 + n, Name: name}
 }
 
 func key(n int) provision.Key { return provision.Key("movie:tmdb:" + strconv.Itoa(90000000+n)) }
@@ -38,7 +38,7 @@ func existingChannel(lineup ...schedule.LineupEntry) store.Channel {
 	return ch
 }
 
-func proposalFrom(approvedBy string, body proposal.Proposal) store.Proposal {
+func proposalFrom(approvedBy string, body proposals.Proposal) store.Proposal {
 	return store.Proposal{ID: "p1", JobID: "job-1", Status: "approved", CreatedBy: "requester", ApprovedBy: approvedBy, Body: body}
 }
 
@@ -62,9 +62,9 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "first approval lists the lineup then the acquisitions and collapses a title in both",
 			in: binder.BindInput{
-				Proposal: proposalFrom("admin", proposal.Proposal{
-					Lineup:       []proposal.ProposalItem{item(1, "One"), item(2, "Two")},
-					Acquisitions: []proposal.ProposalItem{item(2, "Two again"), item(3, "Three")},
+				Proposal: proposalFrom("admin", proposals.Proposal{
+					Lineup:       []proposals.ProposalItem{item(1, "One"), item(2, "Two")},
+					Acquisitions: []proposals.ProposalItem{item(2, "Two again"), item(3, "Three")},
 				}),
 				Number: 1, Now: bindNow,
 			},
@@ -73,7 +73,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "a human approval replaces the lineup, removing what the person left out",
 			in: binder.BindInput{
-				Proposal: proposalFrom("admin", proposal.Proposal{Lineup: []proposal.ProposalItem{item(2, "Two")}}),
+				Proposal: proposalFrom("admin", proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
 				Existing: existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"}, schedule.LineupEntry{Key: key(2), Title: "Two"}),
 				Now:      bindNow,
 			},
@@ -82,8 +82,8 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "a human approval ignores retirement and availability hints",
 			in: binder.BindInput{
-				Proposal: proposalFrom("admin", proposal.Proposal{
-					Lineup:  []proposal.ProposalItem{item(2, "Two")},
+				Proposal: proposalFrom("admin", proposals.Proposal{
+					Lineup:  []proposals.ProposalItem{item(2, "Two")},
 					Retired: []provision.Key{key(2)},
 				}),
 				Existing:    existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"}),
@@ -95,7 +95,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate keeps an available title the model did not re-pick",
 			in: binder.BindInput{
-				Proposal: proposalFrom(suggest.AutoCuratedBy, proposal.Proposal{Lineup: []proposal.ProposalItem{item(2, "Two")}}),
+				Proposal: proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
 				Existing: existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"}),
 				Now:      bindNow,
 			},
@@ -104,9 +104,9 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate drops a title the intent excludes, ignoring case and padding",
 			in: binder.BindInput{
-				Proposal: proposalFrom(suggest.AutoCuratedBy, proposal.Proposal{
-					Intent: proposal.Intent{MustExclude: []string{"  oNe "}},
-					Lineup: []proposal.ProposalItem{item(2, "Two")},
+				Proposal: proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{
+					Intent: proposals.Intent{MustExclude: []string{"  oNe "}},
+					Lineup: []proposals.ProposalItem{item(2, "Two")},
 				}),
 				Existing: existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"}),
 				Now:      bindNow,
@@ -117,7 +117,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate drops a title that left the library pipeline",
 			in: binder.BindInput{
-				Proposal:    proposalFrom(suggest.AutoCuratedBy, proposal.Proposal{Lineup: []proposal.ProposalItem{item(2, "Two")}}),
+				Proposal:    proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
 				Existing:    existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"}, schedule.LineupEntry{Key: key(3), Title: "Three"}),
 				Unavailable: map[provision.Key]bool{key(1): true},
 				Now:         bindNow,
@@ -128,8 +128,8 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate applies the turnstile's retirement to an available title",
 			in: binder.BindInput{
-				Proposal: proposalFrom(suggest.AutoCuratedBy, proposal.Proposal{
-					Lineup:  []proposal.ProposalItem{item(2, "Two")},
+				Proposal: proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{
+					Lineup:  []proposals.ProposalItem{item(2, "Two")},
 					Retired: []provision.Key{key(1)},
 				}),
 				Existing: existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"}),
@@ -141,7 +141,7 @@ func TestBindLineup(t *testing.T) {
 		{
 			name: "auto-curate with no channel yet binds like a first approval",
 			in: binder.BindInput{
-				Proposal: proposalFrom(suggest.AutoCuratedBy, proposal.Proposal{Lineup: []proposal.ProposalItem{item(2, "Two")}}),
+				Proposal: proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}}),
 				Number:   3, Now: bindNow,
 			},
 			wantTitles: []string{"Two"},
@@ -179,10 +179,10 @@ func sorted(in []string) []string {
 
 func TestBindChannelIdentity(t *testing.T) {
 	t.Parallel()
-	body := proposal.Proposal{
+	body := proposals.Proposal{
 		ChannelName: "Saturday Cartoons",
-		Intent:      proposal.Intent{Description: "kids cartoons", ChannelName: "never stored", RefineText: "never stored"},
-		Lineup:      []proposal.ProposalItem{item(1, "One")},
+		Intent:      proposals.Intent{Description: "kids cartoons", ChannelName: "never stored", RefineText: "never stored"},
+		Lineup:      []proposals.ProposalItem{item(1, "One")},
 	}
 	tests := []struct {
 		name  string
@@ -207,7 +207,7 @@ func TestBindChannelIdentity(t *testing.T) {
 		{
 			name: "a new channel falls back to the intent description for its name",
 			in: binder.BindInput{
-				Proposal: proposalFrom("admin", proposal.Proposal{Intent: proposal.Intent{Description: "90s action"}, Lineup: body.Lineup}),
+				Proposal: proposalFrom("admin", proposals.Proposal{Intent: proposals.Intent{Description: "90s action"}, Lineup: body.Lineup}),
 				Number:   1, Now: bindNow,
 			},
 			check: func(t *testing.T, ch store.Channel) {
@@ -260,13 +260,13 @@ func TestBindRefusals(t *testing.T) {
 		in   binder.BindInput
 	}{
 		{"a proposal with no job has no channel to bind to", binder.BindInput{
-			Proposal: store.Proposal{ID: "p1", Body: proposal.Proposal{Lineup: []proposal.ProposalItem{item(1, "One")}}}, Number: 1, Now: bindNow,
+			Proposal: store.Proposal{ID: "p1", Body: proposals.Proposal{Lineup: []proposals.ProposalItem{item(1, "One")}}}, Number: 1, Now: bindNow,
 		}},
 		{"a pick with no external id cannot be keyed", binder.BindInput{
-			Proposal: proposalFrom("admin", proposal.Proposal{Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, Name: "No id"}}}), Number: 1, Now: bindNow,
+			Proposal: proposalFrom("admin", proposals.Proposal{Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, Name: "No id"}}}), Number: 1, Now: bindNow,
 		}},
 		{"a new channel needs a positive number", binder.BindInput{
-			Proposal: proposalFrom("admin", proposal.Proposal{Lineup: []proposal.ProposalItem{item(1, "One")}}), Now: bindNow,
+			Proposal: proposalFrom("admin", proposals.Proposal{Lineup: []proposals.ProposalItem{item(1, "One")}}), Now: bindNow,
 		}},
 	}
 	for _, tc := range tests {
@@ -283,7 +283,7 @@ func TestBindIsDeterministicAndLeavesItsInputAlone(t *testing.T) {
 	t.Parallel()
 	existing := existingChannel(schedule.LineupEntry{Key: key(1), Title: "One"})
 	in := binder.BindInput{
-		Proposal:    proposalFrom(suggest.AutoCuratedBy, proposal.Proposal{Lineup: []proposal.ProposalItem{item(2, "Two")}, Retired: []provision.Key{key(1)}}),
+		Proposal:    proposalFrom(suggest.AutoCuratedBy, proposals.Proposal{Lineup: []proposals.ProposalItem{item(2, "Two")}, Retired: []provision.Key{key(1)}}),
 		Existing:    existing,
 		Unavailable: map[provision.Key]bool{key(1): true},
 		Now:         bindNow,

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
 const qualityExportSchemaVersion = 1

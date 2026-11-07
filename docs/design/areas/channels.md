@@ -16,7 +16,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`binder`** · 2 importers · → `proposal`, `provision`, `rating`, `schedule`, `store`, `suggest`
+- **`binder`** · 2 importers · → `proposals`, `proposals/suggest`, `provision`, `rating`, `schedule`, `store`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`channeledit`** · 1 importer · → `activity`, `binder`, `provision`, `schedule`, `store`
   One write path for an operator's channel changes (§7): creating a hand-made channel, and every edit after it — the PATCH form, an icon or watermark upload, a detach.
@@ -26,7 +26,7 @@ One area of the [package map](../package-map.md#start-here).
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
-- **`recurate`** · 1 importer · → `catalog`, `jobs`, `proposal`, `provision`, `schedule`, `settings`, `store`, `suggest`
+- **`recurate`** · 1 importer · → `catalog`, `jobs`, `proposals`, `proposals/suggest`, `provision`, `schedule`, `settings`, `store`
   Scheduled channel re-curation (programming-design §8.2): a self-updating channel that periodically re-evaluates its intent against the current library and evolves its lineup — preferring in-library matches, weighting net-new acquisitions by quality + intent, and NEVER bypassing the approval gate.
 - **`schedule`** · 23 importers · → `holidayvocab`, `inventory`, `langcode`, `provision`, `rating`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.

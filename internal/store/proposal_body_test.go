@@ -6,21 +6,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The store is the one place a proposal's JSON is encoded and decoded: callers write and read a
-// typed proposal.Proposal and never see the column.
+// typed proposals.Proposal and never see the column.
 func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 
-	want := proposal.Proposal{
-		Intent:      proposal.Intent{Description: "90s action", MustExclude: []string{"Cats"}},
+	want := proposals.Proposal{
+		Intent:      proposals.Intent{Description: "90s action", MustExclude: []string{"Cats"}},
 		ChannelName: "Action Hour",
-		Lineup:      []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Round Trip Movie", InLibrary: true}},
+		Lineup:      []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Round Trip Movie", InLibrary: true}},
 		Retired:     []provision.Key{"movie:tmdb:90000002"},
 	}
 	if err := s.CreateProposal(ctx, Proposal{ID: "p-typed", JobID: "j", Status: "submitted", CreatedBy: "u", Body: want, CreatedAt: now, UpdatedAt: now}); err != nil {

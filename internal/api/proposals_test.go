@@ -17,13 +17,13 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/events"
-	"github.com/loomarr/loomarr/internal/proposal"
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -35,21 +35,21 @@ type fakeSuggest struct {
 	refines       int
 	lastChannelID string
 	lastRequester string
-	last          proposal.Intent
+	last          proposals.Intent
 }
 
-func (f *fakeSuggest) Submit(_ context.Context, intent proposal.Intent, _ string) (string, error) {
+func (f *fakeSuggest) Submit(_ context.Context, intent proposals.Intent, _ string) (string, error) {
 	f.submits++
 	f.last = intent
 	return "job-1", nil
 }
 
 // SubmitBuilt is unused by these routes; the channel-ideas tests run the real service.
-func (f *fakeSuggest) SubmitBuilt(context.Context, proposal.Intent, proposal.Proposal, string) (string, error) {
+func (f *fakeSuggest) SubmitBuilt(context.Context, proposals.Intent, proposals.Proposal, string) (string, error) {
 	return "", errors.New("fakeSuggest: SubmitBuilt is not part of the proposal routes")
 }
 
-func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent proposal.Intent, requestedBy string) (string, error) {
+func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent proposals.Intent, requestedBy string) (string, error) {
 	f.refines++
 	f.lastChannelID = channelID
 	f.lastRequester = requestedBy
@@ -84,7 +84,7 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 	}}}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
-		workflow := proposalworkflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now)
+		flow := workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now)
 		return api.Router(defaults.Log, api.Options{
 			Store:            defaults.Store,
 			Auth:             defaults.Auth,
@@ -92,7 +92,7 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 			Suggest:          fs,
 			Search:           search,
 			Events:           events.NewBus(),
-			ProposalWorkflow: workflow,
+			ProposalWorkflow: flow,
 			DecisionQuality:  config.DecisionQuality,
 			// No Reconciler wired here (channels isn't under test) — mirrors the
 			// composition root's nil-guard: the bind still creates/patches the
@@ -107,9 +107,9 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 
 // wireProposal reads a proposal fixture written in its wire JSON form, so a test states the
 // stored proposal in the shape clients and operators see.
-func wireProposal(t testing.TB, raw string) proposal.Proposal {
+func wireProposal(t testing.TB, raw string) proposals.Proposal {
 	t.Helper()
-	var p proposal.Proposal
+	var p proposals.Proposal
 	if err := json.Unmarshal([]byte(raw), &p); err != nil {
 		t.Fatalf("proposal fixture is not valid proposal JSON: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestSubmit_AnyAuthenticatedUser(t *testing.T) {
 }
 
 // The intent's bounds are the spec's, refused before any job exists: a description under
-// proposal.MinDescriptionLen (raw, or once trimmed), and an acquisition cap or runtime target
+// proposals.MinDescriptionLen (raw, or once trimmed), and an acquisition cap or runtime target
 // outside its declared range. Exactly the minimum, and a cap of 200, are accepted.
 func TestSubmit_RefusesAnIntentOutsideItsBounds(t *testing.T) {
 	harness := newProposalHarness(t)
@@ -204,7 +204,7 @@ func TestSubmit_RefusesAnIntentOutsideItsBounds(t *testing.T) {
 		t.Fatalf("refused intents created %d jobs, want none", fs.submits)
 	}
 	resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken,
-		`{"description":"`+strings.Repeat("a", proposal.MinDescriptionLen)+`","maxAcquisitions":200}`)
+		`{"description":"`+strings.Repeat("a", proposals.MinDescriptionLen)+`","maxAcquisitions":200}`)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || fs.submits != 1 {
 		t.Fatalf("an intent exactly at its bounds → %d (%d jobs), want 200 and one job", resp.StatusCode, fs.submits)
@@ -297,7 +297,7 @@ func TestGetProposalJobClassifiesNoGroundedTitlesWithoutLeakingDiagnostic(t *tes
 		t.Fatalf("response leaked private diagnostic: %s", body)
 	}
 	var got struct {
-		Intent  proposal.Intent `json:"intent"`
+		Intent  proposals.Intent `json:"intent"`
 		Failure struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
@@ -594,7 +594,7 @@ func TestEvents_RequiresAuth(t *testing.T) {
 
 // The WHOLE intent must survive the wire. This is the regression test for a real gap:
 // the submit body used to be a hand-mirrored struct that had drifted from
-// proposal.Intent — it omitted RuntimeTgt, so `runtimeTargetMin` was unreachable even
+// proposals.Intent — it omitted RuntimeTgt, so `runtimeTargetMin` was unreachable even
 // though the suggester feeds it to the LLM prompt and the scorer, and §13 lists a
 // runtime target among the constraints a user may set. Typing the body from the domain
 // fixed it; this keeps any future Intent field from going missing the same way.
@@ -1270,7 +1270,7 @@ func TestApprove_StoredProposalReflectsTheEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	approved := p.Body
-	for _, items := range [][]proposal.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
+	for _, items := range [][]proposals.ProposalItem{approved.Lineup, approved.Acquisitions, approved.Alternates} {
 		for _, item := range items {
 			if item.Name == "Quiet Engines" {
 				t.Errorf("the approved proposal still contains the dropped title: %+v", approved)

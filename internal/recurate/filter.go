@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -75,7 +75,7 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 
 	// Rank candidate acquisitions by confidence (desc), keep only those over the bar.
 	type cand struct {
-		item proposal.ProposalItem
+		item proposals.ProposalItem
 		key  provision.Key
 	}
 	survivors := make([]cand, 0, len(body.Acquisitions))
@@ -101,7 +101,7 @@ func filterAcquisitionsProtected(p store.Proposal, ch store.Channel, minScorePct
 	})
 
 	// Apply the growth cap: room = maxTitles − (already committed). maxTitles 0 ⇒ unbounded.
-	kept := make([]proposal.ProposalItem, 0, len(survivors))
+	kept := make([]proposals.ProposalItem, 0, len(survivors))
 	room := -1 // -1 = unbounded
 	if maxTitles > 0 {
 		room = maxTitles - len(committed)
@@ -217,7 +217,7 @@ const adjacencyUnscoredFloor = 0.60
 //
 // Identity for everything except an adjacency pick the model left unscored — see
 // adjacencyUnscoredFloor for why that one case is not the same as a zero.
-func effectiveConfidence(a proposal.ProposalItem) float64 {
+func effectiveConfidence(a proposals.ProposalItem) float64 {
 	if a.Confidence == 0 && a.Source == string(catalog.ScopeAdjacent) {
 		return adjacencyUnscoredFloor
 	}

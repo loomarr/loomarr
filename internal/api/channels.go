@@ -10,12 +10,12 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/channeledit"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // ChannelDTO is the API view of a scheduler channel (§9). The desired lineup is
@@ -491,10 +491,10 @@ func (s *Server) refineChannel(ctx context.Context, in *refineChannelInput) (*re
 
 // lineupContext turns a channel's stored lineup entries into the lightweight
 // name/year/key context the refiner reasons about.
-func lineupContext(entries []schedule.LineupEntry) []proposal.LineupContext {
-	out := make([]proposal.LineupContext, 0, len(entries))
+func lineupContext(entries []schedule.LineupEntry) []proposals.LineupContext {
+	out := make([]proposals.LineupContext, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, proposal.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
+		out = append(out, proposals.LineupContext{Name: e.Title, Year: e.Year, Key: string(e.Key)})
 	}
 	return out
 }

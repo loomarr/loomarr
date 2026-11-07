@@ -12,15 +12,15 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`demolibrary`** · 1 importer
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
-- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `openroutercatalog`, `proposal`, `provision`, `quality`, `rating`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
+- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `openroutercatalog`, `proposals`, `proposals/quality`, `proposals/suggest`, `proposals/webreference`, `provision`, `rating`, `schedule`, `testkit`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
-- **`testkit`** · 1 importer · → `demolibrary`, `filler/records`, `images/rustgen`, `llm`, `people/invitation`, `people/notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+- **`testkit`** · 1 importer · → `demolibrary`, `filler/records`, `images/rustgen`, `llm`, `people/invitation`, `people/notifications`, `playout`, `proposals/quality`, `proposals/webreference`, `provision`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/catalogfixture`** · → `catalog`, `library`, `provision`
   Shared no-network adapters for catalog tests.
-- **`testkit/channeljourney`** · → `proposal`, `provision`, `schedule`
+- **`testkit/channeljourney`** · → `proposals`, `provision`, `schedule`
   The public synthetic approval-to-schedule fixtures for #1103.
 - **`testkit/execfixture`** · 1 importer
   Owns filesystem-backed executable test doubles without importing application packages.

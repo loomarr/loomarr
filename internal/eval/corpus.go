@@ -15,10 +15,10 @@
 package eval
 
 import (
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 const (
@@ -147,15 +147,15 @@ type Case struct {
 	MinSerendipityScore float64
 }
 
-// Intent mirrors proposal.Intent's fields (kept local so the corpus is pure data;
-// the harness maps it onto proposal.Intent).
+// Intent mirrors proposals.Intent's fields (kept local so the corpus is pure data;
+// the harness maps it onto proposals.Intent).
 type Intent struct {
 	Description   string
 	Era           string
 	Tone          string
 	RuntimeTgt    int
 	RefineText    string
-	CurrentLineup []proposal.LineupContext
+	CurrentLineup []proposals.LineupContext
 	MustInclude   []string
 	MustExclude   []string
 	MaxAcquire    int

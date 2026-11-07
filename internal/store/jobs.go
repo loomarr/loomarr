@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
 // Job is a persisted suggester generation task (§8). The worker pool claims
 // queued jobs via ClaimDueJobs and runs them; the IntentJSON blob carries the
-// proposal.Intent (like titles.title_json). IntentHash is the cache key.
+// proposals.Intent (like titles.title_json). IntentHash is the cache key.
 type Job struct {
 	ID         string
 	Kind       string // "suggest" (human/user flow) or "recurate" (scheduled channel grant)
@@ -63,7 +63,7 @@ type ProposalJob struct {
 
 // Proposal is a persisted suggester output (§8). Status drives the approval queue
 // (submitted → approved/denied); CreatedBy powers My proposals (§12); ApprovedBy
-// records the admin (§8 audit). Body is the proposal.Proposal, persisted as one JSON column.
+// records the admin (§8 audit). Body is the proposals.Proposal, persisted as one JSON column.
 type Proposal struct {
 	ID         string
 	JobID      string
@@ -81,7 +81,7 @@ type Proposal struct {
 	Note string
 	// Body is the proposal itself. The store encodes it on write and decodes it once on read,
 	// so nothing above the store handles the stored JSON.
-	Body proposal.Proposal
+	Body proposals.Proposal
 	// ApprovedAt is WHEN the gate let this through — the audit rows' ordering key (§7, V27).
 	// Zero = never approved. Deliberately not `UpdatedAt`: three callers write that (approve,
 	// deny, recurate), so a re-curation would silently move an approval's timestamp.
@@ -436,16 +436,16 @@ func encodeProposalBody(p Proposal) (string, error) {
 	return string(raw), nil
 }
 
-// decodeProposalBody is the one place stored proposal JSON becomes a proposal.Proposal. An empty
+// decodeProposalBody is the one place stored proposal JSON becomes a proposals.Proposal. An empty
 // column is the zero proposal. Malformed JSON is an error: a caller must never act on a proposal it
 // could not read.
-func decodeProposalBody(id, raw string) (proposal.Proposal, error) {
-	var body proposal.Proposal
+func decodeProposalBody(id, raw string) (proposals.Proposal, error) {
+	var body proposals.Proposal
 	if raw == "" {
 		return body, nil
 	}
 	if err := json.Unmarshal([]byte(raw), &body); err != nil {
-		return proposal.Proposal{}, fmt.Errorf("decode proposal %s: %w", id, err)
+		return proposals.Proposal{}, fmt.Errorf("decode proposal %s: %w", id, err)
 	}
 	return body, nil
 }
