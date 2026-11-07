@@ -327,11 +327,8 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         chromeVisible={active === "watching"}
         controlsActivityKey={controlsActivityKey}
         controlsVisible={controlsVisible}
-        density="tv"
         loading={catalogState.loading}
         loadError={catalogState.error}
-        onChannelDown={() => void controller.step(-1)}
-        onChannelUp={() => void controller.step(1)}
         onChangeServer={() => session.chooseServer()}
         onDismissControls={dismissControls}
         onGoLive={() => void controller.goLive()}
@@ -341,15 +338,11 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
             longSelectAtMs.current = undefined;
           else dispatchRemoteEvent({ key: "select" });
         }}
-        onOpenSurf={() => setActive("surf")}
-        onPause={controller.pause}
         onPlay={() => void controller.play()}
-        onPrevious={() => void controller.previous()}
         onRetry={() => {
           if (catalogState.error) refresh();
           else void controller.retry();
         }}
-        onShowControls={showControlsForActivity}
         onSwitchShown={certMarks.enabled ? markSwitchShown : undefined}
         numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
         player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}

@@ -1,13 +1,7 @@
 import type { GuideLayout, GuideSelection } from "@loomarr/core/guide";
 import { describe, expect, it } from "vitest";
 
-import {
-  activateTvGuideFocus,
-  moveTvGuideFocus,
-  restoreTvGuideFocus,
-  type TvGuideNavigationState,
-  tvGuideRowWindow,
-} from "../index";
+import { moveTvGuideFocus, type TvGuideNavigationState, tvGuideRowWindow } from "../index";
 
 const channel = (index: number) => ({
   airings: [
@@ -63,7 +57,6 @@ describe("TV Guide navigation", () => {
 
     const recentFocused = moveTvGuideFocus(layout, filtersFocused, "right", filters, nowMs).state;
     expect(recentFocused.focus).toEqual({ filter: "recent", region: "filters" });
-    expect(activateTvGuideFocus(recentFocused)).toEqual({ filter: "recent", kind: "filter" });
 
     const gridFocused = moveTvGuideFocus(layout, recentFocused, "down", filters, nowMs).state;
     expect(gridFocused.focus).toEqual({ region: "grid", selection });
@@ -76,7 +69,6 @@ describe("TV Guide navigation", () => {
       channelId: "channel-1",
       scheduleBlockId: "block-1",
     });
-    expect(activateTvGuideFocus(moved)).toEqual({ kind: "tune", selection: moved.gridSelection });
   });
 
   it("pages LEFT off the first cell back in time, but never before now (#1659 decision N4)", () => {
@@ -100,12 +92,6 @@ describe("TV Guide navigation", () => {
     };
     const partialResult = moveTvGuideFocus(partial, state, "right", filters, nowMs);
     expect(partialResult).toMatchObject({ boundary: "right", pageIntent: undefined });
-  });
-
-  it("restores focus by channel and falls back deterministically after removal", () => {
-    const removed = { ...layout, channels: layout.channels.slice(1) };
-    expect(restoreTvGuideFocus(removed, state)?.gridSelection.channelId).toBe("channel-1");
-    expect(restoreTvGuideFocus({ ...layout, channels: [] }, state)).toBeUndefined();
   });
 
   it("bounds a 100-channel render window while keeping row position explicit", () => {

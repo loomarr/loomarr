@@ -39,7 +39,6 @@ const renderSurface = (
     channelDigits?: boolean;
     chromeVisible?: boolean;
     controlsVisible?: boolean;
-    density?: "touch" | "tv";
     loading?: boolean;
     loadError?: string;
     numberEntry?: Parameters<typeof WatchingSurface>[0]["numberEntry"];
@@ -53,22 +52,15 @@ const renderSurface = (
         channelDigits={options.channelDigits}
         chromeVisible={options.chromeVisible}
         controlsVisible={options.controlsVisible}
-        density={options.density ?? "tv"}
         loading={options.loading}
         loadError={options.loadError}
         numberEntry={options.numberEntry}
-        onChannelDown={vi.fn()}
-        onChannelUp={vi.fn()}
         onChangeServer={options.onChangeServer}
         onDismissControls={vi.fn()}
         onGoLive={vi.fn()}
         onOpenGuide={vi.fn()}
-        onOpenSurf={vi.fn()}
-        onPause={vi.fn()}
         onPlay={vi.fn()}
-        onPrevious={vi.fn()}
         onRetry={vi.fn()}
-        onShowControls={vi.fn()}
         player={<div data-player="one-native-player" />}
         schedule={options.schedule}
         snapshot={snapshot}
@@ -88,18 +80,11 @@ describe("WatchingSurface", () => {
         <LoomarrProvider>
           <WatchingSurface
             controlsActivityKey={controlsActivityKey}
-            density="tv"
-            onChannelDown={vi.fn()}
-            onChannelUp={vi.fn()}
             onDismissControls={onDismissControls}
             onGoLive={vi.fn()}
             onOpenGuide={vi.fn()}
-            onOpenSurf={vi.fn()}
-            onPause={vi.fn()}
             onPlay={vi.fn()}
-            onPrevious={vi.fn()}
             onRetry={vi.fn()}
-            onShowControls={vi.fn()}
             player={<div />}
             schedule={{
               now: { progressPercent, timeLabel: "9:00 PM–9:30 PM", title: "The Current Frontier" },
@@ -130,18 +115,11 @@ describe("WatchingSurface", () => {
         <LoomarrProvider>
           <WatchingSurface
             controlsActivityKey={controlsActivityKey}
-            density="tv"
-            onChannelDown={vi.fn()}
-            onChannelUp={vi.fn()}
             onDismissControls={dismiss}
             onGoLive={vi.fn()}
             onOpenGuide={vi.fn()}
-            onOpenSurf={vi.fn()}
-            onPause={vi.fn()}
             onPlay={vi.fn()}
-            onPrevious={vi.fn()}
             onRetry={vi.fn()}
-            onShowControls={vi.fn()}
             player={<div />}
             snapshot={playing}
           />
@@ -271,16 +249,6 @@ describe("WatchingSurface", () => {
     expect(output).not.toContain("Up/Down tune");
   });
 
-  it("keeps explicit playback and tune actions in the touch presentation", () => {
-    const output = renderSurface(playing, { density: "touch" });
-    expect(output).toContain("Previous");
-    expect(output).toContain("Channel −");
-    expect(output).toContain("Guide");
-    expect(output).toContain("Surf");
-    expect(output).toContain("Pause");
-    expect(output).toContain("Channel +");
-  });
-
   it("draws the typed digits and a live auto-tune countdown (#1659 map 5a)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
@@ -291,19 +259,12 @@ describe("WatchingSurface", () => {
       root.render(
         <LoomarrProvider>
           <WatchingSurface
-            density="tv"
             numberEntry={{ channelName: "Nature", digits: "21", expiresAtMs: 2_200 }}
-            onChannelDown={vi.fn()}
-            onChannelUp={vi.fn()}
             onDismissControls={vi.fn()}
             onGoLive={vi.fn()}
             onOpenGuide={vi.fn()}
-            onOpenSurf={vi.fn()}
-            onPause={vi.fn()}
             onPlay={vi.fn()}
-            onPrevious={vi.fn()}
             onRetry={vi.fn()}
-            onShowControls={vi.fn()}
             player={<div />}
             snapshot={playing}
           />
@@ -330,19 +291,12 @@ describe("WatchingSurface", () => {
       root.render(
         <LoomarrProvider>
           <WatchingSurface
-            density="tv"
             numberEntry={numberEntry}
-            onChannelDown={vi.fn()}
-            onChannelUp={vi.fn()}
             onDismissControls={vi.fn()}
             onGoLive={vi.fn()}
             onOpenGuide={vi.fn()}
-            onOpenSurf={vi.fn()}
-            onPause={vi.fn()}
             onPlay={vi.fn()}
-            onPrevious={vi.fn()}
             onRetry={vi.fn()}
-            onShowControls={vi.fn()}
             player={<div />}
             snapshot={playing}
           />
