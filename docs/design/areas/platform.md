@@ -23,7 +23,7 @@ One area of the [package map](../package-map.md#start-here).
   Carries the version stamped into the binary at build time.
 - **`config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`devbootstrap`** · → `auth`, `settings`
+- **`devbootstrap`** · → `people/auth`, `settings`
   Prepares an isolated agent worktree for UI development.
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -31,7 +31,7 @@ One area of the [package map](../package-map.md#start-here).
   In-memory event bus behind SSE (§7 /v1/events, §8).
 - **`holidayvocab`** · 8 importers · → `textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
-- **`housekeeping`** · 1 importer · → `diagnostics`, `invitation`, `jobs`, `notifications`, `recovery`, `settings`
+- **`housekeeping`** · 1 importer · → `diagnostics`, `jobs`, `people/invitation`, `people/notifications`, `people/recovery`, `settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
 - **`httpx`** · 12 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
@@ -59,11 +59,11 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`store`** · 17 importers · → `contact`, `creative`, `defects`, `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `store/catalogstore`, `store/identitystore`, `store/storedb`
+- **`store`** · 17 importers · → `creative`, `defects`, `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `people/secretprotection`, `proposal`, `provision`, `quality`, `schedule`, `store/catalogstore`, `store/identitystore`, `store/storedb`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`store/catalogstore`** · 4 importers · → `creative`, `defects`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `schedule`, `store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
-- **`store/identitystore`** · 4 importers · → `contact`, `invitation`, `notifications`, `recovery`, `store/storedb`
+- **`store/identitystore`** · 4 importers · → `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`store/storedb`** · 4 importers
   Dependency-free kernel of Loomarr's persistence layer (design §5): the small, backend-level pieces every store package needs and that know nothing about any table.

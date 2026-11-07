@@ -164,7 +164,8 @@ var areas = []area{
 			"password recovery, contact addresses and notifications, plus the encryption of the secrets " +
 			"Loomarr keeps in its database.",
 		Packages: []string{
-			"auth", "invitation", "recovery", "contact", "secretprotection", "notifications",
+			"people/auth", "people/invitation", "people/recovery", "people/contact",
+			"people/secretprotection", "people/notifications",
 		},
 		MayImport: map[string]string{
 			"platform": "the identity store accounts and sessions live in, the outbound HTTP client " +
