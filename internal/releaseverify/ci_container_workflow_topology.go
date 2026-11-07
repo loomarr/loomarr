@@ -29,7 +29,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci-clients.yml":             {jobs: map[string]int{"run": 9}},
 		"ci-docs.yml":                {jobs: map[string]int{"run": 7}},
 		"ci-frontend.yml":            {jobs: map[string]int{"run": 9}},
-		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 14}},
+		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 10}},
 		"ci-go.yml":                  {jobs: map[string]int{"run": 14}},
 		"ci-go-cache-warm.yml":       {jobs: map[string]int{"run": 6, "contracts": 6}},
 		"ci-image-certification.yml": {jobs: map[string]int{"run": 5}},
@@ -47,7 +47,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		}},
 		"ci.yml": {jobs: map[string]int{
 			"changes": 3, "agent-harness-macos": 0, "release-candidate-scope": 1, "full-manual-scope": 1,
-			"ci-policy": 7, "rust-contracts": 0, "go-contracts": 0, "image-certification": 0, "go": 0,
+			"ci-policy": 6, "rust-contracts": 0, "go-contracts": 0, "image-certification": 0, "go": 0,
 			"store-postgres": 0, "frontend": 0, "clients": 0, "apple-mobile": 0, "apple-tv": 0, "apple-cache-validation": 0, "expo-android-mobile": 0,
 			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "playout-bench": 0, "ci-ok": 4,
 		}},

@@ -631,7 +631,8 @@ failing native result.
 ## Sharding
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go
-contracts run once in `go-contracts`, whose two shards share the checks without overlap, and Rust
+contracts run once: the workflow, release, harness, shell and generated-docs checks in CI policy on
+every PR, and the rest in `go-contracts`, whose two shards share them without overlap. Rust
 contracts once in `rust-contracts`, in parallel with
 two ordinary Go test lanes, two serial lanes for packages that must not share a runner, and the independent release-worker
 certification. Their union is the same

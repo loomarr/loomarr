@@ -24,8 +24,7 @@ func directCIPolicyShellStepAuthorities() []struct {
 		run  string
 	}{
 		{name: "Repository policy bootstrap outside Make", run: directCIPolicyBootstrap},
-		{name: "Workflow and publication policy", run: "make ci-lint release-verify"},
-		{name: "Agent harness and shell policy", run: "make agent-harness-test shellcheck"},
+		{name: "Workflow, publication, agent harness, and shell policy", run: "make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck"},
 		{name: "Documentation contracts read by Go", run: "go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify"},
 	}
 }
@@ -78,7 +77,7 @@ func VerifyDirectCIPolicyBootstrap(path string) error {
 	}
 	shellSteps := directCIPolicyShellStepAuthorities()
 	if len(steps.Content) != 3+len(shellSteps) {
-		return fmt.Errorf("root CI policy job must contain only the three audited setup actions and four policy shell steps")
+		return fmt.Errorf("root CI policy job must contain only the three audited setup actions and three policy shell steps")
 	}
 	if err := verifyDirectCICheckoutStep(steps.Content[0]); err != nil {
 		return err
