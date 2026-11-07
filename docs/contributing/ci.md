@@ -471,6 +471,28 @@ then saves that generation in the default-branch cache scope without running ano
 It deletes the transfer and all superseded Android generations. PR revisions may save caches only in
 their own disposable scope; queue jobs restore but never spend time saving an unreachable cache.
 
+## The queue stops runs that can no longer merge
+
+`CI` waits for every other job, and the queue reads only `CI`. Left alone, a run with a failed
+Playwright lane holds its entry until the slowest job finishes, and when an entry leaves the queue,
+GitHub starts replacements for the groups behind it but leaves their old runs running. Both spend
+scarce runners on code that cannot merge, and the replacements queue behind them.
+
+`queue-janitor.yml` stops those runs. A queue run wakes it, and one job then sweeps every active
+queue run each minute until none is left. `scripts/ci-queue-janitor.sh` cancels a run whose merge
+group ref is gone, and a run where a job other than `CI` ended as `failure` or `cancelled`. `CI` still
+runs after the cancel and reports the failure, so the entry leaves the queue at once rather than
+when the slowest job ends. Any doubt leaves a run alone: a failed API read skips the sweep, and an
+empty ref list says nothing about any one run.
+
+This costs diagnosis, not assurance. A stopped run reports the first failure, so a second family that
+would have failed later shows up on the next attempt. A pull request's own run is never touched.
+
+It runs through `workflow_run`, so the token that can cancel runs executes `main`'s script and never
+code from a queued pull request. It is one job because each job holds one of the account's 20
+concurrent runner slots, of which five can be macOS, and a watcher per build would cost a slot per
+build.
+
 ## Per-run measurements
 
 The required `CI` aggregate appends a timing table after it has evaluated every required result.

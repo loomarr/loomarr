@@ -141,6 +141,7 @@ container-image-acquisition	scripts/ensure-container-image.sh	contracts,postgres
 playwright-container-runner	scripts/run-playwright-container.sh	contracts,visual,e2e,tuner,policy
 tuner-args	scripts/tuner-args.sh;scripts/tuner-args-test.sh	tuner,policy
 merge-queue-policy	scripts/ci-merge-queue-policy.sh;scripts/ci-merge-queue-policy-test.sh	policy
+merge-queue-janitor	scripts/ci-queue-janitor.sh;scripts/ci-queue-janitor-test.sh;.github/workflows/queue-janitor.yml	policy
 ci-policy-bootstrap	.github/workflows/ci.yml	policy
 ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/contributing/ci.md	docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent

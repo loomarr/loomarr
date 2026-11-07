@@ -57,6 +57,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		},
 		{workflow: "apple-compilation-cache.yml", job: "publish"}: {name: "Publish validated Apple compilation cache", runsOn: "xcode-27", timeoutMinutes: 75},
 		{workflow: "cache-cleanup.yml", job: "cleanup"}:           {name: "Drop the closed PR's caches", runsOn: "ubuntu-latest"},
+		{workflow: "queue-janitor.yml", job: "sweep"}:             {name: "Stop queue runs that can no longer merge", runsOn: "ubuntu-latest", timeoutMinutes: 60},
 		{workflow: "ci-agent.yml", job: "run"}:                    {name: "Agent harness (macOS)", runsOn: "macos-latest"},
 		{workflow: "ci-android.yml", job: "run"}:                  {name: "Android TV — React Native Play bundle", runsOn: "ubuntu-latest"},
 		{workflow: "ci-apple-mobile.yml", job: "run"}:             {name: "Apple mobile — native build + launch", runsOn: "xcode-27", timeoutMinutes: 75},

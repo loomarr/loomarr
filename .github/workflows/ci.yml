@@ -45,10 +45,11 @@ permissions:
 
 # A newer push to the same ref cancels the older in-flight run.
 #
-# ⚠ NEVER cancel a merge-queue run. `merge_group` refs are unique per batch so collisions are
-# unlikely, but a cancelled queue run reports a non-success conclusion, which ejects the whole
-# batch from the queue — turning a harmless double-push into a merge that silently does not
-# happen. Only PR and branch runs are cancellable.
+# ⚠ This must NEVER cancel a healthy merge-queue run. `merge_group` refs are unique per batch so
+# collisions are unlikely, but a cancelled queue run fails `CI`, which ejects its entry — turning a
+# harmless double-push into a merge that silently does not happen. Only PR and branch runs are
+# cancellable here. The merge queue janitor (queue-janitor.yml) stops only runs that can no longer
+# merge: their group is gone, or a job has already failed.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}

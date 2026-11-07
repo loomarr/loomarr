@@ -18,6 +18,7 @@ type workflowActionKey struct {
 // steps[] index: name/id, exact pinned uses, inputs, condition, and environment.
 func workflowActionAuthorityEntries() map[workflowActionKey]string {
 	entries := map[workflowActionKey]string{
+		{workflow: "queue-janitor.yml", job: "sweep", step: 0}:              `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "android-ccache-promotion.yml", job: "promote", step: 0}: `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "android-ccache-promotion.yml", job: "promote", step: 2}: `{"name":"Download the immutable compiler-cache transfer","if":"steps.producer.outputs.found == 'true'","uses":"actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333","with":{"name":"${{ steps.producer.outputs.artifact-name }}","path":"${{ runner.temp }}/loomarr-android-ccache-transfer","github-token":"${{ secrets.GITHUB_TOKEN }}","repository":"${{ github.repository }}","run-id":"${{ steps.producer.outputs.run-id }}"}}`,
 		{workflow: "android-ccache-promotion.yml", job: "promote", step: 4}: `{"name":"Publish the verified generation in the default-branch cache scope","if":"steps.producer.outputs.found == 'true'","uses":"actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9","with":{"path":"${{ runner.temp }}/loomarr-android-ccache","key":"${{ steps.cache.outputs.cache-key }}"}}`,

@@ -1,0 +1,33 @@
+# Stop merge-queue runs that can no longer merge (scripts/ci-queue-janitor.sh).
+#
+# `workflow_run` runs this file and its script from main, so the token that can cancel runs never
+# executes code from a queued pull request. One job watches every queue run because each job holds
+# one of a small number of hosted runner slots; a watcher per build would cost a slot per build.
+name: Merge queue janitor
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [requested]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  sweep:
+    name: Stop queue runs that can no longer merge
+    # A skipped job takes no runner, so a pull-request run costs nothing here.
+    if: github.event.workflow_run.event == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # On the job, not the workflow: a skipped pull-request run must not replace a pending sweep.
+    concurrency:
+      group: merge-queue-janitor
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Sweep the merge queue's runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/ci-queue-janitor.sh

@@ -35,9 +35,13 @@ type workflowAuthority struct {
 	name             string
 	pullRequestTypes []string
 	pushBranches     []string
-	environment      map[string]string
-	permissions      map[string]string
-	jobs             map[string]workflowJobAuthority
+	// workflowRunTypes pairs with workflowRunSource: the workflow runs from the default branch
+	// when workflowRunSource reaches one of these states.
+	workflowRunSource string
+	workflowRunTypes  []string
+	environment       map[string]string
+	permissions       map[string]string
+	jobs              map[string]workflowJobAuthority
 }
 
 func standardWorkflowEnvironment() map[string]string {
@@ -222,6 +226,22 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						}}),
 						appleCachePublisherRetentionCommand: exactWorkflowStep(12, "Retain only the newest generation for this fingerprint", workflowStepAuthority{environment: map[string]string{
 							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}", "PREFIX": "${{ steps.apple-toolchain.outputs.fingerprint }}",
+						}}),
+					},
+				},
+			},
+		},
+		"queue-janitor.yml": {
+			name:              "Merge queue janitor",
+			workflowRunSource: "CI",
+			workflowRunTypes:  []string{"requested"},
+			permissions:       map[string]string{"actions": "write", "contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"sweep": {
+					condition: "github.event.workflow_run.event == 'merge_group'",
+					steps: map[string]workflowStepAuthority{
+						"./scripts/ci-queue-janitor.sh": exactWorkflowStep(1, "Sweep the merge queue's runs", workflowStepAuthority{environment: map[string]string{
+							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
 						}}),
 					},
 				},
@@ -863,7 +883,7 @@ func verifySourceBoundWorkflowContext(workflowName, jobName string, workflow, jo
 
 func verifySourceBoundWorkflowIdentity(workflowName string, workflow *yaml.Node) error {
 	authority, ok := workflowAuthorityCatalog().runs[workflowName]
-	if !ok || (authority.name == "" && authority.pullRequestTypes == nil && authority.pushBranches == nil) {
+	if !ok || (authority.name == "" && authority.pullRequestTypes == nil && authority.pushBranches == nil && authority.workflowRunTypes == nil) {
 		return nil
 	}
 	name, present := mappingValue(workflow, "name")
@@ -880,6 +900,9 @@ func verifySourceBoundWorkflowIdentity(workflowName string, workflow *yaml.Node)
 	}
 	if authority.pullRequestTypes != nil && authority.pushBranches != nil {
 		return fmt.Errorf("workflow %s authority declares conflicting triggers", workflowName)
+	}
+	if authority.workflowRunTypes != nil {
+		return verifyWorkflowRunTrigger(workflowName, trigger, authority)
 	}
 	if authority.pullRequestTypes != nil {
 		if trigger.Content[0].Value != "pull_request" {
@@ -914,6 +937,30 @@ func verifySourceBoundWorkflowIdentity(workflowName string, workflow *yaml.Node)
 	for index, want := range authority.pushBranches {
 		if branches.Content[index].Kind != yaml.ScalarNode || branches.Content[index].Value != want {
 			return fmt.Errorf("workflow %s push branches differ from its source-bound authority", workflowName)
+		}
+	}
+	return nil
+}
+
+func verifyWorkflowRunTrigger(workflowName string, trigger *yaml.Node, authority workflowAuthority) error {
+	if trigger.Content[0].Value != "workflow_run" {
+		return fmt.Errorf("workflow %s trigger must remain exactly workflow_run", workflowName)
+	}
+	run := trigger.Content[1]
+	if run.Kind != yaml.MappingNode || len(run.Content) != 4 {
+		return fmt.Errorf("workflow %s workflow_run trigger differs from its source-bound authority", workflowName)
+	}
+	sources, err := requiredSequence(run, "workflows")
+	if err != nil || len(sources.Content) != 1 || sources.Content[0].Value != authority.workflowRunSource {
+		return fmt.Errorf("workflow %s workflow_run source differs from its source-bound authority", workflowName)
+	}
+	types, err := requiredSequence(run, "types")
+	if err != nil || len(types.Content) != len(authority.workflowRunTypes) {
+		return fmt.Errorf("workflow %s workflow_run types differ from its source-bound authority", workflowName)
+	}
+	for index, want := range authority.workflowRunTypes {
+		if types.Content[index].Kind != yaml.ScalarNode || types.Content[index].Value != want {
+			return fmt.Errorf("workflow %s workflow_run types differ from its source-bound authority", workflowName)
 		}
 	}
 	return nil
