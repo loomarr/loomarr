@@ -114,13 +114,15 @@ func (s *sqlStore) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 	out := []LibraryNeed{}
 	for rows.Next() {
 		var n LibraryNeed
-		var catalog string
+		var catalog, set string
 		if err := rows.Scan(&n.ID, &n.Kind, &n.Name, &n.SortName, &n.Year, &catalog, &n.Match.Basis, &n.Match.App,
-			&n.Match.Page, &n.Poster, &n.Files, &n.Pending, &n.Unplayable, &n.Origin.Authority, &n.Origin.Key, &n.Searched); err != nil {
+			&n.Match.Page, &set, &n.Poster, &n.Files, &n.Pending, &n.Unplayable, &n.Origin.Authority, &n.Origin.Key,
+			&n.Searched); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("library needs: %w", err)
 		}
 		n.Catalog, _ = ParseLibraryCatalogKey(catalog)
+		n.Set, _ = ParseLibraryCatalogKey(set)
 		out = append(out, n)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {

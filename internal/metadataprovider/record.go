@@ -31,7 +31,8 @@ type Record struct {
 	Technical     *Technical
 	Artwork       []ArtworkRef
 
-	// Children are a series' episodes when the source returned them with the series.
+	// Children are a series' episodes when the source returned them with the series, or a
+	// collection's movies, in its order.
 	Children []Record
 	// More are further items of the same kind that the same ref names: the other episodes of a
 	// multi-episode file, each with its own ids (decision 15).

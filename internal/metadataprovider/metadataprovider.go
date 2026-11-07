@@ -52,6 +52,9 @@ const (
 	KindMovie   Kind = "movie"
 	KindSeries  Kind = "series"
 	KindEpisode Kind = "episode"
+	// KindCollection is a catalog's set of movies, such as a TMDB collection (a franchise). Its
+	// record's Children are the set's movies in the catalog's order.
+	KindCollection Kind = "collection"
 )
 
 // Family is a group of fields that share one precedence rule.

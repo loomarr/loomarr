@@ -38,6 +38,9 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/movie/90000601", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_movie_90000601.json") })
 	mux.HandleFunc("/tv/90000701", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_tv_90000701.json") })
+	mux.HandleFunc("/collection/90000611", func(w http.ResponseWriter, _ *http.Request) {
+		serve(w, "provider_collection_90000611.json")
+	})
 	mux.HandleFunc("/find/90001201", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_find_tvdb_episode_90001201.json") })
 	mux.HandleFunc("/find/90009998", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"movie_results":[],"person_results":[],"tv_results":[],"tv_episode_results":[],"tv_season_results":[]}`))
@@ -91,16 +94,18 @@ func ref(kind mp.Kind, ns mp.Namespace, value string) mp.Ref {
 }
 
 var (
-	movieRef   = ref(mp.KindMovie, mp.NamespaceTMDB, "90000601")
-	seriesRef  = ref(mp.KindSeries, mp.NamespaceTMDB, "90000701")
-	episodeRef = ref(mp.KindEpisode, mp.NamespaceTVDB, "90001201")
+	movieRef      = ref(mp.KindMovie, mp.NamespaceTMDB, "90000601")
+	seriesRef     = ref(mp.KindSeries, mp.NamespaceTMDB, "90000701")
+	episodeRef    = ref(mp.KindEpisode, mp.NamespaceTVDB, "90001201")
+	collectionRef = ref(mp.KindCollection, mp.NamespaceTMDBCollection, "90000611")
 )
 
 func TestProvider_Conformance(t *testing.T) {
 	providertest.Run(t, newFakeTMDB(t).provider(nil), providertest.Case{
-		Held: []mp.Ref{movieRef, seriesRef, episodeRef},
+		Held: []mp.Ref{movieRef, seriesRef, episodeRef, collectionRef},
 		Missing: []mp.Ref{
 			ref(mp.KindMovie, mp.NamespaceTMDB, "90009999"),
+			ref(mp.KindCollection, mp.NamespaceTMDBCollection, "90009997"),
 			ref(mp.KindEpisode, mp.NamespaceTVDB, "90009998"),
 		},
 	})
@@ -175,6 +180,39 @@ func TestFetchMovie(t *testing.T) {
 	}
 	if rec.Technical != nil || rec.Numbering != nil || len(rec.Files) > 0 {
 		t.Error("a catalog record carries no technical facts, numbering or files")
+	}
+}
+
+// A collection is its name, its artwork and its movies in release order, an unreleased one last;
+// a part with no id is left out.
+func TestFetchCollection(t *testing.T) {
+	f := newFakeTMDB(t)
+	rec, err := f.provider(nil).Fetch(context.Background(), collectionRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.last(t).URL.Path != "/collection/90000611" {
+		t.Errorf("asked %s", f.last(t).URL.Path)
+	}
+	if rec.Descriptive == nil || rec.Descriptive.Title != "The Lantern Keeper Collection" {
+		t.Fatalf("descriptive %+v", rec.Descriptive)
+	}
+	if len(rec.Artwork) == 0 {
+		t.Error("no artwork")
+	}
+	var got []string
+	for _, c := range rec.Children {
+		got = append(got, c.IDs[0].Value+" "+c.Descriptive.Title)
+	}
+	want := []string{
+		"90000612 The Lantern Keeper", "90000613 The Lantern Keeper Returns",
+		"90000614 The Lantern Keeper Forever", "90000615 The Lantern Keeper: Dawn",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parts = %q, want %q", got, want)
+	}
+	if rec.Children[0].Descriptive.Year != 2001 || rec.Children[0].Kind != mp.KindMovie {
+		t.Errorf("first part %+v", rec.Children[0])
 	}
 }
 

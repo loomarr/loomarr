@@ -50,6 +50,8 @@ type LibraryRootService interface {
 	CreateCollection(ctx context.Context, name, description string, items []string) (string, error)
 	UpdateCollection(ctx context.Context, id, name, description string, items []string) error
 	DeleteCollection(ctx context.Context, id string) error
+	Sets(ctx context.Context) ([]scan.Set, error)
+	CopySet(ctx context.Context, id string) (string, error)
 }
 
 func (s *Server) registerLibrary(api huma.API) {

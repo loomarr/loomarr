@@ -372,6 +372,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `what` that names its id. Delete answers 409 while any do. `imported_from` marks one brought
   over from the media server at cutover (step 15). These are not the media server's collections
   at `/v1/library/collections`, which channel scopes name until then.
+- **Ready-made sets** (step 12b, decision 28). A movie's TMDB record names the TMDB collection it
+  belongs to; the scanner keeps that as `library_items.set_key` and asks the catalog cache for the
+  set's own record (`tmdb_collection`), which lists every movie in it in release order. The
+  `/v1/collections` list also returns `sets`: each set the library has a movie of, with its owned
+  movies in the set's order and how many it has in all. `POST /v1/collections/sets/{id}/copy`
+  makes the household's own collection from one. A set can't be changed, only copied.
 
 ## Cached series episodes
 

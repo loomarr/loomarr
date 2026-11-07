@@ -19,6 +19,9 @@ type LibraryItem struct {
 	Year     int
 	// Catalog is the library_catalog row its details come from; zero for none.
 	Catalog LibraryCatalogKey
+	// Set is the library_catalog row of the ready-made set (a TMDB collection) a movie belongs to;
+	// zero for none.
+	Set LibraryCatalogKey
 	// Origin is its scan origin: a movie's file, a series' folder. The maintainer's answer for a
 	// title nothing grounds is kept against it.
 	Origin LibraryOrigin
@@ -74,7 +77,9 @@ type LibraryItemQuery struct {
 	Search   string
 	Problems bool
 	// IDs keeps only these items, when not empty.
-	IDs    []string
+	IDs []string
+	// InSet keeps only the movies in a ready-made set.
+	InSet  bool
 	Limit  int
 	Offset int
 }
@@ -123,13 +128,13 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 	}
 	defer func() { _ = tx.Rollback() }()
 	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_items (id, kind, name, sort_name, year, catalog,
-		origin_authority, origin_key, grounded, match_basis, match_app, match_page, updated_at_ms)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		origin_authority, origin_key, grounded, match_basis, match_app, match_page, set_key, updated_at_ms)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
 		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
 		origin_authority = excluded.origin_authority, origin_key = excluded.origin_key,
 		grounded = excluded.grounded, match_basis = excluded.match_basis, match_app = excluded.match_app,
-		match_page = excluded.match_page, updated_at_ms = excluded.updated_at_ms`))
+		match_page = excluded.match_page, set_key = excluded.set_key, updated_at_ms = excluded.updated_at_ms`))
 	if err != nil {
 		return fmt.Errorf("save library items: %w", err)
 	}
@@ -144,7 +149,7 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 		}
 		if _, err := stmt.ExecContext(ctx, it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(),
 			it.Origin.Authority, it.Origin.Key, it.Match.Grounded(), it.Match.Basis, it.Match.App, it.Match.Page,
-			at.UnixMilli()); err != nil {
+			it.Set.String(), at.UnixMilli()); err != nil {
 			return fmt.Errorf("save library item: %w", err)
 		}
 	}
@@ -167,12 +172,12 @@ const presentFiles = `(
 // itemColumns is an item, its poster ref and its file counts, read over presentFiles; itemGroup
 // groups by the item.
 const (
-	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page,
+	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
 		COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
 			AND r.owner_id = i.id AND r.role = 'poster'), ''),
 		COUNT(*), COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN f.header = 'failed' THEN 1 ELSE 0 END), 0)`
-	itemGroup = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page`
+	itemGroup = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key`
 	// itemProblems keeps a group that needs a look.
 	itemProblems = `SUM(CASE WHEN f.header = 'failed' THEN 1 ELSE 0 END) > 0 OR (i.kind = 'movie' AND COUNT(*) > 1)`
 )
@@ -190,6 +195,9 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	if search := strings.TrimSpace(q.Search); search != "" {
 		where = append(where, "LOWER(i.name) LIKE ? ESCAPE '\\'")
 		args = append(args, "%"+likeEscape(strings.ToLower(search))+"%")
+	}
+	if q.InSet {
+		where = append(where, "i.set_key <> ''")
 	}
 	if len(q.IDs) > 0 {
 		where = append(where, "i.id IN ("+strings.TrimSuffix(strings.Repeat("?, ", len(q.IDs)), ", ")+")")
@@ -245,13 +253,14 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 	out := []LibraryItemSummary{}
 	for rows.Next() {
 		var it LibraryItemSummary
-		var catalog string
+		var catalog, set string
 		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
-			&it.Match.App, &it.Match.Page, &it.Poster, &it.Files, &it.Pending, &it.Unplayable); err != nil {
+			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Files, &it.Pending, &it.Unplayable); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}
 		it.Catalog, _ = ParseLibraryCatalogKey(catalog)
+		it.Set, _ = ParseLibraryCatalogKey(set)
 		out = append(out, it)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
