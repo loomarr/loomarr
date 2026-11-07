@@ -103,12 +103,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `playout` | `channels/schedule`, `config`, `diagnostics`, `media/encode`, `provision` |
 | `proposals` | `channels/schedule`, `provision`, `storagegovernor` |
 | `proposals/quality` | `provision` |
-| `proposals/suggest` | `catalog`, `channels/schedule`, `holidayvocab`, `llm`, `proposals`, `proposals/quality`, `provision`, `rating`, `store` |
+| `proposals/suggest` | `catalog`, `channels/schedule`, `holidayvocab`, `llm`, `proposals`, `proposals/quality`, `provision`, `rating`, `store`, `tmdb` |
 | `provision` | — |
 | `rating` | — |
 | `settings` | `config`, `library` |
 | `storagegovernor` | — |
 | `store` | `channels/schedule`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposals`, `proposals/quality`, `provision` |
+| `tmdb` | `catalog`, `httpx`, `metrics`, `provision` |
 
 ## How the area pages are made
 

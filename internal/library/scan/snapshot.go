@@ -48,19 +48,34 @@ func seriesOrigin(root, dir string) inventory.OriginKey {
 // revision is a file's inventory revision: its stat. A new size or mtime is new bytes.
 func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.ModifiedNs) }
 
+// writeVersion changes when what a write produces from the same inputs changes, so every file is
+// written once more with the new shape; its header is kept, so none is opened again.
+//
+//	2: titles name the catalog row their details come from (library_items.catalog).
+const writeVersion = 2
+
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
 func identityDigest(file File, m managed, embedded mp.Record, parent []inventory.ExternalID) string {
 	payload, _ := json.Marshal(struct {
+		Version  int
 		Records  []mp.Record
 		Series   *mp.Record
 		Embedded mp.Record
 		Sidecars map[string]Stat
 		Parent   []inventory.ExternalID
 		Extra    bool
-	}{m.records, m.series, embedded, file.Sidecars, parent, file.Extra})
+	}{writeVersion, m.records, m.series, embedded, file.Sidecars, parent, file.Extra})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
+}
+
+func pickedIDs(picked []precedence.Picked[mp.ExternalID]) []mp.ExternalID {
+	out := make([]mp.ExternalID, 0, len(picked))
+	for _, p := range picked {
+		out = append(out, p.Value)
+	}
+	return out
 }
 
 func externalIDs(picked []precedence.Picked[mp.ExternalID]) []inventory.ExternalID {

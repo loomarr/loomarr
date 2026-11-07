@@ -237,7 +237,7 @@ func buildHandler(
 			ffmpegPath: settings.PlayoutFFmpegPath.Get(foundation.set), processes: foundation.processDiagnostics,
 			images:     suggestions.images,
 			hookSecret: secrets.ArrWebhookSecret(), notify: libraryNotifierOf(operations.productNotifications),
-			log: log, owner: owner,
+			tmdb: tmdbClient, log: log, owner: owner,
 		}),
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only
