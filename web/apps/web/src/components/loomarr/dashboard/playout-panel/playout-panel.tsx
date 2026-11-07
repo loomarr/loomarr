@@ -2,8 +2,8 @@ import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
 import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import { pluralize } from "@loomarr/core/format";
+import { Badge, type BadgeTone } from "@loomarr/design-system";
 import { Info } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PanelRow } from "@/components/ui/panel-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -20,7 +20,7 @@ import type { PlayoutPanelProps } from "./playout-panel.type";
 // health/target/mode/encoder are free strings from the backend (§ no-hardcode) — never a closed enum
 // on the frontend. Only the Badge TONE is a closed mapping, and it degrades safely: an unrecognised
 // health string still renders, just untinted.
-const HEALTH_TONE: Record<string, "lock" | "caution"> = {
+const HEALTH_TONE: Record<string, BadgeTone> = {
   ok: "lock",
   degraded: "caution",
   stalled: "caution",
@@ -75,7 +75,11 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
       </div>
       {/* The whole reason the GPU header exists: a resident LLM sharing VRAM with the encoders is a
           real, silent cause of stutter, and nothing else on the dashboard says so. */}
-      {gpu.contended && <Badge variant="caution">LLM sharing VRAM</Badge>}
+      {gpu.contended && (
+        <Badge shape="square" tone="caution">
+          LLM sharing VRAM
+        </Badge>
+      )}
     </div>
   );
 };
@@ -131,13 +135,17 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
         {/* A direct-play channel is REMUXED, not encoded — so "Hardware/Software" (an encoder
             distinction) is meaningless for it; it reads "Copy". Only a transcode has an encoder. */}
         {channel.mode === "direct-play" ? (
-          <Badge variant="neutral">Copy</Badge>
+          <Badge shape="square" tone="neutral">
+            Copy
+          </Badge>
         ) : (
-          <Badge variant={channel.hardware ? "lock" : "caution"}>
+          <Badge shape="square" tone={channel.hardware ? "lock" : "caution"}>
             {channel.hardware ? "Hardware" : "Software"}
           </Badge>
         )}
-        <Badge variant={HEALTH_TONE[channel.health] ?? "neutral"}>{channel.health}</Badge>
+        <Badge shape="square" tone={HEALTH_TONE[channel.health] ?? "neutral"}>
+          {channel.health}
+        </Badge>
       </PanelRow.Meta>
     </PanelRow>
   );
@@ -151,7 +159,9 @@ const PlayoutPanel = ({ status, loading, title = "Playout", className }: Playout
       <div className="border-border flex items-center justify-between gap-3 border-b px-4 py-3">
         <h2 className="text-base font-semibold">{title}</h2>
         {!loading && status != null && (
-          <Badge variant="neutral">{status.running ? "Loomarr" : "Tunarr"}</Badge>
+          <Badge shape="square" tone="neutral">
+            {status.running ? "Loomarr" : "Tunarr"}
+          </Badge>
         )}
       </div>
 

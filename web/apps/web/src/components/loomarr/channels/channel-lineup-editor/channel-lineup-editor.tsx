@@ -18,11 +18,11 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Badge } from "@loomarr/design-system";
 import { GripVertical, Plus, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -53,11 +53,23 @@ const keyOf = (c: SearchCandidate): string => {
 const LineupStateBadge = ({ state, status }: { state?: LineupEntryDTOState; status?: string }) => {
   switch (state) {
     case "pending":
-      return <Badge variant="tune">Pending</Badge>;
+      return (
+        <Badge shape="square" tone="tune">
+          Pending
+        </Badge>
+      );
     case "acquiring":
-      return <Badge variant="tune">{status ? `${status}…` : "Acquiring…"}</Badge>;
+      return (
+        <Badge shape="square" tone="tune">
+          {status ? `${status}…` : "Acquiring…"}
+        </Badge>
+      );
     case "unavailable":
-      return <Badge variant="onair">Unavailable</Badge>;
+      return (
+        <Badge shape="square" tone="onair">
+          Unavailable
+        </Badge>
+      );
     default:
       return null; // available (or unresolved) → no badge
   }

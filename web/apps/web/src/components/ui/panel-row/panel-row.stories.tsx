@@ -1,5 +1,5 @@
+import { Badge } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Badge } from "@/components/ui";
 import { PanelRow } from "./panel-row";
 
 const meta: Meta<typeof PanelRow> = {
@@ -27,8 +27,12 @@ export const Default: Story = {
       </PanelRow.Main>
       <PanelRow.Meta>
         <span className="text-muted-foreground font-mono text-xs">1.7× rt</span>
-        <Badge variant="lock">Hardware</Badge>
-        <Badge variant="lock">ok</Badge>
+        <Badge shape="square" tone="lock">
+          Hardware
+        </Badge>
+        <Badge shape="square" tone="lock">
+          ok
+        </Badge>
       </PanelRow.Meta>
     </PanelRow>
   ),
@@ -44,8 +48,12 @@ export const LongLabel: Story = {
         </p>
       </PanelRow.Main>
       <PanelRow.Meta>
-        <Badge variant="caution">Software</Badge>
-        <Badge variant="caution">degraded</Badge>
+        <Badge shape="square" tone="caution">
+          Software
+        </Badge>
+        <Badge shape="square" tone="caution">
+          degraded
+        </Badge>
       </PanelRow.Meta>
     </PanelRow>
   ),

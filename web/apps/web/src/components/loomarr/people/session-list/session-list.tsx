@@ -1,6 +1,6 @@
 import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
+import { Badge } from "@loomarr/design-system";
 import { Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SessionListProps } from "./session-list.type";
@@ -55,7 +55,11 @@ const SessionList = ({
             <div className="min-w-0">
               <p className="flex items-center gap-2 text-sm">
                 {`Signed in ${formatRelative(s.createdAt, now)}`}
-                {s.current && <Badge variant="tune">This device</Badge>}
+                {s.current && (
+                  <Badge shape="square" tone="tune">
+                    This device
+                  </Badge>
+                )}
               </p>
               <p className="text-static-400 text-xs">{`Expires ${formatUntil(s.expiresAt, now)}`}</p>
             </div>

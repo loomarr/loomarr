@@ -1,7 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatEpgTime } from "@loomarr/core/format";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 
@@ -45,7 +45,11 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
                   {formatEpgTime(entry.startMs)}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{entry.title}</span>
-                {onNow && <Badge variant="onair">Now</Badge>}
+                {onNow && (
+                  <Badge shape="square" tone="onair">
+                    Now
+                  </Badge>
+                )}
               </li>
             );
           })}

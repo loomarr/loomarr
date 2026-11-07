@@ -1,10 +1,9 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Surface, Text } from "@loomarr/design-system";
+import { Badge, Surface, Text } from "@loomarr/design-system";
 import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -58,11 +57,19 @@ const PickRow = ({
     <li className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
       <span className="font-medium">{item.name}</span>
       {item.year ? <span className="text-static-400 font-mono text-xs">{item.year}</span> : null}
-      <Badge variant={kind === "lineup" ? "lock" : "tune"}>
+      <Badge shape="square" tone={kind === "lineup" ? "lock" : "tune"}>
         {kind === "lineup" ? "In library" : "Will acquire"}
       </Badge>
-      {window && <Badge variant="tune">{window}</Badge>}
-      {episodeSelectionLabel(item) && <Badge variant="suggest">{episodeSelectionLabel(item)}</Badge>}
+      {window && (
+        <Badge shape="square" tone="tune">
+          {window}
+        </Badge>
+      )}
+      {episodeSelectionLabel(item) && (
+        <Badge shape="square" tone="suggest">
+          {episodeSelectionLabel(item)}
+        </Badge>
+      )}
       {renderFeedback && <div className="ml-auto">{renderFeedback(item)}</div>}
     </li>
   );
@@ -112,11 +119,19 @@ const ApprovalQueueItem = ({
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-medium">{title}</p>
             {typeof acquisitions === "number" && acquisitions > 0 && (
-              <Badge variant="tune">{`${acquisitions} to acquire`}</Badge>
+              <Badge shape="square" tone="tune">{`${acquisitions} to acquire`}</Badge>
             )}
             {/* A pending edit changes what this row's Approve does, and keeps it out of bulk. */}
-            {edit && <Badge variant="suggest">Edited</Badge>}
-            {denied && <Badge variant="onair">Denied</Badge>}
+            {edit && (
+              <Badge shape="square" tone="suggest">
+                Edited
+              </Badge>
+            )}
+            {denied && (
+              <Badge shape="square" tone="onair">
+                Denied
+              </Badge>
+            )}
           </div>
           {summary && <p className="text-muted-foreground mt-1 text-sm">{summary}</p>}
           {requestedBy && (

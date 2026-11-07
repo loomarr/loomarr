@@ -1,9 +1,9 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
+import { Badge } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { Play, Scissors } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Image } from "@/components/ui/image";
@@ -259,7 +259,11 @@ const ClipCard = ({
   // thousand clips shouldn't carry a thousand amber badges. Only a clip that is NOT ready names
   // its state.
   const exception = clip.held ? "Preparing" : clip.isComposite ? "Recording" : undefined;
-  const exceptionChip = exception ? <Badge variant="neutral">{exception}</Badge> : null;
+  const exceptionChip = exception ? (
+    <Badge shape="square" tone="neutral">
+      {exception}
+    </Badge>
+  ) : null;
   // One exception per clip: a clip still preparing or a recording is not yet the thing to tag.
   // Only the server's `needsDetails`, never kind + tagged, so the chip agrees with the filter.
   const needsDetailsChip = !exception && clip.needsDetails ? <NeedsDetailsChip /> : null;
@@ -323,12 +327,28 @@ const ClipCard = ({
           {clip.brand ? <p className="text-muted-foreground truncate text-xs">{clip.brand}</p> : null}
           <div className="flex flex-wrap gap-1.5">
             {exceptionChip}
-            {clip.kind !== "unclassified" ? <Badge variant="neutral">{KIND_LABEL[clip.kind]}</Badge> : null}
-            {clip.era ? <Badge variant="neutral">{eraLabel(clip.era)}</Badge> : null}
-            {clip.audience ? <Badge variant="neutral">{AUDIENCE_LABEL[clip.audience]}</Badge> : null}
-            {clip.category ? <Badge variant="neutral">{clip.category}</Badge> : null}
+            {clip.kind !== "unclassified" ? (
+              <Badge shape="square" tone="neutral">
+                {KIND_LABEL[clip.kind]}
+              </Badge>
+            ) : null}
+            {clip.era ? (
+              <Badge shape="square" tone="neutral">
+                {eraLabel(clip.era)}
+              </Badge>
+            ) : null}
+            {clip.audience ? (
+              <Badge shape="square" tone="neutral">
+                {AUDIENCE_LABEL[clip.audience]}
+              </Badge>
+            ) : null}
+            {clip.category ? (
+              <Badge shape="square" tone="neutral">
+                {clip.category}
+              </Badge>
+            ) : null}
             {!clip.thumbImage && clip.quality ? (
-              <Badge variant="neutral" aria-label={`Resolution ${clip.quality}`}>
+              <Badge shape="square" tone="neutral" aria-label={`Resolution ${clip.quality}`}>
                 {clip.quality}
               </Badge>
             ) : null}

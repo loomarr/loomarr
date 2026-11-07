@@ -1,7 +1,7 @@
 import { provisionKey } from "@loomarr/core/provision";
+import { Badge, type BadgeTone } from "@loomarr/design-system";
 import { Check, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -16,13 +16,11 @@ import { ProposalEdit } from "../proposal-edit";
 import { ProposalOutlook, ProposalOutlookDetails, ProposalOutlookDiagnostics } from "../proposal-outlook";
 import type { ProposalReviewProps, ProposalStatus } from "./proposal-review.type";
 
-const STATUS: Partial<
-  Record<ProposalStatus, { label: string; variant: "neutral" | "suggest" | "lock" | "onair" }>
-> = {
-  submitted: { label: "Sent for approval", variant: "suggest" },
-  approved: { label: "Created", variant: "lock" },
-  denied: { label: "Not approved", variant: "onair" },
-  superseded: { label: "Replaced", variant: "neutral" },
+const STATUS: Partial<Record<ProposalStatus, { label: string; tone: BadgeTone }>> = {
+  submitted: { label: "Sent for approval", tone: "suggest" },
+  approved: { label: "Created", tone: "lock" },
+  denied: { label: "Not approved", tone: "onair" },
+  superseded: { label: "Replaced", tone: "neutral" },
 };
 
 const catalogDecision = (disposition: string, reason: string) => {
@@ -140,7 +138,11 @@ const ProposalReview = ({
             <h2 className="text-lg font-semibold">{proposal.channelName || "Your new channel"}</h2>
           )}
         </div>
-        {statusDisplay && <Badge variant={statusDisplay.variant}>{statusDisplay.label}</Badge>}
+        {statusDisplay && (
+          <Badge shape="square" tone={statusDisplay.tone}>
+            {statusDisplay.label}
+          </Badge>
+        )}
       </header>
 
       {editingBrief ? (

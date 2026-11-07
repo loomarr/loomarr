@@ -3,12 +3,12 @@ import type { NotificationProviderDTO } from "@loomarr/api/models/notificationPr
 import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificationProviderFieldDTO";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
+import { Badge } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, Plus, X } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -629,10 +629,12 @@ const ProviderRow = ({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-medium">{provider.label}</h3>
-              <Badge variant={provider.enabled ? "signal" : "neutral"}>
+              <Badge shape="square" tone={provider.enabled ? "signal" : "neutral"}>
                 {provider.enabled ? "Enabled" : "Disabled"}
               </Badge>
-              <Badge variant="neutral">{definition?.name ?? words(provider.type)}</Badge>
+              <Badge shape="square" tone="neutral">
+                {definition?.name ?? words(provider.type)}
+              </Badge>
             </div>
             <p className="text-muted-foreground mt-1 text-sm">{provider.events.map(words).join(", ")}</p>
             {provider.health ? (

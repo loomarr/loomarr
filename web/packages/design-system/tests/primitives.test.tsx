@@ -119,6 +119,31 @@ describe("Badge", () => {
     expect(markup).not.toContain("<div");
   });
 
+  // The base suggest stop fails AA on its own 15% tint; the -300 stop and the neutral text pass.
+  it("draws square labels in their AA-safe text stops", () => {
+    const label = (tone: "neutral" | "suggest") =>
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <Badge shape="square" tone={tone}>
+            Tag
+          </Badge>
+        </LoomarrProvider>,
+      ).toUpperCase();
+    expect(label("suggest")).toContain("COLOR:#DC5BAC");
+    expect(label("neutral")).toContain("COLOR:#8B93A3");
+  });
+
+  it("carries a tooltip on the tag itself", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Badge shape="square" title="Clips directly assigned this tag">
+          3 direct
+        </Badge>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain('title="Clips directly assigned this tag"');
+  });
+
   it("lowers the accent tint on request", () => {
     const tinted = (tintOpacity?: number) =>
       renderToStaticMarkup(

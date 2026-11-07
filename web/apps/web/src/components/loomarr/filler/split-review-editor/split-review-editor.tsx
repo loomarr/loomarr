@@ -1,9 +1,9 @@
 import type { SplitReviewSegmentDTO } from "@loomarr/api/models/splitReviewSegmentDTO";
 import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
+import { Badge } from "@loomarr/design-system";
 import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Image } from "@/components/ui/image";
@@ -399,17 +399,27 @@ const SegmentSummaryRow = ({
               {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
             </span>
             <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              {segment.era ? <Badge variant="neutral">{`${segment.era}s`}</Badge> : null}
+              {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
               {segment.audience ? (
-                <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
+                <Badge shape="square" tone="neutral">
+                  {AUDIENCE_LABEL[segment.audience] ?? segment.audience}
+                </Badge>
               ) : null}
-              {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
+              {segment.category ? (
+                <Badge shape="square" tone="neutral">
+                  {segment.category}
+                </Badge>
+              ) : null}
               {segment.languageChecked && segment.language ? (
-                <Badge variant="neutral">
+                <Badge shape="square" tone="neutral">
                   {segment.language === "none" ? "No speech" : languageName(segment.language)}
                 </Badge>
               ) : null}
-              {needsAttention ? <Badge variant="caution">Needs a closer look</Badge> : null}
+              {needsAttention ? (
+                <Badge shape="square" tone="caution">
+                  Needs a closer look
+                </Badge>
+              ) : null}
             </span>
           </span>
           <ChevronRight aria-hidden className="text-muted-foreground size-4 shrink-0" />
@@ -486,19 +496,29 @@ const SegmentInspector = ({
             {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {segment.era ? <Badge variant="neutral">{`${segment.era}s`}</Badge> : null}
+            {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
             {segment.audience ? (
-              <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
+              <Badge shape="square" tone="neutral">
+                {AUDIENCE_LABEL[segment.audience] ?? segment.audience}
+              </Badge>
             ) : null}
-            {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
+            {segment.category ? (
+              <Badge shape="square" tone="neutral">
+                {segment.category}
+              </Badge>
+            ) : null}
             {segment.languageChecked && segment.language ? (
-              <Badge variant="neutral">
+              <Badge shape="square" tone="neutral">
                 {segment.language === "none" ? "No speech" : languageName(segment.language)}
               </Badge>
             ) : null}
             {(() => {
               const extra = (segment.tags ?? []).filter((tag) => tag !== segment.category).length;
-              return extra > 0 ? <Badge variant="neutral">+{extra}</Badge> : null;
+              return extra > 0 ? (
+                <Badge shape="square" tone="neutral">
+                  +{extra}
+                </Badge>
+              ) : null;
             })()}
           </div>
         </div>

@@ -1,8 +1,8 @@
 import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
 import { pickCount, progressLine } from "@loomarr/core/requests";
+import { Badge } from "@loomarr/design-system";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";
 
@@ -33,7 +33,7 @@ const PickRow = ({ pick }: { pick: ProposalJourneyProgressDTO["picks"][number] }
   <li className="border-border flex flex-wrap items-center gap-x-2 gap-y-1 border-b py-2 last:border-b-0">
     <span className="text-sm font-medium">{pick.name}</span>
     {pick.year ? <span className="text-muted-foreground text-xs">{pick.year}</span> : null}
-    <Badge variant={pick.inLibrary ? "lock" : "tune"}>
+    <Badge shape="square" tone={pick.inLibrary ? "lock" : "tune"}>
       {pick.inLibrary ? "In your library" : "Will be added"}
     </Badge>
   </li>

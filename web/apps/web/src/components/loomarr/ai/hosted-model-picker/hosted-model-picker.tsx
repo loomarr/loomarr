@@ -1,8 +1,8 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
+import { Badge } from "@loomarr/design-system";
 import { Check, Search } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -75,9 +75,19 @@ const ModelRow = ({
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
           {model.label}
           <span className="text-static-400 font-mono text-xs">{model.id}</span>
-          {model.recommended && <Badge variant="signal">recommended</Badge>}
-          <Badge variant={model.tools ? "lock" : "caution"}>{model.tools ? "Tools" : "Tools required"}</Badge>
-          {isActive && <Badge variant="lock">active</Badge>}
+          {model.recommended && (
+            <Badge shape="square" tone="signal">
+              recommended
+            </Badge>
+          )}
+          <Badge shape="square" tone={model.tools ? "lock" : "caution"}>
+            {model.tools ? "Tools" : "Tools required"}
+          </Badge>
+          {isActive && (
+            <Badge shape="square" tone="lock">
+              active
+            </Badge>
+          )}
         </p>
         {model.why && <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>}
         {unusable && !model.why && (

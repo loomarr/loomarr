@@ -1,7 +1,7 @@
 import { formatRelative } from "@loomarr/core/format";
+import { Badge } from "@loomarr/design-system";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
@@ -158,16 +158,38 @@ const FillerSources = ({
             <span className="truncate text-sm font-medium">
               {source.id === "folder" ? "Drop folder" : source.target}
             </span>
-            {source.readiness === "not_configured" && <Badge variant="caution">Add details</Badge>}
-            {source.readiness === "needs_location" && !needsLocation && (
-              <Badge variant="caution">Location needed</Badge>
+            {source.readiness === "not_configured" && (
+              <Badge shape="square" tone="caution">
+                Add details
+              </Badge>
             )}
-            {source.readiness === "out_of_area" && <Badge variant="caution">Not used here</Badge>}
-            {source.readiness === "unavailable" && <Badge variant="caution">Needs attention</Badge>}
+            {source.readiness === "needs_location" && !needsLocation && (
+              <Badge shape="square" tone="caution">
+                Location needed
+              </Badge>
+            )}
+            {source.readiness === "out_of_area" && (
+              <Badge shape="square" tone="caution">
+                Not used here
+              </Badge>
+            )}
+            {source.readiness === "unavailable" && (
+              <Badge shape="square" tone="caution">
+                Needs attention
+              </Badge>
+            )}
             {source.readiness === "ready" &&
               source.locationSource === "source" &&
-              source.effectiveCountry && <Badge variant="neutral">{source.effectiveCountry}</Badge>}
-            {source.onForPlace && source.enabled && <Badge variant="neutral">For your area</Badge>}
+              source.effectiveCountry && (
+                <Badge shape="square" tone="neutral">
+                  {source.effectiveCountry}
+                </Badge>
+              )}
+            {source.onForPlace && source.enabled && (
+              <Badge shape="square" tone="neutral">
+                For your area
+              </Badge>
+            )}
           </div>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">
             {source.readiness === "provider_off"

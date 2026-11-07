@@ -375,6 +375,8 @@ type BadgeProps = Omit<ComponentProps<typeof View>, "children"> & {
   shape?: BadgeShape;
   /** Square only: the accent tones' tint strength, lowered for a badge on a raised surface. */
   tintOpacity?: number;
+  /** Web only: the browser's tooltip, for a tag whose short label needs explaining. */
+  title?: string;
   tone?: BadgeTone;
 };
 
@@ -483,6 +485,7 @@ const Badge = ({
           letterSpacing={0.275}
           lineHeight={lineHeightPx(14)}
           textTransform="uppercase"
+          whiteSpace={isWeb ? "inherit" : undefined}
         >
           {children}
         </TamaguiText>

@@ -1,5 +1,5 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@loomarr/design-system";
 import { Caption } from "@/components/ui/caption";
 import { cn } from "@/lib/utils";
 import type { ApprovalHistoryRowProps } from "./approval-history-row.type";
@@ -29,7 +29,7 @@ const ApprovalHistoryRow = ({ proposal, className }: ApprovalHistoryRowProps) =>
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
-        <Badge variant={denied ? "onair" : changed ? "caution" : "lock"}>
+        <Badge shape="square" tone={denied ? "onair" : changed ? "caution" : "lock"}>
           {denied ? "Denied" : changed ? "Approved with changes" : "Approved"}
         </Badge>
         {/* WHEN. The ordering key the tab is sorted by, and the reason `approved_at` had to be

@@ -1,8 +1,8 @@
 import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
+import { Badge } from "@loomarr/design-system";
 import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ModelDiscoverProps } from "./model-discover.type";
@@ -82,7 +82,7 @@ const ModelDiscover = ({
                       {m.label}
                     </span>
                     {m.recommended && (
-                      <Badge variant="tune" className="shrink-0">
+                      <Badge shape="square" tone="tune" flexShrink={0}>
                         suggested
                       </Badge>
                     )}
