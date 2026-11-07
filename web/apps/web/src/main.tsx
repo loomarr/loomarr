@@ -1,7 +1,7 @@
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createRouter, RouterProvider } from "@tanstack/react-router";
-import { StrictMode } from "react";
+import { createRouter, type ErrorComponentProps, RouterProvider } from "@tanstack/react-router";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
@@ -34,11 +34,34 @@ const queryClient = new QueryClient({
 // stale and the component refetches on mount — paying the request twice and defeating the point.
 // 15s matches the query defaults above, so a preload is trusted exactly as long as any other
 // cached read.
+//
+// The route error and pending views are design-system views, and everything above the routes is
+// in the first download. Loaded on first use, they keep the design-system runtime (about 380 KiB)
+// out of it: every route is code-split, so a page that renders brings that runtime with it anyway.
+const LazyRouteError = lazy(() =>
+  import("@/components/loomarr/feedback/route-error").then(({ RouteError }) => ({ default: RouteError })),
+);
+const LazyRoutePending = lazy(() =>
+  import("@/components/loomarr/feedback/route-pending").then(({ RoutePending }) => ({
+    default: RoutePending,
+  })),
+);
+
 const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPreload: "intent",
   defaultPreloadStaleTime: 15_000,
+  defaultErrorComponent: (props: ErrorComponentProps) => (
+    <Suspense fallback={null}>
+      <LazyRouteError {...props} />
+    </Suspense>
+  ),
+  defaultPendingComponent: () => (
+    <Suspense fallback={null}>
+      <LazyRoutePending />
+    </Suspense>
+  ),
 });
 
 declare module "@tanstack/react-router" {

@@ -16,6 +16,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearAccountActionGrant } from "@/auth/account-action-grant";
+import { RouteError } from "@/components/loomarr/feedback/route-error";
 import { routeTree } from "@/routeTree.gen";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
@@ -80,6 +81,7 @@ const renderApp = (initialPath: string) => {
     routeTree,
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [initialPath] }),
+    defaultErrorComponent: RouteError,
   });
   // LoomarrProvider as main.tsx mounts it: AdminOnly's state comes from @loomarr/ui.
   render(
@@ -295,8 +297,9 @@ describe("post-login redirect", () => {
 
 // ⚠ A SERVER HICCUP IS NOT A LOGOUT. The guard used to be a bare `catch {}` over a query with
 // retry:false, so ANY failure — a 500, a proxy blip, this app's own self-restart — reported a
-// valid session as signed out and bounced the user to /login. RestartWatchProvider is wired into
-// that very layout, so an operator restarting from the Dashboard hit it every time.
+// valid session as signed out and bounced the user to /login, and an operator restarting from the
+// Dashboard hit it every time. Now the failing route's error boundary shows the problem with a
+// retry, under the root's restart overlay.
 describe("_authed guard distinguishes a failure from a logout", () => {
   const at = (router: ReturnType<typeof renderApp>) => router.state.location.href;
 
@@ -310,6 +313,26 @@ describe("_authed guard distinguishes a failure from a logout", () => {
     // Give the guard time to resolve and any redirect to commit before asserting the negative.
     await waitFor(() => expect(at(router)).not.toBe("/login"));
     expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+  });
+
+  it("shows the failure in the app's words and recovers when the server answers again", async () => {
+    let failing = true;
+    server.use(
+      ...appHandlers(),
+      http.get("*/v1/auth/me", () =>
+        failing
+          ? HttpResponse.json({ title: "Server is restarting" }, { status: 503 })
+          : HttpResponse.json(ADMIN),
+      ),
+    );
+    renderApp("/guide");
+
+    expect(await screen.findByText("Couldn't load this page")).toBeInTheDocument();
+    expect(screen.getByText("Server is restarting")).toBeInTheDocument();
+    failing = false;
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(screen.queryByText("Server is restarting")).not.toBeInTheDocument();
   });
 });
 

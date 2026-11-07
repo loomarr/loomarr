@@ -8,6 +8,8 @@ vi.mock("@/diagnostics/client-reporter", () => ({
   installGlobalClientDiagnostics: vi.fn(),
 }));
 vi.mock("@/routeTree.gen", () => ({ routeTree: {} }));
+vi.mock("@/components/loomarr/feedback/route-error", () => ({ RouteError: () => null }));
+vi.mock("@/components/loomarr/feedback/route-pending", () => ({ RoutePending: () => null }));
 vi.mock("@loomarr/design-system", () => ({
   LoomarrProvider: ({ children }: { children: ReactNode }) => children,
 }));
