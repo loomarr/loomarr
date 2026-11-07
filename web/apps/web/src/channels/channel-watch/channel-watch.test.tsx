@@ -667,8 +667,10 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
         isAdmin={false}
         onLeave={vi.fn()}
         player={{ tune }}
-        drawer={{ channels: rows, favourites: ["ch-2"], recent: [], nowPercent: 17, onFavourite }}
-        onTuneSettled={onTuneSettled}
+        channels={{
+          drawer: { channels: rows, favourites: ["ch-2"], recent: [], nowPercent: 17, onFavourite },
+          onTuneSettled,
+        }}
       />,
       { wrapper: makeWrapper() },
     );
@@ -752,8 +754,11 @@ describe("ChannelWatch at phone width", () => {
         isAdmin={false}
         onLeave={vi.fn()}
         player={{ step, tune }}
-        drawer={{ channels: [], favourites, recent: [], nowPercent: 0, onFavourite }}
-        phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}
+        channels={{
+          drawer: { channels: [], favourites, recent: [], nowPercent: 0, onFavourite },
+          phone: { favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" },
+          onTuneSettled: vi.fn(),
+        }}
       />,
       { wrapper: makeWrapper() },
     );
