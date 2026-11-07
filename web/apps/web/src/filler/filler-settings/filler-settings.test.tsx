@@ -1,4 +1,4 @@
-import type { FillerSourceDTO } from "@loomarr/api";
+import type { FillerSourceDTO, SettingEntry } from "@loomarr/api";
 import {
   getFillerReadinessMockHandler,
   getListFillerProvidersMockHandler,
@@ -16,7 +16,11 @@ import { RouterHarness } from "@/test/story-utils";
 import type { FillerSettingsSection } from "../filler-settings-section";
 import { FillerSettings, FillerSettingsIndex } from "./filler-settings";
 
-const renderSettings = (section: FillerSettingsSection = "downloads", sources: FillerSourceDTO[] = []) => {
+const renderSettings = (
+  section: FillerSettingsSection = "downloads",
+  sources: FillerSourceDTO[] = [],
+  fetchEvery: Partial<SettingEntry> = {},
+) => {
   server.use(
     getListFillerSourcesMockHandler({ sources, total: sources.length }),
     getFillerReadinessMockHandler({
@@ -59,6 +63,7 @@ const renderSettings = (section: FillerSettingsSection = "downloads", sources: F
           value: "6h",
           kind: "duration",
           group: "filler",
+          ...fetchEvery,
         }),
         setting({
           key: "filler.fetch.max_per_run",
@@ -116,6 +121,27 @@ describe("focused Filler settings", () => {
     expect(
       screen.getByText(/No enabled sources are currently downloading automatically/),
     ).toBeInTheDocument();
+  });
+
+  it("names the download interval with the registry's preset label", async () => {
+    renderSettings("downloads", [], {
+      value: "24h0m0s",
+      presets: [{ value: "24h0m0s", label: "Once a day" }],
+    });
+    expect(await screen.findByText(/^Once a day, each source using these defaults/)).toBeVisible();
+  });
+
+  it("spells out a custom download interval, and says when downloads are off", async () => {
+    const { unmount } = renderSettings("downloads", [], {
+      value: "3h0m0s",
+      presets: [{ value: "6h0m0s", label: "Every 6 hours" }],
+    });
+    expect(await screen.findByText(/^Every 3 hours, each source/)).toBeVisible();
+    unmount();
+    renderSettings("downloads", [], { value: "0s" });
+    expect(
+      await screen.findByText(/Automatic downloads are off for sources using these defaults/),
+    ).toBeVisible();
   });
 
   it("counts a source toward automatic downloads only when its provider is fetched", async () => {
