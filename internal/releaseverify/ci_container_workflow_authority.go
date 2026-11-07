@@ -662,13 +662,14 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					steps: map[string]workflowStepAuthority{
 						`./scripts/staging.sh "$STAGING_ACTION"`: exactWorkflowStep(1, "Run the staging action", workflowStepAuthority{
 							environment: map[string]string{
-								"VULTR_API_KEY":  "${{ secrets.VULTR_API_KEY }}",
-								"TS_AUTHKEY":     "${{ secrets.STAGING_TS_AUTHKEY }}",
-								"STAGING_ACTION": "${{ inputs.action || 'sweep' }}",
-								"STAGING_HOURS":  "${{ inputs.hours || '4' }}",
-								"VERSION":        "${{ inputs.version }}",
-								"STAGING_COMMIT": "${{ inputs.action == 'up' && inputs.version == '' && github.sha || '' }}",
-								"STAGING_IMAGE":  "${{ inputs.action == 'up' && inputs.version == '' && format('ghcr.io/{0}-staging:{1}', github.repository, github.sha) || '' }}",
+								"VULTR_API_KEY":    "${{ secrets.VULTR_API_KEY }}",
+								"TS_AUTHKEY":       "${{ secrets.STAGING_TS_AUTHKEY }}",
+								"STAGING_ACTION":   "${{ inputs.action || 'sweep' }}",
+								"STAGING_HOURS":    "${{ inputs.hours || '4' }}",
+								"STAGING_DATABASE": "${{ inputs.database || 'sqlite' }}",
+								"VERSION":          "${{ inputs.version }}",
+								"STAGING_COMMIT":   "${{ inputs.action == 'up' && inputs.version == '' && github.sha || '' }}",
+								"STAGING_IMAGE":    "${{ inputs.action == 'up' && inputs.version == '' && format('ghcr.io/{0}-staging:{1}', github.repository, github.sha) || '' }}",
 							},
 						}),
 					},

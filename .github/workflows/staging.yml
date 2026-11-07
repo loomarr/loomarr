@@ -22,6 +22,11 @@ on:
         description: "Hours before the server is destroyed (1 to 24), or keep for the long-running demo site"
         type: string
         default: "4"
+      database:
+        description: "The database the server runs on"
+        type: choice
+        options: [sqlite, postgres]
+        default: sqlite
   schedule:
     - cron: "23 * * * *"
 
@@ -79,6 +84,7 @@ jobs:
           TS_AUTHKEY: ${{ secrets.STAGING_TS_AUTHKEY }}
           STAGING_ACTION: ${{ inputs.action || 'sweep' }}
           STAGING_HOURS: ${{ inputs.hours || '4' }}
+          STAGING_DATABASE: ${{ inputs.database || 'sqlite' }}
           VERSION: ${{ inputs.version }}
           STAGING_COMMIT: ${{ inputs.action == 'up' && inputs.version == '' && github.sha || '' }}
           STAGING_IMAGE: ${{ inputs.action == 'up' && inputs.version == '' && format('ghcr.io/{0}-staging:{1}', github.repository, github.sha) || '' }}

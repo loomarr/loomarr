@@ -71,8 +71,10 @@ destroy() {
 
 up() {
 	local hours="${STAGING_HOURS:-4}" version="${VERSION:-}" image="${STAGING_IMAGE:-}" commit="${STAGING_COMMIT:-}"
+	local database="${STAGING_DATABASE:-sqlite}"
 	[ -n "${VULTR_API_KEY:-}" ] || die 'VULTR_API_KEY is not set'
 	[ -n "${TS_AUTHKEY:-}" ] || die 'TS_AUTHKEY is not set'
+	[[ "$database" =~ ^(sqlite|postgres)$ ]] || die 'STAGING_DATABASE must be sqlite or postgres'
 	if [ "$hours" != keep ]; then
 		[[ "$hours" =~ ^[0-9]+$ ]] && [ "$hours" -ge 1 ] && [ "$hours" -le "$MAX_HOURS" ] ||
 			die "STAGING_HOURS must be 1 to $MAX_HOURS, or keep"
@@ -99,8 +101,8 @@ up() {
 	fi
 	{
 		printf '#!/bin/bash\n'
-		printf 'STAGING_NAME=%q\nVERSION=%q\nSTAGING_IMAGE=%q\nSTAGING_COMMIT=%q\nTS_AUTHKEY=%q\n' \
-			"$name" "$version" "$image" "$commit" "$TS_AUTHKEY"
+		printf 'STAGING_NAME=%q\nVERSION=%q\nSTAGING_IMAGE=%q\nSTAGING_COMMIT=%q\nSTAGING_DATABASE=%q\nTS_AUTHKEY=%q\n' \
+			"$name" "$version" "$image" "$commit" "$database" "$TS_AUTHKEY"
 		cat "$ROOT/docker/staging-boot.sh.tmpl"
 	} >"$TMP/boot"
 	# Through a file, because the boot script holds the tailnet key and argv is visible.

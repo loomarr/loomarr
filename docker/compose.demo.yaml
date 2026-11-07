@@ -65,9 +65,8 @@ services:
       - http://loomarr:8080
       - --library-url
       - http://demo-library:8096
-      - --database-url
-      - sqlite:///data/loomarr.db
     environment:
+      DATABASE_URL: sqlite:///data/loomarr.db
       DEMO_WEB_URL: ${DEMO_SITE_URL:-http://localhost:8088}
     volumes:
       - demo-data:/data
