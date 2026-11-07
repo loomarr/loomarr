@@ -16,10 +16,15 @@ Ordinary pull-request pushes run the always-on policy bootstrap plus affected re
 compile/type, unit, documentation, shared-client, and Android feedback and return the required `CI`
 result quickly. They do not run race-policy shards, Postgres conformance, Playwright, release-image
 builds, runtime image certification, Apple mobile, Apple TV, the tuner matrix, or the macOS harness.
-The required `main` merge queue then builds at most two cumulative candidates concurrently against
-the current base. That
-`merge_group` run is the authoritative integration lane: the same fail-closed classifier selects
-the complete affected gate set, and every selected result remains a dependency of `CI`. Explicit
+The required `main` merge queue then builds cumulative candidates concurrently against the current
+base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
+the merged tree compiles, so it merges in minutes. Beside it, the `merge_group` run of `ci.yml` is the
+complete integration lane, reported as `CI assurance`: the same fail-closed classifier selects the
+complete affected gate set, and every selected result remains a dependency of that job. It finishes
+after the merge, so its evidence no longer blocks one. When it fails on a commit that reached main it
+files an issue, and the fix is a forward fix or a revert. These runs share one concurrency group, so
+one runs, the newest waits, and older waiters are dropped; the next run covers the dropped commits.
+This is a maintainer decision (2026-11-07): merge latency over pre-merge evidence. Explicit
 manual runs retain release-candidate and full recovery scopes plus an isolated Apple compilation
 cache portability scope. A normal queue-produced push to
 `main` runs publication workflows only rather than validating the admitted commit again.
