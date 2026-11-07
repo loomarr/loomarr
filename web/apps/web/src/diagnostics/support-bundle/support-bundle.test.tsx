@@ -1,9 +1,13 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { SupportBundle } from "./support-bundle";
+
+const render = (ui: ReactElement) => rtlRender(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
 const preview = {
   estimatedBytes: 1536,

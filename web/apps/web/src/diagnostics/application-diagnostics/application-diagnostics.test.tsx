@@ -9,7 +9,8 @@ import { HttpResponse, http } from "msw";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
-import { ApplicationDiagnostics, DEFAULT_APPLICATION_FILTERS } from "./application-diagnostics";
+import { DEFAULT_APPLICATION_FILTERS } from "../application-filters";
+import { ApplicationDiagnostics } from "./application-diagnostics";
 
 describe("ApplicationDiagnostics", () => {
   it("renders bounded events, expands structured correlation, and edits reproducible filters", async () => {

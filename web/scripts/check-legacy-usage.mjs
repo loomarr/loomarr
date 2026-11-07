@@ -30,7 +30,6 @@ const RETIRED = {
     primitive: "@base-ui/react/dialog",
     allowed: [
       "src/components/loomarr/filler/clip-player/clip-player.tsx",
-      "src/diagnostics/support-bundle/support-bundle.tsx",
       "src/palette/command-palette/command-palette.tsx",
     ],
   },
