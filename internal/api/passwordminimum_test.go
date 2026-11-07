@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/people/auth"
 )
 
 // Every request field that SETS a password declares auth.MinPasswordLen as its minLength, so the

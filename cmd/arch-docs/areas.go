@@ -32,7 +32,7 @@ var areas = []area{
 			"Sonarr or Radarr to fetch a title the household does not have yet. The metadata providers " +
 			"decide which source's facts about a file win.",
 		Packages: []string{
-			"library", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
+			"library", "library/scan", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
 			"provision", "provisionbackstop", "requester",
 			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
@@ -42,6 +42,8 @@ var areas = []area{
 			"platform": "the store, settings and jobs behind the provision backstop, the outbound HTTP " +
 				"client and metrics every remote service call goes through, and the audience rating ladder " +
 				"the metadata providers fold certifications onto",
+			"media": "the scanner reads each media file's header to learn its length, streams and " +
+				"embedded ids",
 			"channels": "the backstop's episode refresh re-reads each scheduled show into the scheduler's " +
 				"episode cache, whose entries are `schedule.ResolvedProgram`; the job moves into channels " +
 				"with the Wave 6.4 directory moves",
@@ -124,7 +126,8 @@ var areas = []area{
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
-				"backend transition, start-up configuration, and Tunarr's HTTP client and metrics",
+				"backend transition, start-up configuration, Tunarr's HTTP client and metrics, and the " +
+				"address check that keeps LAN discovery answering only the household's network",
 			"channels": "the `schedule` programming a backend plays",
 			"library": "the media server's Live TV API that channels are published to, and `provision` keys " +
 				"naming what a slot plays",
@@ -140,12 +143,12 @@ var areas = []area{
 			"then admitted or refused; admitted clips are catalogued with their tags and the TV stations " +
 			"they name; and the catalog is assembled into the pods that fill a channel's breaks.",
 		Packages: []string{
-			"filler", "filleradmission", "fillerdefectfloor",
-			"fillerenrichment", "fillereval", "fillerresearch", "fillerscreening",
-			"fillerstore", "fillerstructure", "fillerstructureassessment", "fillerstructuremedia",
-			"fillerstructurewindow", "fillerstructurewindowopenrouter", "clipcatalog", "clipfetch",
-			"taxonomy", "broadcaststation", "sourceprovider", "sourceprovider/archive",
-			"sourceprovider/youtube", "installationlocation",
+			"filler", "filler/admission", "filler/defectfloor",
+			"filler/enrichment", "filler/eval", "filler/research", "filler/screening",
+			"filler/records", "filler/structure", "filler/structure/assessment", "filler/structure/cut",
+			"filler/structure/window", "filler/structure/window/openrouter", "filler/clips", "filler/fetch",
+			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
+			"filler/source/youtube", "filler/location",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +
@@ -163,7 +166,8 @@ var areas = []area{
 			"password recovery, contact addresses and notifications, plus the encryption of the secrets " +
 			"Loomarr keeps in its database.",
 		Packages: []string{
-			"auth", "invitation", "recovery", "contact", "secretprotection", "notifications",
+			"people/auth", "people/invitation", "people/recovery", "people/contact",
+			"people/secretprotection", "people/notifications",
 		},
 		MayImport: map[string]string{
 			"platform": "the identity store accounts and sessions live in, the outbound HTTP client " +
@@ -251,15 +255,15 @@ var flows = []flow{
 	},
 	{
 		Title: "From a filler source to a break",
-		Text: "An operator registers a source; `sourceprovider` lists what it offers, with " +
-			"`sourceprovider/youtube` and `sourceprovider/archive` as the remote kinds. `clipfetch` " +
+		Text: "An operator registers a source; `filler/source` lists what it offers, with " +
+			"`filler/source/youtube` and `filler/source/archive` as the remote kinds. `filler/fetch` " +
 			"downloads each pulled clip into the drop folder, and `filler` drains that folder into the " +
-			"clip folder, while `fillerstore` records the sources, pulls and acquisition runs. Each clip " +
-			"is then checked: `fillerscreening` for what it says and shows, and whether it is safe to air, " +
-			"`fillerstructureassessment` for long reels that need splitting, and `fillerdefectfloor` " +
-			"for picture and sound defects; `filleradmission` is the certification tooling that weighs " +
+			"clip folder, while `filler/records` records the sources, pulls and acquisition runs. Each clip " +
+			"is then checked: `filler/screening` for what it says and shows, and whether it is safe to air, " +
+			"`filler/structure/assessment` for long reels that need splitting, and `filler/defectfloor` " +
+			"for picture and sound defects; `filler/admission` is the certification tooling that weighs " +
 			"that evidence into an admit or refuse decision. A clip that passes its checks enters the catalog, whose " +
-			"values are `clipcatalog`, whose tags are `taxonomy`, and which `store/catalogstore` " +
+			"values are `filler/clips`, whose tags are `filler/taxonomy`, and which `store/catalogstore` " +
 			"persists. When `schedule` leaves a break in a channel's programming, the `channels` engine " +
 			"asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.",
 	},

@@ -37,12 +37,12 @@ func TestVerifyCIContainerDownloadsRequiresIsolatedCompletePostgresTests(t *test
 // renamed, or cancelled by a sibling's failure must not pass as the whole gate.
 func TestVerifyCIContainerDownloadsRequiresEveryPostgresSuiteInTheMatrix(t *testing.T) {
 	t.Parallel()
-	const matrix = `lane: ["store", "backendtransition", "app", "fillerstore"]`
+	const matrix = `lane: ["store", "backendtransition", "app", "filler/records"]`
 	for name, replacement := range map[string]string{
 		"suite dropped":      `lane: ["store", "backendtransition", "app"]`,
-		"suite duplicated":   `lane: ["store", "store", "backendtransition", "app", "fillerstore"]`,
-		"suite renamed":      `lane: ["store", "backendtransition", "api", "fillerstore"]`,
-		"suites reordered":   `lane: ["fillerstore", "app", "store", "backendtransition"]`,
+		"suite duplicated":   `lane: ["store", "store", "backendtransition", "app", "filler/records"]`,
+		"suite renamed":      `lane: ["store", "backendtransition", "api", "filler/records"]`,
+		"suites reordered":   `lane: ["filler/records", "app", "store", "backendtransition"]`,
 		"fail-fast restored": "fail-fast: true\n      matrix:\n        " + matrix,
 	} {
 		t.Run(name, func(t *testing.T) {

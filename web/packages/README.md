@@ -22,6 +22,8 @@ web/packages/<name>/
 
 **No cycles.** Package and app dependencies must remain acyclic. Run `pnpm lint:boundaries` from `web/`; the same gate runs with the frontend check.
 
+**Layers.** A package imports only packages in a lower layer, and never an app. `LAYERS` in `web/.dependency-cruiser.cjs` lists them, lowest first; a new package must be placed there before the gate will run.
+
 Avoid giant barrel files that re-export a whole implementation tree. Add several focused root entry points when callers need distinct interfaces. The tree above is the starter template; production workspaces should contain only packages the product uses.
 
 `@loomarr/api` keeps its focused `models/*`, `endpoints/*`, and `zod/*` public subpaths for route-level code splitting. Orval generation creates their ignored `model-*`, `endpoint-*`, and `zod-*` root entry files; change the generator or package exports instead of editing those files. `@loomarr/core/*` follows the same public-subpath shape with committed root entry files.

@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/installationlocation"
+	"github.com/loomarr/loomarr/internal/filler/location"
 )
 
 // localStations resolves a picked place to the broadcast stations within the household's local
@@ -40,7 +40,7 @@ func (l *localStations) resolve(country, place string) map[string]bool {
 	}
 	// Everything below is settled for this key, including the answers that leave no clip local,
 	// so each is logged once rather than on every break.
-	if index, err := installationlocation.Default(); err != nil {
+	if index, err := location.Default(); err != nil {
 		l.log.Warn("filler: place index unavailable; no clip is local", "err", err)
 	} else if at, found := index.Lookup(place); !found || at.Country != country {
 		l.log.Warn("filler: place is not a city in its country; no clip is local", "place", place, "country", country)

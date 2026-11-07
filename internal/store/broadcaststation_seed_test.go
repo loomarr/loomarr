@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
@@ -13,12 +13,12 @@ func TestBroadcastStationSeedRevisionReplacesTheDirectory(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	ctx := t.Context()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	corrected := []broadcaststation.Station{{
+	corrected := []station.Station{{
 		ID: "fcc:59441", Country: "US", City: "Cleveland", Region: "OH", Latitude: 41.47926, Longitude: -81.68022,
-		CallSigns: []broadcaststation.CallSign{{Sign: "WEWS", From: "1947-12-17"}},
+		CallSigns: []station.CallSign{{Sign: "WEWS", From: "1947-12-17"}},
 	}}
-	revisions := append(broadcaststation.SeedRevisions(),
-		broadcaststation.SeedRevision{Version: 99, Load: func() ([]broadcaststation.Station, error) { return corrected, nil }})
+	revisions := append(station.SeedRevisions(),
+		station.SeedRevision{Version: 99, Load: func() ([]station.Station, error) { return corrected, nil }})
 
 	if err := catalogstore.ConvergeBroadcastStationSeed(ctx, s.catalogCluster, revisions, at); err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func TestBroadcastStationSeedRevisionReplacesTheDirectory(t *testing.T) {
 
 	// Applied revisions never re-run, and an older one never replaces a newer directory.
 	loads := 0
-	again := []broadcaststation.SeedRevision{{Version: 1, Load: func() ([]broadcaststation.Station, error) {
+	again := []station.SeedRevision{{Version: 1, Load: func() ([]station.Station, error) {
 		loads++
 		return nil, nil
 	}}}

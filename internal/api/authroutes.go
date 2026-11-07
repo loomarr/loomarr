@@ -10,7 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/people/auth"
 )
 
 // registerAuth mounts /v1/auth/* (§11). login and logout manage the session

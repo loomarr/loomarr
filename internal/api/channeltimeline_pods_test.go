@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -20,7 +20,7 @@ import (
 
 // failingClipListStore is the real store with ListClips broken, so a test can prove a still lookup
 // failure degrades the strip instead of failing it.
-type failingClipListStore struct{ fillerstore.Store }
+type failingClipListStore struct{ records.Store }
 
 func (failingClipListStore) ListClips(context.Context, catalogstore.ClipFilter) ([]catalogstore.Clip, error) {
 	return nil, errors.New("clip catalogue unavailable")
@@ -97,7 +97,7 @@ func timelineBreakGuide(now time.Time) *fakeXMLTVGuide {
 }
 
 // seedPodClips stores two spots: "clip-still" has a still and a hover loop, "clip-bare" has neither.
-func seedPodClips(t *testing.T, st fillerstore.Store) {
+func seedPodClips(t *testing.T, st records.Store) {
 	t.Helper()
 	for _, c := range []filler.Clip{
 		{

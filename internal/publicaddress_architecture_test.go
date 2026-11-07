@@ -35,7 +35,7 @@ var addressPredicateAllowlist = map[string]string{
 	"internal/llm/openai.go": "classifies an operator-configured base URL as self-hosted (an ALLOW rule that " +
 		"decides which request fields to send), including CGNAT on purpose; it gates no fetch",
 	"internal/openroutercatalog/openrouter.go": "permits a plain-HTTP base URL only for loopback; it gates no fetch to a stranger-supplied host",
-	"internal/installationlocation/index.go": "geo-IP data-range guard that skips lookup of addresses with no country; " +
+	"internal/filler/location/index.go": "geo-IP data-range guard that skips lookup of addresses with no country; " +
 		"not an SSRF gate (follow-up: adopt httpx.IsPublicIP so the two cannot drift)",
 }
 

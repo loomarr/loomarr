@@ -73,11 +73,19 @@ func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/Users":
 		writeJSON(w, []any{demoUserJSON()})
 	case path == "/Library/VirtualFolders":
-		// A bare array, as Emby returns it (internal/library/filler.go).
+		// A bare array, as Emby returns it (internal/library/filler.go). Locations are the real
+		// folders the demo's files sit in, so scan-root discovery (#2151) finds them.
+		// Absolute, as a media server reports them; the layout may be relative to the working dir.
+		dir, err := filepath.Abs(s.Layout.Dir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		items, filler := filepath.Join(dir, "items"), filepath.Join(dir, "filler")
 		writeJSON(w, []map[string]any{
-			{"Name": "Movies", "ItemId": moviesLibraryID, "CollectionType": "movies"},
-			{"Name": "Shows", "ItemId": showsLibraryID, "CollectionType": "tvshows"},
-			{"Name": FillerLibraryName, "ItemId": fillerLibraryID},
+			{"Name": "Movies", "ItemId": moviesLibraryID, "CollectionType": "movies", "Locations": []string{items}},
+			{"Name": "Shows", "ItemId": showsLibraryID, "CollectionType": "tvshows", "Locations": []string{items}},
+			{"Name": FillerLibraryName, "ItemId": fillerLibraryID, "Locations": []string{filler}},
 		})
 	case path == "/Items" && r.Method == http.MethodGet:
 		items := s.items(r)

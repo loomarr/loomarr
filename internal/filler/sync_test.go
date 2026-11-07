@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -1254,8 +1254,8 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	}
 	// #1988: the repaired name keeps its provenance beside the bytes. Without it the next scan
 	// reads originalName as the arrival filename and withholds a grounded name from viewers.
-	if got.NameSource != clipcatalog.NameFromGrounded || tags.DisplayName != "Sparkra-Cola — 1992" ||
-		tags.NameProvenance != string(clipcatalog.NameFromGrounded) {
+	if got.NameSource != clips.NameFromGrounded || tags.DisplayName != "Sparkra-Cola — 1992" ||
+		tags.NameProvenance != string(clips.NameFromGrounded) {
 		t.Errorf("repaired provenance = row %q, sidecar %q/%q; want grounded on both", got.NameSource,
 			tags.DisplayName, tags.NameProvenance)
 	}
@@ -1265,7 +1265,7 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rescanned) != 1 || rescanned[0].NameSource != clipcatalog.NameFromGrounded {
+	if len(rescanned) != 1 || rescanned[0].NameSource != clips.NameFromGrounded {
 		t.Errorf("rescan after repair = %+v, want the grounded name still grounded", rescanned)
 	}
 }
@@ -1350,13 +1350,13 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	// but its recorded provenance says a person chose it, so it is not Loomarr's to improve.
 	segment, segmentRel := write("segment", "operator named segment", filler.SidecarTags{
 		OriginalName: "Untitled commercial.mp4", DisplayName: "Untitled commercial",
-		NameProvenance: string(clipcatalog.NameFromCurated), SplitPublicationToken: "tok",
+		NameProvenance: string(clips.NameFromCurated), SplitPublicationToken: "tok",
 	})
 	source := &fakeSource{clips: []filler.RawClip{
-		{ID: untitled, Path: untitledRel, Name: "Untitled commercial", NameSource: clipcatalog.NameFromFilename,
+		{ID: untitled, Path: untitledRel, Name: "Untitled commercial", NameSource: clips.NameFromFilename,
 			Kind: filler.Commercial, DurationMs: 30_000},
 		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Kind: filler.Commercial, DurationMs: 30_000},
-		{ID: segment, Path: segmentRel, Name: "Untitled commercial", NameSource: clipcatalog.NameFromCurated,
+		{ID: segment, Path: segmentRel, Name: "Untitled commercial", NameSource: clips.NameFromCurated,
 			Kind: filler.Commercial, DurationMs: 30_000},
 	}}
 	st := newMemStore()
@@ -1371,10 +1371,10 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	const want = "“True tales of the canyon patrol”"
-	if got := st.clips[untitled]; got.Name != want || got.NameSource != clipcatalog.NameFromGrounded {
+	if got := st.clips[untitled]; got.Name != want || got.NameSource != clips.NameFromGrounded {
 		t.Fatalf("untitled clip name = %q (%s), want %q (grounded)", got.Name, got.NameSource, want)
 	}
-	if got := st.clips[segment]; got.Name != "Untitled commercial" || got.NameSource != clipcatalog.NameFromCurated {
+	if got := st.clips[segment]; got.Name != "Untitled commercial" || got.NameSource != clips.NameFromCurated {
 		t.Fatalf("operator-named segment = %q (%s), want its name kept as curated", got.Name, got.NameSource)
 	}
 	tags, ok := filler.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(untitledRel)))

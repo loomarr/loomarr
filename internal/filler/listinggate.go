@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/sourceprovider"
+	"github.com/loomarr/loomarr/internal/filler/source"
 )
 
 // OpenSearcher finds listings across a whole provider, outside every registered source (#2059
@@ -16,8 +16,8 @@ import (
 type OpenSearcher interface {
 	// Provider is the provider whose whole catalog it searches: the provider a hit is acquired
 	// from, and whose pass budget its hits spend.
-	Provider() sourceprovider.ID
-	OpenSearch(ctx context.Context, query string, limit int) ([]sourceprovider.Item, error)
+	Provider() source.ID
+	OpenSearch(ctx context.Context, query string, limit int) ([]source.Item, error)
 	// Gate is the pass's listing gate, read once per pass that searches.
 	Gate(ctx context.Context) (ListingGate, error)
 }
@@ -56,7 +56,7 @@ const (
 //   - no language named, nor a script written, that no channel airs;
 //   - a year, and every year it gives inside one of the eras;
 //   - a nearby station's call sign, held in that year.
-func (g ListingGate) Admit(ref sourceprovider.Item, eras []EraRange) (callSign, refused string) {
+func (g ListingGate) Admit(ref source.Item, eras []EraRange) (callSign, refused string) {
 	title := strings.TrimSpace(ref.Title)
 	if unsafeListing(title) {
 		return "", ListingUnsafe

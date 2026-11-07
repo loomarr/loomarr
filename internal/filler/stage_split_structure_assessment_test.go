@@ -10,18 +10,18 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstructure"
-	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
+	"github.com/loomarr/loomarr/internal/filler/structure"
+	"github.com/loomarr/loomarr/internal/filler/structure/cut"
+	"github.com/loomarr/loomarr/internal/filler/structure/window"
 )
 
 type capturedStructureDecisioner struct {
-	artifact fillerstructure.Artifact
+	artifact structure.Artifact
 	media    []filler.StructureAssessmentSource
 	err      error
 }
 
-func (d *capturedStructureDecisioner) Assess(_ context.Context, media filler.StructureAssessmentSource) (fillerstructure.Artifact, error) {
+func (d *capturedStructureDecisioner) Assess(_ context.Context, media filler.StructureAssessmentSource) (structure.Artifact, error) {
 	d.media = append(d.media, media)
 	return d.artifact, d.err
 }
@@ -138,7 +138,7 @@ func TestHeldCompleteTimelineDecisionDoesNotReplaceDetectorAssessment(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.StructureDecision == nil || updated.StructureDecision.Decision.Status != fillerstructure.StatusHeld ||
+	if updated.StructureDecision == nil || updated.StructureDecision.Decision.Status != structure.StatusHeld ||
 		updated.Structure == nil || updated.Structure.SHA256 != detectorSHA || updated.Structure.Plan[0].EndMs != 28_000 {
 		t.Fatalf("updated proposal=%+v", updated)
 	}
@@ -161,11 +161,11 @@ func TestRolelessConfirmedDecisionIsKeptWithoutReplacingDetectorAssessment(t *te
 	agreed := structureDecisionArtifact(t, proposal.Source, 30_000, false).Decision
 	candidates := slices.Clone(agreed.Candidates)
 	candidates[1].Segments = slices.Clone(candidates[1].Segments)
-	candidates[1].Segments[0].Role = fillerstructure.RolePSA
-	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
+	candidates[1].Segments[0].Role = structure.RolePSA
+	artifact, err := structure.NewArtifact(structure.Request{
 		Source: agreed.Source, Input: agreed.Input, BoundaryToleranceMS: 2_000, Candidates: candidates,
 	}, time.Date(2026, time.October, 28, 7, 0, 0, 0, time.UTC))
-	if err != nil || artifact.Decision.Status != fillerstructure.StatusConfirmed || artifact.Decision.Segments[0].Role != "" {
+	if err != nil || artifact.Decision.Status != structure.StatusConfirmed || artifact.Decision.Segments[0].Role != "" {
 		t.Fatalf("roleless artifact = %+v err=%v", artifact.Decision, err)
 	}
 	decisioner := &capturedStructureDecisioner{artifact: artifact}
@@ -270,7 +270,7 @@ func TestSplitStageProjectsConfirmedWindowSetDecisionIntoCompilationCuts(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.StructureDecision == nil || stored.StructureDecision.Decision.Input.Kind != fillerstructure.AssessmentInputWindowMediaSet ||
+	if stored.StructureDecision == nil || stored.StructureDecision.Decision.Input.Kind != structure.AssessmentInputWindowMediaSet ||
 		stored.Structure == nil || stored.Structure.Kind != filler.StructureCompilationBreak || len(stored.Structure.Plan) != 2 ||
 		stored.Structure.Plan[0].StartMs != 0 || stored.Structure.Plan[0].EndMs != 150_000 ||
 		stored.Structure.Plan[1].StartMs != 150_000 || stored.Structure.Plan[1].EndMs != 300_000 {
@@ -278,42 +278,42 @@ func TestSplitStageProjectsConfirmedWindowSetDecisionIntoCompilationCuts(t *test
 	}
 }
 
-func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joinMS int64, disagree bool) fillerstructure.Artifact {
+func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joinMS int64, disagree bool) structure.Artifact {
 	t.Helper()
-	core := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
-	media := fillerstructure.AssessmentMedia{
+	core := structure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
+	media := structure.AssessmentMedia{
 		SHA256: strings.Repeat("9", 64), Bytes: source.Bytes, DurationMS: source.DurationMs,
 		ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64),
 	}
-	input, err := fillerstructure.NewCompleteVideoInput(core, media)
+	input, err := structure.NewCompleteVideoInput(core, media)
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate := func(id, family, digest string, segments []fillerstructure.Segment) fillerstructure.Candidate {
-		return fillerstructure.Candidate{
+	candidate := func(id, family, digest string, segments []structure.Segment) structure.Candidate {
+		return structure.Candidate{
 			Source: core, InputSHA256: input.SHA256,
-			Assessor: fillerstructure.Assessor{
+			Assessor: structure.Assessor{
 				ID: id, ModelFamily: family, Provider: "captured", Model: "model-" + id,
 				ModelDigest: strings.Repeat("a", 64), CapabilitySHA256: strings.Repeat("b", 64),
 				PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1",
 				AssessmentSHA256: strings.Repeat(digest, 64),
 			},
-			Unit: fillerstructure.UnitCompilation, Segments: segments,
+			Unit: structure.UnitCompilation, Segments: segments,
 		}
 	}
-	segments := []fillerstructure.Segment{
-		{StartMS: 0, EndMS: joinMS, Role: fillerstructure.RoleCommercial},
-		{StartMS: joinMS, EndMS: source.DurationMs, Role: fillerstructure.RolePromo},
+	segments := []structure.Segment{
+		{StartMS: 0, EndMS: joinMS, Role: structure.RoleCommercial},
+		{StartMS: joinMS, EndMS: source.DurationMs, Role: structure.RolePromo},
 	}
 	left := candidate("assessor-a", "family-a", "1", segments)
 	right := candidate("assessor-b", "family-b", "2", segments)
 	if disagree {
-		right.Unit = fillerstructure.UnitStandalone
-		right.Role = fillerstructure.RoleCommercial
-		right.Segments = []fillerstructure.Segment{{StartMS: 0, EndMS: source.DurationMs, Role: fillerstructure.RoleCommercial}}
+		right.Unit = structure.UnitStandalone
+		right.Role = structure.RoleCommercial
+		right.Segments = []structure.Segment{{StartMS: 0, EndMS: source.DurationMs, Role: structure.RoleCommercial}}
 	}
-	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
-		Source: core, Input: input, BoundaryToleranceMS: 2_000, Candidates: []fillerstructure.Candidate{left, right},
+	artifact, err := structure.NewArtifact(structure.Request{
+		Source: core, Input: input, BoundaryToleranceMS: 2_000, Candidates: []structure.Candidate{left, right},
 	}, time.Date(2026, time.September, 10, 7, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
@@ -321,39 +321,39 @@ func structureDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joi
 	return artifact
 }
 
-func structureWindowDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joinMS int64) fillerstructure.Artifact {
+func structureWindowDecisionArtifact(t *testing.T, source filler.SplitSourceAsset, joinMS int64) structure.Artifact {
 	t.Helper()
-	core := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
-	plan, err := fillerstructurewindow.NewPlan(core, fillerstructuremedia.SoftwareProfile())
+	core := structure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
+	plan, err := window.NewPlan(core, cut.SoftwareProfile())
 	if err != nil {
 		t.Fatal(err)
 	}
-	media := make([]fillerstructure.AssessmentMedia, len(plan.Windows))
+	media := make([]structure.AssessmentMedia, len(plan.Windows))
 	for ordinal, window := range plan.Windows {
-		media[ordinal] = fillerstructure.AssessmentMedia{
+		media[ordinal] = structure.AssessmentMedia{
 			SHA256: strings.Repeat(string(rune('1'+ordinal)), 64), Bytes: 1_024,
 			DurationMS: window.MediaEndMS - window.MediaStartMS, ProfileSHA256: plan.Profile.AssessmentMediaProfileSHA256,
 			LineageSHA256: strings.Repeat(string(rune('5'+ordinal)), 64),
 		}
 	}
-	set, err := fillerstructurewindow.NewMediaSet(plan, media)
+	set, err := window.NewMediaSet(plan, media)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, err := fillerstructurewindow.ReducerInput(set)
+	input, err := window.ReducerInput(set)
 	if err != nil {
 		t.Fatal(err)
 	}
-	segments := []fillerstructure.Segment{
-		{StartMS: 0, EndMS: joinMS, Role: fillerstructure.RoleCommercial},
-		{StartMS: joinMS, EndMS: source.DurationMs, Role: fillerstructure.RolePromo},
+	segments := []structure.Segment{
+		{StartMS: 0, EndMS: joinMS, Role: structure.RoleCommercial},
+		{StartMS: joinMS, EndMS: source.DurationMs, Role: structure.RolePromo},
 	}
-	candidate := func(id, family, digit string) fillerstructure.Candidate {
-		value, candidateErr := fillerstructure.NewCandidate(core, input.SHA256, fillerstructure.Assessor{
+	candidate := func(id, family, digit string) structure.Candidate {
+		value, candidateErr := structure.NewCandidate(core, input.SHA256, structure.Assessor{
 			ID: id, ModelFamily: family, Provider: "captured", Model: "model-" + id,
 			ModelDigest: strings.Repeat("a", 64), CapabilitySHA256: strings.Repeat("b", 64),
-			PromptVersion:    fillerstructurewindow.DirectVideoPromptVersion,
-			EvidenceContract: fillerstructurewindow.CallRecordContractVersion,
+			PromptVersion:    window.DirectVideoPromptVersion,
+			EvidenceContract: window.CallRecordContractVersion,
 			AssessmentSHA256: strings.Repeat(digit, 64),
 		}, "", segments)
 		if candidateErr != nil {
@@ -361,9 +361,9 @@ func structureWindowDecisionArtifact(t *testing.T, source filler.SplitSourceAsse
 		}
 		return value
 	}
-	artifact, err := fillerstructure.NewArtifact(fillerstructure.Request{
+	artifact, err := structure.NewArtifact(structure.Request{
 		Source: core, Input: input, BoundaryToleranceMS: 2_000,
-		Candidates: []fillerstructure.Candidate{candidate("assessor-a", "family-a", "8"), candidate("assessor-b", "family-b", "9")},
+		Candidates: []structure.Candidate{candidate("assessor-a", "family-a", "8"), candidate("assessor-b", "family-b", "9")},
 	}, time.Date(2026, time.September, 12, 7, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)

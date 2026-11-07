@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 // runtimePart stands in for both the assessment and the shadow, tagged with the build that made it.
 type runtimePart struct{ build int }
 
-func (runtimePart) Assess(context.Context, filler.StructureAssessmentSource) (fillerstructure.Artifact, error) {
-	return fillerstructure.Artifact{}, nil
+func (runtimePart) Assess(context.Context, filler.StructureAssessmentSource) (structure.Artifact, error) {
+	return structure.Artifact{}, nil
 }
 
 func (runtimePart) NeedsStructureSplitObservation(context.Context, filler.SplitProposal) (bool, error) {

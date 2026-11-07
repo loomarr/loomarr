@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // InferiorCopy is one copy of an ad that lost to a better copy of the same creative (#2033).
@@ -47,7 +47,7 @@ func (s *Store) MergeInferiorCopy(ctx context.Context, c InferiorCopy) error {
 		return ErrInferiorCopyMismatch
 	}
 	loser, survivor := c.ClipHash, c.SurvivorHash
-	curated := string(clipcatalog.NameFromCurated)
+	curated := string(clips.NameFromCurated)
 	steps := []identityStep{
 		// Every airing of either copy was an airing of the ad.
 		{`UPDATE clips SET

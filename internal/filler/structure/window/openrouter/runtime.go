@@ -1,0 +1,260 @@
+package openrouter
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/structure"
+	"github.com/loomarr/loomarr/internal/filler/structure/assessment"
+	"github.com/loomarr/loomarr/internal/filler/structure/cut"
+	"github.com/loomarr/loomarr/internal/filler/structure/window"
+	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/openroutercatalog"
+	"github.com/loomarr/loomarr/internal/openroutermedia"
+)
+
+const (
+	MaximumOutputTokens = 1024
+	snapshotRefreshAge  = 12 * time.Hour
+)
+
+type SnapshotFetcher func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error)
+
+type CertifiedRuntimeConfig struct {
+	Authority    window.MaterializationAuthority
+	Deployment   Deployment
+	APIKey       string
+	SourceRoot   string
+	MediaRoot    string
+	EvidenceRoot string
+	FFmpegPath   string
+	// CutFamily is the family this host cuts on now (fillerstructuremedia.CutFamily). It is asked
+	// per source because a host's encoder settles after boot.
+	CutFamily     func() encode.Family
+	Ledger        Ledger
+	Client        *http.Client
+	Now           func() time.Time
+	FetchSnapshot SnapshotFetcher
+}
+
+// CertifiedRuntime lazily refreshes live route metadata, proves it reproduces the reviewed
+// profiles, then delegates one source to the provider-neutral family-major window runtime.
+type CertifiedRuntime struct {
+	config   CertifiedRuntimeConfig
+	media    cut.Profile
+	preparer assessment.StructureAssessmentWindowMediaPreparer
+	evidence *assessment.FileStructureAssessmentEvidenceRepository
+	client   *http.Client
+
+	mu       sync.Mutex
+	snapshot openroutercatalog.OpenRouterSnapshot
+}
+
+func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, error) {
+	if err := ValidateDeployment(config.Deployment, config.Authority); err != nil {
+		return nil, err
+	}
+	if config.APIKey == "" || config.Ledger == nil || !cleanAbsolutePath(config.SourceRoot) || !cleanAbsolutePath(config.MediaRoot) ||
+		!cleanAbsolutePath(config.EvidenceRoot) || config.MediaRoot == config.EvidenceRoot || config.FFmpegPath == "" || config.CutFamily == nil {
+		return nil, errors.New("structure window certified runtime requires credential, distinct storage roots, ffmpeg, cut family, and ledger")
+	}
+	// The certification reviewed cuts made to one media profile, so the runtime cuts to exactly that
+	// one, whatever this host would choose.
+	media, ok := cut.ProfileBySHA256(config.Authority.AssessmentMediaProfileSHA256)
+	if !ok {
+		return nil, errors.New("structure window authority certifies an unsupported assessment-media profile")
+	}
+	now := config.Now
+	if now == nil {
+		now = time.Now
+	}
+	config.Now = now
+	if config.FetchSnapshot == nil {
+		config.FetchSnapshot = openroutercatalog.FetchOpenRouterSnapshot
+	}
+	config.Authority.Assessors = slices.Clone(config.Authority.Assessors)
+	config.Authority.AllowedUnits = slices.Clone(config.Authority.AllowedUnits)
+	config.Authority.AllowedRoles = slices.Clone(config.Authority.AllowedRoles)
+	config.Deployment.Families = slices.Clone(config.Deployment.Families)
+	client := config.Client
+	if client == nil {
+		client = httpx.NewNamed(httpx.TargetFillerStructureWindow, httpx.TimeoutLLM)
+	}
+	preparer, err := assessment.NewFFmpegStructureAssessmentMediaPreparer(config.SourceRoot, config.MediaRoot, config.FFmpegPath, media)
+	if err != nil {
+		return nil, err
+	}
+	evidence, err := assessment.NewFileStructureAssessmentEvidenceRepository(config.EvidenceRoot)
+	if err != nil {
+		return nil, err
+	}
+	return &CertifiedRuntime{config: config, media: media, preparer: preparer, evidence: evidence, client: client}, nil
+}
+
+func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAssessmentSource) (structure.Artifact, error) {
+	if r == nil || r.preparer == nil || r.evidence == nil || r.client == nil {
+		return structure.Artifact{}, errors.New("structure window certified runtime is unavailable")
+	}
+	if input.Source.DurationMs < r.config.Authority.MinimumSourceDurationMS ||
+		input.Source.DurationMs > r.config.Authority.MaximumSourceDurationMS {
+		return structure.Artifact{}, errors.New("structure window source is outside the reviewed duration envelope")
+	}
+	// A cut on another family is a picture nobody certified (#2121): an authority certified on the
+	// GPU does not run on a host that has fallen back to software, nor the reverse. Like any runtime
+	// failure, the proposal waits at split review rather than splitting uncertified.
+	if family := r.config.CutFamily(); family != r.media.Family {
+		return structure.Artifact{}, fmt.Errorf("structure window authority certifies %s cuts; this host cuts on %s", r.media.Family, family)
+	}
+	source := structure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
+	plan, err := window.NewPlan(source, r.media)
+	if err != nil {
+		return structure.Artifact{}, fmt.Errorf("plan structure windows: %w", err)
+	}
+	prepared, err := r.preparer.PrepareWindows(ctx, input, plan)
+	if err != nil {
+		return structure.Artifact{}, fmt.Errorf("preflight structure window media: %w", err)
+	}
+	if err := assessment.ValidatePreparedStructureAssessmentWindows(input, prepared); err != nil {
+		return structure.Artifact{}, err
+	}
+	if err := validatePreparedMediaAuthority(prepared, r.config.Authority); err != nil {
+		return structure.Artifact{}, err
+	}
+	snapshot, err := r.freshSnapshot(ctx)
+	if err != nil {
+		return structure.Artifact{}, err
+	}
+	assessors, err := r.assessors(snapshot, r.config.Now().UTC())
+	if err != nil {
+		return structure.Artifact{}, err
+	}
+	runtime, err := assessment.NewStructureWindowAssessmentRuntime(
+		assessors, r.preparer, r.evidence, r.config.Authority.BoundaryToleranceMS, r.config.Now,
+	)
+	if err != nil {
+		return structure.Artifact{}, err
+	}
+	artifact, err := runtime.AssessPrepared(ctx, input, prepared)
+	if err != nil {
+		return structure.Artifact{}, err
+	}
+	return artifact, nil
+}
+
+func validatePreparedMediaAuthority(prepared assessment.StructureAssessmentWindowMediaSet, authority window.MaterializationAuthority) error {
+	if err := window.ValidateMediaSet(prepared.Authority); err != nil ||
+		prepared.Authority.Plan.Profile.SHA256 != authority.WindowProfileSHA256 ||
+		prepared.Authority.Plan.Profile.AssessmentMediaProfileSHA256 != authority.AssessmentMediaProfileSHA256 ||
+		len(prepared.Windows) == 0 || len(prepared.Windows) > authority.MaximumWindows ||
+		len(prepared.Windows) != len(prepared.Authority.Windows) {
+		return errors.New("prepared structure window media is outside the reviewed authority")
+	}
+	for ordinal, window := range prepared.Windows {
+		if window.Media != prepared.Authority.Windows[ordinal] || window.Media.Media.Bytes > authority.MaximumWindowBytes {
+			return errors.New("prepared structure window media is outside the reviewed byte envelope")
+		}
+	}
+	return nil
+}
+
+func (r *CertifiedRuntime) freshSnapshot(ctx context.Context) (openroutercatalog.OpenRouterSnapshot, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := r.config.Now().UTC()
+	if !r.snapshot.RetrievedAt.IsZero() {
+		age := now.Sub(r.snapshot.RetrievedAt)
+		if age >= 0 && age < snapshotRefreshAge {
+			return r.snapshot, nil
+		}
+	}
+	models := make([]string, 0, len(r.config.Deployment.Families))
+	for _, family := range r.config.Deployment.Families {
+		models = append(models, family.Model)
+	}
+	slices.Sort(models)
+	models = slices.Compact(models)
+	snapshot, err := r.config.FetchSnapshot(ctx, openroutercatalog.OpenRouterSnapshotConfig{
+		BaseURL: openroutercatalog.OpenRouterBaseURL, APIKey: r.config.APIKey, Models: models,
+		RetrievedAt: now, Client: r.client,
+	})
+	if err != nil {
+		return openroutercatalog.OpenRouterSnapshot{}, fmt.Errorf("refresh OpenRouter structure metadata: %w", err)
+	}
+	r.snapshot = snapshot
+	return snapshot, nil
+}
+
+func (r *CertifiedRuntime) assessors(snapshot openroutercatalog.OpenRouterSnapshot, at time.Time) ([]assessment.CompleteWindowStructureAssessor, error) {
+	snapshotSHA := openroutercatalog.OpenRouterSnapshotSHA256(snapshot)
+	result := make([]assessment.CompleteWindowStructureAssessor, 0, len(r.config.Deployment.Families))
+	profiles := make([]structure.AssessorProfile, 0, len(r.config.Deployment.Families))
+	for _, family := range r.config.Deployment.Families {
+		model, endpoint, err := openroutercatalog.ValidateOpenRouterVideoRoute(
+			snapshot, family.Model, family.UpstreamProvider, family.UpstreamProviderSlug, at, MaximumOutputTokens,
+		)
+		if err != nil {
+			return nil, err
+		}
+		modelDigest, capabilitySHA, err := openroutercatalog.OpenRouterAssessorIdentity(
+			snapshot, family.Model, family.UpstreamProvider, family.UpstreamProviderSlug, family.ReasoningMode,
+		)
+		if err != nil {
+			return nil, err
+		}
+		profile := structure.AssessorProfile{
+			ID: family.AssessorID, ModelFamily: family.ModelFamily, Provider: "openrouter", Model: family.Model,
+			ModelDigest: modelDigest, CapabilitySHA256: capabilitySHA,
+			PromptVersion: window.DirectVideoPromptVersion, EvidenceContract: window.CallRecordContractVersion,
+		}
+		maximumCharge, err := openroutercatalog.EstimateOpenRouterTokenChargeNanoUSD(endpoint, family.MaximumInputTokens, MaximumOutputTokens)
+		if err != nil {
+			return nil, err
+		}
+		if maximumCharge > family.ReservationNanoUSD {
+			return nil, fmt.Errorf("OpenRouter structure reservation %d is below current price bound %d", family.ReservationNanoUSD, maximumCharge)
+		}
+		authority, err := openroutermedia.NewRouteAuthority(snapshot, snapshotSHA, openroutermedia.RouteRequirements{
+			BaseURL: openroutercatalog.OpenRouterBaseURL, RequestedModel: family.Model, CanonicalModel: model.CanonicalSlug,
+			UpstreamProvider: family.UpstreamProvider, ProviderSlug: family.UpstreamProviderSlug,
+			RequiredInputModalities: []string{"text", "video"}, MaxTokens: MaximumOutputTokens,
+			RequireReasoning: family.ReasoningMode == ReasoningProviderRequired, Now: r.config.Now,
+		})
+		if err != nil {
+			return nil, err
+		}
+		assessor, err := New(Config{
+			RouteAuthority: authority, Profile: profile, MetadataSnapshotSHA256: snapshotSHA,
+			APIKey: r.config.APIKey, BaseURL: openroutercatalog.OpenRouterBaseURL, Model: family.Model,
+			ResolvedModel: model.CanonicalSlug, UpstreamProvider: family.UpstreamProvider,
+			UpstreamProviderSlug: family.UpstreamProviderSlug, ReservationNanoUSD: family.ReservationNanoUSD,
+			MaximumChargeNanoUSD: maximumCharge, MaxTokens: MaximumOutputTokens,
+			DisableReasoning: family.ReasoningMode == ReasoningDisabled,
+			EnableReasoning:  family.ReasoningMode == ReasoningProviderRequired,
+			Client:           r.client, Ledger: r.config.Ledger, Now: r.config.Now,
+		})
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+		result = append(result, assessor)
+	}
+	if !reflect.DeepEqual(profiles, r.config.Authority.Assessors) {
+		return nil, errors.New("live OpenRouter structure profiles do not match reviewed authority")
+	}
+	return result, nil
+}
+
+func cleanAbsolutePath(path string) bool {
+	return filepath.IsAbs(path) && filepath.Clean(path) == path
+}
+
+var _ filler.CompleteTimelineStructureDecisioner = (*CertifiedRuntime)(nil)

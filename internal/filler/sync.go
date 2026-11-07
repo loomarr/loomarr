@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/logchange"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
@@ -63,7 +63,7 @@ type RawClip struct {
 	TunarrProgramID string
 	Name            string
 	// NameSource is where the scan found Name (#1988); the catalog row takes it with the name.
-	NameSource      clipcatalog.NameSource
+	NameSource      clips.NameSource
 	DurationMs      int64
 	Kind            Kind
 	Era             int // initial era from filename; 0 if none
@@ -802,7 +802,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 	if found {
 		grounded = existing.Clip
 	}
-	rc.Name, rc.NameSource = groundedRepairName(grounded), clipcatalog.NameFromGrounded
+	rc.Name, rc.NameSource = groundedRepairName(grounded), clips.NameFromGrounded
 	if rc.SidecarInvalid {
 		return rc, true, nil
 	}
@@ -850,11 +850,11 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 
 	// If the durable row still has a useful title, put it beside the bytes before moving. This is
 	// the last automatic chance to prevent the next scan from replacing it with the stale hash.
-	repairName, repairSource := "", clipcatalog.NameFromUnknown
+	repairName, repairSource := "", clips.NameFromUnknown
 	if found {
 		repairName, repairSource = existing.Name, existing.NameSource
 		if isHashDisplayName(repairName) {
-			repairName, repairSource = groundedRepairName(existing.Clip), clipcatalog.NameFromGrounded
+			repairName, repairSource = groundedRepairName(existing.Clip), clips.NameFromGrounded
 		}
 	}
 	if repairName != "" {
@@ -957,7 +957,7 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 	}
 	// A segment's chapter title or operator edit is not Loomarr's to improve, and neither is the
 	// filename fallback it records explicitly (#1988).
-	if recorded := clipcatalog.NameSource(tags.NameProvenance); recorded.Known() && recorded != clipcatalog.NameFromGrounded {
+	if recorded := clips.NameSource(tags.NameProvenance); recorded.Known() && recorded != clips.NameFromGrounded {
 		return rc, false, nil
 	}
 	legacy := existing.Clip
@@ -975,7 +975,7 @@ func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, fo
 	if err := WriteSidecarTags(full, tags, false); err != nil {
 		return rc, false, err
 	}
-	rc.Name, rc.NameSource = name, clipcatalog.NameFromGrounded
+	rc.Name, rc.NameSource = name, clips.NameFromGrounded
 	return rc, true, nil
 }
 

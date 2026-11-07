@@ -10,25 +10,23 @@ import {
   PlayerSettings,
   PlayerSheet,
   playbarFromTimeline,
-  type SurfChannelData,
   WatchingPanel,
-  type WatchingScheduleData,
 } from "@loomarr/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
-import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
-import { useNumberEntry } from "@/channels/use-number-entry";
+import { ChannelDrawer } from "@/channels/channel-drawer";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/ui/video-player";
-import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
-import { type SwitchSound, startChannelSwitchSound } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
-import { useSwitchSoundPreference } from "../use-switch-sound-preference";
+import { useSwitchSound } from "../use-switch-sound";
+import type { WatchChannels } from "../use-watch-channels";
 import type { WatchPlayer } from "../use-watch-player";
+import { useWatchShortcuts } from "../use-watch-shortcuts";
+import { useWatchTelemetry } from "../use-watch-telemetry";
 
 // ChannelWatch — the full-bleed `/watch/$id` player: play a channel live in the browser (§9, #2088).
 //
@@ -49,39 +47,15 @@ interface ChannelWatchProps {
   onLeave: () => void;
   /** The player and its tuner: what plays, what the viewer asked of it, and its controls. */
   player: WatchPlayer;
-  // The channels drawer's data (#1659 W1): every channel read from the guide, and the viewer's own
-  // favourites and recent channels. Also the list a typed number is looked up in.
-  drawer?: {
-    channels: DrawerChannel[];
-    favourites: string[];
-    recent: string[];
-    nowPercent: number;
-    onFavourite: (channelId: string, favourite: boolean) => void;
-  };
-  // A tune has settled on this channel (its first frame played): the viewer's recents record it.
-  onTuneSettled?: (channelId: string) => void;
-  // What a portrait phone shows under the picture (#1785, native mock 5e), read from the guide: the
-  // tuned channel's now and next, the viewer's favourites, the channel Previous returns to, and the
-  // wall clock.
-  phone?: {
-    schedule?: WatchingScheduleData;
-    favourites: readonly SurfChannelData[];
-    previousId?: string;
-    clockLabel?: string;
-  };
+  /** The channels around this one: the drawer, the phone panel, and the recents record. */
+  channels?: WatchChannels;
 }
 
-const PLAYHEAD_DRIFT_THRESHOLD_MS = 30_000;
 // The chrome's ⟲/⟳ step, the same as ←/→ (#2088 decision 2).
 const SEEK_STEP_MS = 10_000;
 
-// The station-ID card's time on screen after a settled tune, and the Info sheet's during playback
-// (playback-clients: Station ID, Panels).
+// The station-ID card's time on screen after a settled tune (playback-clients: Station ID).
 const IDENT_MS = 5_000;
-const INFO_PLAYING_MS = 8_000;
-
-// The one sheet the chrome can have open at a time (§9.1, plane 5).
-type WatchSheet = "channels" | "info" | "settings";
 
 // HoldWhile keeps the player's controls shown while `on`: VideoPlayer's hold is a count, so each
 // hold(true) is paired with exactly one hold(false), here by the effect's cleanup.
@@ -103,15 +77,10 @@ const HideForIdent = ({ hide, ident }: { hide: VideoPlayerChrome["hide"]; ident:
   return null;
 };
 
-const ChannelWatch = ({
-  channel,
-  isAdmin,
-  onLeave,
-  player,
-  drawer,
-  onTuneSettled,
-  phone,
-}: ChannelWatchProps) => {
+const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWatchProps) => {
+  const drawer = channels?.drawer;
+  const phone = channels?.phone;
+  const onTuneSettled = channels?.onTuneSettled;
   // A portrait phone (#1785, native mock 5e, decision N5): the picture edge to edge with nothing
   // drawn on it, and the controls, what's next and the favourites under it. Wider draws the §9
   // chrome over the picture; its portrait form comes with the phone step (#2088 step 10).
@@ -182,48 +151,13 @@ const ChannelWatch = ({
       ? undefined
       : serverAtProjection + Math.max(0, Date.now() - timeline.dataUpdatedAt);
   const viewerTimeMs = player.liveTransport.state.viewerTimeMs;
-  const diagnosticAiring = airings.find(
-    (airing) => !airing.nominal && viewerTimeMs >= airing.startMs && viewerTimeMs < airing.stopMs,
-  );
-  const scheduleBlockId = diagnosticAiring?.scheduleBlockId;
-  const previousBlockRef = useRef<{ channelId: string; scheduleBlockId?: string }>({ channelId: channel.id });
-  const driftedBlockRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (previousBlockRef.current.channelId !== channel.id) {
-      previousBlockRef.current = { channelId: channel.id };
-      driftedBlockRef.current = undefined;
-    }
-    if (!diagnosticAiring || !scheduleBlockId || serverNowMs === undefined) return;
-    if (previousBlockRef.current.scheduleBlockId === scheduleBlockId) return;
-    clientDiagnostics.record({
-      event: "player.schedule_block_changed",
-      playbackSessionId: player.playbackSessionId,
-      channelId: channel.id,
-      scheduleBlockId,
-      previousScheduleBlockId: previousBlockRef.current.scheduleBlockId,
-      blockKind:
-        diagnosticAiring.kind === "program" || diagnosticAiring.kind === "filler"
-          ? diagnosticAiring.kind
-          : "flex",
-      viewerTimeMs: Math.round(viewerTimeMs),
-      serverTimeMs: Math.round(serverNowMs),
-    });
-    previousBlockRef.current.scheduleBlockId = scheduleBlockId;
-  }, [channel.id, diagnosticAiring, player.playbackSessionId, scheduleBlockId, serverNowMs, viewerTimeMs]);
-  useEffect(() => {
-    if (!scheduleBlockId || serverNowMs === undefined || driftedBlockRef.current === scheduleBlockId) return;
-    const driftMs = Math.round(viewerTimeMs - serverNowMs);
-    if (Math.abs(driftMs) < PLAYHEAD_DRIFT_THRESHOLD_MS) return;
-    clientDiagnostics.record({
-      event: "player.playhead_drift",
-      playbackSessionId: player.playbackSessionId,
-      channelId: channel.id,
-      viewerTimeMs: Math.round(viewerTimeMs),
-      serverTimeMs: Math.round(serverNowMs),
-      driftMs,
-    });
-    driftedBlockRef.current = scheduleBlockId;
-  }, [channel.id, player.playbackSessionId, scheduleBlockId, serverNowMs, viewerTimeMs]);
+  useWatchTelemetry({
+    channelId: channel.id,
+    playbackSessionId: player.playbackSessionId,
+    airings,
+    viewerTimeMs,
+    serverNowMs,
+  });
   const audioValue = channel.policy?.playout?.audioLanguage ?? "";
 
   // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
@@ -272,87 +206,21 @@ const ChannelWatch = ({
     return () => window.clearTimeout(timer);
   }, [tuning, player.status]);
 
-  // The channel-change sound (#1620), a dial set: a clunk, then static until the new channel's first
-  // frame, cut at lock. It starts as the tuned channel changes — the moment the viewer asks, not when
-  // transport catches up — and only once a picture has played here: a cold start is not a channel
-  // change, and an autoplayed first tune has had no gesture. The module owns the rest of the gate
-  // (the viewer's preference, the player's mute and volume, the page's user activation).
-  //
-  // While the static plays, the programme's own audio is muted, as a set's is; it comes back at lock.
-  // That is a mute of the element alone: the player's own mute state is untouched, so its button
-  // still shows the viewer's choice, and the element is only unmuted again if the static muted it.
-  const [switchSoundOn, setSwitchSoundOn] = useSwitchSoundPreference();
-  const soundedChannelRef = useRef(osdChannel.id);
-  const switchSoundRef = useRef<{ sound: SwitchSound; programmeMuted: boolean } | undefined>(undefined);
-  const endSwitchSound = useCallback(() => {
-    const running = switchSoundRef.current;
-    if (!running) return;
-    switchSoundRef.current = undefined;
-    running.sound.lock();
-    if (videoRef.current?.muted) videoRef.current.muted = running.programmeMuted;
-  }, []);
-  useEffect(() => {
-    if (soundedChannelRef.current === osdChannel.id) return;
-    soundedChannelRef.current = osdChannel.id;
-    const video = videoRef.current;
-    if (!heldFrame || !video) return;
-    // Surfing on while the static still runs: that one ends, and the new clunk takes over.
-    endSwitchSound();
-    const sound = startChannelSwitchSound(video, { enabled: switchSoundOn });
-    if (!sound) return;
-    switchSoundRef.current = { sound, programmeMuted: video.muted };
-    video.muted = true;
-  }, [osdChannel.id, heldFrame, switchSoundOn, endSwitchSound]);
-  // Lock: the first frame has decoded (or the tune failed), so the static cuts off.
-  useEffect(() => {
-    if (!tuning) endSwitchSound();
-  }, [tuning, endSwitchSound]);
-  useEffect(() => endSwitchSound, [endSwitchSound]);
+  const [switchSoundOn, setSwitchSoundOn] = useSwitchSound({
+    channelId: osdChannel.id,
+    heldFrame,
+    tuning,
+    video: videoRef,
+  });
 
-  // The one right-hand sheet (Settings, Info or Channels) and 0-9 direct tune (#1659 W1). I opens and
-  // closes Info, G Channels; digits open a number entry; Enter tunes it at once; Escape closes the
-  // sheet. Closing a sheet hands focus back to what opened it (its button, or the frame for a key).
-  const [sheet, setSheet] = useState<WatchSheet | undefined>(undefined);
-  const sheetOpenerRef = useRef<HTMLElement | null>(null);
-  const toggleSheet = (next: WatchSheet) => {
-    if (!sheet && document.activeElement instanceof HTMLElement)
-      sheetOpenerRef.current = document.activeElement;
-    setSheet((open) => (open === next ? undefined : next));
-  };
-  const closeSheet = useCallback(() => setSheet(undefined), []);
-  useEffect(() => {
-    if (sheet) return;
-    sheetOpenerRef.current?.focus({ preventScroll: true });
-    sheetOpenerRef.current = null;
-  }, [sheet]);
-  // Info closes by itself after eight seconds while the channel plays; paused, it stays to be read.
-  const viewerPaused = player.liveTransport.state.mode === "paused";
-  useEffect(() => {
-    if (sheet !== "info" || viewerPaused) return;
-    const timer = window.setTimeout(closeSheet, INFO_PLAYING_MS);
-    return () => window.clearTimeout(timer);
-  }, [sheet, viewerPaused, closeSheet]);
+  const { sheet, toggleSheet, closeSheet, entry, onShortcut } = useWatchShortcuts({
+    hasInfo: info !== undefined,
+    channels: drawer?.channels,
+    onTune: player.tune,
+    viewerPaused: player.liveTransport.state.mode === "paused",
+  });
   // A preview card is open on the playbar: the controls stay shown under it.
   const [previewOpen, setPreviewOpen] = useState(false);
-  const entry = useNumberEntry({ channels: drawer?.channels ?? [], onTune: player.tune });
-  const onShortcut = (key: string): boolean => {
-    if (key === "Escape" && sheet) {
-      closeSheet();
-      return true;
-    }
-    if ((key === "i" || key === "I") && info) {
-      toggleSheet("info");
-      return true;
-    }
-    if (!drawer) return false;
-    if (entry.press(key)) return true;
-    if (key === "Enter") return entry.commit();
-    if (key === "g" || key === "G") {
-      toggleSheet("channels");
-      return true;
-    }
-    return false;
-  };
 
   // The number readout, top right of the frame (the console mock): the digits so far, dashed out
   // to the longest channel number, over "ENTER CHANNEL" or, for a number no channel has, "NO SUCH

@@ -284,7 +284,7 @@ var (
 
 func allowedPostgresImageLiteralAuthorities() map[string]map[string]int {
 	return map[string]map[string]int{
-		"internal/auth/sso_authentik_test.go": {postgresTagPrefix + "16-alpine": 1},
+		"internal/people/auth/sso_authentik_test.go": {postgresTagPrefix + "16-alpine": 1},
 		"internal/releaseverify/ci_container_downloads_test.go": {
 			" " + postgresTagPrefix + "17-alpine":         1,
 			"docker://" + postgresTagPrefix + "17-alpine": 1,

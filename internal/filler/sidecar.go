@@ -218,7 +218,7 @@ type SegmentScreeningReference struct {
 }
 
 // NewSegmentScreeningReference joins a valid subject to the digest of its aggregate. The aggregate
-// type and its validation belong to internal/fillerscreening, whose constructor of the same name is
+// type and its validation belong to internal/filler/screening, whose constructor of the same name is
 // the only caller.
 func NewSegmentScreeningReference(subject SegmentScreeningSubject, evidenceSHA256 string) (SegmentScreeningReference, error) {
 	if ValidateSegmentScreeningSubject(subject) != nil {

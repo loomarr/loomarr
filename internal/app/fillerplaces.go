@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
-	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
-	archiveprovider "github.com/loomarr/loomarr/internal/sourceprovider/archive"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -86,19 +86,19 @@ func (l localCuratedSources) Run(ctx context.Context) {
 // date.
 type openArchiveSearch struct {
 	archive interface {
-		Search(ctx context.Context, query string, limit int) (clipfetch.DiscoveryResult, error)
+		Search(ctx context.Context, query string, limit int) (fetch.DiscoveryResult, error)
 	}
 	channels interface {
 		ListChannels(ctx context.Context) ([]store.Channel, error)
 	}
 	policy   func() filler.Policy
 	stations interface {
-		get(context.Context) (*broadcaststation.Directory, error)
+		get(context.Context) (*station.Directory, error)
 	}
 	languages func(context.Context) (string, error)
 }
 
-func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit int) ([]sourceprovider.Item, error) {
+func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit int) ([]source.Item, error) {
 	res, err := o.archive.Search(ctx, query, limit)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit i
 }
 
 // Provider is the provider an open-search hit is acquired from.
-func (o openArchiveSearch) Provider() sourceprovider.ID { return archiveprovider.ID }
+func (o openArchiveSearch) Provider() source.ID { return archiveprovider.ID }
 
 func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error) {
 	near, err := nearbyPlaceStations(ctx, o.channels, o.policy())
@@ -134,7 +134,7 @@ func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error)
 // nearbyCallSigns are the call signs a short pass searches for (#2059 decision 9): every one a
 // nearby station held during an era gap, or ever when there is none. Sorted, so the searches a
 // pass rotates through are stable.
-func nearbyCallSigns(near map[string]bool, eras []filler.EraRange, directory *broadcaststation.Directory) []string {
+func nearbyCallSigns(near map[string]bool, eras []filler.EraRange, directory *station.Directory) []string {
 	spans := [][2]string{{"", ""}}
 	if len(eras) > 0 {
 		spans = spans[:0]

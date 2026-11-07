@@ -11,24 +11,24 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/activity"
-	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/fillerstore"
-	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/people/contact"
+	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
-	"github.com/loomarr/loomarr/internal/recovery"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/settings"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
@@ -39,7 +39,7 @@ import (
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
 // (§7.1, §14: code-first OpenAPI 3.1 via humago — no third-party router).
 type Server struct {
-	store fillerstore.Store
+	store records.Store
 	// stations is the broadcast station directory, read once from the store (it changes only
 	// with a seed revision at boot).
 	stations stationCache
@@ -94,7 +94,10 @@ type Server struct {
 	// collections backs the scope.collections picker; nil ⇒ the route 501s, the same
 	// nil-semantics every other optional service here uses.
 	collections CollectionService
-	ideaLibrary IdeaLibrary
+	// libraryRoots backs /v1/library/roots*, /v1/library/path-map and /v1/library/status (#2151);
+	// nil ⇒ those routes 409 as not configured.
+	libraryRoots LibraryRootService
+	ideaLibrary  IdeaLibrary
 	// icons backs GET /v1/channels/{id}/icon-suggestions (§icon P2): candidate poster
 	// URLs drawn from the channel's own lineup titles. nil ⇒ 501 (TMDB unconfigured).
 	icons IconService
@@ -106,15 +109,15 @@ type Server struct {
 	shutdown       <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
 	filler         FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	fillerResearch FillerResearchService
-	fillerDefects  *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
-	pods           PodPreviewer                     // /v1/channels/{id}/pods (§12); nil ⇒ 501
-	taxonomy       TaxonomyEditor                   // taxonomy impact + graph convergence; nil keeps store-only test wiring
+	fillerDefects  *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	pods           PodPreviewer               // /v1/channels/{id}/pods (§12); nil ⇒ 501
+	taxonomy       TaxonomyEditor             // taxonomy impact + graph convergence; nil keeps store-only test wiring
 	// fillerLayout is the immutable filesystem topology applied to this server generation.
 	// Operational routes keep interpreting catalog paths against this root until restart.
 	fillerLayout filler.Layout
 	// sourceProviders is every provider a filler source can name. It answers what each one is and
 	// can do; nil names none, so no source is fetched and none can be added.
-	sourceProviders *sourceprovider.Registry
+	sourceProviders *source.Registry
 	// intakeLanguages is Options.IntakeLanguages; nil reports no intake language.
 	intakeLanguages func(context.Context) (string, error)
 	// jobs wires /v1/jobs* (the background-job scheduler, §18.1); nil ⇒ routes 501.
@@ -415,8 +418,8 @@ type FillerService interface {
 	Fetch(ctx context.Context, sourceID string) (filler.FetchResult, error)
 	// SuggestSources and ResolveSource are read-only provider discovery. They create no registry
 	// row and grant no acquisition authority; POST /v1/filler/sources remains that boundary.
-	SuggestSources(ctx context.Context, provider, query string, limit int) ([]sourceprovider.Suggestion, error)
-	ResolveSource(ctx context.Context, provider, input string) (sourceprovider.Suggestion, error)
+	SuggestSources(ctx context.Context, provider, query string, limit int) ([]source.Suggestion, error)
+	ResolveSource(ctx context.Context, provider, input string) (source.Suggestion, error)
 	// Ingest downloads clips from the given source URLs into the drop-folder, returning
 	// a job id immediately (§10). Downloads take minutes to hours, so this is
 	// fire-and-report: progress arrives on the SSE bus as `filler_ingest` frames, the
@@ -428,7 +431,7 @@ type FillerService interface {
 	// IngestSourceItems queues exact candidates discovered inside one registered source. The
 	// source identity and provider kind are server-owned policy; RemoteID preserves provider
 	// deduplication and this path never registers an item as another source.
-	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []sourceprovider.Item) (jobID string, err error)
+	IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []source.Item) (jobID string, err error)
 	// IngestPull validates readiness, constructs the queued run, and calls commit exactly once
 	// before launching the ordinary downloader. A failed commit must not start any work.
 	IngestPull(ctx context.Context, pullID string, targets []filler.AcquisitionTarget, commit func(context.Context, filler.AcquisitionRun) error) (jobID string, err error)
@@ -484,8 +487,8 @@ type FillerService interface {
 // clip-detail research. Search results remain internal pipeline evidence; this seam intentionally
 // exposes no query or per-clip command.
 type FillerResearchService interface {
-	Status(context.Context) (fillerresearch.WebStatus, error)
-	Test(context.Context, fillerresearch.WebConfig) (fillerresearch.WebStatus, bool, string, error)
+	Status(context.Context) (research.WebStatus, error)
+	Test(context.Context, research.WebConfig) (research.WebStatus, bool, string, error)
 }
 
 // TaxonomyEditor is the deep graph-edit module used by taxonomy writes. The store still owns the
@@ -1023,7 +1026,7 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store                fillerstore.Store
+	Store                records.Store
 	Auth                 Authorizer
 	Log                  *slog.Logger
 	Metrics              *metrics.Recorder
@@ -1062,20 +1065,21 @@ type Options struct {
 	Search           SearchService          // /v1/search (Phase 11); nil ⇒ search route 501
 	MovieCollections MovieCollectionService // /v1/movie-collections; nil ⇒ route 501
 	Collections      CollectionService      // /v1/library/collections (§2.2); nil ⇒ route 501
+	LibraryRoots     LibraryRootService     // /v1/library/roots*, path-map, status (#2151); nil ⇒ 409
 	IdeaLibrary      IdeaLibrary            // /v1/discovery/ideas (#1665); nil ⇒ route 501
 	Icons            IconService            // /v1/channels/{id}/icon-suggestions (§icon P2); nil ⇒ 501
 	// Images backs /v1/images* — the one pipeline every image travels (§22, V52). nil ⇒ the byte
 	// route 404s and the record route reports the image absent, which is the honest answer for an
 	// instance with no store behind it.
 	Images          ImageService
-	Events          EventSource                      // /v1/events SSE (Phase 11); nil ⇒ route 501
-	Shutdown        <-chan struct{}                  // generation lifetime; closes SSE so http.Server.Shutdown can drain
-	Filler          FillerService                    // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	SourceProviders *sourceprovider.Registry         // /v1/filler/providers and source validation; nil ⇒ none registered
-	FillerResearch  FillerResearchService            // optional structured-first web-search status and validation
-	FillerDefects   *fillerdefectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
-	Pods            PodPreviewer                     // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
-	Taxonomy        TaxonomyEditor                   // taxonomy impact + committed channel convergence
+	Events          EventSource                // /v1/events SSE (Phase 11); nil ⇒ route 501
+	Shutdown        <-chan struct{}            // generation lifetime; closes SSE so http.Server.Shutdown can drain
+	Filler          FillerService              // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
+	SourceProviders *source.Registry           // /v1/filler/providers and source validation; nil ⇒ none registered
+	FillerResearch  FillerResearchService      // optional structured-first web-search status and validation
+	FillerDefects   *defectfloor.DefectReports // /v1/filler/defects* (#2034); nil ⇒ 501
+	Pods            PodPreviewer               // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
+	Taxonomy        TaxonomyEditor             // taxonomy impact + committed channel convergence
 	// FillerLayout is the immutable storage topology applied to this server generation. Its zero
 	// value means filler storage is unavailable; saved desired values do not replace it mid-run.
 	FillerLayout filler.Layout

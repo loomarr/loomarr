@@ -43,6 +43,7 @@ exact React Native the app installs.
 | Secret encryption | stdlib `crypto/*` | envelope encryption needs nothing outside the standard library |
 | Startup report | `jedib0t/go-pretty/v6/table` | terminal formatting of the startup report only |
 | Windows job objects | `x/sys/windows` | compile-isolated legacy adapter; not a support claim |
+| Library change signals | `fsnotify/fsnotify` | inotify on local media folders, including queue-overflow reporting, so a new file is scanned seconds after it lands; network shares are told apart by `x/sys/unix` `Statfs` |
 | SSO | `coreos/go-oidc/v3`, `x/oauth2`, `go-jose/v4` | JWKS verification, rotation and claim checks are not code to hand-roll |
 | Email | `wneessen/go-mail` | context-aware SMTP with explicit TLS policy and MIME composition, behind the delivery port |
 | Web Push | `SherClockHolmes/webpush-go` | RFC 8291 encryption and VAPID without local crypto code, behind the push adapter |
@@ -63,7 +64,7 @@ Exec'd, never linked, and shipped in the one image, so every feature is always a
 | Tool | Why |
 | --- | --- |
 | `ffmpeg`, `ffprobe` | playout encoding and packaging, probing, yt-dlp stream merging |
-| `yt-dlp`, `node` | YouTube and playlist filler sources (`internal/clipfetch`); yt-dlp needs a JavaScript runtime for YouTube's player challenges and `clipfetch` enables Node with `--js-runtimes node` (yt-dlp enables only Deno by default). `node` is copied from the digest-pinned official Node image the web build already uses, not downloaded, so it adds no pin of its own; Deno was retired when its development was announced to end |
+| `yt-dlp`, `node` | YouTube and playlist filler sources (`internal/filler/fetch`); yt-dlp needs a JavaScript runtime for YouTube's player challenges and `fetch` enables Node with `--js-runtimes node` (yt-dlp enables only Deno by default). `node` is copied from the digest-pinned official Node image the web build already uses, not downloaded, so it adds no pin of its own; Deno was retired when its development was announced to end |
 | `whisper-cli` (whisper.cpp) with `small.en` | transcripts for compilation splitting; smaller models measurably dropped whole adverts. Ships its `libggml` backends beside it, and the image proves it by transcribing at build time |
 | Traefik (Compose edge) | one health-aware HTTP edge, digest-pinned; one Loomarr replica remains the supported boundary |
 

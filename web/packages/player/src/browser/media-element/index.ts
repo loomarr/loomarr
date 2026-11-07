@@ -1,5 +1,6 @@
 export type { DisplayedClockAnchor, TransferredMedia } from "./media-element";
 export {
+  afterNextPaint,
   clearHeldFrame,
   clearTransferredBuffers,
   containsMediaTime,

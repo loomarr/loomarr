@@ -1,0 +1,82 @@
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DrawerChannel } from "../channel-drawer";
+import { useWatchShortcuts } from "./use-watch-shortcuts";
+
+const channels: DrawerChannel[] = [
+  { id: "ch-2", number: 7, name: "Saturday Cartoons", now: "A cartoon", minutesLeft: 11, blocks: [] },
+];
+
+type Props = Parameters<typeof useWatchShortcuts>[0];
+
+describe("useWatchShortcuts", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const setup = (overrides: Partial<Props> = {}) => {
+    const onTune = vi.fn();
+    const initialProps: Props = { hasInfo: true, channels, onTune, viewerPaused: false, ...overrides };
+    const hook = renderHook((p: Props) => useWatchShortcuts(p), { initialProps });
+    const press = (key: string) => {
+      let handled = false;
+      act(() => {
+        handled = hook.result.current.onShortcut(key);
+      });
+      return handled;
+    };
+    return { hook, onTune, press, initialProps };
+  };
+
+  it("opens and closes Info on I, and Channels on G", () => {
+    const { hook, press } = setup();
+    expect(press("i")).toBe(true);
+    expect(hook.result.current.sheet).toBe("info");
+    expect(press("I")).toBe(true);
+    expect(hook.result.current.sheet).toBeUndefined();
+    expect(press("g")).toBe(true);
+    expect(hook.result.current.sheet).toBe("channels");
+    expect(press("Escape")).toBe(true);
+    expect(hook.result.current.sheet).toBeUndefined();
+  });
+
+  it("leaves keys it has nothing for to the player", () => {
+    const { press } = setup({ hasInfo: false, channels: undefined });
+    expect(press("i")).toBe(false);
+    expect(press("g")).toBe(false);
+    expect(press("7")).toBe(false);
+    expect(press("Escape")).toBe(false);
+  });
+
+  it("tunes a typed channel number at once on Enter", () => {
+    const { onTune, press } = setup();
+    expect(press("7")).toBe(true);
+    expect(press("Enter")).toBe(true);
+    expect(onTune).toHaveBeenCalledWith("ch-2");
+  });
+
+  it("closes Info by itself while the channel plays, but not while paused", () => {
+    vi.useFakeTimers();
+    const { hook, press, initialProps } = setup();
+    press("i");
+    act(() => vi.advanceTimersByTime(7_999));
+    expect(hook.result.current.sheet).toBe("info");
+    act(() => vi.advanceTimersByTime(1));
+    expect(hook.result.current.sheet).toBeUndefined();
+
+    hook.rerender({ ...initialProps, viewerPaused: true });
+    press("i");
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(hook.result.current.sheet).toBe("info");
+  });
+
+  it("hands focus back to what opened the sheet", () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const { hook } = setup();
+    act(() => hook.result.current.toggleSheet("settings"));
+    document.body.focus();
+    act(() => hook.result.current.closeSheet());
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+});

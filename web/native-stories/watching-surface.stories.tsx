@@ -47,21 +47,14 @@ const Preview = ({
   <LoomarrProvider>
     <View style={{ height: "100%", width: "100%" }}>
       <WatchingSurface
-        density={process.env.EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY === "tv" ? "tv" : "touch"}
         loading={loading}
         loadError={loadError}
         numberEntry={numberEntry}
-        onChannelDown={() => undefined}
-        onChannelUp={() => undefined}
         onDismissControls={() => undefined}
         onGoLive={() => undefined}
         onOpenGuide={() => undefined}
-        onOpenSurf={() => undefined}
-        onPause={() => undefined}
         onPlay={() => undefined}
-        onPrevious={() => undefined}
         onRetry={() => undefined}
-        onShowControls={() => undefined}
         player={<View style={{ backgroundColor: "#1B1E24", flex: 1 }} />}
         schedule={scheduleData}
         snapshot={state}

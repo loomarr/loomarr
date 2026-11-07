@@ -593,8 +593,8 @@
       "legacyUi": 1
     },
     "src/filler/filler-manage/filler-manage.tsx": {
-      "tailwindClasses": 114,
-      "legacyUi": 5
+      "tailwindClasses": 21,
+      "legacyUi": 2
     },
     "src/filler/filler-overview/filler-overview.tsx": {
       "tailwindClasses": 72,

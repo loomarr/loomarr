@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 const (
@@ -24,18 +24,18 @@ const (
 // is the source's, a model name tied to on-screen text is grounded, and an operator's edit is
 // curated. The fallback names the segment after its recording's file. A proposal saved before
 // NameOrigin existed does not say, so its segments stay unknown.
-func segmentNameSource(origin string) clipcatalog.NameSource {
+func segmentNameSource(origin string) clips.NameSource {
 	switch origin {
 	case SplitNameSourceAuthored:
-		return clipcatalog.NameFromSource
+		return clips.NameFromSource
 	case SplitNameModelProposed:
-		return clipcatalog.NameFromGrounded
+		return clips.NameFromGrounded
 	case SplitNameOperatorEdited:
-		return clipcatalog.NameFromCurated
+		return clips.NameFromCurated
 	case SplitNameFallback:
-		return clipcatalog.NameFromFilename
+		return clips.NameFromFilename
 	default:
-		return clipcatalog.NameFromUnknown
+		return clips.NameFromUnknown
 	}
 }
 

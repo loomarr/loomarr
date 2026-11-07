@@ -48,7 +48,7 @@ cd "$ROOT"
 RACE_OFF=(
 	internal/catalog
 	internal/config
-	internal/taxonomy
+	internal/filler/taxonomy
 	internal/provision
 	internal/activity
 	cmd/dev-docs

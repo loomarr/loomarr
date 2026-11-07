@@ -8,8 +8,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
@@ -17,7 +17,7 @@ import (
 // record was judged against, and a clip the floor has not measured cannot be labelled.
 func TestFillerDefectReports_LabelThroughTheStore(t *testing.T) {
 	ctx := t.Context()
-	st, err := fillerstore.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := records.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,22 +37,22 @@ func TestFillerDefectReports_LabelThroughTheStore(t *testing.T) {
 		Assessment: a, Verdict: verdict, VerdictReason: reason, MeasuredAt: at}); err != nil {
 		t.Fatal(err)
 	}
-	reports := fillerdefectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, func() time.Time { return at })
+	reports := defectfloor.NewDefectReports(fillerDefectStoreAdapter{st}, func() time.Time { return at })
 
-	if err := reports.Label(ctx, "unmeasured", defects.LabelPass); !errors.Is(err, fillerdefectfloor.ErrDefectNotMeasured) {
+	if err := reports.Label(ctx, "unmeasured", defects.LabelPass); !errors.Is(err, defectfloor.ErrDefectNotMeasured) {
 		t.Fatalf("labelling an unmeasured clip = %v, want ErrDefectNotMeasured", err)
 	}
 	if err := reports.Label(ctx, "measured", defects.LabelFail); err != nil {
 		t.Fatal(err)
 	}
-	report, err := reports.Report(ctx, fillerdefectfloor.DefectReportFilter{})
+	report, err := reports.Report(ctx, defectfloor.DefectReportFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.Unmeasured != 1 || report.Labelled != 1 || len(report.Rows) != 1 {
 		t.Fatalf("report = %+v", report)
 	}
-	if got, want := *report.Rows[0].Label, (fillerdefectfloor.DefectLabel{Label: defects.LabelFail, Era: 1988, LabelledAt: at}); got != want {
+	if got, want := *report.Rows[0].Label, (defectfloor.DefectLabel{Label: defects.LabelFail, Era: 1988, LabelledAt: at}); got != want {
 		t.Fatalf("label = %+v, want %+v", got, want)
 	}
 }

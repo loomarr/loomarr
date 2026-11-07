@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -36,7 +36,7 @@ import (
 // validates it" — an SVG carrying <script> gets stored and served from Loomarr's own origin by
 // the PUBLIC serve half. Deleting the sniff is a one-line change that no other test notices.
 
-func newIconUploadServer(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeImageService) {
+func newIconUploadServer(t *testing.T) (*httptest.Server, records.Store, *fakeImageService) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/iconupload.db")
 	t.Cleanup(func() { _ = st.Close() })

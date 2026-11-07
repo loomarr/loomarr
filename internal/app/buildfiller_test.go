@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/llm"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
@@ -54,7 +54,7 @@ func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfCountrySo
 		{"canadian", "CA"},
 		{"unknown", ""},
 	} {
-		src := fillerstore.NewFillerSource(tc.id, "archive", tc.id, tc.id, time.Now().UTC())
+		src := records.NewFillerSource(tc.id, "archive", tc.id, tc.id, time.Now().UTC())
 		src.Geography = filler.Geography{Country: tc.country}
 		if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 			t.Fatal(err)
@@ -84,7 +84,7 @@ func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfCountrySo
 
 func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
-	src := fillerstore.NewFillerSource("archive:local", "archive", "local", "Local", time.Now().UTC())
+	src := records.NewFillerSource("archive:local", "archive", "local", "Local", time.Now().UTC())
 	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -108,17 +108,17 @@ func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t 
 }
 
 // listingProvider is the archive provider with its listing replaced by a function.
-type listingProvider func(context.Context, sourceprovider.Source) ([]sourceprovider.Item, error)
+type listingProvider func(context.Context, source.Source) ([]source.Item, error)
 
-func (listingProvider) ID() sourceprovider.ID { return "archive" }
+func (listingProvider) ID() source.ID { return "archive" }
 
-func (listingProvider) Describe() sourceprovider.Description {
-	return sourceprovider.Description{Label: "Archive", Fetched: true}
+func (listingProvider) Describe() source.Description {
+	return source.Description{Label: "Archive", Fetched: true}
 }
 
-func (f listingProvider) List(ctx context.Context, source sourceprovider.Source, _ sourceprovider.ListRequest) (sourceprovider.Listing, error) {
-	items, err := f(ctx, source)
-	return sourceprovider.Listing{Items: items, Checkpoint: source.Checkpoint, ReplaceOutcomes: true}, err
+func (f listingProvider) List(ctx context.Context, src source.Source, _ source.ListRequest) (source.Listing, error) {
+	items, err := f(ctx, src)
+	return source.Listing{Items: items, Checkpoint: src.Checkpoint, ReplaceOutcomes: true}, err
 }
 
 type fetchIngestorFunc func(context.Context, string, string, []string) (string, error)
@@ -147,7 +147,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 
 	addSource := func(id string, every *int, lastChecked time.Time) {
 		t.Helper()
-		source := fillerstore.NewFillerSource(id, "archive", id, id, now.Add(-24*time.Hour))
+		source := records.NewFillerSource(id, "archive", id, id, now.Add(-24*time.Hour))
 		if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +174,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 	addSource("due-custom", &everyHour, now.Add(-2*time.Hour))
 
 	var enumerated []string
-	providers, err := sourceprovider.NewRegistry(listingProvider(func(_ context.Context, source sourceprovider.Source) ([]sourceprovider.Item, error) {
+	providers, err := source.NewRegistry(listingProvider(func(_ context.Context, source source.Source) ([]source.Item, error) {
 		enumerated = append(enumerated, source.ID)
 		return nil, nil
 	}))
@@ -211,7 +211,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 		t.Fatalf("scheduled pass = %+v, enumerated %v; want due global/default and due custom only", result, enumerated)
 	}
 
-	byID := map[string]fillerstore.FillerSource{}
+	byID := map[string]records.FillerSource{}
 	sources, err := st.ListFillerSources(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -253,7 +253,7 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 	if fetcher == nil {
 		t.Fatal("buildFetcher returned nil with both tools configured")
 	}
-	fetcher.Run(context.Background(), []clipfetch.Source{{Kind: clipfetch.YouTube, URL: "https://example.invalid/video"}})
+	fetcher.Run(context.Background(), []fetch.Source{{Kind: fetch.YouTube, URL: "https://example.invalid/video"}})
 
 	raw, err := os.ReadFile(argsFile)
 	if err != nil {

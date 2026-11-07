@@ -4,7 +4,6 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface } from "../index";
@@ -58,18 +57,11 @@ const mount = () => {
 const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof WatchingSurface>[0]> = {}) => (
   <LoomarrProvider>
     <WatchingSurface
-      density="tv"
-      onChannelDown={vi.fn()}
-      onChannelUp={vi.fn()}
       onDismissControls={vi.fn()}
       onGoLive={vi.fn()}
       onOpenGuide={vi.fn()}
-      onOpenSurf={vi.fn()}
-      onPause={vi.fn()}
       onPlay={vi.fn()}
-      onPrevious={vi.fn()}
       onRetry={vi.fn()}
-      onShowControls={vi.fn()}
       player={<div data-player="one-native-player" />}
       schedule={schedule}
       snapshot={snapshot}
@@ -244,10 +236,5 @@ describe("TV channel switch overlay (B4, #1627)", () => {
     // next frame throws "window is not defined" as an unhandled error that fails the run.
     act(() => root.unmount());
     container.remove();
-  });
-
-  it("is never drawn on touch density (the web Watch page adopts it separately)", () => {
-    expect(renderToStaticMarkup(surface(tuning, { density: "touch" }))).not.toContain("Tuning in to channel");
-    expect(renderToStaticMarkup(surface(tuning))).toContain("Tuning in to channel");
   });
 });

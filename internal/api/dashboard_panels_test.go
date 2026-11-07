@@ -10,11 +10,11 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
-func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, fillerstore.Store) {
+func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, records.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })

@@ -45,7 +45,7 @@ inference that produced it; the Go policy assigns authority, and evidence cannot
 - All text from filenames, metadata, transcripts, OCR and frames is untrusted data with no
   instruction authority. Contradiction is a first-class result: invoke one bounded extra rung or
   abstain with a question. More conflicting tokens never raise confidence.
-- `filleradmission.Evaluator.Evaluate` is deterministic development and certification tooling with
+- `admission.Evaluator.Evaluate` is deterministic development and certification tooling with
   no provider, decoder, store, clock or network, and it is not a runtime gate. Every inference it
   cites must be referenced by a fact; a failed or unavailable step is an operational hold, never a
   semantic verdict; model confidence is never read by policy.

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// The defect floor (internal/fillerdefectfloor) drops an admitted clip's evidence copy by rewriting
+// The defect floor (internal/filler/defectfloor) drops an admitted clip's evidence copy by rewriting
 // its sidecar; a rewind reads that same sidecar to decide the clip must rebuild its evidence from
 // the transcode. This pins the reading side of that contract.
 func TestEvidenceReleasedReadsTheSidecarTheDefectFloorLeaves(t *testing.T) {

@@ -265,17 +265,16 @@ var migratedGo = []string{
 	"internal/suggest/worker_cache_internal_test.go",
 	// The schedule, playout and recurate tests (slice 11).
 	"internal/playout/", "internal/recurate/", "internal/schedule/",
-	// The filler, fillerenrichment and fillerstore tests (slice 12).
-	"internal/filler/", "internal/fillerenrichment/", "internal/fillerstore/",
+	// The filler tests, every package under internal/filler (slices 12 and 16).
+	"internal/filler/",
 	// The channels, store and provisionbackstop tests (slice 13).
 	"internal/channels/", "internal/provisionbackstop/", "internal/store/",
 	// The app, requester, provision and proposalworkflow tests (slice 15).
 	"internal/app/", "internal/proposalworkflow/", "internal/provision/", "internal/requester/",
-	// The filler-research tests and the eval tests with hand-written fixtures (slice 16). The rest
-	// of internal/eval pins its frozen corpora: the certification_* tests use invented names with
-	// synthetic ids that sha256-chained testdata freezes below ProviderIDBase, and the realDataGo
-	// files below exercise real titles on purpose.
-	"internal/fillerresearch/",
+	// The eval tests with hand-written fixtures (slice 16). The rest of internal/eval pins its frozen
+	// corpora: the certification_* tests use invented names with synthetic ids that sha256-chained
+	// testdata freezes below ProviderIDBase, and the realDataGo files below exercise real titles on
+	// purpose.
 	"internal/eval/budget_attribution_test.go",
 	"internal/eval/corpus_behavior_test.go",
 	"internal/eval/corpus_contract_test.go",
@@ -286,7 +285,7 @@ var migratedGo = []string{
 	"internal/eval/release_latency_test.go",
 	"internal/eval/runner_accounting_test.go",
 	// The remaining small groups and the archived filler research tooling (slice 17).
-	"internal/auth/", "internal/contact/", "internal/llm/", "internal/mediatools/", "internal/notifications/",
+	"internal/people/auth/", "internal/people/contact/", "internal/llm/", "internal/mediatools/", "internal/people/notifications/",
 	"internal/proposaloutlook/", "internal/quality/", "internal/releaseverify/", "internal/tunarr/",
 	"internal/watermark/", "research/",
 	"internal/suggest/season_window_test.go",
@@ -303,7 +302,8 @@ var realDataGo = map[string]string{
 	"internal/eval/query_pilot_test.go":                   "pins the query-pilot corpus (testdata), whose real network and era titles the model must recognise",
 	"internal/eval/release_gate_test.go":                  "pins the release-gate corpus (testdata), whose real franchises, people and titles the model must recognise",
 	"internal/eval/schedule_live_test.go":                 "queries live data on purpose",
-	"internal/fillerenrichment/deterministic_test.go":     "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
+	"internal/filler/enrichment/deterministic_test.go":    "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
+	"internal/filler/station/directory_test.go":           "pins call-sign resolution against the real FCC station seed, whose networks and call signs are real",
 	"internal/llm/ollama_test.go":                         "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
 	"internal/provision/webhook_parity_test.go":           "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
 	"internal/requester/seerr_contract_test.go":           "pins the live-captured Seerr 201 body (testkit/fixtures), real id",

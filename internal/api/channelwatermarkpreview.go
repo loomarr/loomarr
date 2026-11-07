@@ -106,8 +106,6 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 			return
 		}
 		w.Header().Set("Content-Type", "image/png")
-		// nosniff keeps a browser from re-interpreting the bytes as anything but the PNG declared.
-		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		if !in.MotifOnly {
 			w.Header().Set(watermarkDrawableHeader, strconv.FormatBool(drawable))

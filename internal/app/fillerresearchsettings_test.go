@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/research"
 )
 
 func TestFillerResearchSettingsAdapterTestsSavedProviderWithoutReturningItsSecret(t *testing.T) {
@@ -20,7 +20,7 @@ func TestFillerResearchSettingsAdapterTestsSavedProviderWithoutReturningItsSecre
 	}))
 	defer server.Close()
 
-	st, err := fillerstore.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := records.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,11 +35,11 @@ func TestFillerResearchSettingsAdapterTestsSavedProviderWithoutReturningItsSecre
 	adapter.client = server.Client()
 	adapter.now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
 
-	status, ok, message, err := adapter.Test(t.Context(), fillerresearch.WebConfig{Provider: fillerresearch.WebProviderSearXNG})
+	status, ok, message, err := adapter.Test(t.Context(), research.WebConfig{Provider: research.WebProviderSearXNG})
 	if err != nil || !ok || message != "Web search is ready." || requests != 1 {
 		t.Fatalf("status=%+v ok=%v message=%q requests=%d err=%v", status, ok, message, requests, err)
 	}
-	if status.RequestCount != 1 || status.State != fillerresearch.WebStateReady || !status.Configured {
+	if status.RequestCount != 1 || status.State != research.WebStateReady || !status.Configured {
 		t.Fatalf("status = %+v", status)
 	}
 }

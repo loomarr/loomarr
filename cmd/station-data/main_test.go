@@ -4,10 +4,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
+	"github.com/loomarr/loomarr/internal/filler/station"
 )
 
-type span = broadcaststation.CallSign
+type span = station.CallSign
 
 // Rows as CDBS and the Wikidata snapshot record them for the stations the epic (#2059) names.
 func TestCallSignHistory(t *testing.T) {
@@ -32,7 +32,7 @@ func TestCallSignHistory(t *testing.T) {
 
 	// Philadelphia's KYW has no recorded start; Cleveland held the call sign until 1965.
 	kyw := spansFromHistory([]historyRow{{seq: 1, sign: "KYW"}, {seq: 2, sign: "KYW-TV", begin: "1979-06-15"}}, "KYW-TV")
-	stations := []broadcaststation.Station{{ID: "fcc:25453", CallSigns: kyw}, {ID: "fcc:73195", CallSigns: wkyc}}
+	stations := []station.Station{{ID: "fcc:25453", CallSigns: kyw}, {ID: "fcc:73195", CallSigns: wkyc}}
 	clipReusedCallSigns(stations)
 	if want := []span{{Sign: "KYW", From: "1965-01-01"}}; !reflect.DeepEqual(stations[0].CallSigns, want) {
 		t.Fatalf("Philadelphia KYW = %+v, want %+v", stations[0].CallSigns, want)
@@ -47,7 +47,7 @@ func TestCallSignHistory(t *testing.T) {
 // Review findings on the first seed (#2060): shared tenures the generator must settle.
 func TestSharedTenures(t *testing.T) {
 	// WWNY-CD shares WWNY-TV's letters; the full-power station keeps them.
-	stations := []broadcaststation.Station{
+	stations := []station.Station{
 		{ID: "fcc:68851", CallSigns: []span{{Sign: "WWNY"}}},
 		{ID: "fcc:16744", CallSigns: []span{{Sign: "WXXX", To: "2014-01-01"}, {Sign: "WWNY", From: "2014-01-01"}}},
 	}
