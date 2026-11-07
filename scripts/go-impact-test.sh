@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SELECTOR="$ROOT/scripts/go-impact.sh"
 
-leaf="$($SELECTOR internal/suggest/ground.go)"
+leaf="$($SELECTOR internal/proposals/suggest/ground.go)"
 module="$(cd "$ROOT" && go list -m)"
-grep -qx "$module/internal/suggest" <<<"$leaf"
+grep -qx "$module/internal/proposals/suggest" <<<"$leaf"
 grep -qx "$module/internal/app" <<<"$leaf"
 grep -qx "$module/cmd/loomarr" <<<"$leaf"
 if grep -qx "$module/internal/store" <<<"$leaf"; then
@@ -66,7 +66,7 @@ ignore_selection="$(cd "$ignore_fixture" && go list ./...)"
   exit 1
 }
 
-stdin="$({ printf '%s\n' internal/suggest/ground.go docs/contributing/testing.md; } | "$SELECTOR")"
+stdin="$({ printf '%s\n' internal/proposals/suggest/ground.go docs/contributing/testing.md; } | "$SELECTOR")"
 [[ "$stdin" == "$leaf" ]] || {
   echo 'go-impact-test: stdin and argument interfaces disagree' >&2
   exit 1

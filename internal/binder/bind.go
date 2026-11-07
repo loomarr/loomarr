@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/rating"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // BindInput is everything Bind needs, read by the caller beforehand. Bind itself touches no
@@ -162,7 +162,7 @@ func isAutoCurate(p store.Proposal) bool {
 // (Intent.MustExclude). Used as ONE of the two "clearly off-intent" drop signals — a matching
 // existing title may be dropped even though it's still available. Empty when the proposal has
 // no intent or no exclusions.
-func mustExcludeKeys(body proposal.Proposal) map[string]struct{} {
+func mustExcludeKeys(body proposals.Proposal) map[string]struct{} {
 	out := make(map[string]struct{}, len(body.Intent.MustExclude))
 	for _, t := range body.Intent.MustExclude {
 		if t = strings.ToLower(strings.TrimSpace(t)); t != "" {
@@ -179,7 +179,7 @@ func mustExcludeKeys(body proposal.Proposal) map[string]struct{} {
 // two ask "is this title still wanted?"; this one carries an answer another subsystem already
 // computed — it weighed the outgoing title's score against the incoming one's and committed to
 // the swap. Empty for every non-auto-curate proposal, and for auto-curate runs that had room.
-func retiredKeys(body proposal.Proposal) map[provision.Key]struct{} {
+func retiredKeys(body proposals.Proposal) map[provision.Key]struct{} {
 	out := make(map[provision.Key]struct{}, len(body.Retired))
 	for _, k := range body.Retired {
 		out[k] = struct{}{}
@@ -216,7 +216,7 @@ func truncateLabel(s string, max int) string {
 
 // channelIntentJSON is the approved intent a channel stores: the proposal's request without the
 // inputs that belong to the one run that produced it.
-func channelIntentJSON(p proposal.Proposal) (string, error) {
+func channelIntentJSON(p proposals.Proposal) (string, error) {
 	blob, err := json.Marshal(p.Intent.ChannelIntent())
 	if err != nil {
 		return "", fmt.Errorf("marshal intent: %w", err)
@@ -241,10 +241,10 @@ func channelIntentJSON(p proposal.Proposal) (string, error) {
 // Each entry records the pick's confidence as its Fit (schedule.StampFit) and `now` as AddedAt:
 // re-curation retires the lowest fit × recency, and a re-pick of an existing entry re-scores it
 // (schedule.ApplyLineup keeps the original AddedAt).
-func lineupEntries(p proposal.Proposal, now time.Time) ([]schedule.LineupEntry, error) {
+func lineupEntries(p proposals.Proposal, now time.Time) ([]schedule.LineupEntry, error) {
 	out := make([]schedule.LineupEntry, 0, len(p.Lineup))
 	seen := make(map[provision.Key]struct{}, len(p.Lineup))
-	for _, items := range [][]proposal.ProposalItem{p.Lineup, p.Acquisitions} {
+	for _, items := range [][]proposals.ProposalItem{p.Lineup, p.Acquisitions} {
 		for _, it := range items {
 			key, err := provision.KeyFromWebhook(it.MediaType, it.TMDBID, it.TVDBID)
 			if err != nil {

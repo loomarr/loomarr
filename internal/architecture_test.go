@@ -299,7 +299,7 @@ func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
 	if got, want := aggregateStoreImports(pkg), []string{filler, store}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("aggregate imports = %v, want %v", got, want)
 	}
-	clean := &build.Package{Imports: []string{kernel, sibling, modulePath + "/internal/invitation"}}
+	clean := &build.Package{Imports: []string{kernel, sibling, modulePath + "/internal/people/invitation"}}
 	if got := aggregateStoreImports(clean); len(got) != 0 {
 		t.Fatalf("kernel and cluster imports flagged as the aggregate: %v", got)
 	}

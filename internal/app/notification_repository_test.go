@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/notifications"
+	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/store"
 )
 

@@ -92,6 +92,51 @@ func walkRoot(ctx context.Context, root string) (Walk, error) {
 	return w.out, nil
 }
 
+// walkFolders lists the media under some folders of root, by the same rules as a walk of the whole
+// root. A folder inside a skipped or extras folder is walked as that folder would be.
+func walkFolders(ctx context.Context, root string, dirs []string) (Walk, error) {
+	w := walker{root: filepath.Clean(root), visited: map[string]bool{}, nfo: map[string]map[string]Stat{}}
+	w.out.Complete = true
+	real, err := filepath.EvalSymlinks(w.root)
+	if err != nil {
+		return Walk{}, err
+	}
+	w.realRoot = real
+	for _, dir := range dirs {
+		skip, extras := w.within(dir)
+		if skip {
+			continue
+		}
+		if err := w.dir(ctx, dir, extras); err != nil {
+			return Walk{}, err
+		}
+	}
+	w.out.Skipped = w.skipped
+	return w.out, nil
+}
+
+// within reports whether dir lies in a folder a walk skips (a by-product, a disc structure, or one
+// holding an .ignore file above it), and whether it lies in an extras folder.
+func (w *walker) within(dir string) (skip, extras bool) {
+	rel := w.rel(dir)
+	if rel == "." {
+		return false, false
+	}
+	at := w.root
+	for _, seg := range strings.Split(rel, "/") {
+		if _, err := os.Stat(filepath.Join(at, ".ignore")); err == nil {
+			return true, false
+		}
+		lower := strings.ToLower(seg)
+		if skippedDirs[lower] || strings.HasPrefix(lower, ".trash-") || discDirs[lower] || seg == ".." {
+			return true, false
+		}
+		extras = extras || extrasDirs[lower]
+		at = filepath.Join(at, seg)
+	}
+	return false, extras
+}
+
 type walker struct {
 	root     string
 	realRoot string

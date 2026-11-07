@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/plannerreference"
+	"github.com/loomarr/loomarr/internal/proposals/plannerreference"
 )
 
 // planner-reference-host publishes a bounded, provider-free planner reference-host manifest from

@@ -642,10 +642,10 @@ run 35497917692 measured the former combined certification lane at 9m53s, includ
 at 159.215 seconds and the complementary playout packages at 157.874 reported package-seconds.
 That natural seam produces modeled certification groups of 173 and 172 seconds after the latest
 hosted-weight refresh. The same run
-measured the refactored `internal/suggest` at 34.908 seconds; refreshing its obsolete 368-second
+measured the refactored `internal/proposals/suggest` at 34.908 seconds; refreshing its obsolete 368-second
 weight removed that package bottleneck. Merge-group run 35500779353 then put every Go job between
 6m59s and 9m01s, but the ordinary job spread was still about 29%. Its package summary exposed
-`internal/auth` at 300.797 seconds and refreshed every material upper-envelope weight. Both auth
+`internal/people/auth` at 300.797 seconds and refreshed every material upper-envelope weight. Both auth
 test-store helpers had independently replayed the complete SQLite migration history for every
 private test database. Routing them through the existing isolated migrated template reduced the
 local SSO race subset from 30.59 to 5.64 seconds and the complete auth race package from 118.89 to
@@ -765,7 +765,7 @@ The Proposal Job worker tests use that same isolated migrated-store fixture and 
 before entering their two-second recurring poll. Profiling also found theme scoring recalculating the
 same series-title scope for every item and qualifier; preparing it once per score preserves every
 2,000-iteration property assertion. On 2026-09-20, the one-time preparation reduced the complete
-local `internal/suggest` race package from 112.28 to 19.35 seconds after the worker/fixture changes;
+local `internal/proposals/suggest` race package from 112.28 to 19.35 seconds after the worker/fixture changes;
 the deterministic property alone fell from 66.16 to 6.16 seconds. Hosted lane evidence remains the
 authority for the merge-queue budget.
 

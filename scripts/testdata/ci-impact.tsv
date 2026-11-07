@@ -1,5 +1,5 @@
 # name	paths separated by semicolons	expected true gates in classifier order
-leaf-go	internal/suggest/score.go	contracts,go,postgres,image
+leaf-go	internal/proposals/suggest/score.go	contracts,go,postgres,image
 releaseverify-production	internal/releaseverify/ci_container_downloads.go	policy
 releaseverify-red-tests	internal/releaseverify/ci_container_downloads_test.go	contracts,policy
 releaseverify-policy-fixtures	internal/releaseverify/testdata/make_policy_normalization.mk;internal/releaseverify/testdata/make_policy_normalization.golden	policy
@@ -34,6 +34,7 @@ ios-lan-discovery-native	web/packages/lan-discovery-native/ios/LoomarrLanDiscove
 crash-reports-native	web/packages/crash-reports-native/index.ts	clients,apple_mobile,expo_android_mobile
 ios-crash-reports-native	web/packages/crash-reports-native/ios/LoomarrCrashReports.swift	clients,apple_mobile,expo_android_mobile
 native-app	web/packages/native-app/index.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,android
+paired-client	web/packages/paired-client/src/paired-client/paired-client.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,android
 shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigation.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
@@ -144,12 +145,12 @@ ci-policy-bootstrap	.github/workflows/ci.yml	policy
 ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/releaseverify/main.go;scripts/agent.sh;docs/contributing/ci.md	docs,agent,policy
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
-combined-leaf-and-docs	internal/suggest/score.go;docs/contributing/testing.md	contracts,go,postgres,image,docs
+combined-leaf-and-docs	internal/proposals/suggest/score.go;docs/contributing/testing.md	contracts,go,postgres,image,docs
 filler-eval-corpus	internal/filler/eval/corpus/seed-v1.json	contracts,go
 generic-go-package-testdata	internal/filler/enrichment/testdata/hp-sauce.info.json	contracts,go
 planner-eval-corpus	internal/eval/testdata/planner-certification-v1.json;internal/eval/testdata/planner-certification-v2.json;internal/eval/testdata/planner-certification-v3.json;internal/eval/testdata/planner-certification-v4.json;internal/eval/testdata/planner-certification-v5.json;internal/eval/testdata/planner-certification-v6.json;internal/eval/testdata/planner-certification-v6-base.json;internal/eval/testdata/planner-catalog-v1.json;internal/eval/testdata/planner-catalog-v2.json	contracts,go
 recommendation-eval-corpus	internal/recommend/testdata/channel-recommendation-v1.json;internal/recommend/testdata/channel-recommendation-snapshots-v1.json	contracts,go
-planner-reference-golden	internal/plannerreference/testdata/planner-reference-host-v2.golden.json	contracts,go
+planner-reference-golden	internal/proposals/plannerreference/testdata/planner-reference-host-v2.golden.json	contracts,go
 filler-corpus-pilot	internal/fillercorpus/corpus/pilot/prelinger.json	contracts,go
 filler-corpus-nasa	internal/fillercorpus/corpus/pilot/nasa.json	contracts,go
 filler-corpus-cdc	internal/fillercorpus/corpus/pilot/cdc.json;internal/fillercorpus/corpus/seeds/cdc.json	contracts,go

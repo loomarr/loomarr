@@ -1,5 +1,5 @@
 import type { CreateLocalUserInputBodyRole } from "@loomarr/api/models/createLocalUserInputBodyRole";
-import { createLocalUserBodyPasswordMin } from "@loomarr/api/zod/users";
+import { createLocalUserSchema } from "@loomarr/core/schemas";
 import {
   Dialog,
   DialogClose,
@@ -10,8 +10,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@loomarr/design-system";
+import { useForm } from "@tanstack/react-form";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,43 +31,24 @@ const CreateLocalDialog = ({
   const passwordId = useId();
   const roleId = useId();
   const [open, setOpen] = useState(defaultOpen);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<CreateLocalUserInputBodyRole>("member");
-  const [validationError, setValidationError] = useState("");
-
-  const reset = () => {
-    setUsername("");
-    setPassword("");
-    setRole("member");
-    setValidationError("");
-  };
+  const form = useForm({
+    defaultValues: { username: "", password: "", role: "member" as CreateLocalUserInputBodyRole },
+    validators: { onSubmit: createLocalUserSchema },
+    onSubmit: async ({ value }) => {
+      try {
+        await onCreate(createLocalUserSchema.parse(value));
+        form.reset();
+        setOpen(false);
+      } catch {
+        // The connected caller exposes the RFC 7807 problem through `error`. Keep the
+        // entered values available for correction while never persisting the password.
+      }
+    },
+  });
 
   const changeOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (!nextOpen) reset();
-  };
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const trimmedUsername = username.trim();
-    if (!trimmedUsername) {
-      setValidationError("Pick a username.");
-      return;
-    }
-    if (password.length < createLocalUserBodyPasswordMin) {
-      setValidationError(`Use at least ${createLocalUserBodyPasswordMin} characters.`);
-      return;
-    }
-    setValidationError("");
-    try {
-      await onCreate({ username: trimmedUsername, password, role });
-      reset();
-      setOpen(false);
-    } catch {
-      // The connected caller exposes the RFC 7807 problem through `error`. Keep the
-      // entered values available for correction while never persisting the password.
-    }
+    if (!nextOpen) form.reset();
   };
 
   return (
@@ -74,7 +57,14 @@ const CreateLocalDialog = ({
         <Button variant="outline">Add local account</Button>
       </DialogTrigger>
       <DialogContent portalContainer={portalContainer}>
-        <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)}>
+        <form
+          className="flex flex-col gap-4"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Add local account</DialogTitle>
             <DialogDescription>
@@ -83,47 +73,59 @@ const CreateLocalDialog = ({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={usernameId}>Username</Label>
-            <Input
-              id={usernameId}
-              value={username}
-              disabled={creating}
-              onChange={(event) => setUsername(event.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={passwordId}>Password</Label>
-            <Input
-              id={passwordId}
-              type="password"
-              value={password}
-              disabled={creating}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={roleId}>Role</Label>
-            <Select
-              value={role}
-              disabled={creating}
-              onValueChange={(value) => setRole(value as CreateLocalUserInputBodyRole)}
-            >
-              <SelectTrigger id={roleId}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="member">Member</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {validationError && (
-            <p role="alert" className="text-destructive text-sm">
-              {validationError}
-            </p>
-          )}
+          <form.Field name="username">
+            {(field) => (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={usernameId}>Username</Label>
+                <Input
+                  id={usernameId}
+                  name={field.name}
+                  value={field.state.value}
+                  disabled={creating}
+                  aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+                <FieldError errors={field.state.meta.errors} />
+              </div>
+            )}
+          </form.Field>
+          <form.Field name="password">
+            {(field) => (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={passwordId}>Password</Label>
+                <Input
+                  id={passwordId}
+                  name={field.name}
+                  type="password"
+                  value={field.state.value}
+                  disabled={creating}
+                  aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+                <FieldError errors={field.state.meta.errors} />
+              </div>
+            )}
+          </form.Field>
+          <form.Field name="role">
+            {(field) => (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={roleId}>Role</Label>
+                <Select
+                  value={field.state.value}
+                  disabled={creating}
+                  onValueChange={(value) => field.handleChange(value as CreateLocalUserInputBodyRole)}
+                >
+                  <SelectTrigger id={roleId}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="member">Member</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </form.Field>
 
           {error != null && <ErrorState error={error} className="p-4" />}
 

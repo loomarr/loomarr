@@ -7,10 +7,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 func TestDateScopePolicyAccuracy(t *testing.T) {
@@ -20,7 +20,7 @@ func TestDateScopePolicyAccuracy(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		expected *schedule.DateScope
-		proposal proposal.Proposal
+		proposal proposals.Proposal
 		err      error
 		accurate bool
 	}{
@@ -75,15 +75,15 @@ func TestDateScopeResultOwnsCapturedPolicy(t *testing.T) {
 	}
 }
 
-func dateScopeRunner(proposal proposal.Proposal, err error) *Runner {
+func dateScopeRunner(proposal proposals.Proposal, err error) *Runner {
 	return NewRunner(scriptedGenerator{proposal: proposal, err: err}, RunnerConfig{Contract: &CertificationContract{
 		Thresholds: CertificationThresholds{MinPolicyAccuracyRate: 1},
 	}})
 }
 
-func dateScopeProposal(dates *schedule.DateScope) proposal.Proposal {
-	return proposal.Proposal{
-		Lineup: []proposal.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
+func dateScopeProposal(dates *schedule.DateScope) proposals.Proposal {
+	return proposals.Proposal{
+		Lineup: []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
 			Dates: dates,
 		}}},

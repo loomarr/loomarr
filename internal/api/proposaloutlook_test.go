@@ -12,10 +12,10 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/proposaloutlook"
+	"github.com/loomarr/loomarr/internal/proposals/outlook"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit/outlookfixture"
 )
 
@@ -27,7 +27,7 @@ func TestProposalOutlookIsAuthenticatedReadOnlyAndCannotApprove(t *testing.T) {
 	planner := binder.New(st, nil, nil, log)
 	engine := channels.New(st, nil, nil, nil, channels.Config{}, time.Now, log)
 	media := &outlookfixture.OutlookLibrary{}
-	observer := proposaloutlook.New(proposaloutlook.Config{Titles: st, Library: media, Episodes: media.ResolveEpisodes, Planner: planner, Preview: engine})
+	observer := outlook.New(outlook.Config{Titles: st, Library: media, Episodes: media.ResolveEpisodes, Planner: planner, Preview: engine})
 	handler := api.Router(log, api.Options{Store: st, Auth: testAuthorizer{}, Log: log, ProposalOutlook: observer, Approver: suggest.NewApprover(st, planner, time.Now)})
 	request := func(token, route string) *httptest.ResponseRecorder {
 		t.Helper()

@@ -46,6 +46,8 @@ describe("Go-duration wire strings", () => {
     expect(goDurationMinutes("1.5h")).toBe(90);
     expect(goDurationMinutes("90s")).toBe(1.5);
     expect(goDurationMinutes(" 4h ")).toBe(240);
+    expect(goDurationMinutes("0")).toBe(0);
+    expect(goDurationMinutes("0s")).toBe(0);
   });
 
   it("refuses anything else rather than guessing", () => {

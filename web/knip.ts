@@ -100,6 +100,10 @@ const config: KnipConfig = {
     "packages/native-app": {
       entry: ["tests/**/*.test.{ts,tsx}"],
     },
+    "packages/paired-client": {
+      // Like the player package: no `test` block for knip's Vitest plugin, and the hook tests are .tsx.
+      entry: ["tests/**/*.test.{ts,tsx}"],
+    },
     "packages/player": {
       // Same as the design system: no `test` block for knip's Vitest plugin, and the hook tests are .tsx.
       entry: ["tests/**/*.test.{ts,tsx}"],

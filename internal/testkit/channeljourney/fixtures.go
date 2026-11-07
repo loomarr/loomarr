@@ -5,7 +5,7 @@ package channeljourney
 import (
 	"time"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -16,7 +16,7 @@ const Version = "channel-reference-journeys-v1"
 // Generation quality remains owned by the existing planner certification corpus.
 type Case struct {
 	Name      string
-	Proposal  proposal.Proposal
+	Proposal  proposals.Proposal
 	Episodes  map[string][]schedule.ResolvedProgram
 	Want      []string
 	Forbidden []string
@@ -24,8 +24,8 @@ type Case struct {
 
 func Clock() time.Time { return time.Date(2026, 12, 24, 18, 0, 0, 0, time.UTC) }
 
-func movie(id int, name, libraryID string, year int, rating string) proposal.ProposalItem {
-	return proposal.ProposalItem{MediaType: provision.Movie, TMDBID: id, Name: name,
+func movie(id int, name, libraryID string, year int, rating string) proposals.ProposalItem {
+	return proposals.ProposalItem{MediaType: provision.Movie, TMDBID: id, Name: name,
 		InLibrary: true, LibraryItemID: libraryID, Year: year, OfficialRating: rating}
 }
 
@@ -40,17 +40,17 @@ func Cases() []Case {
 	// These member identities and the lexical-neighbor negative mirror the shape of
 	// TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers (#968/#1022), with
 	// invented demo-catalogue titles (#1592).
-	named := proposal.Proposal{Intent: proposal.Intent{
+	named := proposals.Proposal{Intent: proposals.Intent{
 		Description: "a named Friday-night family sitcom collection",
 		MustInclude: []string{"Bowling Alley Blues", "Crumb Street Bakery", "Grand Oak Hotel"},
-	}, Lineup: []proposal.ProposalItem{
+	}, Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Series, TVDBID: 90000762, Name: "Bowling Alley Blues", Year: 1987, InLibrary: true, LibraryItemID: "bowling-alley-blues"},
 		{MediaType: provision.Series, TVDBID: 90000767, Name: "Crumb Street Bakery", Year: 1989, InLibrary: true, LibraryItemID: "crumb-street-bakery"},
 		{MediaType: provision.Series, TVDBID: 90000760, Name: "Grand Oak Hotel", Year: 1991, InLibrary: true, LibraryItemID: "grand-oak-hotel"},
 	}}
 	named.Policy.Scope.Dates = &schedule.DateScope{SeriesAiring: []schedule.Range{{From: 1990, To: 1999}}}
 	named.Policy.Ordering = schedule.OrderSequential
-	genre := proposal.Proposal{Intent: proposal.Intent{Description: "nineties science fiction movies"}, Lineup: []proposal.ProposalItem{
+	genre := proposals.Proposal{Intent: proposals.Intent{Description: "nineties science fiction movies"}, Lineup: []proposals.ProposalItem{
 		movie(90091001, "Synthetic Signal", "signal", 1992, "PG"),
 		movie(90091002, "Synthetic Orbit", "orbit", 1998, "PG"),
 		movie(90091003, "Synthetic Later", "later", 2003, "PG"),
@@ -64,17 +64,17 @@ func Cases() []Case {
 	genre.Policy.Scope.Genres.Include = []string{"Science Fiction"}
 	genre.Policy.Scope.Dates = &schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1999}}}
 	genre.Policy.Ordering = schedule.OrderSequential
-	family := proposal.Proposal{Intent: proposal.Intent{Description: "family movie night"}, Lineup: []proposal.ProposalItem{
+	family := proposals.Proposal{Intent: proposals.Intent{Description: "family movie night"}, Lineup: []proposals.ProposalItem{
 		movie(90092001, "Synthetic Family", "family", 2000, "G"),
 		movie(90092002, "Synthetic Unclassified", "unclassified", 2000, ""),
 		movie(90092003, "Synthetic Mature", "mature", 2000, "R"),
 	}}
 	family.Policy.Audience = schedule.AudiencePolicy{Ceiling: "TV-PG", Unrated: "exclude"}
-	classic := proposal.Proposal{Intent: proposal.Intent{Description: "Kettle Kids seasons one through two in episode order"}, Lineup: []proposal.ProposalItem{
+	classic := proposals.Proposal{Intent: proposals.Intent{Description: "Kettle Kids seasons one through two in episode order"}, Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Series, TMDBID: 90000456, Name: "Kettle Kids", InLibrary: true, LibraryItemID: "kettle-kids", SeasonMin: 1, SeasonMax: 2},
 	}}
 	classic.Policy.Ordering = schedule.OrderSequential
-	seasonal := proposal.Proposal{Intent: proposal.Intent{Description: "Christmas episodes of Kettle Kids already in my library"}, Lineup: []proposal.ProposalItem{
+	seasonal := proposals.Proposal{Intent: proposals.Intent{Description: "Christmas episodes of Kettle Kids already in my library"}, Lineup: []proposals.ProposalItem{
 		{MediaType: provision.Series, TMDBID: 90000456, Name: "Kettle Kids", InLibrary: true, LibraryItemID: "kettle-kids"},
 	}}
 	seasonal.Policy.Ordering = schedule.OrderSequential

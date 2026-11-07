@@ -48,4 +48,10 @@ interface SuggestionRun {
   resume: (jobId: string) => void;
 }
 
-export type { SuggestionRun };
+// Which Proposal Job the run follows. The caller owns it; the run reports a new one.
+interface SuggestionRunJob {
+  jobId?: string;
+  onJob: (jobId: string) => unknown;
+}
+
+export type { SuggestionRun, SuggestionRunJob };

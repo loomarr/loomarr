@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/people/auth"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
@@ -585,7 +585,7 @@ func seedProposalFor(t *testing.T, st store.Store, id, createdBy, status string,
 	p.ID, p.CreatedBy, p.Status = id, createdBy, status
 	p.JobID = "job-" + id
 	if p.Body.Lineup == nil && p.Body.Acquisitions == nil {
-		p.Body = proposal.Proposal{Acquisitions: []proposal.ProposalItem{
+		p.Body = proposals.Proposal{Acquisitions: []proposals.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000100, Name: "Quiet Engines", Year: 1994},
 		}}
 	}

@@ -1,7 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { LoginForm } from "./login-form";
+
+// Field errors are design-system FieldHints, which need the theme the app mounts at its root.
+const render = (ui: ReactElement) => rtlRender(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
 describe("LoginForm", () => {
   it("submits the entered credentials", async () => {

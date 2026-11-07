@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/contact"
+	"github.com/loomarr/loomarr/internal/people/contact"
 )
 
 const contactAddressSelect = `SELECT owner_kind, owner_id, email, normalized, status, provenance, created_at, verified_at

@@ -229,7 +229,6 @@ const ProviderForm = ({
                   value={field.state.value}
                   aria-invalid={fieldError ? "true" : undefined}
                   aria-describedby={fieldError ? `${inputId}-error` : undefined}
-                  onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 {fieldError ? (
@@ -472,7 +471,6 @@ const WebPushForm = ({
                   value={field.state.value}
                   aria-invalid={fieldError ? "true" : undefined}
                   aria-describedby={fieldError ? `${inputId}-error` : undefined}
-                  onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 {fieldError ? (

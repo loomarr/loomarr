@@ -1,7 +1,8 @@
-import { redeemPasswordRecoveryBodyPasswordMin } from "@loomarr/api/zod/auth";
+import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
+import { useForm } from "@tanstack/react-form";
 import { CheckCircle2, KeyRound, Loader2, Mail } from "lucide-react";
-import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +20,11 @@ const PasswordRecoveryRequest = ({
   error,
   onSubmit,
 }: PasswordRecoveryRequestProps) => {
-  const [username, setUsername] = useState("");
-  const [validation, setValidation] = useState<string>();
+  const form = useForm({
+    defaultValues: { username: "" },
+    validators: { onSubmit: passwordRecoveryRequestSchema },
+    onSubmit: ({ value }) => onSubmit(passwordRecoveryRequestSchema.parse(value).username),
+  });
 
   if (sent) {
     return (
@@ -43,13 +47,7 @@ const PasswordRecoveryRequest = ({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        const value = username.trim();
-        if (value === "") {
-          setValidation("Enter your username.");
-          return;
-        }
-        setValidation(undefined);
-        onSubmit(value);
+        void form.handleSubmit();
       }}
     >
       <div className="space-y-2 text-center">
@@ -63,21 +61,22 @@ const PasswordRecoveryRequest = ({
 
       {error ? <ErrorState error={error} /> : null}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="recovery-username">Username</Label>
-        <Input
-          id="recovery-username"
-          autoComplete="username"
-          value={username}
-          aria-invalid={validation ? "true" : undefined}
-          onChange={(event) => setUsername(event.target.value)}
-        />
-        {validation ? (
-          <p className="text-onair-300 text-sm" role="alert">
-            {validation}
-          </p>
-        ) : null}
-      </div>
+      <form.Field name="username">
+        {(field) => (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="recovery-username">Username</Label>
+            <Input
+              id="recovery-username"
+              name={field.name}
+              autoComplete="username"
+              value={field.state.value}
+              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+              onChange={(event) => field.handleChange(event.target.value)}
+            />
+            <FieldError errors={field.state.meta.errors} />
+          </div>
+        )}
+      </form.Field>
 
       <Button type="submit" disabled={isPending}>
         {isPending ? <Loader2 className="animate-spin" aria-hidden /> : <Mail aria-hidden />}
@@ -103,9 +102,11 @@ const PasswordRecoveryReset = ({
   error,
   onRedeem,
 }: PasswordRecoveryResetProps) => {
-  const [password, setPassword] = useState("");
-  const [confirmation, setConfirmation] = useState("");
-  const [validation, setValidation] = useState<string>();
+  const form = useForm({
+    defaultValues: { password: "", confirm: "" },
+    validators: { onSubmit: passwordRecoveryResetSchema },
+    onSubmit: ({ value }) => onRedeem(value.password),
+  });
 
   if (isLoading) {
     return (
@@ -152,16 +153,7 @@ const PasswordRecoveryReset = ({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        if (password.length < redeemPasswordRecoveryBodyPasswordMin) {
-          setValidation(`Use at least ${redeemPasswordRecoveryBodyPasswordMin} characters.`);
-          return;
-        }
-        if (password !== confirmation) {
-          setValidation("Passwords need to match.");
-          return;
-        }
-        setValidation(undefined);
-        onRedeem(password);
+        void form.handleSubmit();
       }}
     >
       <div className="space-y-2 text-center">
@@ -172,32 +164,40 @@ const PasswordRecoveryReset = ({
 
       {error ? <ErrorState error={error} /> : null}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="recovery-password">New password</Label>
-        <Input
-          id="recovery-password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="recovery-confirm">Confirm new password</Label>
-        <Input
-          id="recovery-confirm"
-          type="password"
-          autoComplete="new-password"
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-        />
-      </div>
-
-      {validation ? (
-        <p className="text-onair-300 text-sm" role="alert">
-          {validation}
-        </p>
-      ) : null}
+      <form.Field name="password">
+        {(field) => (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="recovery-password">New password</Label>
+            <Input
+              id="recovery-password"
+              name={field.name}
+              type="password"
+              autoComplete="new-password"
+              value={field.state.value}
+              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+              onChange={(event) => field.handleChange(event.target.value)}
+            />
+            <FieldError errors={field.state.meta.errors} />
+          </div>
+        )}
+      </form.Field>
+      <form.Field name="confirm">
+        {(field) => (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="recovery-confirm">Confirm new password</Label>
+            <Input
+              id="recovery-confirm"
+              name={field.name}
+              type="password"
+              autoComplete="new-password"
+              value={field.state.value}
+              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+              onChange={(event) => field.handleChange(event.target.value)}
+            />
+            <FieldError errors={field.state.meta.errors} />
+          </div>
+        )}
+      </form.Field>
 
       <Button type="submit" disabled={isRedeeming}>
         {isRedeeming ? <Loader2 className="animate-spin" aria-hidden /> : <KeyRound aria-hidden />}

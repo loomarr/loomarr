@@ -15,6 +15,7 @@ import {
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
@@ -23,8 +24,10 @@ import { outlook } from "@/test/fixtures/outlook";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
+import { parseOriginationSearch } from "../origination-flow";
 import { POLL_MS } from "../use-ai-reconnect";
-import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";
+import { useOriginationFlow } from "../use-origination-flow";
+import type { SuggestionRun, SuggestionRunJob } from "../use-suggestion-run/use-suggestion-run.type";
 import { ChannelSuggestPanel } from "./channel-suggest-panel";
 
 // The failed-run case is driven by a hook override: the failure arrives as an SSE `failed`
@@ -37,8 +40,14 @@ vi.mock("../use-suggestion-run", async (importActual) => {
   const actual = await importActual<typeof import("../use-suggestion-run")>();
   const useReal = actual.useSuggestionRun;
   // biome-ignore lint/correctness/useHookAtTopLevel: mock replacement hook delegating to the real one, not a conditional component hook.
-  return { useSuggestionRun: () => runOverride ?? useReal() };
+  return { useSuggestionRun: (job: SuggestionRunJob) => runOverride ?? useReal(job) };
 });
+
+// The Guide's flow over the harness router's URL, so every step here is a real navigation.
+const FlowPanel = ({ onCreated }: { onCreated: (id: string) => void }) => {
+  const flow = useOriginationFlow(parseOriginationSearch(useSearch({ strict: false })));
+  return <ChannelSuggestPanel flow={flow} onCreated={onCreated} />;
+};
 
 const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
   phase: "failed",
@@ -173,9 +182,10 @@ const renderPanel = (onCreated: (id: string) => void) => {
   });
   const panel = () => (
     <RouterHarness
+      initialPath="/guide?new=1"
       content={
         <QueryClientProvider client={client}>
-          <ChannelSuggestPanel onCreated={onCreated} />
+          <FlowPanel onCreated={onCreated} />
         </QueryClientProvider>
       }
     />
@@ -324,10 +334,11 @@ describe("ChannelSuggestPanel", () => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
       render(
         <RouterHarness
+          initialPath="/guide?manual=1"
           content={
             <LoomarrProvider theme="dark">
               <QueryClientProvider client={client}>
-                <ChannelSuggestPanel onCreated={() => {}} initialManual />
+                <FlowPanel onCreated={() => {}} />
               </QueryClientProvider>
             </LoomarrProvider>
           }

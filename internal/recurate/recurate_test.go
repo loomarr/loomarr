@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/binder"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/recurate"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -53,19 +53,19 @@ func seedAutoCurateChannel(t *testing.T, st store.Store, id, jobID string, lineu
 func demoTMDBID(n int) int { return 90_000_000 + n }
 
 // movie builds a proposal item (an acquisition candidate) for film n with a confidence.
-func acqItem(n int, name string, confidence float64) proposal.ProposalItem {
-	return proposal.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, Confidence: confidence}
+func acqItem(n int, name string, confidence float64) proposals.ProposalItem {
+	return proposals.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, Confidence: confidence}
 }
 
 // inLibItem builds an in-library lineup pick (already available) for film n.
-func inLibItem(n int, name, libID string) proposal.ProposalItem {
-	return proposal.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, InLibrary: true, LibraryItemID: libID}
+func inLibItem(n int, name, libID string) proposals.ProposalItem {
+	return proposals.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, InLibrary: true, LibraryItemID: libID}
 }
 
 // seedProposal writes a submitted proposal for jobID with the given picks.
-func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquisitions []proposal.ProposalItem) store.Proposal {
+func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquisitions []proposals.ProposalItem) store.Proposal {
 	t.Helper()
-	body := proposal.Proposal{Lineup: lineup, Acquisitions: acquisitions}
+	body := proposals.Proposal{Lineup: lineup, Acquisitions: acquisitions}
 	now := time.Now()
 	p := store.Proposal{ID: id, JobID: jobID, Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
@@ -94,7 +94,7 @@ func TestCurator_QualityBar(t *testing.T) {
 	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{}) // global thresholds
-	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposals.ProposalItem{
 		acqItem(100, "Great Fit", 0.90), // above a 60% bar → requested
 		acqItem(200, "Weak Fit", 0.30),  // below → dropped
 	})
@@ -122,7 +122,7 @@ func TestCurator_InLibraryAddedNoAcquisition(t *testing.T) {
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
 	p := seedProposal(t, st, "p1", "job1",
-		[]proposal.ProposalItem{inLibItem(300, "Already Here", "lib-300")}, // in-library lineup pick
+		[]proposals.ProposalItem{inLibItem(300, "Already Here", "lib-300")}, // in-library lineup pick
 		nil)
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 99, maxTitles: 0})
 
@@ -146,7 +146,7 @@ func TestCurator_NotOptedInNeverRequests(t *testing.T) {
 	st := newStore(t)
 	// Channel exists + is intent-backed, but AutoCurate is nil (not opted in).
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, nil)
-	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{acqItem(100, "Film", 0.99)})
+	p := seedProposal(t, st, "p1", "job1", nil, []proposals.ProposalItem{acqItem(100, "Film", 0.99)})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)
@@ -176,7 +176,7 @@ func TestCurator_TitleCap(t *testing.T) {
 		{Key: movieKey(1), Title: "A"}, {Key: movieKey(2), Title: "B"},
 	}
 	seedAutoCurateChannel(t, st, "ch1", "job1", existing, &schedule.AutoCurate{})
-	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{
+	p := seedProposal(t, st, "p1", "job1", nil, []proposals.ProposalItem{
 		acqItem(100, "Best", 0.95),   // highest → kept
 		acqItem(200, "Middle", 0.80), // over cap → dropped
 		acqItem(300, "Good", 0.85),   // over cap → dropped
@@ -204,7 +204,7 @@ func TestCurator_PerChannelOverride(t *testing.T) {
 	st := newStore(t)
 	// Global bar 60, but this channel overrides to 90 → an 0.80 title is now below the bar.
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{MinScorePct: 90})
-	p := seedProposal(t, st, "p1", "job1", nil, []proposal.ProposalItem{acqItem(100, "Film", 0.80)})
+	p := seedProposal(t, st, "p1", "job1", nil, []proposals.ProposalItem{acqItem(100, "Film", 0.80)})
 	cur := newCurator(t, st, fixedThresholds{minScorePct: 60, maxTitles: 0})
 
 	d, err := cur.Consider(context.Background(), p)

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/contact"
-	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/people/contact"
+	"github.com/loomarr/loomarr/internal/people/invitation"
 )
 
 func testInvitationReserveAndList(t *testing.T, newStore NewStoreFunc) {

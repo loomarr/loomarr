@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -49,7 +49,7 @@ func TestV8BindingSameDescriptionDistinctIncludesAccepted(t *testing.T) {
 		id      int
 	}{{"one", 11001}, {"two", 11003}} {
 		observer.Begin()
-		proposal, err := g.Suggest(context.Background(), proposal.Intent{Description: "shared", MustInclude: []string{tc.include}})
+		proposal, err := g.Suggest(context.Background(), proposals.Intent{Description: "shared", MustInclude: []string{tc.include}})
 		if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != tc.id {
 			t.Fatalf("include %q routed to lineup=%+v, err=%v, want %d", tc.include, proposal.Lineup, err, tc.id)
 		}
@@ -68,7 +68,7 @@ func TestV8BindingChangedIncludeRejectedBeforeProvider(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, includes := range [][]string{nil, {"changed"}, {c.Intent.MustInclude[0], "extra"}} {
-		_, err := g.Suggest(context.Background(), proposal.Intent{Description: c.Intent.Description, MustInclude: includes})
+		_, err := g.Suggest(context.Background(), proposals.Intent{Description: c.Intent.Description, MustInclude: includes})
 		if err == nil || provider.Calls != 0 {
 			t.Fatalf("changed include reached generator: err=%v provider calls=%d", err, provider.Calls)
 		}
@@ -89,7 +89,7 @@ func TestV8BindingEmptyRuntimeIncludeMatchesAbsentInclude(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proposal, err := g.Suggest(context.Background(), proposal.Intent{Description: c.Intent.Description, MustInclude: []string{}})
+	proposal, err := g.Suggest(context.Background(), proposals.Intent{Description: c.Intent.Description, MustInclude: []string{}})
 	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != 10001 || provider.Calls != 2 {
 		t.Fatalf("empty include binding: lineup=%+v err=%v calls=%d", proposal.Lineup, err, provider.Calls)
 	}

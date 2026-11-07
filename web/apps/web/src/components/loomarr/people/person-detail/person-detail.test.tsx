@@ -1,8 +1,13 @@
+import { LoomarrProvider } from "@loomarr/design-system";
 import { people } from "@loomarr/fixtures";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { PersonDetail } from "./person-detail";
+
+// Field errors are design-system FieldHints, which need the theme the app mounts at its root.
+const render = (ui: ReactElement) => rtlRender(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
 const renderDetail = (overrides = {}) =>
   render(<PersonDetail user={people.localAdmin} sessions={[]} {...overrides} />);
@@ -31,6 +36,16 @@ describe("PersonDetail", () => {
     renderDetail({ isSelf: true });
     expect(screen.getByLabelText("Role")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Disable account" })).toBeDisabled();
+  });
+
+  it("keeps a validation message when focus moves elsewhere", async () => {
+    renderDetail({ onResetPassword: vi.fn(), onSetContactAddress: vi.fn() });
+    await userEvent.click(screen.getByRole("button", { name: "Reset password" }));
+    await userEvent.type(screen.getByLabelText("New password"), "short{Enter}");
+    expect(screen.getByRole("alert")).toHaveTextContent("Use at least 8 characters.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add email" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Use at least 8 characters.");
   });
 
   it("resets only local passwords and validates their length", async () => {

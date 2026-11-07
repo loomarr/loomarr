@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
@@ -214,7 +214,7 @@ func testSuggestionSuccessAtomic(t *testing.T, newStore NewStoreFunc) {
 	job = claimed[0]
 	proposal := Proposal{
 		ID: "proposal-success", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{}}, CreatedAt: now, UpdatedAt: now,
+		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, job.Attempts, proposal, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
@@ -376,7 +376,7 @@ func testSuggestionReviseCAS(t *testing.T, newStore NewStoreFunc) {
 	job = claimed[0]
 	first := Proposal{
 		ID: "proposal-first", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "First"}}}, CreatedAt: now, UpdatedAt: now,
+		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "First"}}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, job.Attempts, first, now); err != nil {
 		t.Fatal(err)
@@ -411,7 +411,7 @@ func testSuggestionReviseCAS(t *testing.T, newStore NewStoreFunc) {
 
 	second := Proposal{
 		ID: "proposal-second", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Second"}}}, CreatedAt: now, UpdatedAt: now,
+		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Second"}}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, 2, second, now); err != nil {
 		t.Fatal(err)
@@ -446,7 +446,7 @@ func testProposalRevisionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	}
 	first := Proposal{
 		ID: "proposal-original", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "First"}}}, CreatedAt: now, UpdatedAt: now,
+		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "First"}}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, 1, first, now); err != nil {
 		t.Fatal(err)
@@ -498,7 +498,7 @@ func testProposalRevisionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	}
 	second := Proposal{
 		ID: "proposal-replacement", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{{Name: "Second"}}}, CreatedAt: now, UpdatedAt: now,
+		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{{Name: "Second"}}}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CommitSuggestionSuccess(ctx, job.ID, 3, second, now); err != nil {
 		t.Fatal(err)
@@ -626,9 +626,9 @@ func testCloneSuggestionSuccess(t *testing.T, newStore NewStoreFunc) {
 	}
 	sourceProposal := Proposal{
 		ID: "proposal-source", JobID: source.ID, Status: "approved", CreatedBy: source.CreatedBy,
-		ApprovedBy: "admin", Body: proposal.Proposal{
-			Lineup: []proposal.ProposalItem{{Name: "Marigold Protocol"}},
-			Trace: proposal.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposal.DecisionCandidate{
+		ApprovedBy: "admin", Body: proposals.Proposal{
+			Lineup: []proposals.ProposalItem{{Name: "Marigold Protocol"}},
+			Trace: proposals.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []proposals.DecisionCandidate{
 				{Key: "movie:tmdb:90000603", Ownership: "library", Disposition: "selected", Reason: "selected"},
 			}},
 		},
@@ -772,7 +772,7 @@ func testProposalJobSnapshot(t *testing.T, newStore NewStoreFunc) {
 	}
 	older := Proposal{
 		ID: "proposal-older", JobID: job.ID, Status: "approved", CreatedBy: job.CreatedBy,
-		ApprovedBy: "admin", Body: proposal.Proposal{ChannelName: "older"}, CreatedAt: now, UpdatedAt: now,
+		ApprovedBy: "admin", Body: proposals.Proposal{ChannelName: "older"}, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.CreateProposal(ctx, older); err != nil {
 		t.Fatal(err)
@@ -791,7 +791,7 @@ func testProposalJobSnapshot(t *testing.T, newStore NewStoreFunc) {
 	newer.Status = "denied"
 	newer.ApprovedBy = ""
 	newer.DenyReason = "not this time"
-	newer.Body = proposal.Proposal{ChannelName: "newer"}
+	newer.Body = proposals.Proposal{ChannelName: "newer"}
 	newer.CreatedAt = now.Add(time.Minute)
 	newer.UpdatedAt = newer.CreatedAt
 	if err := s.CreateProposal(ctx, newer); err != nil {
@@ -954,10 +954,10 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	mk := func(id, status, creator string) Proposal {
 		return Proposal{ID: id, JobID: "job-" + id, Status: status, CreatedBy: creator,
-			Body: proposal.Proposal{Lineup: []proposal.ProposalItem{}}, CreatedAt: now, UpdatedAt: now}
+			Body: proposals.Proposal{Lineup: []proposals.ProposalItem{}}, CreatedAt: now, UpdatedAt: now}
 	}
 	p1Seed := mk("p1", "submitted", "alice")
-	p1Seed.Body.Trace = proposal.DecisionTrace{Version: 1, Candidates: []proposal.DecisionCandidate{}}
+	p1Seed.Body.Trace = proposals.DecisionTrace{Version: 1, Candidates: []proposals.DecisionCandidate{}}
 	_ = s.CreateProposal(ctx, p1Seed)
 	_ = s.CreateProposal(ctx, mk("p2", "submitted", "bob"))
 	_ = s.CreateProposal(ctx, mk("p3", "approved", "alice"))
@@ -1001,7 +1001,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	proposal := Proposal{
 		ID: "approval", JobID: "job-approval", Status: "submitted", CreatedBy: "member",
-		Body: proposal.Proposal{Lineup: []proposal.ProposalItem{}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
 	}
 	if err := s.CreateProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -1361,7 +1361,7 @@ func testProposalDecisionConcurrent(t *testing.T, newStore NewStoreFunc) {
 			go func() {
 				<-start
 				p := seed
-				p.Status, p.ApprovedBy, p.Body = "approved", actor, proposal.Proposal{ChannelName: actor}
+				p.Status, p.ApprovedBy, p.Body = "approved", actor, proposals.Proposal{ChannelName: actor}
 				_, err := s.CommitProposalApproval(ctx, ProposalApproval{Proposal: p, Titles: []provision.Record{{
 					Key: key, Title: provision.Title{MediaType: provision.Movie, TMDBID: map[string]int{"admin-a": 90000010, "admin-b": 90000020}[actor]}, State: provision.Wanted, Deadline: now,
 				}}, Channel: approvalChannel(channelID, p.JobID, 110+i)})
@@ -1564,11 +1564,11 @@ func testLookupByNonID(t *testing.T, newStore NewStoreFunc) {
 
 	// --- proposals: newest approved for a job ---
 	older := Proposal{
-		ID: "p-old", JobID: "job-a", Status: "approved", Body: proposal.Proposal{Rationale: "first"},
+		ID: "p-old", JobID: "job-a", Status: "approved", Body: proposals.Proposal{Rationale: "first"},
 		CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now,
 	}
 	newer := Proposal{
-		ID: "p-new", JobID: "job-a", Status: "approved", Body: proposal.Proposal{Rationale: "refined"},
+		ID: "p-new", JobID: "job-a", Status: "approved", Body: proposals.Proposal{Rationale: "refined"},
 		CreatedAt: now, UpdatedAt: now,
 	}
 	// Same job, still SUBMITTED — must never be returned for an "approved" ask, however new.
@@ -1625,7 +1625,7 @@ func testCreateSuggestionResult(t *testing.T, newStore NewStoreFunc) {
 	job.Status = "done"
 	proposal := Proposal{
 		ID: "proposal-idea", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
-		Body: proposal.Proposal{ChannelName: "Comedy Movies", Lineup: []proposal.ProposalItem{
+		Body: proposals.Proposal{ChannelName: "Comedy Movies", Lineup: []proposals.ProposalItem{
 			{MediaType: provision.Movie, TMDBID: 90000001, Name: "A", InLibrary: true},
 		}},
 		CreatedAt: now, UpdatedAt: now,

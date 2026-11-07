@@ -5,9 +5,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SELECTOR="$ROOT/scripts/go-direct-impact.sh"
 module="$(cd "$ROOT" && go list -m)"
 
-got="$($SELECTOR internal/suggest/ground.go)"
-[[ "$got" == "$module/internal/suggest" ]] || {
-	printf 'go-direct-impact-test: got %s, want only internal/suggest\n' "$got" >&2
+got="$($SELECTOR internal/proposals/suggest/ground.go)"
+[[ "$got" == "$module/internal/proposals/suggest" ]] || {
+	printf 'go-direct-impact-test: got %s, want only internal/proposals/suggest\n' "$got" >&2
 	exit 1
 }
 
@@ -17,7 +17,7 @@ fixture="$($SELECTOR internal/recommend/testdata/channel-recommendation-snapshot
 	exit 1
 }
 
-stdin="$(printf '%s\n' internal/suggest/ground.go docs/contributing/testing.md | "$SELECTOR")"
+stdin="$(printf '%s\n' internal/proposals/suggest/ground.go docs/contributing/testing.md | "$SELECTOR")"
 [[ "$stdin" == "$got" ]] || {
 	echo 'go-direct-impact-test: stdin and argument interfaces disagree' >&2
 	exit 1

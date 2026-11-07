@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
 func testDiscoveryQualityLedger(t *testing.T, newStore NewStoreFunc) {

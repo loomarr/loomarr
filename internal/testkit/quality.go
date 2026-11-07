@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/quality"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
 
 // QualityRecorder is the shared test double for the privacy-safe discovery

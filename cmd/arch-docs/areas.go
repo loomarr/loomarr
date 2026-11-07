@@ -99,8 +99,8 @@ var areas = []area{
 			"proposal before anyone approves it. The quality and planner-reference packages measure how " +
 			"good the suggestions are.",
 		Packages: []string{
-			"proposal", "proposalworkflow", "proposaloutlook", "suggest", "reference",
-			"plannerreference", "quality",
+			"proposals", "proposals/workflow", "proposals/outlook", "proposals/suggest",
+			"proposals/webreference", "proposals/plannerreference", "proposals/quality",
 		},
 		MayImport: map[string]string{
 			"platform": "the store, the language model, the holiday vocabulary and whole-word matching the " +
@@ -166,7 +166,8 @@ var areas = []area{
 			"password recovery, contact addresses and notifications, plus the encryption of the secrets " +
 			"Loomarr keeps in its database.",
 		Packages: []string{
-			"auth", "invitation", "recovery", "contact", "secretprotection", "notifications",
+			"people/auth", "people/invitation", "people/recovery", "people/contact",
+			"people/secretprotection", "people/notifications",
 		},
 		MayImport: map[string]string{
 			"platform": "the identity store accounts and sessions live in, the outbound HTTP client " +
@@ -239,10 +240,10 @@ type flow struct {
 var flows = []flow{
 	{
 		Title: "From a request to Live TV",
-		Text: "A member asks for a channel through `api`. `proposalworkflow` turns the request into a " +
-			"durable Proposal Job and runs `suggest`, which grounds each title through `catalog` " +
-			"(the library, `tmdb` and the clip catalog) and `reference`, using a model from `llm`, and " +
-			"returns the values in `proposal`. When a person approves it, `binder` plans the channel and " +
+		Text: "A member asks for a channel through `api`. `proposals/workflow` turns the request into a " +
+			"durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` " +
+			"(the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from " +
+			"`llm`, and returns the values in `proposals`. When a person approves it, `binder` plans the channel and " +
 			"`channeledit` writes it through `store`; any title the household lacks becomes a `provision` " +
 			"record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `schedule` turns " +
 			"the approved lineup and what is actually available into ordered programming, and the " +
