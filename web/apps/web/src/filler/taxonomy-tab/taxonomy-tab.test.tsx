@@ -1,10 +1,11 @@
 import { getListTaxonomyMockHandler, getPreviewTaxonomyEditMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { TaxonomyTab } from "./taxonomy-tab";
 
 const renderTab = (isAdmin = true) => {

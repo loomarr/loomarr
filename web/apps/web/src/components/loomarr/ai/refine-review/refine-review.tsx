@@ -3,11 +3,11 @@ import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { seasonalModeLabel } from "@loomarr/ui";
 import { Check, Download, Minus } from "lucide-react";
 import { seasonalModeOf } from "@/components/loomarr/channels/channel-seasonal";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { eraOf } from "@/lib/era-dates";
 import { playOrderLabel } from "@/lib/play-order-copy";
 import { datesMode } from "@/lib/policy-overrides";
@@ -248,7 +248,6 @@ const RefineReview = ({
   onApply,
   onDiscard,
   busy = false,
-  className,
 }: RefineReviewProps) => {
   const { kept, added, removed } = diffLineup(proposed, current);
   const deltas = policyDeltas(currentPolicy, proposedPolicy);
@@ -266,7 +265,7 @@ const RefineReview = ({
     added.length === 0 && removed.length === 0 && acquiring.length === 0 && deltas.length === 0;
 
   return (
-    <Card className={cn("flex flex-col gap-4 p-5", className)}>
+    <Card gap={16} padding={20}>
       <header>
         <h2 className="text-lg font-semibold">Refined lineup</h2>
         <p className="text-muted-foreground text-sm">

@@ -16,9 +16,10 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { SplitReviewPage, validateSplitReviewSearch } from "./split-review-page";
 
 // A MINIMAL router, not the app tree: the page navigates on confirm/back, and TanStack

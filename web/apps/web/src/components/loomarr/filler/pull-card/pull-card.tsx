@@ -1,10 +1,10 @@
 import { pluralize } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { PullCardProps } from "./pull-card.type";
@@ -27,7 +27,7 @@ const PullCard = ({
   onEditedChange,
   deciding,
   error,
-  className,
+  flat = false,
 }: PullCardProps) => {
   // Which rows the operator has struck out, held locally until they commit. ⚠ Not sent as they
   // click: a pull is decided in one act, and a per-click PATCH would make "half-approved" a
@@ -60,7 +60,12 @@ const PullCard = ({
   return (
     // A named group so a screen reader announces which pull it has entered — several cards share
     // identical "Not now" / "Approve pull" buttons, and the title is the only thing telling them apart.
-    <Card role="group" aria-labelledby={titleId} className={cn("flex flex-col gap-3 p-4", className)}>
+    <Card
+      aria-labelledby={titleId}
+      gap={12}
+      role="group"
+      {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}
+    >
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">

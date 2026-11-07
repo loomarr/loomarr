@@ -1,11 +1,11 @@
 import type { SplitReviewSegmentDTO } from "@loomarr/api/models/splitReviewSegmentDTO";
 import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
+import { Card } from "@loomarr/design-system";
 import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Image } from "@/components/ui/image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
