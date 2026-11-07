@@ -7,6 +7,7 @@ import {
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetFillerSplitMockHandler,
+  getGetLibraryItemMockHandler,
   getGetPlayoutStatusMockHandler,
   getGetProgrammingVocabularyMockHandler,
   getGetProposalJobMockHandler,
@@ -20,6 +21,7 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListLibraryCollectionsMockHandler,
+  getListLibraryItemsMockHandler,
   getListLibraryRootsMockHandler,
   getListTaxonomyMockHandler,
   getListUserSessionsMockHandler,
@@ -306,6 +308,17 @@ const stubReachable = () => {
       pathMap: [],
     }),
     getLibraryStatusMockHandler(libraryStatus()),
+    // Library and a title's page: one movie, served under any id.
+    getListLibraryItemsMockHandler({
+      items: [{ id: "ch-1", kind: "movie", name: "Paper Kites", year: 1996, files: 1, ready: true }],
+      total: 1,
+    }),
+    getGetLibraryItemMockHandler({
+      item: { id: "ch-1", kind: "movie", name: "Paper Kites", year: 1996, files: 1, ready: true },
+      genres: [],
+      files: [],
+      seasons: [],
+    }),
     getGetPlayoutStatusMockHandler({
       running: false,
       capability: { encoder: "", hardware: false, maxChannels: 0 },

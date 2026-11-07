@@ -347,7 +347,7 @@ protocol, output, and resource-ceiling correctness.
 
 The consumer half of the gate is observable through public seams. Guide programme art, Watch
 timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
-render through the shared frontend `Image` primitive. An animated filler hover must offer an
+render through the shared frontend `ServedImage` primitive. An animated filler hover must offer an
 animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
 responses and rendered elements; querying image tables or asserting private renderer calls is not
 certification evidence.

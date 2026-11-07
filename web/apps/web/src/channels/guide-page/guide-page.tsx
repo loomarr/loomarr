@@ -19,12 +19,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { ColorBars } from "@/components/loomarr/shell/color-bars";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { TvStatic } from "@/components/loomarr/shell/tv-static";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
-import { Image } from "@/components/ui/image";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
@@ -97,11 +97,11 @@ const reconcileSelection = (
   return kept ?? (first ? guideSelectionForChannel(layout, first, atMs) : undefined);
 };
 
-// The programme card's art: the same Image (ThumbHash placeholder, sized sources) the old
+// The programme card's art: the same ServedImage (ThumbHash placeholder, sized sources) the old
 // detail card used, contained rather than cropped so it still identifies what will air.
 const renderArtwork = (airing: GuideAiringLayout) =>
   airing.source.thumbImage ? (
-    <Image image={airing.source.thumbImage} alt="" sizes="360px" className="size-full object-contain" />
+    <ServedImage image={airing.source.thumbImage} alt="" sizes="360px" fit="contain" />
   ) : airing.source.thumbUrl ? (
     <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
   ) : undefined;

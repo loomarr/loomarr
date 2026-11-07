@@ -1,0 +1,187 @@
+import { formatBytes } from "@loomarr/core/format";
+import { Action, Badge, Disclosure, Text, useWindowWidth } from "@loomarr/design-system";
+import { useState } from "react";
+
+import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
+import type { LibraryTitleDetail, LibraryTitleProps, LibraryTitleSeason } from "./library-title.type";
+
+// A TITLE'S PAGE (#2151 decisions 25–26, design/library variant D): big artwork, the facts in plain
+// words, the story, the seasons, and the file behind one "Technical details" disclosure.
+// Presentational: the app owns the request and draws the artwork.
+
+// The poster sits beside the story from a tablet up, above it on a phone, as in the mock.
+const SIDE_BY_SIDE = 768;
+
+// 5,880,000 ms → "1 h 38 min"; 2,580,000 → "43 min".
+const lengthPhrase = (ms: number) => {
+  const minutes = Math.round(ms / 60000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h} h ${m} min` : `${m} min`;
+};
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+// "1999 · 7 seasons" or "1996 · 1 h 38 min": two facts at most.
+const factLine = (title: LibraryTitleDetail) => {
+  const seasons = title.seasons.filter((s) => s.number > 0).length;
+  const second =
+    title.kind === "series"
+      ? seasons > 0
+        ? plural(seasons, "season", "seasons")
+        : ""
+      : title.runtimeMillis
+        ? lengthPhrase(title.runtimeMillis)
+        : "";
+  return [title.year ? String(title.year) : "", second].filter(Boolean).join(" · ");
+};
+
+const Heading = ({ children }: { children: string }) => (
+  <Text as="h2" textRole="headline">
+    {children}
+  </Text>
+);
+
+// "3" or, for a file holding two, "3–4".
+const episodeNumber = (number: number, end?: number) =>
+  end && end > number ? `${number}–${end}` : `${number}`;
+
+const Season = ({ season }: { season: LibraryTitleSeason }) => {
+  const [open, setOpen] = useState(false);
+  const label = season.number === 0 ? "Specials" : `Season ${season.number}`;
+  return (
+    <Disclosure
+      description={plural(season.episodes.length, "episode", "episodes")}
+      expanded={open}
+      label={label}
+      onExpandedChange={setOpen}
+    >
+      <Stack gap="inline">
+        {season.episodes.map((episode) => (
+          <Line
+            alignItems="baseline"
+            borderBottomColor="borderDecorative"
+            borderBottomWidth={1}
+            flexWrap="nowrap"
+            gap="control"
+            key={episode.id}
+            paddingVertical="inline"
+          >
+            <Stack width={32}>
+              <Text textRole="compact" tone="muted">
+                {episodeNumber(episode.number, episode.end)}
+              </Text>
+            </Stack>
+            <Stack flexBasis={0} flexGrow={1} minWidth={0}>
+              <Text textRole="body">{episode.name || `Episode ${episode.number}`}</Text>
+            </Stack>
+            {episode.ready ? null : (
+              <Text textRole="compact" tone="secondary">
+                Getting ready
+              </Text>
+            )}
+          </Line>
+        ))}
+      </Stack>
+    </Disclosure>
+  );
+};
+
+const Row = ({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) => (
+  <Line alignItems="flex-start" columnGap="section" rowGap={4}>
+    <Stack width={208}>
+      <Text textRole="compact" tone="muted">
+        {label}
+      </Text>
+    </Stack>
+    <Stack flexBasis={240} flexGrow={1} minWidth={0}>
+      <Text textRole={mono ? "data" : "compact"}>{value}</Text>
+    </Stack>
+  </Line>
+);
+
+const TechnicalDetails = ({ title }: { title: LibraryTitleDetail }) => {
+  const [open, setOpen] = useState(false);
+  if (title.files.length === 0) return null;
+  return (
+    <Disclosure expanded={open} label="Technical details" onExpandedChange={setOpen}>
+      <Stack gap="control">
+        {title.files.map((file) => (
+          <Stack gap="control" key={file.path}>
+            <Row label="File" mono value={file.path} />
+            <Row label="Size" value={formatBytes(file.size)} />
+          </Stack>
+        ))}
+      </Stack>
+    </Disclosure>
+  );
+};
+
+const LibraryTitle = ({ title, onBack }: LibraryTitleProps) => {
+  const wide = useWindowWidth() >= SIDE_BY_SIDE;
+  const facts = factLine(title);
+  return (
+    <Stack
+      alignSelf="center"
+      gap="screen"
+      maxWidth={1152 + 2 * PAGE_GUTTER.wide}
+      padding={wide ? PAGE_GUTTER.wide : PAGE_GUTTER.phone}
+      width="100%"
+    >
+      <Line>
+        <Action icon="back" onPress={onBack} variant="ghost">
+          Library
+        </Action>
+      </Line>
+
+      <Stack
+        alignItems={wide ? "center" : "stretch"}
+        flexDirection={wide ? "row" : "column"}
+        gap={wide ? 40 : "section"}
+      >
+        <Stack alignSelf="center" width={wide ? 208 : 176}>
+          <LibraryPoster art={title.poster} big name={title.name} />
+        </Stack>
+        <Stack flexBasis={wide ? 0 : undefined} flexGrow={1} gap="control" minWidth={0}>
+          <Text as="h1" textRole="display">
+            {title.name}
+          </Text>
+          {facts || title.rating ? (
+            <Line gap="control">
+              {facts ? (
+                <Text textRole="body" tone="secondary">
+                  {facts}
+                </Text>
+              ) : null}
+              {title.rating ? <Badge tone="neutral">{title.rating}</Badge> : null}
+            </Line>
+          ) : null}
+          {title.genres.length > 0 ? (
+            <Text textRole="compact" tone="muted">
+              {title.genres.join(", ")}
+            </Text>
+          ) : null}
+          {title.overview ? <Text textRole="body">{title.overview}</Text> : null}
+        </Stack>
+      </Stack>
+
+      {title.seasons.length > 0 ? (
+        <Stack aria-label="Seasons" gap="control" role="region">
+          <Heading>Seasons</Heading>
+          <Stack gap="inline">
+            {/* The specials after the numbered seasons. */}
+            {[...title.seasons]
+              .sort((a, b) => (a.number || Number.MAX_SAFE_INTEGER) - (b.number || Number.MAX_SAFE_INTEGER))
+              .map((season) => (
+                <Season key={season.number} season={season} />
+              ))}
+          </Stack>
+        </Stack>
+      ) : null}
+
+      <TechnicalDetails title={title} />
+    </Stack>
+  );
+};
+
+export { LibraryTitle };

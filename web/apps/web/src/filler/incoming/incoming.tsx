@@ -12,8 +12,8 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
-import { Image } from "@/components/ui/image";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
@@ -63,9 +63,7 @@ const StatusRows = ({
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
         <span className="sr-only">View details for</span>{" "}
         <span className="bg-muted h-12 w-16 shrink-0 overflow-hidden rounded">
-          {row.thumbImage ? (
-            <Image image={row.thumbImage} alt="" sizes="64px" className="size-full object-cover" />
-          ) : null}
+          {row.thumbImage ? <ServedImage image={row.thumbImage} alt="" sizes="64px" /> : null}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium break-words">{row.name}</span>

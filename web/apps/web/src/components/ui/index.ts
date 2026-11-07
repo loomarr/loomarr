@@ -6,7 +6,6 @@ export * from "./checkbox";
 export * from "./disclosure";
 export * from "./dropdown-menu";
 export * from "./highlight-row";
-export * from "./image";
 export * from "./input";
 export * from "./label";
 export * from "./list-row";

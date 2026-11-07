@@ -115,7 +115,7 @@ const WithIcon: Story = {
 };
 
 // ⚠ The service-hosted case (V52 phase 5), and the reason it is a SEPARATE story from WithIcon.
-// When `logoImage` is present the preview renders through the <Image> primitive — srcset at the
+// When `logoImage` is present the preview renders through the <ServedImage> primitive — srcset at the
 // icon ladder, a ThumbHash underneath, and the field's own glyph as the designed failure state.
 // `WithIcon` above keeps exercising the plain-<img> path, which is what an operator-pasted
 // external URL still gets; both paths ship, so both need a baseline.

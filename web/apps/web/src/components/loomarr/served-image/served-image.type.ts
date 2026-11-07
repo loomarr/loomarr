@@ -1,7 +1,7 @@
 import type { ImageDTO } from "@loomarr/api/models/imageDTO";
 import type { ReactNode } from "react";
 
-interface ImageProps {
+interface ServedImageProps {
   /**
    * The image's record, straight from `GET /v1/images/{hash}`.
    *
@@ -60,8 +60,12 @@ interface ImageProps {
    */
   fallback?: ReactNode;
 
-  /** Extra classes for the rendered element. */
-  className?: string;
+  /**
+   * How the image fills the caller's box: `cover` crops it (stills, posters, thumbnails), `contain`
+   * letterboxes it (the Guide's programme art, which must show whole). The box is the caller's to
+   * size; the image always fills it.
+   */
+  fit?: "cover" | "contain";
 }
 
-export type { ImageProps };
+export type { ServedImageProps };

@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
 import { thumbHashToDataURL } from "thumbhash";
-import { cn } from "@/lib/utils";
-import type { ImageProps } from "./image.type";
+import type { ServedImageProps } from "./served-image.type";
 
-// Image — THE way this app renders anything served by the image service (§22, V52 phase 4).
+// ServedImage — THE way this app renders anything served by the image service (§22, V52 phase 4).
+// It fills the box its caller sizes, cropped (`cover`) or letterboxed (`contain`), and takes no
+// classes: every caller wanted exactly that, and a class list was the one thing keeping it on the
+// legacy stack (#970). Native clients load the same images through their own credentialed loader
+// (the TV app's PairedNativeImage), so this one is the web's.
 //
 // ⚠ **No surface hand-writes an `<img>` against `/v1/images`.** Before this, four different
 // arrangements each solved a piece of the problem and none solved all of it: one hardcoded
@@ -24,6 +27,9 @@ import type { ImageProps } from "./image.type";
 // PLACEHOLDER_DECODE_FAILED is what a malformed `placeholder` yields. ⚠ Swallowed rather than
 // thrown: a ThumbHash is a nicety, and a corrupt one must degrade to "no blur" rather than
 // taking down the surface it decorates. The dominant colour is still there underneath.
+// The caller's box, filled.
+const FILL = { display: "block", height: "100%", width: "100%" } as const;
+
 const decodePlaceholder = (placeholder: string): string | undefined => {
   if (!placeholder) return undefined;
   try {
@@ -39,7 +45,7 @@ const decodePlaceholder = (placeholder: string): string | undefined => {
   }
 };
 
-const Image = ({ image, alt, sizes, priority = false, fallback, className }: ImageProps) => {
+const ServedImage = ({ image, alt, sizes, priority = false, fallback, fit = "cover" }: ServedImageProps) => {
   // ⚠ The failure carries the identity of WHICH image failed, rather than being a bare boolean.
   // React reconciles by POSITION, so a grid that paginates, filters or sorts hands a different
   // `image` to this same instance — and a plain `useState(false)` survives that swap, rendering
@@ -87,19 +93,21 @@ const Image = ({ image, alt, sizes, priority = false, fallback, className }: Ima
         // `presentation` rather than `img`: there is no image here to describe. A `role="img"`
         // with the original alt text would announce artwork that is not being shown.
         role="presentation"
-        style={{ aspectRatio: aspect, backgroundColor: image.dominantHex || undefined }}
-        className={cn("bg-static-800 w-full", className)}
+        style={{
+          ...FILL,
+          aspectRatio: aspect,
+          backgroundColor: image.dominantHex || "var(--color-static-800)",
+        }}
       />
     );
   }
 
   return (
-    // ⚠ `contents` (display: contents) so the <picture> does NOT participate in layout — the
-    // <img> becomes the direct flex/grid child of whatever the caller rendered this into.
+    // ⚠ `display: contents` so the <picture> does NOT participate in layout — the <img> becomes
+    // the direct flex/grid child of whatever the caller rendered this into.
     //
-    // Without it this primitive silently mis-sizes wherever the caller sizes it with classes.
-    // `className` lands on the <img>, so `size-full` resolves against the <picture>, which has
-    // no size of its own and shrink-wraps — MEASURED at 1×1 in the channel icon field's 64px
+    // Without it this primitive silently mis-sizes: the <img> fills 100% of the <picture>, which
+    // has no size of its own and shrink-wraps — MEASURED at 1×1 in the channel icon field's 64px
     // preview, against 62×62 for the plain <img> beside it.
     //
     // ⚠ Two defects overlapped here and each hid the other's evidence: the story's data-URI
@@ -110,7 +118,7 @@ const Image = ({ image, alt, sizes, priority = false, fallback, className }: Ima
     //
     // <picture> exists only to host the <source> elements and carries no semantics of its own,
     // so removing it from layout costs nothing — the <img> keeps its role and its alt text.
-    <picture className="contents">
+    <picture style={{ display: "contents" }}>
       {/*
         ⚠ The AVIF source is omitted when the job has not caught up, rather than emitted and
         left to 404. §22 makes AVIF coverage EVENTUALLY CONSISTENT on purpose — every encode
@@ -135,7 +143,9 @@ const Image = ({ image, alt, sizes, priority = false, fallback, className }: Ima
         decoding={priority ? "sync" : "async"}
         onError={() => setFailedHash(image.hash)}
         style={{
+          ...FILL,
           aspectRatio: aspect,
+          objectFit: fit,
           // The ThumbHash sits BEHIND the image rather than in front of it, so there is nothing
           // to un-swap: the moment the real bytes decode they simply cover it. A foreground
           // placeholder needs an onLoad to remove, which is one more state and one more way to
@@ -145,10 +155,9 @@ const Image = ({ image, alt, sizes, priority = false, fallback, className }: Ima
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}
-        className={cn("h-auto w-full object-cover", className)}
       />
     </picture>
   );
 };
 
-export { Image };
+export { ServedImage };
