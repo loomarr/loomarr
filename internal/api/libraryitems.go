@@ -175,6 +175,43 @@ type libraryItemFileDTO struct {
 	Path  string `json:"path" doc:"The file on this machine"`
 	Size  int64  `json:"size" doc:"Bytes"`
 	Ready bool   `json:"ready" doc:"Its details are read"`
+	// What its header says; absent until read.
+	LengthMillis  int64                `json:"lengthMillis,omitempty" doc:"How long it plays, measured from the file"`
+	Picture       *libraryPictureDTO   `json:"picture,omitempty" doc:"Its first video stream"`
+	AudioChannels int                  `json:"audioChannels,omitempty" doc:"The channels of the sound that plays: its default audio stream, else its first"`
+	Subtitles     []librarySubtitleDTO `json:"subtitles" doc:"Its subtitle streams in order; empty for none or while unread"`
+}
+
+type libraryPictureDTO struct {
+	Width  int  `json:"width"`
+	Height int  `json:"height"`
+	HDR    bool `json:"hdr" doc:"High dynamic range"`
+}
+
+type librarySubtitleDTO struct {
+	Language string `json:"language,omitempty" doc:"ISO 639 code; absent when the file doesn't say"`
+}
+
+type libraryDetailsFromDTO struct {
+	Description  string `json:"description,omitempty" enum:"sonarr,radarr,nfo,tmdb" doc:"Where its description came from"`
+	Rating       string `json:"rating,omitempty" enum:"sonarr,radarr,nfo,tmdb" doc:"Where its rating came from"`
+	EpisodeNames string `json:"episodeNames,omitempty" enum:"sonarr,radarr,nfo,tmdb" doc:"Where most of a series' episode names came from"`
+}
+
+// libraryFileOf is f with what its header says.
+func libraryFileOf(f scan.ItemFile) libraryItemFileDTO {
+	out := libraryItemFileDTO{
+		Path: f.Path, Size: f.Size, Ready: f.Header != store.LibraryHeaderPending,
+		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels,
+		Subtitles: make([]librarySubtitleDTO, 0, len(f.Subtitles)),
+	}
+	if f.Picture != nil {
+		out.Picture = &libraryPictureDTO{Width: f.Picture.Width, Height: f.Picture.Height, HDR: f.Picture.HDR}
+	}
+	for _, language := range f.Subtitles {
+		out.Subtitles = append(out.Subtitles, librarySubtitleDTO{Language: language})
+	}
+	return out
 }
 
 type libraryEpisodeDTO struct {
@@ -192,14 +229,15 @@ type librarySeasonDTO struct {
 
 type libraryItemDetailDTO struct {
 	// Item is a named field: huma leaves an unexported embedded struct out of the schema.
-	Item          libraryItemDTO       `json:"item"`
-	Overview      string               `json:"overview,omitempty"`
-	Genres        []string             `json:"genres"`
-	Rating        string               `json:"rating,omitempty" doc:"The certification, such as TV-14"`
-	RuntimeMillis int64                `json:"runtimeMillis,omitempty"`
-	Files         []libraryItemFileDTO `json:"files" doc:"A movie's files; empty for a series"`
-	Seasons       []librarySeasonDTO   `json:"seasons" doc:"A series' episodes by season; empty for a movie"`
-	Match         libraryMatchDTO      `json:"match"`
+	Item          libraryItemDTO        `json:"item"`
+	Overview      string                `json:"overview,omitempty"`
+	Genres        []string              `json:"genres"`
+	Rating        string                `json:"rating,omitempty" doc:"The certification, such as TV-14"`
+	RuntimeMillis int64                 `json:"runtimeMillis,omitempty"`
+	Files         []libraryItemFileDTO  `json:"files" doc:"A movie's files; empty for a series"`
+	Seasons       []librarySeasonDTO    `json:"seasons" doc:"A series' episodes by season; empty for a movie"`
+	Match         libraryMatchDTO       `json:"match"`
+	DetailsFrom   libraryDetailsFromDTO `json:"detailsFrom"`
 }
 
 type getLibraryItemInput struct {
@@ -234,12 +272,15 @@ func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*ImageDTO) librar
 		Files:         make([]libraryItemFileDTO, 0, len(d.Files)),
 		Seasons:       make([]librarySeasonDTO, 0, len(d.Seasons)),
 		Match:         libraryMatchOf(d.Match),
+		DetailsFrom: libraryDetailsFromDTO{
+			Description: string(d.From.Description), Rating: string(d.From.Rating), EpisodeNames: string(d.EpisodeNamesFrom),
+		},
 	}
 	if out.Genres == nil {
 		out.Genres = []string{}
 	}
 	for _, f := range d.Files {
-		out.Files = append(out.Files, libraryItemFileDTO{Path: f.Path, Size: f.Size, Ready: f.Header != store.LibraryHeaderPending})
+		out.Files = append(out.Files, libraryFileOf(f))
 	}
 	for _, season := range d.Seasons {
 		dto := librarySeasonDTO{Number: season.Number, Episodes: make([]libraryEpisodeDTO, 0, len(season.Episodes))}

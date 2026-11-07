@@ -317,9 +317,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   while the scanner is busy the status and the loaded titles refetch every 5 s, so "Getting
   ready" clears on its own (decision 35, until a `library` SSE frame exists). A title's page
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
-  overview, each season's episodes in a disclosure (specials last), and a movie's files behind
-  Technical details. Still to come: Collections (step 12); On these channels, and the rest of
-  Technical details (where the details came from, picture, sound, subtitles).
+  overview, each season's episodes in a disclosure (specials last), and Technical details. Still
+  to come: Collections (step 12); On these channels, once channels name library items (step 15's
+  id migration); the extra-copy card (decision 37).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
   different title, or Find it with no guess); `/library/needs` holds one card each with the
@@ -337,6 +337,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (503 when TMDB fails) and writes the title again, so what its arr and sidecars say now is read
   too. Check files again (`POST …/check`) puts its files' headers back to pending and passes over
   their folders, so they are opened and read again.
+- **Technical details** (step 10d, design review point 3). Each scan origin keeps the provider its
+  name, description and rating came from in its observation's `extension` (`{"from": …}`), so
+  the page says "Description and rating from TMDB. Episode names from Sonarr." (a series takes
+  the provider that named most of its episodes). It then says the title match in words
+  ("Recognised from Radarr", "You picked it"), and for each movie file its path, size, and once
+  its header is read the picture (4K, 1080p HD, 720p HD or standard, "extra-rich colour" for
+  HDR), the sound that plays (its default audio stream), each subtitle language, and the
+  measured length.
 
 ## Cached series episodes
 

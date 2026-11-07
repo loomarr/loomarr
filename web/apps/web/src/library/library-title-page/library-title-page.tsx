@@ -1,4 +1,5 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
+import { LibraryDetailsFromDTODescription } from "@loomarr/api/models/libraryDetailsFromDTODescription";
 import { LibraryMatchDTOApp } from "@loomarr/api/models/libraryMatchDTOApp";
 import { unwrap } from "@loomarr/api/unwrap";
 import { LibraryTitle } from "@loomarr/ui";
@@ -18,6 +19,15 @@ const APP_NAMES: Record<LibraryMatchDTOApp, string> = {
   [LibraryMatchDTOApp.sonarr]: "Sonarr",
   [LibraryMatchDTOApp.radarr]: "Radarr",
 };
+
+// Where a detail came from, as Technical details names it ("Description from TMDB.").
+const SOURCE_NAMES: Record<LibraryDetailsFromDTODescription, string> = {
+  [LibraryDetailsFromDTODescription.sonarr]: "Sonarr",
+  [LibraryDetailsFromDTODescription.radarr]: "Radarr",
+  [LibraryDetailsFromDTODescription.nfo]: "its NFO file",
+  [LibraryDetailsFromDTODescription.tmdb]: "TMDB",
+};
+const sourceName = (source?: LibraryDetailsFromDTODescription) => (source ? SOURCE_NAMES[source] : undefined);
 
 // A call that answers with an error status still resolves; this makes it a rejection, so the page
 // says it didn't go through.
@@ -75,6 +85,11 @@ const LibraryTitlePage = ({ id }: { id: string }) => {
         files: body.files,
         seasons: body.seasons,
         match: { by: match.by, app: match.app ? APP_NAMES[match.app] : undefined },
+        detailsFrom: {
+          description: sourceName(body.detailsFrom.description),
+          rating: sourceName(body.detailsFrom.rating),
+          episodeNames: sourceName(body.detailsFrom.episodeNames),
+        },
       }}
     />
   );

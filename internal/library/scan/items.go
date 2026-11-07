@@ -19,10 +19,56 @@ type ItemDetail struct {
 	store.LibraryItemSummary
 	// Facts is what the scanner resolved for it: overview, genres, rating, runtime.
 	Facts inventory.ItemFacts
+	// From is where its details came from.
+	From DetailsFrom
+	// EpisodeNamesFrom is where most of a series' episode names came from.
+	EpisodeNamesFrom mp.ID
 	// Files is a movie's present files; a series lists its episodes in Seasons instead.
-	Files []store.LibraryFile
+	Files []ItemFile
 	// Seasons is a series' episodes by season, in order; season 0 is the specials.
 	Seasons []Season
+}
+
+// ItemFile is one of a movie's files, with what its header says once read; zero until then.
+type ItemFile struct {
+	store.LibraryFile
+	LengthMillis int64
+	// Picture is its first video stream; nil for none.
+	Picture *Picture
+	// AudioChannels is the sound that plays: the default audio stream, else the first.
+	AudioChannels int
+	// Subtitles is each subtitle stream's language in order, "" where the file doesn't say.
+	Subtitles []string
+}
+
+// Picture is a video stream's size and range.
+type Picture struct {
+	Width, Height int
+	HDR           bool
+}
+
+// itemFile is f with what its header facts say.
+func itemFile(f store.LibraryFile, facts inventory.SourceFacts) ItemFile {
+	out := ItemFile{LibraryFile: f, LengthMillis: facts.DurationMillis}
+	var audio *inventory.Stream
+	for i, s := range facts.Streams {
+		switch s.Kind {
+		case inventory.StreamVideo:
+			if out.Picture == nil {
+				out.Picture = &Picture{Width: s.Width, Height: s.Height, HDR: s.HDR}
+			}
+		case inventory.StreamAudio:
+			if audio == nil || (s.Disposition.Default && !audio.Disposition.Default) {
+				audio = &facts.Streams[i]
+			}
+		case inventory.StreamSubtitle:
+			out.Subtitles = append(out.Subtitles, s.Language)
+		}
+	}
+	if audio != nil {
+		out.AudioChannels = audio.Channels
+	}
+	return out
 }
 
 // Season is one season's episodes in order.
@@ -54,18 +100,22 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 		return ItemDetail{}, err
 	}
 	detail := ItemDetail{LibraryItemSummary: summary}
-	if detail.Facts, err = l.scannedFacts(ctx, id); err != nil {
+	item, err := l.scanned(ctx, id)
+	if err != nil {
 		return ItemDetail{}, err
 	}
+	detail.Facts, detail.From = item.facts, item.from
 	files, err := l.ItemStore.LibraryItemFiles(ctx, id)
 	if err != nil {
 		return ItemDetail{}, err
 	}
 	if summary.Kind != string(kindSeries) {
-		detail.Files = files
+		for _, f := range files {
+			detail.Files = append(detail.Files, itemFile(f, item.sources[f.Path]))
+		}
 		return detail, nil
 	}
-	detail.Seasons, err = l.seasons(ctx, files)
+	detail.Seasons, detail.EpisodeNamesFrom, err = l.seasons(ctx, files)
 	return detail, err
 }
 
@@ -139,8 +189,9 @@ func (l *Library) pass(files []store.LibraryFilePath) {
 	}
 }
 
-// seasons groups a series' episode files by the episode item each was written as.
-func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Season, error) {
+// seasons groups a series' episode files by the episode item each was written as, and says where
+// most of the episode names came from.
+func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Season, mp.ID, error) {
 	ready := map[string]bool{}
 	var order []string
 	for _, f := range files {
@@ -153,14 +204,25 @@ func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Sea
 		}
 	}
 	bySeason := map[int][]Episode{}
+	named := map[mp.ID]int{}
 	for _, id := range order {
-		facts, err := l.scannedFacts(ctx, id)
+		episode, err := l.scanned(ctx, id)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
+		facts := episode.facts
 		bySeason[facts.SeasonNumber] = append(bySeason[facts.SeasonNumber], Episode{
 			ID: id, Name: facts.Name, Number: facts.EpisodeNumber, End: facts.EpisodeEnd, Ready: ready[id],
 		})
+		if episode.from.Name != "" {
+			named[episode.from.Name]++
+		}
+	}
+	var namesFrom mp.ID
+	for p, n := range named {
+		if n > named[namesFrom] || (n == named[namesFrom] && p < namesFrom) {
+			namesFrom = p
+		}
 	}
 	seasons := make([]Season, 0, len(bySeason))
 	for n, eps := range bySeason {
@@ -170,14 +232,30 @@ func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Sea
 		seasons = append(seasons, Season{Number: n, Episodes: eps})
 	}
 	slices.SortFunc(seasons, func(a, b Season) int { return cmp.Compare(a.Number, b.Number) })
-	return seasons, nil
+	return seasons, namesFrom, nil
 }
 
-// scannedFacts is what the newest present scan origin of an item says about it.
-func (l *Library) scannedFacts(ctx context.Context, id string) (inventory.ItemFacts, error) {
+// scannedItem is what the scanner wrote about an item: its newest present scan origin's facts and
+// their provenance, and each present file's header facts by path.
+type scannedItem struct {
+	facts   inventory.ItemFacts
+	from    DetailsFrom
+	sources map[string]inventory.SourceFacts
+}
+
+// scanned is what the scanner wrote about an item; zero when the inventory has none.
+func (l *Library) scanned(ctx context.Context, id string) (scannedItem, error) {
 	item, ok, err := l.Inventory.Item(ctx, inventory.ItemRef{ID: inventory.ItemID(id)})
 	if err != nil || !ok {
-		return inventory.ItemFacts{}, err
+		return scannedItem{}, err
+	}
+	out := scannedItem{sources: map[string]inventory.SourceFacts{}}
+	for _, s := range item.Sources {
+		for _, o := range s.Origins {
+			if strings.HasPrefix(string(o.Key.Authority), authorityPrefix) && o.MissingAt.IsZero() && o.Locator.Path != "" {
+				out.sources[o.Locator.Path] = o.Observation.Facts
+			}
+		}
 	}
 	var best *inventory.ItemOrigin
 	for i, o := range item.Origins {
@@ -188,8 +266,8 @@ func (l *Library) scannedFacts(ctx context.Context, id string) (inventory.ItemFa
 			best = &item.Origins[i]
 		}
 	}
-	if best == nil {
-		return inventory.ItemFacts{}, nil
+	if best != nil {
+		out.facts, out.from = best.Observation.Facts, detailsFromExtension(best.Observation.Extension)
 	}
-	return best.Observation.Facts, nil
+	return out, nil
 }

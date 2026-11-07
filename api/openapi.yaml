@@ -6528,6 +6528,34 @@ components:
         - id
         - name
       type: object
+    LibraryDetailsFromDTO:
+      additionalProperties: false
+      properties:
+        description:
+          description: Where its description came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        episodeNames:
+          description: Where most of a series' episode names came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+        rating:
+          description: Where its rating came from
+          enum:
+            - sonarr
+            - radarr
+            - nfo
+            - tmdb
+          type: string
+      type: object
     LibraryEpisodeDTO:
       additionalProperties: false
       properties:
@@ -6666,6 +6694,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        detailsFrom:
+          $ref: "#/components/schemas/LibraryDetailsFromDTO"
         files:
           description: A movie's files; empty for a series
           items:
@@ -6698,13 +6728,25 @@ components:
         - files
         - seasons
         - match
+        - detailsFrom
       type: object
     LibraryItemFileDTO:
       additionalProperties: false
       properties:
+        audioChannels:
+          description: "The channels of the sound that plays: its default audio stream, else its first"
+          format: int64
+          type: integer
+        lengthMillis:
+          description: How long it plays, measured from the file
+          format: int64
+          type: integer
         path:
           description: The file on this machine
           type: string
+        picture:
+          $ref: "#/components/schemas/LibraryPictureDTO"
+          description: Its first video stream
         ready:
           description: Its details are read
           type: boolean
@@ -6712,10 +6754,16 @@ components:
           description: Bytes
           format: int64
           type: integer
+        subtitles:
+          description: Its subtitle streams in order; empty for none or while unread
+          items:
+            $ref: "#/components/schemas/LibrarySubtitleDTO"
+          type: array
       required:
         - path
         - size
         - ready
+        - subtitles
       type: object
     LibraryMatchDTO:
       additionalProperties: false
@@ -6751,7 +6799,7 @@ components:
           type: array
         files:
           items:
-            $ref: "#/components/schemas/LibraryItemFileDTO"
+            $ref: "#/components/schemas/LibraryNeedFileDTO"
           type: array
         item:
           $ref: "#/components/schemas/LibraryItemDTO"
@@ -6763,6 +6811,24 @@ components:
         - searched
         - candidates
         - files
+      type: object
+    LibraryNeedFileDTO:
+      additionalProperties: false
+      properties:
+        path:
+          description: The file on this machine
+          type: string
+        ready:
+          description: Its details are read
+          type: boolean
+        size:
+          description: Bytes
+          format: int64
+          type: integer
+      required:
+        - path
+        - size
+        - ready
       type: object
     LibraryPathMappingDTO:
       additionalProperties: false
@@ -6788,6 +6854,23 @@ components:
         - authorityPath
         - localPath
         - byHand
+      type: object
+    LibraryPictureDTO:
+      additionalProperties: false
+      properties:
+        hdr:
+          description: High dynamic range
+          type: boolean
+        height:
+          format: int64
+          type: integer
+        width:
+          format: int64
+          type: integer
+      required:
+        - width
+        - height
+        - hdr
       type: object
     LibraryRootDTO:
       additionalProperties: false
@@ -7014,6 +7097,13 @@ components:
         - needsYou
         - held
         - hooks
+      type: object
+    LibrarySubtitleDTO:
+      additionalProperties: false
+      properties:
+        language:
+          description: ISO 639 code; absent when the file doesn't say
+          type: string
       type: object
     LineupContext:
       additionalProperties: false

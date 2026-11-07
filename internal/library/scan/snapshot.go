@@ -54,7 +54,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	2: titles name the catalog row their details come from (library_items.catalog).
 //	3: titles note their scan origin and whether anything grounds them (Needs you).
 //	4: titles note what said which title they are, and its page (Wrong title?).
-const writeVersion = 4
+//	5: each origin notes where its shown details came from (Technical details).
+const writeVersion = 5
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
@@ -86,6 +87,37 @@ func externalIDs(picked []precedence.Picked[mp.ExternalID]) []inventory.External
 		out = append(out, inventory.ExternalID{Namespace: string(p.Value.Namespace), Value: p.Value.Value})
 	}
 	return out
+}
+
+// DetailsFrom names the provider each detail a title page shows came from, for Technical details'
+// "Where details come from" (#2151 step 10d). "" is no provider: the detail is unknown, or the
+// scanner made it up from the path.
+type DetailsFrom struct {
+	Name        mp.ID `json:"name,omitempty"`
+	Description mp.ID `json:"description,omitempty"`
+	Rating      mp.ID `json:"rating,omitempty"`
+}
+
+// originExtension is what the scanner keeps in an origin's Observation.Extension.
+type originExtension struct {
+	From DetailsFrom `json:"from"`
+}
+
+// detailsExtension is r's provenance as an origin's Observation.Extension.
+func detailsExtension(r precedence.Resolved) json.RawMessage {
+	raw, _ := json.Marshal(originExtension{From: DetailsFrom{
+		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
+	}})
+	return raw
+}
+
+// detailsFromExtension reads detailsExtension back; an origin written before it says nothing.
+func detailsFromExtension(raw json.RawMessage) DetailsFrom {
+	var ext originExtension
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &ext)
+	}
+	return ext.From
 }
 
 // itemFacts projects resolved values into the inventory's item facts, with coverage for each

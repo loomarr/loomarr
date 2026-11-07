@@ -247,6 +247,46 @@ const humanizeRelaxation = (step: { kind: string; from: string; to: string }) =>
   to: humanizeRelaxationValue(step.to),
 });
 
+// languageLabel turns an ISO language code into a human name using the PLATFORM's own language
+// data (Intl.DisplayNames), not a hand-written table that would drift and only cover a handful of
+// languages. The mapping is the browser's CLDR data, localized to the viewer's own locale for
+// free ("eng" → "English" for an English user, "Englisch" for a German one).
+//
+// Our tracks carry ISO 639-2 (3-letter, "eng"); Intl prefers 639-1 but accepts many 3-letter
+// codes. Where it can't resolve one it returns the input unchanged, so we fall back to the
+// upper-cased code. Intl.DisplayNames throws on a malformed code, and very old runtimes lack it,
+// so both are guarded; the one instance is created lazily and reused.
+let displayNames: Intl.DisplayNames | undefined;
+let displayNamesInitialised = false;
+
+const languageResolver = (): Intl.DisplayNames | undefined => {
+  if (!displayNamesInitialised) {
+    displayNamesInitialised = true;
+    try {
+      displayNames = new Intl.DisplayNames(undefined, { type: "language" });
+    } catch {
+      displayNames = undefined;
+    }
+  }
+  return displayNames;
+};
+
+const languageLabel = (code: string): string => {
+  const c = code.trim();
+  if (!c) return "Unknown";
+  const dn = languageResolver();
+  if (dn) {
+    try {
+      const name = dn.of(c);
+      // Intl returns the input unchanged when it can't resolve the code: no match.
+      if (name && name.toLowerCase() !== c.toLowerCase()) return name;
+    } catch {
+      // malformed code — fall through
+    }
+  }
+  return c.toUpperCase();
+};
+
 export type { Instant };
 export {
   channelNumber,
@@ -267,6 +307,7 @@ export {
   goDurationMinutes,
   humanizeRelaxation,
   humanizeSettingKey,
+  languageLabel,
   parseMmSs,
   pluralize,
   tidyGoDuration,

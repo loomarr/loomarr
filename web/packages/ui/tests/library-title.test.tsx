@@ -29,9 +29,19 @@ const MOVIE: LibraryTitleDetail = {
   genres: ["Crime", "Thriller"],
   rating: "R",
   runtimeMillis: 5_880_000,
-  files: [{ path: "/media/movies/Paper Kites (1996)/Paper Kites.mkv", size: 8_100_000_000 }],
+  files: [
+    {
+      path: "/media/movies/Paper Kites (1996)/Paper Kites.mkv",
+      size: 8_100_000_000,
+      lengthMillis: 5_880_000,
+      picture: { width: 3840, height: 1600, hdr: true },
+      audioChannels: 6,
+      subtitles: [{ language: "eng" }, { language: "eng" }, {}],
+    },
+  ],
   seasons: [],
   match: { by: "app", app: "Radarr" },
+  detailsFrom: { description: "TMDB", rating: "TMDB" },
 };
 
 const SERIES: LibraryTitleDetail = {
@@ -54,6 +64,7 @@ const SERIES: LibraryTitleDetail = {
     },
   ],
   match: { by: "none" },
+  detailsFrom: { description: "TMDB", episodeNames: "Sonarr" },
 };
 
 const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}) => {
@@ -94,7 +105,7 @@ const render = (title: LibraryTitleDetail, over: Partial<LibraryTitleProps> = {}
 
 describe("LibraryTitle", () => {
   it("shows a movie's facts in plain words and its file behind Technical details", () => {
-    const { host, onBack, button, cleanup } = render(MOVIE);
+    const { host, button, cleanup } = render(MOVIE);
     expect(host.textContent).toContain("1996 · 1 h 38 min");
     expect(host.textContent).toContain("R");
     expect(host.textContent).toContain("Crime, Thriller");
@@ -103,6 +114,30 @@ describe("LibraryTitle", () => {
     act(() => button("Technical details").click());
     expect(host.textContent).toContain("/media/movies/Paper Kites (1996)/Paper Kites.mkv");
     expect(host.textContent).toContain("7.5 GB");
+    expect(host.textContent).toContain("Description and rating from TMDB.");
+    expect(host.textContent).toContain("Recognised from Radarr");
+    // A widescreen 4K film is cropped below 2160 lines, and is still 4K.
+    expect(host.textContent).toContain("4K, extra-rich colour");
+    expect(host.textContent).toContain("Surround 5.1");
+    expect(host.textContent).toContain("English, Unknown");
+    cleanup();
+  });
+
+  it("says a clip shorter than a minute is, rather than 0 min", () => {
+    const short = {
+      ...MOVIE.files[0],
+      lengthMillis: 20_000,
+      subtitles: [],
+    } as LibraryTitleDetail["files"][number];
+    const { host, button, cleanup } = render({ ...MOVIE, runtimeMillis: undefined, files: [short] });
+    act(() => button("Technical details").click());
+    expect(host.textContent).toContain("Under a minute");
+    expect(host.textContent).not.toContain("0 min");
+    cleanup();
+  });
+
+  it("goes back to the Library", () => {
+    const { onBack, button, cleanup } = render(MOVIE);
     act(() => button("Library").click());
     expect(onBack).toHaveBeenCalled();
     cleanup();
@@ -112,7 +147,9 @@ describe("LibraryTitle", () => {
     const { host, button, cleanup } = render(SERIES);
     // Specials aren't a season, so the count leaves them out.
     expect(host.textContent).toContain("1999 · 1 season");
-    expect(host.textContent).not.toContain("Technical details");
+    act(() => button("Technical details").click());
+    expect(host.textContent).toContain("Description from TMDB. Episode names from Sonarr.");
+    expect(host.textContent).toContain("Not recognised yet");
     const text = host.textContent ?? "";
     expect(text.indexOf("Season 1")).toBeLessThan(text.indexOf("Specials"));
     act(() => button("Season 1").click());
