@@ -145,8 +145,8 @@ ci-tooling-bundle	.github/workflows/ci.yml;internal/releaseverify/ci.go;cmd/rele
 dev-compose	docker/compose.dev.yaml	contracts,agent
 production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/suggest/score.go;docs/contributing/testing.md	contracts,go,postgres,image,docs
-filler-eval-corpus	internal/fillereval/corpus/seed-v1.json	contracts,go
-generic-go-package-testdata	internal/fillerenrichment/testdata/hp-sauce.info.json	contracts,go
+filler-eval-corpus	internal/filler/eval/corpus/seed-v1.json	contracts,go
+generic-go-package-testdata	internal/filler/enrichment/testdata/hp-sauce.info.json	contracts,go
 planner-eval-corpus	internal/eval/testdata/planner-certification-v1.json;internal/eval/testdata/planner-certification-v2.json;internal/eval/testdata/planner-certification-v3.json;internal/eval/testdata/planner-certification-v4.json;internal/eval/testdata/planner-certification-v5.json;internal/eval/testdata/planner-certification-v6.json;internal/eval/testdata/planner-certification-v6-base.json;internal/eval/testdata/planner-catalog-v1.json;internal/eval/testdata/planner-catalog-v2.json	contracts,go
 recommendation-eval-corpus	internal/recommend/testdata/channel-recommendation-v1.json;internal/recommend/testdata/channel-recommendation-snapshots-v1.json	contracts,go
 planner-reference-golden	internal/plannerreference/testdata/planner-reference-host-v2.golden.json	contracts,go
@@ -155,8 +155,8 @@ filler-corpus-nasa	internal/fillercorpus/corpus/pilot/nasa.json	contracts,go
 filler-corpus-cdc	internal/fillercorpus/corpus/pilot/cdc.json;internal/fillercorpus/corpus/seeds/cdc.json	contracts,go
 filler-corpus-commons	internal/fillercorpus/corpus/pilot/commons.json	contracts,go
 filler-corpus-locked	internal/fillercorpus/corpus/pilot/locked.json	contracts,go
-installation-location-data	internal/installationlocation/places.tsv.gz;internal/installationlocation/ip-country.csv.gz;internal/installationlocation/location-data.generated.json	contracts,go,image
-broadcast-station-seed	internal/broadcaststation/stations.tsv.gz;internal/broadcaststation/station-data.generated.json	contracts,go,postgres,image
+installation-location-data	internal/filler/location/places.tsv.gz;internal/filler/location/ip-country.csv.gz;internal/filler/location/location-data.generated.json	contracts,go,image
+broadcast-station-seed	internal/filler/station/stations.tsv.gz;internal/filler/station/station-data.generated.json	contracts,go,postgres,image
 broadcast-station-generator-inputs	cmd/station-data/wikidata-call-signs.rq;cmd/station-data/wikidata-call-signs.tsv	contracts,go
 openrouter-catalog-leaf	internal/openroutercatalog/openrouter_route.go	contracts,go,postgres,image
 research-archive	research/cmd/filler-corpus-pilot-rights-review/main.go;research/internal/fillerreview/temporal_reviewer_template.go;research/go.mod	docs

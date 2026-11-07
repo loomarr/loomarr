@@ -6,8 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdefectfloor"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/jobs"
 	"github.com/loomarr/loomarr/internal/settings"
 )
@@ -35,7 +35,7 @@ func fillerSyncJob(s *filler.Syncer) jobs.Job {
 }
 
 type fillerEnrichmentRunner interface {
-	Run(context.Context) (fillerenrichment.RunResult, error)
+	Run(context.Context) (enrichment.RunResult, error)
 }
 
 type fillerPipelineRunner interface {
@@ -218,7 +218,7 @@ func fillerIdentityJob(ci *filler.CreativeIdentity) jobs.Job {
 // measures clips with no current measurement, held ones first since admission waits on them,
 // re-judges records after a floor recalibration or an era correction, and retires every copy
 // that fails. Every five minutes; a pass decodes within a bounded budget and leaves the rest.
-func fillerDefectsJob(d *fillerdefectfloor.DefectFloor) jobs.Job {
+func fillerDefectsJob(d *defectfloor.DefectFloor) jobs.Job {
 	return jobs.Job{
 		Timeout: jobs.LongJobTimeout,
 		Name:    "filler-defects", Group: jobs.GroupFiller, Title: "Check ad picture and sound",

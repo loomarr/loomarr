@@ -192,7 +192,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		})
 	})
 
-	// The filler suite runs in internal/fillerstore against the extended store, the value the app
+	// The filler suite runs in internal/filler/records against the extended store, the value the app
 	// holds (#1747).
 
 	t.Run("Ops", func(t *testing.T) {

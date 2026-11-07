@@ -18,7 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -29,7 +29,7 @@ import (
 // Embedding the real store keeps the test on the production SQL contract; the hook performs one
 // winning mutation immediately before the handler attempts to save its older snapshot.
 type staleOnceChannelStore struct {
-	fillerstore.Store
+	records.Store
 	once   sync.Once
 	before func(context.Context, store.Channel) error
 }
@@ -190,7 +190,7 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 // newInternalServerWithoutTunarr exercises the production-facing setting shape that exposed the
 // bug: internal playout is selected and tunarr.url is empty, but channel convergence is still a
 // real local operation rather than an unconfigured route.
-func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeChannelSvc) {
+func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, records.Store, *fakeChannelSvc) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/internal-no-tunarr.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -865,7 +865,7 @@ func mkChannel(t *testing.T, srv *httptest.Server, id, name string, number int) 
 // channelPatchBody attaches the revision an editor read to a PATCH payload. Keeping this in the
 // HTTP tests makes every successful edit exercise the real optimistic-concurrency contract while
 // letting each case keep its payload focused on the field whose behavior it asserts.
-func channelPatchBody(t *testing.T, st fillerstore.Store, id, body string) string {
+func channelPatchBody(t *testing.T, st records.Store, id, body string) string {
 	t.Helper()
 	ch, err := st.GetChannel(context.Background(), id)
 	if err != nil {
@@ -880,7 +880,7 @@ func itoa(n int) string { return strconv.Itoa(n) }
 
 // newServerWithSchedulerAndSuggest wires BOTH the channel service and a fake suggest
 // service, so refine (which needs the suggester) can be exercised end to end.
-func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeSuggest) {
+func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, records.Store, *fakeSuggest) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/refine.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -1541,7 +1541,7 @@ func TestUpdateChannel_NotFound(t *testing.T) {
 // seedChannelWithLineup writes a channel carrying a lineup directly (the create endpoint
 // needs an approved proposal for a real lineup; these tests exercise the edit path, so
 // they seed the starting state in the store).
-func seedChannelWithLineup(t *testing.T, st fillerstore.Store, id string, entries ...schedule.LineupEntry) {
+func seedChannelWithLineup(t *testing.T, st records.Store, id string, entries ...schedule.LineupEntry) {
 	t.Helper()
 	_, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{

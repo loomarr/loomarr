@@ -36,7 +36,7 @@ import (
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/proposal"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/rating"
@@ -69,7 +69,7 @@ func main() {
 		log.Printf("seed: DATABASE_URL unset — using %s", cfg.DatabaseURL)
 	}
 
-	st, err := fillerstore.Open(ctx, cfg.DatabaseURL, true) // autoMigrate: a fresh DB gets its schema
+	st, err := records.Open(ctx, cfg.DatabaseURL, true) // autoMigrate: a fresh DB gets its schema
 	if err != nil {
 		log.Fatalf("seed: open store %q: %v", cfg.DatabaseURL, err)
 	}

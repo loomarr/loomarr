@@ -3,13 +3,13 @@ package api
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/filler/research"
 )
 
 func TestClipContextSuggestionUsesOnlyCitedPagesAndYieldsToVerifiedFacts(t *testing.T) {
-	report := fillerresearch.Report{Suggestion: fillerresearch.Suggestion{Decade: 1970,
+	report := research.Report{Suggestion: research.Suggestion{Decade: 1970,
 		CountryCode: "US", Country: "United States", Confidence: 70, CitationIDs: []int{2}},
-		Packet: fillerresearch.Packet{Citations: []fillerresearch.Citation{
+		Packet: research.Packet{Citations: []research.Citation{
 			{ID: 1, Title: "Uncited", URL: "https://en.wikipedia.org/wiki/Uncited"},
 			{ID: 2, Title: "Twirlpop", URL: "https://en.wikipedia.org/wiki/Twirlpop"},
 		}}}

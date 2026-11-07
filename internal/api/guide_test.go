@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -510,11 +510,11 @@ func TestGuide_FillerPodWithholdsFilenameByProvenance(t *testing.T) {
 		MatchLevel: filler.MatchExact,
 		TotalMs:    90000,
 		Entries: []filler.PodEntry{
-			{Hash: "h-stem", Name: "Widgetmax Ad 1991", NameSource: clipcatalog.NameFromFilename,
+			{Hash: "h-stem", Name: "Widgetmax Ad 1991", NameSource: clips.NameFromFilename,
 				Kind: filler.Commercial, DurationMs: 30000},
-			{Hash: "h-curated", Name: "Zap Cola", NameSource: clipcatalog.NameFromCurated,
+			{Hash: "h-curated", Name: "Zap Cola", NameSource: clips.NameFromCurated,
 				Kind: filler.Commercial, DurationMs: 30000},
-			{Hash: "h-sidecar", Name: "zx-qt", NameSource: clipcatalog.NameFromSidecar,
+			{Hash: "h-sidecar", Name: "zx-qt", NameSource: clips.NameFromSidecar,
 				Kind: filler.Commercial, DurationMs: 30000},
 		},
 	}}

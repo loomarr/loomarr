@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
+	"github.com/loomarr/loomarr/internal/filler/structure"
+	"github.com/loomarr/loomarr/internal/filler/structure/window"
 )
 
 // StructureMaterializationPolicy is the release boundary between a valid assessment and unattended
 // creation of held child work items. It cannot authorize broadcast admission.
 type StructureMaterializationPolicy struct {
-	Authority       *fillerstructure.Authority
-	WindowAuthority *fillerstructurewindow.MaterializationAuthority
+	Authority       *structure.Authority
+	WindowAuthority *window.MaterializationAuthority
 }
 
 const (
@@ -67,21 +67,21 @@ func CertifiedStructureMaterializable(p SplitProposal, auto *AutoSplitPolicy, ce
 	return certified
 }
 
-func verifyStructureMaterializationAuthority(artifact fillerstructure.Artifact, policy *StructureMaterializationPolicy) error {
+func verifyStructureMaterializationAuthority(artifact structure.Artifact, policy *StructureMaterializationPolicy) error {
 	if policy == nil {
 		return fmt.Errorf("structure materialization policy is unavailable")
 	}
 	switch artifact.Decision.Input.Kind {
-	case fillerstructure.AssessmentInputCompleteVideo:
+	case structure.AssessmentInputCompleteVideo:
 		if policy.Authority == nil {
 			return fmt.Errorf("complete-video structure authority is unavailable")
 		}
-		return fillerstructure.VerifyAuthority(artifact, *policy.Authority)
-	case fillerstructure.AssessmentInputWindowMediaSet:
+		return structure.VerifyAuthority(artifact, *policy.Authority)
+	case structure.AssessmentInputWindowMediaSet:
 		if policy.WindowAuthority == nil {
 			return fmt.Errorf("window structure authority is unavailable")
 		}
-		return fillerstructurewindow.VerifyMaterializationAuthority(artifact, *policy.WindowAuthority)
+		return window.VerifyMaterializationAuthority(artifact, *policy.WindowAuthority)
 	default:
 		return fmt.Errorf("structure assessment input kind is unsupported")
 	}

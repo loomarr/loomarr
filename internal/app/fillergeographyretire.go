@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -18,7 +18,7 @@ import (
 // so the clip's hash stays known and fetching never pulls it again.
 type fillerGeographyRetirement struct {
 	clips interface {
-		ListSettledGeographyClips(ctx context.Context) ([]fillerstore.SettledGeographyClip, error)
+		ListSettledGeographyClips(ctx context.Context) ([]records.SettledGeographyClip, error)
 	}
 	store interface {
 		ListChannels(ctx context.Context) ([]store.Channel, error)

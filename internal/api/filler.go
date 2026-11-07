@@ -11,13 +11,13 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // registerFiller mounts /v1/filler* (§7/§10). List is visible to any
@@ -411,7 +411,7 @@ type ClipContextSourceDTO struct {
 	URL   string `json:"url"`
 }
 
-func clipContextSuggestionDTO(report fillerresearch.Report, verifiedEra int, verifiedCountry string) *ClipContextSuggestionDTO {
+func clipContextSuggestionDTO(report research.Report, verifiedEra int, verifiedCountry string) *ClipContextSuggestionDTO {
 	suggestion := report.Suggestion
 	if verifiedEra > 0 {
 		suggestion.Year, suggestion.Decade = 0, 0
@@ -431,8 +431,8 @@ func clipContextSuggestionDTO(report fillerresearch.Report, verifiedEra int, ver
 	return detail
 }
 
-func clipEnrichmentDTO(states []fillerenrichment.State) *ClipEnrichmentDTO {
-	projection := fillerenrichment.ProjectDetails(states)
+func clipEnrichmentDTO(states []enrichment.State) *ClipEnrichmentDTO {
+	projection := enrichment.ProjectDetails(states)
 	detail := &ClipEnrichmentDTO{State: string(projection.State)}
 	if len(projection.Facts) > 0 {
 		detail.Facts = make([]ClipEnrichmentFactDTO, len(projection.Facts))
@@ -778,7 +778,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	now := time.Now()
 	var operatorLeaves []string
 	var operatorForest *taxonomy.Forest
-	var operatorGeography *fillerenrichment.Value
+	var operatorGeography *enrichment.Value
 	if in.Body.Hash == "" {
 		return nil, errUnprocessable("Missing clip", "A clip tag edit must name the clip by its hash.")
 	}
@@ -816,7 +816,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			return nil, err
 		}
 	}
-	var geography *fillerenrichment.Geography
+	var geography *enrichment.Geography
 	if in.Body.Geography != nil {
 		g, err := s.resolveOperatorGeography(ctx, *in.Body.Geography)
 		if err != nil {
@@ -836,7 +836,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 					"The clip's metadata file could not be updated, so nothing was changed. Try again.", err)
 			}
 		}
-		if err := s.store.RenameClip(ctx, clip.Hash, name, clipcatalog.NameFromCurated, now); err != nil {
+		if err := s.store.RenameClip(ctx, clip.Hash, name, clips.NameFromCurated, now); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
@@ -880,7 +880,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		if err := s.store.UpdateClipGeography(ctx, clip.Hash, g.Scope, g.Country, g.Network, g.Station, g.AirDate, "operator", now); err != nil {
 			return nil, err
 		}
-		operatorGeography = &fillerenrichment.Value{Geography: g}
+		operatorGeography = &enrichment.Value{Geography: g}
 	}
 	if in.Body.Brand != nil {
 		brand := strings.TrimSpace(*in.Body.Brand)
@@ -889,24 +889,24 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		}
 	}
 	evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.clip_edit", at: now}
-	if err := evidence.record(ctx, fillerenrichment.AxisEra, fillerenrichment.Value{Year: in.Body.Era}); err != nil {
+	if err := evidence.record(ctx, enrichment.AxisEra, enrichment.Value{Year: in.Body.Era}); err != nil {
 		return nil, err
 	}
-	if err := evidence.record(ctx, fillerenrichment.AxisAudience, fillerenrichment.Value{Text: in.Body.Audience}); err != nil {
+	if err := evidence.record(ctx, enrichment.AxisAudience, enrichment.Value{Text: in.Body.Audience}); err != nil {
 		return nil, err
 	}
 	if in.Body.Kind != "" {
-		if err := evidence.record(ctx, fillerenrichment.AxisKind, fillerenrichment.Value{Text: in.Body.Kind}); err != nil {
+		if err := evidence.record(ctx, enrichment.AxisKind, enrichment.Value{Text: in.Body.Kind}); err != nil {
 			return nil, err
 		}
 	}
 	if in.Body.Brand != nil {
-		if err := evidence.record(ctx, fillerenrichment.AxisBrand, fillerenrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}); err != nil {
+		if err := evidence.record(ctx, enrichment.AxisBrand, enrichment.Value{Text: strings.TrimSpace(*in.Body.Brand)}); err != nil {
 			return nil, err
 		}
 	}
 	if operatorGeography != nil {
-		if err := evidence.record(ctx, fillerenrichment.AxisGeography, *operatorGeography); err != nil {
+		if err := evidence.record(ctx, enrichment.AxisGeography, *operatorGeography); err != nil {
 			return nil, err
 		}
 	}

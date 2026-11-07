@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/store/storedb"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The taxonomy store (§10 V45a): the `taxa` graph (operator-editable) and the denormalised

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -14,7 +14,7 @@ import (
 // seed revision by replacing every row, and nothing else writes it.
 
 // ListBroadcastStations returns every station with its call signs, ordered by id and call-sign start.
-func (s *Store) ListBroadcastStations(ctx context.Context) ([]broadcaststation.Station, error) {
+func (s *Store) ListBroadcastStations(ctx context.Context) ([]station.Station, error) {
 	rows, err := s.h.QueryContext(ctx, `SELECT s.id, s.country, s.city, s.region, s.latitude, s.longitude, c.call_sign, c.from_date, c.to_date
 		FROM broadcast_stations s JOIN broadcast_station_call_signs c ON c.station_id = s.id
 		ORDER BY s.id, c.from_date, c.call_sign`)
@@ -22,10 +22,10 @@ func (s *Store) ListBroadcastStations(ctx context.Context) ([]broadcaststation.S
 		return nil, fmt.Errorf("list broadcast stations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var out []broadcaststation.Station
+	var out []station.Station
 	for rows.Next() {
-		var st broadcaststation.Station
-		var c broadcaststation.CallSign
+		var st station.Station
+		var c station.CallSign
 		if err := rows.Scan(&st.ID, &st.Country, &st.City, &st.Region, &st.Latitude, &st.Longitude, &c.Sign, &c.From, &c.To); err != nil {
 			return nil, err
 		}
@@ -40,7 +40,7 @@ func (s *Store) ListBroadcastStations(ctx context.Context) ([]broadcaststation.S
 
 // ConvergeBroadcastStationSeed applies the newest shipped revision the store has not recorded. Older
 // unapplied revisions are skipped: each one is a complete directory, not a delta.
-func ConvergeBroadcastStationSeed(ctx context.Context, s *Store, revisions []broadcaststation.SeedRevision, at time.Time) error {
+func ConvergeBroadcastStationSeed(ctx context.Context, s *Store, revisions []station.SeedRevision, at time.Time) error {
 	if len(revisions) == 0 {
 		return nil
 	}
@@ -93,7 +93,7 @@ func ConvergeBroadcastStationSeed(ctx context.Context, s *Store, revisions []bro
 // included, so one statement per row would dominate Postgres store setup.
 const broadcastStationBatch = 400
 
-func (s *Store) insertBroadcastStations(ctx context.Context, tx storedb.Tx, stations []broadcaststation.Station) error {
+func (s *Store) insertBroadcastStations(ctx context.Context, tx storedb.Tx, stations []station.Station) error {
 	var stationRows, callSignRows [][]any
 	for _, st := range stations {
 		stationRows = append(stationRows, []any{st.ID, st.Country, st.City, st.Region, st.Latitude, st.Longitude})

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
-	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
+	"github.com/loomarr/loomarr/internal/filler/structure"
+	"github.com/loomarr/loomarr/internal/filler/structure/cut"
+	"github.com/loomarr/loomarr/internal/filler/structure/window"
 )
 
 func TestLoadWindowStructureAuthorityAcceptsOnlyReplayValidRegularFile(t *testing.T) {
@@ -62,29 +62,29 @@ func TestLoadWindowStructureAuthorityRejectsUnknownTrailingAndSymlinkedInput(t *
 	}
 }
 
-func appWindowStructureAuthorityFixture() fillerstructurewindow.MaterializationAuthority {
-	profile := fillerstructurewindow.ProfileFor(fillerstructuremedia.SoftwareProfile())
-	authority := fillerstructurewindow.MaterializationAuthority{
-		SchemaVersion:             fillerstructurewindow.MaterializationAuthoritySchemaVersion,
-		ContractVersion:           fillerstructurewindow.MaterializationAuthorityContractVersion,
+func appWindowStructureAuthorityFixture() window.MaterializationAuthority {
+	profile := window.ProfileFor(cut.SoftwareProfile())
+	authority := window.MaterializationAuthority{
+		SchemaVersion:             window.MaterializationAuthoritySchemaVersion,
+		ContractVersion:           window.MaterializationAuthorityContractVersion,
 		WindowCertificationSHA256: strings.Repeat("a", 64), ShortLongShadowSHA256: strings.Repeat("b", 64),
 		WindowProfileSHA256: profile.SHA256, AssessmentMediaProfileSHA256: profile.AssessmentMediaProfileSHA256,
 		MinimumSourceDurationMS: 120_001, MaximumSourceDurationMS: 300_000,
 		MaximumWindowBytes: 16 << 20, MaximumWindows: 3,
-		ReducerVersion: fillerstructure.ReducerContractVersion, BoundaryToleranceMS: 2_000,
-		AllowedUnits: []fillerstructure.Unit{fillerstructure.UnitCompilation},
-		AllowedRoles: []fillerstructure.Role{fillerstructure.RoleCommercial, fillerstructure.RolePromo},
+		ReducerVersion: structure.ReducerContractVersion, BoundaryToleranceMS: 2_000,
+		AllowedUnits: []structure.Unit{structure.UnitCompilation},
+		AllowedRoles: []structure.Role{structure.RoleCommercial, structure.RolePromo},
 		ReviewerID:   "maintainer", ReviewedAt: time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC),
 		AutomaticMaterializationAllowed: true,
 	}
 	for _, pair := range [][2]string{{"assessor-a", "family-a"}, {"assessor-b", "family-b"}} {
-		authority.Assessors = append(authority.Assessors, fillerstructure.AssessorProfile{
+		authority.Assessors = append(authority.Assessors, structure.AssessorProfile{
 			ID: pair[0], ModelFamily: pair[1], Provider: "openrouter", Model: "provider/model-" + pair[0],
 			ModelDigest: strings.Repeat("c", 64), CapabilitySHA256: strings.Repeat("d", 64),
-			PromptVersion:    fillerstructurewindow.DirectVideoPromptVersion,
-			EvidenceContract: fillerstructurewindow.CallRecordContractVersion,
+			PromptVersion:    window.DirectVideoPromptVersion,
+			EvidenceContract: window.CallRecordContractVersion,
 		})
 	}
-	authority.SHA256 = fillerstructurewindow.MaterializationAuthoritySHA256(authority)
+	authority.SHA256 = window.MaterializationAuthoritySHA256(authority)
 	return authority
 }

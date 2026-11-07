@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // The pool target is how many commercials each decade window needs (#2035): enough for the
@@ -59,16 +59,16 @@ func (t PoolTargets) For(windows []EraRange, thisYear int) int {
 // so one evening is not counted once per decade. windows maps a channel to the era windows its
 // content uses; an airing on a channel no longer listed counts toward nothing. spacing is the
 // commercial spacing, below which no channel's target falls.
-func SizePool(airings []clipcatalog.Airing, windows map[string][]EraRange, spacing time.Duration, now time.Time) PoolTargets {
+func SizePool(airings []clips.Airing, windows map[string][]EraRange, spacing time.Duration, now time.Time) PoolTargets {
 	floor := adsFor(spacing)
-	since := now.Add(-clipcatalog.AiringHistoryAge)
-	var recent []clipcatalog.Airing
+	since := now.Add(-clips.AiringHistoryAge)
+	var recent []clips.Airing
 	for _, a := range airings {
 		if !a.AiredAt.Before(since) && !a.AiredAt.After(now) {
 			recent = append(recent, a)
 		}
 	}
-	slices.SortFunc(recent, func(a, b clipcatalog.Airing) int { return a.AiredAt.Compare(b.AiredAt) })
+	slices.SortFunc(recent, func(a, b clips.Airing) int { return a.AiredAt.Compare(b.AiredAt) })
 	if len(recent) == 0 || now.Sub(recent[0].AiredAt) < minEveningHistory {
 		return PoolTargets{Decade: adsFor(DefaultEvening), Floor: floor}
 	}

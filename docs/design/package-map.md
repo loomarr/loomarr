@@ -65,7 +65,7 @@ A member asks for a channel through `api`. `proposalworkflow` turns the request 
 
 ### From a filler source to a break
 
-An operator registers a source; `sourceprovider` lists what it offers, with `sourceprovider/youtube` and `sourceprovider/archive` as the remote kinds. `clipfetch` downloads each pulled clip into the drop folder, and `filler` drains that folder into the clip folder, while `fillerstore` records the sources, pulls and acquisition runs. Each clip is then checked: `fillerscreening` for what it says and shows, and whether it is safe to air, `fillerstructureassessment` for long reels that need splitting, and `fillerdefectfloor` for picture and sound defects; `filleradmission` is the certification tooling that weighs that evidence into an admit or refuse decision. A clip that passes its checks enters the catalog, whose values are `clipcatalog`, whose tags are `taxonomy`, and which `store/catalogstore` persists. When `schedule` leaves a break in a channel's programming, the `channels` engine asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.
+An operator registers a source; `filler/source` lists what it offers, with `filler/source/youtube` and `filler/source/archive` as the remote kinds. `filler/fetch` downloads each pulled clip into the drop folder, and `filler` drains that folder into the clip folder, while `filler/records` records the sources, pulls and acquisition runs. Each clip is then checked: `filler/screening` for what it says and shows, and whether it is safe to air, `filler/structure/assessment` for long reels that need splitting, and `filler/defectfloor` for picture and sound defects; `filler/admission` is the certification tooling that weighs that evidence into an admit or refuse decision. A clip that passes its checks enters the catalog, whose values are `filler/clips`, whose tags are `filler/taxonomy`, and which `store/catalogstore` persists. When `schedule` leaves a break in a channel's programming, the `channels` engine asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.
 
 ## Dependency spine
 
@@ -74,7 +74,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | Package | Depends on |
 | --- | --- |
 | `bgexec` | — |
-| `broadcaststation` | — |
 | `catalog` | `library`, `provision` |
 | `config` | — |
 | `contact` | — |
@@ -82,9 +81,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `defects` | — |
 | `diagnostics` | `storagegovernor` |
 | `encode` | `config` |
-| `filler` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `fillerstructure`, `fillerstructurewindow`, `llm`, `mediatools`, `schedule`, `sourceprovider`, `storagegovernor`, `taxonomy` |
-| `fillerstructure` | — |
-| `fillerstructurewindow` | `fillerstructure` |
+| `filler` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `mediatools`, `schedule`, `storagegovernor` |
+| `filler/source` | — |
+| `filler/station` | — |
+| `filler/structure` | — |
+| `filler/structure/window` | `filler/structure` |
+| `filler/taxonomy` | — |
 | `holidayvocab` | — |
 | `httpx` | `metrics` |
 | `inventory` | — |
@@ -104,11 +106,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | — |
 | `schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `settings` | `config`, `library` |
-| `sourceprovider` | — |
 | `storagegovernor` | — |
-| `store` | `broadcaststation`, `contact`, `creative`, `defects`, `diagnostics`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | `contact`, `creative`, `defects`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposal`, `provision`, `quality`, `recovery`, `schedule` |
 | `suggest` | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `rating`, `schedule`, `store` |
-| `taxonomy` | — |
 
 ## How the area pages are made
 

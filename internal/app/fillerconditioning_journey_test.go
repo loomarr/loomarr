@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -18,7 +18,7 @@ import (
 )
 
 type conditioningRekeyCrashStore struct {
-	st         fillerstore.Store
+	st         records.Store
 	afterRekey bool
 	target     filler.StoreClip
 }
@@ -76,10 +76,10 @@ func journeyConditioningMeasurement(lufs float64) mediatools.ConditioningMeasure
 }
 
 func TestFillerConditioningJourney_RestartDistinguishesPreAndPostRekeyPublication(t *testing.T) {
-	runFillerConditioningRestartJourney(t, func(t *testing.T) fillerstore.Store { return testkit.MigratedSQLiteStore(t) })
+	runFillerConditioningRestartJourney(t, func(t *testing.T) records.Store { return testkit.MigratedSQLiteStore(t) })
 }
 
-func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T) fillerstore.Store) {
+func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T) records.Store) {
 	for _, tc := range []struct {
 		name       string
 		afterRekey bool

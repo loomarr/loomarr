@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // #2030: a seasonal clip airs only inside its holiday's window, so a seasonal tag with no window

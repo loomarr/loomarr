@@ -16,13 +16,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/creative"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -1898,9 +1898,9 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, seg.Path))
 		// #1988: a chapter title is the source's and the operator's edit is curated, in the catalog
 		// row and beside the bytes, so a rebuild restores both.
-		wantSource := map[string]clipcatalog.NameSource{
-			"Burger Barn": clipcatalog.NameFromSource, "Brickle": clipcatalog.NameFromSource,
-			"Edited boundary": clipcatalog.NameFromCurated,
+		wantSource := map[string]clips.NameSource{
+			"Burger Barn": clips.NameFromSource, "Brickle": clips.NameFromSource,
+			"Edited boundary": clips.NameFromCurated,
 		}[seg.Name]
 		if seg.NameSource != wantSource || tags.DisplayName != seg.Name || tags.NameProvenance != string(wantSource) {
 			t.Errorf("confirmed segment %q name source = %q, sidecar %q/%q; want %q", seg.Name, seg.NameSource,

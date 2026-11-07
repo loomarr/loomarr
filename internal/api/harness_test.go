@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -19,14 +19,14 @@ import (
 type apiHarness struct {
 	t      *testing.T
 	Server *httptest.Server
-	Store  fillerstore.Store
+	Store  records.Store
 }
 
 // apiHarnessDefaults is the invariant input available to focused route-family
 // harnesses. It intentionally does not expose api.Options: each family still
 // names only the production dependency and behavior it varies.
 type apiHarnessDefaults struct {
-	Store fillerstore.Store
+	Store records.Store
 	Auth  api.Authorizer
 	Log   *slog.Logger
 }

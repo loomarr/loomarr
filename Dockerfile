@@ -111,7 +111,7 @@ RUN LOOMARR_RELEASE="${VERSION:-dev}" cargo build --release --locked -p loomarr-
 #   - node: a JS runtime yt-dlp REQUIRES for YouTube — modern yt-dlp deprecated
 #     YouTube extraction without one ("No supported JavaScript runtime"), so the
 #     YouTube leg fails without it. yt-dlp enables only Deno by default, so
-#     internal/clipfetch passes `--js-runtimes node` explicitly; node is found on
+#     internal/filler/fetch passes `--js-runtimes node` explicitly; node is found on
 #     PATH at /usr/local/bin/node. It is copied from the digest-pinned `node-runtime`
 #     stage (the same official image as the web build), not downloaded. Deno was
 #     replaced because its development ends after Cloudflare took on the Deno team.
@@ -423,7 +423,7 @@ RUN set -eux; \
     /usr/local/bin/ffmpeg -version | head -1; \
     /usr/local/bin/ffprobe -version | head -1; \
     /usr/local/bin/node --version; \
-    # ...and yt-dlp must actually pick node up as its JS runtime, enabled exactly as internal/clipfetch
+    # ...and yt-dlp must actually pick node up as its JS runtime, enabled exactly as internal/filler/fetch
     # enables it. Offline: with no URL it prints its debug header (`JS runtimes: node-22.x`, or
     # `none` when node is missing) and exits nonzero for the missing URL, hence `|| true`.
     { /usr/local/bin/yt-dlp --no-config -v --js-runtimes node 2>&1 || true; } | grep -E 'JS runtimes: node-'; \

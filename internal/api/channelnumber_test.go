@@ -10,7 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/binder"
-	"github.com/loomarr/loomarr/internal/fillerstore"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -36,7 +36,7 @@ func (f *fakeNumberSource) TakenChannelNumbers(context.Context) (map[int]bool, e
 
 // newServerWithNumbers is newServerWithScheduler plus a Tunarr number source, so the create
 // and renumber paths can be exercised against numbers that exist ONLY in Tunarr.
-func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Server, fillerstore.Store) {
+func newServerWithNumbers(t *testing.T, nums *fakeNumberSource) (*httptest.Server, records.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })

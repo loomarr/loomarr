@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testing.T) {
@@ -15,8 +15,8 @@ func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testin
 
 	t.Run("held", func(t *testing.T) {
 		request := structureDecisionRequest(*proposal.StructureDecision)
-		request.Candidates[1].Segments[0].Role = fillerstructure.RolePSA
-		artifact, err := fillerstructure.NewArtifact(request, time.Now())
+		request.Candidates[1].Segments[0].Role = structure.RolePSA
+		artifact, err := structure.NewArtifact(request, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -28,9 +28,9 @@ func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testin
 	t.Run("different role", func(t *testing.T) {
 		request := structureDecisionRequest(*proposal.StructureDecision)
 		for index := range request.Candidates {
-			request.Candidates[index].Segments[0].Role = fillerstructure.RolePSA
+			request.Candidates[index].Segments[0].Role = structure.RolePSA
 		}
-		artifact, err := fillerstructure.NewArtifact(request, time.Now())
+		artifact, err := structure.NewArtifact(request, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +45,7 @@ func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testin
 			request.Candidates[index].Segments[0].EndMS = 31_000
 			request.Candidates[index].Segments[1].StartMS = 31_000
 		}
-		artifact, err := fillerstructure.NewArtifact(request, time.Now())
+		artifact, err := structure.NewArtifact(request, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,22 +56,22 @@ func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testin
 
 	t.Run("replay tampered", func(t *testing.T) {
 		artifact := *proposal.StructureDecision
-		artifact.Decision.Segments = append([]fillerstructure.DecisionSegment(nil), artifact.Decision.Segments...)
-		artifact.Decision.Segments[0].Role = fillerstructure.RolePSA
-		artifact.SHA256 = fillerstructure.ArtifactSHA256(artifact)
+		artifact.Decision.Segments = append([]structure.DecisionSegment(nil), artifact.Decision.Segments...)
+		artifact.Decision.Segments[0].Role = structure.RolePSA
+		artifact.SHA256 = structure.ArtifactSHA256(artifact)
 		if err := ValidateStructureDecisionProjection(*proposal.Structure, artifact); err == nil {
 			t.Fatal("rehashed non-replayable decision projected")
 		}
 	})
 }
 
-func structureDecisionRequest(artifact fillerstructure.Artifact) fillerstructure.Request {
-	candidates := make([]fillerstructure.Candidate, len(artifact.Decision.Candidates))
+func structureDecisionRequest(artifact structure.Artifact) structure.Request {
+	candidates := make([]structure.Candidate, len(artifact.Decision.Candidates))
 	for index, candidate := range artifact.Decision.Candidates {
-		candidate.Segments = append([]fillerstructure.Segment(nil), candidate.Segments...)
+		candidate.Segments = append([]structure.Segment(nil), candidate.Segments...)
 		candidates[index] = candidate
 	}
-	return fillerstructure.Request{
+	return structure.Request{
 		Source: artifact.Decision.Source, Input: artifact.Decision.Input, BoundaryToleranceMS: artifact.BoundaryToleranceMS,
 		Candidates: candidates,
 	}

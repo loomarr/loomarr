@@ -5,21 +5,21 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/broadcaststation"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/sourceprovider"
+	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
 // A curated source names stations by hand, so a typo would switch it on for nobody. Every id must be
 // in the newest shipped directory and in the source's country.
 func TestShippedCuratedStationsAreInTheShippedDirectory(t *testing.T) {
-	revisions := broadcaststation.SeedRevisions()
+	revisions := station.SeedRevisions()
 	stations, err := revisions[len(revisions)-1].Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory := broadcaststation.NewDirectory(stations)
+	directory := station.NewDirectory(stations)
 	list, err := filler.CuratedSources()
 	if err != nil {
 		t.Fatal(err)
@@ -36,9 +36,9 @@ func TestShippedCuratedStationsAreInTheShippedDirectory(t *testing.T) {
 	}
 }
 
-type fixedDirectory struct{ *broadcaststation.Directory }
+type fixedDirectory struct{ *station.Directory }
 
-func (d fixedDirectory) get(context.Context) (*broadcaststation.Directory, error) {
+func (d fixedDirectory) get(context.Context) (*station.Directory, error) {
 	return d.Directory, nil
 }
 
@@ -46,11 +46,11 @@ func (d fixedDirectory) get(context.Context) (*broadcaststation.Directory, error
 // title's date (#2059 decision 11). Invented stations: fcc:1 near "harbor" was WAAA until
 // 1987-04-29 and WBBB after; fcc:3 near a channel's "lakeside" is WCCC; fcc:9 is WZZZ, near nothing.
 func TestOpenSearchGateAdmitsTheStationsNearEveryPlace(t *testing.T) {
-	directory := broadcaststation.NewDirectory([]broadcaststation.Station{
-		{ID: "fcc:1", Country: "US", CallSigns: []broadcaststation.CallSign{
+	directory := station.NewDirectory([]station.Station{
+		{ID: "fcc:1", Country: "US", CallSigns: []station.CallSign{
 			{Sign: "WAAA", To: "1987-04-29"}, {Sign: "WBBB", From: "1987-04-29"}}},
-		{ID: "fcc:3", Country: "US", CallSigns: []broadcaststation.CallSign{{Sign: "WCCC"}}},
-		{ID: "fcc:9", Country: "US", CallSigns: []broadcaststation.CallSign{{Sign: "WZZZ"}}},
+		{ID: "fcc:3", Country: "US", CallSigns: []station.CallSign{{Sign: "WCCC"}}},
+		{ID: "fcc:9", Country: "US", CallSigns: []station.CallSign{{Sign: "WZZZ"}}},
 	})
 	search := openArchiveSearch{
 		channels: &retirementFake{channels: []store.Channel{channelAt("US", "lakeside")}},
@@ -70,7 +70,7 @@ func TestOpenSearchGateAdmitsTheStationsNearEveryPlace(t *testing.T) {
 		"WZZZ-TV station ID 1984": "",
 		"Fizzwell Cola ad, 1984":  "",
 	} {
-		if got, _ := gate.Admit(sourceprovider.Item{Title: title}, eras); got != want {
+		if got, _ := gate.Admit(source.Item{Title: title}, eras); got != want {
 			t.Errorf("%q admitted by %q, want %q", title, got, want)
 		}
 	}
@@ -79,11 +79,11 @@ func TestOpenSearchGateAdmitsTheStationsNearEveryPlace(t *testing.T) {
 // Invented stations: fcc:1 was WAAA until 1987-04-29 and WBBB after; fcc:2 has always been WCCC;
 // fcc:3 is out of reach.
 func TestNearbyCallSignsAreThoseHeldDuringTheEraGaps(t *testing.T) {
-	directory := broadcaststation.NewDirectory([]broadcaststation.Station{
-		{ID: "fcc:1", Country: "US", CallSigns: []broadcaststation.CallSign{
+	directory := station.NewDirectory([]station.Station{
+		{ID: "fcc:1", Country: "US", CallSigns: []station.CallSign{
 			{Sign: "WAAA", To: "1987-04-29"}, {Sign: "WBBB", From: "1987-04-29"}}},
-		{ID: "fcc:2", Country: "US", CallSigns: []broadcaststation.CallSign{{Sign: "WCCC"}}},
-		{ID: "fcc:3", Country: "US", CallSigns: []broadcaststation.CallSign{{Sign: "WDDD"}}},
+		{ID: "fcc:2", Country: "US", CallSigns: []station.CallSign{{Sign: "WCCC"}}},
+		{ID: "fcc:3", Country: "US", CallSigns: []station.CallSign{{Sign: "WDDD"}}},
 	})
 	near := map[string]bool{"fcc:1": true, "fcc:2": true, "fcc:404": true}
 	for _, c := range []struct {

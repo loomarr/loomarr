@@ -7,9 +7,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 	"github.com/loomarr/loomarr/internal/store/storedb"
-	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 // The holiday store (#2030): one row per holiday, keyed by the seasonal taxon it owns. Rows are

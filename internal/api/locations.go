@@ -10,7 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/installationlocation"
+	"github.com/loomarr/loomarr/internal/filler/location"
 	"github.com/loomarr/loomarr/internal/schedule"
 )
 
@@ -82,7 +82,7 @@ func (s *Server) registerLocations(api huma.API) {
 }
 
 func (s *Server) locationsSearch(_ context.Context, input *locationsSearchInput) (*locationsSearchOutput, error) {
-	index, err := installationlocation.Default()
+	index, err := location.Default()
 	if err != nil {
 		return nil, errServiceUnavailable("Location search unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
 	}
@@ -95,7 +95,7 @@ func (s *Server) locationsSearch(_ context.Context, input *locationsSearchInput)
 }
 
 func (s *Server) locationResolve(_ context.Context, input *locationResolveInput) (*locationOutput, error) {
-	index, err := installationlocation.Default()
+	index, err := location.Default()
 	if err != nil {
 		return nil, errServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
 	}
@@ -122,7 +122,7 @@ func validateChannelPlace(policy schedule.ChannelPolicy) error {
 	if geo.Country == "" {
 		return errUnprocessable("Invalid location", "Choose the channel's country along with its city.")
 	}
-	index, err := installationlocation.Default()
+	index, err := location.Default()
 	if err != nil {
 		return errServiceUnavailable("Location check unavailable", "The built-in location index couldn't be opened. Try again.")
 	}
@@ -133,7 +133,7 @@ func validateChannelPlace(policy schedule.ChannelPolicy) error {
 }
 
 func (s *Server) locationSuggestion(ctx context.Context, _ *struct{}) (*locationSuggestionOutput, error) {
-	index, err := installationlocation.Default()
+	index, err := location.Default()
 	if err != nil {
 		return nil, errServiceUnavailable("Location suggestion unavailable", "The built-in location index couldn't be opened. Search for your location instead.")
 	}
@@ -194,7 +194,7 @@ var supportedLocationHeaders = []locationHeaders{
 	{source: "vercel", country: "X-Vercel-IP-Country", city: "X-Vercel-IP-City"},
 }
 
-func trustedLocationHeader(index *installationlocation.Index, request *http.Request) (installationlocation.Place, string, bool) {
+func trustedLocationHeader(index *location.Index, request *http.Request) (location.Place, string, bool) {
 	for _, candidate := range supportedLocationHeaders {
 		country := strings.ToUpper(strings.TrimSpace(request.Header.Get(candidate.country)))
 		countryPlace, validCountry := index.Country(country)
@@ -211,10 +211,10 @@ func trustedLocationHeader(index *installationlocation.Index, request *http.Requ
 		}
 		return countryPlace, candidate.source, true
 	}
-	return installationlocation.Place{}, "", false
+	return location.Place{}, "", false
 }
 
-func locationDTOFrom(place installationlocation.Place) locationDTO {
+func locationDTOFrom(place location.Place) locationDTO {
 	dto := locationDTO{ID: place.ID, Label: place.Label, Country: place.Country, Region: place.Region}
 	if place.City != "" {
 		dto.Place, dto.City = place.ID, place.City
@@ -227,7 +227,7 @@ type locationGetInput struct {
 }
 
 func (s *Server) locationGet(_ context.Context, input *locationGetInput) (*locationOutput, error) {
-	index, err := installationlocation.Default()
+	index, err := location.Default()
 	if err != nil {
 		return nil, errServiceUnavailable("Location lookup unavailable", "The built-in place index couldn't be opened. Try again after restarting Loomarr.")
 	}

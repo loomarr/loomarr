@@ -1,21 +1,21 @@
 package filler
 
 import (
-	"github.com/loomarr/loomarr/internal/fillerstructure"
-	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
+	"github.com/loomarr/loomarr/internal/filler/structure"
+	"github.com/loomarr/loomarr/internal/filler/structure/window"
 )
 
-func structureMaterializationAuthorityIdentity(materialization *StructureMaterializationPolicy, artifact *fillerstructure.Artifact) string {
+func structureMaterializationAuthorityIdentity(materialization *StructureMaterializationPolicy, artifact *structure.Artifact) string {
 	if materialization == nil || artifact == nil {
 		return ""
 	}
 	switch artifact.Decision.Input.Kind {
-	case fillerstructure.AssessmentInputCompleteVideo:
-		if materialization.Authority != nil && fillerstructure.ValidateAuthority(*materialization.Authority) == nil {
+	case structure.AssessmentInputCompleteVideo:
+		if materialization.Authority != nil && structure.ValidateAuthority(*materialization.Authority) == nil {
 			return materialization.Authority.SHA256
 		}
-	case fillerstructure.AssessmentInputWindowMediaSet:
-		if materialization.WindowAuthority != nil && fillerstructurewindow.ValidateMaterializationAuthority(*materialization.WindowAuthority) == nil {
+	case structure.AssessmentInputWindowMediaSet:
+		if materialization.WindowAuthority != nil && window.ValidateMaterializationAuthority(*materialization.WindowAuthority) == nil {
 			return materialization.WindowAuthority.SHA256
 		}
 	}

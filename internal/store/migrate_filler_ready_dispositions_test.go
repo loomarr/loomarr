@@ -236,7 +236,7 @@ func insertLegacyClipPipeline(ctx context.Context, st Store, p filler.ClipPipeli
 }
 
 // readClipPipelineRow reads the pipeline columns the migration tests assert on. The pipeline's own
-// methods are the filler store's (internal/fillerstore), which a core test cannot import, so the
+// methods are the filler store's (internal/filler/records), which a core test cannot import, so the
 // tests seed with insertLegacyClipPipeline and read back here.
 func readClipPipelineRow(ctx context.Context, st Store, hash string) (filler.ClipPipeline, bool, error) {
 	s, ok := adapterOf(st)
