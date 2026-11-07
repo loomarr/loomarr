@@ -99,4 +99,36 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(files) != 2 || files[0].Path != "/media/show/e1.mkv" || files[1].SeriesID != "s1" {
 		t.Fatalf("series files = %+v, %v", files, err)
 	}
+
+	// A file Loomarr moved away goes missing at once, unheld; a missing one keeps when it went.
+	held := file("/media/show/e2.mkv", "e2", "s1", LibraryHeaderPending)
+	held.Held = true
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{held}); err != nil {
+		t.Fatal(err)
+	}
+	later := at.Add(time.Hour)
+	for _, path := range []string{"/media/show/e2.mkv", "/media/gone.mkv"} {
+		if err := st.RemoveLibraryFile(ctx, path, later); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := st.LibraryFiles(ctx, "/media")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		switch r.Path {
+		case "/media/show/e2.mkv":
+			if !r.MissingAt.Equal(later) || r.Held {
+				t.Errorf("removed file = %+v, want missing at %v and unheld", r, later)
+			}
+		case "/media/gone.mkv":
+			if !r.MissingAt.Equal(at) {
+				t.Errorf("an already missing file = %+v, want it to keep %v", r, at)
+			}
+		}
+	}
+	if one, err := st.LibraryItem(ctx, "s1"); err != nil || one.Files != 1 {
+		t.Errorf("series after a removal = %+v, %v; want one file", one, err)
+	}
 }

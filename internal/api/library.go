@@ -35,6 +35,7 @@ type LibraryRootService interface {
 	Item(ctx context.Context, id string) (scan.ItemDetail, error)
 	UpdateDetails(ctx context.Context, id string) error
 	CheckFiles(ctx context.Context, id string) error
+	RemoveExtraCopy(ctx context.Context, id, path string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
 	NeedCount(ctx context.Context) (int, error)

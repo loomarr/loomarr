@@ -319,7 +319,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (`/library/{id}`) shows the poster, year and length or seasons, the rating, genres and
   overview, each season's episodes in a disclosure (specials last), and Technical details. Still
   to come: Collections (step 12); On these channels, once channels name library items (step 15's
-  id migration); the extra-copy card (decision 37).
+  id migration).
 - **Needs you on the page** (step 11b). The Library page's strip asks about the first four
   titles that need the household ("X — is this the 1999 movie?", Yes, that's it / Pick a
   different title, or Find it with no guess); `/library/needs` holds one card each with the
@@ -345,6 +345,16 @@ step 5). Nothing reads the scanner's origins until the cutover.
   its header is read the picture (4K, 1080p HD, 720p HD or standard, "extra-rich colour" for
   HDR), the sound that plays (its default audio stream), each subtitle language, and the
   measured length.
+- **Extra copies** (step 10e, decision 37). When a movie has several files, one plays: the file
+  its arr lists (each file origin's extension notes `managed`), else the sharpest picture, else
+  the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
+  extra copy is taking 4.0 GB") with Remove extra copy (`POST …/remove-copy`, 409 for the copy
+  that plays). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
+  same share, so it is a rename and can be undone by moving it back; the trash holds a `.ignore`,
+  so walks and watches skip it. Loomarr marks the file missing at once, so no removal guard holds
+  it. A complete walk of the folder deletes each day's trash 30 days on; a folder there that isn't
+  a date is left alone. A read-only folder answers 409, and the card says Loomarr may not be
+  allowed to change it.
 
 ## Cached series episodes
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
@@ -39,6 +40,45 @@ type ItemFile struct {
 	AudioChannels int
 	// Subtitles is each subtitle stream's language in order, "" where the file doesn't say.
 	Subtitles []string
+	// Extra is a copy that never plays, because another of the title's files does (decision 37).
+	Extra bool
+	// managed is true when its arr lists it.
+	managed bool
+}
+
+// markExtras marks every file but the one that plays as an extra copy (decision 37): the file its
+// arr lists, else the sharpest picture, else the biggest file. One file is never an extra.
+func markExtras(files []ItemFile) {
+	if len(files) < 2 {
+		return
+	}
+	pixels := func(f ItemFile) int {
+		if f.Picture == nil {
+			return 0
+		}
+		return f.Picture.Width * f.Picture.Height
+	}
+	best := 0
+	for i, f := range files[1:] {
+		b := files[best]
+		if c := cmp.Or(compareBool(f.managed, b.managed), cmp.Compare(pixels(f), pixels(b)), cmp.Compare(f.Size, b.Size)); c > 0 {
+			best = i + 1
+		}
+	}
+	for i := range files {
+		files[i].Extra = i != best
+	}
+}
+
+func compareBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	default:
+		return -1
+	}
 }
 
 // Picture is a video stream's size and range.
@@ -111,8 +151,12 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 	}
 	if summary.Kind != string(kindSeries) {
 		for _, f := range files {
-			detail.Files = append(detail.Files, itemFile(f, item.sources[f.Path]))
+			source := item.sources[f.Path]
+			file := itemFile(f, source.facts)
+			file.managed = source.managed
+			detail.Files = append(detail.Files, file)
 		}
+		markExtras(detail.Files)
 		return detail, nil
 	}
 	detail.Seasons, detail.EpisodeNamesFrom, err = l.seasons(ctx, files)
@@ -236,11 +280,17 @@ func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Sea
 }
 
 // scannedItem is what the scanner wrote about an item: its newest present scan origin's facts and
-// their provenance, and each present file's header facts by path.
+// their provenance, and each present file by path.
 type scannedItem struct {
 	facts   inventory.ItemFacts
 	from    DetailsFrom
-	sources map[string]inventory.SourceFacts
+	sources map[string]scannedSource
+}
+
+// scannedSource is one of an item's present files: its header facts, and whether its arr lists it.
+type scannedSource struct {
+	facts   inventory.SourceFacts
+	managed bool
 }
 
 // scanned is what the scanner wrote about an item; zero when the inventory has none.
@@ -249,25 +299,31 @@ func (l *Library) scanned(ctx context.Context, id string) (scannedItem, error) {
 	if err != nil || !ok {
 		return scannedItem{}, err
 	}
-	out := scannedItem{sources: map[string]inventory.SourceFacts{}}
-	for _, s := range item.Sources {
-		for _, o := range s.Origins {
-			if strings.HasPrefix(string(o.Key.Authority), authorityPrefix) && o.MissingAt.IsZero() && o.Locator.Path != "" {
-				out.sources[o.Locator.Path] = o.Observation.Facts
-			}
-		}
+	present := func(key inventory.OriginKey, missing time.Time) bool {
+		return strings.HasPrefix(string(key.Authority), authorityPrefix) && missing.IsZero()
 	}
+	out := scannedItem{sources: map[string]scannedSource{}}
+	ext := map[inventory.OriginKey]originExtension{}
 	var best *inventory.ItemOrigin
 	for i, o := range item.Origins {
-		if !strings.HasPrefix(string(o.Key.Authority), authorityPrefix) || !o.MissingAt.IsZero() {
+		if !present(o.Key, o.MissingAt) {
 			continue
 		}
+		ext[o.Key] = readOriginExtension(o.Observation.Extension)
 		if best == nil || o.Observation.ObservedAt.After(best.Observation.ObservedAt) {
 			best = &item.Origins[i]
 		}
 	}
 	if best != nil {
-		out.facts, out.from = best.Observation.Facts, detailsFromExtension(best.Observation.Extension)
+		out.facts, out.from = best.Observation.Facts, ext[best.Key].From
+	}
+	// A file's source origin shares its item origin's key, which says whether an arr lists it.
+	for _, s := range item.Sources {
+		for _, o := range s.Origins {
+			if present(o.Key, o.MissingAt) && o.Locator.Path != "" {
+				out.sources[o.Locator.Path] = scannedSource{facts: o.Observation.Facts, managed: ext[o.Key].Managed}
+			}
+		}
 	}
 	return out, nil
 }

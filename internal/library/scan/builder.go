@@ -263,7 +263,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	coverage["sources"] = inventory.CoveragePresent
 	snapshot.Kind = id.itemKind(file)
 	snapshot.Observation.Facts, snapshot.Observation.Coverage = facts, coverage
-	snapshot.Observation.Extension = detailsExtension(resolved)
+	snapshot.Observation.Extension = originExtensionOf(resolved, len(id.managed.records) > 0)
 	snapshot.ExternalIDs = externalIDs(resolved.IDs)
 	return snapshot
 }
@@ -339,7 +339,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			Origin: seriesOrigin(b.root, s.dir), Kind: kindSeries,
 			Observation: inventory.Observation[inventory.ItemFacts]{
 				SchemaVersion: 1, ObservedAt: now, Coverage: coverage, Facts: facts,
-				Extension: detailsExtension(resolved),
+				Extension: originExtensionOf(resolved, false),
 			},
 			ExternalIDs: externalIDs(resolved.IDs),
 		}

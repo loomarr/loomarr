@@ -95,7 +95,7 @@ const Row = ({ label, value, mono = false }: { label: string; value: string; mon
 
 const FileRows = ({ file }: { file: LibraryTitleFile }) => (
   <Stack gap="control">
-    <Row label="File" mono value={file.path} />
+    <Row label={file.extra ? "Extra copy" : "File"} mono value={file.path} />
     <Row label="Size" value={formatBytes(file.size)} />
     {file.picture ? <Row label="Picture" value={picturePhrase(file.picture)} /> : null}
     {file.audioChannels ? <Row label="Sound" value={soundPhrase(file.audioChannels)} /> : null}

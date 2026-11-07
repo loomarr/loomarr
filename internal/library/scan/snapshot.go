@@ -55,7 +55,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	3: titles note their scan origin and whether anything grounds them (Needs you).
 //	4: titles note what said which title they are, and its page (Wrong title?).
 //	5: each origin notes where its shown details came from (Technical details).
-const writeVersion = 5
+//	6: a file's origin notes whether its arr lists it (the copy that plays).
+const writeVersion = 6
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
@@ -101,23 +102,27 @@ type DetailsFrom struct {
 // originExtension is what the scanner keeps in an origin's Observation.Extension.
 type originExtension struct {
 	From DetailsFrom `json:"from"`
+	// Managed is true for a file its arr lists: the arr's current file, the one that plays when a
+	// title has several (decision 37).
+	Managed bool `json:"managed,omitempty"`
 }
 
-// detailsExtension is r's provenance as an origin's Observation.Extension.
-func detailsExtension(r precedence.Resolved) json.RawMessage {
+// originExtensionOf is r's provenance, and whether an arr lists the file, as an origin's
+// Observation.Extension.
+func originExtensionOf(r precedence.Resolved, managed bool) json.RawMessage {
 	raw, _ := json.Marshal(originExtension{From: DetailsFrom{
 		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
-	}})
+	}, Managed: managed})
 	return raw
 }
 
-// detailsFromExtension reads detailsExtension back; an origin written before it says nothing.
-func detailsFromExtension(raw json.RawMessage) DetailsFrom {
+// readOriginExtension reads originExtensionOf back; an origin written before it says nothing.
+func readOriginExtension(raw json.RawMessage) originExtension {
 	var ext originExtension
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &ext)
 	}
-	return ext.From
+	return ext
 }
 
 // itemFacts projects resolved values into the inventory's item facts, with coverage for each

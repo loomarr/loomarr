@@ -230,6 +230,17 @@ func TestLibraryItemMatchAndActions(t *testing.T) {
 		t.Errorf("updated title's file = %+v, want it written again", files[0])
 	}
 
+	// A title's only file is the copy that plays; a file it doesn't have isn't there to remove.
+	for path, want := range map[string]int{"/media/bravo.mkv": http.StatusConflict, "/media/charlie.mkv": http.StatusNotFound} {
+		body := `{"path":"` + path + `"}`
+		if resp := h.Do(http.MethodPost, "/v1/library/items/90000002/remove-copy", adminToken, body); resp.StatusCode != want {
+			t.Errorf("remove %s = %d, want %d", path, resp.StatusCode, want)
+		}
+	}
+	if resp := h.Do(http.MethodPost, "/v1/library/items/90000002/remove-copy", memberToken, `{"path":"/media/bravo.mkv"}`); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("remove by a member = %d, want 403", resp.StatusCode)
+	}
+
 	for _, action := range []string{"check", "refresh"} {
 		if resp := h.Do(http.MethodPost, "/v1/library/items/90000099/"+action, adminToken, ""); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("%s of an unknown title = %d, want 404", action, resp.StatusCode)
