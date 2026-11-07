@@ -1,6 +1,7 @@
 import type { IncomingPreparationDTO } from "@loomarr/api/models/incomingPreparationDTO";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { IncomingPreparationSummary, readyRangeLabel } from "./incoming-preparation-summary";
 
 const preparation = (over: Partial<IncomingPreparationDTO> = {}): IncomingPreparationDTO => ({

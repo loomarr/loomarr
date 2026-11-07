@@ -1,7 +1,8 @@
 import type { IncomingProcessingDTO } from "@loomarr/api";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { IncomingProcessingDetails } from "./incoming-processing-details";
 
 const processing = (over: Partial<IncomingProcessingDTO> = {}): IncomingProcessingDTO => ({

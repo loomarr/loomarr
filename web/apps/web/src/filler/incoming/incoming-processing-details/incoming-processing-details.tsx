@@ -1,9 +1,9 @@
 import type { IncomingProcessingDTO } from "@loomarr/api/models/incomingProcessingDTO";
 import type { IncomingProcessingStageDTO } from "@loomarr/api/models/incomingProcessingStageDTO";
 import { formatRelative, formatUntil } from "@loomarr/core/format";
+import { ProgressTrack } from "@loomarr/design-system";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 
 const visibleByDefault = (stage: IncomingProcessingStageDTO) => stage.outcome !== "not_needed";
 
@@ -17,7 +17,7 @@ const CurrentStageProgress = ({ stage }: { stage: IncomingProcessingStageDTO }) 
         <span className="text-muted-foreground">Current step</span>
         <span>{measured ? `${stage.progress}%` : "Working…"}</span>
       </div>
-      <Progress value={stage.progress} label={label} />
+      <ProgressTrack percent={stage.progress} label={label} tone="tune" />
     </div>
   );
 };
