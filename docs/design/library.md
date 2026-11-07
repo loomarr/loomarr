@@ -364,6 +364,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   See why, which opens the title. The title's page gives an unplayable title a warning card with
   Check again, and the shelf marks a ready title that needs a look with a dot (a phone grid has no
   room for a word), which a screen reader hears as "<name>, needs a look".
+- **Your collections** (step 12, decision 28). `library_collections` keeps the household's own
+  collections and `library_collection_members` their titles in order, as `library_items` ids. A
+  title that leaves the library drops out of the list and stays a member, so it comes back in its
+  place. `/v1/collections` (admin) lists, reads, makes, changes (name, description and titles
+  whole) and deletes them; each says which channels use it: a channel's scope or any rule's
+  `what` that names its id. Delete answers 409 while any do. `imported_from` marks one brought
+  over from the media server at cutover (step 15). These are not the media server's collections
+  at `/v1/library/collections`, which channel scopes name until then.
 
 ## Cached series episodes
 
