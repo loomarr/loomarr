@@ -181,6 +181,24 @@ func (c *productNotificationCoordinator) LibraryChangesDegraded(ctx context.Cont
 	c.logPublicationFailure(err, "library", app, notifications.TopicLibraryChangesDegraded)
 }
 
+// LibraryNeedsYou tells the operators how many titles Loomarr can't tell what they are. The
+// scanner calls it at most once a day, when any are new.
+func (c *productNotificationCoordinator) LibraryNeedsYou(ctx context.Context, total int) {
+	if c == nil || c.publisher == nil || total <= 0 {
+		return
+	}
+	summary := "Loomarr can't tell what " + strconv.Itoa(total) + " titles are. Answer them in Library → Needs you."
+	if total == 1 {
+		summary = "Loomarr can't tell what 1 title is. Answer it in Library → Needs you."
+	}
+	_, err := c.publisher.Publish(ctx, notifications.ProductEvent{
+		Identity: "library:needs:" + time.Now().UTC().Format(time.DateOnly),
+		Topic:    notifications.TopicLibraryNeedsYou, ReferenceID: "needs", SubjectName: "Needs you",
+		Summary: summary,
+	})
+	c.logPublicationFailure(err, "library", "needs", notifications.TopicLibraryNeedsYou)
+}
+
 // notificationText is s fit for a notification's subject: control characters become spaces, and
 // it is cut to 200 bytes on a character boundary.
 func notificationText(s string) string {

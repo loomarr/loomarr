@@ -133,6 +133,7 @@ func TestLibraryNotificationsReachOperators(t *testing.T) {
 		Audience: notifications.RecipientOperators, Enabled: true, CreatedAt: now, UpdatedAt: now,
 		Topics: []notifications.Topic{
 			notifications.TopicLibraryFolderOffline, notifications.TopicLibraryFolderBack, notifications.TopicLibraryChangesDegraded,
+			notifications.TopicLibraryNeedsYou,
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -150,9 +151,12 @@ func TestLibraryNotificationsReachOperators(t *testing.T) {
 	notify.LibraryFolder(t.Context(), long, true)
 	notify.LibraryChangesDegraded(t.Context(), "sonarr", fmt.Errorf("refused"))
 	notify.LibraryChangesDegraded(t.Context(), "sonarr", fmt.Errorf("refused again"))
+	notify.LibraryNeedsYou(t.Context(), 3)
+	notify.LibraryNeedsYou(t.Context(), 4)
+	notify.LibraryNeedsYou(t.Context(), 0)
 
-	if len(repository.Intents) != 3 || len(repository.Attempts) != 3 {
-		t.Fatalf("intents = %d, attempts = %d; want three, each routed", len(repository.Intents), len(repository.Attempts))
+	if len(repository.Intents) != 4 || len(repository.Attempts) != 4 {
+		t.Fatalf("intents = %d, attempts = %d; want four, each routed", len(repository.Intents), len(repository.Attempts))
 	}
 	topics := map[notifications.Topic]bool{}
 	for _, intent := range repository.Intents {
@@ -163,8 +167,12 @@ func TestLibraryNotificationsReachOperators(t *testing.T) {
 		if strings.ContainsAny(intent.Template.SubjectName, "\n") || len(intent.Template.SubjectName) > 200 {
 			t.Errorf("subject %q is not fit to send", intent.Template.SubjectName)
 		}
+		if intent.Topic == notifications.TopicLibraryNeedsYou &&
+			intent.Template.Summary != "Loomarr can't tell what 3 titles are. Answer them in Library → Needs you." {
+			t.Errorf("needs you summary = %q; want the day's first count", intent.Template.Summary)
+		}
 	}
-	if len(topics) != 3 {
+	if len(topics) != 4 {
 		t.Errorf("topics = %v", topics)
 	}
 }

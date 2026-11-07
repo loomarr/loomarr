@@ -65,6 +65,7 @@ type libraryBuild struct {
 type libraryNotifier interface {
 	LibraryFolder(ctx context.Context, root string, readable bool)
 	LibraryChangesDegraded(ctx context.Context, app string, err error)
+	LibraryNeedsYou(ctx context.Context, total int)
 }
 
 // libraryNotifierOf is c as a libraryNotifier, nil (not a typed nil) when there is none.
@@ -147,6 +148,14 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	if deps.notify != nil {
 		hooks.Degraded = deps.notify.LibraryChangesDegraded
+		notice := &scan.NeedsNotice{
+			Store: st, Notify: deps.notify.LibraryNeedsYou, Enabled: im.Enabled, Log: deps.log,
+			Settled: func() bool {
+				p := im.Progress()
+				return p.Stage == scan.StageIdle && !p.CompletedAt.IsZero()
+			},
+		}
+		deps.owner.goRunAfterBuild(notice.Run)
 	}
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)

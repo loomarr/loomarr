@@ -249,8 +249,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
-  registration starts failing publishes `library_changes_degraded`, at most once a day. The daily
-  batch of unmatched files waits for Library → Unmatched (step 11).
+  registration starts failing publishes `library_changes_degraded`, at most once a day. Once a pass
+  has settled, `library_needs_you` says how many titles Needs you holds, at most once a day and
+  only when one is new since the last notice: `scan.NeedsNotice` marks each title it counted
+  (`library_items.needs_noticed`), so a restart neither repeats a notice nor loses one.
 - **Library → Items** (step 10, decisions 22 and 25) reads a small list the importer keeps as it
   writes, rather than decoding every inventory observation: `library_items` holds each movie and
   series it wrote (id, kind, resolved name, sort name, year), and each `library_files` row records

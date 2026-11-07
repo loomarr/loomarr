@@ -84,6 +84,21 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("searched = %q", needs[0].Searched)
 	}
 
+	// A notice counts each title once, and a rewrite of the title keeps the mark.
+	if ids, err := st.UnnoticedLibraryNeeds(ctx); err != nil || len(ids) != 2 || ids[0] != "m2" || ids[1] != "s1" {
+		t.Fatalf("unnoticed = %v, %v; want both needs", ids, err)
+	}
+	if err := st.NoticeLibraryNeeds(ctx, []string{"m2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{{ID: "m2", Kind: "movie", Name: "Mystery Film",
+		Origin: origin("/media/b/b.mkv")}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if ids, err := st.UnnoticedLibraryNeeds(ctx); err != nil || len(ids) != 1 || ids[0] != "s1" {
+		t.Fatalf("unnoticed after a notice = %v, %v; want the series only", ids, err)
+	}
+
 	kind, o, err := st.LibraryItemOrigin(ctx, "s1")
 	if err != nil || kind != "series" || o != origin("/media/show") {
 		t.Fatalf("origin = %q, %+v, %v", kind, o, err)

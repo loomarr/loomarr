@@ -25,10 +25,12 @@ const (
 	TopicChannelDegraded       Topic = "channel_degraded"
 	TopicDeliveryTest          Topic = "delivery_test"
 	// The library scanner (#2151 decision 32): a media folder stopped opening or opens again,
-	// and an arr can no longer tell Loomarr about new files.
+	// an arr can no longer tell Loomarr about new files, and the day's titles that need the
+	// household.
 	TopicLibraryFolderOffline   Topic = "library_folder_offline"
 	TopicLibraryFolderBack      Topic = "library_folder_back"
 	TopicLibraryChangesDegraded Topic = "library_changes_degraded"
+	TopicLibraryNeedsYou        Topic = "library_needs_you"
 )
 
 type RecipientKind string
@@ -267,7 +269,7 @@ func (i Intent) Validate() error {
 		if err := i.validateProductAudience(ReferenceChannel); err != nil {
 			return err
 		}
-	case TopicLibraryFolderOffline, TopicLibraryFolderBack, TopicLibraryChangesDegraded:
+	case TopicLibraryFolderOffline, TopicLibraryFolderBack, TopicLibraryChangesDegraded, TopicLibraryNeedsYou:
 		if err := i.validateProduct(RecipientOperators, ReferenceLibrary); err != nil {
 			return err
 		}
