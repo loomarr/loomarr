@@ -64,9 +64,9 @@ func (e *eventEmitter) ProposalApproved(ctx context.Context, proposal store.Prop
 	}
 }
 
-func (e *eventEmitter) ProposalDeclined(ctx context.Context, proposal store.Proposal) {
+func (e *eventEmitter) ProposalDenied(ctx context.Context, proposal store.Proposal) {
 	if coordinator := e.notifications.Load(); coordinator != nil {
-		coordinator.ProposalDeclined(ctx, proposal)
+		coordinator.ProposalDenied(ctx, proposal)
 	}
 }
 

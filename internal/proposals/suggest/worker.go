@@ -74,7 +74,7 @@ func (s *Service) WithQualityRecorder(recorder QualityRecorder) *Service {
 type ProposalNotifier interface {
 	ProposalSubmitted(context.Context, store.Proposal)
 	ProposalApproved(context.Context, store.Proposal, string)
-	ProposalDeclined(context.Context, store.Proposal)
+	ProposalDenied(context.Context, store.Proposal)
 }
 
 func (s *Service) WithProposalNotifier(notifier ProposalNotifier) *Service {

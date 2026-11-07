@@ -356,7 +356,7 @@ func insertProposalTx(ctx context.Context, tx *sql.Tx, s *sqlStore, p Proposal) 
 		return err
 	}
 	_, err = tx.ExecContext(ctx, s.ph(
-		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
+		`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
 		body, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))

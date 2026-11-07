@@ -63,7 +63,7 @@ type ProposalJob struct {
 
 // Proposal is a persisted suggester output (§8). Status drives the approval queue
 // (submitted → approved/denied); CreatedBy powers My proposals (§12); ApprovedBy
-// records the admin (§8 audit). Body is the proposals.Proposal, persisted as one JSON column.
+// records whoever decided it, approver or denier, in the `decided_by` column (§8 audit). Body is the proposals.Proposal, persisted as one JSON column.
 type Proposal struct {
 	ID         string
 	JobID      string
@@ -163,7 +163,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error, j.failure_code,
 		        j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at, j.failure_trace_json,
 		        j.channel_id,
-		        p.id, p.job_id, p.status, p.created_by, p.approved_by, p.deny_reason,
+		        p.id, p.job_id, p.status, p.created_by, p.decided_by, p.deny_reason,
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
 		   FROM proposal_jobs j
 		   LEFT JOIN proposals p
@@ -417,7 +417,7 @@ func (s *sqlStore) CreateProposal(ctx context.Context, p Proposal) error {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
+		`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
 		body, epoch(p.ApprovedAt), epoch(p.CreatedAt), epoch(p.UpdatedAt))
@@ -450,7 +450,7 @@ func decodeProposalBody(id, raw string) (proposals.Proposal, error) {
 	return body, nil
 }
 
-const proposalSelect = `SELECT id, job_id, status, created_by, approved_by, deny_reason,
+const proposalSelect = `SELECT id, job_id, status, created_by, decided_by, deny_reason,
 	mod_summary, note, proposal_json, approved_at, created_at, updated_at FROM proposals`
 
 func (s *sqlStore) GetProposal(ctx context.Context, id string) (Proposal, error) {

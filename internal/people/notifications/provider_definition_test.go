@@ -223,7 +223,7 @@ func TestProviderDefinitionsOfferOnlyEventsTheirRecipientModelCanDeliver(t *test
 		t.Fatal("SMTP must offer requester-addressed events")
 	}
 	if hasProviderTopic(slack, notifications.TopicProposalApproved) ||
-		hasProviderTopic(slack, notifications.TopicProposalDeclined) {
+		hasProviderTopic(slack, notifications.TopicProposalDenied) {
 		t.Fatal("a shared Slack destination must not offer requester-only events")
 	}
 	if !hasProviderTopic(slack, notifications.TopicProposalSubmitted) ||
@@ -235,7 +235,7 @@ func TestProviderDefinitionsOfferOnlyEventsTheirRecipientModelCanDeliver(t *test
 		t.Fatal("Pushover provider definition is missing")
 	}
 	if pushover.MemberOwned || hasProviderTopic(pushover, notifications.TopicProposalApproved) ||
-		hasProviderTopic(pushover, notifications.TopicProposalDeclined) {
+		hasProviderTopic(pushover, notifications.TopicProposalDenied) {
 		t.Fatal("installation Pushover must not offer requester-only events")
 	}
 }

@@ -36,8 +36,8 @@ func (c *productNotificationCoordinator) ProposalApproved(ctx context.Context, p
 	c.publishProposal(ctx, proposal, notifications.TopicProposalApproved, proposal.ModSummary)
 }
 
-func (c *productNotificationCoordinator) ProposalDeclined(ctx context.Context, proposal store.Proposal) {
-	c.publishProposal(ctx, proposal, notifications.TopicProposalDeclined, proposal.DenyReason)
+func (c *productNotificationCoordinator) ProposalDenied(ctx context.Context, proposal store.Proposal) {
+	c.publishProposal(ctx, proposal, notifications.TopicProposalDenied, proposal.DenyReason)
 }
 
 func (c *productNotificationCoordinator) Provisioned(ctx context.Context, event provision.DomainEvent) {
@@ -224,8 +224,8 @@ func proposalEventIdentity(topic notifications.Topic) string {
 		return "submitted"
 	case notifications.TopicProposalApproved:
 		return "approved"
-	case notifications.TopicProposalDeclined:
-		return "declined"
+	case notifications.TopicProposalDenied:
+		return "denied"
 	default:
 		return "changed"
 	}

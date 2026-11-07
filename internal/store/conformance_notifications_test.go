@@ -201,7 +201,7 @@ func testNotificationProductVocabulary(t *testing.T, newStore NewStoreFunc) {
 	remaining := []notifications.Intent{
 		{ID: "intent-approved", Topic: notifications.TopicProposalApproved, RecipientKind: notifications.RecipientPerson,
 			RecipientID: "user-1", ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-2"},
-		{ID: "intent-declined", Topic: notifications.TopicProposalDeclined, RecipientKind: notifications.RecipientPerson,
+		{ID: "intent-declined", Topic: notifications.TopicProposalDenied, RecipientKind: notifications.RecipientPerson,
 			RecipientID: "user-1", ReferenceKind: notifications.ReferenceProposal, ReferenceID: "proposal-3"},
 		{ID: "intent-available", Topic: notifications.TopicAcquisitionAvailable, RecipientKind: notifications.RecipientPerson,
 			RecipientID: "user-1", ReferenceKind: notifications.ReferenceTitle, ReferenceID: "movie:tmdb:90000603"},

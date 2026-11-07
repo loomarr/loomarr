@@ -84,7 +84,7 @@ func productRecipients(topic Topic, people []string) (ReferenceKind, []productRe
 	switch topic {
 	case TopicProposalSubmitted:
 		return ReferenceProposal, []productRecipient{{kind: RecipientApprovers, id: string(RecipientApprovers)}}, nil
-	case TopicProposalApproved, TopicProposalDeclined:
+	case TopicProposalApproved, TopicProposalDenied:
 		if len(people) != 1 {
 			return "", nil, fmt.Errorf("proposal decision notification requires exactly one requester")
 		}

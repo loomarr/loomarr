@@ -52,7 +52,7 @@ func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int
 // PurgeDeniedProposals removes `denied` proposals older than `before` and returns the count.
 //
 // ⚠ **`approved` and `submitted` are kept indefinitely**, for two different reasons:
-//   - `approved` is the audit trail behind `approved_by` — the record that someone authorized
+//   - `approved` is the audit trail behind `decided_by` — the record that someone authorized
 //     spending real resources (§7). An audit trail with a retention window is not one.
 //   - `submitted` is a member still waiting for an answer. Ageing it out would discard their
 //     request rather than decline it, so it would vanish from "My requests" with nothing

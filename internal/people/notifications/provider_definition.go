@@ -149,7 +149,7 @@ func (d ProviderDefinition) Redact(configuration, credentials map[string]string)
 var productProviderTopics = []Topic{
 	TopicProposalSubmitted,
 	TopicProposalApproved,
-	TopicProposalDeclined,
+	TopicProposalDenied,
 	TopicAcquisitionAvailable,
 	TopicAcquisitionGaveUp,
 	TopicChannelLive,

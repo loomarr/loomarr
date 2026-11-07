@@ -44,7 +44,7 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 func TestProposalBodyEmptyColumnIsTheZeroProposal(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	ctx := context.Background()
-	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
+	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		VALUES ('p-empty', 'j', 'submitted', 'u', '', '', '', '', '', 0, 0, 0)`)); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestProposalBodyEmptyColumnIsTheZeroProposal(t *testing.T) {
 func TestProposalBodyMalformedColumnIsAnError(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	ctx := context.Background()
-	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, approved_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
+	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 		VALUES ('p-bad', 'j', 'approved', 'u', '', '', '', '', '{', 0, 0, 0)`)); err != nil {
 		t.Fatal(err)
 	}
