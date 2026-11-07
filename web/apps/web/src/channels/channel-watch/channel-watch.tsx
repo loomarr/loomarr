@@ -195,16 +195,17 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
 
   // The station-ID card (§9.1): every settled tune shows it for five seconds, while the controls are
   // hidden. A retune drops it until the new channel settles, then shows it afresh.
-  const [ident, setIdent] = useState(false);
+  // A retune hides it by derivation: a state change here would render this tree a second time
+  // inside the press, holding up the tuning overlay.
+  const settled = !tuning && player.status === "playing";
+  const [identUp, setIdentUp] = useState(false);
   useEffect(() => {
-    if (tuning || player.status !== "playing") {
-      setIdent(false);
-      return;
-    }
-    setIdent(true);
-    const timer = window.setTimeout(() => setIdent(false), IDENT_MS);
+    if (!settled) return;
+    setIdentUp(true);
+    const timer = window.setTimeout(() => setIdentUp(false), IDENT_MS);
     return () => window.clearTimeout(timer);
-  }, [tuning, player.status]);
+  }, [settled]);
+  const ident = settled && identUp;
 
   const [switchSoundOn, setSwitchSoundOn] = useSwitchSound({
     channelId: osdChannel.id,
