@@ -74,8 +74,9 @@ type LibraryFileStore interface {
 }
 
 func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size, modified_ns, identity, kind, header,
-		problem, held, seen_at, missing_at, item_id, series_id FROM library_files WHERE root = ? ORDER BY path`), root)
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
+		problem, held, seen_at_ms, missing_at_ms, inventory_item_id, inventory_series_id FROM library_files
+		WHERE root = ? ORDER BY path`), root)
 	if err != nil {
 		return nil, fmt.Errorf("list library files: %w", err)
 	}
@@ -110,13 +111,14 @@ func (s *sqlStore) SaveLibraryFiles(ctx context.Context, files []LibraryFile) er
 	}
 	defer func() { _ = tx.Rollback() }()
 	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_files
-		(path, root, size, modified_ns, identity, kind, header, problem, held, seen_at, missing_at, item_id, series_id)
+		(path, root, size_bytes, modified_ns, identity, kind, header, problem, held, seen_at_ms, missing_at_ms,
+		inventory_item_id, inventory_series_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (path) DO UPDATE SET root = excluded.root, size = excluded.size,
+		ON CONFLICT (path) DO UPDATE SET root = excluded.root, size_bytes = excluded.size_bytes,
 		modified_ns = excluded.modified_ns, identity = excluded.identity, kind = excluded.kind,
 		header = excluded.header, problem = excluded.problem, held = excluded.held,
-		seen_at = excluded.seen_at, missing_at = excluded.missing_at,
-		item_id = excluded.item_id, series_id = excluded.series_id`))
+		seen_at_ms = excluded.seen_at_ms, missing_at_ms = excluded.missing_at_ms,
+		inventory_item_id = excluded.inventory_item_id, inventory_series_id = excluded.inventory_series_id`))
 	if err != nil {
 		return fmt.Errorf("save library files: %w", err)
 	}
@@ -172,7 +174,7 @@ func (s *sqlStore) DeleteLibraryFiles(ctx context.Context, root string) error {
 }
 
 func (s *sqlStore) SetLibraryRootScanned(ctx context.Context, root string, at time.Time) error {
-	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_roots SET scanned_at = ? WHERE path = ?`),
+	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_roots SET scanned_at_ms = ? WHERE path = ?`),
 		at.UnixMilli(), root)
 	if err != nil {
 		return fmt.Errorf("set library root scanned: %w", err)
@@ -191,13 +193,13 @@ func (s *sqlStore) LibraryFileCounts(ctx context.Context) (LibraryFileCounts, er
 		COUNT(*),
 		COALESCE(SUM(CASE WHEN header = ? AND problem = '' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN problem <> '' THEN 1 ELSE 0 END), 0)
-		FROM library_files WHERE missing_at = 0`), LibraryHeaderPending).
+		FROM library_files WHERE missing_at_ms = 0`), LibraryHeaderPending).
 		Scan(&c.Files, &c.HeadersPending, &c.Problems)
 	if err != nil {
 		return c, fmt.Errorf("count library files: %w", err)
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT root, kind, COUNT(*) FROM library_files
-		WHERE held AND missing_at = 0 GROUP BY root, kind ORDER BY root, kind`)
+		WHERE held AND missing_at_ms = 0 GROUP BY root, kind ORDER BY root, kind`)
 	if err != nil {
 		return c, fmt.Errorf("count held library files: %w", err)
 	}

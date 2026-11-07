@@ -133,7 +133,7 @@ func (s *sqlStore) LibraryCandidates(ctx context.Context, itemIDs []string) (map
 	out := map[string][]LibraryCandidate{}
 	for _, id := range itemIDs {
 		rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, tmdb_id, name, year, overview, poster, name_match,
-			year_match, length_match FROM library_candidates WHERE item_id = ? ORDER BY rank`), id)
+			year_match, length_match FROM library_candidates WHERE inventory_item_id = ? ORDER BY rank`), id)
 		if err != nil {
 			return nil, fmt.Errorf("library candidates: %w", err)
 		}
@@ -159,11 +159,11 @@ func (s *sqlStore) SaveLibraryCandidates(ctx context.Context, itemID, searched s
 		return fmt.Errorf("save library candidates: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM library_candidates WHERE item_id = ?`), itemID); err != nil {
+	if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM library_candidates WHERE inventory_item_id = ?`), itemID); err != nil {
 		return fmt.Errorf("save library candidates: %w", err)
 	}
 	for rank, c := range candidates {
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_candidates (item_id, rank, kind, tmdb_id, name,
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_candidates (inventory_item_id, rank, kind, tmdb_id, name,
 			year, overview, poster, name_match, year_match, length_match) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 			itemID, rank, c.Kind, c.TMDBID, c.Name, c.Year, c.Overview, c.Poster, c.NameMatch, c.YearMatch,
 			c.LengthMatch); err != nil {
@@ -196,7 +196,7 @@ func (s *sqlStore) LibraryItemOrigin(ctx context.Context, itemID string) (string
 func (s *sqlStore) LibraryAnswerFor(ctx context.Context, origin LibraryOrigin) (LibraryAnswer, bool, error) {
 	a := LibraryAnswer{Origin: origin}
 	var at int64
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT kind, tmdb_id, ignored, answered_at FROM library_answers
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT kind, tmdb_id, ignored, answered_at_ms FROM library_answers
 		WHERE origin_authority = ? AND origin_key = ?`), origin.Authority, origin.Key).Scan(&a.Kind, &a.TMDBID, &a.Ignored, &at)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LibraryAnswer{}, false, nil
@@ -216,9 +216,9 @@ func (s *sqlStore) SaveLibraryAnswer(ctx context.Context, a LibraryAnswer) error
 		return fmt.Errorf("save library answer: an answer is either a link or ignored")
 	}
 	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO library_answers
-		(origin_authority, origin_key, kind, tmdb_id, ignored, answered_at) VALUES (?, ?, ?, ?, ?, ?)
+		(origin_authority, origin_key, kind, tmdb_id, ignored, answered_at_ms) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (origin_authority, origin_key) DO UPDATE SET kind = excluded.kind, tmdb_id = excluded.tmdb_id,
-		ignored = excluded.ignored, answered_at = excluded.answered_at`),
+		ignored = excluded.ignored, answered_at_ms = excluded.answered_at_ms`),
 		a.Origin.Authority, a.Origin.Key, a.Kind, a.TMDBID, a.Ignored, a.AnsweredAt.UnixMilli()); err != nil {
 		return fmt.Errorf("save library answer: %w", err)
 	}
@@ -234,7 +234,7 @@ func (s *sqlStore) DeleteLibraryAnswer(ctx context.Context, origin LibraryOrigin
 }
 
 func (s *sqlStore) RewriteLibraryItemFiles(ctx context.Context, itemID string) ([]LibraryFilePath, error) {
-	return s.rewriteFiles(ctx, `item_id = ? OR series_id = ?`, itemID, itemID)
+	return s.rewriteFiles(ctx, `inventory_item_id = ? OR inventory_series_id = ?`, itemID, itemID)
 }
 
 // rewriteFiles forgets the identity digest of the present files matching where, and lists them.
@@ -251,7 +251,7 @@ func (s *sqlStore) resetFiles(ctx context.Context, set, where string, args ...an
 	}
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx, s.ph(`SELECT root, path FROM library_files
-		WHERE missing_at = 0 AND (`+where+`) ORDER BY path`), args...)
+		WHERE missing_at_ms = 0 AND (`+where+`) ORDER BY path`), args...)
 	if err != nil {
 		return nil, fmt.Errorf("rewrite library files: %w", err)
 	}
@@ -268,7 +268,7 @@ func (s *sqlStore) resetFiles(ctx context.Context, set, where string, args ...an
 		return nil, fmt.Errorf("rewrite library files: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_files SET `+set+`
-		WHERE missing_at = 0 AND (`+where+`)`), args...); err != nil {
+		WHERE missing_at_ms = 0 AND (`+where+`)`), args...); err != nil {
 		return nil, fmt.Errorf("rewrite library files: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

@@ -17,6 +17,10 @@ code path is shared through `database/sql`.
   leaks; they run at startup. SQL stays ANSI where it can (`INSERT … ON CONFLICT … DO UPDATE` works on
   both). Migrations are forward-only.
 - The shared SQLite/PostgreSQL conformance suite is the contract for both backends.
+- **A column's name says its unit and its id space.** `_at` is unix seconds and `_at_ms` unix
+  milliseconds, so a query never compares the two by accident (#2319). An id names what it
+  identifies: `inventory_item_id` is Loomarr's inventory item, while `item_id` and `library_id` on the
+  media-server tables are the media server's (#2320).
 
 ## Concurrency on PostgreSQL
 
