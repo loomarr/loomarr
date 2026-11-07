@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import type { PairingCredential, PairingSession } from "@loomarr/core/pairing";
-import type { LastChannelStore, PlayerChannel, PlayerTransport, PlayerTransportEvent } from "@loomarr/player";
+import type { LastChannelStore } from "@loomarr/paired-client";
+import type { PlayerChannel, PlayerTransport, PlayerTransportEvent } from "@loomarr/player";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -55,9 +56,10 @@ vi.mock("@loomarr/core/client-diagnostics", () => ({
   },
   createAuthenticatedBatchSender: () => ({}),
 }));
-vi.mock("../src/native-event-stream", () => ({ createNativeEventStreamFactory: () => vi.fn() }));
-vi.mock("../src/native-playback-diagnostics", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/native-playback-diagnostics")>()),
+vi.mock("@loomarr/player/native", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@loomarr/player/native")>()),
+  createExpoVideoTransport: () => fakes.transport,
+  createNativeEventStreamFactory: () => vi.fn(),
   createNativePlaybackDiagnostics: (_reporter: unknown, sessionId: string, transport: string) => {
     fakes.playbackSessionIds.push(sessionId);
     fakes.playbackTransports.push(transport);
@@ -69,15 +71,14 @@ vi.mock("../src/native-playback-diagnostics", async (importOriginal) => ({
     };
   },
 }));
-vi.mock("../src/native/native", () => ({ createExpoVideoTransport: () => fakes.transport }));
-vi.mock("../src/play-url-source", () => ({
+vi.mock("@loomarr/player/server", () => ({
   createChannelCatalogPort: () => ({ list: async () => channels }),
   createPlayUrlSourcePort: () => ({
     mint: async (channel: PlayerChannel) => ({ uri: `${channel.id}.m3u8` }),
   }),
 }));
 
-const { usePairedClient } = await import("@loomarr/player/native");
+const { usePairedClient } = await import("@loomarr/paired-client");
 type PairedClient = ReturnType<typeof usePairedClient>;
 
 const credential = { deviceName: "Test", serverUrl: "https://loomarr.test", token: "t" } as PairingCredential;
