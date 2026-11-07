@@ -157,6 +157,7 @@ var productProviderTopics = []Topic{
 	TopicLibraryFolderOffline,
 	TopicLibraryFolderBack,
 	TopicLibraryChangesDegraded,
+	TopicLibraryNeedsYou,
 }
 
 var sharedProviderTopics = []Topic{
@@ -168,6 +169,7 @@ var sharedProviderTopics = []Topic{
 	TopicLibraryFolderOffline,
 	TopicLibraryFolderBack,
 	TopicLibraryChangesDegraded,
+	TopicLibraryNeedsYou,
 }
 
 var providerDefinitions = []ProviderDefinition{

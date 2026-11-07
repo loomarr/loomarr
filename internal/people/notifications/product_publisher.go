@@ -93,7 +93,7 @@ func productRecipients(topic Topic, people []string) (ReferenceKind, []productRe
 		return ReferenceTitle, peopleAndOperators(people), nil
 	case TopicChannelLive, TopicChannelDegraded:
 		return ReferenceChannel, peopleAndOperators(people), nil
-	case TopicLibraryFolderOffline, TopicLibraryFolderBack, TopicLibraryChangesDegraded:
+	case TopicLibraryFolderOffline, TopicLibraryFolderBack, TopicLibraryChangesDegraded, TopicLibraryNeedsYou:
 		// The household's storage is the operators' concern alone.
 		return ReferenceLibrary, peopleAndOperators(nil), nil
 	default:

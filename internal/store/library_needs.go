@@ -62,6 +62,40 @@ type LibraryNeedsStore interface {
 	// RewriteLibraryItemFiles forgets the identity digest of a title's present files (a series'
 	// episodes too), so the scanner writes them again, and lists them.
 	RewriteLibraryItemFiles(ctx context.Context, itemID string) ([]LibraryFilePath, error)
+	// UnnoticedLibraryNeeds lists the titles that need the maintainer and no notice has counted.
+	UnnoticedLibraryNeeds(ctx context.Context) ([]string, error)
+	// NoticeLibraryNeeds marks titles a notice counted.
+	NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error
+}
+
+func (s *sqlStore) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT DISTINCT i.id FROM library_items i JOIN `+presentFiles+`
+		f ON f.id = i.id WHERE `+needWhere+` AND i.needs_noticed = 0 ORDER BY i.id`))
+	if err != nil {
+		return nil, fmt.Errorf("unnoticed library needs: %w", err)
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("unnoticed library needs: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, fmt.Errorf("unnoticed library needs: %w", err)
+	}
+	return ids, nil
+}
+
+func (s *sqlStore) NoticeLibraryNeeds(ctx context.Context, itemIDs []string) error {
+	for _, id := range itemIDs {
+		if _, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_items SET needs_noticed = 1 WHERE id = ?`), id); err != nil {
+			return fmt.Errorf("notice library needs: %w", err)
+		}
+	}
+	return nil
 }
 
 // needWhere is a title that needs the maintainer: a movie or series nothing grounds, with a scan

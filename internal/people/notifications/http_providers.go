@@ -222,6 +222,8 @@ func topicLabel(topic Topic) string {
 		return "Media folder back"
 	case TopicLibraryChangesDegraded:
 		return "New files delayed"
+	case TopicLibraryNeedsYou:
+		return "Titles need you"
 	case TopicDeliveryTest:
 		return "Test notification"
 	default:
