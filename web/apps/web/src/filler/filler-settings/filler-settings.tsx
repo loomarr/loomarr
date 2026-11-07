@@ -1,8 +1,9 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerStorageStatusDTO } from "@loomarr/api/models/fillerStorageStatusDTO";
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { unwrap } from "@loomarr/api/unwrap";
-import { formatBytes } from "@loomarr/core/format";
+import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,22 +13,14 @@ import { ClipDetailsSettings } from "../clip-details-settings";
 import { type FillerSettingsSection, SETTINGS_SECTIONS } from "../filler-settings-section";
 import { useFillerProviders } from "../use-filler-providers";
 
-const downloadIntervalSeconds = (value: string): number => {
-  if (value === "0") return 0;
-  const factors: Record<string, number> = { d: 86400, h: 3600, m: 60, s: 1 };
-  let seconds = 0;
-  let matched = false;
-  for (const match of value.matchAll(/(-?\d+(?:\.\d+)?)(d|h|m|s)/g)) {
-    matched = true;
-    seconds += Number(match[1]) * (factors[match[2] ?? ""] ?? 0);
-  }
-  return matched ? seconds : Number.NaN;
-};
-
-const downloadIntervalLabel = (value: string): string => {
-  const seconds = downloadIntervalSeconds(value);
-  if (seconds === 86400) return "Daily";
-  if (seconds === 7 * 86400) return "Weekly";
+// The interval named as the field's own choices name it: the registry preset's label when the value
+// is one of them, otherwise the custom interval spelled out.
+const downloadIntervalLabel = (value: string, presets: readonly SettingPreset[]): string => {
+  const minutes = goDurationMinutes(value);
+  const preset = presets.find((p) => goDurationMinutes(p.value) === minutes);
+  if (minutes === undefined) return `Every ${value}`;
+  if (preset) return preset.label;
+  const seconds = minutes * 60;
   if (seconds > 0 && seconds % 86400 === 0) {
     const days = seconds / 86400;
     return `Every ${days} ${days === 1 ? "day" : "days"}`;
@@ -235,10 +228,11 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
           0,
         );
         const sourceCount = activeSources.length;
+        const presets = entries.find((entry) => entry.key === SettingKey.FillerFetchEvery)?.presets ?? [];
         const cadence =
-          downloadIntervalSeconds(every) === 0
+          goDurationMinutes(every) === 0
             ? "Automatic downloads are off for sources using these defaults."
-            : `${downloadIntervalLabel(every)}, each source using these defaults can add up to ${defaultMax} ${defaultMax === 1 ? "clip" : "clips"}.`;
+            : `${downloadIntervalLabel(every, presets)}, each source using these defaults can add up to ${defaultMax} ${defaultMax === 1 ? "clip" : "clips"}.`;
         const round =
           sourceCount === 0
             ? "No enabled sources are currently downloading automatically."
