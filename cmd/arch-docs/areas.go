@@ -32,7 +32,7 @@ var areas = []area{
 			"Sonarr or Radarr to fetch a title the household does not have yet. The metadata providers " +
 			"decide which source's facts about a file win.",
 		Packages: []string{
-			"library", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
+			"library", "library/scan", "inventory", "catalog", "tmdb", "moviecollections", "episodeevidence",
 			"provision", "provisionbackstop", "requester",
 			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
@@ -42,6 +42,8 @@ var areas = []area{
 			"platform": "the store, settings and jobs behind the provision backstop, the outbound HTTP " +
 				"client and metrics every remote service call goes through, and the audience rating ladder " +
 				"the metadata providers fold certifications onto",
+			"media": "the scanner reads each media file's header to learn its length, streams and " +
+				"embedded ids",
 			"channels": "the backstop's episode refresh re-reads each scheduled show into the scheduler's " +
 				"episode cache, whose entries are `schedule.ResolvedProgram`; the job moves into channels " +
 				"with the Wave 6.4 directory moves",
@@ -124,7 +126,8 @@ var areas = []area{
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
-				"backend transition, start-up configuration, and Tunarr's HTTP client and metrics",
+				"backend transition, start-up configuration, Tunarr's HTTP client and metrics, and the " +
+				"address check that keeps LAN discovery answering only the household's network",
 			"channels": "the `schedule` programming a backend plays",
 			"library": "the media server's Live TV API that channels are published to, and `provision` keys " +
 				"naming what a slot plays",

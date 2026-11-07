@@ -11,6 +11,7 @@ import {
   getGetProgrammingVocabularyMockHandler,
   getGetProposalJobMockHandler,
   getImportCandidatesMockHandler,
+  getLibraryStatusMockHandler,
   getListChannelsMockHandler,
   getListDiagnosticEventsMockHandler,
   getListDiscoveryFeedbackMockHandler,
@@ -19,6 +20,7 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListLibraryCollectionsMockHandler,
+  getListLibraryRootsMockHandler,
   getListTaxonomyMockHandler,
   getListUserSessionsMockHandler,
   getListUsersMockHandler,
@@ -42,6 +44,7 @@ import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
 import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { libraryStatus } from "@/test/fixtures/library";
 import { setting } from "@/test/fixtures/settings";
 import { me, user } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -287,6 +290,22 @@ const stubReachable = () => {
     getChannelUpcomingMockHandler({ upcoming: [] }),
     getListFillerPullsMockHandler({ pulls: [], total: 0 }),
     getListLibraryCollectionsMockHandler({ collections: [] }),
+    // Settings → Library: one folder in use, so the page renders its folder card rather than
+    // auto-running a discovery pass.
+    getListLibraryRootsMockHandler({
+      roots: [
+        {
+          path: "/media/movies",
+          inUse: true,
+          readable: true,
+          addedByHand: false,
+          checkedAt: "2026-07-25T19:55:00Z",
+          foundIn: [{ authority: "radarr", path: "/media/movies" }],
+        },
+      ],
+      pathMap: [],
+    }),
+    getLibraryStatusMockHandler(libraryStatus()),
     getGetPlayoutStatusMockHandler({
       running: false,
       capability: { encoder: "", hardware: false, maxChannels: 0 },

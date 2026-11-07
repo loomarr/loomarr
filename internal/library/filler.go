@@ -97,6 +97,10 @@ type virtualFolder struct {
 	// and is NOT accepted by ParentId — picking it would 200 with an empty item list, which reads
 	// as "your filler library is empty" rather than as a bug.
 	ItemID string `json:"ItemId"`
+	// Locations are the library's folders as the media server sees them. CollectionType is
+	// absent for a mixed library (see LibraryIDByName).
+	Locations      []string `json:"Locations"`
+	CollectionType string   `json:"CollectionType"`
 }
 
 // LibraryIDByName resolves a library's display NAME to the item id `ParentId` needs (§10 V38c).
