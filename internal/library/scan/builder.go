@@ -55,14 +55,37 @@ func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snap
 	b.matchMu.Lock()
 	m := b.matches[snapshot.Origin]
 	b.matchMu.Unlock()
+	set := setKey(facts.Relationships)
 	b.items = append(b.items, store.LibraryItem{
 		ID: id, Kind: string(snapshot.Kind), Name: facts.Name,
 		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
 		Catalog: catalogKey(mp.Kind(snapshot.Kind), ids),
+		Set:     set,
 		Origin:  libraryOrigin(snapshot.Origin),
 		Match:   m,
 	})
 	b.poster(ctx, id, facts.Artwork)
+	// The set's own record names it and every movie in it; the Enricher fetches it once asked.
+	if set.String() != "" && b.im.Catalog != nil {
+		if err := b.im.Catalog.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{set}); err != nil {
+			b.im.log().Warn("library scan: set record not asked for", "catalog", set.String(), "err", err)
+		}
+	}
+}
+
+// setKey is the catalog row of the ready-made set a movie's facts name; zero for none. The key's
+// provider is the namespace the Enricher fetches it by.
+func setKey(rels []inventory.Relationship) store.LibraryCatalogKey {
+	for _, r := range rels {
+		if r.Kind != string(mp.KindCollection) {
+			continue
+		}
+		ns, id, ok := strings.Cut(r.ExternalID, ":")
+		if ok && ns == string(mp.NamespaceTMDBCollection) && id != "" {
+			return store.LibraryCatalogKey{Provider: ns, Kind: string(mp.KindCollection), ExternalID: id}
+		}
+	}
+	return store.LibraryCatalogKey{}
 }
 
 // match is what said which title resolved is: the source of its highest-ranked catalog id (a

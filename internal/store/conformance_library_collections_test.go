@@ -88,9 +88,10 @@ func testLibraryItemIDs(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.UnixMilli(1_790_000_000_000).UTC()
+	set := LibraryCatalogKey{Provider: "tmdb_collection", Kind: "collection", ExternalID: "90000611"}
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
 		{ID: "a", Kind: "movie", Name: "Alpha"},
-		{ID: "b", Kind: "movie", Name: "Bravo"},
+		{ID: "b", Kind: "movie", Name: "Bravo", Set: set},
 		{ID: "c", Kind: "movie", Name: "Charlie"},
 	}, at); err != nil {
 		t.Fatal(err)
@@ -109,5 +110,13 @@ func testLibraryItemIDs(t *testing.T, newStore NewStoreFunc) {
 	}
 	if page.Total != 2 || len(page.Items) != 2 || page.Items[0].ID != "a" || page.Items[1].ID != "c" {
 		t.Fatalf("page %+v, want a and c", page)
+	}
+	// A movie in a ready-made set keeps its set; InSet keeps only those.
+	inSet, err := st.ListLibraryItems(ctx, LibraryItemQuery{InSet: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inSet.Items) != 1 || inSet.Items[0].ID != "b" || inSet.Items[0].Set != set {
+		t.Fatalf("in a set %+v, want Bravo in its set", inSet.Items)
 	}
 }

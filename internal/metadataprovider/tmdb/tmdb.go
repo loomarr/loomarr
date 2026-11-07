@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -76,11 +77,12 @@ func (*Provider) Capabilities() mp.Capabilities {
 	return mp.Capabilities{
 		Basis:   source.Basis,
 		Catalog: source.Catalog,
-		Kinds:   []mp.Kind{mp.KindMovie, mp.KindSeries, mp.KindEpisode},
+		Kinds:   []mp.Kind{mp.KindMovie, mp.KindSeries, mp.KindEpisode, mp.KindCollection},
 		Resolves: []mp.Resolvable{
 			{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
+			{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
 		},
 		Families: []mp.Family{mp.FamilyIdentity, mp.FamilyDescriptive, mp.FamilyCertification, mp.FamilyArtwork},
 		// TMDB documents roughly 50 requests per second per address and 20 simultaneous
@@ -89,7 +91,8 @@ func (*Provider) Capabilities() mp.Capabilities {
 	}
 }
 
-// Fetch returns a movie or series by TMDB id, or an episode by TVDB episode id.
+// Fetch returns a movie or series by TMDB id, an episode by TVDB episode id, or a TMDB collection
+// by its collection id.
 func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	if !p.Capabilities().CanResolve(ref) {
 		return mp.Record{}, fmt.Errorf("tmdb: %s by %s: %w", ref.Kind, ref.ID.Namespace, mp.ErrUnsupported)
@@ -107,6 +110,8 @@ func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 		return p.movie(ctx, loc, id)
 	case mp.KindSeries:
 		return p.series(ctx, loc, id)
+	case mp.KindCollection:
+		return p.collection(ctx, loc, id)
 	default:
 		return p.episode(ctx, loc, id)
 	}
@@ -273,6 +278,67 @@ func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, er
 		}
 	}
 	rec.Certification = strictest(ratings)
+	return rec, nil
+}
+
+// ---- collection ----
+
+type wireCollectionDetail struct {
+	ID           int        `json:"id"`
+	Name         string     `json:"name"`
+	Overview     string     `json:"overview"`
+	PosterPath   string     `json:"poster_path"`
+	BackdropPath string     `json:"backdrop_path"`
+	Images       wireImages `json:"images"`
+	Parts        []struct {
+		ID          int    `json:"id"`
+		MediaType   string `json:"media_type"`
+		Title       string `json:"title"`
+		ReleaseDate string `json:"release_date"`
+	} `json:"parts"`
+}
+
+// collection is a TMDB collection: its name, its artwork, and its movies in release order (an
+// unreleased one last), each as a record with its TMDB id, title and year.
+func (p *Provider) collection(ctx context.Context, loc locale, id int) (mp.Record, error) {
+	var c wireCollectionDetail
+	path := "/collection/" + strconv.Itoa(id) + "?" + loc.detailQuery("images")
+	if err := p.get(ctx, path, &c); err != nil {
+		return mp.Record{}, err
+	}
+	if c.ID != id {
+		return mp.Record{}, fmt.Errorf("tmdb collection %d: answer names collection %d: %w", id, c.ID, mp.ErrNotFound)
+	}
+	parts := c.Parts[:0:0]
+	for _, part := range c.Parts {
+		if part.ID > 0 && strings.TrimSpace(part.Title) != "" && (part.MediaType == "" || part.MediaType == "movie") {
+			parts = append(parts, part)
+		}
+	}
+	sort.SliceStable(parts, func(i, j int) bool {
+		a, b := parts[i].ReleaseDate, parts[j].ReleaseDate
+		if (a == "") != (b == "") {
+			return b == ""
+		}
+		return a < b
+	})
+	rec := mp.Record{
+		Source:      source,
+		Kind:        mp.KindCollection,
+		IDs:         []mp.ExternalID{{Namespace: mp.NamespaceTMDBCollection, Value: strconv.Itoa(c.ID)}},
+		Descriptive: &mp.Descriptive{Title: c.Name, Overview: c.Overview},
+		Artwork:     artwork(loc, c.Images, c.PosterPath, c.BackdropPath),
+	}
+	for _, part := range parts {
+		rec.Children = append(rec.Children, mp.Record{
+			Source: source,
+			Kind:   mp.KindMovie,
+			IDs:    []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(part.ID)}},
+			Descriptive: &mp.Descriptive{
+				Title: strings.TrimSpace(part.Title), PremiereDate: part.ReleaseDate, Year: yearOf(part.ReleaseDate),
+			},
+		})
+	}
 	return rec, nil
 }
 

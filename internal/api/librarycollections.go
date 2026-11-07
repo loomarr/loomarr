@@ -51,6 +51,12 @@ func (s *Server) registerLibraryCollections(api huma.API) {
 		Description: "409 while a channel uses it.",
 		Tags:        []string{"library"}, DefaultStatus: http.StatusNoContent,
 	}, RoleAdmin), s.deleteCollection)
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "copySet", Method: http.MethodPost, Path: "/v1/collections/sets/{id}/copy",
+		Summary:     "Make my own copy of a ready-made set",
+		Description: "Makes a collection of the household's own with the set's name and the library's movies of it, in its order.",
+		Tags:        []string{"library"}, DefaultStatus: http.StatusCreated,
+	}, RoleAdmin), s.copySet)
 }
 
 // collectionChannelDTO is a channel that uses a collection.
@@ -87,7 +93,16 @@ type collectionOutput struct {
 type listCollectionsOutput struct {
 	Body struct {
 		Collections []collectionDTO `json:"collections"`
+		Sets        []setDTO        `json:"sets" doc:"Ready-made sets (TMDB collections) the library has a movie of, by name"`
 	}
+}
+
+// setDTO is a ready-made set: it can't be changed, only copied into the household's collections.
+type setDTO struct {
+	ID     string           `json:"id" doc:"The TMDB collection id"`
+	Name   string           `json:"name"`
+	Total  int              `json:"total" doc:"Every movie in the set, in the library or not"`
+	Titles []libraryItemDTO `json:"titles" doc:"The library's movies of the set, in its order"`
 }
 
 func (s *Server) listCollections(ctx context.Context, _ *struct{}) (*listCollectionsOutput, error) {
@@ -99,6 +114,10 @@ func (s *Server) listCollections(ctx context.Context, _ *struct{}) (*listCollect
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read your collections", "Try again in a moment.", err)
 	}
+	sets, err := svc.Sets(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read your collections", "Try again in a moment.", err)
+	}
 	uses, err := s.collectionUses(ctx)
 	if err != nil {
 		return nil, err
@@ -107,13 +126,39 @@ func (s *Server) listCollections(ctx context.Context, _ *struct{}) (*listCollect
 	for _, c := range list {
 		titles = append(titles, c.Titles...)
 	}
+	for _, set := range sets {
+		titles = append(titles, set.Titles...)
+	}
 	posters := s.libraryPosters(ctx, titles)
 	out := &listCollectionsOutput{}
 	out.Body.Collections = make([]collectionDTO, 0, len(list))
 	for _, c := range list {
 		out.Body.Collections = append(out.Body.Collections, collectionOf(c, posters, uses))
 	}
+	out.Body.Sets = make([]setDTO, 0, len(sets))
+	for _, set := range sets {
+		dto := setDTO{ID: set.ID, Name: set.Name, Total: set.Total, Titles: make([]libraryItemDTO, 0, len(set.Titles))}
+		for _, it := range set.Titles {
+			dto.Titles = append(dto.Titles, libraryItemOf(it, posters))
+		}
+		out.Body.Sets = append(out.Body.Sets, dto)
+	}
 	return out, nil
+}
+
+func (s *Server) copySet(ctx context.Context, in *collectionIDInput) (*collectionOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	id, err := svc.CopySet(ctx, in.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, apiErr(http.StatusNotFound, "No such set in your library", "Your library has none of its movies.")
+	}
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't copy the set", "Try again in a moment.", err)
+	}
+	return s.collectionResponse(ctx, id)
 }
 
 func (s *Server) getCollection(ctx context.Context, in *collectionIDInput) (*collectionOutput, error) {

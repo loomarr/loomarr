@@ -1,0 +1,19 @@
+{
+  "id": 90000611,
+  "name": "The Lantern Keeper Collection",
+  "overview": "Three films about the keepers of a harbour light.",
+  "poster_path": "/90000611-poster.jpg",
+  "backdrop_path": "/90000611-backdrop.jpg",
+  "parts": [
+    {"id": 90000613, "media_type": "movie", "title": "The Lantern Keeper Returns", "release_date": "2004-06-11"},
+    {"id": 90000615, "media_type": "movie", "title": "The Lantern Keeper: Dawn", "release_date": ""},
+    {"id": 90000612, "media_type": "movie", "title": "The Lantern Keeper", "release_date": "2001-05-04"},
+    {"id": 0, "media_type": "movie", "title": "No id", "release_date": "2002-01-01"},
+    {"id": 90000614, "media_type": "movie", "title": "The Lantern Keeper Forever", "release_date": "2009-11-20"}
+  ],
+  "images": {
+    "posters": [{"file_path": "/90000611-poster-en.jpg", "iso_639_1": "en"}],
+    "backdrops": [],
+    "logos": []
+  }
+}

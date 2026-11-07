@@ -149,7 +149,10 @@ func checkRecord(t *testing.T, p mp.Provider, rec mp.Record) {
 		checkRecord(t, p, more)
 	}
 	for _, child := range rec.Children {
-		if child.Kind != mp.KindEpisode || rec.Kind != mp.KindSeries {
+		// A series holds its episodes; a collection holds its movies.
+		episode := rec.Kind == mp.KindSeries && child.Kind == mp.KindEpisode
+		part := rec.Kind == mp.KindCollection && child.Kind == mp.KindMovie
+		if !episode && !part {
 			t.Errorf("a %s record has a %s child", rec.Kind, child.Kind)
 		}
 		checkRecord(t, p, child)

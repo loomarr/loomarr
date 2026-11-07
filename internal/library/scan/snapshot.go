@@ -148,6 +148,12 @@ func itemFacts(r precedence.Resolved) (inventory.ItemFacts, map[string]inventory
 			Kind: string(kindSeries), ExternalID: string(p.Value.Namespace) + ":" + p.Value.Value,
 		})
 	}
+	// A movie's ready-made set (a TMDB collection) is its "you have 3 of 4" on the Collections tab.
+	if c := r.Collection.Value.ID; c.Namespace == mp.NamespaceTMDBCollection && c.Value != "" {
+		f.Relationships = append(f.Relationships, inventory.Relationship{
+			Kind: string(mp.KindCollection), ExternalID: string(c.Namespace) + ":" + c.Value,
+		})
+	}
 	coverage := map[string]inventory.Coverage{}
 	if r.Title.Known() {
 		coverage["descriptive"] = inventory.CoveragePresent
