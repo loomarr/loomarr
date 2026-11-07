@@ -1,0 +1,65 @@
+# Keeps the cache merge-gate.yml restores small and fresh. Not a gate: nothing here is a required
+# check. A cache saved on a merge-queue ref is never read again, so main has to save it.
+#
+# One save per hour at most, and each save deletes the one before it, so this holds one entry of the
+# repository's cache quota however often main moves.
+name: CI / Merge gate cache
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: merge-gate-cache
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Warm merge gate cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Cache hour
+        id: hour
+        run: echo "hour=$(date -u +%Y%m%d%H)" >> "$GITHUB_OUTPUT"
+      - name: Restore the newest gate cache
+        id: warm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: merge-gate-go-${{ runner.os }}-${{ steps.hour.outputs.hour }}
+          restore-keys: |
+            merge-gate-go-${{ runner.os }}-
+      - name: Compile what the gate compiles
+        if: steps.warm.outputs.cache-hit != 'true'
+        run: make vet
+      - name: Save the gate cache
+        if: steps.warm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.warm.outputs.cache-primary-key }}
+      - name: Delete older gate caches
+        if: steps.warm.outputs.cache-hit != 'true'
+        run: ./scripts/ci-merge-gate-cache-prune.sh "${{ steps.warm.outputs.cache-primary-key }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}

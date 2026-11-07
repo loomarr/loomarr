@@ -19,7 +19,8 @@ builds, runtime image certification, Apple mobile, Apple TV, Android TV, Expo An
 tuner matrix, or the macOS harness.
 The required `main` merge queue then builds at most eight cumulative candidates concurrently against
 the current base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
-the merged tree compiles, so it merges in minutes. Beside it, the `merge_group` run of `ci.yml` is the
+the merged tree compiles, so it merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from
+main at most hourly and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
 complete integration lane, reported as `CI assurance`: the same fail-closed classifier selects the
 complete affected gate set, and every selected result remains a dependency of that job. It finishes
 after the merge, so its evidence no longer blocks one. When it fails on a commit that reached main it
