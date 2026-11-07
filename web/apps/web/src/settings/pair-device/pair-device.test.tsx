@@ -1,6 +1,6 @@
 import { getDevicePairApproveMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
@@ -160,5 +160,48 @@ describe("PairDevice", () => {
     render(<PairDevice />, { wrapper: makeWrapper() });
 
     expect(await screen.findByRole("button", { name: "Add device" })).toBeDisabled();
+  });
+
+  it("blocks a blank code even when the form is submitted directly", async () => {
+    signedIn();
+    let approvals = 0;
+    server.use(
+      http.post("*/v1/auth/device/approve", () => {
+        approvals += 1;
+        return HttpResponse.json({ deviceName: "Shield" });
+      }),
+    );
+    render(<PairDevice />, { wrapper: makeWrapper() });
+
+    const field = await screen.findByLabelText("Code shown on the device");
+    await userEvent.type(field, "   ");
+    const form = field.closest("form");
+    if (!form) throw new Error("the code field is not in a form");
+    fireEvent.submit(form);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(approvals).toBe(0);
+  });
+
+  it("keeps a rejected code for correction and clears an approved one", async () => {
+    signedIn();
+    let approvals = 0;
+    server.use(
+      http.post("*/v1/auth/device/approve", () => {
+        approvals += 1;
+        if (approvals === 1) return HttpResponse.json({ title: "Code not found" }, { status: 404 });
+        return HttpResponse.json({ deviceName: "Shield" });
+      }),
+    );
+    render(<PairDevice initialCode="BCDF-GHJK" />, { wrapper: makeWrapper() });
+
+    const field = await screen.findByLabelText("Code shown on the device");
+    await userEvent.click(screen.getByRole("button", { name: "Add device" }));
+    expect(await screen.findByText(/wrong or has expired/)).toBeInTheDocument();
+    expect(field).toHaveValue("BCDF-GHJK");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add device" }));
+    expect(await screen.findByText(/Shield is ready/)).toBeInTheDocument();
+    expect(field).toHaveValue("");
   });
 });

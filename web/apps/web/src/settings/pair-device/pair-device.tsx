@@ -1,6 +1,8 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
+import { devicePairApproveSchema } from "@loomarr/core/schemas";
+import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -58,7 +60,6 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
   // Prefilled but NEVER auto-submitted. `?code=` is RFC 8628's verification_uri_complete — what a
   // QR encodes — and approving on load would mean any link a person opens could pair a device
   // silently. The click is the consent, so the link only saves typing.
-  const [code, setCode] = useState(initialCode ?? "");
   const [approved, setApproved] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { user, isLoading } = useAuth();
@@ -78,21 +79,23 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         onSuccess: (res) => {
           const body = unwrap(res);
           setApproved(body?.deviceName ?? "Device");
-          setCode("");
+          form.setFieldValue("userCode", "");
         },
       },
     );
   };
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!code.trim()) return;
-    attempt(code);
-  };
+  // A blank code never reaches the server: the schema blocks it, and the button is disabled for
+  // it anyway, so there is no message to show.
+  const form = useForm({
+    defaultValues: { userCode: initialCode ?? "" },
+    validators: { onSubmit: devicePairApproveSchema },
+    onSubmit: ({ value }) => attempt(value.userCode),
+  });
 
   // A dropped request or a 5xx is worth retrying with the exact same code — unlike a bad or
   // expired one, nothing about the code itself was the problem.
-  const retry = () => attempt(code);
+  const retry = () => attempt(form.state.values.userCode);
 
   if (isLoading) return null;
   if (!user) return <SignInFirst code={initialCode ?? ""} />;
@@ -104,28 +107,48 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
       </p>
 
-      <form className="mt-8 space-y-4" onSubmit={submit}>
-        <Input
-          aria-label="Code shown on the device"
-          // ⚠ The mobile keyboard hints are not polish. This page is opened on a phone almost
-          // every time, and without them iOS offers autocorrect and a lowercase keyboard for a
-          // code that is always uppercase — producing "wrong code" errors that are really
-          // keyboard errors, on a value the user copied correctly.
-          autoCapitalize="characters"
-          autoComplete="one-time-code"
-          autoCorrect="off"
-          autoFocus
-          className="h-20 w-full text-center font-mono text-3xl tracking-[0.35em] uppercase"
-          inputMode="text"
-          maxLength={9}
-          onChange={(event) => setCode(event.target.value)}
-          placeholder="BCDF-GHJK"
-          spellCheck={false}
-          value={code}
-        />
-        <Button className="h-14 w-full text-lg" disabled={!code.trim() || approve.isPending} type="submit">
-          {approve.isPending ? "Checking…" : "Add device"}
-        </Button>
+      <form
+        className="mt-8 space-y-4"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          void form.handleSubmit();
+        }}
+      >
+        <form.Field name="userCode">
+          {(field) => (
+            <Input
+              aria-label="Code shown on the device"
+              // ⚠ The mobile keyboard hints are not polish. This page is opened on a phone almost
+              // every time, and without them iOS offers autocorrect and a lowercase keyboard for a
+              // code that is always uppercase — producing "wrong code" errors that are really
+              // keyboard errors, on a value the user copied correctly.
+              autoCapitalize="characters"
+              autoComplete="one-time-code"
+              autoCorrect="off"
+              autoFocus
+              className="h-20 w-full text-center font-mono text-3xl tracking-[0.35em] uppercase"
+              inputMode="text"
+              maxLength={9}
+              name={field.name}
+              onChange={(event) => field.handleChange(event.target.value)}
+              placeholder="BCDF-GHJK"
+              spellCheck={false}
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
+        <form.Subscribe selector={(state) => state.values.userCode}>
+          {(userCode) => (
+            <Button
+              className="h-14 w-full text-lg"
+              disabled={!userCode.trim() || approve.isPending}
+              type="submit"
+            >
+              {approve.isPending ? "Checking…" : "Add device"}
+            </Button>
+          )}
+        </form.Subscribe>
       </form>
 
       {approve.isError

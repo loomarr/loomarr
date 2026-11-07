@@ -4,7 +4,7 @@ import {
   getDeviceRevokeMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
@@ -123,5 +123,49 @@ describe("PairedDevices", () => {
     render(<PairedDevices />, { wrapper: makeWrapper() });
 
     expect(await screen.findByRole("button", { name: "Approve device" })).toBeDisabled();
+  });
+
+  it("blocks a blank code even when the form is submitted directly", async () => {
+    let approvals = 0;
+    server.use(
+      getDeviceListMockHandler({ devices: [] }),
+      http.post("*/v1/auth/device/approve", () => {
+        approvals += 1;
+        return HttpResponse.json({ deviceName: "Shield" });
+      }),
+    );
+    render(<PairedDevices />, { wrapper: makeWrapper() });
+
+    const field = await screen.findByLabelText("Code shown on the device");
+    await userEvent.type(field, "   ");
+    const form = field.closest("form");
+    if (!form) throw new Error("the code field is not in a form");
+    fireEvent.submit(form);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(approvals).toBe(0);
+  });
+
+  it("keeps a rejected code for correction and clears an approved one", async () => {
+    let approvals = 0;
+    server.use(
+      getDeviceListMockHandler({ devices: [] }),
+      http.post("*/v1/auth/device/approve", () => {
+        approvals += 1;
+        if (approvals === 1) return HttpResponse.json({ title: "Code not found" }, { status: 404 });
+        return HttpResponse.json({ deviceName: "Shield" });
+      }),
+    );
+    render(<PairedDevices />, { wrapper: makeWrapper() });
+
+    const field = await screen.findByLabelText("Code shown on the device");
+    await userEvent.type(field, "BCDF-GHJK");
+    await userEvent.click(screen.getByRole("button", { name: "Approve device" }));
+    expect(await screen.findByText(/wrong or has expired/)).toBeInTheDocument();
+    expect(field).toHaveValue("BCDF-GHJK");
+
+    await userEvent.click(screen.getByRole("button", { name: "Approve device" }));
+    expect(await screen.findByText(/is approved/)).toBeInTheDocument();
+    expect(field).toHaveValue("");
   });
 });

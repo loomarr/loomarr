@@ -2,6 +2,7 @@ import type { CreateInvitationInputBodyKind } from "@loomarr/api/models/createIn
 import type { CreateInvitationInputBodyRole } from "@loomarr/api/models/createInvitationInputBodyRole";
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueInvitationGrantOutputBody";
+import { createInvitationSchema } from "@loomarr/core/schemas";
 import {
   Dialog,
   DialogClose,
@@ -13,9 +14,11 @@ import {
   DialogTrigger,
 } from "@loomarr/design-system";
 import { QrCode } from "@loomarr/design-system/qr-code-web";
+import { useForm, useStore } from "@tanstack/react-form";
 import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -55,12 +58,6 @@ const InvitationDialog = ({
   const emailId = useId();
   const operation = useRef(0);
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
-  const [kind, setKind] = useState<CreateInvitationInputBodyKind>("local");
-  const [username, setUsername] = useState("");
-  const [libraryUserId, setLibraryUserId] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [role, setRole] = useState<CreateInvitationInputBodyRole>("member");
-  const [sendEmail, setSendEmail] = useState(false);
   const [invitation, setInvitation] = useState<InvitationBody | undefined>(existing);
   const [grant, setGrant] = useState<IssueInvitationGrantOutputBody>();
   const [copied, setCopied] = useState(false);
@@ -69,14 +66,52 @@ const InvitationDialog = ({
   const [emailProblem, setEmailProblem] = useState(false);
   const open = controlledOpen ?? internalOpen;
 
+  const form = useForm({
+    defaultValues: {
+      kind: "local" as CreateInvitationInputBodyKind,
+      username: "",
+      libraryUserId: "",
+      contactEmail: "",
+      role: "member" as CreateInvitationInputBodyRole,
+      sendEmail: false,
+    },
+    validators: { onSubmit: createInvitationSchema },
+    onSubmit: async ({ value }) => {
+      const current = operation.current;
+      const input = createInvitationSchema.parse(value);
+      setBusy(true);
+      try {
+        const created = await onCreate({
+          kind: input.kind,
+          ...(input.kind === "local" ? { username: input.username } : { libraryUserId: input.libraryUserId }),
+          contactEmail: input.contactEmail,
+          role: input.role,
+        });
+        if (operation.current !== current) return;
+        setInvitation(created);
+        const issued = await onIssueGrant(created.id, "qr");
+        if (operation.current !== current) return;
+        setGrant(issued);
+        if (value.sendEmail && input.contactEmail && onSendEmail) {
+          try {
+            await onSendEmail(created.id);
+          } catch {
+            if (operation.current === current) setEmailProblem(true);
+          }
+        }
+      } catch (error) {
+        if (operation.current === current) setProblem(error);
+      } finally {
+        if (operation.current === current) setBusy(false);
+      }
+    },
+  });
+  const kind = useStore(form.store, (state) => state.values.kind);
+  const contactEmail = useStore(form.store, (state) => state.values.contactEmail);
+
   const reset = () => {
     operation.current += 1;
-    setKind("local");
-    setUsername("");
-    setLibraryUserId("");
-    setContactEmail("");
-    setRole("member");
-    setSendEmail(false);
+    form.reset();
     setInvitation(existing);
     setGrant(undefined);
     setCopied(false);
@@ -110,44 +145,11 @@ const InvitationDialog = ({
     }
   };
 
-  const submit = async (event: React.FormEvent) => {
+  const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const current = operation.current;
     setProblem(undefined);
     setEmailProblem(false);
-    if (kind === "local" && !username.trim()) {
-      setProblem(new Error("Choose a username to reserve."));
-      return;
-    }
-    if (kind === "library" && !libraryUserId) {
-      setProblem(new Error("Choose an Emby or Jellyfin account."));
-      return;
-    }
-    setBusy(true);
-    try {
-      const created = await onCreate({
-        kind,
-        ...(kind === "local" ? { username: username.trim() } : { libraryUserId }),
-        contactEmail: contactEmail.trim(),
-        role,
-      });
-      if (operation.current !== current) return;
-      setInvitation(created);
-      const issued = await onIssueGrant(created.id, "qr");
-      if (operation.current !== current) return;
-      setGrant(issued);
-      if (sendEmail && contactEmail.trim() && onSendEmail) {
-        try {
-          await onSendEmail(created.id);
-        } catch {
-          if (operation.current === current) setEmailProblem(true);
-        }
-      }
-    } catch (error) {
-      if (operation.current === current) setProblem(error);
-    } finally {
-      if (operation.current === current) setBusy(false);
-    }
+    void form.handleSubmit();
   };
 
   const revoke = async () => {
@@ -166,7 +168,6 @@ const InvitationDialog = ({
     }
   };
 
-  const selectedCandidate = candidates?.find((candidate) => candidate.id === libraryUserId);
   const terminal = invitation?.status !== undefined && invitation.status !== "pending";
   const title = existing ? `Share ${invitationName(existing)}’s invitation` : "Invite person";
 
@@ -189,120 +190,167 @@ const InvitationDialog = ({
         </DialogHeader>
 
         {!invitation ? (
-          <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)}>
-            <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="mb-2 text-sm font-medium">Credential path</legend>
-              <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
-                <input
-                  type="radio"
-                  name="invitation-kind"
-                  value="local"
-                  checked={kind === "local"}
-                  disabled={busy}
-                  onChange={() => setKind("local")}
-                />
-                Local Loomarr account
-              </Label>
-              <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
-                <input
-                  type="radio"
-                  name="invitation-kind"
-                  value="library"
-                  checked={kind === "library"}
-                  disabled={busy || !libraryAvailable}
-                  onChange={() => setKind("library")}
-                />
-                Emby or Jellyfin account
-              </Label>
-            </fieldset>
+          <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
+            <form.Field name="kind">
+              {(field) => (
+                <fieldset className="grid gap-2 sm:grid-cols-2">
+                  <legend className="mb-2 text-sm font-medium">Credential path</legend>
+                  <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
+                    <input
+                      type="radio"
+                      name="invitation-kind"
+                      value="local"
+                      checked={field.state.value === "local"}
+                      disabled={busy}
+                      onChange={() => field.handleChange("local")}
+                    />
+                    Local Loomarr account
+                  </Label>
+                  <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
+                    <input
+                      type="radio"
+                      name="invitation-kind"
+                      value="library"
+                      checked={field.state.value === "library"}
+                      disabled={busy || !libraryAvailable}
+                      onChange={() => field.handleChange("library")}
+                    />
+                    Emby or Jellyfin account
+                  </Label>
+                </fieldset>
+              )}
+            </form.Field>
 
             {kind === "local" ? (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={usernameId}>Reserved username</Label>
-                <Input
-                  id={usernameId}
-                  value={username}
-                  maxLength={200}
-                  disabled={busy}
-                  onChange={(event) => setUsername(event.target.value)}
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={accountId}>Library account</Label>
-                <Select value={libraryUserId} disabled={busy} onValueChange={setLibraryUserId}>
-                  <SelectTrigger id={accountId}>
-                    <SelectValue placeholder="Choose one account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(candidates ?? []).map((candidate) => (
-                      <SelectItem
-                        key={candidate.id}
-                        value={candidate.id}
-                        disabled={candidate.imported || candidate.disabled}
-                      >
-                        {candidate.name}
-                        {candidate.imported ? " · already imported" : candidate.disabled ? " · disabled" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedCandidate && (
-                  <p className="text-muted-foreground text-xs">
-                    Media-server role: {selectedCandidate.isAdmin ? "Administrator" : "Member"}
-                  </p>
+              <form.Field name="username">
+                {(field) => (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={usernameId}>Reserved username</Label>
+                    <Input
+                      id={usernameId}
+                      name={field.name}
+                      value={field.state.value}
+                      maxLength={200}
+                      disabled={busy}
+                      aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                    <FieldError errors={field.state.meta.errors} />
+                  </div>
                 )}
-              </div>
+              </form.Field>
+            ) : (
+              <form.Field name="libraryUserId">
+                {(field) => {
+                  const selectedCandidate = candidates?.find(
+                    (candidate) => candidate.id === field.state.value,
+                  );
+                  return (
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor={accountId}>Library account</Label>
+                      <Select
+                        value={field.state.value}
+                        disabled={busy}
+                        onValueChange={(value) => field.handleChange(value)}
+                      >
+                        <SelectTrigger
+                          id={accountId}
+                          aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+                        >
+                          <SelectValue placeholder="Choose one account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(candidates ?? []).map((candidate) => (
+                            <SelectItem
+                              key={candidate.id}
+                              value={candidate.id}
+                              disabled={candidate.imported || candidate.disabled}
+                            >
+                              {candidate.name}
+                              {candidate.imported
+                                ? " · already imported"
+                                : candidate.disabled
+                                  ? " · disabled"
+                                  : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedCandidate && (
+                        <p className="text-muted-foreground text-xs">
+                          Media-server role: {selectedCandidate.isAdmin ? "Administrator" : "Member"}
+                        </p>
+                      )}
+                      <FieldError errors={field.state.meta.errors} />
+                    </div>
+                  );
+                }}
+              </form.Field>
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={contactId}>Contact email (optional)</Label>
-                <Input
-                  id={contactId}
-                  type="email"
-                  value={contactEmail}
-                  maxLength={320}
-                  disabled={busy}
-                  onChange={(event) => setContactEmail(event.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={roleId}>Initial role</Label>
-                <Select
-                  value={role}
-                  disabled={busy}
-                  onValueChange={(value) => setRole(value as CreateInvitationInputBodyRole)}
-                >
-                  <SelectTrigger id={roleId}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Administrator</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-muted-foreground text-xs">
-                  Initial Loomarr role: {role === "admin" ? "Administrator" : "Member"}
-                </p>
-              </div>
+              <form.Field name="contactEmail">
+                {(field) => (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={contactId}>Contact email (optional)</Label>
+                    <Input
+                      id={contactId}
+                      name={field.name}
+                      type="email"
+                      value={field.state.value}
+                      maxLength={320}
+                      disabled={busy}
+                      aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                    />
+                    <FieldError errors={field.state.meta.errors} />
+                  </div>
+                )}
+              </form.Field>
+              <form.Field name="role">
+                {(field) => (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor={roleId}>Initial role</Label>
+                    <Select
+                      value={field.state.value}
+                      disabled={busy}
+                      onValueChange={(value) => field.handleChange(value as CreateInvitationInputBodyRole)}
+                    >
+                      <SelectTrigger id={roleId}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">Member</SelectItem>
+                        <SelectItem value="admin">Administrator</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-muted-foreground text-xs">
+                      Initial Loomarr role: {field.state.value === "admin" ? "Administrator" : "Member"}
+                    </p>
+                  </div>
+                )}
+              </form.Field>
             </div>
 
             {onSendEmail && (
-              <Label htmlFor={emailId} className="flex min-h-11 items-center gap-3 rounded-lg border p-3">
-                <Checkbox
-                  id={emailId}
-                  checked={sendEmail}
-                  disabled={busy || !contactEmail.trim()}
-                  onChange={(event) => setSendEmail(event.target.checked)}
-                />
-                <span>
-                  <span className="block font-medium">Also send by email</span>
-                  <span className="text-muted-foreground block text-xs">
-                    QR and copy remain available even if email is disabled or fails.
-                  </span>
-                </span>
-              </Label>
+              <form.Field name="sendEmail">
+                {(field) => (
+                  <Label htmlFor={emailId} className="flex min-h-11 items-center gap-3 rounded-lg border p-3">
+                    <Checkbox
+                      id={emailId}
+                      checked={field.state.value}
+                      disabled={busy || !contactEmail.trim()}
+                      onChange={(event) => field.handleChange(event.target.checked)}
+                    />
+                    <span>
+                      <span className="block font-medium">Also send by email</span>
+                      <span className="text-muted-foreground block text-xs">
+                        QR and copy remain available even if email is disabled or fails.
+                      </span>
+                    </span>
+                  </Label>
+                )}
+              </form.Field>
             )}
 
             {problem != null && <ErrorState error={problem} className="p-4" />}

@@ -1,5 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { unwrap } from "@loomarr/api/unwrap";
+import { devicePairApproveSchema } from "@loomarr/core/schemas";
+import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -38,7 +40,6 @@ const relativeAge = (iso: string): string => {
 };
 
 const ApproveDevice = () => {
-  const [code, setCode] = useState("");
   const [approved, setApproved] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const approve = authApi.useDevicePairApprove({
@@ -52,20 +53,24 @@ const ApproveDevice = () => {
     },
   });
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!code.trim()) return;
-    approve.mutate(
-      { data: { userCode: code } },
-      {
-        onSuccess: (res) => {
-          const body = unwrap(res);
-          setApproved(body?.deviceName ?? "Device");
-          setCode("");
+  // A blank code never reaches the server: the schema blocks it, and the button is disabled for
+  // it anyway, so there is no message to show.
+  const form = useForm({
+    defaultValues: { userCode: "" },
+    validators: { onSubmit: devicePairApproveSchema },
+    onSubmit: ({ value }) => {
+      approve.mutate(
+        { data: { userCode: value.userCode } },
+        {
+          onSuccess: (res) => {
+            const body = unwrap(res);
+            setApproved(body?.deviceName ?? "Device");
+            form.reset();
+          },
         },
-      },
-    );
-  };
+      );
+    },
+  });
 
   return (
     <section className="border-border rounded-lg border p-4">
@@ -80,19 +85,35 @@ const ApproveDevice = () => {
         Your TV will point at <span className="font-mono">/pair</span> — that page does the same thing and is
         easier to reach from a phone.
       </p>
-      <form className="mt-3 flex flex-wrap items-start gap-2" onSubmit={submit}>
-        <Input
-          aria-label="Code shown on the device"
-          autoComplete="off"
-          className="w-44 font-mono tracking-widest uppercase"
-          onChange={(event) => setCode(event.target.value)}
-          placeholder="BCDF-GHJK"
-          spellCheck={false}
-          value={code}
-        />
-        <Button disabled={!code.trim() || approve.isPending} type="submit">
-          {approve.isPending ? "Checking…" : "Approve device"}
-        </Button>
+      <form
+        className="mt-3 flex flex-wrap items-start gap-2"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          void form.handleSubmit();
+        }}
+      >
+        <form.Field name="userCode">
+          {(field) => (
+            <Input
+              aria-label="Code shown on the device"
+              autoComplete="off"
+              className="w-44 font-mono tracking-widest uppercase"
+              name={field.name}
+              onChange={(event) => field.handleChange(event.target.value)}
+              placeholder="BCDF-GHJK"
+              spellCheck={false}
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
+        <form.Subscribe selector={(state) => state.values.userCode}>
+          {(userCode) => (
+            <Button disabled={!userCode.trim() || approve.isPending} type="submit">
+              {approve.isPending ? "Checking…" : "Approve device"}
+            </Button>
+          )}
+        </form.Subscribe>
       </form>
       {approve.isError ? (
         <p className="text-destructive mt-2 text-sm">
