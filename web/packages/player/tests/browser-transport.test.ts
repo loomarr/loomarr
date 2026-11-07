@@ -547,6 +547,29 @@ describe("browser transport", () => {
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/webkit-open-source");
     });
 
+    it("lets the tuning overlay paint before it holds the old frame and binds the new source", async () => {
+      hls.supported = true;
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
+      const { video } = createVideo();
+      const { open } = harness(video);
+      open("ch-1");
+      await vi.waitFor(() => expect(frames).toHaveLength(1));
+      frames.shift()?.(0);
+      frames.shift()?.(0);
+      await loaded(0, "ch-1");
+
+      open("ch-2");
+      await vi.waitFor(() => expect(frames).toHaveLength(1));
+      expect(hls.instances).toHaveLength(1);
+
+      frames.shift()?.(16);
+      await Promise.resolve();
+      expect(hls.instances).toHaveLength(1);
+      frames.shift()?.(32);
+      await vi.waitFor(() => expect(hls.instances).toHaveLength(2));
+    });
+
     it("replaces an ended MediaSource without waiting on its decoded range", async () => {
       hls.supported = true;
       const requestAnimationFrame = vi.fn();
@@ -573,6 +596,7 @@ describe("browser transport", () => {
           "ended",
         ),
       );
+      const framesBefore = requestAnimationFrame.mock.calls.length;
 
       open("ch-2");
 
@@ -581,7 +605,8 @@ describe("browser transport", () => {
       await vi.waitFor(() => expect(replacement.attachMedia).toHaveBeenCalledWith(video));
       await vi.waitFor(() => expect(replacement.loadSource).toHaveBeenCalledWith(masterUrl("ch-2")));
       expect(replacement.startLoad).toHaveBeenCalledOnce();
-      expect(requestAnimationFrame).not.toHaveBeenCalled();
+      // The one frame asked for is the overlay's paint before the swap; the handoff waits on none.
+      expect(requestAnimationFrame.mock.calls.length - framesBefore).toBe(1);
       expect(remove).not.toHaveBeenCalled();
       expect(video.removeAttribute).toHaveBeenCalledWith("src");
       expect(source.remove).toHaveBeenCalledOnce();

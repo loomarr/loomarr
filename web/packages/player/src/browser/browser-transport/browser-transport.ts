@@ -8,6 +8,7 @@ import { liveHlsConfig } from "../live-hls-config";
 import { selectLiveLevel } from "../live-level";
 import { liveSeek } from "../live-seek";
 import {
+  afterNextPaint,
   clearHeldFrame,
   clearTransferredBuffers,
   containsMediaTime,
@@ -807,6 +808,10 @@ const createBrowserTransport = ({
       if (clearHeld) video?.removeEventListener("loadeddata", clearHeld);
       const el = await attachedVideo(signal);
       if (!el || !current()) return;
+      // The tuning overlay paints first. Holding the outgoing frame (a canvas encode) and binding
+      // the new source block the main thread, and the viewer's acknowledgement must not wait on them.
+      await afterNextPaint();
+      if (!current()) return;
       activeAttemptId = attemptId;
       framedAttemptId = undefined;
       stalled = false;
