@@ -7,7 +7,7 @@ import type {
   ReactNode,
   RefAttributes,
 } from "react";
-import { cloneElement, forwardRef, isValidElement } from "react";
+import { cloneElement, forwardRef, isValidElement, useId, useState } from "react";
 import { Platform, Pressable, TextInput } from "react-native";
 
 import { useFocusLook } from "../focus-look";
@@ -380,21 +380,73 @@ type FieldProps = Omit<ComponentProps<typeof TextInput>, "editable"> & {
   label?: string;
 };
 
+// A password Field's button: the label names what a press does, so it flips with the state.
+const RevealButton = ({
+  density,
+  disabled,
+  onPress,
+  revealed,
+}: {
+  density: Density;
+  disabled: boolean;
+  onPress: () => void;
+  revealed: boolean;
+}) => {
+  const { focused, ...focusHandlers } = useFocusLook();
+  return (
+    <Pressable
+      accessibilityLabel={revealed ? "Hide password" : "Show password"}
+      accessibilityRole="button"
+      aria-pressed={revealed}
+      disabled={disabled}
+      {...focusHandlers}
+      onPress={onPress}
+      style={{
+        alignItems: "center",
+        bottom: 0,
+        justifyContent: "center",
+        // The ring around the glyph is the one focus look. Chrome's `auto` ring ignores a zero
+        // width, so the style is named too.
+        outlineStyle: "solid",
+        outlineWidth: 0,
+        position: "absolute",
+        right: 0,
+        top: 0,
+        width: semanticTargets[density],
+      }}
+    >
+      <View borderRadius="control" padding={2} {...boxFocusRing(focused, density)}>
+        <Icon
+          decorative
+          glyph={revealed ? icons.conceal : icons.reveal}
+          size={density === "tv" ? "control" : "compact"}
+          tone={focused ? "content" : "muted"}
+        />
+      </View>
+    </Pressable>
+  );
+};
+
 const Field = ({
   accessibilityLabel,
   density = "pointer",
   description,
   disabled = false,
   error,
+  id,
   invalid = false,
   label,
   onBlur,
   onFocus,
+  secureTextEntry = false,
   style,
   ...props
 }: FieldProps) => {
   const theme = useTheme();
   const { focused, ...focusHandlers } = useFocusLook({ onBlur, onFocus });
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
+  const [revealed, setRevealed] = useState(false);
   const hasError = invalid || Boolean(error);
   const borderColor = hasError
     ? theme.stateDanger.val
@@ -405,38 +457,59 @@ const Field = ({
   return (
     <View gap="inline" width="100%">
       {label ? (
-        <Text density={density} textRole="label">
+        <Text
+          as={isWeb ? "label" : undefined}
+          density={density}
+          textRole="label"
+          {...(isWeb ? { htmlFor: inputId } : {})}
+        >
           {label}
         </Text>
       ) : null}
-      <TextInput
-        {...props}
-        accessibilityLabel={accessibilityLabel ?? label}
-        accessibilityState={{ disabled }}
-        aria-disabled={disabled || undefined}
-        aria-invalid={hasError || undefined}
-        editable={!disabled}
-        {...focusHandlers}
-        placeholderTextColor={theme.contentMuted.val}
-        style={[
-          {
-            backgroundColor: disabled ? theme.surfaceRaised.val : theme.surfaceCanvas.val,
-            borderColor,
-            borderRadius: semanticRadius.control,
-            borderWidth: focused ? 3 : 2,
-            color: theme.contentPrimary.val,
-            // A raw TextInput: Tamagui's per-weight face swap doesn't reach it, so name the file.
-            fontFamily: isWeb
-              ? typography.family.data.web
-              : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
-            fontSize: typography[density].body.size,
-            minHeight: semanticTargets[density],
-            opacity: disabled ? 0.62 : 1,
-            paddingHorizontal: semanticSpace.control,
-          },
-          style,
-        ]}
-      />
+      <View position="relative" width="100%">
+        <TextInput
+          {...props}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={{ disabled }}
+          aria-disabled={disabled || undefined}
+          aria-invalid={hasError || undefined}
+          editable={!disabled}
+          id={inputId}
+          secureTextEntry={secureTextEntry && !revealed}
+          {...focusHandlers}
+          placeholderTextColor={theme.contentMuted.val}
+          style={[
+            {
+              backgroundColor: disabled ? theme.surfaceRaised.val : theme.surfaceCanvas.val,
+              borderColor,
+              borderRadius: semanticRadius.control,
+              borderWidth: focused ? 3 : 2,
+              color: theme.contentPrimary.val,
+              // A raw TextInput: Tamagui's per-weight face swap doesn't reach it, so name the file.
+              fontFamily: isWeb
+                ? typography.family.data.web
+                : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
+              fontSize: typography[density].body.size,
+              minHeight: semanticTargets[density],
+              opacity: disabled ? 0.62 : 1,
+              // The amber border is the focus look; the browser would add its own ring outside it.
+              outlineStyle: "solid",
+              outlineWidth: 0,
+              paddingHorizontal: semanticSpace.control,
+              paddingRight: secureTextEntry ? semanticTargets[density] : semanticSpace.control,
+            },
+            style,
+          ]}
+        />
+        {secureTextEntry ? (
+          <RevealButton
+            density={density}
+            disabled={disabled}
+            onPress={() => setRevealed((shown) => !shown)}
+            revealed={revealed}
+          />
+        ) : null}
+      </View>
       {error ? (
         <Text aria-live="polite" density={density} textRole="metadata" tone="danger">
           {error}
