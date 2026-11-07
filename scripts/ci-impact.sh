@@ -683,6 +683,8 @@ classify() {
         # and this one runs a container on a household backup. Only a maintainer runs it.
         scripts/migration-rehearsal.*) select_gate contracts ;;
         scripts/observability-dev.sh) select_gate contracts ;;
+        # make db-view, run by hand; compose-verify renders its Compose file.
+        scripts/db-view.sh) select_gate contracts ;;
         scripts/publish-release-image.sh) select_gate contracts ;;
         scripts/smoke.sh) select_gate contracts ;;
         scripts/verify-observability.sh) select_gate contracts ;;

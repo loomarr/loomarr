@@ -112,6 +112,17 @@ if printf '%s\n' "$demo_public" | jq -e '.services.cloudflared' >/dev/null; then
 	exit 1
 fi
 
+# make db-view serves a database copy with no sign-in, so it must publish only on loopback.
+db_view="$(DB_VIEW_RUN_DIR=/run DB_VIEW_ADMIN_PASSWORD=x DB_VIEW_PG_PASSWORD=x DB_VIEW_SQLITE_FILE=/db \
+	docker compose -f "$ROOT/docker/compose.db-view.yaml" --profile postgres config --format json)" || {
+	echo 'compose-verify: docker/compose.db-view.yaml does not render' >&2
+	exit 1
+}
+if ! printf '%s\n' "$db_view" | jq -e '[.services[].ports[]?.host_ip] | length > 0 and all(. == "127.0.0.1")' >/dev/null; then
+	echo 'compose-verify: make db-view publishes beyond loopback' >&2
+	exit 1
+fi
+
 postgres="$(
 	LOOMARR_VERSION="$VERSION" SERVER_PUBLIC_URL="$PUBLIC_URL" docker compose \
 		-f "$ROOT/docker/compose.yaml" \

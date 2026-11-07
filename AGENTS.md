@@ -291,6 +291,8 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
   scheduled/manual runs, unknown paths, and unusable bases scan all six. Keep GitHub default setup
   disabled because it overrides advanced workflows and restores all-language scans on every change.
 - Frontend work uses the Vite server, not the stale SPA embedded on the backend port.
+- Read a database only through a copy (`make db-view`, or a `VACUUM INTO` snapshot), and never write
+  to one directly. To create state, drive the app's API or a test fixture.
 - Change source, test, config and doc files through the harness's file-edit tool, one reviewed
   change at a time. Never write them with `sed -i`, `perl -pi`, `awk`, a `python` script, or a shell
   heredoc or redirect. That includes conflict resolution and one-line tweaks. A scripted replace

@@ -160,6 +160,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make observability-dev` |  | seed SQLite if needed, then start isolated local Prometheus + Grafana |
 | `make observability-dev-down` |  | stop this worktree's local observability stack (preserves its data) |
 | `make observability-dev-test` |  | prove seeded Loomarr metrics and Grafana provisioning over real Docker + HTTP |
+| `make db-view` |  | browse a copy of a database in CloudBeaver until Ctrl-C (FILE=backup.db, URL=postgres://…, ENGINE=postgres) |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
 | `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
 | `make rust-dev-build` |  | build the required Rust worker for local development |
