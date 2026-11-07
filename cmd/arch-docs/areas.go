@@ -57,8 +57,9 @@ var areas = []area{
 			"the GPU encoder, and the one pipeline every image goes through. It also holds the checks " +
 			"that judge a clip's picture, sound and level, and whether two adverts are the same one.",
 		Packages: []string{
-			"media", "mediaheader", "mediameasure", "mediatools", "images", "images/rustgen",
-			"encode", "bgexec", "proctree", "loudness", "creative", "defects",
+			"media", "media/header", "media/measure", "media/tools", "media/images", "media/images/rustgen",
+			"media/encode", "media/bgexec", "media/proctree", "media/loudness", "media/creative",
+			"media/defects",
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager every ffmpeg run goes through, the image jobs and " +

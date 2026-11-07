@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/encode"
-	"github.com/loomarr/loomarr/internal/proctree"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/proctree"
 )
 
 // The class probe measures what one stream of each cost class costs this host (#1512 G5). It never

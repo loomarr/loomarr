@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 type conditioningSnapshots struct {
@@ -39,8 +39,8 @@ func snapshotConditioningArtifacts(ctx context.Context, stageDir, source, parent
 		cleanup()
 		return conditioningSnapshots{}, errors.New("conditioning source or parent bytes do not match catalog identity")
 	}
-	sourceEqual, sourceErr := exactFileBytesEqual(ctx, source, out.Source, mediatools.ConditioningMaxSnapshotBytes)
-	parentEqual, parentErr := exactFileBytesEqual(ctx, parent, out.Parent, mediatools.ConditioningMaxSnapshotBytes)
+	sourceEqual, sourceErr := exactFileBytesEqual(ctx, source, out.Source, tools.ConditioningMaxSnapshotBytes)
+	parentEqual, parentErr := exactFileBytesEqual(ctx, parent, out.Parent, tools.ConditioningMaxSnapshotBytes)
 	if sourceErr != nil || parentErr != nil || !sourceEqual || !parentEqual {
 		cleanup()
 		return conditioningSnapshots{}, errors.New("conditioning source or parent snapshot is not exact")
@@ -55,7 +55,7 @@ func validateRecoveredTranscode(ctx context.Context, staged, published, expected
 	if err != nil || publishedID != expectedHash {
 		return errors.New("existing transformed artifact bytes do not match their identity")
 	}
-	equal, err := exactFileBytesEqual(ctx, staged, published, mediatools.ConditioningMaxSnapshotBytes)
+	equal, err := exactFileBytesEqual(ctx, staged, published, tools.ConditioningMaxSnapshotBytes)
 	if err != nil || !equal {
 		return errors.New("existing transformed artifact bytes do not exactly match the staged output")
 	}

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/defects"
-	"github.com/loomarr/loomarr/internal/encode"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // airingStore records the switch ReplaceAiring commits.
@@ -38,20 +38,20 @@ func (s *airingStore) ReplaceAiringClip(_ context.Context, oldHash string, c Sto
 func derivativeStage(t *testing.T, dir string, host *encode.HostProfile, body string) *TranscodeStage {
 	t.Helper()
 	probe := func(context.Context, string) (Probed, error) { return Probed{DurationMs: 30_000, Height: 480}, nil }
-	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
+	stage := NewTranscodeStage(&transcodeStore{}, probe, dir, tools.DefaultMezzanine(), nil, nil, time.Now).WithMediaDerivatives()
 	if host != nil {
 		stage.WithEncodeHost(func() encode.HostProfile { return *host })
 	}
-	stage.identifyFFmpeg = func(context.Context, string) (mediatools.MediaToolIdentity, error) {
-		return mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("a", 64)}, nil
+	stage.identifyFFmpeg = func(context.Context, string) (tools.MediaToolIdentity, error) {
+		return tools.MediaToolIdentity{Name: "ffmpeg", Version: "fixture", ExecutableSHA256: strings.Repeat("a", 64)}, nil
 	}
-	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (mediatools.DerivativeQC, error) {
+	stage.verifyDerivative = func(_ context.Context, _, _ string, durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) (tools.DerivativeQC, error) {
 		return fixtureDerivativeQC(durationMs, keyframeSeconds, hadAudio, targetLUFS), nil
 	}
-	stage.evidenceTranscode = func(_ context.Context, request mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+	stage.evidenceTranscode = func(_ context.Context, request tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte(body), 0o600)
 	}
-	stage.transcode = func(context.Context, mediatools.TranscodeRequest, func(int)) (MediaQuality, error) {
+	stage.transcode = func(context.Context, tools.TranscodeRequest, func(int)) (MediaQuality, error) {
 		t.Fatal("a top-level clip's playback rendition was encoded a second time")
 		return MediaQuality{}, nil
 	}
@@ -132,7 +132,7 @@ func TestReplaceAiring_SwitchesAnAiringClipToItsReencode(t *testing.T) {
 		t.Fatalf("new playback = %q, %v", raw, err)
 	}
 	tags, ok := ReadSidecarTags(newFull)
-	if !ok || tags.Mezzanine != mediatools.FileMezzanine(nvencHost).ID() || tags.MediaAssets == nil ||
+	if !ok || tags.Mezzanine != tools.FileMezzanine(nvencHost).ID() || tags.MediaAssets == nil ||
 		tags.MediaAssets.SourceMaster.Path != oldTags.MediaAssets.SourceMaster.Path {
 		t.Fatalf("new sidecar = %+v", tags)
 	}
@@ -236,14 +236,14 @@ func TestNeedsReencode_OnlyAiringOriginalsUnderAnotherProfileOnHardware(t *testi
 
 	full := filepath.Join(dir, filepath.FromSlash(airing.Path))
 	tags, _ := ReadSidecarTags(full)
-	tags.Mezzanine = mediatools.FileMezzanine(nvencHost).ID()
+	tags.Mezzanine = tools.FileMezzanine(nvencHost).ID()
 	if err := WriteSidecarTags(full, tags, false); err != nil {
 		t.Fatal(err)
 	}
 	if stage.NeedsReencode(airing) {
 		t.Error("a clip already under the current profile is due a re-encode")
 	}
-	tags.Mezzanine, tags.MediaAssets.Playback = mediatools.DefaultMezzanine().ID(), nil
+	tags.Mezzanine, tags.MediaAssets.Playback = tools.DefaultMezzanine().ID(), nil
 	if err := WriteSidecarTags(full, tags, false); err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 // A solid 4:3 grayscale JPEG, for the vision stage's tests.
 //
 // ⚠ A LOCAL copy rather than an import. The original lived beside the frame-heuristic tests,
-// which moved to internal/mediatools with the analysis they cover — and a test helper is not a
+// which moved to internal/media/tools with the analysis they cover — and a test helper is not a
 // reason to export something from a production package, nor to make one test package import
 // another's internals. Six lines duplicated beats either.
 //

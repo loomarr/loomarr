@@ -16,7 +16,7 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
-- **`testkit`** · 1 importer · → `channels/schedule`, `demolibrary`, `filler/records`, `images/rustgen`, `llm`, `people/invitation`, `people/notifications`, `playout`, `proposals/quality`, `proposals/webreference`, `provision`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+- **`testkit`** · 1 importer · → `channels/schedule`, `demolibrary`, `filler/records`, `llm`, `media/images/rustgen`, `people/invitation`, `people/notifications`, `playout`, `proposals/quality`, `proposals/webreference`, `provision`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/catalogfixture`** · → `catalog`, `library`, `provision`
   Shared no-network adapters for catalog tests.

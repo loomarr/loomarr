@@ -26,7 +26,7 @@ func testGenerator(t *testing.T) generator {
 	return generator{ffmpeg: ffmpeg, l: l, log: slog.New(slog.DiscardHandler)}
 }
 
-// The filler quality gate (internal/mediatools/quality.go) decides whether a clip can air. The first
+// The filler quality gate (internal/media/tools/quality.go) decides whether a clip can air. The first
 // generator failed it twice, so no demo break aired: its silent track was rejected as
 // silent_content ("99% of the 10.0s audio is silent"), and its static cards were held for review
 // ("The picture is unchanged for 20.0s"). Each interstitial must carry real sound, a moving

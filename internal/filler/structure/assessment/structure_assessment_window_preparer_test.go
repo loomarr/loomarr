@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 func TestStructureAssessmentWindowPreparerRendersCompleteSetAndReusesVerifiedMedia(t *testing.T) {
@@ -186,8 +186,8 @@ func TestStructureAssessmentWindowPreparerFailsClosedBeforeRenderOnSourceDrift(t
 	}
 }
 
-func structureAssessmentToolFixture() mediatools.MediaToolIdentity {
-	return mediatools.MediaToolIdentity{Name: "ffmpeg", Version: "ffmpeg fixture", ExecutableSHA256: strings.Repeat("a", 64)}
+func structureAssessmentToolFixture() tools.MediaToolIdentity {
+	return tools.MediaToolIdentity{Name: "ffmpeg", Version: "ffmpeg fixture", ExecutableSHA256: strings.Repeat("a", 64)}
 }
 
 func argumentAfter(arguments []string, name string) string {
@@ -262,7 +262,7 @@ func structureAssessmentWindowPreparerFixture(t *testing.T, root string, plan wi
 	preparer := &FFmpegStructureAssessmentMediaPreparer{
 		sourceRoot: root, mediaRoot: root, ffmpegPath: "/fixture/ffmpeg", snapshot: filler.SnapshotOwnedFile,
 		profile: cut.SoftwareProfile(),
-		identify: func(context.Context, string) (mediatools.MediaToolIdentity, error) {
+		identify: func(context.Context, string) (tools.MediaToolIdentity, error) {
 			return structureAssessmentToolFixture(), nil
 		},
 	}

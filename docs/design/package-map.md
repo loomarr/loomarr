@@ -73,15 +73,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Depends on |
 | --- | --- |
-| `bgexec` | — |
 | `catalog` | `library`, `provision` |
 | `channels/schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `config` | — |
-| `creative` | — |
-| `defects` | — |
 | `diagnostics` | `storagegovernor` |
-| `encode` | `config` |
-| `filler` | `bgexec`, `channels/schedule`, `creative`, `defects`, `diagnostics`, `encode`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `mediatools`, `storagegovernor` |
+| `filler` | `channels/schedule`, `diagnostics`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `llm`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/tools`, `storagegovernor` |
 | `filler/source` | — |
 | `filler/station` | — |
 | `filler/structure` | — |
@@ -93,14 +89,18 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `jobs` | `store` |
 | `library` | `httpx`, `inventory`, `metrics` |
 | `llm` | `httpx`, `metrics` |
-| `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode` |
+| `media/bgexec` | — |
+| `media/creative` | — |
+| `media/defects` | — |
+| `media/encode` | `config` |
+| `media/tools` | `diagnostics`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode` |
 | `metadataprovider` | — |
 | `metrics` | `provision` |
 | `people/contact` | — |
 | `people/invitation` | `people/contact` |
 | `people/notifications` | `httpx` |
 | `people/recovery` | — |
-| `playout` | `channels/schedule`, `config`, `diagnostics`, `encode`, `provision` |
+| `playout` | `channels/schedule`, `config`, `diagnostics`, `media/encode`, `provision` |
 | `proposals` | `channels/schedule`, `provision`, `storagegovernor` |
 | `proposals/quality` | `provision` |
 | `proposals/suggest` | `catalog`, `channels/schedule`, `holidayvocab`, `llm`, `proposals`, `proposals/quality`, `provision`, `rating`, `store` |
@@ -108,7 +108,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `rating` | — |
 | `settings` | `config`, `library` |
 | `storagegovernor` | — |
-| `store` | `channels/schedule`, `creative`, `defects`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposals`, `proposals/quality`, `provision` |
+| `store` | `channels/schedule`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposals`, `proposals/quality`, `provision` |
 
 ## How the area pages are made
 

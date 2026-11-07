@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // The watermark self-check (#1512 phase 1d): does THIS host's GPU overlay draw the bug AND keep

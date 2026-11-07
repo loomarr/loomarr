@@ -32,18 +32,18 @@ PKG = {}
 for sub, pkgs in {
     "API": "api httpx auth web setup invitation contact secretprotection",
     "scheduler/guide": "channels/schedule channels/approval channels/edit programmer channels channelmaint",
-    "jobs runtime": "jobs bgexec",
+    "jobs runtime": "jobs media/bgexec",
     "filler": "filler filleradmission fillerscreening fillercorpus fillerenrichment fillereval "
               "fillerresearch fillerstructure fillerstructuremedia fillerstructurewindow "
-              "fillerstructurewindowopenrouter clipfetch mediameasure media mediatools episodeevidence",
+              "fillerstructurewindowopenrouter clipfetch media/measure media media/tools episodeevidence",
     "curation": "proposals channels/recommend channels/recurate channels/ideas taxonomy holidayvocab textmatch "
                 "moviecollections tmdb catalog",
     "library sync": "library inventory requester provision provisionbackstop",
-    "images": "images",
+    "images": "media/images",
     "database": "store fillerstore",
     "playout": "playout watermark channels/viewing playoutbench",
     "platform": "settings config notifications diagnostics recovery retention storagegovernor events activity app "
-                "landiscovery installationlocation logchange releasenotes buildinfo backendtransition proctree",
+                "landiscovery installationlocation logchange releasenotes buildinfo backendtransition media/proctree",
     "llm": "llm openroutercatalog openroutermedia eval",
     "metrics scrape": "metrics",
 }.items():

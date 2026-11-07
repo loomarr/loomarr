@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // Premium sources: a native 4K SDR film (HEVC Main10 BT.709, like the spike's S4) and an HLG

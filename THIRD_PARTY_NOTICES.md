@@ -65,7 +65,7 @@ Geist files are the same fonts under the same licence.
 
 ## Rust dependencies (compiled into the image worker)
 
-The image-processing worker (`internal/images/rustgen` → the `loomarr-image` crate) is compiled
+The image-processing worker (`internal/media/images/rustgen` → the `loomarr-image` crate) is compiled
 during the image build and its binary ships in the image. Its dependency tree is **confined to an
 explicit permissive allow-list, enforced on every build** by `cargo-deny` via [`deny.toml`](deny.toml)
 and the `make rust-audit` gate: MIT, Apache-2.0 (incl. the LLVM exception), the BSD family, ISC,

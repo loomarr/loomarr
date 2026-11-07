@@ -18,10 +18,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/mediameasure"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -463,7 +463,7 @@ func TestPlayoutResolver_FirstPlayMeasuresFactsOnceAndActivatesMinimalProbe(t *t
 			return playout.MediaFormat{}, nil
 		},
 	}
-	r.measurer = r.newMeasurer(mediameasure.Tools{}, st)
+	r.measurer = r.newMeasurer(measure.Tools{}, st)
 
 	format := r.FormatOf(t.Context(), path)
 	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
@@ -498,7 +498,7 @@ func TestPlayoutResolver_AirtimeFormatCarriesTheMeasuredActivePicture(t *testing
 			}, nil
 		},
 	}
-	r.measurer = r.newMeasurer(mediameasure.Tools{}, st)
+	r.measurer = r.newMeasurer(measure.Tools{}, st)
 	if format := r.FormatOf(t.Context(), path); format.Active != (playout.Rect{}) {
 		t.Fatalf("unmeasured source: active %+v, want unknown", format.Active)
 	}
@@ -533,7 +533,7 @@ func TestPlayoutResolver_UnmeasurableSourceKeepsFullProbe(t *testing.T) {
 		},
 		probeFormat: func(context.Context, string) (playout.MediaFormat, error) { return playout.MediaFormat{}, nil },
 	}
-	r.measurer = r.newMeasurer(mediameasure.Tools{}, st)
+	r.measurer = r.newMeasurer(measure.Tools{}, st)
 	format := r.FormatOf(t.Context(), path)
 	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) == 0 || slices.Contains(pipe.PreInput, "-fpsprobesize") {
@@ -557,7 +557,7 @@ func TestPlayoutResolver_FirstPlayWithRealFFprobeActivatesMinimalProbeAndStoresA
 	st := testkit.MigratedSQLiteStore(t)
 	r := &playoutResolver{inventory: inventory.New(st), now: time.Now,
 		probeSource: playout.FFprobeSourceNextTo(ffmpeg)}
-	m := r.newMeasurer(mediameasure.DefaultTools(ffmpeg, playout.FFprobeBeside(ffmpeg)), st)
+	m := r.newMeasurer(measure.DefaultTools(ffmpeg, playout.FFprobeBeside(ffmpeg)), st)
 	r.measurer = m
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

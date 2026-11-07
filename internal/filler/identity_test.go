@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/creative"
-	"github.com/loomarr/loomarr/internal/defects"
+	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 type identityMemStore struct {

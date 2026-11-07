@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/scan"
-	"github.com/loomarr/loomarr/internal/mediaheader"
+	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
@@ -90,20 +90,20 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) api.LibraryR
 }
 
 // libraryHeader reads a file's header natively, and through ffprobe when the container needs it.
-func libraryHeader(probe playout.SourceProber) func(context.Context, string) (mediaheader.Header, error) {
-	fallback := func(ctx context.Context, path string) (mediaheader.Header, error) {
+func libraryHeader(probe playout.SourceProber) func(context.Context, string) (header.Header, error) {
+	fallback := func(ctx context.Context, path string) (header.Header, error) {
 		observed, err := probe(ctx, path)
 		if err != nil {
-			return mediaheader.Header{}, err
+			return header.Header{}, err
 		}
 		facts := inventoryFactsOf(observed)
-		return mediaheader.Header{
+		return header.Header{
 			Container: facts.Container, DurationMillis: facts.DurationMillis, Bitrate: facts.Bitrate,
 			Streams: facts.Streams,
 		}, nil
 	}
-	return func(ctx context.Context, path string) (mediaheader.Header, error) {
-		h, _, err := mediaheader.Probe(ctx, path, fallback)
+	return func(ctx context.Context, path string) (header.Header, error) {
+		h, _, err := header.Probe(ctx, path, fallback)
 		return h, err
 	}
 }

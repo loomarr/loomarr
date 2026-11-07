@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/packager"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -29,7 +29,7 @@ import (
 
 type realReviewedSplitTools struct {
 	splitFakeTools
-	ffmpeg *mediatools.FFmpegTools
+	ffmpeg *tools.FFmpegTools
 }
 
 func (t realReviewedSplitTools) Cut(ctx context.Context, in string, start, end int64, out string) error {
@@ -73,7 +73,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	t.Cleanup(cancel)
 	dir := t.TempDir()
 	fixtures := testkit.FillerConditioningMedia(t, dir)
-	tools := mediatools.NewFFmpegTools(ffmpeg, ffprobe, "", "", "")
+	mediaTools := tools.NewFFmpegTools(ffmpeg, ffprobe, "", "", "")
 
 	parentHash, err := filler.ClipID(fixtures.Compilation)
 	if err != nil {
@@ -96,7 +96,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 		t.Fatal(err)
 	}
 	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, realReviewedSplitTools{
-		splitFakeTools: splitFakeTools{}, ffmpeg: tools,
+		splitFakeTools: splitFakeTools{}, ffmpeg: mediaTools,
 	}, nil, dir, func() time.Duration { return 0 }, func() string { return "real-ffmpeg-proposal" }, time.Now, nil)
 	proposal, err := splitter.Propose(ctx, parentHash)
 	if err != nil {
@@ -116,9 +116,9 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	childHash := childHashes[0]
 	reviewedStart, reviewedEnd := reviewed[0].StartMs, reviewed[0].EndMs
 	stage := filler.NewTranscodeStage(fillerPipelineClipAdapter{st}, probe, dir,
-		mediatools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, time.Now).
-		WithConditioning(func(ctx context.Context, req mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
-			measurement, err := tools.MeasureConditioning(ctx, req)
+		tools.DefaultMezzanine(), func() string { return ffmpeg }, func() float64 { return -23 }, time.Now).
+		WithConditioning(func(ctx context.Context, req tools.ConditioningRequest) (tools.ConditioningMeasurement, error) {
+			measurement, err := mediaTools.MeasureConditioning(ctx, req)
 			t.Logf("conditioning %s: %+v err=%v", filepath.Base(req.Path), measurement, err)
 			return measurement, err
 		})
@@ -181,14 +181,14 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 		tags.ConditioningLineage.IntendedEndMs != reviewedEnd ||
 		len(tags.Conditioning.BeforeRewrite.Cuts) != 1 ||
 		tags.Conditioning.BeforeRewrite.Quality.DurationMs != tags.Conditioning.BeforeRewrite.ContainerDurationMs ||
-		tags.Conditioning.BeforeRewrite.Cuts[0].Intended != (mediatools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
-		tags.Conditioning.AfterRewrite.Cuts[0].Intended != (mediatools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
+		tags.Conditioning.BeforeRewrite.Cuts[0].Intended != (tools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
+		tags.Conditioning.AfterRewrite.Cuts[0].Intended != (tools.Interval{StartMs: reviewedStart, EndMs: reviewedEnd}) ||
 		!tags.Conditioning.BeforeRewrite.Loudness.Available ||
 		!tags.Conditioning.AfterRewrite.Loudness.Available ||
 		// #2032: the file is never levelled on disk, so the rewrite keeps the source's loudness.
 		math.Abs(tags.Conditioning.BeforeRewrite.Loudness.IntegratedLUFS-tags.Conditioning.AfterRewrite.Loudness.IntegratedLUFS) > 1.0 ||
-		tags.Conditioning.BeforeRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
-		tags.Conditioning.AfterRewrite.Loudness.TruePeak.State != mediatools.TruePeakFinite ||
+		tags.Conditioning.BeforeRewrite.Loudness.TruePeak.State != tools.TruePeakFinite ||
+		tags.Conditioning.AfterRewrite.Loudness.TruePeak.State != tools.TruePeakFinite ||
 		len(tags.Conditioning.AfterRewrite.Streams) != 2 ||
 		tags.Conditioning.AfterRewrite.Streams[0].Cadence == nil ||
 		len(tags.Conditioning.AfterRewrite.Cuts) != 1 ||
@@ -221,12 +221,12 @@ func TestFillerConditioningJourneyFFmpeg_ChildEndingInBlackAndSilencePublishes(t
 	// The stream-copy cut overshoots into the next segment by a packet, so each tail ends where its
 	// own stream ends on the container timeline, bounded by the container end. Which stream runs
 	// longer depends on the encode; un-levelled audio (#2032) no longer outlasts the video.
-	streamEnd := func(s mediatools.ConditioningStream) int64 {
+	streamEnd := func(s tools.ConditioningStream) int64 {
 		return min(s.Start.Milliseconds+s.Duration.Milliseconds-after.ContainerStart.Milliseconds,
 			after.ContainerDurationMs)
 	}
 	for name, want := range map[string]struct {
-		spans []mediatools.Interval
+		spans []tools.Interval
 		end   int64
 	}{
 		"black":   {after.Quality.Black, streamEnd(after.Streams[0])},
