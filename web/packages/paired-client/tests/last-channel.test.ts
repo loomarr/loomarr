@@ -1,11 +1,16 @@
 import {
-  createLastChannelStore,
   createPlayerController,
   type PlayerChannel,
   type PlayerSourcePort,
   type PlayerTransport,
 } from "@loomarr/player";
 import { describe, expect, it, vi } from "vitest";
+
+// The package entry also carries the native hooks, whose Expo modules don't load under Node.
+vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
+vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
+
+const { createLastChannelStore } = await import("@loomarr/paired-client");
 
 const channels: PlayerChannel[] = [
   { id: "ten", inAppPlayable: true, name: "Ten", number: 10 },

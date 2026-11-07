@@ -14,9 +14,12 @@ const bundledNativeModules = async () =>
   );
 
 // The paired runtime (catalog, guide, diagnostics, event stream, lifecycle) is shared with the phone, so it
-// lives in the player package's usePairedClient; the TV supplies its identity and tune marks.
+// lives in the paired-client package's usePairedClient; the TV supplies its identity and tune marks.
 const readPairedClient = () =>
-  readFile(new URL("../../../packages/player/src/paired-client/paired-client.ts", import.meta.url), "utf8");
+  readFile(
+    new URL("../../../packages/paired-client/src/paired-client/paired-client.ts", import.meta.url),
+    "utf8",
+  );
 
 test("keeps the TV proof isolated from the shipping application", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));

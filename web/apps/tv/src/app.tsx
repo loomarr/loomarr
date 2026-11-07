@@ -8,13 +8,8 @@ import {
 import { BrandLaunch, Surface, Text, ViewportStage } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import { createNativeApp, NativeAppRoot, useCrashReportUpload } from "@loomarr/native-app";
-import {
-  createLastChannelStore,
-  createPlaybackMarks,
-  NativePlayerView,
-  PairedNativeImage,
-  usePairedClient,
-} from "@loomarr/player/native";
+import { createLastChannelStore, usePairedClient } from "@loomarr/paired-client";
+import { createPlaybackMarks, NativePlayerView, PairedNativeImage } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
 import {
   clientBackDestination,

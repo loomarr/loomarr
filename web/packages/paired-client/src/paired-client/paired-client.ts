@@ -4,17 +4,19 @@ import { createGuideController, createGuideSourcePort, guideWindow } from "@loom
 import { createMyChannelsController, createMyChannelsPort } from "@loomarr/core/my-channels";
 import { createAuthenticatedFetch } from "@loomarr/core/pairing";
 import { createServerVersionSource } from "@loomarr/core/system-version";
+import { createCatalogRefresher, createPlayerController } from "@loomarr/player";
+import {
+  createExpoVideoTransport,
+  createNativeEventStreamFactory,
+  createNativePlaybackDiagnostics,
+  createNativePlayerLifecycle,
+  nativeTransportOf,
+} from "@loomarr/player/native";
+import { createChannelCatalogPort, createPlayUrlSourcePort } from "@loomarr/player/server";
 import { randomUUID } from "expo-crypto";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, Image } from "react-native";
 
-import { createCatalogRefresher } from "../catalog-refresher";
-import { createExpoVideoTransport } from "../native/native";
-import { createNativeEventStreamFactory } from "../native-event-stream";
-import { createNativePlaybackDiagnostics, nativeTransportOf } from "../native-playback-diagnostics";
-import { createNativePlayerLifecycle } from "../native-player-lifecycle";
-import { createChannelCatalogPort, createPlayUrlSourcePort } from "../play-url-source";
-import { createPlayerController } from "../player-controller";
 import type { PairedClient, PairedClientOptions } from "./paired-client.type";
 
 // Hermes has no crypto.randomUUID, so expo-crypto supplies the platform's secure one.

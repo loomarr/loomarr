@@ -1,0 +1,36 @@
+{
+  "name": "@loomarr/paired-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The paired runtime the phone and TV share: catalog, guide, account, requests, event stream, lifecycle and the last-watched Channel.",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@loomarr/core": "workspace:*",
+    "@loomarr/player": "workspace:*"
+  },
+  "peerDependencies": {
+    "expo-crypto": "58.0.7",
+    "react": ">=19 <20",
+    "react-native": ">=0.88 <0.89"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "expo": "58.0.23",
+    "expo-crypto": "58.0.7",
+    "expo-video": "58.0.13",
+    "jsdom": "30.0.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "npm:react-native-tvos@0.88.1-0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

@@ -2,12 +2,15 @@ import type { ClientDiagnosticsIdentity } from "@loomarr/core/client-diagnostics
 import type { GuideController, GuideControllerSnapshot } from "@loomarr/core/guide";
 import type { MyChannelsController, MyChannelsSnapshot } from "@loomarr/core/my-channels";
 import type { PairingCredential, PairingSession } from "@loomarr/core/pairing";
+import type {
+  CatalogRefreshState,
+  PlayerController,
+  PlayerSnapshot,
+  PlayerTuneReport,
+} from "@loomarr/player";
+import type { NativePlayerTransport, PlaybackMarks } from "@loomarr/player/native";
 
-import type { CatalogRefreshState } from "../catalog-refresher";
 import type { LastChannelStore } from "../last-channel";
-import type { NativePlayerTransport } from "../native/native";
-import type { PlaybackMarks } from "../playback-marks";
-import type { PlayerController, PlayerSnapshot, PlayerTuneReport } from "../player-controller";
 
 interface PairedClientOptions {
   credential: PairingCredential;

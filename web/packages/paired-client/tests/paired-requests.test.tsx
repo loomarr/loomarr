@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
 
-const { usePairedRequests } = await import("@loomarr/player/native");
+const { usePairedRequests } = await import("@loomarr/paired-client");
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

@@ -221,8 +221,8 @@ classify() {
       select_gate apple_mobile
       select_gate expo_android_mobile
       ;;
-    web/packages/native-app/*)
-      # The bootstrap both native apps call: every native client builds it.
+    web/packages/native-app/*|web/packages/paired-client/*)
+      # The bootstrap and the paired runtime both native apps call: every native client builds them.
       known=true
       select_gate clients
       select_all_native_clients

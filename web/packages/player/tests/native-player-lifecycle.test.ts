@@ -1,7 +1,6 @@
 import type { PlayerSnapshot } from "@loomarr/player";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({
   createVideoPlayer: vi.fn(),
   VideoView: vi.fn(),
