@@ -5,18 +5,15 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
 import { FieldHint } from "@loomarr/design-system";
-import { useForm } from "@tanstack/react-form";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
-import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 // Your account (§11). The self-service half of local account management: change your
@@ -68,7 +65,7 @@ const AccountScreen = () => {
 
   // Checked here as well as server-side: a mismatch is the user's typo, and making
   // them wait for a round-trip to learn it is worse than saying so immediately.
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: { current: "", next: "", confirm: "" },
     validators: { onSubmit: changePasswordSchema },
     onSubmit: ({ value }) => {
@@ -126,23 +123,9 @@ const AccountScreen = () => {
               </p>
               <div className="flex flex-col gap-2">
                 {PASSWORD_FIELDS.map(({ name, label, autoComplete }) => (
-                  <form.Field key={name} name={name}>
-                    {(field) => (
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor={`acct-${name}`}>{label}</Label>
-                        <Input
-                          id={`acct-${name}`}
-                          name={field.name}
-                          type="password"
-                          autoComplete={autoComplete}
-                          value={field.state.value}
-                          aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                        />
-                        <FieldError errors={field.state.meta.errors} />
-                      </div>
-                    )}
-                  </form.Field>
+                  <form.AppField key={name} name={name}>
+                    {(field) => <field.TextField autoComplete={autoComplete} label={label} type="password" />}
+                  </form.AppField>
                 ))}
               </div>
               {serverError && (
