@@ -350,10 +350,10 @@ jobs:
             merge-gate-go-${{ runner.os }}-
       - name: Repository policy bootstrap outside Make
         run: go run ./cmd/releaseverify -root .
-      - name: Workflow and publication policy
-        run: make ci-lint release-verify
-      - name: Agent harness and shell policy
-        run: make agent-harness-test shellcheck
+      # Mostly single-threaded shell self-tests, so they run side by side: one after the other they
+      # took 2 minutes and set PR time.
+      - name: Workflow, publication, agent harness, and shell policy
+        run: make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck
       - name: Documentation contracts read by Go
         run: go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify
   rust-contracts:

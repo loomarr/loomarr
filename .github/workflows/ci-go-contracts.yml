@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     # Two runners for wall clock: this job sets PR time for Go changes. Shard 1 owns the compile-heavy
     # analysis, shard 2 the repository contracts, and every check runs in exactly one of them. The
-    # OpenAPI, retired-identifier, and observability checks (about 50s) sit on shard 1 to even them:
-    # with all of them on shard 2 it took 3m10s against shard 1's 1m38s.
+    # follow-up checks are placed to even the shards. ci-lint, release-verify, agent-harness-test,
+    # shellcheck, and the generated-docs checks are not here: CI policy runs them on every PR.
     strategy:
       fail-fast: false # one shard's failures must not hide the other's
       matrix:
@@ -41,12 +41,10 @@ jobs:
           key: go-contracts-${{ runner.os }}-
           restore-keys: |
             go-contracts-${{ runner.os }}-
-      # On a cache miss this job's module cache is empty, and `release-verify` runs
-      # TestGoImpactSelector, whose scripts/go-impact.sh shells out to `go list ./...` over the
-      # whole repo — the one call in this job that needs the FULL module graph at once. Download
-      # it here, in its own named step, instead of leaving a cold-cache network fetch buried
-      # inside that one test's subprocess (#1834). The helper retries a proxy stream reset with the
-      # same bounded policy as container pulls (#1900; run 38418263494 lost the job to one reset).
+      # On a cache miss this job's module cache is empty. Download the module graph here, in its own
+      # named step, instead of leaving a cold-cache network fetch buried inside one check's
+      # subprocess (#1834). The helper retries a proxy stream reset with the same bounded policy as
+      # container pulls (#1900; run 38418263494 lost the job to one reset).
       - name: Download Go modules
         run: ./scripts/go-mod-download.sh
       - name: Static analysis
@@ -54,30 +52,18 @@ jobs:
         run: make vet vet-tags lint # serial: each already uses every core, and -j4 was slower
       - name: Repository contracts
         if: matrix.shard == 2
-        run: make fmt shellcheck privacy-verify tags-verify agent-harness-test compose-verify release-verify go-race-verify eval-contract
+        run: make fmt privacy-verify tags-verify compose-verify go-race-verify eval-contract
         env:
           MAKEFLAGS: -j4 --output-sync=target # independent checks
       - name: The test lanes cover every package
-        if: matrix.shard == 2
+        if: matrix.shard == 1
         run: make go-shard-verify SHARDS=2
       - name: OpenAPI spec is committed and current
         if: matrix.shard == 1
         run: make openapi-verify
-      - name: Config docs are committed and current
-        if: matrix.shard == 2
-        run: make config-docs-verify
-      - name: The §2 package map is committed and current
-        if: matrix.shard == 2
-        run: make arch-docs-verify
-      - name: Command reference is committed and current
-        if: matrix.shard == 2
-        run: make dev-docs-verify
       - name: Retired identifiers are gone from prose
-        if: matrix.shard == 1
-        run: make retired-verify
-      - name: Workflows are valid
         if: matrix.shard == 2
-        run: make ci-lint
+        run: make retired-verify
       - name: Observability artifacts are provisionable
-        if: matrix.shard == 1
+        if: matrix.shard == 2
         run: make observability-verify

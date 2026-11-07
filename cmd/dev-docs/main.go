@@ -49,9 +49,11 @@ var (
 	// wildcard expansion are intentionally unsupported: the generator must know exactly which
 	// files define the interface, and must fail rather than silently omit one.
 	includeLine = regexp.MustCompile(`^include\s+(.+?)\s*$`)
-	// `make verify SCOPE=all`, `LOOMARR_PLAYWRIGHT_SHARD=--shard=1/4 make fe-visual`, `make test-pg`
-	// inside a workflow.
-	makeInvocation = regexp.MustCompile(`\bmake\s+([a-z][a-z0-9-]*)`)
+	// `make verify SCOPE=all`, `LOOMARR_PLAYWRIGHT_SHARD=--shard=1/4 make fe-visual`,
+	// `make -j4 ci-lint release-verify` inside a workflow: the words up to a shell operator or comment.
+	makeInvocation = regexp.MustCompile(`\bmake((?:[ \t]+[^\s;&|()#]+)+)`)
+	// A word of an invocation that names a target, not a flag or a variable assignment.
+	makeTargetWord = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 )
 
 func main() {
@@ -194,7 +196,11 @@ func ciTargets(dir string) (map[string]struct{}, error) {
 			return nil, err
 		}
 		for _, m := range makeInvocation.FindAllStringSubmatch(stripYAMLComments(string(body)), -1) {
-			out[m[1]] = struct{}{}
+			for _, word := range strings.Fields(m[1]) {
+				if makeTargetWord.MatchString(word) {
+					out[word] = struct{}{}
+				}
+			}
 		}
 	}
 	return out, nil
