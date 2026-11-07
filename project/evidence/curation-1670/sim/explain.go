@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // explain (#1694) attributes every next-day repeat of the `current` mechanism to what the
