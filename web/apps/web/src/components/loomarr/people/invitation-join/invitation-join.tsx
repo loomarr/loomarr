@@ -1,7 +1,8 @@
-import { redeemInvitationBodyPasswordMin } from "@loomarr/api/zod/invitations";
+import { redeemInvitationSchema } from "@loomarr/core/schemas";
+import { useForm } from "@tanstack/react-form";
 import { CalendarClock, Loader2, LogIn, ShieldCheck, UserRound } from "lucide-react";
-import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +16,16 @@ const InvitationJoin = ({
   error,
   onRedeem,
 }: InvitationJoinProps) => {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmation, setConfirmation] = useState("");
-  const [validation, setValidation] = useState<string>();
+  const library = preview?.credentialPath === "library_password";
+  const schema = redeemInvitationSchema(library);
+  const form = useForm({
+    defaultValues: { username: "", password: "", confirm: "" },
+    validators: { onSubmit: schema },
+    onSubmit: ({ value }) => {
+      const { username, password } = schema.parse(value);
+      onRedeem(library ? { username, password } : { password });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -41,28 +48,10 @@ const InvitationJoin = ({
     );
   }
 
-  const library = preview.credentialPath === "library_password";
   const identity = preview.username || preview.displayName || "Invited account";
   const expires = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
     new Date(preview.expiresAt),
   );
-
-  const submit = () => {
-    if (password.length < redeemInvitationBodyPasswordMin) {
-      setValidation(`Use at least ${redeemInvitationBodyPasswordMin} characters.`);
-      return;
-    }
-    if (library && username.trim() === "") {
-      setValidation("Enter the username for the invited Library account.");
-      return;
-    }
-    if (!library && password !== confirmation) {
-      setValidation("Passwords need to match.");
-      return;
-    }
-    setValidation(undefined);
-    onRedeem(library ? { username: username.trim(), password } : { password });
-  };
 
   return (
     <form
@@ -70,7 +59,7 @@ const InvitationJoin = ({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
-        submit();
+        void form.handleSubmit();
       }}
     >
       <div className="space-y-2 text-center">
@@ -113,45 +102,60 @@ const InvitationJoin = ({
       {error ? <ErrorState error={error} /> : null}
 
       {library ? (
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="join-username">Library username</Label>
-          <Input
-            id="join-username"
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-          />
-        </div>
+        <form.Field name="username">
+          {(field) => (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="join-username">Library username</Label>
+              <Input
+                id="join-username"
+                name={field.name}
+                autoComplete="username"
+                value={field.state.value}
+                aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
+              <FieldError errors={field.state.meta.errors} />
+            </div>
+          )}
+        </form.Field>
       ) : null}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="join-password">{library ? "Library password" : "Create password"}</Label>
-        <Input
-          id="join-password"
-          type="password"
-          autoComplete={library ? "current-password" : "new-password"}
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </div>
+      <form.Field name="password">
+        {(field) => (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="join-password">{library ? "Library password" : "Create password"}</Label>
+            <Input
+              id="join-password"
+              name={field.name}
+              type="password"
+              autoComplete={library ? "current-password" : "new-password"}
+              value={field.state.value}
+              aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+              onChange={(event) => field.handleChange(event.target.value)}
+            />
+            <FieldError errors={field.state.meta.errors} />
+          </div>
+        )}
+      </form.Field>
 
       {!library ? (
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="join-confirm-password">Confirm password</Label>
-          <Input
-            id="join-confirm-password"
-            type="password"
-            autoComplete="new-password"
-            value={confirmation}
-            onChange={(event) => setConfirmation(event.target.value)}
-          />
-        </div>
-      ) : null}
-
-      {validation ? (
-        <p className="text-onair-300 text-sm" role="alert">
-          {validation}
-        </p>
+        <form.Field name="confirm">
+          {(field) => (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="join-confirm-password">Confirm password</Label>
+              <Input
+                id="join-confirm-password"
+                name={field.name}
+                type="password"
+                autoComplete="new-password"
+                value={field.state.value}
+                aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
+              <FieldError errors={field.state.meta.errors} />
+            </div>
+          )}
+        </form.Field>
       ) : null}
 
       <Button type="submit" disabled={isRedeeming}>

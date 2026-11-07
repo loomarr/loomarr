@@ -8,6 +8,7 @@ import { Link } from "@tanstack/react-router";
 import { Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,14 +118,9 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
               name={field.name}
               autoComplete="username"
               value={field.state.value}
-              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
-            {field.state.meta.errors[0] && (
-              <p role="alert" className="text-onair-300 text-sm">
-                {field.state.meta.errors[0].message}
-              </p>
-            )}
+            <FieldError errors={field.state.meta.errors} />
           </div>
         )}
       </form.Field>
@@ -139,14 +135,9 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
               type="password"
               autoComplete="new-password"
               value={field.state.value}
-              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
-            {field.state.meta.errors[0] && (
-              <p role="alert" className="text-onair-300 text-sm">
-                {field.state.meta.errors[0].message}
-              </p>
-            )}
+            <FieldError errors={field.state.meta.errors} />
           </div>
         )}
       </form.Field>
@@ -161,14 +152,9 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
               type="password"
               autoComplete="new-password"
               value={field.state.value}
-              onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
-            {field.state.meta.errors[0] && (
-              <p role="alert" className="text-onair-300 text-sm">
-                {field.state.meta.errors[0].message}
-              </p>
-            )}
+            <FieldError errors={field.state.meta.errors} />
           </div>
         )}
       </form.Field>
