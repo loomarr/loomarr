@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -49,16 +49,16 @@ type MediaAssetManifest struct {
 
 // MediaDerivativeLineage proves which source, recipe and executable produced one rendition.
 type MediaDerivativeLineage struct {
-	Asset        MediaAssetIdentity           `json:"asset"`
-	InputSHA256  string                       `json:"inputSha256"`
-	Recipe       mediatools.DerivativeRecipe  `json:"recipe"`
-	RecipeSHA256 string                       `json:"recipeSha256"`
-	Tool         mediatools.MediaToolIdentity `json:"tool"`
-	DurationMs   int64                        `json:"durationMs"`
-	Quality      MediaQuality                 `json:"quality"`
-	QC           mediatools.DerivativeQC      `json:"qc"`
-	InputProbe   Probed                       `json:"inputProbe"`
-	OutputProbe  Probed                       `json:"outputProbe"`
+	Asset        MediaAssetIdentity      `json:"asset"`
+	InputSHA256  string                  `json:"inputSha256"`
+	Recipe       tools.DerivativeRecipe  `json:"recipe"`
+	RecipeSHA256 string                  `json:"recipeSha256"`
+	Tool         tools.MediaToolIdentity `json:"tool"`
+	DurationMs   int64                   `json:"durationMs"`
+	Quality      MediaQuality            `json:"quality"`
+	QC           tools.DerivativeQC      `json:"qc"`
+	InputProbe   Probed                  `json:"inputProbe"`
+	OutputProbe  Probed                  `json:"outputProbe"`
 }
 
 // Validate reports whether the manifest is internally consistent and uses the supported version.
@@ -91,9 +91,9 @@ func validateMediaDerivative(derivative MediaDerivativeLineage, role MediaAssetR
 	if derivative.InputSHA256 != inputSHA256 || !isContentHash(derivative.RecipeSHA256) || derivative.DurationMs <= 0 {
 		return fmt.Errorf("%s derivative lineage is incomplete", role)
 	}
-	wantRecipeRole := mediatools.DerivativeEvidence
+	wantRecipeRole := tools.DerivativeEvidence
 	if role == MediaAssetPlayback {
-		wantRecipeRole = mediatools.DerivativePlayback
+		wantRecipeRole = tools.DerivativePlayback
 	}
 	computedRecipeDigest, err := derivative.Recipe.Digest()
 	if err != nil || derivative.Recipe.Role != wantRecipeRole || computedRecipeDigest != derivative.RecipeSHA256 {
@@ -106,7 +106,7 @@ func validateMediaDerivative(derivative MediaDerivativeLineage, role MediaAssetR
 	if err := derivative.Tool.Validate(); err != nil {
 		return fmt.Errorf("%s derivative tool identity: %w", role, err)
 	}
-	if err := mediatools.ValidateDerivativeQC(derivative.QC, derivative.DurationMs,
+	if err := tools.ValidateDerivativeQC(derivative.QC, derivative.DurationMs,
 		derivative.Recipe.KeyframeSeconds, !derivative.OutputProbe.Silent, derivative.Recipe.TargetLUFS); err != nil {
 		return fmt.Errorf("%s derivative QC: %w", role, err)
 	}
@@ -331,7 +331,7 @@ func publishRetainedMaster(ctx context.Context, staged, target, digest string, s
 	if digestErr != nil || existingDigest != digest || existingSize != size {
 		return errors.New("preserve source master: existing content-addressed master does not match")
 	}
-	equal, err := exactFileBytesEqual(ctx, staged, target, mediatools.ConditioningMaxSnapshotBytes)
+	equal, err := exactFileBytesEqual(ctx, staged, target, tools.ConditioningMaxSnapshotBytes)
 	if err != nil || !equal {
 		return errors.New("preserve source master: existing content-addressed master does not match exact bytes")
 	}

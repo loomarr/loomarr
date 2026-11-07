@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // Info-JSON sidecars (§10). Both ingest paths write one next to every clip they
@@ -265,11 +265,11 @@ type ConditioningLineage struct {
 
 // ConditioningEvidence keeps measurements separate from policy decisions and target markers.
 type ConditioningEvidence struct {
-	BeforeRewriteHash              string                                `json:"beforeRewriteHash"`
-	AfterRewriteHash               string                                `json:"afterRewriteHash"`
-	BeforeRewrite                  mediatools.ConditioningMeasurement    `json:"beforeRewrite"`
-	AfterRewrite                   mediatools.ConditioningMeasurement    `json:"afterRewrite"`
-	DerivedParentEdgesAfterRewrite mediatools.ConditioningCutMeasurement `json:"derivedParentEdgesAfterRewrite"`
+	BeforeRewriteHash              string                           `json:"beforeRewriteHash"`
+	AfterRewriteHash               string                           `json:"afterRewriteHash"`
+	BeforeRewrite                  tools.ConditioningMeasurement    `json:"beforeRewrite"`
+	AfterRewrite                   tools.ConditioningMeasurement    `json:"afterRewrite"`
+	DerivedParentEdgesAfterRewrite tools.ConditioningCutMeasurement `json:"derivedParentEdgesAfterRewrite"`
 }
 
 // WriteSidecarTags records Loomarr's metadata into the clip's info-JSON, preserving everything
@@ -677,7 +677,7 @@ func PlaybackLoudness(mediaPath string) (lufs float64, truePeak *float64, ok boo
 	if !loudness.Available || math.IsNaN(loudness.IntegratedLUFS) || math.IsInf(loudness.IntegratedLUFS, 0) {
 		return 0, nil, false
 	}
-	if peak := loudness.TruePeak; peak.State == mediatools.TruePeakFinite && !math.IsNaN(peak.DBTP) && !math.IsInf(peak.DBTP, 0) {
+	if peak := loudness.TruePeak; peak.State == tools.TruePeakFinite && !math.IsNaN(peak.DBTP) && !math.IsInf(peak.DBTP, 0) {
 		dbtp := peak.DBTP
 		truePeak = &dbtp
 	}

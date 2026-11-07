@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // #2121: the bytes that would replace an airing clip are held to the floor before the switch, on

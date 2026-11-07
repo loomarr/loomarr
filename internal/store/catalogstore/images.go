@@ -19,7 +19,7 @@ import (
 // GC job to warn about rather than for anything to repair.
 
 // Image is one logical image's record. Mirrors the `images` table; the domain type in
-// internal/images is separate and an adapter bridges them, following the same rule every other
+// internal/media/images is separate and an adapter bridges them, following the same rule every other
 // domain here follows — no domain package imports this one.
 type Image struct {
 	Hash       string

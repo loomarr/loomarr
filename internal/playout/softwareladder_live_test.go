@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // EVERY SOFTWARE RUNG IS A PICTURE IN ONE FORMAT (#1517). A rung change restarts the item encoder

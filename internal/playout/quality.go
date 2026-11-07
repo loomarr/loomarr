@@ -3,7 +3,7 @@ package playout
 import (
 	"sort"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // Quality selection (§9.1). The policy is "best picture the hardware sustains, then adapt

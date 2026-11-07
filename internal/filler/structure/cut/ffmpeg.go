@@ -1,8 +1,8 @@
 package cut
 
 import (
-	"github.com/loomarr/loomarr/internal/encode"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/encode"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 const (
@@ -17,8 +17,8 @@ const (
 // encoded on the profile's family.
 func PartArguments(profile Profile, source string, startMS, durationMS int64, output string) []string {
 	return replaceTokens(partArgumentTemplate(profile.Family), map[string]string{
-		inputToken: source, startToken: mediatools.MsToFFmpegTime(startMS),
-		durationToken: mediatools.MsToFFmpegTime(durationMS), outputToken: output,
+		inputToken: source, startToken: tools.MsToFFmpegTime(startMS),
+		durationToken: tools.MsToFFmpegTime(durationMS), outputToken: output,
 	})
 }
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing.T) {

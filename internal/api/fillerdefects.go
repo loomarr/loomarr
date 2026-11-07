@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/loomarr/loomarr/internal/defects"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
+	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
 // FillerDefectReportDTO is the defect floor's standing on this install (#2034 step 4c).

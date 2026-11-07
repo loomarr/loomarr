@@ -8,7 +8,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/images"
+	"github.com/loomarr/loomarr/internal/media/images"
 )
 
 // fakeImageService is the api package's stand-in for api.ImageService (§22, V52).
@@ -17,7 +17,7 @@ import (
 // AGENTS.md's "phases do not invent private mocks; extend the testkit" rule governs the services
 // Loomarr talks to over a network — media server, Tunarr, Seerr, TMDB, the LLM — which is why
 // `internal/testkit` holds exactly those and nothing else. The image service is ours, is already
-// covered by its own tests in internal/images, and writes to DISK; wiring the real one here would
+// covered by its own tests in internal/media/images, and writes to DISK; wiring the real one here would
 // make a handler test depend on a temp dir, an encoder and the blob layout, to assert something
 // none of those decide. `testAuthorizer` in this package is the same pattern.
 //

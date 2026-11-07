@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -16,8 +16,8 @@ import (
 // measurement the staged rewrite is compared against.
 type conditioningJob struct {
 	// req.Path is the source snapshot the encode reads; req.ParentPath the parent's snapshot.
-	req     mediatools.ConditioningRequest
-	before  mediatools.ConditioningMeasurement
+	req     tools.ConditioningRequest
+	before  tools.ConditioningMeasurement
 	lineage *ConditioningLineage
 	// parentFull is the parent asset as resolved, compared to its snapshot before publication.
 	parentFull string
@@ -115,17 +115,17 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 	if err := storageWrites.RecordFile(ctx, snapshots.Parent); err != nil {
 		return nil, StageResult{}, err
 	}
-	req := mediatools.ConditioningRequest{
+	req := tools.ConditioningRequest{
 		Path:       snapshots.Source,
 		ParentPath: snapshots.Parent,
-		IntendedCuts: []mediatools.Interval{{
+		IntendedCuts: []tools.Interval{{
 			StartMs: tags.ConditioningLineage.IntendedStartMs,
 			EndMs:   tags.ConditioningLineage.IntendedEndMs,
 		}},
 	}
 	if tags.Mezzanine == mezzanine {
 		if tags.MediaQuality == nil || tags.Conditioning == nil ||
-			mediatools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
+			tools.ValidateMediaQualityEvidence(*tags.MediaQuality) != nil ||
 			validateConditioningPair(*tags.Conditioning, tags.Conditioning.BeforeRewriteHash, tags.Conditioning.AfterRewriteHash) != nil ||
 			!conditioningEvidenceMatchesLineage(*tags.Conditioning, *tags.ConditioningLineage) ||
 			!reflect.DeepEqual(*tags.MediaQuality, tags.Conditioning.AfterRewrite.Quality) {
@@ -157,11 +157,11 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 	if ctx.Err() != nil {
 		return review("conditioning measurement was cancelled")
 	}
-	if err := mediatools.ValidateConditioningEvidence(measured, mediatools.ConditioningBeforeRewrite); err != nil {
+	if err := tools.ValidateConditioningEvidence(measured, tools.ConditioningBeforeRewrite); err != nil {
 		return review("conditioning measurement is incomplete or invalid")
 	}
-	intended := mediatools.Interval{StartMs: tags.ConditioningLineage.IntendedStartMs, EndMs: tags.ConditioningLineage.IntendedEndMs}
-	if err := mediatools.ValidateConditioningCutEvidence(measured, intended); err != nil {
+	intended := tools.Interval{StartMs: tags.ConditioningLineage.IntendedStartMs, EndMs: tags.ConditioningLineage.IntendedEndMs}
+	if err := tools.ValidateConditioningCutEvidence(measured, intended); err != nil {
 		return review("conditioning cut evidence is incomplete or unavailable")
 	}
 	return &conditioningJob{
@@ -173,7 +173,7 @@ func (s *TranscodeStage) prepareConditioning(ctx context.Context, c StoreClip, o
 // measureAfter measures the staged rewrite and pairs it with the before-rewrite measurement. A
 // non-empty note is why the child goes to review instead. AfterRewriteHash is left for the caller,
 // which knows it only once the staged bytes are hashed.
-func (j *conditioningJob) measureAfter(ctx context.Context, condition func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error), beforeHash, stageFull string) (*ConditioningEvidence, string) {
+func (j *conditioningJob) measureAfter(ctx context.Context, condition func(context.Context, tools.ConditioningRequest) (tools.ConditioningMeasurement, error), beforeHash, stageFull string) (*ConditioningEvidence, string) {
 	req := j.req
 	req.Path = stageFull
 	measured, err := condition(ctx, req)
@@ -183,10 +183,10 @@ func (j *conditioningJob) measureAfter(ctx context.Context, condition func(conte
 	if ctx.Err() != nil {
 		return nil, "conditioning measurement after transcode was cancelled"
 	}
-	if err := mediatools.ValidateConditioningEvidence(measured, mediatools.ConditioningAfterRewrite); err != nil {
+	if err := tools.ValidateConditioningEvidence(measured, tools.ConditioningAfterRewrite); err != nil {
 		return nil, "conditioning measurement after transcode is incomplete or invalid"
 	}
-	parentEdges, err := mediatools.DeriveConditioningParentEdges(j.before, measured)
+	parentEdges, err := tools.DeriveConditioningParentEdges(j.before, measured)
 	if err != nil {
 		return nil, "conditioning parent edges after transcode are unavailable"
 	}

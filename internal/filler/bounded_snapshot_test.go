@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 func TestSnapshotOwnedFileRejectsSparseSourceOverBoundBeforeStaging(t *testing.T) {
@@ -15,11 +15,11 @@ func TestSnapshotOwnedFileRejectsSparseSourceOverBoundBeforeStaging(t *testing.T
 	if err := os.WriteFile(source, []byte("small"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Truncate(source, mediatools.ConditioningMaxSnapshotBytes+1); err != nil {
+	if err := os.Truncate(source, tools.ConditioningMaxSnapshotBytes+1); err != nil {
 		t.Fatal(err)
 	}
 	destination := filepath.Join(dir, "destination")
-	if err := snapshotOwnedFileBounded(context.Background(), source, destination, mediatools.ConditioningMaxSnapshotBytes, nil); err == nil {
+	if err := snapshotOwnedFileBounded(context.Background(), source, destination, tools.ConditioningMaxSnapshotBytes, nil); err == nil {
 		t.Fatal("oversized source accepted")
 	}
 	if _, err := os.Stat(destination); !os.IsNotExist(err) {
@@ -40,7 +40,7 @@ func TestSnapshotSplitCompositeRejectsOversizedSourceBeforeStaging(t *testing.T)
 	if err := os.WriteFile(source, []byte("source"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Truncate(source, mediatools.ConditioningMaxSnapshotBytes+1); err != nil {
+	if err := os.Truncate(source, tools.ConditioningMaxSnapshotBytes+1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := snapshotSplitComposite(context.Background(), source, stage, ".mp4", "not-used"); err == nil {
@@ -48,7 +48,7 @@ func TestSnapshotSplitCompositeRejectsOversizedSourceBeforeStaging(t *testing.T)
 	}
 	assertNoSnapshotOutputs(t, stage)
 	info, err := os.Stat(source)
-	if err != nil || info.Size() != mediatools.ConditioningMaxSnapshotBytes+1 {
+	if err != nil || info.Size() != tools.ConditioningMaxSnapshotBytes+1 {
 		t.Fatalf("source changed: %+v, %v", info, err)
 	}
 }
@@ -73,7 +73,7 @@ func TestSnapshotConditioningArtifactsRejectsOversizedSourceOrParentAtomically(t
 			if oversized == "parent" {
 				target = parent
 			}
-			if err := os.Truncate(target, mediatools.ConditioningMaxSnapshotBytes+1); err != nil {
+			if err := os.Truncate(target, tools.ConditioningMaxSnapshotBytes+1); err != nil {
 				t.Fatal(err)
 			}
 			sourceHash, _ := ClipID(source)
