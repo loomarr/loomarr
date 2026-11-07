@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/recurate"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -19,17 +19,17 @@ import (
 // fakeRefiner records which channels were asked to re-curate + with what intent.
 type fakeRefiner struct {
 	calls   []string
-	intents map[string]proposal.Intent
+	intents map[string]proposals.Intent
 	err     error
 }
 
-func (f *fakeRefiner) Recurate(_ context.Context, channelID string, intent proposal.Intent) (string, error) {
+func (f *fakeRefiner) Recurate(_ context.Context, channelID string, intent proposals.Intent) (string, error) {
 	if f.err != nil {
 		return "", f.err
 	}
 	f.calls = append(f.calls, channelID)
 	if f.intents == nil {
-		f.intents = map[string]proposal.Intent{}
+		f.intents = map[string]proposals.Intent{}
 	}
 	f.intents[channelID] = intent
 	return "job-for-" + channelID, nil
@@ -38,7 +38,7 @@ func (f *fakeRefiner) Recurate(_ context.Context, channelID string, intent propo
 // seedJob writes the suggestion job a channel is made from, carrying the original request.
 func seedJob(t *testing.T, st store.Store, id, description string) {
 	t.Helper()
-	blob, _ := json.Marshal(proposal.Intent{Description: description, Era: "1990s"})
+	blob, _ := json.Marshal(proposals.Intent{Description: description, Era: "1990s"})
 	if err := st.CreateJob(context.Background(), store.Job{ID: id, IntentJSON: string(blob), IntentHash: "h-" + id, Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestRunner_RecuratesFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testing.
 	st := newStore(t)
 	ctx := context.Background()
 	old := time.Now().Add(-31 * 24 * time.Hour)
-	blob, _ := json.Marshal(proposal.Intent{Description: "90s action", Era: "1990s"})
+	blob, _ := json.Marshal(proposals.Intent{Description: "90s action", Era: "1990s"})
 	if err := st.CreateJob(ctx, store.Job{
 		ID: "job-old", Kind: "suggest", Status: "done", IntentJSON: string(blob), UpdatedAt: old,
 	}); err != nil {

@@ -61,7 +61,7 @@ Code that exists for tests and never ships in the server: the shared test double
 
 ### From a request to Live TV
 
-A member asks for a channel through `api`. `proposalworkflow` turns the request into a durable Proposal Job and runs `suggest`, which grounds each title through `catalog` (the library, `tmdb` and the clip catalog) and `reference`, using a model from `llm`, and returns the values in `proposal`. When a person approves it, `binder` plans the channel and `channeledit` writes it through `store`; any title the household lacks becomes a `provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `tunarr`. `livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `backendtransition` prepares the new one fully before publishing it to the media server.
+A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` (the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from `llm`, and returns the values in `proposals`. When a person approves it, `binder` plans the channel and `channeledit` writes it through `store`; any title the household lacks becomes a `provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. `schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `tunarr`. `livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `backendtransition` prepares the new one fully before publishing it to the media server.
 
 ### From a filler source to a break
 
@@ -100,15 +100,15 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `people/notifications` | `httpx` |
 | `people/recovery` | — |
 | `playout` | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
-| `proposal` | `provision`, `schedule`, `storagegovernor` |
+| `proposals` | `provision`, `schedule`, `storagegovernor` |
+| `proposals/quality` | `provision` |
+| `proposals/suggest` | `catalog`, `holidayvocab`, `llm`, `proposals`, `proposals/quality`, `provision`, `rating`, `schedule`, `store` |
 | `provision` | — |
-| `quality` | `provision` |
 | `rating` | — |
 | `schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `settings` | `config`, `library` |
 | `storagegovernor` | — |
-| `store` | `creative`, `defects`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposal`, `provision`, `quality`, `schedule` |
-| `suggest` | `catalog`, `holidayvocab`, `llm`, `proposal`, `provision`, `quality`, `rating`, `schedule`, `store` |
+| `store` | `creative`, `defects`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposals`, `proposals/quality`, `provision`, `schedule` |
 
 ## How the area pages are made
 

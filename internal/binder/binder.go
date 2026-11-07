@@ -3,9 +3,9 @@
 // refine. Local persistence belongs to the approval transaction; codec measurement
 // and backend reconciliation run only after that transaction commits.
 //
-// binder is deliberately neutral: it imports store/schedule/suggest/channels, but
+// binder is deliberately neutral: it imports store/schedule/proposals/suggest/channels, but
 // nothing in those packages imports binder back, so nothing new is coupled to it.
-// Consumers (internal/api, internal/suggest) declare the narrow interface they
+// Consumers (internal/api, internal/proposals/suggest) declare the narrow interface they
 // need and take a *Binder as a structural implementation — dependency inversion,
 // not a shared concrete dependency.
 package binder
@@ -20,10 +20,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // Store is the slice of store.Store the binder needs. Narrow, so a fake in tests

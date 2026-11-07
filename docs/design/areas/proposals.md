@@ -14,17 +14,17 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`plannerreference`** · → `quality`
-  Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`proposal`** · 10 importers · → `provision`, `schedule`, `storagegovernor`
+- **`proposals`** · 10 importers · → `provision`, `schedule`, `storagegovernor`
   The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
-- **`proposaloutlook`** · 2 importers · → `channels`, `holidayvocab`, `library`, `proposal`, `provision`, `schedule`, `store`, `suggest`
+- **`proposals/outlook`** · 2 importers · → `channels`, `holidayvocab`, `library`, `proposals`, `proposals/suggest`, `provision`, `schedule`, `store`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
-- **`proposalworkflow`** · 2 importers · → `proposal`, `schedule`, `store`, `suggest`
-  Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.
-- **`quality`** · 7 importers · → `provision`
+- **`proposals/plannerreference`** · → `proposals/quality`
+  Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
+- **`proposals/quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
-- **`reference`** · 4 importers
-  Resolves bounded, read-only evidence from public web pages supplied in channel Intents.
-- **`suggest`** · 7 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `proposal`, `provision`, `quality`, `rating`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+- **`proposals/suggest`** · 7 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `proposals`, `proposals/quality`, `proposals/webreference`, `provision`, `rating`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
+- **`proposals/webreference`** · 4 importers
+  Resolves bounded, read-only evidence from public web pages supplied in channel Intents.
+- **`proposals/workflow`** · 2 importers · → `proposals`, `proposals/suggest`, `schedule`, `store`
+  Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.

@@ -22,12 +22,12 @@ import (
 	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
-	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // The demo admin, created only when the store has no admin yet. The docs capture signs in as it.
@@ -195,14 +195,14 @@ func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approv
 }
 
 func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID string, c demolibrary.Channel) error {
-	intent := proposal.Intent{Description: c.Name}
-	var lineup []proposal.ProposalItem
+	intent := proposals.Intent{Description: c.Name}
+	var lineup []proposals.ProposalItem
 	for _, id := range c.Titles {
 		t, ok := demolibrary.ByID(id)
 		if !ok {
 			return fmt.Errorf("unknown demo title %q", id)
 		}
-		item := proposal.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
+		item := proposals.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
 		if t.Kind == demolibrary.Series {
 			item.MediaType, item.TVDBID = provision.Series, t.ProviderID()
 		} else {
@@ -222,7 +222,7 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 	if err := st.CreateSuggestionResult(ctx, store.Job{ID: jobID, Kind: "suggest", Status: "done",
 		IntentJSON: string(intentJSON), IntentHash: "demo-" + jobID, CreatedBy: adminID, CreatedAt: now, UpdatedAt: now,
 	}, store.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
-		Body: proposal.Proposal{Intent: intent, Lineup: lineup}, CreatedAt: now, UpdatedAt: now}); err != nil {
+		Body: proposals.Proposal{Intent: intent, Lineup: lineup}, CreatedAt: now, UpdatedAt: now}); err != nil {
 		return fmt.Errorf("create suggestion result: %w", err)
 	}
 	return nil

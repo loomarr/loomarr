@@ -3,7 +3,7 @@ package binder
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/proposal"
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -12,31 +12,31 @@ import (
 // smoke: a raw prompt made a half-assed title.
 func TestChannelNameFromIntent(t *testing.T) {
 	t.Parallel()
-	mk := func(p proposal.Proposal) store.Proposal {
+	mk := func(p proposals.Proposal) store.Proposal {
 		return store.Proposal{Body: p}
 	}
 
 	cases := []struct {
 		name string
-		prop proposal.Proposal
+		prop proposals.Proposal
 		want string
 	}{
 		{
 			name: "prefers the LLM channelName",
-			prop: proposal.Proposal{
+			prop: proposals.Proposal{
 				ChannelName: "Mudpuddle Classics",
-				Intent:      proposal.Intent{Description: "A channel with old-school Mudpuddles episodes"},
+				Intent:      proposals.Intent{Description: "A channel with old-school Mudpuddles episodes"},
 			},
 			want: "Mudpuddle Classics",
 		},
 		{
 			name: "falls back to the intent when no channelName",
-			prop: proposal.Proposal{Intent: proposal.Intent{Description: "90s Saturday morning cartoons"}},
+			prop: proposals.Proposal{Intent: proposals.Intent{Description: "90s Saturday morning cartoons"}},
 			want: "90s Saturday morning cartoons",
 		},
 		{
 			name: "generic label when nothing usable",
-			prop: proposal.Proposal{},
+			prop: proposals.Proposal{},
 			want: "Suggested channel",
 		},
 	}

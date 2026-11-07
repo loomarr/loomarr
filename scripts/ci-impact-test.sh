@@ -93,7 +93,7 @@ for unknown_path in unexpected/new-runtime/file.xyz scripts/unclassified-helper.
   fi
 done
 
-stdin_output="$(printf '%s\n' internal/suggest/score.go docs/contributing/testing.md | "$CLASSIFIER")"
+stdin_output="$(printf '%s\n' internal/proposals/suggest/score.go docs/contributing/testing.md | "$CLASSIFIER")"
 stdin_selected="$(awk -F= '$2 == "true" { if (selected != "") selected = selected ","; selected = selected $1 } END { print selected }' <<<"$stdin_output")"
 if [[ "$stdin_selected" != 'contracts,go,postgres,image,docs' ]]; then
   printf 'ci-impact-test: stdin paths: got %s, want contracts,go,postgres,image,docs\n' "$stdin_selected" >&2
@@ -107,7 +107,7 @@ while IFS= read -r decision; do
     exit 1
   }
 done <<<"$all_output"
-if "$CLASSIFIER" --all internal/suggest/ground.go >/dev/null 2>&1; then
+if "$CLASSIFIER" --all internal/proposals/suggest/ground.go >/dev/null 2>&1; then
   echo 'ci-impact-test: --all unexpectedly accepted a path' >&2
   exit 1
 fi

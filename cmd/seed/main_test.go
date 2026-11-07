@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
@@ -29,16 +29,16 @@ func TestSeedProposalJobsAreListableThroughTheProposalWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	workflow := proposalworkflow.New(st, func() string { return "unused" }, time.Now)
-	journeys, err := workflow.List(ctx, proposalworkflow.Viewer{UserID: "admin-test", Admin: true}, proposalworkflow.ListOptions{})
+	flow := workflow.New(st, func() string { return "unused" }, time.Now)
+	journeys, err := flow.List(ctx, workflow.Viewer{UserID: "admin-test", Admin: true}, workflow.ListOptions{})
 	if err != nil {
 		t.Fatalf("List seeded Proposal Jobs through the workflow: %v", err)
 	}
 	if len(journeys) != 1 {
 		t.Fatalf("Journeys = %d, want 1", len(journeys))
 	}
-	if journeys[0].Milestone != proposalworkflow.MilestoneBuilding {
-		t.Fatalf("Milestone = %q, want %q", journeys[0].Milestone, proposalworkflow.MilestoneBuilding)
+	if journeys[0].Milestone != workflow.MilestoneBuilding {
+		t.Fatalf("Milestone = %q, want %q", journeys[0].Milestone, workflow.MilestoneBuilding)
 	}
 }
 
