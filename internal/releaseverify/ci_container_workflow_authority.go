@@ -417,11 +417,17 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 				"ci-ok": {
 					condition:   "always()",
-					permissions: map[string]string{"actions": "read", "contents": "read"},
+					permissions: map[string]string{"actions": "read", "contents": "read", "issues": "write"},
 					steps:       map[string]workflowStepAuthority{},
 				},
 			},
 		},
+		"merge-gate.yml": standardRunWorkflow(map[string]workflowStepAuthority{
+			"make vet": exactWorkflowStep(5, "The merged tree compiles, tests included", workflowStepAuthority{
+				targets:   []string{"vet"},
+				condition: "steps.go.outputs.changed == 'true'",
+			}),
+		}),
 		"image-benchmark.yml": {
 			permissions: standardWorkflowPermissions(),
 			jobs: map[string]workflowJobAuthority{

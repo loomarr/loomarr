@@ -633,7 +633,7 @@ classify() {
         # Selection policy is control-plane code. Product gates validate files they consume;
         # the always-on policy job independently validates this classifier and its fixtures.
         scripts/ci-impact.sh) select_gate policy ;;
-        scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/testdata/ci-*) select_gate policy ;;
+        scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/ci-merge-gate*|scripts/ci-assurance-alert*|scripts/testdata/ci-*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
         # Local-only dev watchers; the agent gate runs their tests and shellcheck.
         scripts/dev/*) select_gate agent ;;
@@ -770,7 +770,7 @@ classify() {
       known=true
       select_all
       ;;
-    .github/workflows/ci.yml)
+    .github/workflows/ci.yml|.github/workflows/merge-gate.yml)
       known=true
       select_gate policy
       ;;

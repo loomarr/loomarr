@@ -92,7 +92,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci.yml", job: "ci-policy"}:                         {name: "CI policy — workflow, harness, and docs contracts", runsOn: "ubuntu-latest", needs: "changes"},
 		{workflow: "ci.yml", job: "changes"}:                           {name: "What changed", runsOn: "ubuntu-latest"},
 		{workflow: "ci.yml", job: "ci-ok"}: {
-			name: "CI", runsOn: "ubuntu-latest",
+			name: "${{ github.event_name == 'merge_group' && 'CI assurance' || 'CI' }}", runsOn: "ubuntu-latest",
 			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android", "playout-bench"},
 		},
 		{workflow: "image-benchmark.yml", job: "benchmark"}: {
@@ -115,6 +115,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "release.yml", job: "publish"}:                {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
 		{workflow: "curated-sources.yml", job: "check"}:          {name: "Check the curated sources", runsOn: "ubuntu-24.04", timeoutMinutes: 15},
 		{workflow: "deadcode.yml", job: "report"}:                {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
+		{workflow: "merge-gate.yml", job: "run"}:                 {name: "CI", runsOn: "ubuntu-latest", timeoutMinutes: 10},
 		{workflow: "go-maintenance.yml", job: "vulnerabilities"}: {name: "Reachable known vulnerabilities", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh"}:     {name: "Refresh the FFmpeg pin", runsOn: "ubuntu-24.04", timeoutMinutes: 120},
 		{workflow: "rust-maintenance.yml", job: "supply-chain"}:  {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},

@@ -281,9 +281,11 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
 - Adding a build tag changes the guarded `TAGS` list in the Makefile.
 - Adding a CI build input changes the per-job filter in `.github/workflows/ci.yml`; never add a
   workflow-level `paths:` filter.
-- Pull requests own fast affected feedback; the merge queue owns complete affected integration
-  evidence. Normal queue-produced pushes to `main` publish only and must not restore a third product
-  validation run. Keep `CI` required and strict for both PR and `merge_group` commits.
+- Pull requests own fast affected feedback. In the merge queue, `merge-gate.yml` reports the required
+  `CI` check in minutes, and ci.yml's complete affected gate set runs beside it as `CI assurance`,
+  which finishes after the merge and files an issue when a merged commit fails. Normal queue-produced
+  pushes to `main` publish only and must not restore a third product validation run. Keep `CI`
+  required for both PR and `merge_group` commits.
 - CodeQL uses checked-in advanced setup. Trusted PR/main diffs select only changed languages;
   scheduled/manual runs, unknown paths, and unusable bases scan all six. Keep GitHub default setup
   disabled because it overrides advanced workflows and restores all-language scans on every change.

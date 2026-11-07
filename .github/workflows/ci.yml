@@ -45,12 +45,12 @@ permissions:
 
 # A newer push to the same ref cancels the older in-flight run.
 #
-# ⚠ NEVER cancel a merge-queue run. `merge_group` refs are unique per batch so collisions are
-# unlikely, but a cancelled queue run reports a non-success conclusion, which ejects the whole
-# batch from the queue — turning a harmless double-push into a merge that silently does not
-# happen. Only PR and branch runs are cancellable.
+# Merge-group runs are `CI assurance`, not the required check (merge-gate.yml is), and they share one
+# group: one runs, the newest waits, and older waiters are dropped. That keeps a burst of queued PRs
+# from filling the account's concurrent-job limit and starving the merge gate and PR runs. A commit
+# whose run is dropped is covered by the next run, which includes it. A running one is never cancelled.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.event_name == 'merge_group' && 'ci-assurance' || format('ci-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 env:
@@ -469,13 +469,14 @@ jobs:
   # tolerated (a superseded run or fail-fast collateral — the real failure still reports
   # `failure`); anything else (notably `failure`) fails the gate.
   ci-ok:
-    name: CI
+    name: ${{ github.event_name == 'merge_group' && 'CI assurance' || 'CI' }}
     if: always()
     needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, expo-android-mobile, playwright, tuner, image, docs, android, playout-bench]
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
+      issues: write
     steps:
       - name: Every job that ran must have passed
         run: |
@@ -510,3 +511,8 @@ jobs:
           if ! ./scripts/ci-run-metrics.sh >> "$GITHUB_STEP_SUMMARY"; then
             echo "::warning::CI timing summary was unavailable; verification results are unchanged"
           fi
+      - name: File an issue when a merged commit fails assurance
+        if: failure() && github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/ci-assurance-alert.sh
