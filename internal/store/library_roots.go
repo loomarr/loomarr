@@ -86,7 +86,7 @@ type LibraryRootStore interface {
 
 func (s *sqlStore) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
 	var out LibraryRoots
-	rows, err := s.db.QueryContext(ctx, `SELECT path, in_use, readable, checked_at, by_hand, added_at, scanned_at
+	rows, err := s.db.QueryContext(ctx, `SELECT path, in_use, readable, checked_at_ms, by_hand, added_at_ms, scanned_at_ms
 		FROM library_roots ORDER BY path`)
 	if err != nil {
 		return out, fmt.Errorf("list library roots: %w", err)
@@ -110,7 +110,7 @@ func (s *sqlStore) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return out, fmt.Errorf("list library roots: %w", err)
 	}
-	rows, err = s.db.QueryContext(ctx, `SELECT authority, authority_path, root_path, by_hand, seen_at
+	rows, err = s.db.QueryContext(ctx, `SELECT authority, authority_path, root_path, by_hand, seen_at_ms
 		FROM library_root_paths ORDER BY authority, authority_path`)
 	if err != nil {
 		return out, fmt.Errorf("list library root paths: %w", err)
@@ -142,8 +142,8 @@ func (s *sqlStore) RecordLibraryRootDiscovery(ctx context.Context, d LibraryRoot
 				return fmt.Errorf("found path needs an authority and a path")
 			}
 			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_root_paths
-				(authority, authority_path, root_path, by_hand, seen_at) VALUES (?, ?, ?, FALSE, ?)
-				ON CONFLICT (authority, authority_path) DO UPDATE SET seen_at = excluded.seen_at,
+				(authority, authority_path, root_path, by_hand, seen_at_ms) VALUES (?, ?, ?, FALSE, ?)
+				ON CONFLICT (authority, authority_path) DO UPDATE SET seen_at_ms = excluded.seen_at_ms,
 				root_path = CASE WHEN library_root_paths.by_hand THEN library_root_paths.root_path
 				ELSE excluded.root_path END`), f.Authority, f.AuthorityPath, f.RootPath, ms); err != nil {
 				return err
@@ -151,12 +151,12 @@ func (s *sqlStore) RecordLibraryRootDiscovery(ctx context.Context, d LibraryRoot
 		}
 		for _, authority := range d.Complete {
 			if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM library_root_paths
-				WHERE authority = ? AND seen_at < ? AND NOT by_hand`), authority, ms); err != nil {
+				WHERE authority = ? AND seen_at_ms < ? AND NOT by_hand`), authority, ms); err != nil {
 				return err
 			}
 		}
 		// Every mapped root exists as a row; a new one starts unconfirmed.
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_roots (path, added_at)
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_roots (path, added_at_ms)
 			SELECT DISTINCT root_path, CAST(? AS BIGINT) FROM library_root_paths WHERE root_path <> ''
 			ON CONFLICT (path) DO NOTHING`), ms); err != nil {
 			return err
@@ -171,7 +171,7 @@ func (s *sqlStore) RecordLibraryRootDiscovery(ctx context.Context, d LibraryRoot
 
 func (s *sqlStore) applyLibraryRootChecks(ctx context.Context, tx *sql.Tx, checks []LibraryRootCheck, ms int64) error {
 	for _, c := range checks {
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_roots SET readable = ?, checked_at = ?
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_roots SET readable = ?, checked_at_ms = ?
 			WHERE path = ?`), c.Readable, ms, c.Path); err != nil {
 			return err
 		}
@@ -187,7 +187,7 @@ func (s *sqlStore) CheckLibraryRoot(ctx context.Context, check LibraryRootCheck,
 	err := s.libraryRootTx(ctx, "check library root", func(tx *sql.Tx) error {
 		var readable bool
 		var checkedAt int64
-		err := tx.QueryRowContext(ctx, s.ph(`SELECT readable, checked_at FROM library_roots WHERE path = ?`), check.Path).
+		err := tx.QueryRowContext(ctx, s.ph(`SELECT readable, checked_at_ms FROM library_roots WHERE path = ?`), check.Path).
 			Scan(&readable, &checkedAt)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -207,7 +207,7 @@ func (s *sqlStore) AddLibraryRoot(ctx context.Context, check LibraryRootCheck, a
 	}
 	ms := at.UnixMilli()
 	return s.libraryRootTx(ctx, "add library root", func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_roots (path, in_use, by_hand, added_at)
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_roots (path, in_use, by_hand, added_at_ms)
 			VALUES (?, TRUE, TRUE, ?) ON CONFLICT (path) DO UPDATE SET in_use = TRUE`), check.Path, ms); err != nil {
 			return err
 		}
@@ -250,7 +250,7 @@ func (s *sqlStore) SetLibraryRootPath(ctx context.Context, authority, authorityP
 		if rootPath == "" {
 			return nil
 		}
-		_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO library_roots (path, added_at) VALUES (?, ?)
+		_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO library_roots (path, added_at_ms) VALUES (?, ?)
 			ON CONFLICT (path) DO NOTHING`), rootPath, at.UnixMilli())
 		return err
 	})

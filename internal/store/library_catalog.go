@@ -89,7 +89,7 @@ func (s *sqlStore) WantLibraryCatalog(ctx context.Context, keys []LibraryCatalog
 func (s *sqlStore) LibraryCatalogRecord(ctx context.Context, key LibraryCatalogKey) (string, bool, error) {
 	var record string
 	var fetched int64
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT record, fetched_at FROM library_catalog
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT record, fetched_at_ms FROM library_catalog
 		WHERE provider = ? AND kind = ? AND external_id = ?`), key.Provider, key.Kind, key.ExternalID).Scan(&record, &fetched)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
@@ -105,7 +105,7 @@ func (s *sqlStore) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue)
 	var out []LibraryCatalogKey
 	if due.New > 0 {
 		keys, err := s.catalogKeys(ctx, `SELECT provider, kind, external_id FROM library_catalog
-			WHERE fetched_at = 0 AND retry_at <= ? ORDER BY provider, kind, external_id LIMIT ?`, now, due.New)
+			WHERE fetched_at_ms = 0 AND retry_at_ms <= ? ORDER BY provider, kind, external_id LIMIT ?`, now, due.New)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +113,7 @@ func (s *sqlStore) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue)
 	}
 	if due.Stale > 0 {
 		keys, err := s.catalogKeys(ctx, `SELECT provider, kind, external_id FROM library_catalog
-			WHERE fetched_at > 0 AND fetched_at < ? AND retry_at <= ? ORDER BY fetched_at LIMIT ?`,
+			WHERE fetched_at_ms > 0 AND fetched_at_ms < ? AND retry_at_ms <= ? ORDER BY fetched_at_ms LIMIT ?`,
 			due.StaleBefore.UnixMilli(), now, due.Stale)
 		if err != nil {
 			return nil, err
@@ -166,10 +166,11 @@ func (s *sqlStore) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_catalog (provider, kind, external_id, record, fetched_at, retry_at)
+	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_catalog (provider, kind, external_id, record,
+		fetched_at_ms, retry_at_ms)
 		VALUES (?, ?, ?, ?, ?, 0)
 		ON CONFLICT (provider, kind, external_id) DO UPDATE SET record = excluded.record,
-		fetched_at = excluded.fetched_at, retry_at = 0`),
+		fetched_at_ms = excluded.fetched_at_ms, retry_at_ms = 0`),
 		key.Provider, key.Kind, key.ExternalID, record, at.UnixMilli()); err != nil {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
@@ -180,7 +181,7 @@ func (s *sqlStore) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey
 }
 
 func (s *sqlStore) FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, retryAt time.Time) error {
-	if _, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_catalog SET retry_at = ?
+	if _, err := s.db.ExecContext(ctx, s.ph(`UPDATE library_catalog SET retry_at_ms = ?
 		WHERE provider = ? AND kind = ? AND external_id = ?`),
 		retryAt.UnixMilli(), key.Provider, key.Kind, key.ExternalID); err != nil {
 		return fmt.Errorf("fail library catalog: %w", err)
@@ -194,5 +195,5 @@ func (s *sqlStore) RewriteLibraryCatalogFiles(ctx context.Context, key LibraryCa
 		return nil, nil
 	}
 	const titles = `(SELECT id FROM library_items WHERE catalog = ?)`
-	return s.rewriteFiles(ctx, `item_id IN `+titles+` OR series_id IN `+titles, catalog, catalog)
+	return s.rewriteFiles(ctx, `inventory_item_id IN `+titles+` OR inventory_series_id IN `+titles, catalog, catalog)
 }

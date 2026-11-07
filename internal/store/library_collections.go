@@ -60,8 +60,8 @@ func (s *sqlStore) readLibraryCollections(ctx context.Context, id string) ([]Lib
 	if id != "" {
 		where, args = " WHERE c.id = ?", []any{id}
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.updated_at,
-		COALESCE(m.item_id, '') FROM library_collections c
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.id, c.name, c.description, c.imported_from, c.updated_at_ms,
+		COALESCE(m.inventory_item_id, '') FROM library_collections c
 		LEFT JOIN library_collection_members m ON m.collection_id = c.id`+where+`
 		ORDER BY LOWER(c.name), c.id, m.position`), args...)
 	if err != nil {
@@ -96,7 +96,7 @@ func (s *sqlStore) CreateLibraryCollection(ctx context.Context, c LibraryCollect
 	id := strings.ToLower(rand.Text())
 	err := s.writeLibraryCollection(ctx, id, c, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_collections (id, name, description, imported_from,
-			created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`),
+			created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?)`),
 			id, c.Name, c.Description, c.ImportedFrom, at.UnixMilli(), at.UnixMilli())
 		return err
 	})
@@ -109,7 +109,7 @@ func (s *sqlStore) CreateLibraryCollection(ctx context.Context, c LibraryCollect
 func (s *sqlStore) UpdateLibraryCollection(ctx context.Context, c LibraryCollection, at time.Time) error {
 	err := s.writeLibraryCollection(ctx, c.ID, c, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, s.ph(`UPDATE library_collections SET name = ?, description = ?,
-			updated_at = ? WHERE id = ?`), c.Name, c.Description, at.UnixMilli(), c.ID)
+			updated_at_ms = ? WHERE id = ?`), c.Name, c.Description, at.UnixMilli(), c.ID)
 		if err != nil {
 			return err
 		}
@@ -149,7 +149,7 @@ func (s *sqlStore) writeLibraryCollection(ctx context.Context, id string, c Libr
 			continue
 		}
 		seen[item] = true
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_collection_members (collection_id, item_id, position)
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_collection_members (collection_id, inventory_item_id, position)
 			VALUES (?, ?, ?)`), id, item, len(seen)); err != nil {
 			return err
 		}

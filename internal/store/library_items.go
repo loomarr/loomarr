@@ -105,11 +105,11 @@ type LibraryItemStore interface {
 
 func (s *sqlStore) RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error) {
 	return s.resetFiles(ctx, `header = '`+LibraryHeaderPending+`'`,
-		`(item_id = ? OR series_id = ?) AND problem = ''`, id, id)
+		`(inventory_item_id = ? OR inventory_series_id = ?) AND problem = ''`, id, id)
 }
 
 func (s *sqlStore) RemoveLibraryFile(ctx context.Context, path string, at time.Time) error {
-	_, err := s.resetFiles(ctx, fmt.Sprintf("missing_at = %d, held = FALSE", at.UnixMilli()), "path = ?", path)
+	_, err := s.resetFiles(ctx, fmt.Sprintf("missing_at_ms = %d, held = FALSE", at.UnixMilli()), "path = ?", path)
 	return err
 }
 
@@ -123,13 +123,13 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 	}
 	defer func() { _ = tx.Rollback() }()
 	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_items (id, kind, name, sort_name, year, catalog,
-		origin_authority, origin_key, grounded, match_basis, match_app, match_page, updated_at)
+		origin_authority, origin_key, grounded, match_basis, match_app, match_page, updated_at_ms)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
 		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
 		origin_authority = excluded.origin_authority, origin_key = excluded.origin_key,
 		grounded = excluded.grounded, match_basis = excluded.match_basis, match_app = excluded.match_app,
-		match_page = excluded.match_page, updated_at = excluded.updated_at`))
+		match_page = excluded.match_page, updated_at_ms = excluded.updated_at_ms`))
 	if err != nil {
 		return fmt.Errorf("save library items: %w", err)
 	}
@@ -157,9 +157,11 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 // presentFiles is each present, importable file under the item it counts toward: its own item, and
 // an episode's series too.
 const presentFiles = `(
-	SELECT item_id AS id, header FROM library_files WHERE item_id <> '' AND missing_at = 0 AND problem = ''
+	SELECT inventory_item_id AS id, header FROM library_files
+	WHERE inventory_item_id <> '' AND missing_at_ms = 0 AND problem = ''
 	UNION ALL
-	SELECT series_id AS id, header FROM library_files WHERE series_id <> '' AND missing_at = 0 AND problem = ''
+	SELECT inventory_series_id AS id, header FROM library_files
+	WHERE inventory_series_id <> '' AND missing_at_ms = 0 AND problem = ''
 )`
 
 // itemColumns is an item, its poster ref and its file counts, read over presentFiles; itemGroup
@@ -259,9 +261,10 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 }
 
 func (s *sqlStore) LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size, modified_ns, identity, kind, header,
-		problem, held, seen_at, missing_at, item_id, series_id FROM library_files
-		WHERE (item_id = ? OR series_id = ?) AND missing_at = 0 AND problem = '' ORDER BY path`), id, id)
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
+		problem, held, seen_at_ms, missing_at_ms, inventory_item_id, inventory_series_id FROM library_files
+		WHERE (inventory_item_id = ? OR inventory_series_id = ?) AND missing_at_ms = 0 AND problem = ''
+		ORDER BY path`), id, id)
 	if err != nil {
 		return nil, fmt.Errorf("list library item files: %w", err)
 	}
