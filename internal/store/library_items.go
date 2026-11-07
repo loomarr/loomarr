@@ -19,9 +19,16 @@ type LibraryItem struct {
 	Year     int
 }
 
+// LibraryItemImageOwner is the image_refs owner kind of a library item's artwork. The ref is the
+// one record of which image is its poster: an adopted image changes hash when its bytes arrive,
+// and the image service moves the refs with it.
+const LibraryItemImageOwner = "library_item"
+
 // LibraryItemSummary is an item with what its present files say about it.
 type LibraryItemSummary struct {
 	LibraryItem
+	// Poster is the image hash its poster ref names; "" for none.
+	Poster string
 	// Files counts its present, importable files (a series' episodes); Pending, those whose header is
 	// not read yet. An item with Pending > 0 is still getting ready.
 	Files   int
@@ -98,6 +105,16 @@ const presentFiles = `(
 	SELECT series_id AS id, header FROM library_files WHERE series_id <> '' AND missing_at = 0 AND problem = ''
 )`
 
+// itemColumns is an item, its poster ref and its file counts, read over presentFiles; itemGroup
+// groups by the item.
+const (
+	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year,
+		COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
+			AND r.owner_id = i.id AND r.role = 'poster'), ''),
+		COUNT(*), COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0)`
+	itemGroup = `i.id, i.kind, i.name, i.sort_name, i.year`
+)
+
 func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
 	where := []string{}
 	args := []any{}
@@ -118,9 +135,7 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(DISTINCT i.id)`+from), args...).Scan(&page.Total); err != nil {
 		return page, fmt.Errorf("count library items: %w", err)
 	}
-	query := `SELECT i.id, i.kind, i.name, i.sort_name, i.year, COUNT(*),
-		COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0)` + from +
-		` GROUP BY i.id, i.kind, i.name, i.sort_name, i.year ORDER BY i.sort_name, i.id`
+	query := `SELECT ` + itemColumns + from + ` GROUP BY ` + itemGroup + ` ORDER BY i.sort_name, i.id`
 	if q.Limit > 0 {
 		query += ` LIMIT ? OFFSET ?`
 		args = append(args, q.Limit, q.Offset)
@@ -134,10 +149,9 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 }
 
 func (s *sqlStore) LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error) {
-	items, err := s.scanLibraryItems(ctx, `SELECT i.id, i.kind, i.name, i.sort_name, i.year, COUNT(*),
-		COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0)
+	items, err := s.scanLibraryItems(ctx, `SELECT `+itemColumns+`
 		FROM library_items i JOIN `+presentFiles+` f ON f.id = i.id WHERE i.id = ?
-		GROUP BY i.id, i.kind, i.name, i.sort_name, i.year`, id)
+		GROUP BY `+itemGroup, id)
 	if err != nil {
 		return LibraryItemSummary{}, err
 	}
@@ -155,7 +169,7 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 	out := []LibraryItemSummary{}
 	for rows.Next() {
 		var it LibraryItemSummary
-		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &it.Files, &it.Pending); err != nil {
+		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &it.Poster, &it.Files, &it.Pending); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}

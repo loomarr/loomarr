@@ -21,6 +21,21 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
+	// m1's poster is the image its ref names; a fanart ref is not a poster.
+	poster, fanart := imageAt("m1-poster", at), imageAt("m2-fanart", at)
+	for _, img := range []Image{poster, fanart} {
+		if err := st.PutImage(ctx, img); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, ref := range []ImageRef{
+		{ImageHash: poster.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "m1", Role: "poster"},
+		{ImageHash: fanart.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "m2", Role: "backdrop"},
+	} {
+		if err := st.PutImageRef(ctx, ref); err != nil {
+			t.Fatal(err)
+		}
+	}
 	file := func(path, item, series, header string) LibraryFile {
 		return LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Kind: "movie", Header: header,
 			SeenAt: at, ItemID: item, SeriesID: series}
@@ -47,7 +62,7 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("page = %+v, want three present items", page)
 	}
 	want := []LibraryItemSummary{
-		{LibraryItem: LibraryItem{ID: "m1", Kind: "movie", Name: "The 100% Film", SortName: "100% film", Year: 1999}, Files: 1},
+		{LibraryItem: LibraryItem{ID: "m1", Kind: "movie", Name: "The 100% Film", SortName: "100% film", Year: 1999}, Poster: poster.Hash, Files: 1},
 		{LibraryItem: LibraryItem{ID: "m2", Kind: "movie", Name: "Another Film", SortName: "another film", Year: 2004}, Files: 1, Pending: 1},
 		{LibraryItem: LibraryItem{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001}, Files: 2, Pending: 1},
 	}

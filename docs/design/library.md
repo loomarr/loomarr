@@ -127,8 +127,8 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   `-landscape`, `-clearart`, `-discart`), then the folder's `poster`, `folder`, `fanart`, `clearlogo` …
   when it holds only that video; a series folder's same names; an episode's `<file>-thumb.jpg`. Any of
   `.jpg`, `.jpeg`, `.png`, `.webp`, matched whatever the case. Records carry the image's path, never
-  its bytes, and only regular files: the image service imports one, keyed by its content, the first
-  time something shows it. Season art is not read; Loomarr has no season items.
+  its bytes, and only regular files: the image service imports a poster when the scanner writes its
+  title (see Posters below). Season art is not read; Loomarr has no season items.
 - **Arr requests never follow a redirect**, so the API key cannot reach another host.
 
 **Precedence** lives in one place, `metadataprovider/precedence`, and ranks bases and catalogs, never
@@ -243,6 +243,17 @@ step 5). Nothing reads the scanner's origins until the cutover.
   again. `GET /v1/library/items` pages and searches the list (admin-only);
   `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
   files, or a series' episodes by season.
+- **Posters** (step 10b). When the importer writes a title it hands the resolved poster to the
+  image service, and the title owns it through an `image_refs` row (owner `library_item`, role
+  `poster`); that ref is the one record of which image is its poster. A sidecar file is imported
+  then, keyed by its content, opened only as a regular file and never through a symlink, and
+  skipped when the service already holds those bytes; it is `extracted`, since the file beside the
+  media is its source. A manager's https URL is adopted, and the fetch job moves the ref onto the
+  bytes when they arrive; until then the API leaves the poster out. A new poster replaces the old
+  ref, and a title with none lets it go. An artwork file beside the media is one of its sidecars,
+  so adding or changing one rewrites the title; a folder's own art (`poster.jpg`) counts only for
+  the folder's one video. A poster that fails to import leaves the title as it was, and the next
+  write tries again.
 
 ## Cached series episodes
 

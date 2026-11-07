@@ -3,8 +3,8 @@
 // "<name>-poster.jpg" or the folder's "poster.jpg", an episode's still in "<name>-thumb.jpg", and a
 // series' art in its folder.
 //
-// A record carries references (the image's path), never bytes: the image service imports a file
-// the first time something shows it, keyed by its content. Only regular files are referenced, so a
+// A record carries references (the image's path), never bytes: the image service imports a poster
+// when the scanner writes its title, keyed by its content. Only regular files are referenced, so a
 // symlink never points the import outside the share; the importer checks again when it opens one.
 package localart
 
@@ -34,6 +34,17 @@ const (
 
 // extensions are the image types a sidecar may use, in the order one is preferred.
 var extensions = []string{".jpg", ".jpeg", ".png", ".webp"}
+
+// IsImage reports whether name has an extension artwork may use, whatever its case.
+func IsImage(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	for _, e := range extensions {
+		if ext == e {
+			return true
+		}
+	}
+	return false
+}
 
 // rule is one artwork kind and the names, without extension, that hold it, best first.
 type rule struct {

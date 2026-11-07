@@ -14,7 +14,9 @@ import (
 	"github.com/loomarr/loomarr/internal/library/arrhook"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/header"
+	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
+	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -29,6 +31,7 @@ type libraryStore interface {
 	store.LibraryFileStore
 	store.LibraryItemStore
 	inventory.Repository
+	posterRefs
 }
 
 // libraryBuild is what Settings → Library needs beyond the store and settings.
@@ -39,6 +42,8 @@ type libraryBuild struct {
 	budget *playout.ResourceBudget
 	// ffmpegPath locates ffprobe, the header reader's fallback.
 	ffmpegPath string
+	// images keeps the titles' posters; nil keeps none.
+	images *images.Service
 	// processes lists each ffprobe run in Diagnostics; nil lists none.
 	processes *diagnostics.ProcessManager
 	// hookSecret is the password Sonarr and Radarr send with each webhook.
@@ -102,6 +107,8 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Disk:      scan.OSDisk{},
 		Managers:  func() []scan.Manager { return managers },
 		NFO:       nfo.New(),
+		Art:       localart.New(),
+		Posters:   libraryPostersOf(deps.images, st),
 		Resolver:  resolver,
 		Header:    libraryHeader(playout.FFprobeSourceNextTo(deps.ffmpegPath, deps.processes)),
 		Enabled:   func() bool { return settings.LibraryScannerEnabled.Get(set) },

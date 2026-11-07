@@ -35,8 +35,8 @@ const (
 	// OriginRemote is bytes fetched from upstream (TMDB, the media server). Recoverable from
 	// SourceURL, which is why that column is load-bearing rather than informational.
 	OriginRemote Origin = "remote"
-	// OriginExtracted is bytes we produced from local media — a clip's still frame. Recoverable
-	// by re-running the ffmpeg pass that made it.
+	// OriginExtracted is bytes we produced from local media — a clip's still frame, or a poster
+	// read from beside a title's file. Recoverable by re-running the pass that made it.
 	OriginExtracted Origin = "extracted"
 	// OriginGenerated is bytes a model produced. Recoverable only if the generation parameters
 	// in Meta are enough to reproduce it, which for most models they are not — treat as
@@ -49,6 +49,12 @@ const (
 // switch at each call site.
 func (o Origin) Recoverable() bool {
 	return o == OriginRemote || o == OriginExtracted
+}
+
+// HasBytes reports whether the image's bytes have arrived: an adopted remote image has none until
+// the fetch job pulls them, and its renditions cannot be served before then.
+func (i Image) HasBytes() bool {
+	return i.Origin != OriginRemote || !i.OriginFetchedAt.IsZero()
 }
 
 // Visibility is a property of the IMAGE, not of the route that serves it (§22).

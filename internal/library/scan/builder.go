@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -40,12 +41,31 @@ type seriesSeen struct {
 }
 
 // listed records a movie or series the pass wrote, under its resolved name.
-func (b *builder) listed(id string, snapshot inventory.Snapshot) {
+func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snapshot) {
 	facts := snapshot.Observation.Facts
 	b.items = append(b.items, store.LibraryItem{
 		ID: id, Kind: string(snapshot.Kind), Name: facts.Name,
 		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
 	})
+	b.poster(ctx, id, facts.Artwork)
+}
+
+// poster hands the title's resolved poster, or none, to the image service. One that cannot be
+// imported leaves the title as it was until it is written again; the grid shows its name.
+func (b *builder) poster(ctx context.Context, id string, art []inventory.ArtworkRef) {
+	if b.im.Posters == nil {
+		return
+	}
+	ref := ""
+	for _, a := range art {
+		if a.Kind == localart.KindPoster {
+			ref = a.Ref
+			break
+		}
+	}
+	if err := b.im.Posters.Poster(ctx, id, ref); err != nil {
+		b.im.log().Warn("library scan: poster not imported", "item", id, "err", err)
+	}
 }
 
 // identity is what the cheap sources say a file is: no file is opened to learn it.
@@ -172,8 +192,13 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		records = []mp.Record{first}
 	}
 	records = append(records, id.embedded)
-	if len(file.Sidecars) > 0 {
-		if rec, ok := b.sidecar(ctx, id.kind, file.Path); ok {
+	if file.hasNFO() {
+		if rec, ok := b.sidecar(ctx, b.im.NFO, id.kind, file.Path); ok {
+			records = append(records, rec)
+		}
+	}
+	if file.hasArt() {
+		if rec, ok := b.sidecar(ctx, b.im.Art, id.kind, file.Path); ok {
 			records = append(records, rec)
 		}
 	}
@@ -196,12 +221,13 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	return snapshot
 }
 
-// sidecar reads the NFO beside a file. No NFO, or one that does not parse, says nothing.
-func (b *builder) sidecar(ctx context.Context, kind mp.Kind, mediaPath string) (mp.Record, bool) {
-	if b.im.NFO == nil {
+// sidecar reads what a sidecar provider (NFO, artwork) finds beside a file or in a series folder.
+// None, or one that does not parse, says nothing.
+func (b *builder) sidecar(ctx context.Context, p mp.Provider, kind mp.Kind, mediaPath string) (mp.Record, bool) {
+	if p == nil {
 		return mp.Record{}, false
 	}
-	rec, err := b.im.NFO.Fetch(ctx, mp.Ref{Kind: kind, ID: mp.ExternalID{Namespace: mp.NamespaceFile, Value: mediaPath}})
+	rec, err := p.Fetch(ctx, mp.Ref{Kind: kind, ID: mp.ExternalID{Namespace: mp.NamespaceFile, Value: mediaPath}})
 	if err != nil {
 		if !errors.Is(err, mp.ErrNotFound) {
 			b.im.log().Debug("library scan: sidecar not read", "err", err)
@@ -222,8 +248,11 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			records = append(records, *s.managed)
 		}
 		if s.dir != "" {
-			if rec, ok := b.sidecar(ctx, mp.KindSeries, filepath.Join(b.root, filepath.FromSlash(s.dir))); ok {
-				records = append(records, rec)
+			dir := filepath.Join(b.root, filepath.FromSlash(s.dir))
+			for _, p := range []mp.Provider{b.im.NFO, b.im.Art} {
+				if rec, ok := b.sidecar(ctx, p, mp.KindSeries, dir); ok {
+					records = append(records, rec)
+				}
 			}
 		}
 		resolved := b.im.Resolver.Resolve(precedence.Input{Kind: mp.KindSeries, Records: records})
@@ -248,7 +277,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			continue
 		}
 		s.itemID = string(id)
-		b.listed(s.itemID, snapshot)
+		b.listed(ctx, s.itemID, snapshot)
 	}
 	return nil
 }
