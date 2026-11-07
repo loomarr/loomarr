@@ -71,15 +71,19 @@ destroy() {
 
 up() {
 	local hours="${STAGING_HOURS:-4}" version="${VERSION:-}" image="${STAGING_IMAGE:-}" commit="${STAGING_COMMIT:-}"
-	local database="${STAGING_DATABASE:-sqlite}" public_url="${STAGING_PUBLIC_URL:-}" tunnel_token=''
+	local database="${STAGING_DATABASE:-sqlite}" public_url="${STAGING_PUBLIC_URL:-}" tunnel_token='' admin_password=''
 	[ -n "${VULTR_API_KEY:-}" ] || die 'VULTR_API_KEY is not set'
 	[ -n "${TS_AUTHKEY:-}" ] || die 'TS_AUTHKEY is not set'
 	[[ "$database" =~ ^(sqlite|postgres)$ ]] || die 'STAGING_DATABASE must be sqlite or postgres'
 	if [ -n "$public_url" ]; then
 		[[ "$public_url" =~ ^https://[a-z0-9.-]+$ ]] || die "invalid STAGING_PUBLIC_URL: $public_url"
 		[ -n "${CF_TUNNEL_TOKEN:-}" ] || die 'a public site needs CF_TUNNEL_TOKEN'
-		# Only a public server gets this: a staging run has no use for it.
+		# Checked here too, so a bad secret fails the run instead of a server that then powers off.
+		[[ "${DEMO_ADMIN_PASSWORD:-}" =~ ^[A-Za-z0-9._~-]{16,}$ ]] ||
+			die 'a public site needs DEMO_ADMIN_PASSWORD: 16 or more letters, digits or ._~-'
+		# Only a public server gets these: a staging run has no use for them.
 		tunnel_token="$CF_TUNNEL_TOKEN"
+		admin_password="$DEMO_ADMIN_PASSWORD"
 	fi
 	if [ "$hours" != keep ]; then
 		[[ "$hours" =~ ^[0-9]+$ ]] && [ "$hours" -ge 1 ] && [ "$hours" -le "$MAX_HOURS" ] ||
@@ -109,7 +113,8 @@ up() {
 		printf '#!/bin/bash\n'
 		printf 'STAGING_NAME=%q\nVERSION=%q\nSTAGING_IMAGE=%q\nSTAGING_COMMIT=%q\nSTAGING_DATABASE=%q\n' \
 			"$name" "$version" "$image" "$commit" "$database"
-		printf 'STAGING_PUBLIC_URL=%q\nTS_AUTHKEY=%q\nCF_TUNNEL_TOKEN=%q\n' "$public_url" "$TS_AUTHKEY" "$tunnel_token"
+		printf 'STAGING_PUBLIC_URL=%q\nTS_AUTHKEY=%q\nCF_TUNNEL_TOKEN=%q\nDEMO_ADMIN_PASSWORD=%q\n' \
+			"$public_url" "$TS_AUTHKEY" "$tunnel_token" "$admin_password"
 		cat "$ROOT/docker/staging-boot.sh.tmpl"
 	} >"$TMP/boot"
 	# Through a file, because the boot script holds the tailnet key and argv is visible.

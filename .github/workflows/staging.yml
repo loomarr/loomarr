@@ -91,6 +91,7 @@ jobs:
           STAGING_DATABASE: ${{ inputs.database || 'sqlite' }}
           STAGING_PUBLIC_URL: ${{ inputs.public_url }}
           CF_TUNNEL_TOKEN: ${{ secrets.STAGING_CF_TUNNEL_TOKEN }}
+          DEMO_ADMIN_PASSWORD: ${{ secrets.STAGING_DEMO_ADMIN_PASSWORD }}
           VERSION: ${{ inputs.version }}
           STAGING_COMMIT: ${{ inputs.action == 'up' && inputs.version == '' && github.sha || '' }}
           STAGING_IMAGE: ${{ inputs.action == 'up' && inputs.version == '' && format('ghcr.io/{0}-staging:{1}', github.repository, github.sha) || '' }}

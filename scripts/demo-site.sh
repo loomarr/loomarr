@@ -10,9 +10,9 @@
 #
 # DEMO_SITE_DATABASE=postgres runs it on Postgres instead of SQLite.
 #
-# DEMO_SITE_PUBLIC=1 with CF_TUNNEL_TOKEN puts it on the internet through a Cloudflare Tunnel. The
-# demo admin's password is in this repository, so visitors get a member account instead, and the
-# tunnel starts only once that password no longer works.
+# DEMO_SITE_PUBLIC=1 with CF_TUNNEL_TOKEN and DEMO_ADMIN_PASSWORD puts it on the internet through a
+# Cloudflare Tunnel. The demo admin's password is in this repository, so visitors get a member
+# account instead, and the tunnel starts only once that password no longer works.
 #
 # A seeder newer than the server would migrate the store past what the server can open, which is
 # why a release builds the tool from its own tag and never from this checkout.
@@ -61,10 +61,10 @@ admin_login() {
 		-d "$ADMIN_LOGIN" "$BASE/v1/auth/login"
 }
 
-# lock_down leaves visitors a member account and retires the public admin password. Nobody needs
-# the new one: this site is rebuilt, never administered, so it is thrown away.
+# lock_down leaves visitors a member account and replaces the public admin password with
+# DEMO_ADMIN_PASSWORD, which only the maintainer knows.
 lock_down() {
-	local BASE="http://${DEMO_SITE_BIND:-127.0.0.1}:$DEMO_SITE_PORT" jar status secret
+	local BASE="http://${DEMO_SITE_BIND:-127.0.0.1}:$DEMO_SITE_PORT" jar status
 	jar="$(mktemp)"
 	# shellcheck disable=SC2064 # the path is fixed now, and a local is gone by the time this runs
 	trap "rm -f '$jar'" RETURN
@@ -88,9 +88,8 @@ lock_down() {
 		;;
 	esac
 
-	secret="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 	status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -b "$jar" -H 'X-Loomarr-Csrf: 1' -H 'Content-Type: application/json' \
-		-d "{\"current\":\"loomarr-demo\",\"next\":\"$secret\"}" "$BASE/v1/auth/password")"
+		-d "{\"current\":\"loomarr-demo\",\"next\":\"$DEMO_ADMIN_PASSWORD\"}" "$BASE/v1/auth/password")"
 	case "$status" in
 	2??) ;;
 	*)
@@ -124,9 +123,16 @@ release_source() {
 }
 
 up() {
-	if [ "$PUBLIC" = 1 ] && [ -z "${CF_TUNNEL_TOKEN:-}" ]; then
-		echo 'demo-site: DEMO_SITE_PUBLIC=1 needs CF_TUNNEL_TOKEN' >&2
-		exit 2
+	if [ "$PUBLIC" = 1 ]; then
+		if [ -z "${CF_TUNNEL_TOKEN:-}" ]; then
+			echo 'demo-site: DEMO_SITE_PUBLIC=1 needs CF_TUNNEL_TOKEN' >&2
+			exit 2
+		fi
+		# Plain characters only: it goes into a JSON body, and the server has no jq to escape it.
+		if ! [[ "${DEMO_ADMIN_PASSWORD:-}" =~ ^[A-Za-z0-9._~-]{16,}$ ]] || [ "$DEMO_ADMIN_PASSWORD" = loomarr-demo ]; then
+			echo 'demo-site: DEMO_SITE_PUBLIC=1 needs DEMO_ADMIN_PASSWORD: 16 or more letters, digits or ._~-' >&2
+			exit 2
+		fi
 	fi
 	if [ -n "${VERSION:-}" ] && [ -n "$LOOMARR_IMAGE" ]; then
 		echo 'demo-site: set VERSION or LOOMARR_IMAGE, not both' >&2
