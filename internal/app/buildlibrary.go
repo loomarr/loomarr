@@ -35,6 +35,7 @@ type libraryStore interface {
 	store.LibraryItemStore
 	store.LibraryCatalogStore
 	store.LibraryNeedsStore
+	store.LibraryCollectionStore
 	inventory.Repository
 	posterRefs
 }
@@ -102,7 +103,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	resolver, err := precedence.New("US")
 	if err != nil {
 		deps.log.Error("library scan: not started", "err", err)
-		return libraryServices{roots: &scan.Library{Roots: roots, ItemStore: st, Inventory: inv}}
+		return libraryServices{roots: &scan.Library{Roots: roots, ItemStore: st, Inventory: inv, CollectionStore: st}}
 	}
 	conns := set.arrConns()
 	sonarr, radarr := arr.NewSonarr(conns.Sonarr, nil), arr.NewRadarr(conns.Radarr, nil)
@@ -160,7 +161,8 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
 	deps.owner.goRunAfterBuild(hooks.Run)
-	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st}
+	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
+		CollectionStore: st}
 	if deps.tmdb != nil {
 		provider := mptmdb.New(deps.tmdb, nil)
 		enricher := &scan.Enricher{

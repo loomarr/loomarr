@@ -795,6 +795,7 @@ type Store interface {
 	LibraryItemStore
 	LibraryCatalogStore
 	LibraryNeedsStore
+	LibraryCollectionStore
 
 	// Close releases the underlying database handle.
 	Close() error

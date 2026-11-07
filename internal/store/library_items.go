@@ -73,8 +73,10 @@ type LibraryItemQuery struct {
 	Kind     string
 	Search   string
 	Problems bool
-	Limit    int
-	Offset   int
+	// IDs keeps only these items, when not empty.
+	IDs    []string
+	Limit  int
+	Offset int
 }
 
 // LibraryItemPage is one page of items in sort order, and how many match in all.
@@ -186,6 +188,12 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	if search := strings.TrimSpace(q.Search); search != "" {
 		where = append(where, "LOWER(i.name) LIKE ? ESCAPE '\\'")
 		args = append(args, "%"+likeEscape(strings.ToLower(search))+"%")
+	}
+	if len(q.IDs) > 0 {
+		where = append(where, "i.id IN ("+strings.TrimSuffix(strings.Repeat("?, ", len(q.IDs)), ", ")+")")
+		for _, id := range q.IDs {
+			args = append(args, id)
+		}
 	}
 	// A title the maintainer said is not one is left out.
 	where = append(where, `NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority

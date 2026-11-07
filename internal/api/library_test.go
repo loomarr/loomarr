@@ -84,7 +84,7 @@ func newScanLibrary(t *testing.T, st records.Store, sonarrFolders ...string) *sc
 		Now:     time.Now,
 	}
 	inv := inventory.New(st)
-	return &scan.Library{Roots: roots, ItemStore: st, NeedStore: st, Inventory: inv, Scanner: scan.NewScanner(&scan.Importer{
+	return &scan.Library{Roots: roots, ItemStore: st, NeedStore: st, CollectionStore: st, Inventory: inv, Scanner: scan.NewScanner(&scan.Importer{
 		Store: st, Inventory: inv, Disk: roots.Disk,
 		Resolver: resolver, Enabled: func() bool { return true },
 	}, 0)}
