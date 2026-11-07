@@ -40,6 +40,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ExplicitMissing", func(t *testing.T) { testInventoryExplicitMissing(t, newStore) })
 		t.Run("MalformedRejected", func(t *testing.T) { testInventoryMalformedRejected(t, newStore) })
 		t.Run("BoundsRejected", func(t *testing.T) { testInventoryBoundsRejected(t, newStore) })
+		t.Run("LibraryRootDiscovery", func(t *testing.T) { testLibraryRootDiscovery(t, newStore) })
+		t.Run("LibraryRootByHand", func(t *testing.T) { testLibraryRootByHand(t, newStore) })
 	})
 
 	t.Run("Titles", func(t *testing.T) {

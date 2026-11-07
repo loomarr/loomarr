@@ -6,6 +6,7 @@ type SettingsRole = "all" | "admin";
 type SettingsStaticDestinationPath =
   | "/settings/access"
   | "/settings/connections"
+  | "/settings/library"
   | "/settings/ai"
   | "/settings/defaults"
   | "/settings/notifications"
@@ -51,6 +52,16 @@ const SETTINGS_DESTINATIONS = [
     aliases: ["Emby", "Jellyfin", "Seerr", "Sonarr", "Radarr", "Tunarr", "TMDB", "services"],
     group: "setup",
     path: "/settings/connections",
+    role: "admin",
+    browse: true,
+  }),
+  destination({
+    id: "library",
+    label: "Library",
+    description: "Choose the folders that hold your shows and movies.",
+    aliases: ["media folders", "scan", "mounts", "path mapping", "where is my media"],
+    group: "setup",
+    path: "/settings/library",
     role: "admin",
     browse: true,
   }),

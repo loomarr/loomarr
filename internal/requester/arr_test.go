@@ -275,3 +275,18 @@ func TestArr_RequestMovie_LookupFailureIsAStatusError(t *testing.T) {
 		t.Errorf("Classify = %v, want transient", got)
 	}
 }
+
+// RootFolders lists every folder the arr reports, ignoring the override (which only picks where
+// new titles go), and names an arr with no address as not configured.
+func TestArr_RootFolders(t *testing.T) {
+	stub := newArrStub(t, "movie")
+	a := arrFor("movie", stub.server.URL, "", "/override")
+
+	got, err := a.RootFolders(context.Background(), "radarr")
+	if err != nil || len(got) != 1 || got[0] != "/data/media" {
+		t.Fatalf("RootFolders = %v, %v", got, err)
+	}
+	if _, err := a.RootFolders(context.Background(), "sonarr"); !errors.Is(err, ErrArrNotConfigured) {
+		t.Fatalf("unconfigured sonarr: %v", err)
+	}
+}

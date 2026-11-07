@@ -148,6 +148,28 @@ unrated values ground nothing, and a resolver for a country other than the US is
 that no grounded source rates inherits its series' strictest rating. One that a source rates keeps
 that rating, whether it is stricter or not.
 
+## Media folders
+
+`internal/library/scan` keeps the folders Loomarr reads media from (decision
+[0046](decisions/0046-loomarr-scans-its-own-media-files.md); #2151 decision 6), shown on
+**Settings → Library**.
+
+- **Discovered, then confirmed.** One pass asks the media server (`/Library/VirtualFolders`, video
+  libraries only) and Sonarr and Radarr (`/api/v3/rootfolder`, whatever requester is chosen) for
+  their folders. Each folder maps to a local folder: the same path when Loomarr can open it, else
+  the `library.path_map` translation, else the one mount whose folder carries the same trailing
+  names. A root is always absolute; an ambiguous or missing folder stays unmapped. A discovered
+  folder waits for the maintainer's **Use this folder**; one typed by hand is in use at once and
+  must open.
+- **One path map.** `library_root_paths` holds every authority's name for every folder. A row the
+  maintainer edits under "Folders have different names in other apps" is never rewritten by
+  discovery; clearing it hands it back.
+- **A failing source forgets nothing.** Only an authority that answered drops the folders it no
+  longer reports, and only a folder that is neither in use, typed by hand nor named by any mapping
+  disappears. Every folder is re-checked on each pass, within 5 s, so an offline NAS shows as
+  "Loomarr can't open this folder" rather than hanging the page.
+- `GET /v1/library/status` reports `needs_folders`, `folder_offline` or `ok`, with counts.
+
 ## Cached series episodes
 
 Expanding a series into episodes costs one media-server call per show, which used to dominate guide

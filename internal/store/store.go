@@ -790,6 +790,7 @@ type Store interface {
 	HiddenIdeaStore
 	DiscoveryQualityStore
 	InventoryStore
+	LibraryRootStore
 
 	// Close releases the underlying database handle.
 	Close() error
