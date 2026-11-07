@@ -295,6 +295,11 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
   fails loudly on a bad match. For a repetitive rename, use the edit tool's replace-all or ask
   first. Exempt: generators and formatters that a Make target owns (`make fe-codegen`, `make
   openapi`, `biome --write`, `gofmt`), and reading files with any tool.
+- Write code comments in the present tense, about the code as it stands. Say what it does and why,
+  and state a trap as a fact about today: "the server drops an unknown field silently", not "this
+  once said `maxAcquire` and the cap vanished". The story belongs in the commit and the issue, which
+  a comment may cite by number. Never narrate a change ("no longer", "used to", "now", "moved
+  from"): a comment that describes the past goes stale the day it is written.
 
 ## Stop points
 
