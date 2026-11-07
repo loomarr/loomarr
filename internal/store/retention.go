@@ -34,8 +34,8 @@ import (
 // refine or a re-curation needs.
 func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error) {
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`DELETE FROM jobs WHERE status IN ('done','failed') AND updated_at < ?
-		   AND NOT EXISTS (SELECT 1 FROM proposals p WHERE p.job_id = jobs.id AND p.status = 'submitted')`),
+		`DELETE FROM proposal_jobs WHERE status IN ('done','failed') AND updated_at < ?
+		   AND NOT EXISTS (SELECT 1 FROM proposals p WHERE p.job_id = proposal_jobs.id AND p.status = 'submitted')`),
 		epoch(before))
 	if err != nil {
 		return 0, fmt.Errorf("purge finished jobs: %w", err)

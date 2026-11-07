@@ -94,7 +94,7 @@ type Proposal struct {
 
 func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
+		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 			workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		j.ID, j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
@@ -107,7 +107,7 @@ func (s *sqlStore) CreateJob(ctx context.Context, j Job) error {
 }
 
 const jobSelect = `SELECT id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
-	workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id FROM jobs`
+	workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id FROM proposal_jobs`
 
 func (s *sqlStore) GetJob(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, s.ph(jobSelect+` WHERE id = ?`), id))
@@ -125,7 +125,7 @@ func (s *sqlStore) listProposalJobIDs(ctx context.Context, createdBy string, sco
 	if limit <= 0 {
 		return []string{}, nil
 	}
-	query := `SELECT id FROM jobs WHERE kind = 'suggest'`
+	query := `SELECT id FROM proposal_jobs WHERE kind = 'suggest'`
 	args := []any{}
 	if scoped {
 		query += ` AND created_by = ?`
@@ -165,7 +165,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 		        j.channel_id,
 		        p.id, p.job_id, p.status, p.created_by, p.approved_by, p.deny_reason,
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
-		   FROM jobs j
+		   FROM proposal_jobs j
 		   LEFT JOIN proposals p
 		     ON (j.status = 'done' OR p.status = 'submitted')
 		    AND p.created_by = j.created_by
@@ -233,7 +233,7 @@ func (s *sqlStore) GetProposalJob(ctx context.Context, id string) (ProposalJob, 
 
 func (s *sqlStore) UpdateJob(ctx context.Context, j Job) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE jobs SET kind=?, status=?, intent_json=?, intent_hash=?, created_by=?,
+		`UPDATE proposal_jobs SET kind=?, status=?, intent_json=?, intent_hash=?, created_by=?,
 		   last_error=?, failure_code=?, workflow_version=?, reached_live=?, deadline=?, attempts=?, updated_at=?, failure_trace_json=? WHERE id=?`),
 		j.Kind, j.Status, j.IntentJSON, j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
 		j.WorkflowVersion, j.ReachedLive, epoch(j.Deadline), j.Attempts, epoch(j.UpdatedAt), j.FailureTraceJSON, j.ID)
@@ -292,7 +292,7 @@ func (s *sqlStore) ClaimDueJobs(ctx context.Context, now time.Time, lease time.D
 			nextAttempt = 1
 		}
 		result, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE jobs
+			`UPDATE proposal_jobs
 			    SET status='running', workflow_version=?, attempts=?, deadline=?, updated_at=?
 			  WHERE id=? AND status IN ('queued', 'running') AND deadline <= ? AND deadline > 0`),
 			ProposalWorkflowVersion, nextAttempt, epoch(now.Add(lease)), epoch(now), job.ID, epoch(now))

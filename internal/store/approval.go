@@ -114,7 +114,7 @@ func (s *sqlStore) commitProposalApproval(
 	// Proposal revision and approval serialize on the stable Job row. Generating
 	// a replacement temporarily closes the approval gate; a failed replacement
 	// leaves the old submitted proposal intact and terminal, so it can be approved.
-	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
+	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM proposal_jobs WHERE id = ?`)
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), commit.Proposal.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
@@ -146,7 +146,7 @@ func (s *sqlStore) commitProposalApproval(
 		// Resolve the stable Journey in the same transaction as approval while
 		// retaining the failed Attempt as honest execution history.
 		if _, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE jobs
+			`UPDATE proposal_jobs
 			    SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
 			  WHERE id=? AND status='failed'`), epoch(p.UpdatedAt), p.JobID); err != nil {
 			return 0, fmt.Errorf("approve proposal %s: resolve failed revision: %w", p.ID, err)
@@ -179,7 +179,7 @@ func (s *sqlStore) commitProposalApproval(
 		    AND newer.id <> candidate.id
 		    AND newer.created_at >= candidate.created_at
 		    AND (newer.job_id = candidate.job_id
-		         OR newer.job_id IN (SELECT id FROM jobs WHERE channel_id = ?)
+		         OR newer.job_id IN (SELECT id FROM proposal_jobs WHERE channel_id = ?)
 		         OR newer.job_id = (SELECT NULLIF(intent_ref, '') FROM channels WHERE id = ?))
 		  LIMIT 1`), p.ID, commit.Channel.ID, commit.Channel.ID).Scan(&supersedingID)
 	if err == nil {
@@ -364,7 +364,7 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 		return fmt.Errorf("deny proposal %s: begin: %w", p.ID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
+	jobStatusQuery := storedb.LockRows(s.dialect, `SELECT status FROM proposal_jobs WHERE id = ?`)
 	var jobStatus string
 	err = tx.QueryRowContext(ctx, s.ph(jobStatusQuery), p.JobID).Scan(&jobStatus)
 	if err == nil && (jobStatus == "queued" || jobStatus == "running") {
@@ -387,7 +387,7 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 		// Dismissing the preserved fallback resolves the failed revision Journey
 		// just as approving it does, while the failed Attempt remains in history.
 		if _, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE jobs
+			`UPDATE proposal_jobs
 			    SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
 			  WHERE id=? AND status='failed'`), epoch(p.UpdatedAt), p.JobID); err != nil {
 			return fmt.Errorf("deny proposal %s: resolve failed revision: %w", p.ID, err)
