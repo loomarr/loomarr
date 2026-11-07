@@ -64,6 +64,20 @@ const containsMediaTime = (ranges: TimeRanges, point: number): boolean => {
   return false;
 };
 
+// Resolves once the frame after this one has painted. A hidden or throttled document can stop
+// delivering animation frames altogether, so a short timer guarantees the wait ends.
+const afterNextPaint = () =>
+  new Promise<void>((resolve) => {
+    const fallback = setTimeout(resolve, 50);
+    if (typeof requestAnimationFrame !== "function") return;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        clearTimeout(fallback);
+        resolve();
+      }),
+    );
+  });
+
 // Hold the outgoing decoded picture inside the same <video> while a source is replaced. This is a
 // poster, not a hidden player or decoder: transport teardown can release immediately, while the
 // viewer keeps the last honest frame until the replacement produces its first one.
@@ -204,6 +218,7 @@ const discardTransferredMedia = (
 
 export type { DisplayedClockAnchor, TransferredMedia };
 export {
+  afterNextPaint,
   clearHeldFrame,
   clearTransferredBuffers,
   containsMediaTime,
