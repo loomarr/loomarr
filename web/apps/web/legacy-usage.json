@@ -746,8 +746,8 @@
       "legacyUi": 1
     },
     "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 88,
-      "legacyUi": 5
+      "tailwindClasses": 85,
+      "legacyUi": 3
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
       "tailwindClasses": 23,
@@ -857,8 +857,7 @@
       "legacyUi": 1
     },
     "src/suggest/intent-form/intent-form.tsx": {
-      "tailwindClasses": 35,
-      "legacyUi": 2
+      "tailwindClasses": 17
     },
     "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
       "tailwindClasses": 139,
