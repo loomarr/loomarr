@@ -7,6 +7,7 @@ var (
 	LibraryURL                          = StringKey{"library.url"}
 	LibraryToken                        = StringKey{"library.token"}
 	LibraryPathMap                      = StringKey{"library.path_map"}
+	LibraryScannerEnabled               = BoolKey{"library.scanner.enabled"}
 	RequesterProvider                   = StringKey{"requester.provider"}
 	SeerrURL                            = StringKey{"seerr.url"}
 	SeerrAPIKey                         = StringKey{"seerr.api_key"}

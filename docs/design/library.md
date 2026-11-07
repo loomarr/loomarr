@@ -198,9 +198,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
   maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
-- **Passes.** `scan.Scanner` makes one at start, hourly, and on `POST /v1/library/scan`, and
-  `library.scanner.enabled` stops them. The app does not start it yet: that wiring lands with the
-  setting. A root inside another in-use root is walked as part of it. Walks skip `trickplay/`,
+- **Passes.** `scan.Scanner` makes one when the app starts, hourly, and on
+  `POST /v1/library/scan`; `library.scanner.enabled` (on by default) stops passes, folder passes
+  and header reads. Sonarr and Radarr are its managers when connected; one with no connection
+  manages nothing rather than counting as down. Header reads fall back to the same ffprobe playout
+  uses, and wait while playout's admission budget holds any session, copies included. A root
+  inside another in-use root is walked as part of it. Walks skip `trickplay/`,
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
 - **Change signals.** `scan.Watcher` watches each in-use root on a local filesystem with inotify
