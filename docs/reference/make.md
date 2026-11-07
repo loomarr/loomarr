@@ -41,8 +41,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make doctor` |  | verify toolchain and Docker readiness; report worktrees, ports, caches, and artifacts |
 | `make agent-harness-test` | ✅ | regression-test coordination, worktree isolation, and shared-output claims <br>*runs:* `agent-assets-verify` |
 | `make agent-assets-verify` |  | verify the curated skill catalog and agent adapters agree |
-| `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
-| `make release-verify` |  | verify release, CI acquisition, Android, and publication policy |
+| `make compose-verify` | ✅ | verify Traefik, database wiring, and pinned release images |
+| `make release-verify` | ✅ | verify release, CI acquisition, Android, and publication policy |
 | `make release-notes-preview` |  | generate validated release notes (TAG required; optional PREVIOUS_TAG and OUTPUT) |
 | `make docs-release-gate` |  | fail a release whose user-facing changes have no docs change (TAG, PREVIOUS_TAG required; run after release-notes-preview, #1682) |
 | `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
@@ -66,23 +66,23 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make rust-audit` |  | check Rust advisories, licences, and dependency sources (needs cargo-deny) |
 | `make rust-fuzz` |  | fuzz the bounded Rust image protocol/decoder; optional FUZZ_SECONDS (needs nightly + cargo-fuzz) |
 | `make fmt` | ✅ | gofmt -l (fails if any file needs formatting) |
-| `make shellcheck` |  | shellcheck every repository shell script |
-| `make privacy-verify` |  | captured private fixture literals and real media titles must not re-enter the tracked tree <br>*runs:* `demo-titles-verify` |
+| `make shellcheck` | ✅ | shellcheck every repository shell script |
+| `make privacy-verify` | ✅ | captured private fixture literals and real media titles must not re-enter the tracked tree <br>*runs:* `demo-titles-verify` |
 | `make vet` | ✅ | go vet |
 | `make platform-vet` |  | go vet the opposite Linux/macOS target to catch platform-only compile drift |
-| `make vet-tags` |  | go vet over custom-tagged sources |
-| `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
-| `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
+| `make vet-tags` | ✅ | go vet over custom-tagged sources |
+| `make tags-verify` | ✅ | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
+| `make lint` | ✅ | golangci-lint v2 (run via `go run` so no global install needed) |
 | `make vuln` | ✅ | govulncheck: known vulnerabilities reachable from Loomarr code, stdlib included |
 | `make deadcode` |  | functions no ./cmd binary reaches, per package (report only; not a PR gate) |
 | `make deadcode-baseline` |  | rewrite the committed deadcode baseline the monthly report compares against |
 | `make test` | ✅ | unit tests; unsharded runs include Rust worker and eval contracts (never network — §19) |
 | `make go-shard-verify` | ✅ | Go test lanes must cover every package within their latency and balance budgets |
 | `make go-race-weights` |  | regenerate the race-lane package weights from hosted merge-group runs (RUNS="run-id ...") |
-| `make go-race-verify` |  | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
+| `make go-race-verify` | ✅ | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
 | `make test-ffmpeg` | ✅ | media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification) |
 | `make research-verify` |  | compile the archived filler research module against its pinned core (all build tags; not a CI gate) |
-| `make eval-contract` |  | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |
+| `make eval-contract` | ✅ | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |
 | `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
 | `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |
 | `make eval-planner-cert` |  | compare one model against the frozen planner corpus; explicit, inference-spending, non-CI |
@@ -287,7 +287,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet` · `vuln`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `compose-verify` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `rust-check` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository
