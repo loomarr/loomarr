@@ -18,6 +18,7 @@ import {
   Surface,
   Text,
   type TextTone,
+  useFocusLook,
 } from "@loomarr/design-system";
 import { type ComponentRef, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { type LayoutChangeEvent, Pressable, View } from "react-native";
@@ -117,7 +118,11 @@ const Block = ({
   timezone,
 }: BlockProps) => {
   const ref = useRef<ComponentRef<typeof View>>(null);
-  const [focused, setFocused] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook({
+    onFocus: () => {
+      if (!selected) onSelect?.(selectionOf(airing));
+    },
+  });
   const a = airing.source;
   const kind = a.kind;
   const pending = kind === "pending";
@@ -166,11 +171,7 @@ const Block = ({
         accessibilityRole="button"
         // tabIndex, not focusable: react-native-web ignores focusable on a Pressable.
         tabIndex={focusable ? 0 : -1}
-        onBlur={() => setFocused(false)}
-        onFocus={() => {
-          setFocused(true);
-          if (!selected) onSelect?.(selectionOf(airing));
-        }}
+        {...focusHandlers}
         onPress={onOpen}
         ref={ref}
         style={{
