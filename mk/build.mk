@@ -82,6 +82,14 @@ observability-dev-down: ## stop this worktree's local observability stack (prese
 observability-dev-test: ## prove seeded Loomarr metrics and Grafana provisioning over real Docker + HTTP
 	@./scripts/observability-dev-runtime-test.sh
 
+.PHONY: db-view
+# Exported rather than spliced into the recipe, so a quote in a password can't end the shell string.
+db-view: export DB_VIEW_FILE = $(FILE)
+db-view: export DB_VIEW_URL = $(URL)
+db-view: export DB_VIEW_ENGINE = $(ENGINE)
+db-view: ## browse a copy of a database in CloudBeaver until Ctrl-C (FILE=backup.db, URL=postgres://…, ENGINE=postgres)
+	@./scripts/db-view.sh
+
 .PHONY: test-sso
 test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
 	@# Not in comprehensive verification: §19 keeps the default suite Docker-free, like test-pg.
