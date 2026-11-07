@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
+import { pauseStoryVideo } from "@/test/story-video";
 import { TINY_WEBM } from "@/test/video-fixture";
 import { VideoPlayer } from "./video-player";
 
@@ -21,6 +22,9 @@ const meta = {
   title: "UI/VideoPlayer",
   component: VideoPlayer,
   decorators: [widthFrame(560)],
+  // Shoot once the fixture has loaded and its length is known, as the filler stories do. The
+  // fixture's header carries no duration, so without the wait the readout can be shot at "/ 0:00".
+  play: async ({ canvasElement }) => pauseStoryVideo(canvasElement),
 } satisfies Meta<typeof VideoPlayer>;
 
 type Story = StoryObj<typeof meta>;
@@ -31,7 +35,7 @@ type Story = StoryObj<typeof meta>;
 // practically — an autoplaying player has a moving playhead, so its snapshot would differ on
 // every visual run.
 const Default: Story = {
-  args: { src: TINY_WEBM, title: "CTV-LifewithBonnie.mkv — CTV Life with Bonnie" },
+  args: { src: TINY_WEBM, title: "TPH-TidepoolHour.mkv — Tidepool Hour" },
 };
 
 // Untitled: a player embedded under a heading that already names the thing does not need to
