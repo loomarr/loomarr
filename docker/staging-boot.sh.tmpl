@@ -1,0 +1,60 @@
+# The staging server's first boot. scripts/staging.sh prepends the #! line and these variables:
+# STAGING_NAME, VERSION, STAGING_IMAGE, STAGING_COMMIT, TS_AUTHKEY.
+#
+# Nothing listens on the public address: the firewall closes it first, and the demo site binds
+# only to the tailnet address, because its sign-in is public.
+
+set -euxo pipefail
+exec >>/var/log/loomarr-staging.log 2>&1
+# The server holds no cloud key, so it reports a failed boot by powering off. The sweep destroys any
+# stopped server, including a kept one, so a dead server cannot bill forever.
+trap poweroff ERR
+
+TAILSCALE_IMAGE=tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
+REPOSITORY=https://github.com/loomarr/loomarr.git
+SOURCE=/opt/loomarr
+export DEBIAN_FRONTEND=noninteractive
+
+ufw --force reset
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow in on tailscale0
+ufw --force enable
+
+apt-get update
+apt-get install -y docker.io docker-compose-v2 git
+
+# The key reaches Docker by name, so tracing this command cannot write it to the log.
+export TS_AUTHKEY
+docker run -d --name tailscaled --restart unless-stopped --network host \
+	--cap-add NET_ADMIN --cap-add NET_RAW --device /dev/net/tun \
+	-e TS_AUTHKEY -e TS_HOSTNAME="$STAGING_NAME" -e TS_USERSPACE=false \
+	-e TS_STATE_DIR=/var/lib/tailscale -v /var/lib/tailscale:/var/lib/tailscale \
+	"$TAILSCALE_IMAGE"
+unset TS_AUTHKEY
+
+address=''
+for _ in $(seq 1 60); do
+	address="$(docker exec tailscaled tailscale ip -4 2>/dev/null || true)"
+	if [ -n "$address" ]; then break; fi
+	sleep 5
+done
+[ -n "$address" ]
+
+git init -q "$SOURCE"
+git -C "$SOURCE" remote add origin "$REPOSITORY"
+if [ -n "$VERSION" ]; then
+	# main supplies the demo tooling, which an older tag lacks; demo-site.sh builds from the tag.
+	git -C "$SOURCE" fetch -q --depth 1 origin main "refs/tags/v$VERSION:refs/tags/v$VERSION"
+	git -C "$SOURCE" checkout -q FETCH_HEAD
+	export VERSION
+else
+	git -C "$SOURCE" fetch -q --depth 1 origin "$STAGING_COMMIT"
+	git -C "$SOURCE" checkout -q FETCH_HEAD
+	export LOOMARR_IMAGE="$STAGING_IMAGE"
+	unset VERSION
+fi
+
+export DEMO_SITE_PROJECT=staging DEMO_SITE_BIND="$address" DEMO_SITE_PORT=8080 DEMO_SITE_CPUS=3
+export DEMO_SITE_URL="http://$STAGING_NAME:8080"
+"$SOURCE/scripts/demo-site.sh" up

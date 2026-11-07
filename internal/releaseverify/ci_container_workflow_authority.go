@@ -647,6 +647,33 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				}},
 			},
 		},
+		// Dispatch and schedule only: the cloud key must never reach a pull request.
+		"staging.yml": {
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"build-image": {
+					condition:   "github.event_name == 'workflow_dispatch' && inputs.action == 'up' && inputs.version == ''",
+					permissions: map[string]string{"contents": "read", "packages": "write"},
+					steps:       map[string]workflowStepAuthority{},
+				},
+				"control": {
+					condition: "always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped')",
+					steps: map[string]workflowStepAuthority{
+						`./scripts/staging.sh "$STAGING_ACTION"`: exactWorkflowStep(1, "Run the staging action", workflowStepAuthority{
+							environment: map[string]string{
+								"VULTR_API_KEY":  "${{ secrets.VULTR_API_KEY }}",
+								"TS_AUTHKEY":     "${{ secrets.STAGING_TS_AUTHKEY }}",
+								"STAGING_ACTION": "${{ inputs.action || 'sweep' }}",
+								"STAGING_HOURS":  "${{ inputs.hours || '4' }}",
+								"VERSION":        "${{ inputs.version }}",
+								"STAGING_COMMIT": "${{ inputs.action == 'up' && inputs.version == '' && github.sha || '' }}",
+								"STAGING_IMAGE":  "${{ inputs.action == 'up' && inputs.version == '' && format('ghcr.io/{0}-staging:{1}', github.repository, github.sha) || '' }}",
+							},
+						}),
+					},
+				},
+			},
+		},
 		"rust-maintenance.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{

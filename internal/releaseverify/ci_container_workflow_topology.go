@@ -62,6 +62,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"release-notes.yml":           {jobs: map[string]int{"publish-notes": 5}},
 		"release.yml":                 {jobs: map[string]int{"build": 7, "publish": 9}},
 		"rust-maintenance.yml":        {jobs: map[string]int{"supply-chain": 5, "fuzz": 5}},
+		"staging.yml":                 {jobs: map[string]int{"build-image": 4, "control": 2}},
 		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 1, "render": 1, "commit": 4, "ci": 1}},
 		"visual-baselines-render.yml": {jobs: map[string]int{"render": 10}},
 	}

@@ -1,0 +1,85 @@
+name: Staging
+
+# On-demand staging (#2268): one cloud server running the demo site from a release or a commit, for
+# a few hours. The provider bills a stopped server, so the hourly sweep destroys anything past its
+# expiry, even if the run that made it failed. See docs/contributing/environments.md.
+#
+# ⚠ NEVER add `pull_request`, `pull_request_target` or `merge_group` here. The repository is public
+# and this workflow holds a cloud key that can reach unrelated servers. Dispatch needs write access.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "up creates the server; down destroys it now"
+        type: choice
+        options: [up, down, sweep]
+        default: up
+      version:
+        description: "A published release, such as 0.2.0-beta.9-rc.11. Empty builds the commit this run is on."
+        type: string
+        default: ""
+      hours:
+        description: "Hours before the server is destroyed (1 to 24), or keep for the long-running demo site"
+        type: string
+        default: "4"
+  schedule:
+    - cron: "23 * * * *"
+
+permissions:
+  contents: read
+
+# Per event, because a group keeps one pending run: a sweep must not displace a queued down.
+concurrency:
+  group: staging-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-image:
+    name: Build the commit's image
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'up' && inputs.version == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # A separate image name, so a commit build can never be mistaken for a signed release. No
+      # BuildKit cache, for the reason release.yml gives (#1679).
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository }}-staging:${{ github.sha }}
+          build-args: |
+            VERSION=staging-${{ github.sha }}
+            COMMIT=${{ github.sha }}
+
+  control:
+    name: Run the staging action
+    needs: build-image
+    if: always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run the staging action
+        env:
+          VULTR_API_KEY: ${{ secrets.VULTR_API_KEY }}
+          TS_AUTHKEY: ${{ secrets.STAGING_TS_AUTHKEY }}
+          STAGING_ACTION: ${{ inputs.action || 'sweep' }}
+          STAGING_HOURS: ${{ inputs.hours || '4' }}
+          VERSION: ${{ inputs.version }}
+          STAGING_COMMIT: ${{ inputs.action == 'up' && inputs.version == '' && github.sha || '' }}
+          STAGING_IMAGE: ${{ inputs.action == 'up' && inputs.version == '' && format('ghcr.io/{0}-staging:{1}', github.repository, github.sha) || '' }}
+        run: ./scripts/staging.sh "$STAGING_ACTION"

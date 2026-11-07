@@ -115,6 +115,8 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		},
 		{workflow: "release.yml", job: "publish"}:                {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
 		{workflow: "curated-sources.yml", job: "check"}:          {name: "Check the curated sources", runsOn: "ubuntu-24.04", timeoutMinutes: 15},
+		{workflow: "staging.yml", job: "build-image"}:            {name: "Build the commit's image", runsOn: "ubuntu-24.04", timeoutMinutes: 45},
+		{workflow: "staging.yml", job: "control"}:                {name: "Run the staging action", runsOn: "ubuntu-24.04", needs: "build-image", timeoutMinutes: 10},
 		{workflow: "deadcode.yml", job: "report"}:                {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
 		{workflow: "merge-gate.yml", job: "run"}:                 {name: "CI", runsOn: "ubuntu-latest", timeoutMinutes: 10},
 		{workflow: "merge-gate-cache.yml", job: "run"}:           {name: "Warm merge gate cache", runsOn: "ubuntu-latest", timeoutMinutes: 15},
