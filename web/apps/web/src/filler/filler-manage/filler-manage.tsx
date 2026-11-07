@@ -4,7 +4,7 @@ import { pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { Button } from "@/components/ui/button";
-import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { StatusDot, type StatusTone } from "@loomarr/design-system";
 
 type HubRow = {
   title: string;
@@ -95,7 +95,7 @@ const FillerManage = () => {
             className="border-border flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
           >
             {/* Decorative: the summary beside it says the same thing in words. */}
-            <StatusDot tone={row.tone} label="" className="size-1.5" />
+            <StatusDot tone={row.tone} label="" size="compact" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">{row.title}</p>
               <p className="text-muted-foreground mt-0.5 text-xs">{row.summary}</p>

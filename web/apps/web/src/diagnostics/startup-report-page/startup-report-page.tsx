@@ -3,7 +3,7 @@ import type { HealthCheck } from "@loomarr/api/models/healthCheck";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { StatusDot, type StatusTone } from "@loomarr/design-system";
 
 const dateTime = (millis?: number) => {
   if (!millis) return "Not checked yet";

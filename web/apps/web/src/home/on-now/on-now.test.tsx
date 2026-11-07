@@ -1,8 +1,9 @@
 import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import { layoutGuide } from "@loomarr/core/guide";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { OnNow } from "./on-now";
 
 // A mounted router: On now's cards and View channel links both route through it.

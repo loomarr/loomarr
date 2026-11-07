@@ -10,7 +10,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { StatusDot, type StatusTone } from "@loomarr/design-system";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DiagnosticsSearch } from "../diagnostics-page";
 import { DiagnosticsPager } from "../diagnostics-pager";

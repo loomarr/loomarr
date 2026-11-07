@@ -205,7 +205,7 @@
     },
     "src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
       "tailwindClasses": 70,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
       "tailwindClasses": 160,
@@ -398,7 +398,7 @@
       "baseUi": 1
     },
     "src/components/ui/index.ts": {
-      "legacyUi": 19
+      "legacyUi": 18
     },
     "src/components/ui/input/input.tsx": {
       "tailwindClasses": 12
@@ -408,9 +408,6 @@
     },
     "src/components/ui/list-row/list-row.tsx": {
       "tailwindClasses": 35,
-      "legacyUi": 2
-    },
-    "src/components/ui/list-row/list-row.type.ts": {
       "legacyUi": 1
     },
     "src/components/ui/nav-tabs/nav-tabs.tsx": {
@@ -442,9 +439,6 @@
     },
     "src/components/ui/sheet/sheet.type.ts": {
       "baseUi": 1
-    },
-    "src/components/ui/status-dot/status-dot.tsx": {
-      "tailwindClasses": 2
     },
     "src/components/ui/switch/switch.tsx": {
       "tailwindClasses": 23
@@ -486,7 +480,7 @@
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
       "tailwindClasses": 267,
-      "legacyUi": 5
+      "legacyUi": 4
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 38
@@ -501,14 +495,13 @@
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
       "tailwindClasses": 189,
-      "legacyUi": 5
+      "legacyUi": 4
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 5
     },
     "src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "tailwindClasses": 83,
-      "legacyUi": 1
+      "tailwindClasses": 83
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
       "tailwindClasses": 125,
@@ -574,8 +567,8 @@
       "legacyUi": 1
     },
     "src/filler/filler-manage/filler-manage.tsx": {
-      "tailwindClasses": 21,
-      "legacyUi": 2
+      "tailwindClasses": 20,
+      "legacyUi": 1
     },
     "src/filler/filler-overview/filler-overview.tsx": {
       "tailwindClasses": 63,
@@ -667,8 +660,8 @@
       "legacyUi": 2
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
-      "tailwindClasses": 92,
-      "legacyUi": 3
+      "tailwindClasses": 91,
+      "legacyUi": 2
     },
     "src/home/home-page/home-page.tsx": {
       "tailwindClasses": 19
@@ -683,7 +676,7 @@
     },
     "src/home/on-now/on-now.tsx": {
       "tailwindClasses": 58,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/home/on-the-way/on-the-way.tsx": {
       "legacyUi": 3
@@ -721,7 +714,7 @@
     },
     "src/queue/request-lists/request-lists.tsx": {
       "tailwindClasses": 27,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/routes/__root.tsx": {
       "legacyUi": 1
@@ -828,7 +821,7 @@
     },
     "src/settings/tasks-page/tasks-page.tsx": {
       "tailwindClasses": 164,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/suggest/approval-queue/approval-queue.tsx": {
       "tailwindClasses": 3

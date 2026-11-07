@@ -7,7 +7,7 @@ import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
-import type { StatusTone } from "@/components/ui/status-dot";
+import type { StatusTone } from "@loomarr/design-system";
 import type { AiringArtworkProps, OnNowProps } from "./on-now.type";
 
 const MAX_CHANNELS = 6;

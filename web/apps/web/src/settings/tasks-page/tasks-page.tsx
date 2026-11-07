@@ -14,7 +14,7 @@ import { RunButton } from "@/components/loomarr/feedback/run-button";
 import { useRunFeedback } from "@/components/loomarr/feedback/use-run-feedback";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
-import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { StatusDot, type StatusTone } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { describeCron } from "./cron-presets";
@@ -256,11 +256,9 @@ const TasksPage = () => {
                                   aria-controls={`task-${job.name}`}
                                   onClick={() => toggleJob(job.name)}
                                 >
-                                  <StatusDot
-                                    tone={dot.tone}
-                                    label={job.paused ? "" : dot.label}
-                                    title={dot.label}
-                                  />
+                                  <span className="flex shrink-0" title={dot.label}>
+                                    <StatusDot tone={dot.tone} label={job.paused ? "" : dot.label} />
+                                  </span>
                                   <span className="font-medium">{job.title}</span>
                                   {job.paused && (
                                     <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">

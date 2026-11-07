@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { buttonVariants } from "@/components/ui/button";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
-import type { StatusTone } from "@/components/ui/status-dot";
+import type { StatusTone } from "@loomarr/design-system";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
 

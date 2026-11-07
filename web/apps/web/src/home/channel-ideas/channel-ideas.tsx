@@ -12,7 +12,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
-import { StatusDot } from "@/components/ui/status-dot";
+import { StatusDot } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ChannelIdeasProps, IdeaCardProps } from "./channel-ideas.type";
 
@@ -48,7 +48,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
       </div>
       <div className="flex items-center gap-2 px-4 pt-2.5 text-xs">
         {/* The availability text beside it says what the dot does. */}
-        <StatusDot tone={idea.toDownload > 0 ? "progress" : "ok"} label="" className="size-1.5" />
+        <StatusDot tone={idea.toDownload > 0 ? "progress" : "ok"} label="" size="compact" />
         <span>
           {ideaCount(idea)}
           <span className="text-static-400"> · {ideaAvailability(idea)}</span>
