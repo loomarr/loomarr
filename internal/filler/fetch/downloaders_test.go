@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/proctree"
+	"github.com/loomarr/loomarr/internal/media/proctree"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 

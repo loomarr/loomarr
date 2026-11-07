@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/assessment"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )

@@ -3,7 +3,7 @@ package playout
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // TestDeriveChannelFormats: top resolution and dynamic range are derived INDEPENDENTLY from the

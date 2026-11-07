@@ -1,13 +1,13 @@
 {
   "movie": {
-    "id": 2824,
-    "title": "In Flames",
+    "id": 90002824,
+    "title": "Ashgrove Anomaly",
     "year": 2023,
     "releaseDate": "2024-07-11",
-    "folderPath": "/data/movies/In Flames (2023)",
-    "tmdbId": 1111867,
-    "imdbId": "tt27470830",
-    "overview": "After the death of the family patriarch, a mother and daughter’s precarious existence is ripped apart. They must find strength in each other if they are to survive the malevolent forces that threaten to engulf them.",
+    "folderPath": "/data/movies/Ashgrove Anomaly (2023)",
+    "tmdbId": 91111867,
+    "imdbId": "tt90000001",
+    "overview": "A survey team mapping an abandoned orchard finds that its rows of trees are not where the old charts left them.",
     "genres": [
       "Drama",
       "Horror"
@@ -15,43 +15,41 @@
     "images": [
       {
         "coverType": "poster",
-        "url": "/MediaCover/2824/poster.jpg?lastWrite=639144363569192620",
-        "remoteUrl": "https://image.tmdb.org/t/p/original/nusvS8bHgIx3L2mHRLGtVjRnQOK.jpg"
+        "url": "/MediaCover/90002824/poster.jpg?lastWrite=639144363569192620",
+        "remoteUrl": "https://artwork.example/poster/ashgrove-anomaly.jpg"
       },
       {
         "coverType": "fanart",
-        "url": "/MediaCover/2824/fanart.jpg?lastWrite=639160810887808402",
-        "remoteUrl": "https://image.tmdb.org/t/p/original/zU2jJrUBGcNk24TogUHUpiI9Ew.jpg"
+        "url": "/MediaCover/90002824/fanart.jpg?lastWrite=639160810887808402",
+        "remoteUrl": "https://artwork.example/fanart/ashgrove-anomaly.jpg"
       }
     ],
     "tags": [
-      "1 - matt"
+      "1 - household"
     ],
     "originalLanguage": {
-      "id": 54,
       "name": "Urdu"
     }
   },
   "remoteMovie": {
-    "tmdbId": 1111867,
-    "imdbId": "tt27470830",
-    "title": "In Flames",
+    "tmdbId": 91111867,
+    "imdbId": "tt90000001",
+    "title": "Ashgrove Anomaly",
     "year": 2023
   },
   "movieFile": {
-    "id": 5583,
-    "relativePath": "In Flames (2023) [imdbid-tt27470830] - [WEBDL-1080p][EAC3 5.1][x264]-RANGA.mkv",
-    "path": "/data/movies/In Flames (2023)/In Flames (2023) [imdbid-tt27470830] - [WEBDL-1080p][EAC3 5.1][x264]-RANGA.mkv",
+    "id": 90005583,
+    "relativePath": "Ashgrove Anomaly (2023) [imdbid-tt90000001] - [WEBDL-1080p][EAC3 5.1][x264]-GROUPA.mkv",
+    "path": "/data/movies/Ashgrove Anomaly (2023)/Ashgrove Anomaly (2023) [imdbid-tt90000001] - [WEBDL-1080p][EAC3 5.1][x264]-GROUPA.mkv",
     "quality": "WEBDL-1080p",
     "qualityVersion": 1,
-    "releaseGroup": "RANGA",
-    "sceneName": "In.Flames.2024.1080p.GPLAY.WEB-DL.DDP5.1.H.264-RANGA",
+    "releaseGroup": "GROUPA",
+    "sceneName": "Ashgrove.Anomaly.2023.1080p.WEB-DL.DDP5.1.H.264-GROUPA",
     "indexerFlags": "0",
     "size": 4834155165,
     "dateAdded": "2026-07-13T20:02:00.2791415Z",
     "languages": [
       {
-        "id": 54,
         "name": "Urdu"
       }
     ],
@@ -68,7 +66,7 @@
       "videoDynamicRange": "",
       "videoDynamicRangeType": ""
     },
-    "sourcePath": "/data/downloads/newzbin/complete/In.Flames.2024.1080p.GPLAY.WEB-DL.DDP5.1.H.264-RANGA/In.Flames.2024.1080p.GPLAY.WEB-DL.DDP5.1.H.264-RANGA.mkv"
+    "sourcePath": "/data/downloads/complete/Ashgrove.Anomaly.2023.1080p.WEB-DL.DDP5.1.H.264-GROUPA/Ashgrove.Anomaly.2023.1080p.WEB-DL.DDP5.1.H.264-GROUPA.mkv"
   },
   "isUpgrade": true,
   "downloadClient": "SABnzbd",
@@ -76,19 +74,18 @@
   "downloadId": "9d5f633f-b733-4542-9a11-d7acbac618ad",
   "deletedFiles": [
     {
-      "id": 4546,
-      "relativePath": "In Flames (2023) [imdbid-tt27470830] - [WEBRip-1080p][AAC 5.1][h264]-WORLD.mp4",
-      "path": "/data/movies/In Flames (2023)/In Flames (2023) [imdbid-tt27470830] - [WEBRip-1080p][AAC 5.1][h264]-WORLD.mp4",
+      "id": 90004546,
+      "relativePath": "Ashgrove Anomaly (2023) [imdbid-tt90000001] - [WEBRip-1080p][AAC 5.1][h264]-GROUPB.mp4",
+      "path": "/data/movies/Ashgrove Anomaly (2023)/Ashgrove Anomaly (2023) [imdbid-tt90000001] - [WEBRip-1080p][AAC 5.1][h264]-GROUPB.mp4",
       "quality": "WEBRip-1080p",
       "qualityVersion": 1,
-      "releaseGroup": "WORLD",
-      "sceneName": "www.Torrenting.com - In Flames (2023) 1080p WEBRip 5.1-WORLD",
-      "indexerFlags": "G_Freeleech",
+      "releaseGroup": "GROUPB",
+      "sceneName": "Ashgrove Anomaly (2023) 1080p WEBRip 5.1-GROUPB",
+      "indexerFlags": "0",
       "size": 1938621085,
       "dateAdded": "2024-10-16T02:50:00.319612Z",
       "languages": [
         {
-          "id": 1,
           "name": "English"
         }
       ],
@@ -112,8 +109,8 @@
     "customFormatScore": 0
   },
   "release": {
-    "releaseTitle": "In.Flames.2024.1080p.GPLAY.WEB-DL.DDP5.1.H.264-RANGA",
-    "indexer": "NZBgeek (Prowlarr)",
+    "releaseTitle": "Ashgrove.Anomaly.2023.1080p.WEB-DL.DDP5.1.H.264-GROUPA",
+    "indexer": "Indexer (Prowlarr)",
     "size": 5539484000,
     "indexerFlags": []
   },

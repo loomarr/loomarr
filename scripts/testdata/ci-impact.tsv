@@ -176,3 +176,5 @@ playout-bench-baseline	docs/engineering/playout-bench/README.md	docs,playout_ben
 playout-bench-guide	docs/contributing/playout-bench.md	docs
 playout-bench-pr-workflow	.github/workflows/ci-playout-bench.yml	policy,playout_bench
 playout-bench-hardware-workflow	.github/workflows/playout-bench.yml	policy
+demo-site-script	scripts/demo-site.sh	contracts
+demo-site-compose	docker/compose.demo.yaml	contracts

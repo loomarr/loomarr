@@ -57,10 +57,16 @@ if run_policy >/dev/null 2>&1; then
 fi
 
 fixture 2 > "$state"
-run_policy | grep -q 'build concurrency 2'
+if run_policy >/dev/null 2>&1; then
+  echo 'ci-merge-queue-policy-test: superseded two-build policy was accepted' >&2
+  exit 1
+fi
+
+fixture 8 > "$state"
+run_policy | grep -q 'build concurrency 8'
 
 fixture 1 > "$state"
-APPLY=1 run_policy | grep -q 'build concurrency 2'
+APPLY=1 run_policy | grep -q 'build concurrency 8'
 jq -e '
   .name == "Main merge queue admission"
   and .target == "branch"
@@ -70,7 +76,7 @@ jq -e '
   and .bypass_actors == []
   and (.rules | length) == 1
   and .rules[0].type == "merge_queue"
-  and .rules[0].parameters.max_entries_to_build == 2
+  and .rules[0].parameters.max_entries_to_build == 8
   and .rules[0].parameters.min_entries_to_merge == 1
   and .rules[0].parameters.max_entries_to_merge == 1
   and .rules[0].parameters.grouping_strategy == "ALLGREEN"

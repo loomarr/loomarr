@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // Answer 1 (#1512 phase 2): every client gets the H.264 1080p SDR baseline; a browser on a channel

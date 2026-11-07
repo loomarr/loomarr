@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 var ladderSources = []string{"hevc-4k-hdr-dv", "h264-1080p-sdr-25", "hevc10-1080p", "mpeg2-480i"}

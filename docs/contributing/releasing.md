@@ -301,13 +301,13 @@ failure distribution, then reproduce it through the certification or benchmark s
 does not move merely because it handles media or because a Rust implementation is possible. The
 Image service itself imports no Go `image` package; its deterministic corpus generator lives only in
 `cmd/image-cert`, and a source architecture test keeps that boundary closed. Filler-era frame hints
-remain in `internal/mediatools`: they sample at most 1,024 pixels per keyframe in background work and
+remain in `internal/media/tools`: they sample at most 1,024 pixels per keyframe in background work and
 no captured Image-worker evidence identifies them as a bottleneck. Therefore V59b selects no next
 capability. A future measured case extends this worker protocol and resource boundary rather than
 creating a second Rust service.
 
 `make image-bench` is the performance companion to certification. It drives the installed release
-worker through `internal/images/rustgen` with deterministic poster, backdrop, and icon sources and
+worker through `internal/media/images/rustgen` with deterministic poster, backdrop, and icon sources and
 the complete AVIF width ladder for each role. Source creation and the capabilities self-test happen
 outside the timed region. After one warm-up per role, three runs record the recipe, host architecture
 and logical CPU count, process/Rendition counts, output bytes, complete-ladder throughput,

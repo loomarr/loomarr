@@ -10,7 +10,7 @@ internal/api	216
 internal/store	191
 internal/integration	178
 internal/schedule	151
-internal/images	149
+internal/media/images	149
 internal/releaseverify	124
 cmd/image-cert	117
 internal/proposals/suggest	100
@@ -32,8 +32,8 @@ internal	15
 internal/backendtransition	15
 internal/recurate	14
 internal/jobs	14
-internal/mediatools	12
+internal/media/tools	12
 internal/proposals/outlook	11
 internal/playout/packager	10
 internal/inventory	9
-internal/mediameasure	8
+internal/media/measure	8

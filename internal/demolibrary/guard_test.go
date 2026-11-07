@@ -85,7 +85,7 @@ var realTitles = []string{
 	// The eval and filler-research tests (slice 16). "Saw" is left out: it would match ordinary
 	// prose.
 	"Pulp Fiction", "Buddy Foster",
-	// The remaining small groups: notifications, llm, watermark, tunarr, mediatools, the ui and ui-tv
+	// The remaining small groups: notifications, llm, watermark, tunarr, media/tools, the ui and ui-tv
 	// tests and the activity feed (slice 17). "A Christmas Carol" is left out: "Christmas carol"
 	// would match ordinary prose.
 	"Rice Krispies", "Fallout Boy", "Nickelodeon", "NBC",
@@ -285,7 +285,7 @@ var migratedGo = []string{
 	"internal/eval/release_latency_test.go",
 	"internal/eval/runner_accounting_test.go",
 	// The remaining small groups and the archived filler research tooling (slice 17).
-	"internal/people/auth/", "internal/people/contact/", "internal/llm/", "internal/mediatools/", "internal/people/notifications/",
+	"internal/people/auth/", "internal/people/contact/", "internal/llm/", "internal/media/tools/", "internal/people/notifications/",
 	"internal/proposals/outlook/", "internal/proposals/quality/", "internal/releaseverify/", "internal/tunarr/",
 	"internal/watermark/", "research/",
 	"internal/proposals/suggest/season_window_test.go",
@@ -498,13 +498,11 @@ func fixtureFiles(t *testing.T, root string) []string {
 }
 
 // inventedGoFixtures are Go test fixtures written as invented data from the start: each entry is
-// a directory (every file under it) or one file. radarr/import_webhook.json is a retained capture
-// for the webhook parity test and is not listed. Keep in step with the matching case in
+// a directory (every file under it) or one file. Keep in step with the matching case in
 // scripts/ci-impact.sh.
 var inventedGoFixtures = []string{
 	"internal/testkit/fixtures/sonarr/",
-	"internal/testkit/fixtures/radarr/movie.json",
-	"internal/testkit/fixtures/radarr/config_metadata.json",
+	"internal/testkit/fixtures/radarr/",
 	"internal/metadataprovider/nfo/testdata/",
 }
 

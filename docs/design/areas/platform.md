@@ -43,7 +43,7 @@ One area of the [package map](../package-map.md#start-here).
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
-- **`metrics`** · 8 importers · → `images/rustgen`, `provision`
+- **`metrics`** · 8 importers · → `media/images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
@@ -59,9 +59,9 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`store`** · 17 importers · → `creative`, `defects`, `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `people/secretprotection`, `proposals`, `proposals/quality`, `provision`, `schedule`, `store/catalogstore`, `store/identitystore`, `store/storedb`
+- **`store`** · 17 importers · → `diagnostics`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `media/creative`, `media/defects`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `people/secretprotection`, `proposals`, `proposals/quality`, `provision`, `schedule`, `store/catalogstore`, `store/identitystore`, `store/storedb`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
-- **`store/catalogstore`** · 4 importers · → `creative`, `defects`, `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `schedule`, `store/storedb`
+- **`store/catalogstore`** · 4 importers · → `filler/clips`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `media/creative`, `media/defects`, `schedule`, `store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
 - **`store/identitystore`** · 4 importers · → `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `store/storedb`
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/mediatools"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // Test-only fixtures. They mirror helpers of the same name in internal/filler's tests, which an
@@ -65,21 +65,21 @@ func preserveSourceMaster(clipDir, sourcePath, clipHash string) (filler.MediaAss
 	}, nil
 }
 
-func fixtureDerivativeQC(durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) mediatools.DerivativeQC {
-	loudness := mediatools.ConditioningLoudness{TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakUnavailable}}
+func fixtureDerivativeQC(durationMs int64, keyframeSeconds int, hadAudio bool, targetLUFS float64) tools.DerivativeQC {
+	loudness := tools.ConditioningLoudness{TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakUnavailable}}
 	if hadAudio {
 		integrated := -21.0
 		if targetLUFS != 0 {
 			integrated = targetLUFS
 		}
-		loudness = mediatools.ConditioningLoudness{
+		loudness = tools.ConditioningLoudness{
 			IntegratedLUFS: integrated, Available: true,
-			TruePeak: mediatools.ConditioningTruePeak{State: mediatools.TruePeakFinite, DBTP: -2},
+			TruePeak: tools.ConditioningTruePeak{State: tools.TruePeakFinite, DBTP: -2},
 		}
 	}
 	gap := int64(keyframeSeconds) * 1000
-	return mediatools.DerivativeQC{
-		Version: mediatools.DerivativeQCVersion, FastStart: true, CompleteDecode: true, Seekable: true,
+	return tools.DerivativeQC{
+		Version: tools.DerivativeQCVersion, FastStart: true, CompleteDecode: true, Seekable: true,
 		MaxVideoKeyframeGapMs: gap, TerminalKeyframeGapMs: min(gap, durationMs), Loudness: loudness,
 	}
 }
@@ -88,15 +88,15 @@ func fixtureDerivativeQC(durationMs int64, keyframeSeconds int, hadAudio bool, t
 // playback lineage). filler's sidecar reader validates it, so an incomplete one reads as invalid.
 func screeningSubjectManifest(t *testing.T) filler.MediaAssetManifest {
 	t.Helper()
-	tool := mediatools.MediaToolIdentity{
+	tool := tools.MediaToolIdentity{
 		Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("9", 64),
 	}
-	evidenceRecipe := mediatools.EvidenceDerivativeRecipe(mediatools.DefaultMezzanine())
+	evidenceRecipe := tools.EvidenceDerivativeRecipe(tools.DefaultMezzanine())
 	evidenceRecipeSHA, err := evidenceRecipe.Digest()
 	if err != nil {
 		t.Fatal(err)
 	}
-	playbackRecipe := mediatools.PlaybackDerivativeRecipe(mediatools.DefaultMezzanine(), 0)
+	playbackRecipe := tools.PlaybackDerivativeRecipe(tools.DefaultMezzanine(), 0)
 	playbackRecipeSHA, err := playbackRecipe.Digest()
 	if err != nil {
 		t.Fatal(err)
@@ -104,8 +104,8 @@ func screeningSubjectManifest(t *testing.T) filler.MediaAssetManifest {
 	input := filler.Probed{DurationMs: 30_000, Height: 480}
 	output := filler.Probed{DurationMs: 30_000, Height: 480}
 	quality := filler.MediaQuality{
-		EvidenceVersion: mediatools.MediaQualityEvidenceV1,
-		Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+		EvidenceVersion: tools.MediaQualityEvidenceV1,
+		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
 	}
 	source := filler.MediaAssetIdentity{

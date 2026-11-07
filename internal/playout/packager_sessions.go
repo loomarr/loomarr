@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // ErrAtCapacity reports that a new channel packager would exceed the admission budget.

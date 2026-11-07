@@ -60,7 +60,7 @@ classify() {
       select_gate contracts
       ;;
     # inventedGoFixtures: Go test fixtures written as invented data.
-    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/movie.json|internal/testkit/fixtures/radarr/config_metadata.json|internal/metadataprovider/nfo/testdata/*)
+    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/*|internal/metadataprovider/nfo/testdata/*)
       select_gate contracts
       ;;
     web/packages/fixtures/src/*)
@@ -537,7 +537,7 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/defects/corpus/*)
+    internal/media/defects/corpus/*)
       # The defect floor's labelled synthetic corpus (#2034), embedded by corpus.go. The image
       # gate runs `make test-ffmpeg`, the only job that renders and scores it.
       known=true
@@ -633,7 +633,7 @@ classify() {
         # Selection policy is control-plane code. Product gates validate files they consume;
         # the always-on policy job independently validates this classifier and its fixtures.
         scripts/ci-impact.sh) select_gate policy ;;
-        scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/testdata/ci-*) select_gate policy ;;
+        scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/ci-merge-gate*|scripts/ci-assurance-alert*|scripts/testdata/ci-*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
         # Local-only dev watchers; the agent gate runs their tests and shellcheck.
         scripts/dev/*) select_gate agent ;;
@@ -678,6 +678,7 @@ classify() {
         scripts/merge-release-digests.sh) select_gate contracts ;;
         scripts/observability-dev-runtime-test.sh) select_gate contracts ;;
         scripts/observability-dev-test.sh) select_gate contracts ;;
+        scripts/demo-site.sh) select_gate contracts ;;
         scripts/observability-dev.sh) select_gate contracts ;;
         scripts/publish-release-image.sh) select_gate contracts ;;
         scripts/smoke.sh) select_gate contracts ;;
@@ -769,7 +770,7 @@ classify() {
       known=true
       select_all
       ;;
-    .github/workflows/ci.yml)
+    .github/workflows/ci.yml|.github/workflows/merge-gate.yml)
       known=true
       select_gate policy
       ;;

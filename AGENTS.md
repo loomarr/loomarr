@@ -281,9 +281,11 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
 - Adding a build tag changes the guarded `TAGS` list in the Makefile.
 - Adding a CI build input changes the per-job filter in `.github/workflows/ci.yml`; never add a
   workflow-level `paths:` filter.
-- Pull requests own fast affected feedback; the merge queue owns complete affected integration
-  evidence. Normal queue-produced pushes to `main` publish only and must not restore a third product
-  validation run. Keep `CI` required and strict for both PR and `merge_group` commits.
+- Pull requests own fast affected feedback. In the merge queue, `merge-gate.yml` reports the required
+  `CI` check in minutes, and ci.yml's complete affected gate set runs beside it as `CI assurance`,
+  which finishes after the merge and files an issue when a merged commit fails. Normal queue-produced
+  pushes to `main` publish only and must not restore a third product validation run. Keep `CI`
+  required for both PR and `merge_group` commits.
 - CodeQL uses checked-in advanced setup. Trusted PR/main diffs select only changed languages;
   scheduled/manual runs, unknown paths, and unusable bases scan all six. Keep GitHub default setup
   disabled because it overrides advanced workflows and restores all-language scans on every change.
@@ -295,6 +297,11 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
   fails loudly on a bad match. For a repetitive rename, use the edit tool's replace-all or ask
   first. Exempt: generators and formatters that a Make target owns (`make fe-codegen`, `make
   openapi`, `biome --write`, `gofmt`), and reading files with any tool.
+- Write code comments in the present tense, about the code as it stands. Say what it does and why,
+  and state a trap as a fact about today: "the server drops an unknown field silently", not "this
+  once said `maxAcquire` and the cap vanished". The story belongs in the commit and the issue, which
+  a comment may cite by number. Never narrate a change ("no longer", "used to", "now", "moved
+  from"): a comment that describes the past goes stale the day it is written.
 
 ## Stop points
 

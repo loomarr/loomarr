@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/encode"
+	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
 // Encoder capability detection (§9.1) — "which encoder should this box use, and how many

@@ -16,10 +16,15 @@ Ordinary pull-request pushes run the always-on policy bootstrap plus affected re
 compile/type, unit, documentation, shared-client, and Android feedback and return the required `CI`
 result quickly. They do not run race-policy shards, Postgres conformance, Playwright, release-image
 builds, runtime image certification, Apple mobile, Apple TV, the tuner matrix, or the macOS harness.
-The required `main` merge queue then builds at most two cumulative candidates concurrently against
-the current base. That
-`merge_group` run is the authoritative integration lane: the same fail-closed classifier selects
-the complete affected gate set, and every selected result remains a dependency of `CI`. Explicit
+The required `main` merge queue then builds at most eight cumulative candidates concurrently against
+the current base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
+the merged tree compiles, so it merges in minutes. Beside it, the `merge_group` run of `ci.yml` is the
+complete integration lane, reported as `CI assurance`: the same fail-closed classifier selects the
+complete affected gate set, and every selected result remains a dependency of that job. It finishes
+after the merge, so its evidence no longer blocks one. When it fails on a commit that reached main it
+files an issue, and the fix is a forward fix or a revert. These runs share one concurrency group, so
+one runs, the newest waits, and older waiters are dropped; the next run covers the dropped commits.
+This is a maintainer decision (2026-11-07): merge latency over pre-merge evidence. Explicit
 manual runs retain release-candidate and full recovery scopes plus an isolated Apple compilation
 cache portability scope. A normal queue-produced push to
 `main` runs publication workflows only rather than validating the admitted commit again.
@@ -55,14 +60,14 @@ definitions, so splitting the physical files does not split the public command c
 
 This is admission control, not weaker assurance. A pull request cannot merge directly after its fast
 result: it must enter the queue and pass the generated current-base commit. The queue uses squash
-merges, `ALLGREEN`, two concurrent builds, one PR per merge, and a three-hour check-response timeout.
-The concurrency cap is deliberately two: the serialized policy turned one 22.9-minute Apple build
-plus six ordinary queued changes into a 43-minute estimate, while unbounded parallelism would
-multiply cumulative builds and their invalidation cost when an earlier entry fails. Two removes the
-single-build head-of-line bottleneck without admitting a burst onto every Apple runner. The queue
-still gives accepted work a stable place in line instead of repeatedly invalidating successful
-strict-mode runs. `scripts/ci-merge-queue-policy.sh` checks the live ruleset; `APPLY=1` updates only
-its build-concurrency field and then re-checks every admission parameter.
+merges, `ALLGREEN`, eight concurrent builds, one PR per merge, and a three-hour check-response
+timeout. The concurrency cap is eight by maintainer decision on 2026-11-07, so a burst of queued PRs
+clears together instead of waiting in pairs. That accepts more CI minutes, and a larger invalidation
+cost when an early entry fails, because every cumulative build behind it restarts. Apple runners are
+the known pressure point: a burst of builds that select the Apple gates competes for the same macOS
+capacity. The queue still gives accepted work a stable place in line instead of repeatedly
+invalidating successful strict-mode runs. `scripts/ci-merge-queue-policy.sh` checks the live ruleset;
+`APPLY=1` updates only its build-concurrency field and then re-checks every admission parameter.
 
 The policy has three coupled halves:
 
