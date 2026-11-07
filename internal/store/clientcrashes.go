@@ -23,7 +23,7 @@ type ClientCrashStore interface {
 	PurgeClientCrashReports(ctx context.Context, before time.Time, keep int) (int, error)
 }
 
-const clientCrashSummaryColumns = `id, received_at, occurred_at, COALESCE(user_id, ''), device_id,
+const clientCrashSummaryColumns = `id, received_at_ms, occurred_at_ms, COALESCE(user_id, ''), device_id,
 	device_name, kind, platform, app_version, app_build, os_version, device_model, message`
 
 func (s *sqlStore) InsertClientCrashReport(ctx context.Context, r diagnostics.ClientCrashRecord) error {
@@ -38,8 +38,8 @@ func (s *sqlStore) InsertClientCrashReport(ctx context.Context, r diagnostics.Cl
 	if breadcrumbs == "" {
 		breadcrumbs = "[]"
 	}
-	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO client_crash_reports (id, received_at,
-		occurred_at, user_id, device_id, device_name, kind, platform, app_version, app_build,
+	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO client_crash_reports (id, received_at_ms,
+		occurred_at_ms, user_id, device_id, device_name, kind, platform, app_version, app_build,
 		os_version, device_model, message, stack, breadcrumbs_json, native_payload)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		r.ID, r.ReceivedAt, r.OccurredAt, userID, r.DeviceID, r.DeviceName, r.Kind, r.Platform,
@@ -58,12 +58,12 @@ func (s *sqlStore) QueryClientCrashReports(
 	}
 	where, args := "", []any{}
 	if query.CursorID != "" {
-		where = `WHERE received_at < ? OR (received_at = ? AND id < ?)`
+		where = `WHERE received_at_ms < ? OR (received_at_ms = ? AND id < ?)`
 		args = append(args, query.CursorReceivedAt, query.CursorReceivedAt, query.CursorID)
 	}
 	args = append(args, query.Limit)
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+clientCrashSummaryColumns+`
-		FROM client_crash_reports `+where+` ORDER BY received_at DESC, id DESC LIMIT ?`), args...)
+		FROM client_crash_reports `+where+` ORDER BY received_at_ms DESC, id DESC LIMIT ?`), args...)
 	if err != nil {
 		return nil, fmt.Errorf("query client crash reports: %w", err)
 	}
@@ -104,7 +104,7 @@ func (s *sqlStore) PurgeClientCrashReports(ctx context.Context, before time.Time
 	if keep < 1 {
 		return 0, fmt.Errorf("purge client crash reports: keep must be positive")
 	}
-	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM client_crash_reports WHERE received_at < ?`),
+	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM client_crash_reports WHERE received_at_ms < ?`),
 		before.UnixMilli())
 	if err != nil {
 		return 0, fmt.Errorf("purge expired client crash reports: %w", err)
@@ -115,8 +115,8 @@ func (s *sqlStore) PurgeClientCrashReports(ctx context.Context, before time.Time
 	}
 	var cutAt int64
 	var cutID string
-	err = s.db.QueryRowContext(ctx, s.ph(`SELECT received_at, id FROM client_crash_reports
-		ORDER BY received_at DESC, id DESC LIMIT 1 OFFSET ?`), keep-1).Scan(&cutAt, &cutID)
+	err = s.db.QueryRowContext(ctx, s.ph(`SELECT received_at_ms, id FROM client_crash_reports
+		ORDER BY received_at_ms DESC, id DESC LIMIT 1 OFFSET ?`), keep-1).Scan(&cutAt, &cutID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return int(expired), nil
 	}
@@ -124,7 +124,7 @@ func (s *sqlStore) PurgeClientCrashReports(ctx context.Context, before time.Time
 		return int(expired), fmt.Errorf("find client crash report cap: %w", err)
 	}
 	result, err = s.db.ExecContext(ctx, s.ph(`DELETE FROM client_crash_reports
-		WHERE received_at < ? OR (received_at = ? AND id < ?)`), cutAt, cutAt, cutID)
+		WHERE received_at_ms < ? OR (received_at_ms = ? AND id < ?)`), cutAt, cutAt, cutID)
 	if err != nil {
 		return int(expired), fmt.Errorf("purge client crash reports over cap: %w", err)
 	}

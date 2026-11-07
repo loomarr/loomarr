@@ -114,7 +114,7 @@ func (s *sqlStore) AppendDiscoveryFeedback(ctx context.Context, feedback Discove
 		}
 	}
 	_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO discovery_feedback
-		(id, actor_id, scope, scope_id, target_key, action, reason, created_at)
+		(id, actor_id, scope, scope_id, target_key, action, reason, created_at_ns)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), feedback.ID, feedback.ActorID, feedback.Scope,
 		feedback.ScopeID, feedback.Target, feedback.Action, feedback.Reason, feedback.CreatedAt.UnixNano())
 	if err != nil {
@@ -131,8 +131,8 @@ func (s *sqlStore) ListDiscoveryFeedback(ctx context.Context, filter FeedbackFil
 		return nil, fmt.Errorf("list discovery feedback: invalid scope")
 	}
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT id, actor_id, scope, scope_id, target_key,
-		action, reason, created_at FROM discovery_feedback WHERE scope = ? AND scope_id = ?
-		ORDER BY created_at DESC, id DESC`), filter.Scope, filter.ScopeID)
+		action, reason, created_at_ns FROM discovery_feedback WHERE scope = ? AND scope_id = ?
+		ORDER BY created_at_ns DESC, id DESC`), filter.Scope, filter.ScopeID)
 	if err != nil {
 		return nil, fmt.Errorf("list discovery feedback: %w", err)
 	}
