@@ -133,6 +133,9 @@ func TestResourceBudget_CopyIsFreeAndReleaseReturnsCapacity(t *testing.T) {
 	if s := b.Snapshot(); s.InUse.Transcodes != 1 || s.InUse.Sessions != 6 {
 		t.Fatalf("in use = %+v, want 1 transcode of 6 sessions", s.InUse)
 	}
+	if n := b.Sessions(); n != 6 {
+		t.Fatalf("Sessions = %d, want 6 (copies count)", n)
+	}
 }
 
 func TestResourceBudget_ReclassFromCopyMustFitButATranscodeNeverStops(t *testing.T) {
