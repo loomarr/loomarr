@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
-import { type LibraryFolder, LibrarySettings, type LibrarySettingsProps } from "../index";
+import { type LibraryFolder, type LibraryScan, LibrarySettings, type LibrarySettingsProps } from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -41,14 +41,24 @@ const TV: LibraryFolder = {
   ],
 };
 const MOVIES: LibraryFolder = { ...TV, path: "/media/movies", inUse: true, readable: false, foundIn: [] };
+const TV_IN_USE: LibraryFolder = { ...TV, inUse: true };
+const IDLE: LibraryScan = { enabled: true, stage: "idle", headersDone: 0, headersTotal: 0, paused: false };
 
 const render = (overrides: Partial<LibrarySettingsProps>) => {
   const props: LibrarySettingsProps = {
     health: "needs_folders",
     folders: [TV],
     pathMap: [{ authority: "sonarr", authorityPath: "/tv", localPath: "/media/tv", byHand: false }],
+    scan: IDLE,
+    held: [],
+    hooks: [
+      { app: "sonarr", state: "registered" },
+      { app: "radarr", state: "not_configured" },
+    ],
     checking: false,
     onCheckAgain: vi.fn(),
+    onRescan: vi.fn(),
+    onConfirmRemoval: vi.fn(),
     onUseFolder: vi.fn(),
     onAddFolder: vi.fn(async () => "Loomarr can't open that folder"),
     onMapFolder: vi.fn(),
@@ -114,6 +124,65 @@ describe("LibrarySettings", () => {
         ?.click(),
     );
     expect(props.onCheckAgain).toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("says all is caught up and what keeps it so, leaving out an arr never connected", () => {
+    const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    expect(host.textContent).toContain("All caught up — every title's ready to air");
+    expect(host.textContent).toContain("Keeping up to date");
+    expect(host.textContent).toContain("Loomarr notices new and deleted files on its own");
+    expect(host.textContent).toContain("Sonarr tells Loomarr about new downloads");
+    expect(host.textContent).not.toContain("— waiting");
+    expect(host.textContent).not.toContain("Radarr");
+    cleanup();
+  });
+
+  it("shows the import's progress, and pauses it in plain words", () => {
+    const reading: LibraryScan = { ...IDLE, stage: "reading", headersDone: 25, headersTotal: 100 };
+    const adding = render({ health: "ok", folders: [TV_IN_USE], scan: reading });
+    expect(adding.host.textContent).toContain("Adding your media");
+    expect(adding.host.textContent).toContain("Titles appear as they're ready.");
+    expect(adding.host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25");
+    adding.cleanup();
+
+    const paused = render({ health: "ok", folders: [TV_IN_USE], scan: { ...reading, paused: true } });
+    expect(paused.host.textContent).toContain("Paused while someone is watching");
+    expect(paused.host.textContent).toContain("Picks up again when everyone's done watching.");
+    paused.cleanup();
+  });
+
+  it("holds a removal until the maintainer answers", () => {
+    const { host, props, button, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+    });
+    expect(host.textContent).toContain("2,406 movies seem to be gone from your Movies folder");
+    expect(host.textContent).not.toContain("All caught up");
+    act(() => button("Check again").click());
+    expect(props.onRescan).toHaveBeenCalled();
+    act(() => button("They're gone, remove them").click());
+    expect(props.onConfirmRemoval).toHaveBeenCalledWith("/media/movies");
+    cleanup();
+  });
+
+  it("says what the folder watch and an arr are waiting for", () => {
+    const { host, cleanup } = render({
+      health: "folder_offline",
+      folders: [MOVIES],
+      hooks: [
+        { app: "sonarr", state: "failed" },
+        { app: "radarr", state: "no_address" },
+      ],
+    });
+    expect(host.textContent).toContain(
+      "Loomarr notices new and deleted files on its own — waiting for Movies",
+    );
+    expect(host.textContent).toContain("Sonarr tells Loomarr about new downloads — waiting for Sonarr");
+    expect(host.textContent).toContain(
+      "Radarr tells Loomarr about new downloads — waiting for Loomarr's address",
+    );
     cleanup();
   });
 

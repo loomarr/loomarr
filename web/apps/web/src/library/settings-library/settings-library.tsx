@@ -24,9 +24,12 @@ const SettingsLibrary = () => {
   const setInUse = libraryApi.useSetLibraryRootInUse(mutation);
   const add = libraryApi.useAddLibraryRoot(mutation);
   const map = libraryApi.useSetLibraryPathMapping(mutation);
+  const rescan = libraryApi.useRescanLibrary(mutation);
+  const confirmRemoval = libraryApi.useConfirmLibraryRemoval(mutation);
 
   const body = unwrap(roots.data);
-  const health = unwrap(status.data)?.health;
+  const current = unwrap(status.data);
+  const health = current?.health;
 
   // Look for folders once when none were ever recorded.
   const looked = useRef(false);
@@ -37,9 +40,16 @@ const SettingsLibrary = () => {
     }
   }, [body, discover]);
 
-  const error = roots.error ?? status.error ?? discover.error ?? setInUse.error ?? map.error;
+  const error =
+    roots.error ??
+    status.error ??
+    discover.error ??
+    setInUse.error ??
+    map.error ??
+    rescan.error ??
+    confirmRemoval.error;
   if (error && !body) return <ErrorState error={error} onRetry={() => void refresh()} />;
-  if (!body || !health) return null;
+  if (!body || !current || !health) return null;
 
   return (
     <>
@@ -48,6 +58,11 @@ const SettingsLibrary = () => {
         checking={discover.isPending}
         folders={body.roots}
         health={health}
+        held={current.held}
+        hooks={current.hooks}
+        scan={current.scan}
+        onRescan={() => rescan.mutate()}
+        onConfirmRemoval={(path) => confirmRemoval.mutate({ data: { path } })}
         onAddFolder={async (path) => {
           try {
             await add.mutateAsync({ data: { path } });
