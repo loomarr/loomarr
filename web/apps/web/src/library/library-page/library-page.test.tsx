@@ -16,8 +16,25 @@ import { LibraryPage } from "./library-page";
 const mocks = vi.hoisted(() => ({ navigate: vi.fn() }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => mocks.navigate }));
 
-const alpha = { id: "90000001", kind: "movie" as const, name: "Alpha", year: 2001, files: 1, ready: true };
-const bravo = { id: "90000002", kind: "series" as const, name: "Bravo", files: 4, ready: false };
+const alpha = {
+  id: "90000001",
+  kind: "movie" as const,
+  name: "Alpha",
+  year: 2001,
+  files: 1,
+  ready: true,
+  unplayable: 0,
+  extraCopies: 0,
+};
+const bravo = {
+  id: "90000002",
+  kind: "series" as const,
+  name: "Bravo",
+  files: 4,
+  ready: false,
+  unplayable: 0,
+  extraCopies: 0,
+};
 
 const renderPage = (props: Parameters<typeof LibraryPage>[0] = { filter: "all", search: "" }) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -33,7 +50,7 @@ const renderPage = (props: Parameters<typeof LibraryPage>[0] = { filter: "all", 
 describe("LibraryPage", () => {
   beforeEach(() => {
     mocks.navigate.mockReset();
-    server.use(getListLibraryNeedsMockHandler({ needs: [] }));
+    server.use(getListLibraryNeedsMockHandler({ needs: [], problems: [] }));
   });
 
   it("lists the titles the server found and opens one", async () => {

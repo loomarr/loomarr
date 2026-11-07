@@ -69,6 +69,7 @@ export type {
   LibraryNeedsCardsProps,
   LibraryNeedsStripProps,
   LibraryPathMapping,
+  LibraryProblem,
   LibraryScan,
   LibrarySettingsProps,
   LibraryShelfProps,

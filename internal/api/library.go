@@ -38,6 +38,7 @@ type LibraryRootService interface {
 	RemoveExtraCopy(ctx context.Context, id, path string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
+	Problems(ctx context.Context) ([]scan.Problem, error)
 	NeedCount(ctx context.Context) (int, error)
 	Link(ctx context.Context, itemID, tmdbID string) error
 	Ignore(ctx context.Context, itemID string) error
@@ -299,7 +300,7 @@ type libraryStatusOutput struct {
 		Files          int              `json:"files" doc:"Media files found in folders in use"`
 		HeadersPending int              `json:"headersPending" doc:"Files not read yet"`
 		Problems       int              `json:"problems" doc:"Files Loomarr skips, such as disc images"`
-		NeedsYou       int              `json:"needsYou" doc:"Titles Loomarr can't tell what they are"`
+		NeedsYou       int              `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
 		Held           []libraryHeldDTO `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
 		Hooks          []libraryHookDTO `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
 	}

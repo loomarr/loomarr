@@ -81,9 +81,17 @@ type libraryNeedFileDTO struct {
 	Ready bool   `json:"ready" doc:"Its details are read"`
 }
 
+// libraryProblemDTO is a title that needs a look: its item says how many files can't be played and
+// how many copies are extra.
+type libraryProblemDTO struct {
+	Item       libraryItemDTO `json:"item"`
+	ExtraBytes int64          `json:"extraBytes" doc:"What a movie's extra copies take, in bytes; 0 for none"`
+}
+
 type listLibraryNeedsOutput struct {
 	Body struct {
-		Needs []libraryNeedDTO `json:"needs"`
+		Needs    []libraryNeedDTO    `json:"needs"`
+		Problems []libraryProblemDTO `json:"problems" doc:"Titles that need a look, by name"`
 	}
 }
 
@@ -96,12 +104,25 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 	if err != nil {
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
 	}
-	summaries := make([]store.LibraryItemSummary, 0, len(needs))
+	problems, err := svc.Problems(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't list what needs you", "Try again in a moment.", err)
+	}
+	summaries := make([]store.LibraryItemSummary, 0, len(needs)+len(problems))
 	for _, n := range needs {
 		summaries = append(summaries, n.LibraryItemSummary)
 	}
+	for _, p := range problems {
+		summaries = append(summaries, p.LibraryItemSummary)
+	}
 	posters := s.libraryPosters(ctx, summaries)
 	out := &listLibraryNeedsOutput{}
+	out.Body.Problems = make([]libraryProblemDTO, 0, len(problems))
+	for _, p := range problems {
+		out.Body.Problems = append(out.Body.Problems, libraryProblemDTO{
+			Item: libraryItemOf(p.LibraryItemSummary, posters), ExtraBytes: p.ExtraBytes,
+		})
+	}
 	out.Body.Needs = make([]libraryNeedDTO, 0, len(needs))
 	for _, n := range needs {
 		dto := libraryNeedDTO{

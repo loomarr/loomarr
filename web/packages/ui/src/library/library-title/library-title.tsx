@@ -255,6 +255,60 @@ const ExtraCopy = ({
   );
 };
 
+// A file that can't be played (decision 24, the word sheet's "1 episode can't be played — the file
+// may be damaged" + "Check again"): a calm warning whose one action reads the files again.
+const Unplayable = ({
+  kind,
+  count,
+  onCheck,
+}: {
+  kind: LibraryTitleDetail["kind"];
+  count: number;
+  onCheck: () => Promise<void>;
+}) => {
+  const [busy, setBusy] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const check = () => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    onCheck().then(
+      () => {
+        setBusy(false);
+        setChecked(true);
+      },
+      () => {
+        setBusy(false);
+        setFailed(true);
+      },
+    );
+  };
+  const what =
+    kind === "movie"
+      ? "This movie can't be played — the file may be damaged"
+      : count === 1
+        ? "1 episode can't be played — the file may be damaged"
+        : `${count} episodes can't be played — the files may be damaged`;
+  return (
+    <Surface borderColor="stateWarning" gap="control" padding="section">
+      <Text as="h2" textRole="title">
+        {what}
+      </Text>
+      {failed ? (
+        <Text textRole="body" tone="secondary">
+          Couldn't check the files just now. Try again in a moment.
+        </Text>
+      ) : null}
+      <Line>
+        <Action onPress={check} tone="primary">
+          {checked ? "Checked just now" : "Check again"}
+        </Action>
+      </Line>
+    </Surface>
+  );
+};
+
 const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
   const { title } = actions;
   const wide = useWindowWidth() >= SIDE_BY_SIDE;
@@ -305,6 +359,10 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
           <TitleActions {...actions} />
         </Stack>
       </Stack>
+
+      {title.unplayable > 0 ? (
+        <Unplayable count={title.unplayable} kind={title.kind} onCheck={actions.onCheckFiles} />
+      ) : null}
 
       {title.files
         .filter((file) => file.extra)

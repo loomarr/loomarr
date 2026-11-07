@@ -137,11 +137,19 @@ type libraryItemDTO struct {
 	// Ready is false while any file's details are unread.
 	Ready  bool      `json:"ready" doc:"False while some of its files' details aren't read yet"`
 	Poster *ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
+	// A title with either count above zero needs a look (#2151 decision 24).
+	Unplayable  int `json:"unplayable" doc:"Files that can't be played: their details couldn't be read"`
+	ExtraCopies int `json:"extraCopies" doc:"A movie's files beyond the one that plays"`
 }
 
 func libraryItemOf(it store.LibraryItemSummary, posters map[string]*ImageDTO) libraryItemDTO {
+	extra := 0
+	if it.Kind == "movie" && it.Files > 1 {
+		extra = it.Files - 1
+	}
 	return libraryItemDTO{
 		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Files: it.Files, Ready: it.Pending == 0,
+		Unplayable: it.Unplayable, ExtraCopies: extra,
 		Poster: posters[it.Poster],
 	}
 }

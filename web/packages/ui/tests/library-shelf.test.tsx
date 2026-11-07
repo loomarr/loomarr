@@ -93,6 +93,15 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("marks a title that needs a look, to a screen reader too", () => {
+    const { host, button, cleanup } = render({
+      titles: [{ id: "90000804", kind: "movie", name: "Night Ferry", ready: true, attention: true }],
+    });
+    expect(button("Night Ferry, needs a look")).toBeTruthy();
+    expect(host.querySelectorAll('[aria-label="Needs a look"]').length).toBe(1);
+    cleanup();
+  });
+
   it("filters by kind", () => {
     const { props, button, cleanup } = render({});
     act(() => button("Shows").click());

@@ -355,6 +355,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   it. A complete walk of the folder deletes each day's trash 30 days on; a folder there that isn't
   a date is left alone. A read-only folder answers 409, and the card says Loomarr may not be
   allowed to change it.
+- **Titles that need a look** (step 10f, decision 24). A title with a file whose header failed
+  (`unplayable`) or a movie with an extra copy is a problem: `ListLibraryItems{Problems: true}`
+  finds them in one grouped query (`HAVING`), and `GET /v1/library/needs` returns them as
+  `problems` (each with `extraBytes`, what its extra copies take) after the titles nobody can
+  identify. Both count towards `needsYou`, the nav badge. Needs you words them in plain words
+  ("Night Ferry has 2 episodes that can't be played", "Paper Kites has an extra copy") with
+  See why, which opens the title. The title's page gives an unplayable title a warning card with
+  Check again, and the shelf marks a ready title that needs a look with a dot (a phone grid has no
+  room for a word), which a screen reader hears as "<name>, needs a look".
 
 ## Cached series episodes
 

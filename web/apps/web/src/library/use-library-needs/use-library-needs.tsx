@@ -1,8 +1,15 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryCandidateDTO } from "@loomarr/api/models/libraryCandidateDTO";
 import type { LibraryNeedDTO } from "@loomarr/api/models/libraryNeedDTO";
+import type { LibraryProblemDTO } from "@loomarr/api/models/libraryProblemDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import type { LibraryNeed, LibraryNeedCandidate, LibraryNeedSearch, LibraryNeedsAnswers } from "@loomarr/ui";
+import type {
+  LibraryNeed,
+  LibraryNeedCandidate,
+  LibraryNeedSearch,
+  LibraryNeedsAnswers,
+  LibraryProblem,
+} from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -12,6 +19,16 @@ import { ServedImage } from "@/components/loomarr/served-image";
 // the titles, since a linked title joins the shelf under its new name and an ignored one leaves it.
 
 const THUMB_SIZES = "144px";
+
+// A title that needs a look (decision 24): Needs you words it from these counts.
+const problemOf = (p: LibraryProblemDTO): LibraryProblem => ({
+  id: p.item.id,
+  kind: p.item.kind,
+  name: p.item.name,
+  poster: p.item.poster ? <ServedImage alt="" image={p.item.poster} sizes={THUMB_SIZES} /> : undefined,
+  unplayable: p.item.unplayable,
+  extraBytes: p.extraBytes,
+});
 
 const candidateOf = (c: LibraryCandidateDTO): LibraryNeedCandidate => ({
   tmdbId: c.tmdbId,
@@ -58,6 +75,7 @@ const useLibraryNeeds = () => {
   const queryClient = useQueryClient();
   const list = libraryApi.useListLibraryNeeds();
   const needs = useMemo(() => (unwrap(list.data)?.needs ?? []).map(needOf), [list.data]);
+  const problems = useMemo(() => (unwrap(list.data)?.problems ?? []).map(problemOf), [list.data]);
 
   const refresh = useCallback(
     () =>
@@ -86,6 +104,7 @@ const useLibraryNeeds = () => {
 
   return {
     needs,
+    problems,
     loaded: list.data !== undefined,
     error: list.error,
     refetch: list.refetch,

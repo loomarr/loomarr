@@ -62,15 +62,19 @@ type LibraryItemSummary struct {
 	// not read yet. An item with Pending > 0 is still getting ready.
 	Files   int
 	Pending int
+	// Unplayable counts its present files whose header could not be read: they can't be played.
+	Unplayable int
 }
 
 // LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, any
-// case. Limit 0 is every item.
+// case. Problems keeps only the titles that need a look: a file that can't be played, or a movie
+// with more than one file (all but one are extra copies). Limit 0 is every item.
 type LibraryItemQuery struct {
-	Kind   string
-	Search string
-	Limit  int
-	Offset int
+	Kind     string
+	Search   string
+	Problems bool
+	Limit    int
+	Offset   int
 }
 
 // LibraryItemPage is one page of items in sort order, and how many match in all.
@@ -162,8 +166,11 @@ const (
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page,
 		COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
 			AND r.owner_id = i.id AND r.role = 'poster'), ''),
-		COUNT(*), COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0)`
+		COUNT(*), COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN f.header = 'failed' THEN 1 ELSE 0 END), 0)`
 	itemGroup = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page`
+	// itemProblems keeps a group that needs a look.
+	itemProblems = `SUM(CASE WHEN f.header = 'failed' THEN 1 ELSE 0 END) > 0 OR (i.kind = 'movie' AND COUNT(*) > 1)`
 )
 
 func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
@@ -185,11 +192,16 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 		AND a.origin_key = i.origin_key AND a.ignored = 1)`)
 	from := ` FROM library_items i JOIN ` + presentFiles + ` f ON f.id = i.id WHERE ` + strings.Join(where, " AND ")
 
+	group := ` GROUP BY ` + itemGroup
+	if q.Problems {
+		group += ` HAVING ` + itemProblems
+	}
 	var page LibraryItemPage
-	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(DISTINCT i.id)`+from), args...).Scan(&page.Total); err != nil {
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM (SELECT i.id`+from+group+`) t`), args...).
+		Scan(&page.Total); err != nil {
 		return page, fmt.Errorf("count library items: %w", err)
 	}
-	query := `SELECT ` + itemColumns + from + ` GROUP BY ` + itemGroup + ` ORDER BY i.sort_name, i.id`
+	query := `SELECT ` + itemColumns + from + group + ` ORDER BY i.sort_name, i.id`
 	if q.Limit > 0 {
 		query += ` LIMIT ? OFFSET ?`
 		args = append(args, q.Limit, q.Offset)
@@ -225,7 +237,7 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 		var it LibraryItemSummary
 		var catalog string
 		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
-			&it.Match.App, &it.Match.Page, &it.Poster, &it.Files, &it.Pending); err != nil {
+			&it.Match.App, &it.Match.Page, &it.Poster, &it.Files, &it.Pending, &it.Unplayable); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}

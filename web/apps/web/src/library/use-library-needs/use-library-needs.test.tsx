@@ -23,7 +23,15 @@ const candidate = (tmdbId: string, name: string, nameMatches: boolean) => ({
 });
 
 const need = (id: string, candidates: ReturnType<typeof candidate>[]) => ({
-  item: { id, kind: "movie" as const, name: "Untitled", files: 1, ready: true },
+  item: {
+    id,
+    kind: "movie" as const,
+    name: "Untitled",
+    files: 1,
+    ready: true,
+    unplayable: 0,
+    extraCopies: 0,
+  },
   files: [{ path: `/media/movies/${id}.mkv`, size: 1, ready: true }],
   candidates,
   searched: true,
@@ -39,6 +47,7 @@ describe("useLibraryNeeds", () => {
           need("90000011", [candidate("90000101", "Alpha", true), candidate("90000102", "Alpha II", false)]),
           need("90000012", [candidate("90000103", "Bravo", false)]),
         ],
+        problems: [],
       }),
     );
     const { result } = renderHook(() => useLibraryNeeds(), { wrapper });
@@ -52,13 +61,37 @@ describe("useLibraryNeeds", () => {
     expect(unnamed?.others.map((c) => c.tmdbId)).toEqual(["90000103"]);
   });
 
+  it("lists the titles that need a look with what's wrong with them", async () => {
+    server.use(
+      getListLibraryNeedsMockHandler({
+        needs: [],
+        problems: [
+          {
+            item: { ...need("90000013", []).item, name: "Charlie", files: 2, extraCopies: 1 },
+            extraBytes: 4096,
+          },
+        ],
+      }),
+    );
+    const { result } = renderHook(() => useLibraryNeeds(), { wrapper });
+
+    await waitFor(() => expect(result.current.problems).toHaveLength(1));
+    expect(result.current.problems[0]).toMatchObject({
+      id: "90000013",
+      kind: "movie",
+      name: "Charlie",
+      unplayable: 0,
+      extraBytes: 4096,
+    });
+  });
+
   it("rejects an answer the server refuses, and refreshes the list after one it takes", async () => {
     let lists = 0;
     let linked: unknown;
     server.use(
       http.get("*/v1/library/needs", () => {
         lists += 1;
-        return HttpResponse.json({ needs: [need("90000011", [])] });
+        return HttpResponse.json({ needs: [need("90000011", [])], problems: [] });
       }),
       http.post("*/v1/library/items/:id/link", async ({ request }) => {
         linked = await request.json();

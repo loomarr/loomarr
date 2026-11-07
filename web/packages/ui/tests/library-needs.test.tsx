@@ -5,7 +5,13 @@ import { act, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { type LibraryNeed, LibraryNeedsCards, LibraryNeedsStrip } from "../index";
+import {
+  type LibraryNeed,
+  LibraryNeedsCards,
+  LibraryNeedsStrip,
+  type LibraryNeedsStripProps,
+  type LibraryProblem,
+} from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -69,10 +75,53 @@ const mount = (ui: ReactElement) => {
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
+const problem = (id: string, over: Partial<LibraryProblem> = {}): LibraryProblem => ({
+  id,
+  kind: "movie",
+  name: "Quiet Orchard",
+  unplayable: 0,
+  extraBytes: 0,
+  ...over,
+});
+
+const strip = (over: Partial<LibraryNeedsStripProps> = {}) => (
+  <LibraryNeedsStrip
+    needs={[]}
+    onLink={vi.fn()}
+    onOpenNeeds={vi.fn()}
+    onOpenTitle={vi.fn()}
+    problems={[]}
+    {...over}
+  />
+);
+
 describe("LibraryNeedsStrip", () => {
   it("is nothing when nothing needs you", () => {
-    const { host, cleanup } = mount(<LibraryNeedsStrip needs={[]} onLink={vi.fn()} onOpenNeeds={vi.fn()} />);
+    const { host, cleanup } = mount(strip());
     expect(host.textContent).toBe("");
+    cleanup();
+  });
+
+  it("lists the titles that need a look after the questions, and opens one", () => {
+    const onOpenTitle = vi.fn();
+    const { host, button, cleanup } = mount(
+      strip({
+        needs: [need("90000811")],
+        onOpenTitle,
+        problems: [
+          problem("90000821", { unplayable: 1 }),
+          problem("90000822", { kind: "series", name: "Night Ferry", unplayable: 3 }),
+        ],
+      }),
+    );
+    expect(host.textContent).toContain("Needs you (3)");
+    const text = host.textContent ?? "";
+    expect(text.indexOf("is this the 1996 movie?")).toBeLessThan(
+      text.indexOf("Quiet Orchard — can't be played"),
+    );
+    expect(text).toContain("Night Ferry — 3 episodes can't be played");
+    act(() => button("See why").click());
+    expect(onOpenTitle).toHaveBeenCalledWith("90000821");
     cleanup();
   });
 
@@ -80,9 +129,7 @@ describe("LibraryNeedsStrip", () => {
     const needs = ["90000811", "90000812", "90000813", "90000814", "90000815", "90000816"].map((id) =>
       need(id),
     );
-    const { host, button, cleanup } = mount(
-      <LibraryNeedsStrip needs={needs} onLink={vi.fn()} onOpenNeeds={vi.fn()} />,
-    );
+    const { host, button, cleanup } = mount(strip({ needs }));
     expect(host.textContent).toContain("Needs you (6)");
     expect(host.textContent).toContain("Paper Kites — is this the 1996 movie?");
     act(() => button("Show 2 more").click());
@@ -93,13 +140,11 @@ describe("LibraryNeedsStrip", () => {
   it("links the guess, says it's sorted, and lets it go", async () => {
     const onLink = vi.fn(() => Promise.resolve());
     const needs = [need("90000811")];
-    const { host, show, button, cleanup } = mount(
-      <LibraryNeedsStrip needs={needs} onLink={onLink} onOpenNeeds={vi.fn()} />,
-    );
+    const { host, show, button, cleanup } = mount(strip({ needs, onLink }));
     act(() => button("Yes, that's it").click());
     expect(onLink).toHaveBeenCalledWith("90000811", "90000901");
     // The refetch no longer holds it; the answered row stays until it has been seen.
-    show(<LibraryNeedsStrip needs={[]} onLink={onLink} onOpenNeeds={vi.fn()} />);
+    show(strip({ onLink }));
     expect(host.textContent).toContain("Done — Paper Kites is sorted.");
     expect(host.textContent).toContain("Needs you (0)");
     await act(async () => {
@@ -111,9 +156,7 @@ describe("LibraryNeedsStrip", () => {
 
   it("puts the question back when the answer fails", async () => {
     const onLink = vi.fn(() => Promise.reject(new Error("no")));
-    const { host, button, cleanup } = mount(
-      <LibraryNeedsStrip needs={[need("90000811")]} onLink={onLink} onOpenNeeds={vi.fn()} />,
-    );
+    const { host, button, cleanup } = mount(strip({ needs: [need("90000811")], onLink }));
     await act(async () => button("Yes, that's it").click());
     expect(host.textContent).toContain("Paper Kites — is this the 1996 movie?");
     cleanup();
@@ -122,11 +165,10 @@ describe("LibraryNeedsStrip", () => {
   it("sends a title with no guess to Needs you", () => {
     const onOpenNeeds = vi.fn();
     const { host, button, cleanup } = mount(
-      <LibraryNeedsStrip
-        needs={[need("90000812", { best: undefined, files: ["/media/movies/disc2/title_t01.mkv"] })]}
-        onLink={vi.fn()}
-        onOpenNeeds={onOpenNeeds}
-      />,
+      strip({
+        needs: [need("90000812", { best: undefined, files: ["/media/movies/disc2/title_t01.mkv"] })],
+        onOpenNeeds,
+      }),
     );
     expect(host.textContent).toContain("title_t01.mkv — we're not sure what this is");
     act(() => button("Find it").click());
@@ -141,10 +183,34 @@ describe("LibraryNeedsCards", () => {
       needs={[need("90000811")]}
       onIgnore={vi.fn(() => Promise.resolve())}
       onLink={vi.fn(() => Promise.resolve())}
+      onOpenTitle={vi.fn()}
       onSearch={vi.fn(() => Promise.resolve([]))}
+      problems={[]}
       {...over}
     />
   );
+
+  it("words what's wrong with a title that needs a look, and opens it", () => {
+    const onOpenTitle = vi.fn();
+    const { host, button, cleanup } = mount(
+      cards({
+        needs: [],
+        onOpenTitle,
+        problems: [
+          problem("90000821", { kind: "series", name: "Night Ferry", unplayable: 1 }),
+          problem("90000822", { extraBytes: 4_300_000_000 }),
+        ],
+      }),
+    );
+    expect(host.textContent).toContain("Needs you (2)");
+    expect(host.textContent).toContain("Night Ferry has an episode that can't be played");
+    expect(host.textContent).toContain("The file may be damaged. Loomarr skips it until it's fixed.");
+    expect(host.textContent).toContain("Quiet Orchard has an extra copy");
+    expect(host.textContent).toMatch(/The extra copy is taking .+ and never plays\./);
+    act(() => button("See why").click());
+    expect(onOpenTitle).toHaveBeenCalledWith("90000821");
+    cleanup();
+  });
 
   it("says why it guessed", () => {
     const { host, cleanup } = mount(cards());

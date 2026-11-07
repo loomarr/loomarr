@@ -58,6 +58,8 @@ interface LibraryTitleDetail {
   files: readonly LibraryTitleFile[];
   /** A series' episodes by season; empty for a movie. */
   seasons: readonly LibraryTitleSeason[];
+  /** Its files that can't be played: their details couldn't be read. */
+  unplayable: number;
   match: LibraryTitleMatch;
   detailsFrom: LibraryTitleDetailsFrom;
 }
