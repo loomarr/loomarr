@@ -255,7 +255,7 @@ func TestBuildSecretProtectionRewrapsFromOneBootPreviousKey(t *testing.T) {
 	t.Setenv("LOOMARR_ENCRYPTION_KEY_FILE", "")
 	t.Setenv("LOOMARR_ENCRYPTION_KEY_PREVIOUS", "")
 	t.Setenv("LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE", "")
-	first, err := buildSecretProtection(context.Background(), st, t.TempDir())
+	first, err := buildSecretProtection(context.Background(), st, t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestBuildSecretProtectionRewrapsFromOneBootPreviousKey(t *testing.T) {
 
 	t.Setenv("LOOMARR_ENCRYPTION_KEY", newEncoded)
 	t.Setenv("LOOMARR_ENCRYPTION_KEY_PREVIOUS", oldEncoded)
-	replaced, err := buildSecretProtection(context.Background(), st, t.TempDir())
+	replaced, err := buildSecretProtection(context.Background(), st, t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestBuildSecretProtectionRewrapsFromOneBootPreviousKey(t *testing.T) {
 	}
 
 	t.Setenv("LOOMARR_ENCRYPTION_KEY_PREVIOUS", "")
-	if _, err := buildSecretProtection(context.Background(), st, t.TempDir()); err != nil {
+	if _, err := buildSecretProtection(context.Background(), st, t.TempDir(), nil); err != nil {
 		t.Fatalf("restart using only replacement key: %v", err)
 	}
 }

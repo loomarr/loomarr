@@ -10,7 +10,7 @@ import (
 
 func notificationRepositoryForTest(t *testing.T, st store.Store) *notifications.ProtectedRepository {
 	t.Helper()
-	protection, err := buildSecretProtection(t.Context(), st, t.TempDir())
+	protection, err := buildSecretProtection(t.Context(), st, t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

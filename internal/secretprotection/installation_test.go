@@ -35,6 +35,9 @@ func TestLoadInstallationKeyGeneratesOneStableProtectedFile(t *testing.T) {
 	if first.Source != secretprotection.InstallationKeyGenerated || second.Source != secretprotection.InstallationKeyFile {
 		t.Fatalf("sources = %q then %q, want generated then file", first.Source, second.Source)
 	}
+	if want := filepath.Join(dir, "encryption.key"); first.Path != want || second.Path != want {
+		t.Fatalf("paths = %q then %q, want %q", first.Path, second.Path, want)
+	}
 
 	info, err := os.Stat(filepath.Join(dir, "encryption.key"))
 	if err != nil {
@@ -69,6 +72,9 @@ func TestLoadInstallationKeyHonorsEnvironmentAndFileForms(t *testing.T) {
 			})
 			if err != nil || loaded.Key != want || loaded.Source != tc.want {
 				t.Fatalf("load = (%#v, %v), want source %q", loaded, err, tc.want)
+			}
+			if loaded.Path != tc.env["LOOMARR_ENCRYPTION_KEY_FILE"] {
+				t.Fatalf("path = %q, want the mounted file or none for the environment", loaded.Path)
 			}
 		})
 	}
