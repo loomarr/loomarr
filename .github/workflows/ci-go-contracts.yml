@@ -45,6 +45,8 @@ jobs:
         run: ./scripts/go-mod-download.sh
       - name: Static analysis and repository contracts
         run: make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify eval-contract
+        env:
+          MAKEFLAGS: -j4 --output-sync=target # independent checks; this job sets PR time for Go changes
       - name: The test lanes cover every package
         run: make go-shard-verify SHARDS=2
       - name: OpenAPI spec is committed and current
