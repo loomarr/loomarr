@@ -1,4 +1,8 @@
-import { getLibraryStatusMockHandler, getListLibraryItemsMockHandler } from "@loomarr/api/msw";
+import {
+  getLibraryStatusMockHandler,
+  getListLibraryItemsMockHandler,
+  getListLibraryNeedsMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -27,7 +31,10 @@ const renderPage = (props: Parameters<typeof LibraryPage>[0] = { filter: "all", 
 // The wiring: the page lists what the server found under the library's status, asks for the
 // URL's filter and the typed search, keeps the search in the URL, and opens a title's page.
 describe("LibraryPage", () => {
-  beforeEach(() => mocks.navigate.mockReset());
+  beforeEach(() => {
+    mocks.navigate.mockReset();
+    server.use(getListLibraryNeedsMockHandler({ needs: [] }));
+  });
 
   it("lists the titles the server found and opens one", async () => {
     server.use(

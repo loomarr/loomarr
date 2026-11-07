@@ -183,6 +183,8 @@ const LibraryShelf = ({
   titles,
   loading,
   onOpenTitle,
+  needs,
+  showTitles = true,
 }: LibraryShelfProps) => {
   const fresh = status.health === "needs_folders";
   // From a tablet up the search sits beside the tabs; on a phone it takes its own full-width line.
@@ -211,18 +213,21 @@ const LibraryShelf = ({
         <DeadAir onOpenSettings={onOpenSettings} />
       ) : (
         <>
+          {needs}
           <Line columnGap="control" justifyContent="space-between" rowGap="control">
             <Tabs label="What to show" onValueChange={onFilterChange} options={FILTERS} value={filter} />
-            <Stack width={wide ? 288 : "100%"}>
-              <Field
-                accessibilityLabel="Search your library"
-                onChangeText={onSearchChange}
-                placeholder="Search your library"
-                value={search}
-              />
-            </Stack>
+            {showTitles ? (
+              <Stack width={wide ? 288 : "100%"}>
+                <Field
+                  accessibilityLabel="Search your library"
+                  onChangeText={onSearchChange}
+                  placeholder="Search your library"
+                  value={search}
+                />
+              </Stack>
+            ) : null}
           </Line>
-          {loading ? null : titles.length === 0 && search.trim() !== "" ? (
+          {!showTitles || loading ? null : titles.length === 0 && search.trim() !== "" ? (
             <Text textRole="body" tone="secondary">
               {`Nothing here matches "${search.trim()}".`}
             </Text>
