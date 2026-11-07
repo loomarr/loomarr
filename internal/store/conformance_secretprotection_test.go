@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/secretprotection"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 )
 
 func testInitialSecretDataKey(t *testing.T, newStore NewStoreFunc) {

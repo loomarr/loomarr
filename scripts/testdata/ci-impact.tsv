@@ -34,6 +34,7 @@ ios-lan-discovery-native	web/packages/lan-discovery-native/ios/LoomarrLanDiscove
 crash-reports-native	web/packages/crash-reports-native/index.ts	clients,apple_mobile,expo_android_mobile
 ios-crash-reports-native	web/packages/crash-reports-native/ios/LoomarrCrashReports.swift	clients,apple_mobile,expo_android_mobile
 native-app	web/packages/native-app/index.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,android
+paired-client	web/packages/paired-client/src/paired-client/paired-client.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,android
 shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigation.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android

@@ -43,6 +43,7 @@ exact React Native the app installs.
 | Secret encryption | stdlib `crypto/*` | envelope encryption needs nothing outside the standard library |
 | Startup report | `jedib0t/go-pretty/v6/table` | terminal formatting of the startup report only |
 | Windows job objects | `x/sys/windows` | compile-isolated legacy adapter; not a support claim |
+| Library change signals | `fsnotify/fsnotify` | inotify on local media folders, including queue-overflow reporting, so a new file is scanned seconds after it lands; network shares are told apart by `x/sys/unix` `Statfs` |
 | SSO | `coreos/go-oidc/v3`, `x/oauth2`, `go-jose/v4` | JWKS verification, rotation and claim checks are not code to hand-roll |
 | Email | `wneessen/go-mail` | context-aware SMTP with explicit TLS policy and MIME composition, behind the delivery port |
 | Web Push | `SherClockHolmes/webpush-go` | RFC 8291 encryption and VAPID without local crypto code, behind the push adapter |

@@ -91,7 +91,7 @@ test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
 	@# refused. Authentik: its issuer is path-based WITH a trailing slash, which our
 	@# normalisation stripped — discovery failed outright. A hand-written stub IdP showed
 	@# neither, because it was our own reading of the spec on both sides of the wire.
-	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/auth/
+	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/people/auth/
 
 .PHONY: dev-be
 dev-be: rust-dev-build ## backend with live reload (Air) — rebuilds + restarts on Go/Rust changes

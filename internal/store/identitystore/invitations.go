@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/contact"
-	"github.com/loomarr/loomarr/internal/invitation"
+	"github.com/loomarr/loomarr/internal/people/contact"
+	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 

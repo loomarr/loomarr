@@ -76,7 +76,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `bgexec` | — |
 | `catalog` | `library`, `provision` |
 | `config` | — |
-| `contact` | — |
 | `creative` | — |
 | `defects` | — |
 | `diagnostics` | `storagegovernor` |
@@ -90,25 +89,26 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `holidayvocab` | — |
 | `httpx` | `metrics` |
 | `inventory` | — |
-| `invitation` | `contact` |
 | `jobs` | `store` |
 | `library` | `httpx`, `inventory`, `metrics` |
 | `llm` | `httpx`, `metrics` |
 | `mediatools` | `bgexec`, `creative`, `defects`, `diagnostics`, `encode` |
 | `metadataprovider` | — |
 | `metrics` | `provision` |
-| `notifications` | `httpx` |
+| `people/contact` | — |
+| `people/invitation` | `people/contact` |
+| `people/notifications` | `httpx` |
+| `people/recovery` | — |
 | `playout` | `config`, `diagnostics`, `encode`, `provision`, `schedule` |
 | `proposals` | `provision`, `schedule`, `storagegovernor` |
 | `proposals/quality` | `provision` |
 | `proposals/suggest` | `catalog`, `holidayvocab`, `llm`, `proposals`, `proposals/quality`, `provision`, `rating`, `schedule`, `store` |
 | `provision` | — |
 | `rating` | — |
-| `recovery` | — |
 | `schedule` | `holidayvocab`, `inventory`, `provision`, `rating` |
 | `settings` | `config`, `library` |
 | `storagegovernor` | — |
-| `store` | `contact`, `creative`, `defects`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `invitation`, `notifications`, `proposals`, `proposals/quality`, `provision`, `recovery`, `schedule` |
+| `store` | `creative`, `defects`, `diagnostics`, `filler/station`, `filler/taxonomy`, `holidayvocab`, `inventory`, `people/contact`, `people/invitation`, `people/notifications`, `people/recovery`, `proposals`, `proposals/quality`, `provision`, `schedule` |
 
 ## How the area pages are made
 

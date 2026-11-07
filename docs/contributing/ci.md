@@ -645,7 +645,7 @@ hosted-weight refresh. The same run
 measured the refactored `internal/proposals/suggest` at 34.908 seconds; refreshing its obsolete 368-second
 weight removed that package bottleneck. Merge-group run 35500779353 then put every Go job between
 6m59s and 9m01s, but the ordinary job spread was still about 29%. Its package summary exposed
-`internal/auth` at 300.797 seconds and refreshed every material upper-envelope weight. Both auth
+`internal/people/auth` at 300.797 seconds and refreshed every material upper-envelope weight. Both auth
 test-store helpers had independently replayed the complete SQLite migration history for every
 private test database. Routing them through the existing isolated migrated template reduced the
 local SSO race subset from 30.59 to 5.64 seconds and the complete auth race package from 118.89 to
