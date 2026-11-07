@@ -20,7 +20,7 @@ describe("newChannelName — the name the server gives a new channel", () => {
     expect(newChannelName({ intent: intent("") })).toBe("Suggested channel");
   });
 
-  // Same cut as binder.truncateLabel: 60 characters, back to the last space past the midpoint,
+  // Same cut as approval.truncateLabel: 60 characters, back to the last space past the midpoint,
   // trailing punctuation trimmed, then an ellipsis.
   it("truncates a long name on a word boundary, exactly as the server does", () => {
     const long = "Saturday-morning style animation for the whole family, nothing past TV-Y7 please";

@@ -8,7 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/loomarr/loomarr/internal/viewing"
+	"github.com/loomarr/loomarr/internal/channels/viewing"
 )
 
 // GET /v1/household/viewing — who is watching what, on which device, for Home (#1662).
@@ -19,7 +19,7 @@ import (
 // knowing WHO watches WHAT is viewing history, which is not the catalogue (§342 covers titles and
 // channels only).
 //
-// The source is the in-app players' own playlist polls (internal/viewing), attributed through the
+// The source is the in-app players' own playlist polls (internal/channels/viewing), attributed through the
 // viewer tag each play URL carries (viewingtag.go). Viewing through the media server's Live TV
 // (Tunarr, or the playout token) carries no person, so it isn't counted here.
 

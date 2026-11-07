@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // usPrompt is the system prompt rendered for the shipped definitions on the US calendar.

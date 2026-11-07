@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/recommend"
+	"github.com/loomarr/loomarr/internal/channels/recommend"
 )
 
 // recommend-diagnostic runs a bounded, content-free protocol diagnosis against the synthetic

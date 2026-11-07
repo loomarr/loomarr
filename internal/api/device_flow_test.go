@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/people/auth"
@@ -39,7 +39,7 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		// The real approval gate, so a device's role is proven on approve/deny, not only on /me.
-		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
+		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
 
 		return api.Router(defaults.Log, api.Options{
 			Events:           events.NewBus(),
