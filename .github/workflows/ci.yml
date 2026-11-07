@@ -415,7 +415,7 @@ jobs:
   expo-android-mobile:
     name: Expo Android mobile — native build
     needs: changes
-    if: needs.changes.outputs.impact_expo_android_mobile == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_expo_android_mobile == 'true'
     uses: ./.github/workflows/ci-expo-android-mobile.yml
 
   playwright:
@@ -457,7 +457,7 @@ jobs:
   android:
     name: Android TV — React Native Play bundle
     needs: changes
-    if: needs.changes.outputs.impact_android == 'true'
+    if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_android == 'true'
     uses: ./.github/workflows/ci-android.yml
 
   # The single required check. ALWAYS runs, so branch protection has one status that is
