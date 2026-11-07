@@ -1,7 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { PlayerTuneReport, TuneDirection } from "@loomarr/player";
 import { useBrowserPlayer } from "@loomarr/player/browser";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { channelSourcePort } from "../channel-play-url";
 import { beginTune, markTunePhase, type TuneAttempt } from "../tuner-timing";
@@ -99,13 +99,15 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
     void (restart ? retry() : tuneChannel(channelId));
   }, [channelId, catalogReady, parked, pause, retry, tuneChannel]);
 
-  // The player → the URL: a channel the controller tuned is where the URL goes.
+  // The player → the URL: a channel the controller tuned is where the URL goes. The navigation
+  // re-renders the whole route, so it follows a deferred copy: the tuning overlay paints first.
+  const navigatedId = useDeferredValue(tunedId);
   useEffect(() => {
-    if (!tunedId || tunedId === urlTarget.current) return;
-    urlTarget.current = tunedId;
-    ownNavigations.current.add(tunedId);
-    onNavigateRef.current(tunedId);
-  }, [tunedId]);
+    if (!navigatedId || navigatedId === urlTarget.current) return;
+    urlTarget.current = navigatedId;
+    ownNavigations.current.add(navigatedId);
+    onNavigateRef.current(navigatedId);
+  }, [navigatedId]);
 
   // The tuning channel's picture, decoded off-screen first so a half-loaded image never flashes.
   const stillUri = snapshot.status === "tuning" ? snapshot.stillUri : undefined;

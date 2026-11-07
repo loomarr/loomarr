@@ -562,11 +562,17 @@ describe("browser transport", () => {
       open("ch-2");
       await vi.waitFor(() => expect(frames).toHaveLength(1));
       expect(hls.instances).toHaveLength(1);
+      // A slow device's frame is waited for, not cut short by the hidden-document timer.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(hls.instances).toHaveLength(1);
 
       frames.shift()?.(16);
       await Promise.resolve();
       expect(hls.instances).toHaveLength(1);
       frames.shift()?.(32);
+      // The overlay's own callbacks for that frame run before the hold, which waits for a task.
+      await Promise.resolve();
+      expect(hls.instances).toHaveLength(1);
       await vi.waitFor(() => expect(hls.instances).toHaveLength(2));
     });
 
