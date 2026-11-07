@@ -629,7 +629,8 @@ failing native result.
 ## Sharding
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go
-contracts run once in `go-contracts` and Rust contracts once in `rust-contracts`, in parallel with
+contracts run once in `go-contracts`, whose two shards share the checks without overlap, and Rust
+contracts once in `rust-contracts`, in parallel with
 two ordinary Go test lanes, two serial lanes for packages that must not share a runner, and the independent release-worker
 certification. Their union is the same
 assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
