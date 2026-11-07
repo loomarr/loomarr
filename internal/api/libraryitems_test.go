@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // Library → Items lists present titles with their readiness, finds them by name, opens a series
@@ -116,12 +117,12 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 		SourceURL: "https://image.example.org/bravo.jpg"}
 	for item, img := range map[string]images.Image{"90000001": held, "90000002": pending} {
 		imgs.records[img.Hash] = img
-		row := store.Image{Hash: img.Hash, Origin: string(img.Origin), Role: string(img.Role), Visibility: "member",
+		row := catalogstore.Image{Hash: img.Hash, Origin: string(img.Origin), Role: string(img.Role), Visibility: "member",
 			SourceURL: img.SourceURL, CreatedAt: at, UpdatedAt: at, LastUsedAt: at}
 		if err := h.Store.PutImage(ctx, row); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.Store.PutImageRef(ctx, store.ImageRef{ImageHash: img.Hash, OwnerKind: store.LibraryItemImageOwner,
+		if err := h.Store.PutImageRef(ctx, catalogstore.ImageRef{ImageHash: img.Hash, OwnerKind: store.LibraryItemImageOwner,
 			OwnerID: item, Role: "poster"}); err != nil {
 			t.Fatal(err)
 		}
