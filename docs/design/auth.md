@@ -96,8 +96,9 @@ rendering, retries, retention, and one adapter per **Delivery means**.
 - **Two policy classes.** Mandatory account delivery (`account_invitation`,
   `local_password_recovery`) is email-only and ignores preferences. Configurable product delivery
   (`proposal_submitted`, `proposal_approved`, `proposal_declined`, `acquisition_available`,
-  `acquisition_gave_up`, `channel_live`, `channel_degraded`) goes to one person, current approvers or
-  operators.
+  `acquisition_gave_up`, `channel_live`, `channel_degraded`, and the library scanner's
+  `library_folder_offline`, `library_folder_back` and `library_changes_degraded`) goes to one
+  person, current approvers or operators. The library topics go to operators only.
 - **Means** are a closed vocabulary (`email`, `webhook`, `discord`, `ntfy`, `gotify`, `apprise`,
   `pushover`, `telegram`, `mattermost`, `matrix`, `web_push`, `mqtt`, `slack`); an unimplemented one
   ends as `means_unavailable`. Adding an adapter never changes a domain interface. New installs and

@@ -32,6 +32,7 @@ const headerConcurrency = 4
 // ImportStore is the store the importer reads roots from and keeps its file table in.
 type ImportStore interface {
 	LibraryRoots(ctx context.Context) (store.LibraryRoots, error)
+	CheckLibraryRoot(ctx context.Context, check store.LibraryRootCheck, at time.Time) (bool, error)
 	store.LibraryFileStore
 }
 
@@ -60,6 +61,9 @@ type Importer struct {
 	Log    *slog.Logger
 	// Poll is the wait between busy checks; zero means 5 s.
 	Poll time.Duration
+	// RootReadability hears when a pass finds a root stopped opening, or opens again (decision
+	// 32). Nil hears nothing.
+	RootReadability func(ctx context.Context, root string, readable bool)
 
 	run      sync.Mutex
 	mu       sync.Mutex
@@ -184,6 +188,7 @@ func (im *Importer) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("scan %s: %w", root.Path, err)
 		}
+		im.recordReadability(ctx, result)
 		results = append(results, result)
 		queue = append(queue, waiting...)
 	}
@@ -225,6 +230,7 @@ func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) 
 	if err != nil {
 		return fmt.Errorf("scan %s: %w", root, err)
 	}
+	im.recordReadability(ctx, result)
 	im.setProgress(func(p *Progress) {
 		for i := range p.Roots {
 			if p.Roots[i].Root == root {
@@ -233,6 +239,30 @@ func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) 
 		}
 	})
 	return im.readHeaders(ctx, queue)
+}
+
+// recordReadability keeps the root's readability as the pass found it, for the status strip, and
+// tells RootReadability when it changed. A failed write is logged: the pass's own work stands.
+func (im *Importer) recordReadability(ctx context.Context, result RootResult) {
+	readable := result.State != RootUnreadable
+	flipped, err := im.Store.CheckLibraryRoot(ctx, store.LibraryRootCheck{Path: result.Root, Readable: readable}, im.now())
+	if err != nil {
+		if ctx.Err() == nil {
+			im.log().Warn("library scan: could not record a folder's readability", "root", result.Root, "err", err)
+		}
+		return
+	}
+	if !flipped {
+		return
+	}
+	if readable {
+		im.log().Info("library scan: a media folder opens again", "root", result.Root)
+	} else {
+		im.log().Warn("library scan: a media folder stopped opening; nothing in it is marked missing", "root", result.Root)
+	}
+	if im.RootReadability != nil {
+		im.RootReadability(ctx, result.Root, readable)
+	}
 }
 
 // scannedRoots is the in-use roots a pass walks: each one not inside another in-use root, by real

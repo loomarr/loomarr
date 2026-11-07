@@ -127,7 +127,8 @@ func installationDestinationMatches(means Means, topic Topic, recipient Recipien
 	switch topic {
 	case TopicProposalSubmitted:
 		return recipient == RecipientApprovers
-	case TopicAcquisitionAvailable, TopicAcquisitionGaveUp, TopicChannelLive, TopicChannelDegraded:
+	case TopicAcquisitionAvailable, TopicAcquisitionGaveUp, TopicChannelLive, TopicChannelDegraded,
+		TopicLibraryFolderOffline, TopicLibraryFolderBack, TopicLibraryChangesDegraded:
 		return recipient == RecipientOperators
 	default:
 		return false

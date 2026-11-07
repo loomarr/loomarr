@@ -15,6 +15,7 @@ const libraryStatus = (over: Partial<LibraryStatusOutputBody> = {}): LibraryStat
   headersPending: 0,
   problems: 0,
   held: [],
+  hooks: [],
   scan: {
     enabled: true,
     stage: "idle",

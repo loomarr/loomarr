@@ -437,6 +437,22 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				condition: "steps.go.outputs.changed == 'true'",
 			}),
 		}),
+		"merge-gate-cache.yml": {
+			environment: standardWorkflowEnvironment(),
+			permissions: map[string]string{"actions": "write", "contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"run": {steps: map[string]workflowStepAuthority{
+					"make vet": exactWorkflowStep(4, "Compile what the gate compiles", workflowStepAuthority{
+						targets:   []string{"vet"},
+						condition: "steps.warm.outputs.cache-hit != 'true'",
+					}),
+					`./scripts/ci-merge-gate-cache-prune.sh "${{ steps.warm.outputs.cache-primary-key }}"`: exactWorkflowStep(6, "Delete older gate caches", workflowStepAuthority{
+						condition:   "steps.warm.outputs.cache-hit != 'true'",
+						environment: map[string]string{"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}"},
+					}),
+				}},
+			},
+		},
 		"image-benchmark.yml": {
 			permissions: standardWorkflowPermissions(),
 			jobs: map[string]workflowJobAuthority{

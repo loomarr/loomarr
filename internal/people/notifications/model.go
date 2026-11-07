@@ -24,6 +24,11 @@ const (
 	TopicChannelLive           Topic = "channel_live"
 	TopicChannelDegraded       Topic = "channel_degraded"
 	TopicDeliveryTest          Topic = "delivery_test"
+	// The library scanner (#2151 decision 32): a media folder stopped opening or opens again,
+	// and an arr can no longer tell Loomarr about new files.
+	TopicLibraryFolderOffline   Topic = "library_folder_offline"
+	TopicLibraryFolderBack      Topic = "library_folder_back"
+	TopicLibraryChangesDegraded Topic = "library_changes_degraded"
 )
 
 type RecipientKind string
@@ -44,6 +49,8 @@ const (
 	ReferenceTitle       ReferenceKind = "title"
 	ReferenceChannel     ReferenceKind = "channel"
 	ReferenceDestination ReferenceKind = "destination"
+	// ReferenceLibrary is a media folder (its scan authority) or an arr, by name.
+	ReferenceLibrary ReferenceKind = "library"
 )
 
 // RecipientPolicy distinguishes account/security delivery from future preference-controlled topics.
@@ -258,6 +265,10 @@ func (i Intent) Validate() error {
 		}
 	case TopicChannelLive, TopicChannelDegraded:
 		if err := i.validateProductAudience(ReferenceChannel); err != nil {
+			return err
+		}
+	case TopicLibraryFolderOffline, TopicLibraryFolderBack, TopicLibraryChangesDegraded:
+		if err := i.validateProduct(RecipientOperators, ReferenceLibrary); err != nil {
 			return err
 		}
 	case TopicDeliveryTest:

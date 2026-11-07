@@ -235,6 +235,7 @@ func buildHandler(
 		library: buildLibrary(st, foundation.set, libraryBuild{
 			lib: libraryClient, budget: channelsBuilt.resourceBudget,
 			ffmpegPath: settings.PlayoutFFmpegPath.Get(foundation.set), processes: foundation.processDiagnostics,
+			hookSecret: secrets.ArrWebhookSecret(), notify: libraryNotifierOf(operations.productNotifications),
 			log: log, owner: owner,
 		}),
 	})

@@ -368,7 +368,25 @@ fi
 # The simulator was booted before the build, but the build can leave it Shut Down (hosted runners
 # have failed install with SimError 405 "Unable to lookup in current state: Shutdown" right after
 # "Build Succeeded"). `bootstatus -b` boots it again if needed and waits until it is ready.
-xcrun simctl bootstatus "${simulator_id}" -b
+#
+# The boot itself can fail because CoreSimulator no longer lists the runtime it booted minutes
+# earlier: "simulator runtime is not available" (SimError 401). Restarting the service makes it
+# discover runtimes again. This only runs when the boot failed, and a recovered device still has to
+# pass the install, launch and screenshot checks below.
+boot_simulator_after_build() {
+  local attempt
+  for attempt in 1 2 3; do
+    if xcrun simctl bootstatus "${simulator_id}" -b; then
+      return 0
+    fi
+    printf 'apple-client: simulator boot attempt %s failed; restarting CoreSimulator\n' "$attempt" >&2
+    xcrun simctl runtime list >&2 || true
+    killall -9 com.apple.CoreSimulator.CoreSimulatorService >/dev/null 2>&1 || true
+    sleep 10
+  done
+  return 1
+}
+boot_simulator_after_build
 xcrun simctl install "${simulator_id}" "${BUILD_DIR}/${SCHEME}.app"
 record_phase_timing native_build_install "$native_build_started_at"
 
