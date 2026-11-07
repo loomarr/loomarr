@@ -83,6 +83,8 @@ type Group string
 const (
 	GroupMediaServer   Group = "connections.media_server"
 	GroupRequester     Group = "connections.requester"
+	GroupSonarr        Group = "connections.sonarr"
+	GroupRadarr        Group = "connections.radarr"
 	GroupTunarr        Group = "connections.tunarr"
 	GroupTMDB          Group = "connections.tmdb"
 	GroupGeneral       Group = "general"
