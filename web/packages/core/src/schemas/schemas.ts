@@ -27,13 +27,21 @@
 import {
   ChangePasswordBody,
   changePasswordBodyNextMin,
+  DevicePairApproveBody,
   LoginBody,
   RedeemPasswordRecoveryBody,
   RequestPasswordRecoveryBody,
   redeemPasswordRecoveryBodyPasswordMin,
   requestPasswordRecoveryBodyUsernameMax,
 } from "@loomarr/api/zod/auth";
-import { RedeemInvitationBody, redeemInvitationBodyPasswordMin } from "@loomarr/api/zod/invitations";
+import {
+  CreateInvitationBody,
+  createInvitationBodyContactEmailMax,
+  createInvitationBodyLibraryUserIdMax,
+  createInvitationBodyUsernameMax,
+  RedeemInvitationBody,
+  redeemInvitationBodyPasswordMin,
+} from "@loomarr/api/zod/invitations";
 import { NotificationProvidersUpdateBody } from "@loomarr/api/zod/notifications";
 import {
   SubmitProposalBody,
@@ -184,6 +192,49 @@ const contactAddressSchema = PutUserContactAddressBody.pick({ email: true }).ext
     .refine(completeEmail, "Enter one complete email address."),
 });
 
+// An admin reserves an invitation (People). A local one reserves a username; a Library one picks
+// an Emby or Jellyfin account. One shape for both keeps one form: the field a path does not show
+// is simply never checked. The contact email is optional, so a blank one passes. `sendEmail` is
+// form-only (the "Also send by email" choice), as `confirm` is in bootstrapSchema.
+const createInvitationSchema = CreateInvitationBody.pick({
+  kind: true,
+  username: true,
+  libraryUserId: true,
+  contactEmail: true,
+  role: true,
+})
+  .extend({
+    username: z.string().trim().max(createInvitationBodyUsernameMax),
+    libraryUserId: z.string().max(createInvitationBodyLibraryUserIdMax),
+    contactEmail: z
+      .string()
+      .trim()
+      .max(
+        createInvitationBodyContactEmailMax,
+        `Use ${createInvitationBodyContactEmailMax} characters or fewer.`,
+      )
+      .refine((email) => email === "" || completeEmail(email), "Enter one complete email address."),
+    role: CreateInvitationBody.shape.role.unwrap(),
+    sendEmail: z.boolean(),
+  })
+  // `when` keeps these running beside a bad email, so every missing field is reported together.
+  .refine((v) => v.kind !== "local" || v.username !== "", {
+    message: "Choose a username to reserve.",
+    path: ["username"],
+    when: () => true,
+  })
+  .refine((v) => v.kind !== "library" || v.libraryUserId !== "", {
+    message: "Choose an Emby or Jellyfin account.",
+    path: ["libraryUserId"],
+    when: () => true,
+  });
+
+// Approving a device's pairing code. A blank code is only ever blocked: the submit button is
+// disabled until something is typed, so no message is written for it.
+const devicePairApproveSchema = DevicePairApproveBody.pick({ userCode: true }).extend({
+  userCode: z.string().trim().min(1),
+});
+
 interface NotificationProviderRequiredField {
   key: string;
   label: string;
@@ -230,7 +281,9 @@ export {
   bootstrapSchema,
   changePasswordSchema,
   contactAddressSchema,
+  createInvitationSchema,
   createLocalUserSchema,
+  devicePairApproveSchema,
   intentSchema,
   loginSchema,
   notificationProviderFormSchema,
