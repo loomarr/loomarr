@@ -1,12 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { writeActiveSuggestionJob, writeSuggestionDraft } from "../suggestion-draft";
+import { describe, expect, it } from "vitest";
 import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";
 import {
   isOriginating,
   originationHeading,
   originationStage,
   parseOriginationSearch,
-  rememberedOrigination,
 } from "./origination-flow";
 
 const run = (over: Partial<SuggestionRun>): SuggestionRun => ({
@@ -42,25 +40,6 @@ describe("isOriginating", () => {
     expect(isOriginating({ job: "job-1" })).toBe(true);
     expect(isOriginating({ intent: "cartoons" })).toBe(true);
     expect(isOriginating({ manual: "1" })).toBe(true);
-  });
-});
-
-describe("rememberedOrigination", () => {
-  beforeEach(() => window.sessionStorage.clear());
-
-  it("remembers nothing in a fresh tab", () => {
-    expect(rememberedOrigination()).toBeUndefined();
-  });
-
-  it("returns to the Job the tab follows, ahead of any draft", () => {
-    writeSuggestionDraft({ description: "cartoons" });
-    writeActiveSuggestionJob("job-1");
-    expect(rememberedOrigination()).toEqual({ job: "job-1" });
-  });
-
-  it("reopens the describe form for a draft that has no Job yet", () => {
-    writeSuggestionDraft({ description: "cartoons" });
-    expect(rememberedOrigination()).toEqual({ new: "1" });
   });
 });
 

@@ -5,8 +5,8 @@ import {
   type OriginationSearch,
   type OriginationStage,
   originationStage,
-  rememberedOrigination,
 } from "../origination-flow";
+import { rememberedOrigination } from "../remembered-origination";
 import { clearSuggestionDraft, writeActiveSuggestionJob } from "../suggestion-draft";
 import { useSuggestionRun } from "../use-suggestion-run";
 import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";

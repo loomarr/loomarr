@@ -2,7 +2,7 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { GuidePage } from "@/channels/guide-page";
 import { defaultGuideWindow } from "@/channels/guide-window";
-import { isOriginating, parseOriginationSearch, rememberedOrigination } from "@/suggest/origination-flow";
+import { isOriginating, parseOriginationSearch } from "@/suggest/origination-flow";
 
 // The channels surface (§12) — headed "Channels", it is both the cross-channel time grid and
 // the app's one origination door. Readable by any authenticated user: the guide is
@@ -20,8 +20,11 @@ const Route = createFileRoute("/_authed/guide")({
   // Arriving with no origination params resumes what this tab was doing: the Job it follows, or
   // a draft kept across the AI/TMDB setup trip. Only on ENTRY: Close stays on the route and must
   // not reopen the panel, and a hover preload must not redirect.
-  beforeLoad: ({ search, cause }) => {
+  // The remembered run is read on entry only, and imported then: it validates the saved draft with
+  // a zod schema that the first download doesn't otherwise carry.
+  beforeLoad: async ({ search, cause }) => {
     if (cause !== "enter" || isOriginating(search)) return;
+    const { rememberedOrigination } = await import("@/suggest/remembered-origination");
     const remembered = rememberedOrigination();
     if (remembered) throw redirect({ to: "/guide", search: remembered, replace: true });
   },

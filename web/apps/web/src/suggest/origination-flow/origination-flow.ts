@@ -1,4 +1,3 @@
-import { readActiveSuggestionJob, readSuggestionDraft } from "../suggestion-draft";
 import type { SuggestionRun } from "../use-suggestion-run/use-suggestion-run.type";
 
 // Channel origination's state lives in the Guide's search params (§12). The panel is open while
@@ -28,14 +27,6 @@ const parseOriginationSearch = (search: Record<string, unknown>): OriginationSea
 
 const isOriginating = (search: OriginationSearch) =>
   Boolean(search.new || search.manual || search.intent || search.job);
-
-// The tab remembers the Job it is following (and a draft that has no Job yet), so leaving the
-// Guide and coming back lands on the same run. This is the only place that memory is read.
-const rememberedOrigination = (): OriginationSearch | undefined => {
-  const job = readActiveSuggestionJob();
-  if (job) return { job };
-  return readSuggestionDraft() ? { new: "1" } : undefined;
-};
 
 type OriginationStage = "describe" | "generating" | "review" | "updating" | "failed";
 
@@ -78,4 +69,4 @@ const originationHeading = (
 };
 
 export type { OriginationSearch, OriginationStage };
-export { isOriginating, originationHeading, originationStage, parseOriginationSearch, rememberedOrigination };
+export { isOriginating, originationHeading, originationStage, parseOriginationSearch };
