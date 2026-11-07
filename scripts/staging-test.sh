@@ -124,6 +124,12 @@ grep -q 'test-key' "$WORK/auth.last" || fail 'the key did not go through curl co
 reset '{"instances":[]}'
 VERSION=0.2.0-beta.9-rc.11 "$ROOT/scripts/staging.sh" up >/dev/null
 [[ "$(jq -r .user_data "$WORK/body.json" | base64 -d)" == *0.2.0-beta.9-rc.11* ]] || fail 'the boot script does not name the release'
+[[ "$(jq -r .user_data "$WORK/body.json" | base64 -d)" == *STAGING_DATABASE=sqlite* ]] || fail 'the boot script does not default to SQLite'
+
+# The database choice reaches the server.
+reset '{"instances":[]}'
+VERSION=1.0.0 STAGING_DATABASE=postgres "$ROOT/scripts/staging.sh" up >/dev/null
+[[ "$(jq -r .user_data "$WORK/body.json" | base64 -d)" == *STAGING_DATABASE=postgres* ]] || fail 'the boot script ignored the database choice'
 
 # Up refuses anything that would run unbounded, twice, or from an unclear source.
 reset "{\"instances\":[$(ours running "$FUTURE")]}"
@@ -138,6 +144,7 @@ expect_refused 'an image with no commit' STAGING_IMAGE="$IMAGE"
 expect_refused 'a short commit' STAGING_IMAGE="$IMAGE" STAGING_COMMIT=0123456
 expect_refused 'a version with shell syntax' 'VERSION=1.0.0;reboot'
 expect_refused 'no tailnet key' VERSION=1.0.0 TS_AUTHKEY=
+expect_refused 'an unknown database' VERSION=1.0.0 STAGING_DATABASE=mysql
 
 # A failed boot powers the server off, and the sweep clears it even if it was kept.
 reset '{"instances":[{"id":"dead","label":"loomarr-staging-z","tags":["loomarr-staging","keep"],"power_status":"stopped"}]}'

@@ -33,8 +33,14 @@ The image and the demo tool must come from the same commit. The tool migrates th
 server won't open a database newer than itself. `VERSION` handles this by building the tool from
 that release's tag.
 
-`make demo-site-down` stops it and deletes its data. Run it before switching to an older version,
-because the data stays between runs and an older server won't open it.
+It uses SQLite. Add `DEMO_SITE_DATABASE=postgres` to run it on Postgres instead:
+
+```bash
+DEMO_SITE_DATABASE=postgres make demo-site VERSION=0.2.0-beta.9-rc.11
+```
+
+`make demo-site-down` stops it and deletes its data. Run it before switching to an older version or
+a different database, because the data stays between runs and an older server won't open it.
 
 The sign-in is public, so the site only listens on this machine. Set `DEMO_SITE_BIND` only on a
 private network. Without a GPU it plays two channels at once, and a third is refused until one
@@ -51,7 +57,8 @@ gh workflow run staging.yml -f version=0.2.0-beta.9-rc.11 -f hours=4
 
 Leave `version` out to build the commit the run is on: add `--ref <branch>`, and allow about ten
 more minutes for the image. When it has booted, open the address the run prints from a device on
-the private network. Destroy it early with `-f action=down`.
+the private network. Destroy it early with `-f action=down`. Add `-f database=postgres` to run it on
+Postgres.
 
 Only one server runs at a time. An hourly sweep destroys anything past its time, even if the run
 that made it failed.

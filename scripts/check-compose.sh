@@ -77,6 +77,27 @@ if ! printf '%s\n' "$demo" | grep -q '"host_ip": "127.0.0.1"'; then
 	exit 1
 fi
 
+# Both the server and the seeder must move to Postgres: a seeder left on SQLite would seed nothing
+# the server can see, and the site would boot empty.
+demo_postgres="$(
+	LOOMARR_IMAGE=loomarr-test docker compose -f "$ROOT/docker/compose.demo.yaml" \
+		-f "$ROOT/docker/compose.demo.postgres.yaml" config --format json
+)" || {
+	echo 'compose-verify: docker/compose.demo.postgres.yaml does not render' >&2
+	exit 1
+}
+for service in loomarr demo-seed; do
+	if ! printf '%s\n' "$demo_postgres" | jq -e --arg s "$service" \
+		'.services[$s].environment.DATABASE_URL | startswith("postgres://")' >/dev/null; then
+		echo "compose-verify: the Postgres demo site leaves $service off Postgres" >&2
+		exit 1
+	fi
+done
+if printf '%s\n' "$demo_postgres" | jq -e '.services.postgres.ports' >/dev/null; then
+	echo 'compose-verify: the demo site publishes its database' >&2
+	exit 1
+fi
+
 postgres="$(
 	LOOMARR_VERSION="$VERSION" SERVER_PUBLIC_URL="$PUBLIC_URL" docker compose \
 		-f "$ROOT/docker/compose.yaml" \
