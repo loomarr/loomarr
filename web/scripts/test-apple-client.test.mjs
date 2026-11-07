@@ -58,6 +58,56 @@ describe("Apple simulator verifier", () => {
   });
 });
 
+describe("Apple simulator boot after the build", () => {
+  const boot = script.match(/^boot_simulator_after_build\(\) \{\n[\s\S]*?^\}\n/m)?.[0];
+
+  // Runs the script's real function against stand-in commands, and reports its status, how many
+  // boots it tried, and how many times it restarted CoreSimulator.
+  const bootWith = (failures) => {
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `set -euo pipefail
+simulator_id=test-device
+attempts=0
+restarts=0
+xcrun() {
+  [[ "$2" == bootstatus ]] || return 0
+  attempts=$((attempts + 1))
+  ((attempts > ${failures}))
+}
+killall() { restarts=$((restarts + 1)); }
+sleep() { :; }
+${boot}
+status=0
+boot_simulator_after_build 2>/dev/null || status=$?
+printf '%s %s %s' "$status" "$attempts" "$restarts"`,
+      ],
+      { encoding: "utf8", timeout: 30_000 },
+    );
+    assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+    return result.stdout;
+  };
+
+  it("leaves CoreSimulator alone when the device boots", () => {
+    assert.equal(bootWith(0), "0 1 0");
+  });
+
+  it("restarts CoreSimulator and boots again after a failure", () => {
+    assert.equal(bootWith(1), "0 2 1");
+    assert.equal(bootWith(2), "0 3 2");
+  });
+
+  it("still fails the job when the device never boots", () => {
+    assert.equal(bootWith(3), "1 3 3");
+  });
+
+  it("boots before it installs", () => {
+    assert.ok(script.indexOf("\nboot_simulator_after_build\n") < script.indexOf("xcrun simctl install"));
+  });
+});
+
 describe("Apple launch failure evidence", () => {
   it("retains only current matching crashes and bounds failed diagnostic commands", () => {
     const result = spawnSync(
