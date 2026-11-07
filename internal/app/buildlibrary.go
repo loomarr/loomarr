@@ -19,10 +19,12 @@ import (
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
+	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/requester"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // libraryStore is what Settings → Library and the scanner keep their state in.
@@ -30,6 +32,7 @@ type libraryStore interface {
 	store.LibraryRootStore
 	store.LibraryFileStore
 	store.LibraryItemStore
+	store.LibraryCatalogStore
 	inventory.Repository
 	posterRefs
 }
@@ -50,8 +53,10 @@ type libraryBuild struct {
 	hookSecret string
 	// notify tells the operators about offline folders and delayed changes; nil tells no one.
 	notify libraryNotifier
-	log    *slog.Logger
-	owner  *generationLifecycle
+	// tmdb is the catalog the titles' details come from; nil fetches none.
+	tmdb  *tmdb.Client
+	log   *slog.Logger
+	owner *generationLifecycle
 }
 
 // libraryNotifier is productNotificationCoordinator's library half (#2151 decision 32).
@@ -113,6 +118,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		NFO:       nfo.New(),
 		Art:       localart.New(),
 		Posters:   libraryPostersOf(deps.images, st),
+		Catalog:   st,
 		Resolver:  resolver,
 		Header:    libraryHeader(playout.FFprobeSourceNextTo(deps.ffmpegPath, deps.processes)),
 		Enabled:   func() bool { return settings.LibraryScannerEnabled.Get(set) },
@@ -142,6 +148,13 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
 	deps.owner.goRunAfterBuild(hooks.Run)
+	if deps.tmdb != nil {
+		enricher := &scan.Enricher{
+			Store: st, Provider: mptmdb.New(deps.tmdb, nil), Rewrite: scanner.PassFolders,
+			Enabled: im.Enabled, Log: deps.log,
+		}
+		deps.owner.goRunAfterBuild(enricher.Run)
+	}
 	return libraryServices{
 		roots: &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv},
 		hooks: hooks,

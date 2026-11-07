@@ -17,6 +17,8 @@ type LibraryItem struct {
 	Name     string
 	SortName string
 	Year     int
+	// Catalog is the library_catalog row its details come from; zero for none.
+	Catalog LibraryCatalogKey
 }
 
 // LibraryItemImageOwner is the image_refs owner kind of a library item's artwork. The ref is the
@@ -71,10 +73,11 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 		return fmt.Errorf("save library items: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_items (id, kind, name, sort_name, year, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+	stmt, err := tx.PrepareContext(ctx, s.ph(`INSERT INTO library_items (id, kind, name, sort_name, year, catalog, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
-		sort_name = excluded.sort_name, year = excluded.year, updated_at = excluded.updated_at`))
+		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
+		updated_at = excluded.updated_at`))
 	if err != nil {
 		return fmt.Errorf("save library items: %w", err)
 	}
@@ -87,7 +90,7 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 		if sortName == "" {
 			sortName = strings.ToLower(it.Name)
 		}
-		if _, err := stmt.ExecContext(ctx, it.ID, it.Kind, it.Name, sortName, it.Year, at.UnixMilli()); err != nil {
+		if _, err := stmt.ExecContext(ctx, it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(), at.UnixMilli()); err != nil {
 			return fmt.Errorf("save library item: %w", err)
 		}
 	}

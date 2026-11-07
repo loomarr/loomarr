@@ -43,9 +43,14 @@ type seriesSeen struct {
 // listed records a movie or series the pass wrote, under its resolved name.
 func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snapshot) {
 	facts := snapshot.Observation.Facts
+	ids := make([]mp.ExternalID, 0, len(snapshot.ExternalIDs))
+	for _, x := range snapshot.ExternalIDs {
+		ids = append(ids, mp.ExternalID{Namespace: mp.Namespace(x.Namespace), Value: x.Value})
+	}
 	b.items = append(b.items, store.LibraryItem{
 		ID: id, Kind: string(snapshot.Kind), Name: facts.Name,
 		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
+		Catalog: catalogKey(mp.Kind(snapshot.Kind), ids),
 	})
 	b.poster(ctx, id, facts.Artwork)
 }
@@ -210,7 +215,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			series = append(series, *s.managed)
 		}
 	}
-	resolved := b.im.Resolver.Resolve(precedence.Input{Kind: id.kind, Records: records, Series: series})
+	resolved := b.resolve(ctx, precedence.Input{Kind: id.kind, Records: records, Series: series})
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
 		facts.Name = fallbackName(file.Rel)
@@ -220,6 +225,19 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	snapshot.Observation.Facts, snapshot.Observation.Coverage = facts, coverage
 	snapshot.ExternalIDs = externalIDs(resolved.IDs)
 	return snapshot
+}
+
+// resolve applies precedence. A movie or series whose ids name a cached catalog record is
+// resolved again with it, so its details come from the catalog (decision 7); one not cached yet is
+// written without, and again once the Enricher fetches it.
+func (b *builder) resolve(ctx context.Context, in precedence.Input) precedence.Resolved {
+	resolved := b.im.Resolver.Resolve(in)
+	rec, ok := b.im.catalogRecord(ctx, catalogKey(in.Kind, pickedIDs(resolved.IDs)))
+	if !ok {
+		return resolved
+	}
+	in.Records = append(append([]mp.Record(nil), in.Records...), rec)
+	return b.im.Resolver.Resolve(in)
 }
 
 // sidecar reads what a sidecar provider (NFO, artwork) finds beside a file or in a series folder.
@@ -260,7 +278,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 				}
 			}
 		}
-		resolved := b.im.Resolver.Resolve(precedence.Input{Kind: mp.KindSeries, Records: records})
+		resolved := b.resolve(ctx, precedence.Input{Kind: mp.KindSeries, Records: records})
 		facts, coverage := itemFacts(resolved)
 		if facts.Name == "" {
 			facts.Name = strings.TrimSpace(embeddedID.ReplaceAllString(s.dir, ""))

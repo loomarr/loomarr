@@ -62,6 +62,8 @@ type Importer struct {
 	Art *localart.Provider
 	// Posters imports the poster of each title the pass writes; nil imports none.
 	Posters Posters
+	// Catalog is the cache of catalog records a title's details come from; nil reads none.
+	Catalog CatalogStore
 	// Resolver applies precedence.
 	Resolver *precedence.Resolver
 	// Header reads one file's container header.

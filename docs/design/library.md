@@ -269,6 +269,21 @@ step 5). Nothing reads the scanner's origins until the cutover.
   so adding or changing one rewrites the title; a folder's own art (`poster.jpg`) counts only for
   the folder's one video. A poster that fails to import leaves the title as it was, and the next
   write tries again.
+- **Catalog details** (decision 20). A movie or series whose ids include a TMDB id takes its
+  details from TMDB: the guide text, genres, rating, poster and fanart, ranked by precedence like
+  any other source. The walk never calls TMDB. `library_catalog` caches each record by provider,
+  kind and id, and the importer reads it when it writes a title. A title not cached yet is written
+  without it and its key noted as wanted, and `library_items.catalog` names the row each title's
+  details come from. `scan.Enricher` fetches every minute: titles never fetched first (up to 200
+  a tick), then a share of the oldest, so the whole cache is fetched again within 90 days, spread
+  out. It keeps to the provider's rate hint. A record that changed forgets the identity digest of
+  its titles' present files (a series' episodes too) and passes over their folders, so they are
+  written again with it. A title TMDB does not know is cached empty until the refresh. A failed
+  fetch holds that title back for 6 hours, and with no TMDB key nothing is fetched or held back.
+  The kill switch stops it too. Episodes take their text from Sonarr; TMDB episode records (by
+  TVDB episode id) are not fetched yet. The identity digest carries a write version; raising it
+  makes every file written once more, keeping its header, so a title written before this names
+  its catalog row on the next pass.
 - **The Library page** (step 10c, [`design/library`](../../design/library/README.md) variant D)
   is an admin nav item after Guide (`/library`, and first in the phone's More list). It shows one
   line from `GET /v1/library/status`: caught up, adding with a bar, paused, a held removal or an
