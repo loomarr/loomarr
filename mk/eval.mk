@@ -120,6 +120,13 @@ channel-recommend-compare: ## compare channel-recommendation scorecards without 
 	  $(GO) run ./cmd/eval recommend-compare --out "$$report" --summary "$$summary" \
 	    --shared-profile "$$LOOMARR_RECOMMEND_SHARED_PROFILE" $$LOOMARR_RECOMMEND_SCORECARDS
 
+library-parity: ## compare the file scanner with the media server's catalog (#2151 gate); needs LOOMARR_PARITY_DB, LIBRARY_URL/TOKEN
+	@test -n "$$LOOMARR_PARITY_DB" || { echo "library-parity: LOOMARR_PARITY_DB (sqlite://<path>) is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_PARITY_OUT:-$$LOOMARR_ARTIFACT_DIR/library-parity.json}"; \
+	  mkdir -p "$$(dirname "$$report")"; \
+	  $(GO) run ./cmd/eval library-parity --db "$$LOOMARR_PARITY_DB" --path-map "$$LOOMARR_PARITY_PATH_MAP" --out "$$report"
+
 eval-planner-compare: ## compare two or more frozen planner scorecards without inference
 	@test -n "$$LOOMARR_EVAL_SCORECARDS" || { echo "eval-planner-compare: LOOMARR_EVAL_SCORECARDS is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
