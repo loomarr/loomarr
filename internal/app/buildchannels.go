@@ -28,7 +28,6 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
 )
 
 type channelBuild struct {
@@ -58,7 +57,7 @@ func buildChannels(
 	libraryClient *library.Client, secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
-	jobReg *jobs.Registry, episodeRefresh *provisionbackstop.EpisodeRefresh, fillerLayout filler.Layout,
+	jobReg *jobs.Registry, fillerLayout filler.Layout,
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,
@@ -200,14 +199,12 @@ func buildChannels(
 			func() livetvpublish.MediaSourceLibrary { return libraryClient.Snapshot() }, msProg)
 		tunarrConnectSvc = mediaSource
 
-		// Program duration comes from the media server (§9/§10): give the scheduler
-		// a resolver so program slots carry a real runtime before the Tunarr push,
-		// and an episode resolver so a series entry expands into its episodes (§9).
-		// A library item id (#2151 step 15) is answered from the Library's tables, any other id by
-		// the media server.
+		// Give the scheduler a resolver so program slots carry a real runtime before the Tunarr
+		// push, and an episode resolver so a series entry expands into the Library's episodes (§9).
+		// A library item id's runtime (#2151 step 15) is answered from the Library's tables, any
+		// other id by the media server.
 		meta := itemMetadata{facts: st, lib: lib}
-		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(st, lib))
-		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return settings.EpisodesMaxAge.Get(set) })
+		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(st))
 		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
 		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches
 		// by id list — the bulk answer simply was not wired to the scheduler's duration path, so
@@ -310,7 +307,7 @@ func buildChannels(
 		// (with its own ClaimDueChannels lease), driven by River. The Runner's lease/batch are
 		// constructed here; it has no standalone loop.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
-		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
+		jobReg.Add(channelMaintenanceJob(chSweep, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
 		}, func(ctx context.Context) error {
 			// Same gate as the auto-wire after a save: no Tunarr configured, nothing to wire.

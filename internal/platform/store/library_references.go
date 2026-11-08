@@ -288,10 +288,5 @@ func (s *sqlStore) rewriteLibraryReferences(ctx context.Context, tx *sql.Tx, ite
 		}
 		changed++
 	}
-	// The media server's episode cache answers by its ids; nothing reads it once the references
-	// are the Library's.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM series_episodes`); err != nil {
-		return 0, fmt.Errorf("drop the episode cache: %w", err)
-	}
 	return changed, nil
 }

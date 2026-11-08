@@ -10,8 +10,8 @@ One area of the [package map](../package-map.md#start-here).
 
 - **people** · 9 imports — the identity store persists accounts, invitations, recovery, contacts, notifications and wrapped keys; housekeeping applies each one's retention
 - **filler** · 6 imports — the store persists the clip catalog, its taxonomy and broadcast stations
-- **library** · 5 imports — the store persists inventory, provision and episode-evidence values, and settings parses the media-server connection
 - **media** · 5 imports — the store persists creative fingerprints and defect verdicts, and metrics count image generation
+- **library** · 4 imports — the store persists inventory and provision values, and settings parses the media-server connection
 - **channels** · 2 imports — the store persists the `channels/schedule` channel, lineup and slot values
 - **proposals** · 2 imports — the store persists proposals and suggestion-quality runs
 
@@ -55,7 +55,7 @@ One area of the [package map](../package-map.md#start-here).
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`platform/store`** · 18 importers · → `channels/schedule`, `episodeevidence`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
+- **`platform/store`** · 18 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/schemadoc`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 - **`platform/store/clipstore`** · 4 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
