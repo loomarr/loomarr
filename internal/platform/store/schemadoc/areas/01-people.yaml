@@ -1,0 +1,211 @@
+area: People and sign-in
+about: >
+  Who can use Loomarr and how they prove it: accounts, browser sign-ins, paired TVs and phones,
+  invitations, password recovery and email addresses, plus each person's own channel lists.
+  Every secret here (passwords, sign-in cookies, device tokens, invitation and recovery links) is
+  stored only as a one-way hash, which can't be turned back into a working credential.
+tables:
+  - name: users
+    about: >
+      One row per person allowed into Loomarr. Rows are made by the first-admin setup, by an admin
+      creating a local account, by importing a media-server account, or by someone redeeming an
+      invitation. Accounts are never deleted; an admin disables them instead.
+    columns:
+      id: >
+        Identifies the person. For a media-server account it is that server's user id; for a local
+        account Loomarr makes one up. Other tables point here.
+      name: The person's name, which is also the username a local account signs in with.
+      role: >
+        What the person may do. admin manages the household (people, settings, approvals);
+        member watches and makes requests.
+      disabled: >
+        1 when an admin has turned the account off. A disabled person can't sign in, and their
+        sign-ins and paired devices are deleted.
+      quota: >
+        How many of the person's approved requests may be waiting to arrive in the library at once.
+        0 means use the household default setting.
+      auto_approve: >
+        1 when the person's requests skip the admin queue, as long as they stay within their quota.
+      created_at: When the account was made, in Unix seconds.
+      updated_at: When the account was last changed, in Unix seconds.
+      password_hash: >
+        A one-way Argon2id hash of the local password, used only to check a password at sign-in; the
+        password can't be recovered from it. Empty or NULL when the person has no local password.
+      media_server_linked: >
+        1 when the account comes from the media server and signs in with that server's password,
+        rather than being a Loomarr-only local account.
+      last_seen_at: >
+        When the person last used Loomarr from any sign-in or paired device, in Unix seconds, updated
+        at most once a minute. 0 means not seen yet.
+
+  - name: sessions
+    about: >
+      One row per browser sign-in. Made at sign-in or when an invitation is redeemed; deleted at sign-out,
+      when an admin revokes it, when the password is reset or the account disabled, and by a regular
+      sweep once it has expired.
+    columns:
+      token_hash: >
+        SHA-256 hash of the sign-in cookie. Only the browser holds the cookie itself; the hash can't be
+        turned back into a working sign-in.
+      user_id: The person signed in, from users.
+      created_at: When the person signed in, in Unix seconds.
+      expires_at: >
+        When the sign-in stops working, in Unix seconds. Use pushes it forward by the sign-in
+        lifetime setting, at most once a minute.
+      last_seen_at: >
+        When the sign-in was last used, in Unix seconds, updated at most once a minute. 0 means not
+        used since it was made.
+      client_label: >
+        A rough description of the browser, such as "Firefox on macOS", shown in the person's list of
+        sign-ins. Empty when the browser didn't say.
+
+  - name: device_pairings
+    about: >
+      One row per pairing code shown on a TV or other device that is asking to be signed in. A signed-in
+      person types the code to approve it; the device then swaps it for a device token and the row is
+      deleted. Codes expire after 10 minutes.
+    columns:
+      device_code: >
+        SHA-256 hash of the secret the device uses while it waits for approval. The device keeps the
+        secret; the hash can't be used in its place.
+      user_code: The short code shown on the device's screen for a person to type, such as BCDF-GHJK.
+      user_id: The person who approved the pairing, from users. NULL while still waiting.
+      device_name: The name the device gave itself, shown when approving it. Empty if it gave none.
+      created_at: When the code was shown, in Unix seconds.
+      expires_at: When the code stops working, in Unix seconds (10 minutes after it was made).
+      approved_at: When a person approved the code, in Unix seconds. 0 means still waiting.
+
+  - name: device_tokens
+    about: >
+      One row per paired device, such as a TV app. The device acts as the person who approved it, with
+      that person's current role. A row lasts until the person removes the device or the account is
+      disabled; it has no expiry.
+    columns:
+      token_hash: >
+        SHA-256 hash of the device's token. Only the device holds the token; the hash can't be turned
+        back into a working sign-in.
+      user_id: The person who approved the device, from users.
+      device_name: The device's name, shown in the person's list of devices. Empty if it gave none.
+      created_at: When the device was paired, in Unix seconds.
+      last_seen_at: When the device last used Loomarr, in Unix seconds, updated at most once a minute.
+
+  - name: invitations
+    about: >
+      One row per invitation an admin sends to let a new person in. It reserves a username or a
+      media-server account for 7 days. Finished invitations (redeemed, expired or revoked) are deleted
+      30 days after they finished.
+    columns:
+      id: Identifies the invitation. invitation_grants and contact_addresses point here.
+      kind: >
+        local invites someone to make a Loomarr-only account with the reserved username; library
+        invites the owner of an existing media-server account.
+      username: The username reserved for a local invitation. Empty for a library invitation.
+      library_user_id: The media-server account invited by a library invitation. Empty for a local invitation.
+      display_name: The media-server account's name at the time of inviting. Empty for a local invitation.
+      identity_key: >
+        What the invitation reserves, used to stop two pending invitations for the same person. The
+        lowercased, trimmed username for local, or the media-server user id for library.
+      role: The role the new account gets, member or admin.
+      status: >
+        pending while it can still be used; redeemed once the person made their account; expired when
+        7 days passed unused; revoked when an admin cancelled it.
+      created_at: When the admin made the invitation, in Unix seconds.
+      expires_at: When it stops working, in Unix seconds (always 7 days after created_at).
+      terminal_at: >
+        When it was redeemed, revoked or expired, in Unix seconds. 0 while still pending.
+      redeemed_by: The id of the account created from it, in users. Empty unless redeemed.
+
+  - name: invitation_grants
+    about: >
+      One row per invitation link or QR code handed out for an invitation. When an admin makes a new link,
+      the earlier ones are cancelled; an emailed link is added alongside them. Deleted with their invitation.
+    columns:
+      token_hash: >
+        SHA-256 hash (64 hex characters) of the secret in the link. The link itself is never stored; the
+        hash can't be turned back into a working link.
+      invitation_id: The invitation this link opens, from invitations.
+      grant_kind: What the link does. Always activation (making the account).
+      conveyance: >
+        How the link reached the person. email means Loomarr sent it to the invited address; copy means
+        an admin copied the link; qr means an admin showed it as a QR code.
+      created_at: When the link was made, in Unix seconds.
+      expires_at: When the link stops working, in Unix seconds. Never later than its invitation's expiry.
+      consumed_at: When the link was used to make the account, in Unix seconds. 0 means not used.
+      revoked_at: >
+        When the link was cancelled, in Unix seconds, because a newer link replaced it, the invitation was
+        revoked, or another link was used first. 0 means not cancelled.
+
+  - name: password_recoveries
+    about: >
+      One row per "forgot password" request for a local account. Each lasts 30 minutes, and a new request
+      cancels the person's earlier pending one. Finished requests are deleted 30 days after they finished.
+    columns:
+      id: Identifies the request. password_recovery_grants point here.
+      user_id: The local account being recovered, from users.
+      status: >
+        pending while the link can still be used; redeemed once a new password was set; expired when 30
+        minutes passed unused; revoked when a newer request replaced it.
+      created_at: When the request was made, in Unix seconds.
+      expires_at: When it stops working, in Unix seconds (always 30 minutes after created_at).
+      terminal_at: When it was redeemed, revoked or expired, in Unix seconds. 0 while still pending.
+
+  - name: password_recovery_grants
+    about: >
+      One row per password-reset link emailed for a recovery request. Using one sets the new password,
+      signs the person out everywhere and cancels the request's other links. Deleted with their request.
+    columns:
+      token_hash: >
+        SHA-256 hash (64 hex characters) of the secret in the reset link. The link itself is never stored;
+        the hash can't be turned back into a working link.
+      recovery_id: The request this link belongs to, from password_recoveries.
+      created_at: When the link was made, in Unix seconds.
+      expires_at: When the link stops working, in Unix seconds. At most 30 minutes after it was made.
+      consumed_at: When the link was used to set a new password, in Unix seconds. 0 means not used.
+      revoked_at: When the link was cancelled, in Unix seconds. 0 means not cancelled.
+
+  - name: contact_addresses
+    about: >
+      Email addresses for people and pending invitations. A person has at most one verified address (the
+      one password recovery goes to) and one pending replacement. An invitation's address moves to the
+      new account when it is redeemed.
+    columns:
+      owner_kind: Whose address it is. user for a person in users; invitation for a pending invitation.
+      owner_id: The person's id in users, or the invitation's id in invitations.
+      email: The address as entered, for display and sending.
+      normalized: The lowercased address. No two rows may share it, so one address belongs to one owner.
+      status: >
+        pending until the owner has shown they receive mail there; verified once they have. Only a
+        verified address is used for password recovery.
+      provenance: >
+        How Loomarr learned the address. admin means an admin entered it; invitation and self are allowed
+        values that current code does not write. It never implies the address was verified.
+      created_at: When the address was added, in Unix seconds.
+      verified_at: When the address was verified, in Unix seconds. NULL while pending.
+
+  - name: user_favourite_channels
+    about: >
+      One row per channel a person starred as a favourite, used for the guide's Favourites filter. Deleted
+      when the person un-stars it or the channel or person is deleted.
+    columns:
+      user_id: The person, from users.
+      channel_id: The starred channel, from channels.
+      added_at_ms: When the person starred it, in Unix milliseconds.
+
+  - name: user_recent_channels
+    about: >
+      One row per channel a person recently tuned to, for the guide's Recent filter. Only each person's 20
+      most recent channels are kept.
+    columns:
+      user_id: The person, from users.
+      channel_id: The channel tuned to, from channels.
+      tuned_at_ms: When the person last tuned to it, in Unix milliseconds.
+
+  - name: user_hidden_ideas
+    about: >
+      One row per channel idea a person hid on Home. Deleted when they undo the hide or the person is deleted.
+    columns:
+      user_id: The person, from users.
+      idea_id: >
+        The hidden idea's stable name, such as genre:comedy. It isn't a link to another table, so the hide
+        survives the library changing.
+      hidden_at_ms: When the person hid it, in Unix milliseconds.

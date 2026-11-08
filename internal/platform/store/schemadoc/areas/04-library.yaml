@@ -1,0 +1,369 @@
+area: Your library
+about: >
+  Loomarr scans the household's media folders itself, matches each movie and show it finds to a TMDB
+  title, and asks a person when it can't tell (Needs you). These tables hold the folders, the files
+  found in them, the titles they make up and their details, the household's collections, the movies
+  and shows requested through Seerr or the arr apps, and the artwork shown for all of them.
+tables:
+  - name: library_roots
+    about: >
+      One row per local folder Loomarr may walk for media. A folder is added when a media server or arr
+      reports it or when someone types it in. A folder that is not in use, not typed by hand and named by
+      no path mapping is dropped.
+    columns:
+      path: The folder as Loomarr opens it, an absolute path.
+      in_use: >
+        1 when the folder is confirmed for scanning. A discovered folder starts at 0; one typed by hand
+        starts at 1.
+      readable: 1 when the last check could open the folder.
+      checked_at_ms: When the folder was last checked for readability, in Unix milliseconds; 0 means never.
+      by_hand: 1 when someone typed the folder in rather than a media server or arr reporting it.
+      added_at_ms: When the folder was added, in Unix milliseconds.
+      scanned_at_ms: When a walk of the folder last completed, in Unix milliseconds; 0 means never.
+
+  - name: library_root_paths
+    about: >
+      The path map. One row per folder a media server or arr reports, saying which local folder it is.
+      Discovery rewrites rows unless someone set them by hand; a row the app stops reporting is dropped
+      once that app answers without it.
+    columns:
+      authority: The app that reported the folder, one of emby, jellyfin, sonarr or radarr.
+      authority_path: The folder as that app names it.
+      root_path: >
+        The local folder it maps to (a library_roots path), or empty when no local folder was found
+        for it.
+      by_hand: 1 when someone set the mapping by hand. Discovery never rewrites such a row.
+      seen_at_ms: When the app last reported the folder, or the mapping was last set, in Unix milliseconds.
+
+  - name: library_files
+    about: >
+      One row per media file the scanner found under an in-use folder. A file the scanner no longer
+      finds keeps its row with a missing time; all of a folder's rows go when the folder is forgotten.
+    columns:
+      path: The file as Loomarr opens it, an absolute path.
+      root: The folder it was found under (a library_roots path).
+      size_bytes: The file's size in bytes at the last walk.
+      modified_ns: >
+        The file's modification time at the last walk, in Unix nanoseconds. With the size it marks the
+        file's revision, so an unchanged file is never opened again.
+      identity: >
+        A digest of what said what the file is (its arr record, ids in its name, its NFO sidecar) when
+        it was last written to the library. Cleared to make the scanner write the file again.
+      kind: What the file was last written as, one of movie, episode or extra; empty for a problem file.
+      header: >
+        Whether the file's container header has been read. One of pending (not yet), read, or failed
+        (it can't be read, so the file can't be played).
+      problem: >
+        Why the file is skipped, or empty for none. One of disc_image (a disc image),
+        identity_conflict (what names the file disagrees), or invalid_facts (the library refused what
+        was read from it).
+      held: >
+        1 when a walk no longer found the file and that walk's removals are waiting for a person to
+        confirm them. A held file still counts as present.
+      seen_at_ms: When a walk last found the file, in Unix milliseconds.
+      missing_at_ms: When a walk stopped finding the file, in Unix milliseconds; 0 means it is present.
+      inventory_item_id: The title the file was last written as (a library_items id); empty until known.
+      inventory_series_id: For an episode, its show (a library_items id); empty otherwise or until known.
+
+  - name: library_items
+    about: >
+      One row per movie, show and episode the scanner wrote, with the details shown on the Library
+      pages. Rewritten each time the title is written; a title whose files have gone keeps its row, so
+      it finds its collections and answer again if it comes back. Whether it is present comes from
+      library_files.
+    columns:
+      id: Identifies the title. library_files, collections and the rows below point here.
+      kind: One of movie, series or episode.
+      name: The title's name.
+      sort_name: The lower-case name it sorts by.
+      year: The year, or 0 when unknown.
+      updated_at_ms: When the row was last written, in Unix milliseconds.
+      catalog: >
+        The library_catalog row its details come from, written provider:kind:id (for example
+        tmdb:movie:603); empty for none.
+      origin_authority: >
+        The scanned folder the title was found in, as scan: followed by a digest of the folder's path.
+        With origin_key it is the title's scan origin, which a person's answer is kept against.
+      origin_key: >
+        Where in that folder the title was found, a digest of a movie's file (file:...) or a show's
+        folder (series:dir:...).
+      grounded: >
+        1 when something gives the title an id (match_basis is not empty). A movie or show at 0 with no
+        answer is listed in Needs you.
+      searched: >
+        The name, year and evidence the title was last searched for on TMDB to find candidates; empty
+        when never searched. A title is searched again only when this would change.
+      match_basis: >
+        What said which title it is. One of manager (an arr tracks it), embedded_id (an id in the file
+        or folder name), sidecar (an NFO file), link (a person's answer), or search (one TMDB result
+        agreed); empty for nothing. Set for movies and shows only.
+      match_app: >
+        The app that said it, one of sonarr, radarr, nfo or tmdb; empty for evidence Loomarr finds
+        itself.
+      match_page: The title's page in that app, for a person to open; empty when it has none.
+      needs_noticed: >
+        1 once a daily Needs you notice has counted the title as new, so a restart neither repeats
+        nor loses a notice.
+      set_key: >
+        For a movie, the library_catalog row of the TMDB collection it belongs to (for example
+        tmdb_collection:collection:10); empty for none. Lets the Collections page say "you have 3 of 4".
+      original_title: The title in its original language, or empty.
+      overview: The description, or empty.
+      premiere_date: The release or first-air date as the source gave it, such as 2013-05-01; empty when unknown.
+      rating: >
+        The content rating, such as TV-PG; empty when unknown. An episode with no rating of its own
+        takes its show's.
+      score: The community score from 0 to 10; 0 when unknown.
+      runtime_ms: The running time in milliseconds; 0 when unknown.
+      season: An episode's season number; 0 for movies and shows.
+      episode: An episode's episode number; 0 for movies and shows.
+      episode_end: The last episode number a multi-episode file covers; 0 for a single episode.
+      series_authority: An episode's show, by the scan folder part of the show's scan origin; empty otherwise.
+      series_key: An episode's show, by the folder part of the show's scan origin; empty otherwise.
+      series_id: >
+        An episode's show (a library_items id), filled once both the episode and the show are written;
+        empty otherwise.
+      name_from: The app that supplied the name (sonarr, radarr, nfo or tmdb); empty when unknown.
+      year_from: The app that supplied the year; empty when unknown.
+      overview_from: The app that supplied the description; empty when unknown.
+      premiere_from: The app that supplied the premiere date; empty when unknown.
+      rating_from: >
+        The app that supplied the rating, or show when an episode's rating is its show's; empty when
+        unknown.
+      score_from: The app that supplied the score; empty when unknown.
+      runtime_from: The app that supplied the running time; empty when unknown.
+
+  - name: library_ids
+    about: >
+      A title's external ids, one row each. Replaced whenever the title is written; deleted with the
+      title.
+    columns:
+      item_id: The title (a library_items id).
+      namespace: Which id it is, such as tmdb, tvdb or imdb.
+      value: The id in that namespace.
+
+  - name: library_genres
+    about: >
+      A title's genres, in the order the source gave them. Replaced whenever the title is written;
+      deleted with the title. An episode has none of its own; its show's apply.
+    columns:
+      item_id: The title (a library_items id).
+      name: The genre.
+      position: Where the genre came in the source's list, from 0.
+
+  - name: library_studios
+    about: >
+      A title's studio or network, in the order the source gave them. Replaced whenever the title is
+      written; deleted with the title. An episode has none of its own; its show's apply.
+    columns:
+      item_id: The title (a library_items id).
+      name: The studio or network.
+      position: Where it came in the source's list, from 0.
+
+  - name: library_tags
+    about: >
+      A title's tags (the source's keywords), in the order the source gave them. Replaced whenever the
+      title is written; deleted with the title.
+    columns:
+      item_id: The title (a library_items id).
+      name: The tag.
+      position: Where the tag came in the source's list, from 0.
+
+  - name: library_catalog
+    about: >
+      What TMDB says about a title or a TMDB collection, cached so a scan never has to ask it. A row is
+      added when a title names it, and refreshed in the background.
+    columns:
+      provider: The catalog, tmdb for a movie or show, tmdb_collection for a collection.
+      kind: What the record is fetched as, one of movie, series or collection.
+      external_id: The id the catalog knows it by.
+      record: >
+        The catalog's record as JSON (names, description, ids, artwork and so on). Empty until fetched,
+        and empty after the catalog said it has no such title.
+      fetched_at_ms: When the record was last fetched, in Unix milliseconds; 0 means never.
+      retry_at_ms: After a failed fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none.
+
+  - name: library_candidates
+    about: >
+      The TMDB search results for a movie or show Loomarr can't identify, offered in Needs you. A
+      title's rows are replaced each time it is searched.
+    columns:
+      inventory_item_id: The title searched for (a library_items id).
+      rank: The result's place in the list, from 0 for the best.
+      kind: One of movie or series.
+      tmdb_id: The result's TMDB id.
+      name: The result's name.
+      year: The result's year, or 0 when unknown.
+      overview: The result's description, or empty.
+      poster: The result's poster URL at TMDB, or empty.
+      name_match: 1 when the result's name agrees with what is on disk.
+      year_match: 1 when the result's year agrees with what is on disk.
+      length_match: >
+        1 when the rest of what is on disk agrees: a movie's running time, or a show's seasons and
+        episodes.
+
+  - name: library_answers
+    about: >
+      The answer for a movie or show nothing else identifies, either the TMDB title it is or "not a
+      title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted
+      when the answer is taken back.
+    columns:
+      origin_authority: The scanned folder of the title's scan origin, as in library_items.
+      origin_key: Where in that folder the title is, as in library_items.
+      kind: One of movie or series.
+      tmdb_id: The TMDB title it is linked to; empty when ignored.
+      ignored: 1 when a person said it is not a title.
+      answered_at_ms: When the answer was given, in Unix milliseconds.
+      answered_by: >
+        Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when
+        exactly one TMDB result agreed on name, year and length. A person's answer replaces a search
+        answer.
+
+  - name: library_collections
+    about: >
+      The household's own collections, each an ordered list of titles. Made in Loomarr or brought over
+      from a media server; deleted when someone deletes the collection.
+    columns:
+      id: Identifies the collection. library_collection_members points here.
+      name: The collection's name.
+      description: The collection's description, or empty.
+      imported_from: The media server it was brought over from, emby or jellyfin; empty when made in Loomarr.
+      created_at_ms: When the collection was made, in Unix milliseconds.
+      updated_at_ms: When the collection was last changed, in Unix milliseconds.
+
+  - name: library_collection_members
+    about: >
+      The titles in a collection, in order. A member whose title has left the library is skipped when
+      shown but kept, so the title returns to its place if it comes back.
+    columns:
+      collection_id: The collection (a library_collections id).
+      inventory_item_id: The title (a library_items id).
+      position: The title's place in the collection, from 1.
+
+  - name: library_item_paths
+    about: >
+      The media server's own file path for one of its items, remembered so a channel can play the item
+      without asking the media server at airtime. A stale row is harmless; it is rewritten on the next
+      lookup.
+    columns:
+      item_id: The media server's id for the item.
+      server_path: >
+        The file's path as the media server names it, not the local one; the path map is applied when
+        it is read.
+      updated_at: When the path was last written, in Unix seconds.
+
+  - name: series_episodes
+    about: >
+      A cached copy of one show's episode list as the media server reports it, so the guide doesn't
+      ask the media server per show on every request. Replaced whole on each refresh.
+    columns:
+      library_id: The media server's id for the show.
+      episodes_json: >
+        A JSON array of the show's episodes, each with its item id, title, length, season and episode
+        numbers, year and rating. An empty array means the show has no episodes present.
+      episode_count: How many episodes episodes_json holds.
+      fetched_at: When the list was last read from the media server, in Unix seconds; 0 means never.
+
+  - name: titles
+    about: >
+      One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking
+      it from wanted to in the library (or given up on). Rows are kept.
+    columns:
+      key: >
+        Identifies the title, as series:tvdb:id for a show with a TVDB id, otherwise movie:tmdb:id or
+        series:tmdb:id.
+      title_json: >
+        The title as JSON, with its media type (movie or series), TMDB and TVDB ids, name, year and, for
+        a show, the seasons wanted (none listed means all).
+      state: >
+        Where it is. One of wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting
+        for a release), downloading (a release was grabbed), available (in the library), or unavailable
+        (given up on).
+      library_id: The media server's id for the title once it is in the library; empty before.
+      requested_at: When Seerr or an arr first accepted the request, in Unix seconds; 0 means not yet.
+      deadline: >
+        When a requested or downloading title is given up on, in Unix seconds; it is also pushed
+        forward briefly while a check is working on the title. 0 for none.
+      attempts: How many times sending the request has failed.
+      last_error: The last error sending or tracking the request, or empty.
+      updated_at: When the row last changed state, in Unix seconds.
+      progress: How much of the download is done, from 0 to 1.
+      eta_text: The download's time left, as the arr words it; empty when unknown.
+      download_status: The arr's queue status, such as downloading, warning or stalled; empty when none.
+      arrived_at: >
+        When the title arrived in the library after being requested, in Unix seconds. 0 when it never
+        arrived or was already in the library when picked.
+      episodes_have: For a downloading show, how many wanted episodes are on disk; 0 otherwise.
+      episodes_wanted: For a downloading show, how many episodes are wanted; 0 otherwise.
+
+  - name: images
+    about: >
+      One row per piece of artwork (posters, channel icons, clip stills and so on). The image bytes are
+      files on disk named by their hash, never in the database. An image nothing refers to is deleted,
+      and TMDB artwork is deleted six months after it was fetched, as TMDB's terms require.
+    columns:
+      hash: >
+        The SHA-256 of the original bytes, in hex. Its identity and file name. Artwork not yet
+        downloaded is keyed by a hash of its URL until the bytes arrive.
+      origin: >
+        Where the bytes came from, which decides whether they can be got back after a restore. One of
+        upload (a person uploaded it; not recoverable), remote (downloaded from TMDB or a media server;
+        recoverable from source_url), extracted (made from local media, such as a clip still or a poster
+        beside a file; recoverable), or generated (made by Loomarr; treated as not recoverable).
+      source_url: The URL a remote image was downloaded from; empty for every other origin.
+      visibility: >
+        Who may fetch it. public needs no sign-in (a channel icon other apps fetch); member needs a
+        signed-in person.
+      role: >
+        What the image is for, which sets its sizes and shape. One of poster, backdrop, icon, thumb
+        (a clip still) or watermark (a channel's on-screen logo).
+      mime: The original's file type, such as image/png.
+      width: The original's width in pixels.
+      height: The original's height in pixels.
+      bytes: The original's size in bytes.
+      animated: 1 when the original moves (a clip's hover loop).
+      placeholder: A tiny blurred preview (a ThumbHash, base64) shown while the image loads.
+      dominant_hex: The image's average colour, as #rrggbb.
+      meta: >
+        A JSON object of free-form notes about the image, such as attribution, licence or upstream
+        ids. {} when there are none.
+      origin_fetched_at: >
+        When a remote image's bytes were downloaded, in Unix seconds; 0 means not downloaded yet. Drives
+        the six-month expiry for TMDB artwork.
+      created_at: When the image was first stored, in Unix seconds.
+      updated_at: When the row last changed, in Unix seconds.
+      last_used_at: When the image was last used, in Unix seconds. Older images lose their resized copies first when space runs short.
+      frame_count: How many frames the original has; 1 for a still image.
+      duration_ms: An animation's length in milliseconds; 0 for a still image.
+      loop_count: >
+        How many times an animation plays. Empty (NULL) for a still image, 0 for an endless loop.
+
+  - name: image_refs
+    about: >
+      What each image is used for. An image can serve several owners (the same poster as a title's art
+      and a channel's icon). Deleted with the image; an image left with no rows here is cleaned up.
+    columns:
+      image_hash: The image (an images hash).
+      owner_kind: >
+        What kind of thing uses it, such as channel, clip, library_item (a title's poster),
+        library_candidate (a Needs you result's poster) or filler_split_proposal.
+      owner_id: The id of the thing that uses it, in that kind's own table.
+      role: What the image is for here, one of poster, backdrop, icon, thumb or watermark.
+
+  - name: image_derivatives
+    about: >
+      One resized copy of an image in one format, stored as a file on disk. Made on demand or in the
+      background; any row can be deleted to free space and costs only a re-encode. Deleted with the
+      image.
+    columns:
+      image_hash: The original image (an images hash).
+      recipe: >
+        The encoder settings it was made with, such as loomarr-rendition-v2. Changed settings make new
+        copies rather than reusing old ones.
+      format: The file format, one of avif, webp or jpeg.
+      width: The copy's width in pixels.
+      bytes: The copy's size in bytes.
+      output_hash: The SHA-256 of the copy's bytes, in hex; empty for copies made before it was recorded.
+      path: Where the copy's file is on disk.
+      animated: 1 when the copy keeps the original's motion.
+      created_at: When the copy was made, in Unix seconds.

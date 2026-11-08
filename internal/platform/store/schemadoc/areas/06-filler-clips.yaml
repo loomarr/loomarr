@@ -1,0 +1,518 @@
+area: Filler clips
+about: >
+  Filler is the short clips (vintage ads, station promos, bumpers, PSAs) that play in the breaks
+  between shows. These tables remember the clip catalog and its tags, where clips come from and
+  how they were downloaded, how each clip was prepared and checked, what aired, and the directory of
+  TV stations a clip can name.
+tables:
+  - name: clips
+    about: >
+      One row per filler clip, identified by a hash of its bytes. The folder scan and intake add
+      rows; a row goes away when its file is no longer in any clip folder, unless its recording was
+      deliberately reclaimed (reaped_at), in which case the row stays. A clip's category is not
+      stored: it is the most specific product tag in clip_tags.
+    columns:
+      hash: >
+        The clip's identity: a 64-character hex hash sampled from its bytes. Two copies of the same
+        file are one clip. Other filler tables point here.
+      path: >
+        Where the file is, relative to the clip folder (for example a3/f9/<hash>.mp4). A location,
+        not an identity.
+      tunarr_program_id: >
+        The Tunarr program id for this clip when Tunarr knows it; NULL on installs without Tunarr.
+      name: >
+        Display name: a title from the source or its sidecar file, a name built from grounded
+        evidence, one a person wrote, or the filename.
+      role: >
+        What the clip is: unclassified (not yet known), commercial, bumper, station_id, psa,
+        trailer, interstitial, political or news.
+      era: >
+        The year the clip is from, such as 1994; a year ending in 0 means the decade. 0 means not
+        known.
+      audience: >
+        Who the clip suits: kids, family, general or late_night. Empty when not yet tagged.
+      duration_ms: Length of the clip in milliseconds, measured from the file.
+      rating: Optional content rating; empty when none.
+      source: >
+        Where the clip came from: the id of the registered filler source that downloaded it (such
+        as archive:<collection>), or filler-dir for a file dropped into the clip folder.
+      quality: >
+        Resolution label such as 1080p or 480p, from the measured video height. Empty for an
+        audio-only clip. Shown only; it does not affect selection by default.
+      license: >
+        The licence URL the source declared for the clip. Empty means unknown, never public
+        domain.
+      thumbnail: >
+        Still image file, relative to the thumbnail cache folder. Empty when not generated yet.
+      play_count: >
+        How many times Loomarr's own playout has aired the clip. Channels played through Tunarr
+        never report plays, so their clips stay at 0.
+      last_played_at: When Loomarr's playout last aired the clip, in Unix seconds; 0 means never.
+      removed_at: >
+        When the clip was removed from the catalog, in Unix seconds; 0 means present. The file is
+        kept; a removed clip is not listed or aired.
+      held: >
+        1 while the clip is recorded but not yet playable: every new clip starts held and is
+        released when its preparation finishes and it is ready.
+      updated_at: When the row last changed, in Unix seconds.
+      preview: >
+        Short animated preview shown on hover, relative to the preview cache folder. Empty when not
+        generated yet.
+      language: >
+        Spoken language detected in the clip, as a language code such as en. Empty means not
+        checked yet; none means checked and there is no speech.
+      transcript: The clip's spoken words, once transcribed. Empty when not transcribed or wordless.
+      brand: >
+        The advertiser the clip is for, such as a cereal or car maker. Kept only when the name
+        appears in the clip's text, transcript or on-screen text; empty otherwise.
+      visible_text: >
+        Text a vision model read off the clip's frames, such as a logo, product name or year. Brands
+        and eras from vision are kept only when supported by this text.
+      is_composite: >
+        1 when the file is a recorded break holding many ads. A composite never airs itself; the
+        clips split out of it do.
+      parent_hash: >
+        The composite clip this clip was split out of. Empty for a clip that was not split from
+        one.
+      created_at: When the clip was first added to the catalog, in Unix seconds.
+      thumb_image_hash: >
+        The image service's id for the still image. Empty when not stored there yet.
+      hover_image_hash: >
+        The image service's id for the hover preview. Empty when not stored there yet.
+      reaped_at: >
+        When the clip's file was deleted on purpose while its row was kept, in Unix seconds: a
+        composite whose recording was reclaimed after splitting, or a copy retired for failing the
+        defect check. NULL means the file is still there.
+      geographic_scope: >
+        How widely the clip aired: national, local (one station's own material) or unknown.
+      country: The country the clip aired in, as a two-letter ISO code. Empty when not known.
+      network: The broadcast network the clip is tied to, when known from evidence.
+      station: >
+        The broadcast station the clip belongs to, as an id in Loomarr's station directory. A local
+        clip is local to this station.
+      air_date: The date the clip was broadcast, as YYYY-MM-DD, when known from evidence.
+      geo_evidence: >
+        The source text that supports the clip's geography, or operator when a person set it.
+      placement: >
+        Where a ready clip may be scheduled: break_body (inside a break), bookend (opening or closing
+        a break) or not_playable. Set when the clip becomes ready.
+      enrichment_revision: >
+        A counter that goes up when the clip's name, role, source, transcript or on-screen text
+        changes. Research and tagging results record the revision they were made from, so a change
+        makes them run again.
+      name_source: >
+        Where the name came from: source (a title inside the media), sidecar (the downloaded info
+        file), grounded (built from evidence such as the brand), curated (written by a person),
+        filename (never shown to viewers), or unknown.
+
+  - name: clip_tags
+    about: >
+      Each tag a clip carries from the taxonomy (taxa). Rows are rewritten whenever a clip is
+      tagged or the taxonomy changes, and go away with the clip.
+    columns:
+      clip_hash: The clip that carries the tag (clips.hash).
+      taxon: The tag (taxa.slug).
+      leaf: >
+        1 when the tag was set directly on the clip by a person or the tagger. 0 when it was added
+        automatically because the clip carries a more specific tag beneath it (beer adds alcohol and
+        drinks).
+
+  - name: taxa
+    about: >
+      The tag vocabulary for clips, one row per tag, arranged as trees on separate axes. Loomarr
+      seeds it on first start and adds new shipped tags over time; operators can edit and delete
+      tags.
+    columns:
+      slug: The tag's stable id, such as beer. Tag rows elsewhere point here.
+      label: The tag's display name.
+      parent: >
+        The slug of the broader tag above this one on the same axis. Empty for a top-level tag.
+      axis: >
+        Which kind of tag it is: product (what the clip sells), format (what the clip is, such as a
+        PSA or trailer), seasonal (when it belongs, such as Christmas), audience-cue (a hint about
+        who it suits) or presentation (such as animated or live action).
+      synonyms: >
+        JSON array of other words that mean this tag, so a tagger saying lager is read as beer.
+      aliases: >
+        JSON array of former slugs of this tag, so clips tagged under an old name still match after
+        a rename.
+      updated_at: When the tag last changed, in Unix seconds.
+
+  - name: taxa_closure
+    about: >
+      Every ancestor and descendant pair in the tag trees, including each tag paired with itself.
+      Rebuilt from taxa whenever the trees change, so "everything under drinks" is one lookup.
+    columns:
+      ancestor: The broader tag (taxa.slug).
+      descendant: A tag at or below it (taxa.slug).
+
+  - name: taxonomy_seed_revisions
+    about: >
+      Which shipped batches of new tags this install has already received. Each batch is applied
+      once, so a tag the operator later deletes is not added back.
+    columns:
+      version: The shipped tag batch's number.
+      applied_at: When the batch was applied, in Unix seconds.
+
+  - name: filler_sources
+    about: >
+      The remote collections clips are downloaded from: archive.org collections and YouTube
+      channels or playlists, added by an operator or offered from Loomarr's shipped list. A row
+      stays until the operator deletes it; switching it off keeps its history.
+    columns:
+      id: >
+        The source's stable id, separate from its address so re-pointing a source keeps its
+        history.
+      kind: The provider, archive (archive.org) or youtube.
+      uri: The archive.org identifier or URL, or the YouTube channel or playlist URL.
+      label: The source's display name; when empty the address is shown instead.
+      license: >
+        The licence URL the source declares. Empty means unknown, never public domain.
+      last_fetched_at: >
+        When the source last had at least one item queued for download, in Unix seconds; 0 means
+        never.
+      created_at: When the source was added, in Unix seconds.
+      enabled: >
+        1 when the source is switched on. A switched-off source is not checked, searched or
+        downloaded from.
+      fetch_every_seconds: >
+        How often to check this source for new clips, in seconds. NULL uses the global setting; 0
+        means never check it automatically.
+      fetch_max_per_run: >
+        The most items to download from this source in one check. NULL uses the global setting.
+      country: >
+        The country the source serves, as a two-letter ISO code. Empty means it follows the
+        install's own location.
+      last_checked_at: >
+        When the last check of the source finished, even if it found nothing new, in Unix seconds;
+        0 means never.
+      check_failure_count: >
+        How many checks in a row have failed since the last success. Sets how long to wait before
+        retrying.
+      check_retry_at: >
+        Earliest time to retry after a failed check, in Unix seconds; 0 means no wait.
+      check_lease_until: >
+        While a check is running, the time its claim on the source expires, in Unix seconds; 0 means
+        no check is running.
+      scan_cursor: >
+        The provider's id for the last item examined in the sweep in progress, so a check resumes
+        where the previous one stopped. Empty when no sweep is in progress.
+      scan_watermark: >
+        The provider's id for the newest item seen by the last completed sweep.
+      scan_pending_watermark: >
+        The provider's id for the newest item seen when the sweep in progress began. It becomes
+        scan_watermark when that sweep completes.
+
+  - name: filler_providers
+    about: >
+      One on/off switch per provider. A remote source downloads only when both it and its provider
+      are switched on.
+    columns:
+      kind: The provider, archive or youtube.
+      enabled: 1 when the provider is switched on.
+
+  - name: filler_source_check_outcomes
+    about: >
+      Counts of what source checks found, per source, for the sweep in progress or the last
+      completed one. Cleared when a new sweep begins; deleted with the source.
+    columns:
+      source_id: The source checked (filler_sources.id).
+      disposition: >
+        What happened to the items: queued (sent for download), already_known, too_short,
+        too_long, live (a live stream), upcoming (not yet available), private, unavailable or
+        metadata_incomplete.
+      item_count: How many items had that outcome.
+
+  - name: filler_pulls
+    about: >
+      A proposed batch of clips to download, which an operator approves or dismisses. Decided pulls
+      are kept as history of what was agreed to.
+    columns:
+      id: Identifies the pull.
+      title: A short summary of what the pull is for.
+      reason: Why Loomarr proposed it, such as the coverage gap it fills. Shown above the plan.
+      proposed_by: Who or what proposed it, such as a user id or a job name.
+      status: pending, approved or dismissed.
+      note: The operator's note narrowing the pull, given at approval.
+      plan_json: >
+        JSON document of the plan: what was asked for, the items selected (each with its source,
+        address, estimate and why it was chosen, including any the operator dropped), the
+        candidates turned down and why, and how each source was treated.
+      created_at: When the pull was proposed, in Unix seconds.
+      decided_at: When it was approved or dismissed, in Unix seconds; 0 while pending.
+      decided_by: Who approved or dismissed it. Empty while pending.
+
+  - name: filler_pull_commits
+    about: >
+      Links an approved pull to the one download run its approval started. Written in the same step
+      as the approval.
+    columns:
+      pull_id: The approved pull (filler_pulls.id).
+      acquisition_id: The download run it started (filler_acquisition_runs.id).
+
+  - name: filler_acquisition_runs
+    about: >
+      One row per download run: a source check, an approved pull or URLs an admin typed in. Shows
+      what was asked for and how the downloads went. Runs left unfinished by a restart are marked as
+      errors.
+    columns:
+      id: Identifies the run. Downloaded files and prepared clips point here.
+      trigger: >
+        What started it: source (a registered source's check), pull (an approved pull) or manual
+        (URLs typed by an admin). scheduled is also allowed.
+      source_id: >
+        The registered source every item came from (filler_sources.id). Empty when items came from
+        several sources or none.
+      pull_id: The approved pull that started it (filler_pulls.id). Empty for other triggers.
+      status: queued, running, success or error.
+      requested: How many items were asked for.
+      fetched: How many files were downloaded.
+      skipped: How many items were skipped, mostly because they were already downloaded.
+      failed: How many items failed to download.
+      empty_count: >
+        How many items returned no clips and no error, usually a mistyped id or an empty source.
+      error: The error that ended the run. Empty when none.
+      started_at: When the run started, in Unix seconds.
+      completed_at: When the run finished, in Unix seconds; 0 while still going.
+      updated_at: When the row last changed, in Unix seconds.
+
+  - name: filler_acquisition_artifacts
+    about: >
+      One row per file a download produced, tracking it from download to the clip folder to the
+      catalog. Rows that need repair are kept until someone deals with them.
+    columns:
+      id: Identifies the downloaded file.
+      acquisition_id: The download run that produced it (filler_acquisition_runs.id).
+      source_id: The registered source it came from (filler_sources.id). Empty for a typed URL.
+      provider: The provider that downloaded it, such as archive or youtube.
+      source_url: The address that was downloaded.
+      staging_path: >
+        Where the file was put while it was being checked, relative to the clip folder. Empty when
+        not staged.
+      media_path: Where the media file is published, relative to the clip folder.
+      sidecar_path: >
+        The info file downloaded beside the media, relative to the clip folder. Empty when there is
+        none.
+      media_sha256: The SHA-256 hash of the whole file, in hex.
+      media_bytes: The file's size in bytes.
+      clip_hash: The clip it became (clips.hash). Empty until it is catalogued.
+      state: >
+        staged (downloaded, not yet in the clip folder), published (in the clip folder), consumed
+        (catalogued as a clip) or repair (held back for a person to fix).
+      repair_reason: Why the file needs repair. Empty otherwise.
+      completed_at: When the download finished, in Unix seconds.
+      updated_at: When the row last changed, in Unix seconds.
+      provider_archive_entry: >
+        The line the downloader records so it never downloads this item again. Empty when the
+        provider gives none.
+      provider_archive_committed: 1 once that line has been saved to the downloader's record.
+      remote_id: The provider's id for the item. Empty for older downloads and typed URLs.
+      gap: >
+        The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not
+        chosen for a gap.
+
+  - name: filler_clip_pipeline
+    about: >
+      Each clip's preparation: which step it is at, how that step is going, and the clip's outcome
+      (ready, rejected, waiting for review). One row per clip, deleted with the clip.
+    columns:
+      clip_hash: The clip being prepared (clips.hash).
+      stage: >
+        The step the clip is at, in order: probe, transcode, split, screen, defects, language,
+        transcribe, vision, finish.
+      status: >
+        How the current step is going: queued, running, done, failed (retried after a wait) or
+        skipped (did not apply).
+      progress: Percent done within the current step, 0 to 100.
+      disposition: >
+        The clip's outcome: running, review (waiting for a person), ready, complete (a composite
+        that has been split), rejected (refused by a check) or dismissed (a person said no).
+      reject_reason: >
+        Why the clip was rejected, as a code: unprobeable, too_short, no_audio, no_video,
+        black_content, silent_content, too_quiet, unplayable, defect, language, duplicate,
+        screening, sliver or unidentified. Empty when not rejected.
+      reject_detail: >
+        The measurement behind the rejection, such as a duration under the minimum or the language
+        heard.
+      attempts: How many times the current step has been tried. Resets when the clip moves on.
+      next_run: When the row may next be worked on, in Unix seconds; 0 means now.
+      stages_json: >
+        JSON array of the finished steps, each with its status, an explanatory note for a skip or
+        failure, attempts, and start and finish times.
+      enrolled_at: When the clip entered preparation, in Unix seconds.
+      updated_at: When the row last changed, in Unix seconds.
+      force_run: >
+        1 when a person asked to re-run the current step, so it runs even if it would normally be
+        skipped. Cleared once the step runs.
+      acquisition_id: >
+        The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips
+        dropped into the folder by hand.
+      preparation_attempt: >
+        Which attempt at preparing the clip this is, counting from 1. 0 for clips enrolled before
+        this was tracked.
+      preparation_started_at: When the current preparation attempt began, in Unix seconds.
+      preparation_start_reason: >
+        Why the current attempt began: enrollment (the clip was new) or restart.
+      preparation_progress: Percent done across the whole preparation attempt; -1 means unknown.
+      stage_queued_at: When the current step was queued, in Unix seconds.
+      stage_started_at: When the current step started running, in Unix seconds.
+
+  - name: filler_clip_variants
+    about: >
+      Pairs of clips that are different versions of the same ad, such as a cut-down or another
+      ending. A break never carries two versions, and airing one rests the others.
+    columns:
+      a_hash: One clip of the pair (clips.hash); always the smaller hash.
+      b_hash: The other clip of the pair (clips.hash).
+
+  - name: filler_clip_fingerprints
+    about: >
+      A saved picture-and-sound fingerprint of each clip, used to spot copies and versions of the
+      same ad. Recomputed when the fingerprint method changes; removed when the clip is.
+    columns:
+      clip_hash: The clip fingerprinted (clips.hash).
+      algorithm: The fingerprint method and its version.
+      fingerprint_json: >
+        JSON document with the clip's duration and the hashes of its sampled video frames and audio.
+
+  - name: filler_clip_defects
+    about: >
+      Each clip's latest picture and sound defect check, against a quality bar set by the clip's
+      era, and the verdict it earned. One row per clip, replaced on each new measurement.
+    columns:
+      clip_hash: The clip checked (clips.hash).
+      measurement_version: >
+        The version of the measuring method. Clips measured under an older one are measured again.
+      floor_version: The version of the quality bars the clip was judged against.
+      era: The clip era the verdict was judged against.
+      outcome: >
+        What the detectors decided: pass, fail, borderline (between the bars) or undecided (too
+        little picture to judge).
+      readings_json: >
+        JSON document of the raw measurements, such as blockiness, blur, dropouts, interlacing,
+        upscaling and audio clipping.
+      assessment_json: >
+        JSON document of the era bar used and each check's outcome, measured value and bar.
+      measured_at: When the clip was measured, in Unix seconds.
+      judgement_json: >
+        JSON document of a vision model's ruling on a borderline clip and its reason. Empty until
+        there is one.
+      judge_failures: >
+        How many times asking the vision model brought back no ruling since the last one.
+      verdict: >
+        The final standing: pass, fail, undecided (too little picture; allowed to air) or pending (a
+        borderline clip waiting for a ruling).
+      verdict_reason: What decided the verdict, such as the detectors or the judge's reason.
+      label: >
+        A maintainer's own pass or fail label for the clip, used to tune the bars. Empty when
+        unlabelled.
+      label_era: The clip era the label was given against; 0 when unlabelled.
+      labelled_at: When the label was given, in Unix seconds; 0 when unlabelled.
+
+  - name: filler_inferior_copies
+    about: >
+      Copies of an ad that lost to a better copy of the same ad and were merged into it. Kept so the
+      same file is never catalogued again.
+    columns:
+      clip_hash: The losing copy's former clip hash.
+      source_hash: >
+        The hash of the file the losing copy came from, so the same file offered again is skipped.
+        Equal to clip_hash when it was not re-encoded.
+      survivor_hash: The copy it lost to (clips.hash).
+      decided_at: When the copies were merged, in Unix seconds.
+
+  - name: filler_ready_events
+    about: >
+      A record written when a clip becomes ready to air, at the same moment it joins the playable
+      catalog. One per clip.
+    columns:
+      id: Identifies the event, as ready:<clip hash>.
+      clip_hash: The clip that became ready (clips.hash).
+      acquisition_id: >
+        The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips from
+        a folder.
+      enrollment_kind: >
+        What let the clip into filler: acquisition (a download run) or source (a clip folder or
+        source the operator chose).
+      enrollment_ref: The download run id or source id behind enrollment_kind.
+      placement: Where it may be scheduled, break_body or bookend.
+      outcome: The outcome recorded; always ready.
+      created_at: When the clip became ready, in Unix seconds.
+
+  - name: filler_curated_offers
+    about: >
+      Which entries from Loomarr's shipped list of curated sources this install has been offered.
+      An offer adds the source switched off, and the offer is kept after the source is deleted so a
+      deleted source stays deleted.
+    columns:
+      source_id: The offered source (filler_sources.id).
+      list_version: The version of the shipped list that first offered it.
+      offered_at: When it was offered, in Unix seconds.
+      stations: >
+        Comma-separated station ids the shipped list ties the source to, refreshed on every offer.
+      local_state: >
+        What Loomarr did about nearby stations: empty (nothing), on (switched it on for a nearby
+        place), operator (it was already on, so it is left to the operator) or off (the operator
+        switched it back off, so it stays off).
+
+  - name: filler_airings
+    about: >
+      Each time a clip aired on a channel, used to rest clips between airings across the household.
+      Airings from the last eight weeks are kept, plus each clip's newest few beyond that.
+    columns:
+      channel_id: The channel it aired on.
+      clip_hash: The clip that aired (clips.hash).
+      aired_at_ms: When the clip was scheduled to start, in Unix milliseconds.
+      recorded_at_ms: When playout recorded the airing, in Unix milliseconds.
+
+  - name: filler_context_reports
+    about: >
+      Suggestions about a clip's year, country or station found by researching it online, with the
+      pages cited, plus Loomarr's own uncited era guesses. Only a confident, cited geography finding
+      updates the clip; the rest are shown as suggestions.
+    columns:
+      clip_hash: The clip researched (clips.hash).
+      producer: >
+        What made the suggestion: the research model (context-model:<name>), or observation for
+        Loomarr's own uncited era guess.
+      producer_version: >
+        The producer's version; for an observation, what the guess came from (vision or split).
+      adapter: The search service used to find pages, such as web. Empty for an observation.
+      adapter_version: The search service's version. Empty for an observation.
+      input_revision: The clip's enrichment_revision the research was based on.
+      report_json: >
+        JSON document of the report: the suggested year or decade, country, scope, station,
+        confidence and explanation, and the search query and pages it cites.
+      completed_at: When the research finished, in Unix seconds.
+
+  - name: broadcast_stations
+    about: >
+      A directory of over-the-air TV stations that filler clips can name, so a clip titled with a
+      station's call sign is placed in that station's town. Shipped with Loomarr and replaced
+      whole at startup when a newer revision ships. Not related to Loomarr's own channels.
+    columns:
+      id: >
+        Identifies the station. `fcc:` and the FCC facility id, or `wd:` and the Wikidata id for a
+        station only Wikidata knows.
+      country: The two-letter country code (US territories have their own, such as PR).
+      city: The station's community of license.
+      region: The state or territory postal code.
+      latitude: Latitude of the community of license.
+      longitude: Longitude of the community of license.
+
+  - name: broadcast_station_call_signs
+    about: >
+      Every call sign a broadcast station has held, with the dates it was used. Replaced with the
+      station directory.
+    columns:
+      station_id: The station (broadcast_stations.id).
+      call_sign: The base call sign without suffixes such as -TV, for example WEWS.
+      from_date: The first day the station used it, as YYYY-MM-DD. Empty when unknown.
+      to_date: The day it stopped (not included), as YYYY-MM-DD. Empty when it is still in use or unknown.
+
+  - name: broadcast_station_seed_revisions
+    about: >
+      One row per revision of the shipped station directory that startup has applied. Kept forever.
+    columns:
+      version: The revision number of the shipped station directory.
+      applied_at: When it was applied, in Unix seconds.

@@ -75,7 +75,9 @@ make db-view ENGINE=postgres    # the Postgres schema, built by the migrations a
 ```
 
 CloudBeaver runs in Docker at the loopback address the command prints, and opens in your browser
-on a desktop session (`DB_VIEW_NO_BROWSER=1` skips that). It stops on Ctrl-C.
+on a desktop session (`DB_VIEW_NO_BROWSER=1` skips that). It stops on Ctrl-C. The
+[database reference](../reference/database.md) says what every table and column holds; on Postgres,
+CloudBeaver also shows that text as each table's and column's comment.
 
 The viewer only ever sees a copy, and the copy is removed on exit: a `VACUUM INTO` snapshot, the
 file you pass, or a `pg_dump` restored into a throwaway Postgres. Don't point any viewer at a live

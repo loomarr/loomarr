@@ -1,0 +1,127 @@
+area: Channels and the guide
+about: >
+  The channels Loomarr runs, what they have aired, and the holidays that decide what is in season
+  for seasonal channels and seasonal filler. The requests that create and refine channels are under
+  Suggestions.
+tables:
+  - name: channels
+    about: >
+      One row per channel. A channel is created by approving a channel request or by hand. Detaching
+      a channel keeps its row with status `detached`; deleting it removes the row, its airing
+      history and its channel feedback.
+    columns:
+      id: Identifies the channel. Other tables point here.
+      intent_ref: >
+        The channel request job (proposal_jobs.id) the channel was created from. Empty for a channel
+        made by hand. No two channels share one.
+      name: The channel's display name.
+      number: The channel number, which is its position in the guide. Unique.
+      grp: The group the channel is listed under in the guide. Empty for none.
+      logo: >
+        The channel icon's URL, either one of this Loomarr's own image URLs or an outside link.
+        Empty for no icon.
+      strategy: >
+        How programmes are ordered onto the timeline. `sequential` plays them in lineup order,
+        `shuffle` rotates them in a shuffled order, and `time_slot` pins them to blocks of the day.
+      filler_ref: >
+        Reserved for a reference to the channel's filler list. Nothing in the current app sets it,
+        so it is empty.
+      tunarr_id: >
+        The id of the channel's copy in Tunarr, an outside playout server, kept from the first time
+        Loomarr pushed the channel there. Empty for a channel that never went to Tunarr.
+      status: >
+        The channel's state. `building` (being set up), `live` (ready to play), `drifted` (a
+        scheduled programme left the library and was replaced), `empty` (every lineup entry was
+        filtered out, so nothing can air), `paused` (taken off air by an admin but kept), or
+        `detached` (no longer managed by Loomarr).
+      shuffle_seed: >
+        The number a shuffled channel's order is drawn from, so it repeats the same way. 0 means it
+        is worked out from the channel id.
+      lineup_json: >
+        The approved lineup, a list of entries. Each names a title by its key (such as
+        `movie:tmdb:603`), with its display name, known runtime, any season range or episode
+        selection, and the rating, genres and year the channel rules filter on.
+      desired_json: >
+        The last computed schedule, a list of slots. Each slot is a programme, a pending title not
+        yet in the library, a filler break, or flexible padding, with its title, length and
+        episode numbers.
+      reconcile_deadline: >
+        When the channel is next due to be checked and brought up to date, in Unix seconds. Moved
+        forward while one check holds it. 0 means due now.
+      updated_at: When the row last changed, in Unix seconds.
+      policy_json: >
+        The channel's programming rules. What may air (era, genres), who it is for (the audience
+        rating ceiling), how often things may repeat, the ordering, seasonal behaviour and
+        time-of-day rules, plus the rules an admin pinned and the loosening the last check had to
+        apply. `{}` means all defaults.
+      broadcast_codec: >
+        The video codec the channel streams in, `h264` or `hevc`, chosen from what most of its
+        titles are encoded in. Every programme and filler clip is converted to it.
+      revision: >
+        Counts changes to the row, starting at 1. A change is only saved if it was made from the
+        latest revision, so two edits can't overwrite each other.
+      playout_anchor: >
+        When the channel's current broadcast cycle started, in Unix seconds. The schedule is laid
+        out from this moment. 0 for a channel that has not gone on air yet.
+      created_at: >
+        When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made
+        channel older than the column).
+      intent_json: >
+        The approved channel request the channel was made from (description, era, tone, titles to
+        include or leave out, the chosen name), without one-off refinements. A refine or a scheduled
+        re-curation starts from it. Empty for a hand-made channel.
+      requested_by: >
+        The person who asked for the channel (users.id). Set when the channel is created and never
+        changed. Empty when no member asked.
+
+  - name: airings
+    about: >
+      What a channel actually broadcast: one row each time an episode or film started playing on a
+      channel. Written when the programme is really streamed, not when it is scheduled. The
+      schedule uses it to prefer what hasn't aired recently. Rows older than 8 days are pruned down
+      to the latest airing of each episode or film; rows go when their channel is deleted.
+    columns:
+      channel_id: The channel it aired on (channels.id).
+      library_item_id: The library item id of the episode or film that aired.
+      aired_at: When the programme started, in Unix seconds.
+      recorded_at: When Loomarr first recorded the airing, in Unix seconds.
+      key: >
+        The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a
+        show. Kept for diagnosis.
+
+  - name: holidays
+    about: >
+      One row per holiday: when each country keeps it and the words that show a title or clip is
+      about it. Seasonal channel rules and seasonal filler tags read them. Each holiday owns the
+      seasonal tag with the same slug. Rows are added at startup from Loomarr's shipped list and
+      when a seasonal tag is made. An undated holiday is removed when its tag stops being seasonal.
+    columns:
+      id: The holiday's slug, which is also the slug of its seasonal tag (taxa.slug).
+      label: The holiday's display name.
+      position: The display order. It also settles ties when two holidays are in season at once.
+      words: >
+        JSON with the phrases that tie a title to the holiday. Words that name it in a channel
+        request, its names, look-alike phrases that are not about it (such as "santa monica"), mood
+        words, and genre sets that back up a mood word.
+      kept: >
+        JSON list of when countries keep the holiday. Each entry lists countries, the day rule
+        (fixed date, nth or last weekday, or relative to Easter) and the season window around it.
+        `[]` means undated, so its clips air all year.
+      air_window: >
+        JSON rule for the time of year when a TV episode first airing then was made for the holiday.
+        Empty when there is none.
+      members: >
+        JSON list of holiday ids for a group holiday (such as "happy holidays"), which is in season
+        whenever any member is. `[]` for an ordinary holiday.
+      name_needs_corroboration: >
+        1 when the holiday's name alone is not enough to tie a title to it, because the name is also
+        an ordinary title word.
+      updated_at: When the row last changed, in Unix seconds.
+
+  - name: holiday_seed_revisions
+    about: >
+      One row per revision of Loomarr's shipped holiday list that startup has applied. Each
+      revision applies once, so a later change or removal by an admin is never undone. Kept forever.
+    columns:
+      version: The revision number of the shipped holiday list.
+      applied_at: When it was applied, in Unix seconds.

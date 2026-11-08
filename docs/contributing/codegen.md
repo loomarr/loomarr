@@ -13,6 +13,7 @@ committed, a `*-verify` target that fails CI on drift.
 | `api/openapi.yaml` | Huma operation definitions | `make openapi` | `make openapi-verify` |
 | `docs/reference/settings.md` | the settings registry | `make config-docs` | `make config-docs-verify` |
 | `docs/reference/make.md` | the Makefile + CI workflows | `make dev-docs` | `make dev-docs-verify` |
+| `docs/reference/database.md` | the migrations + `internal/platform/store/schemadoc/areas/` | `make db-docs` | `make db-docs-verify` |
 | `docs/design.md` §2 map | package doc comments + imports | `make arch-docs` | `make arch-docs-verify` |
 | `docs/diagrams/generated/*.svg` | D2 sources | `make diagrams` | `make diagrams-verify` |
 | `web/packages/design-system/generated/` | `packages/design-system/src/tokens` | `make fe-tokens` | `make fe-tokens-verify` |

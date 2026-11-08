@@ -90,6 +90,10 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 				_ = s.Close()
 				return nil, err
 			}
+			if err := commentPostgresSchema(ctx, s.db); err != nil {
+				_ = s.Close()
+				return nil, err
+			}
 		}
 		return s, nil
 
