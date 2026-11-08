@@ -1,7 +1,8 @@
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { addedLine, NewThisWeek, newSince } from "./new-this-week";
 import type { NewThisWeekProps } from "./new-this-week.type";
 

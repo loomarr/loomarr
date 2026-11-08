@@ -1,4 +1,4 @@
-import { useTheme, View } from "@tamagui/core";
+import { isWeb, useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ComponentRef, ReactNode } from "react";
 import { forwardRef, useId } from "react";
 import { Pressable, ScrollView, useWindowDimensions } from "react-native";
@@ -194,12 +194,60 @@ const Disclosure = ({
   );
 };
 
-export type { AdaptiveDirection, AdaptiveSplitProps, DisclosureProps, ScrollFrameProps };
+type SectionHeaderProps = {
+  /** Trailing controls at the end of the row: an `Action variant="link"`, or a small cluster. */
+  children?: ReactNode;
+  density?: Density;
+  /** The heading's id, so the section can point `aria-labelledby` at it. */
+  id?: string;
+  /** The quiet count or explanation beside the title ("3 people", "14 titles · 1 new channel"). */
+  meta?: ReactNode;
+  title: string;
+};
+
+/**
+ * A section's title, its meta, and trailing controls (#1659 web mock: Home's Watching now, On now,
+ * Tonight). The row wraps: at a narrow width the controls drop to their own line instead of
+ * squeezing the title into a word-per-line column.
+ */
+const SectionHeader = ({ children, density = "pointer", id, meta, title }: SectionHeaderProps) => (
+  <View
+    alignItems="center"
+    columnGap={semanticSpace.control}
+    flexDirection="row"
+    flexWrap="wrap"
+    marginBottom={semanticSpace.control}
+    rowGap={4}
+  >
+    <Text
+      density={density}
+      id={id}
+      strong
+      textRole="headline"
+      {...(isWeb ? { as: "h2", style: { margin: 0 } } : { accessibilityRole: "header" as const })}
+    >
+      {title}
+    </Text>
+    {meta != null ? (
+      <Text density={density} textRole="caption" tone="secondary">
+        {meta}
+      </Text>
+    ) : null}
+    {children != null ? (
+      <View alignItems="center" flexDirection="row" gap={semanticSpace.control} marginLeft="auto">
+        {children}
+      </View>
+    ) : null}
+  </View>
+);
+
+export type { AdaptiveDirection, AdaptiveSplitProps, DisclosureProps, ScrollFrameProps, SectionHeaderProps };
 export {
   AdaptiveSplit,
   adaptiveBreakpoints,
   Disclosure,
   resolveAdaptiveDirection,
   ScrollFrame,
+  SectionHeader,
   useWindowWidth,
 };

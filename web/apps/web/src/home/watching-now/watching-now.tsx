@@ -1,6 +1,6 @@
+import { SectionHeader } from "@loomarr/design-system";
 import { ProgrammeCard, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
-import { SectionHeader } from "@/components/ui/section-header";
 import { AiringArtwork } from "../on-now";
 import type { WatchingCard, WatchingNowProps } from "./watching-now.type";
 

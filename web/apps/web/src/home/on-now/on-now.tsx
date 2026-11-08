@@ -1,13 +1,13 @@
 import type { GuideChannelState } from "@loomarr/core/guide";
 import { guideChannelState } from "@loomarr/core/guide";
 import type { StatusTone } from "@loomarr/design-system";
+import { Action, SectionHeader } from "@loomarr/design-system";
 import { surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
-import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import type { AiringArtworkProps, OnNowProps } from "./on-now.type";
 
 const MAX_CHANNELS = 6;
@@ -103,7 +103,9 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
   return (
     <section aria-labelledby="home-on-now">
       <SectionHeader id="home-on-now" title="On now">
-        <SectionHeaderAction render={<Link to="/guide" />}>Full guide</SectionHeaderAction>
+        <Action accessibilityRole="link" render={<Link to="/guide" />} variant="link">
+          Full guide
+        </Action>
       </SectionHeader>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {onNow.map(({ channel, data, airing }) => (
