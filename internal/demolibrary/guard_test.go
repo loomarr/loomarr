@@ -113,8 +113,6 @@ var migrated = []string{
 	"web/apps/web/src/components/loomarr/people/invitation-join/invitation-join.stories.tsx",
 	"web/apps/web/src/components/loomarr/people/invitation-roster/invitation-roster.stories.tsx",
 	"web/apps/web/src/components/loomarr/shell/app-shell/app-shell.stories.tsx",
-	"web/apps/web/src/components/ui/card/card.stories.tsx",
-	"web/apps/web/src/components/ui/disclosure/disclosure.stories.tsx",
 	"web/apps/web/src/components/ui/label/label.stories.tsx",
 	// The layout and incoming stories and the e2e mock backend (slice 14).
 	"web/apps/web/src/design-system/layout.stories.tsx",
@@ -133,7 +131,6 @@ var migrated = []string{
 	"web/apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/now-next-strip/now-next-strip.stories.tsx",
 	"web/apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.stories.tsx",
-	"web/apps/web/src/components/ui/caption/caption.stories.tsx",
 	"web/apps/web/src/design-system/identity.stories.tsx",
 	"web/apps/web/src/design-system/overlay.stories.tsx",
 	"web/native-stories/identity.stories.tsx",
