@@ -73,8 +73,9 @@ func demoItemPath(t *testing.T, demo *testkit.DemoLibrary) (id, serverPath strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	id = testkit.FirstMovie().ID()
-	serverPath, err = filepath.Abs(demo.Layout.Item(id))
+	film := testkit.FirstMovie()
+	id = film.ID()
+	serverPath, err = filepath.Abs(demo.Layout.FilmFile(film))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +87,10 @@ func TestResolveInput_StaleCacheFallsBackAndRefreshes(t *testing.T) {
 	id, serverPath, pm := demoItemPath(t, demo)
 	cache := &memPathCache{m: map[string]string{id: filepath.Join(filepath.Dir(serverPath), "moved-away.mp4")}}
 	c := New(Emby, demo.URL, testkit.DemoLibraryToken, "dev").WithPathCache(cache)
-	want := "/mnt/items/" + id + ".mp4"
+	want, ok := pm.Apply(serverPath)
+	if !ok {
+		t.Fatalf("the path map does not mount %q", serverPath)
+	}
 
 	src := c.ResolveInput(t.Context(), id, pm, func(p string) bool { return p == want })
 	if src.Kind != InputFile || src.URL != want {
