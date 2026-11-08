@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "up creates the server; down destroys it now"
+        description: "up creates a server; down destroys the test server now; down-demo destroys the demo site"
         type: choice
-        options: [up, down, sweep]
+        options: [up, down, down-demo, sweep, status]
         default: up
       version:
         description: "A published release, such as 0.2.0-beta.9-rc.11. Empty builds the commit this run is on."
@@ -31,6 +31,11 @@ on:
         description: "Empty keeps it private. An https address puts it on the internet through the tunnel."
         type: string
         default: ""
+      gpu:
+        description: "nvidia runs a test server on an NVIDIA A16 (about $0.47 an hour) and checks it encodes with NVENC"
+        type: choice
+        options: [none, nvidia]
+        default: none
   schedule:
     - cron: "23 * * * *"
 
@@ -79,7 +84,8 @@ jobs:
     needs: build-image
     if: always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped')
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # Replacing the public demo site waits for the new server to seed, about 25 minutes.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Run the staging action
@@ -90,6 +96,7 @@ jobs:
           STAGING_HOURS: ${{ inputs.hours || '4' }}
           STAGING_DATABASE: ${{ inputs.database || 'sqlite' }}
           STAGING_PUBLIC_URL: ${{ inputs.public_url }}
+          STAGING_GPU: ${{ inputs.gpu || 'none' }}
           CF_TUNNEL_TOKEN: ${{ secrets.STAGING_CF_TUNNEL_TOKEN }}
           DEMO_ADMIN_PASSWORD: ${{ secrets.STAGING_DEMO_ADMIN_PASSWORD }}
           VERSION: ${{ inputs.version }}

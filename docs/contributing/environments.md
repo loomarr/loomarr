@@ -9,7 +9,7 @@
 | Pull request | Fast affected checks | The change compiles and its unit tests pass | Browser suites, race tests, Postgres or the image |
 | Merge queue | Every affected gate on the current base | The change is safe to merge | That the image runs as a deployed app |
 | Demo site | A real image beside the demo library | The image starts, seeds, and plays channels | Real data, GPU encoding or load |
-| Staging | The demo site on a cloud server, for a few hours | The same as the demo site, away from your machine, from a commit or a release | Real data, GPU encoding or load |
+| Staging | The demo site on a cloud server, for a few hours, optionally on an NVIDIA GPU | The same as the demo site, away from your machine, from a commit or a release; with a GPU, that it encodes with NVENC | Real data, Intel or AMD encoding, or load |
 | Migration rehearsal | A candidate image on a copy of a real backup, with no network | The migrations run on real data and the server starts | That the app behaves well afterwards |
 | Production | A signed release | Everything, on real data | Nothing: a mistake here reaches a household |
 
@@ -69,14 +69,40 @@ more minutes for the image. When it has booted, open the address the run prints 
 the private network. Destroy it early with `-f action=down`. Add `-f database=postgres` to run it on
 Postgres.
 
-Only one server runs at a time. An hourly sweep destroys anything past its time, even if the run
-that made it failed.
+One test server runs at a time, beside the demo site. Its name ends in `-test`. An hourly sweep
+destroys anything past its time, even if the run that made it failed. `-f action=status` shows each
+server's state.
+
+While a server boots, its log is at `http://<server name>:8080/boot.log` on the tailnet. If the
+boot fails, the log stays there for half an hour, then the server powers off and the sweep
+destroys it.
+
+### Test GPU encoding
+
+Add `-f gpu=nvidia` to run the test server on an NVIDIA A16, at about $0.47 an hour:
+
+```bash
+gh workflow run staging.yml -f version=0.2.0-beta.9-rc.11 -f gpu=nvidia -f hours=2
+```
+
+The cloud installs the GPU driver as the server boots. The boot then adds Docker's GPU support,
+and the demo site checks the server chose NVENC. If it chose anything else, the server powers off
+and the sweep destroys it, so a server that stays up has proved NVENC works. A GPU server must
+expire: one left running would cost about $344 a month. No cloud offers Intel Arc, so Intel
+encoding is still tested at home.
 
 ### Keep the demo site running
 
 Use `-f hours=keep` for the long-running demo site. The sweep leaves it alone, and it runs until
-`-f action=down`, at about $40 a month. To move it to a new version, take it down and start it
-again. While it's up, that one server is also staging, because only one runs at a time.
+`-f action=down-demo`, at about $40 a month. `-f action=down` only destroys the test server, so
+testing never takes the demo site down.
+
+To move the public demo site to a new version, run `up` again with the same `hours=keep` and
+`public_url`, without taking it down. The new server starts beside the old one and joins the tunnel
+only once it has seeded and locked itself down. The run waits until the public address answers from
+the new server (`startedAt` in `/v1/system/version`), then destroys the old one. Visitors see no
+error page; one may be signed out once. If the new server never arrives, the old one keeps serving
+and the run fails.
 
 The workflow only ever acts on a server with both its tag and its name prefix, because the cloud
 key can reach everything in the account. Keep both checks in `scripts/staging.sh`.
@@ -84,7 +110,9 @@ key can reach everything in the account. Keep both checks in `scripts/staging.sh
 ### Put it on the internet
 
 Add `-f public_url=https://demo.loomarr.media` to reach it through a Cloudflare Tunnel. No port opens
-on the server, and the address keeps working when the server is rebuilt.
+on the server, and the address keeps working when the server is rebuilt. Only the demo site
+(`hours=keep`) can go public: every server holding the tunnel token answers the address, so a
+second one would split visitors between them.
 
 The `demo` admin password is in this repository, so it can't be left working on a public site. Before
 the tunnel starts, `scripts/demo-site.sh` creates a `guest` member account with the password

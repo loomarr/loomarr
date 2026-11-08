@@ -1,20 +1,42 @@
 # The staging server's first boot. scripts/staging.sh prepends the #! line and these variables:
 # STAGING_NAME, VERSION, STAGING_IMAGE, STAGING_COMMIT, STAGING_DATABASE, STAGING_PUBLIC_URL,
-# TS_AUTHKEY, CF_TUNNEL_TOKEN, DEMO_ADMIN_PASSWORD.
+# STAGING_GPU, TS_AUTHKEY, CF_TUNNEL_TOKEN, DEMO_ADMIN_PASSWORD.
 #
 # Nothing listens on the public address: the firewall closes it first, and the demo site binds
 # only to the tailnet address. A public site is reached through an outbound tunnel instead.
 
 set -euxo pipefail
-exec >>/var/log/loomarr-staging.log 2>&1
-# The server holds no cloud key, so it reports a failed boot by powering off. The sweep destroys any
-# stopped server, including a kept one, so a dead server cannot bill forever.
-trap poweroff ERR
+LOG_DIR=/var/log/loomarr-staging
+mkdir -p "$LOG_DIR"
+exec >>"$LOG_DIR/boot.log" 2>&1
 
 TAILSCALE_IMAGE=tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
 REPOSITORY=https://github.com/loomarr/loomarr.git
 SOURCE=/opt/loomarr
 export DEBIAN_FRONTEND=noninteractive
+# Vultr's own first-boot steps may hold the package lock, and apt would fail at once without this.
+APT=(apt-get -o DPkg::Lock::Timeout=900)
+address='' log_server=''
+
+# show_log serves the boot log on the tailnet's web port, until the demo site needs the port.
+show_log() {
+	if [ -n "$address" ] && [ -z "$log_server" ]; then
+		python3 -m http.server --bind "$address" 8080 --directory "$LOG_DIR" >/dev/null 2>&1 &
+		log_server=$!
+	fi
+}
+
+# The server holds no cloud key, so it reports a failed boot by powering off. The sweep destroys any
+# stopped server, including a kept one, so a dead server cannot bill forever. Its log stays readable
+# on the tailnet for half an hour first.
+failed() {
+	# The demo site holds the web port once it starts, so stop it to show the log.
+	docker ps -q --filter label=com.docker.compose.project=staging | xargs -r docker stop || true
+	show_log
+	sleep 1800
+	poweroff
+}
+trap failed ERR
 
 ufw --force reset
 ufw default deny incoming
@@ -22,8 +44,16 @@ ufw default allow outgoing
 ufw allow in on tailscale0
 ufw --force enable
 
-apt-get update
-apt-get install -y curl docker.io docker-compose-v2 git
+"${APT[@]}" update
+"${APT[@]}" install -y curl git
+# Vultr's GPU image already has Docker from Docker's own repository, and Ubuntu's docker.io
+# conflicts with its containerd.io, so use whatever Docker is there.
+if ! command -v docker >/dev/null; then
+	"${APT[@]}" install -y docker.io docker-compose-v2
+fi
+if ! docker compose version >/dev/null 2>&1; then
+	"${APT[@]}" install -y docker-compose-plugin || "${APT[@]}" install -y docker-compose-v2
+fi
 
 # The key reaches Docker by name, so tracing this command cannot write it to the log.
 export TS_AUTHKEY
@@ -34,13 +64,43 @@ docker run -d --name tailscaled --restart unless-stopped --network host \
 	"$TAILSCALE_IMAGE"
 unset TS_AUTHKEY
 
-address=''
 for _ in $(seq 1 60); do
 	address="$(docker exec tailscaled tailscale ip -4 2>/dev/null || true)"
 	if [ -n "$address" ]; then break; fi
 	sleep 5
 done
 [ -n "$address" ]
+# Read the boot as it happens: http://<server name>:8080/boot.log
+show_log
+
+if [ "$STAGING_GPU" = nvidia ]; then
+	# Vultr's own first-boot step installs the licensed driver. Wait for it rather than install one.
+	for _ in $(seq 1 120); do
+		if nvidia-smi >/dev/null 2>&1; then break; fi
+		sleep 5
+	done
+	nvidia-smi
+	# NVIDIA's container toolkit lets Docker hand the GPU to the server (docker/compose.nvidia.yaml).
+	# The GPU image may already have it, and a second copy of its repository breaks apt.
+	if ! command -v nvidia-ctk >/dev/null; then
+		curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey |
+			gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+		# shellcheck disable=SC2016 # $(ARCH) is apt's variable, written literally
+		echo 'deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/$(ARCH) /' \
+			>/etc/apt/sources.list.d/nvidia-container-toolkit.list
+		"${APT[@]}" update
+		"${APT[@]}" install -y nvidia-container-toolkit
+	fi
+	nvidia-ctk runtime configure --runtime=docker
+	# The tailnet container restarts with Docker and keeps its identity in /var/lib/tailscale.
+	systemctl restart docker
+	# Evidence for the log: NVENC needs libnvidia-encode on the host and mounted into the container.
+	ldconfig -p | grep -E 'libnvidia-(encode|nvcuvid)' || echo 'host: no libnvidia-encode in the linker cache'
+	nvidia-ctk --version || true
+	grep -v -E '^\s*(#|$)' /etc/nvidia-container-runtime/config.toml || true
+	docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABILITIES=compute,video,utility debian:stable-slim \
+		sh -c 'ls /usr/lib/x86_64-linux-gnu | grep -E "libnvidia-(encode|nvcuvid)|libcuda" || echo "container: no NVENC library"' || true
+fi
 
 git init -q "$SOURCE"
 git -C "$SOURCE" remote add origin "$REPOSITORY"
@@ -57,11 +117,13 @@ else
 fi
 
 export DEMO_SITE_PROJECT=staging DEMO_SITE_BIND="$address" DEMO_SITE_PORT=8080 DEMO_SITE_CPUS=3
-export DEMO_SITE_DATABASE="$STAGING_DATABASE"
+export DEMO_SITE_DATABASE="$STAGING_DATABASE" DEMO_SITE_GPU="$STAGING_GPU"
 export DEMO_SITE_URL="http://$STAGING_NAME:8080"
 if [ -n "$STAGING_PUBLIC_URL" ]; then
 	export DEMO_SITE_PUBLIC=1 DEMO_SITE_URL="$STAGING_PUBLIC_URL"
 	# By name, like the tailnet key, so tracing this cannot write them to the log.
 	export CF_TUNNEL_TOKEN DEMO_ADMIN_PASSWORD
 fi
+kill "$log_server"
+log_server=''
 "$SOURCE/scripts/demo-site.sh" up

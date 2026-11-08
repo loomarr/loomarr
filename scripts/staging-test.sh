@@ -28,9 +28,10 @@ if [ -e "$FAKE_DIR/api-down" ]; then
 	printf '{"error":"Invalid API token.","status":401}\n'
 	exit 22
 fi
-case "$method" in
-GET) cat "$FAKE_DIR/instances.json" ;;
-POST) printf '{"instance":{"id":"new-server"}}\n' ;;
+case "$method $url" in
+*/v1/system/version) cat "$FAKE_DIR/version.json" 2>/dev/null || true ;;
+GET*) cat "$FAKE_DIR/instances.json" ;;
+POST*) printf '{"instance":{"id":"new-server"}}\n' ;;
 esac
 FAKE
 chmod +x "$WORK/bin/curl"
@@ -92,10 +93,27 @@ reset "{\"instances\":[$KEPT,$NEAR_KEEP]}"
 "$ROOT/scripts/staging.sh" sweep >/dev/null
 [ "$(deleted)" = "near " ] || fail "sweep with a kept server deleted: $(deleted)"
 
-# Down destroys every server of ours, and nothing else.
+# Down destroys our test servers and leaves the demo site; down-demo is the only way to remove it.
 reset "{\"instances\":[$MAIL,$TAG_ONLY,$LABEL_ONLY,$KEPT,$(ours a "$FUTURE"),$(ours b "$PAST")]}"
 "$ROOT/scripts/staging.sh" down >/dev/null
-[ "$(deleted)" = "a b demo " ] || fail "down deleted: $(deleted)"
+[ "$(deleted)" = "a b " ] || fail "down deleted: $(deleted)"
+reset "{\"instances\":[$MAIL,$TAG_ONLY,$LABEL_ONLY,$KEPT,$(ours a "$FUTURE")]}"
+"$ROOT/scripts/staging.sh" down-demo >/dev/null
+[ "$(deleted)" = "demo " ] || fail "down-demo deleted: $(deleted)"
+
+# A test server runs beside the demo site, under a name the tailnet can tell apart.
+reset "{\"instances\":[$KEPT]}"
+VERSION=1.0.0 "$ROOT/scripts/staging.sh" up >/dev/null
+jq -e '.label == "loomarr-staging-1-0-0-test"' "$WORK/body.json" >/dev/null || fail 'a test server beside the demo site was not created'
+reset "{\"instances\":[$(ours running "$FUTURE")]}"
+VERSION=1.0.0 STAGING_HOURS=keep "$ROOT/scripts/staging.sh" up >/dev/null
+jq -e '.label == "loomarr-staging-1-0-0"' "$WORK/body.json" >/dev/null || fail 'the demo site was not created beside a test server'
+
+# A GPU test server gets the A16 plan, and the boot script is told to set up the GPU.
+reset '{"instances":[]}'
+VERSION=1.0.0 STAGING_GPU=nvidia "$ROOT/scripts/staging.sh" up >/dev/null
+jq -e '.plan == "vcg-a16-6c-60g-16vram" and .region == "ord"' "$WORK/body.json" >/dev/null || fail 'a GPU server used the wrong plan or region'
+[[ "$(jq -r .user_data "$WORK/body.json" | base64 -d)" == *STAGING_GPU=nvidia* ]] || fail 'the boot script was not told about the GPU'
 
 # Keep is the demo site: tagged to stay, with no expiry at all.
 reset '{"instances":[]}'
@@ -133,10 +151,27 @@ if jq -r .user_data "$WORK/body.json" | base64 -d | grep -qE 'test-tunnel-token|
 	fail 'a private server received the tunnel token or admin password'
 fi
 reset '{"instances":[]}'
-VERSION=1.0.0 STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=test-tunnel-token DEMO_ADMIN_PASSWORD=test-admin-password \
-	"$ROOT/scripts/staging.sh" up >/dev/null
+VERSION=1.0.0 STAGING_HOURS=keep STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=test-tunnel-token \
+	DEMO_ADMIN_PASSWORD=test-admin-password "$ROOT/scripts/staging.sh" up >/dev/null
 jq -r .user_data "$WORK/body.json" | base64 -d | grep -q test-tunnel-token || fail 'a public server got no tunnel token'
 jq -r .user_data "$WORK/body.json" | base64 -d | grep -q test-admin-password || fail 'a public server got no admin password'
+
+# A public demo site is replaced without a gap: the old one goes only once the new one answers.
+PUBLIC_UP=(VERSION=1.0.0 STAGING_HOURS=keep STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=tunnel
+	DEMO_ADMIN_PASSWORD=correct-horse-battery STAGING_REPLACE_SETTLE=0)
+reset "{\"instances\":[$KEPT]}"
+printf '{"startedAt":"2999-01-01T00:00:00Z"}\n' >"$WORK/version.json"
+env "${PUBLIC_UP[@]}" "$ROOT/scripts/staging.sh" up >/dev/null
+grep -q '^POST ' "$WORK/requests" || fail 'replacing the demo site created no server'
+[ "$(deleted)" = "demo " ] || fail "replacing the demo site deleted: $(deleted)"
+# The old server answering is not the new one, so a replacement that never arrives keeps it.
+reset "{\"instances\":[$KEPT]}"
+printf '{"startedAt":"2000-01-01T00:00:00Z"}\n' >"$WORK/version.json"
+if env "${PUBLIC_UP[@]}" STAGING_REPLACE_TIMEOUT=0 "$ROOT/scripts/staging.sh" up >/dev/null 2>&1; then
+	fail 'a replacement that never answered went green'
+fi
+[ -z "$(deleted)" ] || fail "a failed replacement deleted: $(deleted)"
+rm "$WORK/version.json"
 
 # The database choice reaches the server.
 reset '{"instances":[]}'
@@ -145,8 +180,12 @@ VERSION=1.0.0 STAGING_DATABASE=postgres "$ROOT/scripts/staging.sh" up >/dev/null
 
 # Up refuses anything that would run unbounded, twice, or from an unclear source.
 reset "{\"instances\":[$(ours running "$FUTURE")]}"
-expect_refused 'a second server' VERSION=1.0.0
+expect_refused 'a second test server' VERSION=1.0.0
+reset "{\"instances\":[$KEPT]}"
+expect_refused 'a second demo site' VERSION=1.0.0 STAGING_HOURS=keep
 reset '{"instances":[]}'
+expect_refused 'a GPU server that never expires' VERSION=1.0.0 STAGING_GPU=nvidia STAGING_HOURS=keep
+expect_refused 'an unknown GPU' VERSION=1.0.0 STAGING_GPU=amd
 expect_refused 'a zero lifetime' VERSION=1.0.0 STAGING_HOURS=0
 expect_refused 'a lifetime over the cap' VERSION=1.0.0 STAGING_HOURS=25
 expect_refused 'a non-numeric lifetime' VERSION=1.0.0 STAGING_HOURS=3h
@@ -158,11 +197,20 @@ expect_refused 'a version with shell syntax' 'VERSION=1.0.0;reboot'
 expect_refused 'no tailnet key' VERSION=1.0.0 TS_AUTHKEY=
 expect_refused 'an unknown database' VERSION=1.0.0 STAGING_DATABASE=mysql
 ADMIN_OK=DEMO_ADMIN_PASSWORD=correct-horse-battery
-expect_refused 'a public site with no tunnel' VERSION=1.0.0 STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN= "$ADMIN_OK"
-expect_refused 'a public address that is not https' VERSION=1.0.0 STAGING_PUBLIC_URL=http://demo.example.test CF_TUNNEL_TOKEN=tunnel "$ADMIN_OK"
-expect_refused 'a public site with no admin password' VERSION=1.0.0 STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=tunnel DEMO_ADMIN_PASSWORD=
-expect_refused 'a short admin password' VERSION=1.0.0 STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=tunnel DEMO_ADMIN_PASSWORD=short
-expect_refused 'an admin password that needs escaping' VERSION=1.0.0 STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=tunnel 'DEMO_ADMIN_PASSWORD=correct"horse"battery'
+PUBLIC=(VERSION=1.0.0 STAGING_HOURS=keep STAGING_PUBLIC_URL=https://demo.example.test)
+# Every server holding the tunnel token answers the public address, so only the demo site may.
+expect_refused 'a public test server' VERSION=1.0.0 STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=tunnel "$ADMIN_OK"
+expect_refused 'a public site with no tunnel' "${PUBLIC[@]}" CF_TUNNEL_TOKEN= "$ADMIN_OK"
+expect_refused 'a public address that is not https' "${PUBLIC[@]/https:/http:}" CF_TUNNEL_TOKEN=tunnel "$ADMIN_OK"
+expect_refused 'a public site with no admin password' "${PUBLIC[@]}" CF_TUNNEL_TOKEN=tunnel DEMO_ADMIN_PASSWORD=
+expect_refused 'a short admin password' "${PUBLIC[@]}" CF_TUNNEL_TOKEN=tunnel DEMO_ADMIN_PASSWORD=short
+expect_refused 'an admin password that needs escaping' "${PUBLIC[@]}" CF_TUNNEL_TOKEN=tunnel 'DEMO_ADMIN_PASSWORD=correct"horse"battery'
+
+# Status names our servers and their state, and never an address: the run's log is public.
+reset "{\"instances\":[$MAIL,{\"id\":\"s\",\"label\":\"loomarr-staging-s\",\"tags\":[\"loomarr-staging\",\"keep\"],\"main_ip\":\"203.0.113.9\",\"power_status\":\"running\"}]}"
+shown="$("$ROOT/scripts/staging.sh" status)"
+[[ "$shown" == *loomarr-staging-s*power=running* ]] || fail "status did not show the server: $shown"
+[[ "$shown" != *203.0.113.9* && "$shown" != *mail-server* ]] || fail "status showed too much: $shown"
 
 # A failed boot powers the server off, and the sweep clears it even if it was kept.
 reset '{"instances":[{"id":"dead","label":"loomarr-staging-z","tags":["loomarr-staging","keep"],"power_status":"stopped"}]}'

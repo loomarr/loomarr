@@ -10,6 +10,9 @@
 #
 # DEMO_SITE_DATABASE=postgres runs it on Postgres instead of SQLite.
 #
+# DEMO_SITE_GPU=nvidia gives the server the NVIDIA GPU (docker/compose.nvidia.yaml), and `up` fails
+# unless the server chose NVENC. It needs the NVIDIA container toolkit on the host.
+#
 # DEMO_SITE_PUBLIC=1 with CF_TUNNEL_TOKEN and DEMO_ADMIN_PASSWORD puts it on the internet through a
 # Cloudflare Tunnel. The demo admin's password is in this repository, so visitors get a member
 # account instead, and the tunnel starts only once that password no longer works.
@@ -34,6 +37,15 @@ case "$DATABASE" in
 sqlite | postgres) ;;
 *)
 	echo "demo-site: DEMO_SITE_DATABASE must be sqlite or postgres, not $DATABASE" >&2
+	exit 2
+	;;
+esac
+
+GPU="${DEMO_SITE_GPU:-none}"
+case "$GPU" in
+none | nvidia) ;;
+*)
+	echo "demo-site: DEMO_SITE_GPU must be none or nvidia, not $GPU" >&2
 	exit 2
 	;;
 esac
@@ -63,6 +75,9 @@ compose() {
 	local files=(-f "$ROOT/docker/compose.demo.yaml")
 	if [ "$DATABASE" = postgres ]; then
 		files+=(-f "$ROOT/docker/compose.demo.postgres.yaml")
+	fi
+	if [ "$GPU" = nvidia ]; then
+		files+=(-f "$ROOT/docker/compose.nvidia.yaml")
 	fi
 	if [ "$PUBLIC" = 1 ]; then
 		files+=(-f "$ROOT/docker/compose.demo.public.yaml")
@@ -120,6 +135,40 @@ lock_down() {
 		echo "demo-site: the public admin password still returns $status, so the site stays private" >&2
 		exit 1
 	}
+}
+
+# require_nvenc fails unless the server's encoder probe chose NVENC. A GPU the container can see
+# can still fail every NVENC trial encode, and then the server falls back to software and plays
+# fine, so a playing channel alone proves nothing.
+require_nvenc() {
+	local BASE="http://${DEMO_SITE_BIND:-127.0.0.1}:$DEMO_SITE_PORT" jar status capability='' waited=0
+	jar="$(mktemp)"
+	# shellcheck disable=SC2064 # the path is fixed now, and a local is gone by the time this runs
+	trap "rm -f '$jar'" RETURN
+	status="$(admin_login "$jar")"
+	[ "$status" = 200 ] || {
+		echo "demo-site: sign-in returned $status, so the encoder could not be checked" >&2
+		exit 1
+	}
+	# The probe runs in the background after start-up. No jq on a fresh server, so match the text.
+	while [ "$waited" -lt 300 ]; do
+		capability="$(curl -sS --max-time 30 -b "$jar" "$BASE/v1/playout/status" |
+			grep -o '"capability":{[^}]*}' || true)"
+		if [[ "$capability" == *'"encoder":"'?* ]]; then break; fi
+		sleep 5
+		waited=$((waited + 5))
+	done
+	[[ "$capability" == *'"encoder":"h264_nvenc"'* ]] || {
+		echo "demo-site: the server did not choose NVENC: ${capability:-no encoder after 300s}" >&2
+		# The probe keeps ffmpeg's reason to itself, so repeat the trial where its error shows.
+		# A virtual GPU without its licence refuses encoding, so show the licence and encoder state too.
+		nvidia-smi -q 2>&1 | grep -i -E -A2 'licen|encoder|virtualization|vgpu' | head -40 >&2 || true
+		compose exec -T loomarr sh -c 'nvidia-smi --query-gpu=name,driver_version --format=csv;
+			ffmpeg -hide_banner -loglevel verbose -f lavfi -i testsrc2=size=1280x720:rate=25 -t 1 -c:v h264_nvenc -f null - 2>&1 |
+				grep -v -E "^ +(Stream|Input|Output|Duration|Metadata)" | tail -40' >&2 || true
+		exit 1
+	}
+	echo "demo-site: the server encodes with NVENC: $capability"
 }
 
 # release_source exports the tagged tree with this checkout's demo Dockerfile, which an older tag
@@ -187,6 +236,10 @@ up() {
 		compose logs --tail 40 demo-seed >&2
 		echo "demo-site: the seeder failed with status $status" >&2
 		exit 1
+	fi
+	# Before lock_down, which retires the password this signs in with.
+	if [ "$GPU" = nvidia ]; then
+		require_nvenc
 	fi
 	if [ "$PUBLIC" = 1 ]; then
 		lock_down
