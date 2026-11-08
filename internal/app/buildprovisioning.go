@@ -34,7 +34,7 @@ func buildProvisioning(
 		return nil
 	}
 	reconciler := provisionbackstop.NewDynamic(st, set.requesterFor(metricRecorder), func() provisionbackstop.LibraryLookup {
-		return libraryClient.Snapshot()
+		return libraryLookup{titles: st, lib: libraryClient.Snapshot()}
 	}, emitter, provisionbackstop.Config{
 		RequestTTL: settings.RequestTTL.Get(set), DownloadingTTL: settings.DownloadingTTL.Get(set),
 	}, time.Now, log).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))

@@ -582,6 +582,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   their library item ids and with their facts. The media server adds only titles the Library
   didn't answer, while it is short of the limit; with none connected, a term the Library has no
   title for is no results rather than an error.
+- **The provisioning backstop asks the Library first** (step 15e). Its last look before a title is
+  given up as unavailable confirms one the Library holds, under its library item id; the media
+  server answers only what the Library doesn't hold.
 - **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
   stored records name at library items: titles, airings, channels' slots, scopes, rules and
   lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
