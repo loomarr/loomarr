@@ -61,6 +61,7 @@ type Library interface {
 // in one call instead of an N-lookup storm. Segregated from Library so consumers that only
 // need presence (ingest) or auth don't take on the scan surface; the concrete *Client
 // satisfies both. RecentlyAdded is the incremental path; AllItems the periodic full sweep.
+// Items read before a failure may ride with the error; the scan confirms them.
 type LibraryScanner interface {
 	RecentlyAdded(ctx context.Context, since time.Time) ([]SearchResult, error)
 	AllItems(ctx context.Context) ([]SearchResult, error)

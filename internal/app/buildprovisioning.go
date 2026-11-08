@@ -53,7 +53,7 @@ func buildProvisioning(
 	registry.Add(keeper.Job())
 
 	libraryScan := provisionbackstop.NewLibraryScan(
-		st, libraryClient, emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
+		st, libraryTitleScanner{titles: st, server: libraryClient}, emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
 	).WithActivity(activityRecorder).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.AddAll(libraryScan.Jobs())
 

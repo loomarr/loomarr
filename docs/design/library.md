@@ -537,6 +537,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
     found the file, the scanner skips it, the file isn't a title yet, or versions or episodes
     disagree.
 
+  `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
+  pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`
+  prints the map's coverage.
+
   Readers learn library item ids before the rewrite turns stored ids into them. Playout reads first:
   a programme keyed by a library item id plays that item's own playing file, with no media-server
   call (`LibraryPlayingFile`); any other id resolves through the media server as before. Item
@@ -549,10 +553,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   expands to nothing; it never falls back to the media server. A channel's derived format (4K,
   HDR) and a still's tone mapping read a library item's video from its playing file's header as
   the scanner read it (`LibraryPlayingVideo`), with no media server or inventory import.
-
-  `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
-  pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`
-  prints the map's coverage.
+- **Writers name library items** (step 15c). The availability scan, discovery's presence and the
+  channel engine's rating heal ask the Library first (`LibraryTitles`, `LibraryTitleByProviderID`:
+  movies and series with a present file, by their TMDB and TVDB ids), so a title that confirms or
+  is found owned records its library item id. The media server answers only what the Library
+  doesn't hold, and a media server that is down no longer holds back what the Library confirms.
+  The ids already stored are the rewrite's.
 
 ## Cached series episodes
 

@@ -96,11 +96,11 @@ func buildSuggestions(
 	}
 
 	catalogService := catalog.New(libraryClient, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-		return libraryPresence{lib: libraryClient.Snapshot()}
+		return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
 	})
 	result.search = searchAdapter{catalogService}
 	collectionResolver := moviecollections.New(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-		return libraryPresence{lib: libraryClient.Snapshot()}
+		return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
 	})
 	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
 	result.collections = libraryCollections{lib: libraryClient}

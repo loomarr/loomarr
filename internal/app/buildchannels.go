@@ -253,7 +253,7 @@ func buildChannels(
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
-		channelEngine.WithRatings(libraryRatings{lib: lib})
+		channelEngine.WithRatings(libraryRatings{titles: st, lib: lib})
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
