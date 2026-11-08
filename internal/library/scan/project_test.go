@@ -46,8 +46,30 @@ func TestLibrarySourcesMarksTheCopyThatPlays(t *testing.T) {
 		t.Errorf("plays = %v, %v; want the arr's copy over the sharper one", got[0].Plays, got[1].Plays)
 	}
 	v, a := got[0].Streams[0], got[0].Streams[1]
-	if v.Resolution != "1080p" || v.HDR != "HDR10" || a.AudioFormat != "Dolby Digital Plus" || a.Language != "en" || a.LanguageName != "English" {
+	if v.Resolution != "1080p" || v.HDR != "HDR10" || a.AudioFormat != "Dolby Digital Plus" || a.Language != "en" ||
+		a.LanguageName != "English" || a.ChannelLayout != "5.1(side)" {
 		t.Errorf("labels = %+v / %+v", v, a)
+	}
+}
+
+// A track's own layout stands; one its container left out is labelled as ffmpeg states it.
+func TestLibraryStreamLabelsAChannelLayout(t *testing.T) {
+	for _, tc := range []struct {
+		stated, codec string
+		channels      int
+		want          string
+	}{
+		{"", "ac3", 2, "stereo"},
+		{"", "aac", 6, "5.1"},
+		{"", "truehd", 8, "7.1"},
+		{"", "aac", 8, ""},
+		{"quad", "ac3", 4, "quad"},
+	} {
+		got := libraryStream(inventory.Stream{Kind: inventory.StreamAudio, Codec: tc.codec, Channels: tc.channels,
+			ChannelLayout: tc.stated})
+		if got.ChannelLayout != tc.want {
+			t.Errorf("%s %d (%q) = %q, want %q", tc.codec, tc.channels, tc.stated, got.ChannelLayout, tc.want)
+		}
 	}
 }
 
