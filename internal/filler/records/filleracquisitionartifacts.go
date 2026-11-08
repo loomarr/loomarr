@@ -16,13 +16,6 @@ const acquisitionArtifactSelect = `SELECT id, acquisition_id, source_id, provide
 	repair_reason, completed_at, updated_at, provider_archive_entry, provider_archive_committed, gap
 	FROM filler_acquisition_artifacts`
 
-func boolInt(value bool) int64 {
-	if value {
-		return 1
-	}
-	return 0
-}
-
 // UpsertAcquisitionArtifacts records one downloader result atomically. Publication may begin only
 // after this returns, so partial manifest persistence can never make only part of a source visible.
 func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []filler.AcquisitionArtifact) error {
@@ -60,7 +53,7 @@ func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []f
 			artifact.StagingPath, artifact.MediaPath, artifact.SidecarPath, artifact.MediaSHA256,
 			artifact.MediaBytes, artifact.ClipHash, string(artifact.State), artifact.RepairReason,
 			epoch(artifact.CompletedAt), epoch(artifact.UpdatedAt), artifact.ProviderArchiveEntry,
-			boolInt(artifact.ProviderArchiveCommitted), artifact.Gap); err != nil {
+			artifact.ProviderArchiveCommitted, artifact.Gap); err != nil {
 			return fmt.Errorf("upsert filler acquisition artifact %s: %w", artifact.ID, err)
 		}
 	}
@@ -73,20 +66,19 @@ func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []f
 func scanAcquisitionArtifact(sc scannable) (filler.AcquisitionArtifact, error) {
 	var artifact filler.AcquisitionArtifact
 	var state string
-	var completedAt, updatedAt, providerArchiveCommitted int64
+	var completedAt, updatedAt int64
 	if err := sc.Scan(
 		&artifact.ID, &artifact.AcquisitionID, &artifact.SourceID, &artifact.Provider,
 		&artifact.SourceURL, &artifact.RemoteID, &artifact.StagingPath, &artifact.MediaPath, &artifact.SidecarPath,
 		&artifact.MediaSHA256, &artifact.MediaBytes, &artifact.ClipHash, &state,
 		&artifact.RepairReason, &completedAt, &updatedAt, &artifact.ProviderArchiveEntry,
-		&providerArchiveCommitted, &artifact.Gap,
+		&artifact.ProviderArchiveCommitted, &artifact.Gap,
 	); err != nil {
 		return filler.AcquisitionArtifact{}, err
 	}
 	artifact.State = filler.AcquisitionArtifactState(state)
 	artifact.CompletedAt = fromEpoch(completedAt)
 	artifact.UpdatedAt = fromEpoch(updatedAt)
-	artifact.ProviderArchiveCommitted = providerArchiveCommitted != 0
 	return artifact, nil
 }
 

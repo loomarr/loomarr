@@ -65,7 +65,7 @@ func (s *sqlStore) EnsureSecretDataKey(ctx context.Context, candidate secretprot
 		return result, err
 	}
 	result, err = scanSecretDataKey(tx.QueryRowContext(ctx, `SELECT id, wrapped_key, active, created_at
-		FROM secret_data_keys WHERE active = 1 LIMIT 1`))
+		FROM secret_data_keys WHERE active = TRUE LIMIT 1`))
 	if err == nil {
 		if err := tx.Commit(); err != nil {
 			return secretprotection.WrappedDataKey{}, fmt.Errorf("commit secret data-key read: %w", err)
@@ -103,7 +103,7 @@ func (s *sqlStore) RotateSecretDataKey(ctx context.Context, next secretprotectio
 	if err := s.lockSecretDataKeys(ctx, tx); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE secret_data_keys SET active = 0 WHERE active = 1`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE secret_data_keys SET active = FALSE WHERE active = TRUE`); err != nil {
 		return fmt.Errorf("retire active secret data key: %w", err)
 	}
 	next.Active = true
@@ -208,12 +208,8 @@ func (s *sqlStore) lockSecretDataKeys(ctx context.Context, tx *sql.Tx) error {
 }
 
 func insertSecretDataKey(ctx context.Context, tx *sql.Tx, ph placeholder, key secretprotection.WrappedDataKey) error {
-	active := 0
-	if key.Active {
-		active = 1
-	}
 	_, err := tx.ExecContext(ctx, ph(`INSERT INTO secret_data_keys
-		(id, wrapped_key, active, created_at) VALUES (?, ?, ?, ?)`), key.ID, key.Wrapped, active, key.CreatedAt.Unix())
+		(id, wrapped_key, active, created_at) VALUES (?, ?, ?, ?)`), key.ID, key.Wrapped, key.Active, key.CreatedAt.Unix())
 	if err != nil {
 		return fmt.Errorf("insert secret data key: %w", err)
 	}
@@ -222,15 +218,13 @@ func insertSecretDataKey(ctx context.Context, tx *sql.Tx, ph placeholder, key se
 
 func scanSecretDataKey(scanner scannable) (secretprotection.WrappedDataKey, error) {
 	var key secretprotection.WrappedDataKey
-	var active int
 	var createdAt int64
-	if err := scanner.Scan(&key.ID, &key.Wrapped, &active, &createdAt); err != nil {
+	if err := scanner.Scan(&key.ID, &key.Wrapped, &key.Active, &createdAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return key, sql.ErrNoRows
 		}
 		return key, fmt.Errorf("scan secret data key: %w", err)
 	}
-	key.Active = active == 1
 	key.CreatedAt = time.Unix(createdAt, 0).UTC()
 	return key, nil
 }

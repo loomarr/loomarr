@@ -207,7 +207,7 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	}
 	// A title the maintainer said is not one is left out.
 	where = append(where, `NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
-		AND a.origin_key = i.origin_key AND a.ignored = 1)`)
+		AND a.origin_key = i.origin_key AND a.ignored = TRUE)`)
 	from := ` FROM library_items i JOIN ` + presentFiles + ` f ON f.id = i.id WHERE ` + strings.Join(where, " AND ")
 
 	group := ` GROUP BY ` + itemGroup
