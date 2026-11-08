@@ -91,7 +91,7 @@ One row per browser sign-in. Made at sign-in or when an invitation is redeemed; 
 
 One row per pairing code shown on a TV or other device that is asking to be signed in. A signed-in person types the code to approve it; the device then swaps it for a device token and the row is deleted. Codes expire after 10 minutes.
 
-**Kept:** Unbounded: a code that expires before a device redeems it is never deleted, because nothing runs the expiry sweep.
+**Kept:** Deleted when redeemed; a code that expires first is deleted by the nightly housekeeping task.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -376,9 +376,9 @@ One row each time a worker started a channel suggester job, so a request's histo
 
 ### proposals
 
-A suggested channel lineup produced by a channel suggester job, waiting for an admin to approve or deny it (shown in the app as a request). Approving it creates or changes a channel. Denied proposals are deleted after the `proposals.retention` setting (90 days by default); the others are kept.
+A suggested channel lineup produced by a channel suggester job, waiting for an admin to approve or deny it (shown in the app as a request). Approving it creates or changes a channel.
 
-**Kept:** Unbounded: denied proposals go after `proposals.retention` (90 days by default), but approved ones (kept on purpose as the record of who approved them) and superseded ones are never deleted.
+**Kept:** Denied and superseded proposals are deleted after `proposals.retention` (90 days by default). Approved ones are kept on purpose, one per approval, as the record of who approved each channel; submitted ones wait for an answer.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -399,7 +399,7 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 
 The Keep, Less like this, Never and Surprise me choices people make about titles, for the whole household or for one channel. Each choice is a new row; the newest per title wins, and a channel's choice overrides the household's. The channel suggester and re-curation read them. A channel's rows are deleted with the channel.
 
-**Kept:** Unbounded: every choice adds a row and household-wide rows are never deleted, not even replaced ones; a channel's rows go with the channel.
+**Kept:** One row per title and scope: the nightly housekeeping task deletes a choice once a newer one replaces it, and a clear once nothing is left under it. A channel's rows go with the channel.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -906,9 +906,9 @@ A cached copy of one show's episode list as the media server reports it, so the 
 
 ### titles
 
-One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking it from wanted to in the library (or given up on). Rows are kept.
+One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking it from wanted to in the library (or given up on).
 
-**Kept:** Unbounded: nothing deletes these rows; every title ever requested stays.
+**Kept:** A title in the library or given up on that no channel's lineup and no open request names is deleted by the nightly housekeeping 180 days after it last changed; picked again, it is requested afresh. A title still on its way is kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1154,7 +1154,7 @@ One row per filler clip, identified by a hash of its bytes. The folder scan and 
 
 Each tag a clip carries from the taxonomy (taxa). Rows are rewritten whenever a clip is tagged or the taxonomy changes.
 
-**Kept:** Rewritten on each retag and removed with a deleted tag or a merged copy. Tags of a clip the folder scan removes are left behind; nothing tidies them up yet.
+**Kept:** Rewritten on each retag and removed with a deleted tag or a merged copy. Tags of a clip the folder scan removed are deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1254,7 +1254,7 @@ Counts of what source checks found, per source, for the sweep in progress or the
 
 A proposed batch of clips to download, which an operator approves or dismisses. Decided pulls are kept as history of what was agreed to.
 
-**Kept:** Unbounded: nothing deletes these rows yet; every decided pull stays.
+**Kept:** Pending pulls are kept. The nightly housekeeping task deletes a dismissed pull 180 days after it was dismissed, and an approved one with its download run.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1273,7 +1273,7 @@ A proposed batch of clips to download, which an operator approves or dismisses. 
 
 Links an approved pull to the one download run its approval started. Written in the same step as the approval.
 
-**Kept:** Unbounded: nothing deletes these rows yet; one stays per approved pull.
+**Kept:** One per approved pull; deleted with its download run.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1284,7 +1284,7 @@ Links an approved pull to the one download run its approval started. Written in 
 
 One row per download run: a source check, an approved pull or URLs an admin typed in. Shows what was asked for and how the downloads went. Runs left unfinished by a restart are marked as errors.
 
-**Kept:** Unbounded: nothing deletes these rows yet; one stays per download run.
+**Kept:** The nightly housekeeping task deletes a finished run 90 days after it finished once nothing points at it: no downloaded file and no clip pipeline row. A run whose files are kept is kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1307,7 +1307,7 @@ One row per download run: a source check, an approved pull or URLs an admin type
 
 One row per file a download produced, tracking it from download to the clip folder to the catalog. Rows that need repair are kept until someone deals with them.
 
-**Kept:** Unbounded: nothing deletes these rows yet; one stays per downloaded file.
+**Kept:** A file with the provider's id is kept on purpose: it is how the fetcher knows it already has that item, one row per item ever downloaded. One without, catalogued into a clip that has since left, is deleted by the nightly housekeeping task after 90 days. Staged, published and repair files are kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1364,7 +1364,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 
 Pairs of clips that are different versions of the same ad, such as a cut-down or another ending. A break never carries two versions, and airing one rests the others.
 
-**Kept:** Moved to the better copy when a clip is merged; otherwise never deleted, even after a clip leaves the catalog.
+**Kept:** Moved to the better copy when a clip is merged. A pair whose clips have both left the catalog is deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1424,7 +1424,7 @@ Copies of an ad that lost to a better copy of the same ad and were merged into i
 
 A record written when a clip becomes ready to air, at the same moment it joins the playable catalog. One per clip.
 
-**Kept:** Unbounded: nothing deletes these rows yet, even after the clip leaves the catalog.
+**Kept:** One per clip, kept while the clip exists; the nightly housekeeping task deletes it 30 days after it was written once its clip has left the catalog.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1454,7 +1454,7 @@ Which entries from Loomarr's shipped list of curated sources this install has be
 
 Each time a clip aired on a channel, used to rest clips between airings across the household. Airings from the last eight weeks are kept, plus each clip's newest few beyond that.
 
-**Kept:** Trimmed each time a clip airs to its last eight weeks plus its newest four airings; a clip's airings are not deleted when it leaves the catalog.
+**Kept:** Trimmed each time a clip airs to its last eight weeks plus its newest four airings. Once the clip has left the catalog, its airings older than eight weeks are deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1467,7 +1467,7 @@ Each time a clip aired on a channel, used to rest clips between airings across t
 
 Suggestions about a clip's year, country or station found by researching it online, with the pages cited, plus Loomarr's own uncited era guesses. Only a confident, cited geography finding updates the clip; the rest are shown as suggestions.
 
-**Kept:** Unbounded: nothing deletes these rows yet; each new research round adds rows, and they stay after the clip leaves the catalog.
+**Kept:** The nightly housekeeping task deletes a report once a newer one of the same kind (cited, or a guess) exists for an older revision of the clip, and every report 30 days after it was written once the clip has left the catalog.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1525,9 +1525,9 @@ Filler clips (vintage ads, promos and bumpers between shows) are examined by AI 
 
 ### filler_inference_evaluations
 
-One row per model call made about a filler clip, written before the call (as a spend reservation) and updated once the call finishes with what it actually used and cost. Callers include the defect judge (a vision model ruling on borderline picture defects) and the long-reel structure check. Rows are kept; nothing purges them.
+One row per model call made about a filler clip, written before the call (as a spend reservation) and updated once the call finishes with what it actually used and cost. Callers include the defect judge (a vision model ruling on borderline picture defects) and the long-reel structure check.
 
-**Kept:** Unbounded: nothing deletes these rows yet; only an unused budget hold is removed so its retry can take its place.
+**Kept:** Settled calls are deleted by the nightly housekeeping task after 180 days, once no structure-window call points at them; reserved ones (in flight) are kept. An unused budget hold is removed at once so its retry can take its place.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1589,9 +1589,9 @@ One lock row per spend-ceiling scope. Reserving a model call locks the matching 
 
 ### filler_enrichment_axes
 
-The accepted answer for one descriptive fact ("axis") about one filler clip, such as its era, brand or role, with where the answer came from. A stronger or more confident answer replaces a weaker one; no row means the fact is still unknown. Rows are kept and follow the clip if its identity changes.
+The accepted answer for one descriptive fact ("axis") about one filler clip, such as its era, brand or role, with where the answer came from. A stronger or more confident answer replaces a weaker one; no row means the fact is still unknown. Rows follow the clip if its identity changes.
 
-**Kept:** Never deleted; rows stay even after their clip leaves the catalog.
+**Kept:** Kept while the clip exists. Once it has left the catalog, rows not updated for 30 days are deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1613,7 +1613,7 @@ The accepted answer for one descriptive fact ("axis") about one filler clip, suc
 
 Marks that one enrichment producer, at one version, has finished with one clip. It is what stops the same work (and its model spend) being repeated; a clip is picked again when the producer version or taxonomy changes, or, for free passes, when the clip's descriptive inputs change.
 
-**Kept:** Unbounded: nothing deletes these rows yet; each new producer or tag version adds rows, and they stay after the clip leaves the catalog.
+**Kept:** Kept while the clip exists (they stop a paid pass from running twice). The nightly housekeeping task deletes a pass 30 days after it ran once its clip has left the catalog.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1640,9 +1640,9 @@ One row per web search made to research a filler clip, so the same clip at the s
 
 ### filler_research_web_usage
 
-One row per calendar month counting web searches against the monthly limit set in settings. Searches are refused once the count reaches the limit. Old months are kept.
+One row per calendar month counting web searches against the monthly limit set in settings. Searches are refused once the count reaches the limit.
 
-**Kept:** Unbounded: nothing deletes old months yet (one small row per month).
+**Kept:** The last 12 months; the nightly housekeeping task deletes older ones.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1656,7 +1656,7 @@ One row per calendar month counting web searches against the monthly limit set i
 
 One row per model call in the long-reel structure check, which sends a reel to a video model in windows to find where each separate clip starts and ends. The row is booked before the call and completed with the answer; a call that got no answer is retried as a new attempt.
 
-**Kept:** Unbounded: nothing deletes these rows yet; only an attempt held back by the spend ceiling is replaced by its retry.
+**Kept:** Settled calls are deleted by the nightly housekeeping task after 180 days; open and budget-held ones are kept. An attempt held back by the spend ceiling is replaced by its retry.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1693,7 +1693,7 @@ A proposed cut list for a compilation reel waiting for an admin's review, one pe
 
 A side-by-side record, made while a new splitting rule is being trialled, of what the current rule and the new certified rule would each do with one split proposal. Kept after the proposal itself is gone; rows are never changed.
 
-**Kept:** Unbounded: nothing deletes these rows yet; they stay after the proposal is gone.
+**Kept:** Kept while the proposal exists; once it is gone, the nightly housekeeping task deletes the decision 180 days after it was made.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1780,9 +1780,9 @@ One row per try at sending a notification to one destination. A failure that may
 
 ### notification_reference_recipients
 
-One row per person who asked for a title or channel, recorded when an admin approves their request, so later news about it (the title arrived, the channel went live) reaches them. Rows are kept.
+One row per person who asked for a title or channel, recorded when an admin approves their request, so later news about it (the title arrived, the channel went live) reaches them.
 
-**Kept:** Unbounded: rows are never deleted, not even when the title or channel they point to is gone.
+**Kept:** Kept while the title, the channel and the person exist. Once one is gone, the nightly housekeeping task deletes the row (after 30 days, since a request is recorded before its title is).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1851,9 +1851,9 @@ The running state of one recurring background task shown on the Tasks page. Whic
 
 ### interactive_operations
 
-Progress of one long action someone started in the app (downloading an AI model, or detecting where a filler reel should be split), so the page can pick it up again after a reconnect. Rows are not deleted; anything still queued or running when Loomarr restarts is marked as an error.
+Progress of one long action someone started in the app (downloading an AI model, or detecting where a filler reel should be split), so the page can pick it up again after a reconnect. Anything still queued or running when Loomarr restarts is marked as an error.
 
-**Kept:** Unbounded: every model download or split detection adds a row, and finished ones are never deleted.
+**Kept:** Finished ones are deleted by the nightly housekeeping task 7 days after they finish; queued and running ones are kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |

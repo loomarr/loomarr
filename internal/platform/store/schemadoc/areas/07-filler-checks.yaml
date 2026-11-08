@@ -9,10 +9,11 @@ tables:
       One row per model call made about a filler clip, written before the call (as a spend reservation)
       and updated once the call finishes with what it actually used and cost. Callers include the
       defect judge (a vision model ruling on borderline picture defects) and the long-reel structure
-      check. Rows are kept; nothing purges them.
+      check.
     retention: >
-      Unbounded: nothing deletes these rows yet; only an unused budget hold is removed so its retry
-      can take its place.
+      Settled calls are deleted by the nightly housekeeping task after 180 days, once no
+      structure-window call points at them; reserved ones (in flight) are kept. An unused budget
+      hold is removed at once so its retry can take its place.
     columns:
       id: Identifies the call. Spoken-safety events and the structure call journal point here.
       cache_key: >
@@ -90,9 +91,11 @@ tables:
     about: >
       The accepted answer for one descriptive fact ("axis") about one filler clip, such as its era,
       brand or role, with where the answer came from. A stronger or more confident answer replaces a
-      weaker one; no row means the fact is still unknown. Rows are kept and follow the clip if its
-      identity changes.
-    retention: Never deleted; rows stay even after their clip leaves the catalog.
+      weaker one; no row means the fact is still unknown. Rows follow the clip if its identity
+      changes.
+    retention: >
+      Kept while the clip exists. Once it has left the catalog, rows not updated for 30 days are
+      deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
     columns:
       clip_hash: The filler clip described (clips.hash).
       axis: >
@@ -126,8 +129,8 @@ tables:
       the same work (and its model spend) being repeated; a clip is picked again when the producer
       version or taxonomy changes, or, for free passes, when the clip's descriptive inputs change.
     retention: >
-      Unbounded: nothing deletes these rows yet; each new producer or tag version adds rows, and
-      they stay after the clip leaves the catalog.
+      Kept while the clip exists (they stop a paid pass from running twice). The nightly
+      housekeeping task deletes a pass 30 days after it ran once its clip has left the catalog.
     columns:
       clip_hash: The filler clip the pass ran on (clips.hash).
       producer: The pass that ran, for example deterministic-metadata or a text-model pass.
@@ -155,8 +158,8 @@ tables:
   - name: filler_research_web_usage
     about: >
       One row per calendar month counting web searches against the monthly limit set in settings.
-      Searches are refused once the count reaches the limit. Old months are kept.
-    retention: "Unbounded: nothing deletes old months yet (one small row per month)."
+      Searches are refused once the count reaches the limit.
+    retention: "The last 12 months; the nightly housekeeping task deletes older ones."
     columns:
       month: The month counted, as YYYY-MM in UTC.
       request_count: >
@@ -173,8 +176,8 @@ tables:
       windows to find where each separate clip starts and ends. The row is booked before the call and
       completed with the answer; a call that got no answer is retried as a new attempt.
     retention: >
-      Unbounded: nothing deletes these rows yet; only an attempt held back by the spend ceiling is
-      replaced by its retry.
+      Settled calls are deleted by the nightly housekeeping task after 180 days; open and
+      budget-held ones are kept. An attempt held back by the spend ceiling is replaced by its retry.
     columns:
       request_sha256: SHA-256 of the exact request. With attempt, identifies the row.
       attempt: >
@@ -222,7 +225,9 @@ tables:
       A side-by-side record, made while a new splitting rule is being trialled, of what the current rule
       and the new certified rule would each do with one split proposal. Kept after the proposal itself is
       gone; rows are never changed.
-    retention: "Unbounded: nothing deletes these rows yet; they stay after the proposal is gone."
+    retention: >
+      Kept while the proposal exists; once it is gone, the nightly housekeeping task deletes the
+      decision 180 days after it was made.
     columns:
       id: Identifies the decision, derived from its content.
       proposal_id: The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed.

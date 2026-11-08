@@ -69,8 +69,7 @@ tables:
       person types the code to approve it; the device then swaps it for a device token and the row is
       deleted. Codes expire after 10 minutes.
     retention: >
-      Unbounded: a code that expires before a device redeems it is never deleted, because nothing
-      runs the expiry sweep.
+      Deleted when redeemed; a code that expires first is deleted by the nightly housekeeping task.
     columns:
       device_code: >
         SHA-256 hash of the secret the device uses while it waits for approval. The device keeps the

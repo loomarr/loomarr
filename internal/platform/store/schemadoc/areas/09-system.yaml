@@ -72,11 +72,11 @@ tables:
   - name: interactive_operations
     about: >
       Progress of one long action someone started in the app (downloading an AI model, or detecting
-      where a filler reel should be split), so the page can pick it up again after a reconnect. Rows are
-      not deleted; anything still queued or running when Loomarr restarts is marked as an error.
+      where a filler reel should be split), so the page can pick it up again after a reconnect. Anything
+      still queued or running when Loomarr restarts is marked as an error.
     retention: >
-      Unbounded: every model download or split detection adds a row, and finished ones are never
-      deleted.
+      Finished ones are deleted by the nightly housekeeping task 7 days after they finish; queued
+      and running ones are kept.
     columns:
       id: Identifies the operation; the app polls it by this id.
       kind: >

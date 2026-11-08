@@ -113,7 +113,8 @@ tables:
       tagged or the taxonomy changes.
     retention: >
       Rewritten on each retag and removed with a deleted tag or a merged copy. Tags of a clip the
-      folder scan removes are left behind; nothing tidies them up yet.
+      folder scan removed are deleted by the nightly housekeeping, unless the catalog is empty (an
+      unmounted drive).
     columns:
       clip_hash: The clip that carries the tag (clips.hash).
       taxon: The tag (taxa.slug).
@@ -239,7 +240,9 @@ tables:
     about: >
       A proposed batch of clips to download, which an operator approves or dismisses. Decided pulls
       are kept as history of what was agreed to.
-    retention: "Unbounded: nothing deletes these rows yet; every decided pull stays."
+    retention: >
+      Pending pulls are kept. The nightly housekeeping task deletes a dismissed pull 180 days after
+      it was dismissed, and an approved one with its download run.
     columns:
       id: Identifies the pull.
       title: A short summary of what the pull is for.
@@ -259,7 +262,7 @@ tables:
     about: >
       Links an approved pull to the one download run its approval started. Written in the same step
       as the approval.
-    retention: "Unbounded: nothing deletes these rows yet; one stays per approved pull."
+    retention: "One per approved pull; deleted with its download run."
     columns:
       pull_id: The approved pull (filler_pulls.id).
       acquisition_id: The download run it started (filler_acquisition_runs.id).
@@ -269,7 +272,9 @@ tables:
       One row per download run: a source check, an approved pull or URLs an admin typed in. Shows
       what was asked for and how the downloads went. Runs left unfinished by a restart are marked as
       errors.
-    retention: "Unbounded: nothing deletes these rows yet; one stays per download run."
+    retention: >
+      The nightly housekeeping task deletes a finished run 90 days after it finished once nothing
+      points at it: no downloaded file and no clip pipeline row. A run whose files are kept is kept.
     columns:
       id: Identifies the run. Downloaded files and prepared clips point here.
       trigger: >
@@ -295,7 +300,11 @@ tables:
     about: >
       One row per file a download produced, tracking it from download to the clip folder to the
       catalog. Rows that need repair are kept until someone deals with them.
-    retention: "Unbounded: nothing deletes these rows yet; one stays per downloaded file."
+    retention: >
+      A file with the provider's id is kept on purpose: it is how the fetcher knows it already has
+      that item, one row per item ever downloaded. One without, catalogued into a clip that has
+      since left, is deleted by the nightly housekeeping task after 90 days. Staged, published and
+      repair files are kept.
     columns:
       id: Identifies the downloaded file.
       acquisition_id: The download run that produced it (filler_acquisition_runs.id).
@@ -379,8 +388,8 @@ tables:
       Pairs of clips that are different versions of the same ad, such as a cut-down or another
       ending. A break never carries two versions, and airing one rests the others.
     retention: >
-      Moved to the better copy when a clip is merged; otherwise never deleted, even after a clip
-      leaves the catalog.
+      Moved to the better copy when a clip is merged. A pair whose clips have both left the catalog
+      is deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
     columns:
       a_hash: One clip of the pair (clips.hash); always the smaller hash.
       b_hash: The other clip of the pair (clips.hash).
@@ -448,7 +457,9 @@ tables:
     about: >
       A record written when a clip becomes ready to air, at the same moment it joins the playable
       catalog. One per clip.
-    retention: "Unbounded: nothing deletes these rows yet, even after the clip leaves the catalog."
+    retention: >
+      One per clip, kept while the clip exists; the nightly housekeeping task deletes it 30 days
+      after it was written once its clip has left the catalog.
     columns:
       id: Identifies the event, as ready:<clip hash>.
       clip_hash: The clip that became ready (clips.hash).
@@ -484,8 +495,9 @@ tables:
       Each time a clip aired on a channel, used to rest clips between airings across the household.
       Airings from the last eight weeks are kept, plus each clip's newest few beyond that.
     retention: >
-      Trimmed each time a clip airs to its last eight weeks plus its newest four airings; a clip's
-      airings are not deleted when it leaves the catalog.
+      Trimmed each time a clip airs to its last eight weeks plus its newest four airings. Once the
+      clip has left the catalog, its airings older than eight weeks are deleted by the nightly
+      housekeeping, unless the catalog is empty (an unmounted drive).
     columns:
       channel_id: The channel it aired on.
       clip_hash: The clip that aired (clips.hash).
@@ -498,8 +510,9 @@ tables:
       pages cited, plus Loomarr's own uncited era guesses. Only a confident, cited geography finding
       updates the clip; the rest are shown as suggestions.
     retention: >
-      Unbounded: nothing deletes these rows yet; each new research round adds rows, and they stay
-      after the clip leaves the catalog.
+      The nightly housekeeping task deletes a report once a newer one of the same kind (cited, or
+      a guess) exists for an older revision of the clip, and every report 30 days after it was
+      written once the clip has left the catalog.
     columns:
       clip_hash: The clip researched (clips.hash).
       producer: >
