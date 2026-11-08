@@ -29,7 +29,7 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 	if err != nil {
 		return "", err
 	}
-	grounded, err := s.inventoryItemIDsByExternalIDs(ctx, tx, clean.ExternalIDs)
+	grounded, err := s.inventoryItemIDsByExternalIDs(ctx, tx, clean.Kind, clean.ExternalIDs)
 	if err != nil {
 		return "", err
 	}
@@ -38,14 +38,14 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 	// joined is an origin that came to its item by its ids: the item is not the one it founded.
 	joined := exact && itemID != home
 	if exact && len(grounded) == 1 && !grounded[itemID] {
-		// The origin's ids now name another item. An origin that is its item's only origin follows
-		// them, when that item is of the same kind: it was written before its ids were known. So
-		// does one that joined its item by ids it no longer has.
+		// The origin's ids now name another item of its kind. An origin that is its item's only
+		// origin follows them: it was written before its ids were known. So does one that joined
+		// its item by ids it no longer has.
 		var target inventory.ItemID
 		for id := range grounded {
 			target = id
 		}
-		follows, err := s.inventoryOriginCanFollow(ctx, tx, itemID, target, clean.Kind, joined)
+		follows, err := s.inventoryOriginCanFollow(ctx, tx, itemID, joined)
 		if err != nil {
 			return "", err
 		}
@@ -138,27 +138,19 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 	return itemID, nil
 }
 
-// inventoryOriginCanFollow reports whether the origin may move to target: target is of the same
-// kind, and item has no origin but this one, or the origin joined item rather than founding it.
-func (s *sqlStore) inventoryOriginCanFollow(
-	ctx context.Context, tx *sql.Tx, item, target inventory.ItemID, kind inventory.ItemKind, joined bool,
-) (bool, error) {
-	if !joined {
-		var origins int
-		if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM inventory_item_origins WHERE item_id = ?`),
-			string(item)).Scan(&origins); err != nil {
-			return false, fmt.Errorf("count inventory item origins: %w", err)
-		}
-		if origins != 1 {
-			return false, nil
-		}
+// inventoryOriginCanFollow reports whether the origin may leave item for the one its ids name (always
+// of its own kind: grounding sees no other): item has no origin but this one, or the origin joined
+// item rather than founding it.
+func (s *sqlStore) inventoryOriginCanFollow(ctx context.Context, tx *sql.Tx, item inventory.ItemID, joined bool) (bool, error) {
+	if joined {
+		return true, nil
 	}
-	var targetKind string
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT kind FROM inventory_items WHERE id = ?`),
-		string(target)).Scan(&targetKind); err != nil {
-		return false, fmt.Errorf("read inventory item kind: %w", err)
+	var origins int
+	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM inventory_item_origins WHERE item_id = ?`),
+		string(item)).Scan(&origins); err != nil {
+		return false, fmt.Errorf("count inventory item origins: %w", err)
 	}
-	return inventory.ItemKind(targetKind) == kind, nil
+	return origins == 1, nil
 }
 
 func (s *sqlStore) applyInventorySource(
@@ -244,15 +236,21 @@ func (s *sqlStore) inventoryItemIDByOrigin(
 	return itemID, true, nil
 }
 
+// inventoryItemIDsByExternalIDs finds the items of kind that carry any of externalIDs. An id grounds
+// only its own kind: TVDB numbers shows and episodes from one sequence, so a show's id can also be
+// some unrelated episode's.
 func (s *sqlStore) inventoryItemIDsByExternalIDs(
 	ctx context.Context,
 	tx *sql.Tx,
+	kind inventory.ItemKind,
 	externalIDs []inventory.ExternalID,
 ) (map[inventory.ItemID]bool, error) {
 	ids := make(map[inventory.ItemID]bool)
 	for _, externalID := range externalIDs {
-		rows, err := tx.QueryContext(ctx, s.ph(`SELECT DISTINCT item_id FROM inventory_external_ids
-			WHERE namespace = ? AND external_id = ?`), externalID.Namespace, externalID.Value)
+		rows, err := tx.QueryContext(ctx, s.ph(`SELECT DISTINCT e.item_id FROM inventory_external_ids e
+			JOIN inventory_items i ON i.id = e.item_id
+			WHERE e.namespace = ? AND e.external_id = ? AND i.kind = ?`),
+			externalID.Namespace, externalID.Value, string(kind))
 		if err != nil {
 			return nil, fmt.Errorf("find grounded inventory identity: %w", err)
 		}

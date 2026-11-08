@@ -150,6 +150,9 @@ func (r *ParityReport) compare(s library.ServerFile, f ParityFile) {
 	case identityUngrounded:
 		r.Findings = append(r.Findings, Finding{Kind: FindingIdentity, Path: f.Path, Name: s.Name,
 			Detail: detail, Explained: "unmatched: it waits in Needs you"})
+	case identityRenumbered:
+		r.Findings = append(r.Findings, Finding{Kind: FindingIdentity, Path: f.Path, Name: s.Name,
+			Detail: detail, Explained: "the same Sonarr episode under another TVDB id"})
 	default:
 		r.Findings = append(r.Findings, Finding{Kind: FindingIdentity, Path: f.Path, Name: s.Name, Detail: detail})
 	}
@@ -177,6 +180,10 @@ const (
 	identityConflicts
 	identityNoCommonID
 	identityUngrounded
+	// identityRenumbered is one Sonarr episode (both read its id from Sonarr's NFO) that the
+	// catalogs hold under different TVDB ids, and nothing else contradicts: one catalog's TVDB data
+	// is older. Explained, since neither id names another episode for certain.
+	identityRenumbered
 )
 
 // identityVerdict says whether the scanner names a file as the media server does. Ids agree when
@@ -185,7 +192,12 @@ const (
 func identityVerdict(s library.ServerFile, f ParityFile) (parityIdentity, string) {
 	own := idsAgree(s.ExternalIDs, f.ExternalIDs)
 	if own == identityConflicts {
-		return identityConflicts, "ids differ: media server " + idList(s.ExternalIDs) + ", scanner " + idList(f.ExternalIDs)
+		detail := "ids differ: media server " + idList(s.ExternalIDs) + ", scanner " + idList(f.ExternalIDs)
+		if sameSonarrEpisode(s.ExternalIDs, f.ExternalIDs) &&
+			idsAgree(withoutNamespace(s.ExternalIDs, mp.NamespaceTVDB), withoutNamespace(f.ExternalIDs, mp.NamespaceTVDB)) != identityConflicts {
+			return identityRenumbered, detail
+		}
+		return identityConflicts, detail
 	}
 	if s.Kind != string(kindEpisode) || own == identityAgrees {
 		if own == identityAgrees {
@@ -211,6 +223,20 @@ func identityVerdict(s library.ServerFile, f ParityFile) (parityIdentity, string
 	}
 	return identityNoCommonID, "no id in common: media server " + idList(s.ExternalIDs) + " show " + idList(s.SeriesIDs) +
 		", scanner " + idList(f.ExternalIDs) + " show " + idList(f.SeriesIDs)
+}
+
+// sameSonarrEpisode reports whether a and b carry one Sonarr episode id.
+func sameSonarrEpisode(a, b []inventory.ExternalID) bool {
+	for _, id := range a {
+		if mp.Namespace(id.Namespace) == mp.NamespaceSonarr && slices.Contains(b, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func withoutNamespace(ids []inventory.ExternalID, ns mp.Namespace) []inventory.ExternalID {
+	return slices.DeleteFunc(slices.Clone(ids), func(id inventory.ExternalID) bool { return mp.Namespace(id.Namespace) == ns })
 }
 
 // groundingIDs are the ids two catalogs can share: TMDB, TVDB and IMDb.

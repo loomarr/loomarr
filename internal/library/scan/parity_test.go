@@ -94,6 +94,12 @@ func TestParityIdentity(t *testing.T) {
 		{"episode numbered apart with no own id",
 			library.ServerFile{Kind: "episode", SeriesIDs: ids("tvdb:90000020"), Season: 2, Episode: 4},
 			ParityFile{SeriesIDs: ids("tvdb:90000020"), Season: 2, Episode: 5}, identityConflicts},
+		{"the same Sonarr episode under another TVDB id",
+			library.ServerFile{Kind: "episode", ExternalIDs: ids("sonarr:90046936", "tvdb:90004504", "tmdb:90001023")},
+			ParityFile{ExternalIDs: ids("sonarr:90046936", "tvdb:90010576")}, identityRenumbered},
+		{"the same Sonarr episode whose other ids name another show",
+			library.ServerFile{Kind: "episode", ExternalIDs: ids("sonarr:90035846", "tvdb:90026169", "tmdb:90130766")},
+			ParityFile{ExternalIDs: ids("sonarr:90035846", "tvdb:90026170", "tmdb:90046533")}, identityConflicts},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got, detail := identityVerdict(tc.server, tc.file); got != tc.want {

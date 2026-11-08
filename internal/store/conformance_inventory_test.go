@@ -110,10 +110,25 @@ func testInventoryGroundedIdentity(t *testing.T, newStore NewStoreFunc) {
 	if unlinkedID == firstID {
 		t.Fatal("matching name merged identity without a grounded id")
 	}
+
+	// TVDB numbers shows and episodes from one sequence, so a show can carry the same id as some
+	// unrelated episode. An id grounds only items of the same kind: the show stays its own item.
+	show := inventorySnapshot("library-d", "show", "source-d", "rev-d", "Another Show", at)
+	show.Kind, show.Sources = "series", nil
+	show.Observation.Coverage = map[string]inventory.Coverage{"sources": inventory.CoverageEmpty}
+	show.ExternalIDs = []inventory.ExternalID{{Namespace: "tmdb", Value: "700"}}
+	showID, err := st.ApplyInventorySnapshot(ctx, show)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if showID == firstID {
+		t.Fatal("a show grounded onto an episode by an id they happen to share")
+	}
 }
 
 // An origin written before its ids were known follows them to the item they name, taking its
-// sources, when it is its item's only origin and the kinds agree; otherwise it is a conflict.
+// sources, when it is its item's only origin; otherwise it is a conflict. Ids name items of the
+// origin's own kind only.
 func testInventoryOriginFollowsIDs(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	st := newStore(t)
@@ -151,9 +166,10 @@ func testInventoryOriginFollowsIDs(t *testing.T, newStore NewStoreFunc) {
 	if _, err := st.ApplyInventorySnapshot(ctx, other); err != nil {
 		t.Fatal(err)
 	}
+	// An id names a title only within its kind, so a movie carrying an episode's id stays its own.
 	other.ExternalIDs = []inventory.ExternalID{{Namespace: "tvdb", Value: "90000701"}}
-	if _, err := st.ApplyInventorySnapshot(ctx, other); !errors.Is(err, inventory.ErrIdentityConflict) {
-		t.Fatalf("follow across kinds = %v, want conflict", err)
+	if id, err := st.ApplyInventorySnapshot(ctx, other); err != nil || id == knownID {
+		t.Fatalf("follow across kinds = (%q, %v), want its own item", id, err)
 	}
 
 	shared := inventorySnapshot("library-b", "shared", "source-b", "rev-b", "Shared", at)

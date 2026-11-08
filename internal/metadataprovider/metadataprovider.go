@@ -113,6 +113,9 @@ const (
 	// NamespaceFile is a local media path. A provider that reads files beside the media, rather
 	// than querying a service, resolves it.
 	NamespaceFile Namespace = "file"
+	// NamespaceSonarr is Sonarr's own id for an episode, as Sonarr writes it into the NFO beside
+	// the file. Loomarr grounds nothing by it; two catalogs that read the same NFO share it.
+	NamespaceSonarr Namespace = "sonarr"
 )
 
 // ExternalID is one grounded identity of an item in a namespace.

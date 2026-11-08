@@ -253,6 +253,65 @@ func TestImportListsMoviesAndSeries(t *testing.T) {
 	}
 }
 
+// A multi-episode file is one item that carries every episode's own ids, so a catalog that keys the
+// file by any of its episodes finds it: from Sonarr's episode records, or an NFO's further
+// episodedetails when no arr manages the show.
+func TestImportMultiEpisodeFileCarriesEveryEpisodeID(t *testing.T) {
+	sonarr := &fakeLister{}
+	h := newHarness(t, Manager{Authority: "sonarr", Lister: sonarr})
+	ctx := context.Background()
+	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
+		Found: []store.LibraryRootPath{{Authority: "sonarr", AuthorityPath: "/tv", RootPath: h.root}}, Complete: []string{"sonarr"},
+	}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	managedRel := "Echo Show/Season 01/Echo Show S01E03-E04.mkv"
+	h.file(managedRel, 10)
+	episode := func(n int, tvdb string) mp.Record {
+		return mp.Record{
+			Source: mp.Source{Provider: mp.IDSonarr, Basis: mp.BasisManager}, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: tvdb}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n},
+			Files:     []mp.FileRef{{Path: "/tv/" + managedRel}},
+		}
+	}
+	sonarr.records = []mp.Record{{
+		Source: mp.Source{Provider: mp.IDSonarr, Basis: mp.BasisManager}, Kind: mp.KindSeries,
+		IDs:      []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90081190"}},
+		Children: []mp.Record{episode(3, "90090103"), episode(4, "90090104")},
+	}}
+
+	sidecarRel := "Foxtrot Show/Season 02/Foxtrot Show S02E05-E06.mkv"
+	h.file(sidecarRel, 10)
+	doc := `<episodedetails><title>Part One</title><season>2</season><episode>5</episode>` +
+		`<uniqueid type="tvdb" default="true">90090205</uniqueid></episodedetails>` +
+		`<episodedetails><title>Part Two</title><season>2</season><episode>6</episode>` +
+		`<uniqueid type="tvdb" default="true">90090206</uniqueid></episodedetails>`
+	if err := os.WriteFile(filepath.Join(h.root, "Foxtrot Show", "Season 02", "Foxtrot Show S02E05-E06.nfo"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+
+	for _, tc := range []struct {
+		rel         string
+		first, last string
+		from, to    int
+	}{
+		{managedRel, "90090103", "90090104", 3, 4},
+		{sidecarRel, "90090205", "90090206", 5, 6},
+	} {
+		origin := fileOrigin(h.root, tc.rel)
+		item := h.item(origin)
+		if !hasID(item.ExternalIDs, "tvdb", tc.first) || !hasID(item.ExternalIDs, "tvdb", tc.last) {
+			t.Errorf("%s ids = %+v, want both episodes' %s and %s", tc.rel, item.ExternalIDs, tc.first, tc.last)
+		}
+		facts := h.origin(item, origin).Observation.Facts
+		if facts.EpisodeNumber != tc.from || facts.EpisodeEnd != tc.to {
+			t.Errorf("%s numbering = E%d-E%d, want E%d-E%d", tc.rel, facts.EpisodeNumber, facts.EpisodeEnd, tc.from, tc.to)
+		}
+	}
+}
+
 // A changed NFO rewrites the item without reading the header again; its ids join the item.
 func TestImportSidecarChangeRewritesIdentityOnly(t *testing.T) {
 	h := newHarness(t)

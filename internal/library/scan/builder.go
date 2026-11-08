@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -248,21 +249,27 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 
 	records := append([]mp.Record(nil), id.managed.records...)
+	// further are the other episodes of a multi-episode file. The file is one item, as the media
+	// server keeps it: its first episode, numbered through its last, carrying every episode's ids
+	// so a catalog that keys the file by any of them finds it.
+	var further []mp.Record
 	if len(records) > 1 && id.kind == mp.KindEpisode {
-		// A multi-episode file is one item, as the media server keeps it: its first episode,
-		// numbered through its last.
 		first := records[0]
 		if first.Numbering != nil && records[len(records)-1].Numbering != nil {
 			n := *first.Numbering
 			n.EpisodeEnd = records[len(records)-1].Numbering.Episode
 			first.Numbering = &n
 		}
+		further = records[1:]
 		records = []mp.Record{first}
 	}
 	records = append(records, id.embedded)
 	if file.hasNFO() {
 		if rec, ok := b.sidecar(ctx, b.im.NFO, id.kind, file.Path); ok {
 			records = append(records, rec)
+			if id.kind == mp.KindEpisode {
+				further = append(further, rec.More...)
+			}
 		}
 	}
 	if names := file.art(); b.im.Art != nil && len(names) > 0 {
@@ -287,8 +294,20 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	snapshot.Kind = id.itemKind(file)
 	snapshot.Observation.Facts, snapshot.Observation.Coverage = facts, coverage
 	snapshot.Observation.Extension = originExtensionOf(resolved, len(id.managed.records) > 0)
-	snapshot.ExternalIDs = externalIDs(resolved.IDs)
+	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
 	return snapshot
+}
+
+// withFurtherIDs adds the further episodes' own ids to a multi-episode file's, once each.
+func withFurtherIDs(ids []inventory.ExternalID, further []mp.Record) []inventory.ExternalID {
+	for _, rec := range further {
+		for _, id := range toInventory(rec.IDs) {
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
 }
 
 // resolve applies precedence. A movie or series the maintainer linked to a title (Needs you) has
