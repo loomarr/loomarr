@@ -63,12 +63,12 @@ func buildHTTP(deps httpBuild) http.Handler {
 	playoutGuideSvc := deps.channels.playoutGuide
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
 	var proposalOutlook api.ProposalOutlook
-	if preview, ok := channelSvc.(outlook.Preview); ok && chBinder != nil && deps.foundation.libraryClient != nil {
+	if preview, ok := channelSvc.(outlook.Preview); ok && chBinder != nil {
 		additionResolver := approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
-			return libraryPresence{titles: st, lib: deps.foundation.libraryClient.Snapshot()}
+			return libraryPresence{titles: st}
 		}}
 		proposalOutlook = outlook.New(outlook.Config{
-			Titles: st, Library: itemMetadata{facts: st, lib: deps.foundation.libraryClient}, Episodes: episodeResolver(st, deps.foundation.libraryClient),
+			Titles: st, Library: itemMetadata{facts: st}, Episodes: episodeResolver(st),
 			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
 		})
 	}

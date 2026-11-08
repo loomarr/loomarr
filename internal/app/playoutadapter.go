@@ -17,7 +17,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
@@ -95,7 +94,6 @@ type codecWriter interface {
 
 type playoutResolver struct {
 	engine  cyclePreviewer
-	lib     *library.Client
 	now     func() time.Time
 	metrics *metrics.Recorder
 	// titles resolves a block's acquisition record for the grid's provenance line. Nil ⇒ the
@@ -169,8 +167,8 @@ type playoutResolver struct {
 	// libraryVideo is a Library item's video format as the scanner read it, for lineup formats and
 	// still tone mapping; nil, or any other id, reads the inventory.
 	libraryVideo libraryVideoReader
-	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil,
-	// or any other id, asks the media server.
+	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
+	// leaves the guide without descriptions, and any other id has none.
 	itemFacts store.LibraryItemFactsReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
@@ -374,22 +372,12 @@ func (r *playoutResolver) indexedKeyframe(ctx context.Context, input string, off
 	return time.Duration(keyframe.PTSMs) * time.Millisecond, true
 }
 
-// inventoryHDR reports whether the item's library source carries an HDR transfer (PQ/HLG), from
-// the inventory's stream facts (never ffprobe), importing the item when they are missing or stale.
-// Unknown is false: an untone-mapped still is dim, not broken.
+// inventoryHDR reports whether the item's playing file carries an HDR transfer (PQ/HLG), as the
+// scanner read its header (never ffprobe). Unknown is false: an untone-mapped still is dim, not
+// broken.
 func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string) bool {
-	if format, ok := r.libraryFormat(ctx, libraryItemID); ok {
-		return format.HDR()
-	}
-	if r.inventory == nil || r.lib == nil {
-		return false
-	}
-	origin, err := r.lib.InventoryOrigin(libraryItemID)
-	if err != nil {
-		return false
-	}
-	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "streams")
-	return ok && playoutFormatOf(source.Observation.Facts).HDR()
+	format, ok := r.libraryFormat(ctx, libraryItemID)
+	return ok && format.HDR()
 }
 
 // acceptedCycle is the broadcast commit boundary: the cycle the channel airs at `at` and the
@@ -537,16 +525,10 @@ func (r *playoutResolver) ChannelCodec(ctx context.Context, channelID string) st
 	return ch.BroadcastCodec
 }
 
-// inventoryFreshness is how long an imported library observation answers without asking the media
-// server again. A library file keeps its item id when it is replaced, and only the server can say
-// the file changed, so a read past this age re-imports the item; the import compares the source
-// revision (ETag, else content-derived) and drops the measurements of any revision that moved on.
-const inventoryFreshness = 24 * time.Hour
-
 // LineupFormats returns the stream facts of each distinct programme in the channel's cycle, the
-// input to playout.DeriveChannelFormats (#1512 G10). The facts come from Loomarr's inventory; an
-// item it has not observed yet is imported once from the library's own media information, never
-// probed. An item with no facts either way is the zero MediaFormat, which the derivation ignores.
+// input to playout.DeriveChannelFormats (#1512 G10). The facts are the scanner's read of each
+// item's playing file, never probed. An item the Library has not read is the zero MediaFormat,
+// which the derivation ignores.
 func (r *playoutResolver) LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error) {
 	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, r.now())
 	if err != nil {
@@ -560,61 +542,10 @@ func (r *playoutResolver) LineupFormats(ctx context.Context, channelID string) (
 			continue
 		}
 		seen[sl.LibraryItemID] = true
-		formats = append(formats, r.inventoryFormat(ctx, sl.LibraryItemID))
+		format, _ := r.libraryFormat(ctx, sl.LibraryItemID)
+		formats = append(formats, format)
 	}
 	return formats, nil
-}
-
-// inventoryFormat is one library item's stream facts from the inventory, importing the library's
-// snapshot on a miss (as inventoryAudioTracks does). The zero MediaFormat means unknown.
-func (r *playoutResolver) inventoryFormat(ctx context.Context, libraryItemID string) playout.MediaFormat {
-	if format, ok := r.libraryFormat(ctx, libraryItemID); ok {
-		return format
-	}
-	if r.inventory == nil || r.lib == nil {
-		return playout.MediaFormat{}
-	}
-	origin, err := r.lib.InventoryOrigin(libraryItemID)
-	if err != nil {
-		return playout.MediaFormat{}
-	}
-	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "streams")
-	if !ok {
-		return playout.MediaFormat{}
-	}
-	return playoutFormatOf(source.Observation.Facts)
-}
-
-// freshLibrarySource is a library item's source facts from the inventory while they are within
-// inventoryFreshness, else from one re-import of the item. The import carries the file's current
-// revision, so a replaced file's old facts and measurements are dropped rather than served.
-func (r *playoutResolver) freshLibrarySource(
-	ctx context.Context, libraryItemID string, origin inventory.OriginKey, coverage string,
-) (inventory.ResolvedSource, bool) {
-	request := inventory.SourceRequest{
-		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(), MaxAge: inventoryFreshness,
-		RequiredCoverage: []string{coverage},
-	}
-	if source, ok, err := r.inventory.ResolveSource(ctx, request); err == nil && ok {
-		return source, true
-	}
-	snapshot, present, err := r.lib.InventorySnapshot(ctx, libraryItemID)
-	if err != nil || !present {
-		if err != nil && r.log != nil {
-			r.log.Debug("playout: library media observation unavailable", "item", libraryItemID, "err", err)
-		}
-		return inventory.ResolvedSource{}, false
-	}
-	if _, err := r.inventory.ApplySnapshot(ctx, snapshot); err != nil {
-		if r.log != nil {
-			r.log.Debug("playout: library media observation not persisted", "item", libraryItemID, "err", err)
-		}
-		return inventory.ResolvedSource{}, false
-	}
-	// The import just stamped these facts, so age no longer applies; coverage still does.
-	request.MaxAge = 0
-	source, ok, err := r.inventory.ResolveSource(ctx, request)
-	return source, err == nil && ok
 }
 
 // maxCodecProbes bounds how many program files ComputeChannelCodec probes to decide the majority.
@@ -1020,18 +951,13 @@ func (r *playoutResolver) attachProvenance(ctx context.Context, bs []playout.Bro
 	}
 }
 
-// attachMetadata fills in descriptions, genres, years and ratings from the media server.
-//
-// ONE BULK CALL for the whole channel, which is the only reason this is affordable on a request
-// a media server polls: Emby's `/Items?Ids=` takes a comma-separated list, and 120 episodes came
-// back in 24ms on the dev stack. Per-item lookups would have been a round trip per programme and
-// would have forced a cache.
+// attachMetadata fills in descriptions, genres, years and ratings from the Library's tables, in
+// ONE read for the whole channel (#2151 step 16).
 //
 // BEST-EFFORT BY DESIGN. A failure leaves the broadcasts exactly as they were — titles and times
-// intact — because a guide with thin entries is far better than no guide. The media server is an
-// external dependency on a path that must keep working when it is slow or briefly down.
+// intact — because a guide with thin entries is far better than no guide.
 func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broadcast) {
-	if r.lib == nil || len(bs) == 0 {
+	if r.itemFacts == nil || len(bs) == 0 {
 		return
 	}
 	ids := make([]string, 0, len(bs))
@@ -1044,11 +970,10 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 		return
 	}
 
-	meta, err := itemMetadata{facts: r.itemFacts, lib: r.lib}.ItemMetadataByID(ctx, ids)
+	meta, err := itemMetadata{facts: r.itemFacts}.ItemMetadataByID(ctx, ids)
 	if err != nil && r.log != nil {
-		// Logged, not returned: the partial map is still applied below. ItemMetadataByID
-		// returns what it gathered alongside the error precisely so a slow page of a large
-		// guide does not cost the whole document its descriptions.
+		// Logged, not returned: the partial map is still applied below, so a failing read does
+		// not cost the whole document its descriptions.
 		r.log.Debug("playout: guide metadata partially unavailable",
 			"err", err, "resolved", len(meta), "wanted", len(ids))
 	}
@@ -1191,7 +1116,7 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 		// entirely rather than paying for an answer that cannot change the outcome.
 		return 0
 	}
-	if tracks, ok := r.inventoryAudioTracks(ctx, libraryItemID, streamURL); ok {
+	if tracks, ok := r.inventoryAudioTracks(ctx, streamURL); ok {
 		return playout.PickAudioTrack(tracks, prefer)
 	}
 	if r.probeSource == nil {
@@ -1206,7 +1131,7 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 		return 0
 	}
 	tracks := observed.AudioTracks()
-	r.recordSourceMeasurement(ctx, libraryItemID, streamURL, observed)
+	r.recordSourceMeasurement(ctx, streamURL, observed)
 	return playout.PickAudioTrack(tracks, prefer)
 }
 
@@ -1311,10 +1236,9 @@ func (r *playoutResolver) libraryAudioTracks(ctx context.Context, streamURL stri
 	return tracks, true
 }
 
-func (r *playoutResolver) inventoryAudioTracks(
-	ctx context.Context,
-	libraryItemID, streamURL string,
-) ([]playout.AudioTrack, bool) {
+// inventoryAudioTracks is a local file's audio tracks as the Library lists them, else as Loomarr
+// measured the file's current bytes. A file neither has read falls through to one probe.
+func (r *playoutResolver) inventoryAudioTracks(ctx context.Context, streamURL string) ([]playout.AudioTrack, bool) {
 	if tracks, ok := r.libraryAudioTracks(ctx, streamURL); ok {
 		return tracks, true
 	}
@@ -1329,49 +1253,23 @@ func (r *playoutResolver) inventoryAudioTracks(
 		if err == nil && found {
 			return playoutAudioTracks(source.Observation.Facts.Streams), true
 		}
-		// A local file's stat revision is the authoritative freshness boundary. Library metadata
-		// cannot validate changed local bytes, so a miss falls directly through to one probe.
-		return nil, false
 	}
-	if r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
-		return nil, false
-	}
-	origin, err := r.lib.InventoryOrigin(libraryItemID)
-	if err != nil {
-		return nil, false
-	}
-	source, ok := r.freshLibrarySource(ctx, libraryItemID, origin, "audioStreams")
-	if !ok {
-		return nil, false
-	}
-	return playoutAudioTracks(source.Observation.Facts.Streams), true
+	// A local file's stat revision is the authoritative freshness boundary, so a miss falls
+	// directly through to one probe.
+	return nil, false
 }
 
-func (r *playoutResolver) recordSourceMeasurement(
-	ctx context.Context,
-	libraryItemID, streamURL string,
-	observed playout.SourceObservation,
-) {
+// recordSourceMeasurement files a probe of a local file under its current bytes, so the next
+// programme of the same file reads it back instead of probing again.
+func (r *playoutResolver) recordSourceMeasurement(ctx context.Context, streamURL string, observed playout.SourceObservation) {
 	if r.inventory == nil {
 		return
 	}
-	var ref inventory.ItemRef
-	if localOrigin, ok := r.ensureLocalInventorySource(ctx, streamURL); ok {
-		ref = inventory.ItemRef{Origin: &localOrigin}
-	} else {
-		if r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
-			return
-		}
-		origin, err := r.lib.InventoryOrigin(libraryItemID)
-		if err != nil {
-			return
-		}
-		ref = inventory.ItemRef{Origin: &origin}
-		if _, ok, itemErr := r.inventory.Item(ctx, ref); itemErr == nil && !ok {
-			_ = r.ensureRemoteInventorySource(ctx, origin)
-		}
+	localOrigin, ok := r.ensureLocalInventorySource(ctx, streamURL)
+	if !ok {
+		return
 	}
-	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{Item: ref})
+	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{Item: inventory.ItemRef{Origin: &localOrigin}})
 	if err != nil || !ok {
 		return
 	}
@@ -1448,25 +1346,6 @@ func (r *playoutResolver) ensureLocalInventorySource(ctx context.Context, input 
 
 func localInventoryRevision(info os.FileInfo) string {
 	return fmt.Sprintf("stat:%d:%d", info.Size(), info.ModTime().UnixNano())
-}
-
-func (r *playoutResolver) ensureRemoteInventorySource(ctx context.Context, origin inventory.OriginKey) error {
-	at := r.inventoryNow()
-	_, err := r.inventory.ApplySnapshot(ctx, inventory.Snapshot{
-		Origin: origin, Kind: "unknown",
-		Observation: inventory.Observation[inventory.ItemFacts]{
-			SchemaVersion: 1, ObservedAt: at,
-			Coverage: map[string]inventory.Coverage{"sources": inventory.CoveragePresent},
-		},
-		Sources: []inventory.SourceSnapshot{{
-			ExternalSourceID: "default", Kind: inventory.SourceLibraryOriginal, Revision: "unversioned",
-			Locator: inventory.Locator{
-				Authority: origin.Authority, ExternalItemID: origin.ExternalItemID, ExternalSourceID: "default",
-			},
-			Observation: inventory.Observation[inventory.SourceFacts]{SchemaVersion: 1, ObservedAt: at},
-		}},
-	})
-	return err
 }
 
 func inventoryFactsOf(observed playout.SourceObservation) inventory.SourceFacts {
