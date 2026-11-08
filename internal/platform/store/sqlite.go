@@ -47,19 +47,49 @@ WHERE id IN (
 )
 RETURNING ` + channelColumns
 
+// sqliteMaxOpenConns is the pool size: enough that reads run beside the one writer and River's
+// polls, small enough that a household server's file handles and memory don't notice.
+const sqliteMaxOpenConns = 4
+
+// sqliteDSN is the live store's connection string. Every _pragma applies to each new connection.
+//   - journal_mode(WAL): readers and the writer don't block each other.
+//   - busy_timeout(15000): a writer waits up to 15 s for the write lock instead of failing at once.
+//     It is longer than River's 10 s fetch deadline on purpose, so a caller's context, which the
+//     driver honours by interrupting the statement, is what bounds the wait.
+//   - synchronous(NORMAL): the standard WAL setting. A commit no longer fsyncs; the WAL is synced at
+//     checkpoints, so a power cut can lose the last commits but never corrupts the file.
+//   - foreign_keys(on): enforce the schema's references.
+//   - _txlock=immediate: see openSQLite.
+func sqliteDSN(path string) string {
+	return fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(15000)"+
+		"&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(on)&_txlock=immediate", path)
+}
+
+// optimizeSQLite lets SQLite gather the planner statistics prod never had (no sqlite_stat1, #2446).
+// 0x10002 is the documented form for a long-lived connection at open: analyze any table that
+// needs it, with a cap on how much work one call does. Statistics only help the planner choose;
+// without them every query still answers correctly, so Open does not fail when this does.
+func optimizeSQLite(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, "PRAGMA optimize=0x10002")
+	return err
+}
+
 // openSQLite opens the DB file with WAL + busy_timeout (§5) and returns a store
 // wired with the SQLite claim SQL. dsn is the path after the sqlite:// scheme.
 func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
-	// WAL for concurrent readers; busy_timeout so brief write contention retries
-	// instead of erroring immediately.
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)", path)
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	// modernc's sqlite serializes writes; a single connection avoids WAL write
-	// contention surprises in-process. Readers still proceed under WAL.
-	db.SetMaxOpenConns(1)
+	// ⚠ A few connections, not one (#2446). With one, every read in the process (each request,
+	// River's 100 ms job polls, the guide) queued behind every other read and write; prod logged
+	// hundreds of River "timed out after 10s" fetches and leader-election losses a week. Under WAL
+	// readers on other connections never wait for the writer, and SQLite still admits one writer at
+	// a time: `_txlock=immediate` makes each transaction take the write lock when it begins, so two
+	// transactions never both read and then collide upgrading to write (SQLITE_BUSY mid-transaction,
+	// which busy_timeout cannot retry), and a writer that must wait does so on busy_timeout.
+	db.SetMaxOpenConns(sqliteMaxOpenConns)
+	db.SetMaxIdleConns(sqliteMaxOpenConns)
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)

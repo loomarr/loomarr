@@ -71,6 +71,9 @@ func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, err
 				return nil, err
 			}
 		}
+		// Planner statistics, after migrations so new tables and indexes are included. Not fatal:
+		// see optimizeSQLite.
+		_ = optimizeSQLite(ctx, s.db)
 		return s, nil
 
 	case strings.HasPrefix(databaseURL, "postgres://"), strings.HasPrefix(databaseURL, "postgresql://"):

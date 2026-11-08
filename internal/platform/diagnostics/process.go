@@ -176,8 +176,8 @@ const purgePage = 500
 // An output file is removed before its guarded Process-run row so SQL can never orphan a file.
 //
 // ⚠ It pages: one bounded delete per page, then a short yield (ProcessOptions.PurgeYield). On
-// SQLite the store has a single connection, so a purge that holds it for long starves River's
-// leader election and the health probe (#1411). A page is the unit of that hold.
+// SQLite only one writer holds the write lock at a time, so a purge that holds it for long starves
+// River's job completion and leader election writes (#1411). A page is the unit of that hold.
 func (m *ProcessManager) Purge(ctx context.Context, before time.Time, maxBytes int64) (PurgeResult, error) {
 	if m == nil || m.sink == nil {
 		return PurgeResult{}, nil
