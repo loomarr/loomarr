@@ -97,7 +97,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
           >
             <span>Person</span>
             <span>Role</span>
-            <span>Requests</span>
+            <span>Request quota</span>
             <span>Status</span>
             <span>Last seen</span>
           </div>
@@ -141,7 +141,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                     </Badge>
                   </span>
                   <span className="flex items-center justify-between gap-3 font-mono text-sm tabular-nums md:block">
-                    <span className="text-muted-foreground font-sans text-xs md:hidden">Requests</span>
+                    <span className="text-muted-foreground font-sans text-xs md:hidden">Request quota</span>
                     {`${user.pendingAcquisitions} / ${user.effectiveQuota}`}
                   </span>
                   <span className="flex items-center justify-between gap-3 md:block">

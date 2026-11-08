@@ -13,6 +13,9 @@ const POSTERS = 5;
 // renders (the same reason the guide window is quantised).
 const newSince = (nowMs: number) => Math.floor((nowMs - WEEK_MS) / HOUR_MS) * HOUR_MS;
 
+// A stable number from a title's key, so a title with no channel keeps the same colour.
+const seedOf = (key: string) => [...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 // "Requested by Maya · added Tuesday" (the mock). The requester is the server's name for the
@@ -92,6 +95,8 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   channel={
                     t.channels?.[0] ? { name: t.channels[0].name, number: t.channels[0].number } : undefined
                   }
+                  label={t.name ?? t.key}
+                  seed={seedOf(t.key)}
                 />
               </div>
               <span className="text-sm font-medium break-words">{t.name ?? t.key}</span>

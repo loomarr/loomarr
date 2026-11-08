@@ -1,4 +1,5 @@
 import { Action } from "@loomarr/design-system";
+import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { useCopied } from "@/lib/use-copied";
 import { cn } from "@/lib/utils";
@@ -47,30 +48,22 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
             </div>
 
             {isConfirming ? (
-              <div className="border-onair-tint-30 bg-onair-tint-8 flex flex-col gap-2 rounded-md border p-3">
-                <p className="text-onair-300 text-sm">{secret.consequence}</p>
-                <div className="flex items-center gap-2">
-                  <Action
-                    disabled={busy === secret.name}
-                    onPress={() => {
-                      onRegenerate(secret.name);
-                      setConfirming(undefined);
-                    }}
-                    variant="destructive"
-                  >
-                    Regenerate anyway
-                  </Action>
-                  <Action onPress={() => setConfirming(undefined)} variant="ghost">
-                    Cancel
-                  </Action>
-                </div>
-              </div>
+              <ConfirmStep
+                confirmLabel="Regenerate anyway"
+                disabled={busy === secret.name}
+                message={secret.consequence}
+                onCancel={() => setConfirming(undefined)}
+                onConfirm={() => {
+                  onRegenerate(secret.name);
+                  setConfirming(undefined);
+                }}
+              />
             ) : (
               <Action
                 icon="refresh"
                 onPress={() => setConfirming(secret.name)}
                 style={{ alignSelf: "flex-start" }}
-                variant="outline"
+                variant="destructive"
               >
                 Regenerate
               </Action>

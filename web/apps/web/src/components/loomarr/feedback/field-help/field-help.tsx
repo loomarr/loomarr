@@ -15,7 +15,7 @@ import type { FieldHelpProps } from "./field-help.type";
 // elements and are not a replacement for labeling the trigger." Radix wired that association for
 // us, so the swap silently removed it. Everywhere else in the app that costs nothing, because the
 // trigger's `aria-label` already restates the tooltip ("Sign out" → "Sign out"). HERE it does not:
-// the content is the field's DOCUMENTATION (`entry.doc` for every setting), which appears nowhere
+// the content is the field's DOCUMENTATION (`entry.detail` for a setting), which appears nowhere
 // else in the DOM. A screen-reader user would have heard "About Ordering, button" and nothing more.
 //
 // So the description is declared explicitly and permanently, and `aria-describedby` points at it.

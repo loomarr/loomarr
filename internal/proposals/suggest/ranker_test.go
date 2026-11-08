@@ -13,9 +13,9 @@ import (
 
 func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testing.T) {
 	candidates := []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Obvious Space Adventure", Genres: []string{"Science Fiction"}, InLibrary: true},
-		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Quiet Space Discovery", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Forbidden Space Film", Genres: []string{"Science Fiction"}},
+		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Obvious Space Adventure", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}, InLibrary: true},
+		{MediaType: provision.Movie, TMDBID: 90000002, Name: "Quiet Space Discovery", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}},
+		{MediaType: provision.Movie, TMDBID: 90000003, Name: "Forbidden Space Film", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}},
 		{MediaType: provision.Movie, TMDBID: 90000004, Name: "Grounded Mystery", Genres: []string{"Mystery"}},
 	}
 	signals := []FeedbackSignal{
@@ -52,9 +52,9 @@ func TestRankGroundedCandidatesAppliesExplicitFeedbackDeterministically(t *testi
 
 func TestRankGroundedCandidatesSurpriseDiversifiesWithinRelevanceBand(t *testing.T) {
 	candidates := []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, InLibrary: true},
-		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Space Familiar", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Space Western", Genres: []string{"Western"}},
+		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Space Anchor", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}, InLibrary: true},
+		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Space Familiar", Genres: []string{"Science Fiction"}, Keywords: []string{"space"}},
+		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Space Western", Genres: []string{"Western"}, Keywords: []string{"space"}},
 		{MediaType: provision.Movie, TMDBID: 90000400, Name: "Unrelated Western", Genres: []string{"Western"}},
 	}
 	baseline := candidateIDs(RankGroundedCandidates("space", candidates, nil))
@@ -81,9 +81,9 @@ func TestRankGroundedCandidatesSurpriseDiversifiesWithinRelevanceBand(t *testing
 
 func TestRankGroundedCandidatesLessDemotesGroundedGenreNeighbors(t *testing.T) {
 	candidates := []catalog.Candidate{
-		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Night Anchor", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Night Neighbor", Genres: []string{"Science Fiction"}},
-		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Night Mystery", Genres: []string{"Mystery"}},
+		{MediaType: provision.Movie, TMDBID: 90000100, Name: "Night Anchor", Genres: []string{"Science Fiction"}, Keywords: []string{"night"}},
+		{MediaType: provision.Movie, TMDBID: 90000200, Name: "Night Neighbor", Genres: []string{"Science Fiction"}, Keywords: []string{"night"}},
+		{MediaType: provision.Movie, TMDBID: 90000300, Name: "Night Mystery", Genres: []string{"Mystery"}, Keywords: []string{"night"}},
 	}
 	got := candidateIDs(RankGroundedCandidates("night", candidates,
 		[]FeedbackSignal{{Target: "movie:tmdb:90000100", Action: FeedbackLess}}))
@@ -272,5 +272,35 @@ func TestMergeDecisionTracePreservesPreTruncationTotalsAndLatestDuplicateFacts(t
 	traceDecision(&full, proposals.DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
 	if full.RecordedTotal != DecisionTraceMaxCandidates+1 || !full.Truncated {
 		t.Fatalf("truncated decision total = %+v", full)
+	}
+}
+
+func TestRelevanceNeedsMetadataEvidenceBeyondTitleWords(t *testing.T) {
+	query := rankQuery{request: intentWordSet("Halloween channel with ghosts, witches and haunted houses")}
+	ghostProtocol := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000501, Name: "Mission: Impossible - Ghost Protocol", Genres: []string{"Action", "Thriller"}}
+	ghostWorld := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000502, Name: "Ghost World", Genres: []string{"Comedy", "Drama"}}
+	hocusPocus := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000503, Name: "Hocus Pocus", Genres: []string{"Family", "Fantasy"}, Keywords: []string{"witch", "halloween"}}
+	for _, title := range []catalog.Candidate{ghostProtocol, ghostWorld} {
+		if got, _ := relevanceForCandidate(query, title); got != 0 {
+			t.Errorf("%s relevance = %d, want 0: a title word alone is not evidence", title.Name, got)
+		}
+	}
+	if got, _ := relevanceForCandidate(query, hocusPocus); got == 0 {
+		t.Fatalf("Hocus Pocus relevance = 0, want keyword evidence to count")
+	}
+	ranked := RankGroundedCandidates("Halloween channel with ghosts, witches and haunted houses", []catalog.Candidate{ghostProtocol, ghostWorld, hocusPocus}, nil)
+	if len(ranked) == 0 || ranked[0].TMDBID != hocusPocus.TMDBID {
+		t.Fatalf("ranked first = %+v, want Hocus Pocus above title-word matches", ranked)
+	}
+}
+
+func TestRelevanceCountsTitleWordsOnceMetadataAgrees(t *testing.T) {
+	query := rankQuery{request: intentWordSet("space adventure")}
+	both := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000504, Name: "Space Anchor", Keywords: []string{"adventure"}}
+	metaOnly := catalog.Candidate{MediaType: provision.Movie, TMDBID: 90000505, Name: "Anchor", Keywords: []string{"adventure"}}
+	a, _ := relevanceForCandidate(query, both)
+	b, _ := relevanceForCandidate(query, metaOnly)
+	if a <= b || b == 0 {
+		t.Fatalf("relevance with agreeing title = %d, metadata only = %d; want title to add once metadata agrees", a, b)
 	}
 }

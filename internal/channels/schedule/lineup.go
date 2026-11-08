@@ -177,11 +177,6 @@ type ResolvedProgram struct {
 	// OfficialRating is THIS episode's own rating, checked against the ceiling at expansion
 	// (§4). "" = the media server has none for the episode, which INHERITS the parent series'
 	// rating rather than failing closed — see episodeVerdict for why.
-	//
-	// ⚠ It is persisted: store.SeriesEpisodes caches []ResolvedProgram, so rows written before
-	// this field existed decode as "". That is precisely the case inheritance makes safe — a
-	// fail-closed reading would have emptied every kids channel on deploy until the refresh
-	// sweep repopulated the cache.
 	OfficialRating rating.Rating
 	// CommunityRating, Overview, and Tags are editorial evidence supplied by the
 	// media server. They never override scope or audience safety; an optional

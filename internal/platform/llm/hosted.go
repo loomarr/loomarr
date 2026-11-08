@@ -369,6 +369,23 @@ func fetchModels(ctx context.Context, baseURL, apiKey string, allModalities bool
 	return models, nil
 }
 
+// CheckModels reports whether the provider at baseURL lists at least one model for apiKey. It is
+// the free, read-only reachability proof behind the AI connection check: when the model list
+// cannot be read, the AI setup cannot work, so the connection is not OK (#2735).
+//
+// ⚠ It proves the address answers, NOT that the key is authorized — OpenRouter's /models is a
+// public catalog (see ValidateKey). Keys are validated when a model is selected.
+func CheckModels(ctx context.Context, baseURL, apiKey string) error {
+	models, err := fetchModels(ctx, baseURL, apiKey, false)
+	if err != nil {
+		return err
+	}
+	if len(models) == 0 {
+		return errors.New("the provider returned no models")
+	}
+	return nil
+}
+
 // ValidateKey does a cheap live check that a hosted provider + key is actually
 // AUTHORIZED, WITHOUT running a suggestion (§8.1 test / validate-on-select).
 //

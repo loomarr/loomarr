@@ -1,5 +1,5 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
-import { formatClipDuration } from "@loomarr/core/format";
+import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
 import { Action } from "@loomarr/design-system";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
@@ -26,7 +26,10 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
       : undefined;
   const verifiedLocation =
     clip.geographicScope === "national" || clip.geographicScope === "local"
-      ? [clip.country, clip.geographicScope === "local" ? (clip.stationLabel ?? clip.station) : "National"]
+      ? [
+          clip.country ? countryLabel(clip.country) : undefined,
+          clip.geographicScope === "local" ? (clip.stationLabel ?? clip.station) : "National",
+        ]
           .filter(Boolean)
           .join(" · ")
       : undefined;
@@ -45,7 +48,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
     ["Audience", clip.audience ? AUDIENCE_LABEL[clip.audience] : undefined],
     ["Advertiser", clip.brand],
     ["Location", verifiedLocation ?? (suggestion?.country ? `${suggestion.country} · Likely` : undefined)],
-    ["Topics", clip.assertedTags?.join(", ")],
+    ["Topics", clip.assertedTags?.map(topicLabel).join(", ")],
   ].filter(([, value]) => value);
   const enrichmentMessage =
     clip.enrichment?.state === "adding_details"
