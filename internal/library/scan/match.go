@@ -64,9 +64,76 @@ type Matcher struct {
 	Log      *slog.Logger
 	// Sleep waits between catalog calls, per the provider's rate hint; nil sleeps on the clock.
 	Sleep func(ctx context.Context, d time.Duration) error
-	// Match answers a movie a search settled (decision 56): exactly one result agrees on its name,
-	// its year within one, and its length. Nil leaves every title to the maintainer.
+	// Episodes is a series' highest episode number on disk in each season, specials left out; nil
+	// knows none, and then no series is settled.
+	Episodes func(ctx context.Context, seriesID string) (map[int]int, error)
+	// Match answers a title a search settled: exactly one result agrees on everything it can be
+	// checked by (decisions 56 and 57). Nil leaves every title to the maintainer.
 	Match func(ctx context.Context, itemID, tmdbID string) error
+}
+
+// evidence is what the files say about a title beyond its name: a movie's length, a series'
+// episodes. A search result is checked against it.
+type evidence struct {
+	year     int
+	length   time.Duration
+	episodes map[int]int
+}
+
+// key is the part of the searched key the evidence adds, so a title is searched again when it
+// grows: a movie once its header is read, a series when its episodes change.
+func (e evidence) key() string {
+	switch {
+	case e.length > 0:
+		return "|length"
+	case len(e.episodes) > 0:
+		seasons := make([]int, 0, len(e.episodes))
+		for s := range e.episodes {
+			seasons = append(seasons, s)
+		}
+		sort.Ints(seasons)
+		var b strings.Builder
+		b.WriteString("|episodes")
+		for _, s := range seasons {
+			b.WriteString(" " + strconv.Itoa(s) + ":" + strconv.Itoa(e.episodes[s]))
+		}
+		return b.String()
+	}
+	return ""
+}
+
+// fits is whether a result agrees with everything the files say. A movie: its runtime matches the
+// file's length (decision 56). A series: every season on disk exists in its layout with at least
+// as many episodes as the highest number found (decision 57). Containment, not equality: a show
+// still airing, or a household missing episodes, fits; a show TMDB lays out differently from the
+// files does not, and waits for the maintainer.
+func (e evidence) fits(kind string, rec mp.Record) bool {
+	if rec.Descriptive == nil {
+		return false
+	}
+	if kind == string(mp.KindMovie) {
+		return sameLength(rec.Descriptive.Runtime, e.length)
+	}
+	if len(e.episodes) == 0 {
+		return false
+	}
+	size := map[int]int{}
+	for _, s := range rec.Descriptive.Seasons {
+		size[s.Number] = s.Episodes
+	}
+	for season, highest := range e.episodes {
+		if size[season] < highest {
+			return false
+		}
+	}
+	return true
+}
+
+// settles is whether a candidate agrees on everything: the name; the year (a series without one
+// in its folder name is checked without it); and the length or the episodes.
+func (e evidence) settles(c store.LibraryCandidate) bool {
+	yearOK := c.YearMatch || (c.Kind == string(mp.KindSeries) && e.year == 0)
+	return c.NameMatch && yearOK && c.LengthMatch
 }
 
 // Run matches until ctx ends.
@@ -98,12 +165,8 @@ func (m *Matcher) Tick(ctx context.Context) error {
 	done := 0
 	for _, need := range needs {
 		title, year := searchQuery(need.Name, need.Year)
-		length := m.length(ctx, need)
-		searched := title + "|" + strconv.Itoa(year)
-		if length > 0 {
-			// A movie is searched again once its header is read: its length can settle it.
-			searched += "|length"
-		}
+		ev := evidence{year: year, length: m.length(ctx, need), episodes: m.episodes(ctx, need)}
+		searched := title + "|" + strconv.Itoa(year) + ev.key()
 		if title == "" || need.Searched == searched {
 			continue
 		}
@@ -111,7 +174,7 @@ func (m *Matcher) Tick(ctx context.Context) error {
 			return nil
 		}
 		done++
-		candidates, settled, err := m.candidates(ctx, need, title, year, length)
+		candidates, settled, err := m.candidates(ctx, need, title, ev)
 		if errors.Is(err, tmdb.ErrAPIKeyRequired) {
 			return nil
 		}
@@ -135,9 +198,9 @@ func (m *Matcher) Tick(ctx context.Context) error {
 }
 
 // candidates searches for one title and ranks what it finds. settled is the TMDB id of the one
-// candidate that agrees on everything a movie can be checked by (decision 56), or "" when none or
-// more than one does: then the maintainer decides. A series is never settled here (decision 57).
-func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title string, year int, length time.Duration) (
+// candidate that agrees on everything the title can be checked by (decisions 56 and 57), or ""
+// when none or more than one does: then the maintainer decides (decision 58).
+func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title string, ev evidence) (
 	_ []store.LibraryCandidate, settled string, _ error,
 ) {
 	if err := m.wait(ctx); err != nil {
@@ -157,20 +220,20 @@ func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title 
 		}
 		c := store.LibraryCandidate{
 			Kind: hit.Kind, TMDBID: hit.TMDBID, Name: hit.Name, Year: hit.Year, Overview: hit.Overview,
-			NameMatch: sameName(hit.Name, title), YearMatch: sameYear(hit.Year, year),
+			NameMatch: sameName(hit.Name, title), YearMatch: sameYear(hit.Year, ev.year),
 		}
 		if rec, ok := m.details(ctx, hit); ok {
 			c.Poster = posterURL(rec)
-			if c.Overview == "" {
+			if c.Overview == "" && rec.Descriptive != nil {
 				c.Overview = rec.Descriptive.Overview
 			}
-			c.LengthMatch = need.Kind == string(mp.KindMovie) && sameLength(rec.Descriptive.Runtime, length)
+			c.LengthMatch = ev.fits(hit.Kind, rec)
 		}
 		out = append(out, c)
 	}
 	agreeing := 0
 	for _, c := range out {
-		if c.Kind == string(mp.KindMovie) && c.NameMatch && c.YearMatch && c.LengthMatch {
+		if ev.settles(c) {
 			agreeing++
 			settled = c.TMDBID
 		}
@@ -234,6 +297,19 @@ func (m *Matcher) length(ctx context.Context, need store.LibraryNeed) time.Durat
 		}
 	}
 	return time.Duration(longest) * time.Millisecond
+}
+
+// episodes is a series' episodes on disk by season; nil for a movie, or when they can't be read.
+func (m *Matcher) episodes(ctx context.Context, need store.LibraryNeed) map[int]int {
+	if m.Episodes == nil || need.Kind != string(mp.KindSeries) {
+		return nil
+	}
+	found, err := m.Episodes(ctx, need.ID)
+	if err != nil {
+		m.log().Debug("library match: episodes not read", "item", need.ID, "err", err)
+		return nil
+	}
+	return found
 }
 
 // wait keeps to the provider's rate hint between catalog calls.

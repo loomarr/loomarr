@@ -39,6 +39,7 @@ const guess = (over: Partial<NonNullable<LibraryNeed["best"]>> = {}) => ({
   nameMatches: true,
   yearMatches: false,
   lengthMatches: true,
+  episodesMatches: false,
   ...over,
 });
 
@@ -217,6 +218,14 @@ describe("LibraryNeedsCards", () => {
     expect(host.textContent).toContain("Is this Paper Kites (1996)?");
     expect(host.textContent).toContain("The name and length match; the year doesn't.");
     expect(host.textContent).toContain("1 file");
+    cleanup();
+  });
+
+  // A show is checked by its episodes, never its length (decision 57).
+  it("says a show's episodes fit", () => {
+    const show = guess({ kind: "series", name: "Harbour Lights", lengthMatches: false, episodesMatches: true });
+    const { host, cleanup } = mount(cards({ needs: [need("90000822", { best: show })] }));
+    expect(host.textContent).toContain("The name and episodes match.");
     cleanup();
   });
 

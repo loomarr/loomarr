@@ -15,6 +15,8 @@ interface LibraryNeedCandidate {
   yearMatches: boolean;
   /** Movies only: its runtime and the file's length agree. */
   lengthMatches: boolean;
+  /** Series only: every season and episode on disk fits its seasons. */
+  episodesMatches: boolean;
 }
 
 /** A title Loomarr can't tell what it is. */

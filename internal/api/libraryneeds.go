@@ -63,7 +63,8 @@ type libraryCandidateDTO struct {
 	// The agreement flags say which of the file's facts the candidate shares.
 	NameMatches   bool `json:"nameMatches"`
 	YearMatches   bool `json:"yearMatches"`
-	LengthMatches bool `json:"lengthMatches" doc:"Movies only: its runtime and the file's length agree"`
+	LengthMatches   bool `json:"lengthMatches" doc:"Movies only: its runtime and the file's length agree"`
+	EpisodesMatches bool `json:"episodesMatches" doc:"Series only: every season and episode on disk fits its seasons"`
 }
 
 type libraryNeedDTO struct {
@@ -134,7 +135,10 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 			dto.Candidates = append(dto.Candidates, libraryCandidateDTO{
 				Kind: c.Kind, TMDBID: c.TMDBID, Name: c.Name, Year: c.Year, Overview: c.Overview,
 				Poster:      s.candidatePoster(ctx, n.ID, c.Poster),
-				NameMatches: c.NameMatch, YearMatches: c.YearMatch, LengthMatches: c.LengthMatch,
+				NameMatches: c.NameMatch, YearMatches: c.YearMatch,
+				// One stored flag: what the files say beyond the name agrees, by kind.
+				LengthMatches:   c.LengthMatch && c.Kind == "movie",
+				EpisodesMatches: c.LengthMatch && c.Kind == "series",
 			})
 		}
 		for _, f := range n.Present {

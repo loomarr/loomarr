@@ -122,6 +122,7 @@ const NEEDS: LibraryNeed[] = [
       nameMatches: true,
       yearMatches: false,
       lengthMatches: true,
+      episodesMatches: false,
     },
     others: [
       {
@@ -132,6 +133,7 @@ const NEEDS: LibraryNeed[] = [
         nameMatches: true,
         yearMatches: false,
         lengthMatches: false,
+        episodesMatches: false,
       },
     ],
   },

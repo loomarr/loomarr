@@ -315,8 +315,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   searched or marked. A movie is matched by its search (decision 56) when exactly one result
   agrees on all three, name, year and length; two that agree, or none, wait in Needs you
   (decision 58). That match is an answer with `answered_by = search`, written as a `search`
-  record ranked below every id and below the maintainer's link, which replaces it. A series is not
-  matched this way yet (decision 57). An answer lives
+  record ranked below every id and below the maintainer's link, which replaces it. A series is
+  matched the same way (decision 57) when exactly one result agrees on the name, the year when its
+  folder names one, and its episodes: every season on disk is in TMDB's layout (the `seasons` the
+  detail call already carries) with at least as many episodes as the highest number found there.
+  Specials and unnumbered files are not checked. It is containment, not equality, so a show still
+  airing or one missing episodes fits, and a show TMDB numbers differently from the files waits
+  for the maintainer. A series is searched again when its episodes on disk change. The one stored
+  flag says what the files say beyond the name agrees; the API names it `lengthMatches` for a
+  movie and `episodesMatches` for a series. An answer lives
   in `library_answers` by scan origin, so it outlives rewrites: a link (`POST
   /v1/library/items/{id}/link`) is a `link` record below what the files say, so its details then
   come from the catalog, and an ignore (`…/ignore`) leaves the Library and Needs you. `DELETE

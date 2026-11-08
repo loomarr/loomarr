@@ -124,6 +124,16 @@ type Descriptive struct {
 	Edition string
 	// People are the cast, in billing order, then the key crew.
 	People []Person
+	// Seasons is a series' layout in the source's own numbering, specials (season 0) included.
+	// It says how many episodes each season holds, never which file is which: TMDB and TVDB number
+	// some shows differently.
+	Seasons []SeasonSize
+}
+
+// SeasonSize is one season of a series and how many episodes it has.
+type SeasonSize struct {
+	Number   int
+	Episodes int
 }
 
 // PersonRole is what a person did on a title.

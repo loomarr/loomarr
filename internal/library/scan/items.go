@@ -283,6 +283,33 @@ func (l *Library) seasons(ctx context.Context, files []store.LibraryFile) ([]Sea
 	return seasons, namesFrom, nil
 }
 
+// EpisodesOnDisk is, for each season of a series on disk, the highest episode number its files
+// hold: what a series search is checked against (decision 57). Specials (season 0) and files
+// without a number are left out, since nothing lays them out the same way twice.
+func (l *Library) EpisodesOnDisk(ctx context.Context, seriesID string) (map[int]int, error) {
+	files, err := l.ItemStore.LibraryItemFiles(ctx, seriesID)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	highest := map[int]int{}
+	for _, f := range files {
+		if seen[f.ItemID] {
+			continue
+		}
+		seen[f.ItemID] = true
+		episode, err := l.scanned(ctx, f.ItemID)
+		if err != nil {
+			return nil, err
+		}
+		facts := episode.facts
+		if facts.SeasonNumber > 0 && facts.EpisodeNumber > 0 {
+			highest[facts.SeasonNumber] = max(highest[facts.SeasonNumber], facts.EpisodeNumber, facts.EpisodeEnd)
+		}
+	}
+	return highest, nil
+}
+
 // scannedItem is what the scanner wrote about an item: its newest present scan origin's facts and
 // their provenance, and each present file by path.
 type scannedItem struct {

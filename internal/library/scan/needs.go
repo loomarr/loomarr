@@ -71,7 +71,7 @@ func (l *Library) Link(ctx context.Context, itemID, tmdbID string) error {
 }
 
 // MatchBySearch answers a title for the Matcher: a search agreed it is the TMDB title tmdbID
-// (decision 56). A title the maintainer answered meanwhile keeps their answer.
+// (decisions 56 and 57). A title the maintainer answered meanwhile keeps their answer.
 func (l *Library) MatchBySearch(ctx context.Context, itemID, tmdbID string) error {
 	_, origin, err := l.origin(ctx, itemID)
 	if err != nil {

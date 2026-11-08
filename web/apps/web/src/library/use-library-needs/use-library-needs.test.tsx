@@ -20,6 +20,7 @@ const candidate = (tmdbId: string, name: string, nameMatches: boolean) => ({
   nameMatches,
   yearMatches: false,
   lengthMatches: false,
+  episodesMatches: false,
 });
 
 const need = (id: string, candidates: ReturnType<typeof candidate>[]) => ({

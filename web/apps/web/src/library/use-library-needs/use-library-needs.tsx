@@ -40,6 +40,7 @@ const candidateOf = (c: LibraryCandidateDTO): LibraryNeedCandidate => ({
   nameMatches: c.nameMatches,
   yearMatches: c.yearMatches,
   lengthMatches: c.lengthMatches,
+  episodesMatches: c.episodesMatches,
 });
 
 // The best guess is the first, when its name agrees; the rest are the others to pick from.
@@ -68,6 +69,7 @@ const searchLibraryTitles: LibraryNeedSearch = async (query, kind) => {
     nameMatches: false,
     yearMatches: false,
     lengthMatches: false,
+    episodesMatches: false,
   }));
 };
 

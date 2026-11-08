@@ -179,7 +179,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		lib.Search = tmdbSearcher(deps.tmdb)
 		matcher := &scan.Matcher{
 			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,
-			Enabled: im.Enabled, Log: deps.log, Match: lib.MatchBySearch,
+			Enabled: im.Enabled, Log: deps.log, Match: lib.MatchBySearch, Episodes: lib.EpisodesOnDisk,
 		}
 		deps.owner.goRunAfterBuild(matcher.Run)
 	}
