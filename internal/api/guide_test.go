@@ -38,17 +38,19 @@ type guideBody struct {
 		Name      string `json:"name"`
 		Number    int    `json:"number"`
 		Airings   []struct {
-			Kind       string        `json:"kind"`
-			Title      string        `json:"title"`
-			Series     string        `json:"series"`
-			StartMs    int64         `json:"startMs"`
-			StopMs     int64         `json:"stopMs"`
-			Nominal    bool          `json:"nominal"`
-			RuntimeMs  int64         `json:"runtimeMs"`
-			Provenance string        `json:"provenance"`
-			ThumbURL   string        `json:"thumbUrl"`
-			ThumbImage *api.ImageDTO `json:"thumbImage"`
-			Pod        *struct {
+			Kind          string        `json:"kind"`
+			Title         string        `json:"title"`
+			Series        string        `json:"series"`
+			StartMs       int64         `json:"startMs"`
+			StopMs        int64         `json:"stopMs"`
+			Nominal       bool          `json:"nominal"`
+			RuntimeMs     int64         `json:"runtimeMs"`
+			Provenance    string        `json:"provenance"`
+			ThumbURL      string        `json:"thumbUrl"`
+			ThumbImage    *api.ImageDTO `json:"thumbImage"`
+			LogoImage     *api.ImageDTO `json:"logoImage"`
+			BackdropImage *api.ImageDTO `json:"backdropImage"`
+			Pod           *struct {
 				MatchLevel string `json:"matchLevel"`
 				TotalMs    int64  `json:"totalMs"`
 				Entries    []struct {
@@ -613,6 +615,85 @@ func TestGuide_HoverCardsCarryProgrammeAndFillerArtwork(t *testing.T) {
 	}
 	if got := airings[1].ThumbImage; got == nil || got.Hash != "filler-hover" || !got.Animated {
 		t.Errorf("filler hover image = %+v, want animated filler-hover (preferred over still)", got)
+	}
+}
+
+// A programme carries its TITLE's clear logo and fanart from the Library (#2567): a film its own,
+// an episode its show's, beside the block's own preview. A logo still being fetched, and a title
+// the Library doesn't hold, send neither field.
+func TestGuide_ProgrammesCarryTheirTitlesLogoAndBackdrop(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	g := &fakeXMLTVGuide{withPending: map[string][]playout.Broadcast{
+		"ch1": {
+			{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000091", Title: "Bellwether Junction",
+				Start: now, Stop: now.Add(2 * time.Hour)},
+			{Kind: schedule.SlotProgram, Key: "series:tvdb:90000092", Title: "The Lantern Fair",
+				SeriesTitle: "Copperfield Lane", Season: 1, Episode: 2,
+				Start: now.Add(2 * time.Hour), Stop: now.Add(150 * time.Minute)},
+			{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000093", Title: "Not In The Library",
+				Start: now.Add(150 * time.Minute), Stop: now.Add(4 * time.Hour)},
+		},
+	}}
+	img := newFakeImageService()
+	for hash, role := range map[string]images.Role{
+		"film-logo": images.RoleLogo, "film-fanart": images.RoleBackdrop, "show-fanart": images.RoleBackdrop,
+	} {
+		img.records[hash] = images.Image{Hash: hash, Role: role, Width: 800, Height: 310, Visibility: images.VisibilityMember}
+	}
+	// The show's logo is a TMDB image not fetched yet.
+	img.records["show-logo"] = images.Image{Hash: "show-logo", Role: images.RoleLogo, Origin: images.OriginRemote,
+		Visibility: images.VisibilityMember}
+
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Images: img})
+	srv, st := harness.Server, harness.Store
+	seedGridChannel(t, st, "ch1", 1)
+	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{
+		{ID: "film", Kind: "movie", Name: "Bellwether Junction", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "90000091"}}},
+		{ID: "show", Kind: "series", Name: "Copperfield Lane", IDs: []store.LibraryID{{Namespace: "tvdb", Value: "90000092"}}},
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryFiles(ctx, []store.LibraryFile{
+		{Path: "/m/film.mkv", Root: "/m", Size: 1, ModifiedNs: 1, Kind: "movie", Header: store.LibraryHeaderRead,
+			SeenAt: now, ItemID: "film"},
+		{Path: "/m/show/e2.mkv", Root: "/m", Size: 1, ModifiedNs: 1, Kind: "episode", Header: store.LibraryHeaderRead,
+			SeenAt: now, ItemID: "show-e2", SeriesID: "show"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []store.ImageRef{
+		{ImageHash: "film-logo", OwnerID: "film", Role: "logo"},
+		{ImageHash: "film-fanart", OwnerID: "film", Role: "backdrop"},
+		{ImageHash: "show-fanart", OwnerID: "show", Role: "backdrop"},
+		{ImageHash: "show-logo", OwnerID: "show", Role: "logo"},
+	} {
+		ref.OwnerKind = store.LibraryItemImageOwner
+		if err := st.PutImage(ctx, store.Image{Hash: ref.ImageHash, Role: ref.Role, Width: 1, Height: 1,
+			Visibility: "member", CreatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.PutImageRef(ctx, ref); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	airings := getGuide(t, srv, "?from="+ms(now.Add(-time.Minute).UnixMilli())+
+		"&to="+ms(now.Add(4*time.Hour).UnixMilli())).Channels[0].Airings
+	if len(airings) != 3 {
+		t.Fatalf("got %d airings, want three programmes", len(airings))
+	}
+	if film := airings[0]; film.LogoImage == nil || film.LogoImage.Hash != "film-logo" ||
+		film.BackdropImage == nil || film.BackdropImage.Hash != "film-fanart" {
+		t.Errorf("film art = logo %+v, backdrop %+v; want its own logo and fanart", film.LogoImage, film.BackdropImage)
+	}
+	if episode := airings[1]; episode.LogoImage != nil || episode.BackdropImage == nil ||
+		episode.BackdropImage.Hash != "show-fanart" {
+		t.Errorf("episode art = logo %+v, backdrop %+v; want the show's fanart and no logo while it is fetched",
+			episode.LogoImage, episode.BackdropImage)
+	}
+	if other := airings[2]; other.LogoImage != nil || other.BackdropImage != nil {
+		t.Errorf("a title the Library doesn't hold = logo %+v, backdrop %+v; want neither", other.LogoImage, other.BackdropImage)
 	}
 }
 

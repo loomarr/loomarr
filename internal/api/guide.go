@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // guideConcurrency bounds how many channel timelines resolve at once. The work is CPU-bound
@@ -75,6 +76,13 @@ type GuideAiring struct {
 	// A programme's bounded interactive fetch returns real bytes before this is emitted; failure
 	// omits both fields cleanly rather than exposing an adopted placeholder row.
 	ThumbImage *ImageDTO `json:"thumbImage,omitempty" doc:"The preview image's record, for srcset, animation and placeholder rendering"`
+	// LogoImage and BackdropImage are the TITLE's clear logo and fanart from the Library (#2567):
+	// the film's own, or for an episode its show's. ThumbImage stays the block's preview (an
+	// episode's still), so a player can lay the show's logo over the episode's frame.
+	LogoImage     *ImageDTO `json:"logoImage,omitempty" doc:"The title's clear logo, transparent (WebP and AVIF only); for an episode, its show's. Absent when the Library holds none"`
+	BackdropImage *ImageDTO `json:"backdropImage,omitempty" doc:"The title's fanart; for an episode, its show's. Absent when the Library holds none"`
+	// titleKey is the provisioning key the title art resolves by; never on the wire.
+	titleKey provision.Key
 	// RuntimeMs is the ITEM's own runtime, distinct from stopMs-startMs (how long the block
 	// occupies the schedule). They normally agree; where they differ — a 22m episode in a 30m
 	// slot — the difference is what makes padding visible.
@@ -416,6 +424,12 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 		}
 	}
 
+	timelines := make([][]GuideAiring, len(rows))
+	for i := range rows {
+		timelines[i] = rows[i].Airings
+	}
+	s.attachTitleArt(ctx, timelines...)
+
 	out.Body.Channels = rows
 	return out, nil
 }
@@ -448,6 +462,7 @@ func guideAiringOf(channelID string, b playout.Broadcast) GuideAiring {
 		ItemID:          b.LibraryItemID,
 		RuntimeMs:       b.RuntimeMs,
 		Provenance:      b.Provenance,
+		titleKey:        b.Key,
 	}
 }
 

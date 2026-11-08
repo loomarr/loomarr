@@ -5105,6 +5105,9 @@ components:
     GuideAiring:
       additionalProperties: false
       properties:
+        backdropImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The title's fanart; for an episode, its show's. Absent when the Library holds none
         description:
           type: string
         episode:
@@ -5125,6 +5128,9 @@ components:
             - pending
             - flex
           type: string
+        logoImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: The title's clear logo, transparent (WebP and AVIF only); for an episode, its show's. Absent when the Library holds none
         nominal:
           description: Times are a display estimate, not scheduled airtime
           type: boolean

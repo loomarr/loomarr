@@ -350,7 +350,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   shape, so the `logo` role has no JPEG rendition and its `<img>` fallback is WebP; its dominant
   colour weighs each pixel by its alpha, so the transparent canvas doesn't dim it. A local sidecar
   outranks TMDB's image of the same kind (decision 19). The item page carries `logoImage` and
-  `backdropImage`, each absent when the title has none. A sidecar file is imported
+  `backdropImage`, each absent when the title has none, and so does every guide airing (the
+  guide, a channel's timeline and Home's highlights): the art of the title its provisioning key
+  names, so an episode carries its show's logo and fanart beside its own still. One batched read
+  per response (`LibraryTitleArt`); an image still being fetched is left off. A sidecar file is imported
   then, keyed by its content, opened only as a regular file and never through a symlink, and
   skipped when the service already holds those bytes; it is `extracted`, since the file beside the
   media is its source. A manager's https URL is adopted, and the fetch job moves the ref onto the
