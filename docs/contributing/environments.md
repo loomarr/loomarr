@@ -85,8 +85,9 @@ Add `-f gpu=nvidia` to run the test server on an NVIDIA A16, at about $0.47 an h
 gh workflow run staging.yml -f version=0.2.0-beta.9-rc.11 -f gpu=nvidia -f hours=2
 ```
 
-The cloud installs the GPU driver as the server boots. The boot then adds Docker's GPU support,
-and the demo site checks the server chose NVENC. If it chose anything else, the server powers off
+The cloud's image comes with NVIDIA driver 580, which is too old for Loomarr's NVENC (it needs
+610 or newer). The boot replaces it with NVIDIA's current driver and adds Docker's GPU support.
+Then the demo site checks the server chose NVENC. If it chose anything else, the server powers off
 and the sweep destroys it, so a server that stays up has proved NVENC works. A GPU server must
 expire: one left running would cost about $344 a month. No cloud offers Intel Arc, so Intel
 encoding is still tested at home.
