@@ -2,9 +2,8 @@ import type { GuideHighlightDTO } from "@loomarr/api/models/guideHighlightDTO";
 import { GuideHighlightDTOReason } from "@loomarr/api/models/guideHighlightDTOReason";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { Action, SectionHeader } from "@loomarr/design-system";
+import { HighlightRow, ListGroup } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
-import { HighlightRow } from "@/components/ui/highlight-row";
-import { ListGroup } from "@/components/ui/list-row";
 import type { TonightProps } from "./tonight.type";
 
 // Why a highlight is one, worded here from the server's typed reason (#1664): the server never

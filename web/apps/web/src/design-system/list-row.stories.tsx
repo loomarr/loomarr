@@ -1,15 +1,16 @@
+import { Action } from "@loomarr/design-system";
+import { HighlightRow, ListGroup, ListRow } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Button } from "../button";
-import { ListGroup, ListRow } from "./list-row";
 
-// ListGroup + ListRow — state rows (#1659 web mock: On the way, Your requests).
+// ListGroup + ListRow — state rows (#1659 web mock: On the way, Your requests) — and HighlightRow,
+// Tonight's highlights, which share the group.
 const meta = {
-  title: "Primitives/ListRow",
+  title: "Loomarr Components/ListRow",
   component: ListRow,
   args: { tone: "progress", title: "A sci-fi anthology" },
   decorators: [
     (Story) => (
-      <div className="max-w-[1120px] p-6">
+      <div style={{ maxWidth: 1120, padding: 24 }}>
         <Story />
       </div>
     ),
@@ -54,9 +55,9 @@ const Requests: Story = {
         title="An autumn horror channel"
         sub="On its channel · 22"
         action={
-          <Button size="sm" variant="outline">
+          <Action density="pointer" onPress={() => {}} variant="outline">
             Watch
-          </Button>
+          </Action>
         }
       />
       <ListRow
@@ -69,14 +70,57 @@ const Requests: Story = {
         title="Game shows with the original hosts"
         sub="Couldn't be built: only 2 titles found"
         action={
-          <Button size="sm" variant="outline">
+          <Action density="pointer" onPress={() => {}} variant="outline">
             Edit and retry
-          </Button>
+          </Action>
         }
       />
     </ListGroup>
   ),
 };
 
+const Tonight: Story = {
+  render: () => (
+    <ListGroup aria-label="Tonight">
+      <HighlightRow
+        time="9:04 PM"
+        channelNumber="07"
+        title="A sci-fi drama"
+        detail=" · Pilot"
+        reason="Season 4 premiere"
+      />
+      <HighlightRow
+        time="9:30 PM"
+        channelNumber="42"
+        title="A bar sitcom"
+        detail=" · A late episode"
+        reason="Back-to-back until 11"
+      />
+      <HighlightRow time="10:04 PM" channelNumber="07" title="A space horror film" reason="Movie · 1979" />
+      <HighlightRow
+        time="11:00 PM"
+        channelNumber="22"
+        title="A cult horror film"
+        reason="New on the autumn horror channel"
+      />
+    </ListGroup>
+  ),
+};
+
+// A long title truncates in its column; the reason never wraps under it.
+const TonightLongTitle: Story = {
+  render: () => (
+    <ListGroup aria-label="Tonight">
+      <HighlightRow
+        time="9:04 PM"
+        channelNumber="07"
+        title="A sci-fi drama with an unusually long title that has to give way"
+        detail=" · An episode name that is also long"
+        reason="Season 4 premiere"
+      />
+    </ListGroup>
+  ),
+};
+
 export default meta;
-export { Downloading, Requests };
+export { Downloading, Requests, Tonight, TonightLongTitle };

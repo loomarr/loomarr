@@ -105,6 +105,8 @@ export {
   LibraryTitle,
   LibraryWizardStep,
 } from "./src/library";
+export type { HighlightRowProps, ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-row";
+export { HighlightRow, ListGroup, ListRow } from "./src/list-row";
 export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,

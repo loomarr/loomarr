@@ -4,6 +4,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
 import type { StatusTone } from "@loomarr/design-system";
+import { ListGroup, ListRow } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -11,7 +12,6 @@ import { RequestCard } from "@/components/loomarr/ai/request-card";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { buttonVariants } from "@/components/ui/button";
-import { ListGroup, ListRow } from "@/components/ui/list-row";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
 
@@ -201,13 +201,12 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
   // A finished request links to the channel it became; its titles are part of that channel,
   // which is why there is no separate "ready" list.
   return (
-    <ListGroup
-      aria-label={tab === "done" ? "Finished requests" : "Requests in progress"}
-      className="max-w-reading mx-auto w-full"
-    >
-      {entries.map(rowFor)}
-      {decidedPulls.map(pullRowFor)}
-    </ListGroup>
+    <div className="max-w-reading mx-auto w-full">
+      <ListGroup aria-label={tab === "done" ? "Finished requests" : "Requests in progress"}>
+        {entries.map(rowFor)}
+        {decidedPulls.map(pullRowFor)}
+      </ListGroup>
+    </div>
   );
 };
 
