@@ -74,8 +74,9 @@ func TestShippedAreasLoad(t *testing.T) {
 }
 
 func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
-	saved := KnownGaps
-	t.Cleanup(func() { KnownGaps = saved })
+	savedGaps, savedFree := KnownGaps, FreeForm
+	t.Cleanup(func() { KnownGaps, FreeForm = savedGaps, savedFree })
+	FreeForm = map[string]string{"events.app_status": "another app's words", "jobs.kind": "now checked"}
 	KnownGaps = map[string]string{
 		"check jobs.status":           "listed, still a gap",
 		"fk-index jobs.old_id":        "listed, since fixed",
@@ -101,7 +102,7 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 			},
 			Indexes: [][]string{{"position", "parent_id", "id"}, {"old_id", "kind"}, {"shelf", "kind", "user_id"}, {"kind", "user_id"}},
 		},
-		{Name: "events", Columns: []LiveColumn{{Name: "outcome", Type: "text"}}},
+		{Name: "events", Columns: []LiveColumn{{Name: "outcome", Type: "text"}, {Name: "app_status", Type: "TEXT"}}},
 		{Name: "notes"},
 		{Name: "river_job", Columns: []LiveColumn{{Name: "state", Type: "TEXT"}}},
 	}
@@ -109,6 +110,7 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 		"check events.outcome: list the allowed values in a CHECK (column IN (...))",
 		"fk-index jobs.old_id is fixed: remove it from KnownGaps (was: listed, since fixed)",
 		"fk-index jobs.user_id: add an index whose first column is this foreign key",
+		"jobs.kind is listed in FreeForm but is no longer an unchecked state column",
 		"retention notes: add a retention line to its table in internal/platform/store/schemadoc/areas/",
 		"unbounded events: delete old rows (housekeeping or a retention setting), then say how long they're kept",
 	}
