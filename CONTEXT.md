@@ -288,9 +288,10 @@ insufficient, or while work is waiting, retrying, or needs a person.
 _Avoid_: deadline, completion time, ETA promise
 
 **Filler role**:
-What kind of non-program item a Clip is, such as commercial, promo, bumper, PSA, station ID,
-trailer, or interstitial. A Filler role says nothing about Media quality or Airworthiness.
-_Avoid_: category, approval, suitability
+What kind of non-program item a Clip is: commercial, bumper, station ID, PSA, trailer,
+interstitial, political ad, or news. The code, the API and the `clips.role` column all call it
+`role` (#2323). A Filler role says nothing about Media quality or Airworthiness.
+_Avoid_: kind, category, approval, suitability
 
 **Placement**:
 Where a Clip may be used in a break: break body, bookend, or not playable. Placement is a scheduling

@@ -55,7 +55,7 @@ func commercial(path string, era int, aud filler.Audience) filler.Clip {
 	return filler.Clip{
 		// Hash AND Path — identity is the hash since V38c, and the store keys on it.
 		Hash: path,
-		Path: path, Name: path, Kind: filler.Commercial,
+		Path: path, Name: path, Role: filler.Commercial,
 		Era: era, Audience: aud, Category: "toys", DurationMs: 30_000,
 		TunarrProgramID: "tp-" + path,
 	}
@@ -112,7 +112,7 @@ func TestPool_AgreesWithPerChannelCoverage(t *testing.T) {
 func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
 	t.Parallel()
 	ident := commercial("ident.mp4", 1992, filler.General)
-	ident.Kind = filler.StationID
+	ident.Role = filler.StationID
 	chans := []store.Channel{liveChannel("ch-90s", "Saturday Mornings", 42, 1990)}
 	without, _ := newPoolAdapter(t, []filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids)}, chans)
 	with, _ := newPoolAdapter(t, []filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids), ident}, chans)
@@ -230,8 +230,8 @@ func TestPool_CountsCatalogWithNoChannels(t *testing.T) {
 			// Untagged: a commercial with no era/audience/category. The store owns this
 			// predicate; the assertion below is what proves Pool asked it rather than
 			// counting in Go.
-			{Hash: "mystery.mp4", Path: "mystery.mp4", Name: "mystery.mp4", Kind: filler.Commercial, DurationMs: 20_000},
-			{Hash: "bump.mp4", Path: "bump.mp4", Name: "bump.mp4", Kind: filler.Bumper, DurationMs: 5_000},
+			{Hash: "mystery.mp4", Path: "mystery.mp4", Name: "mystery.mp4", Role: filler.Commercial, DurationMs: 20_000},
+			{Hash: "bump.mp4", Path: "bump.mp4", Name: "bump.mp4", Role: filler.Bumper, DurationMs: 5_000},
 		},
 		nil,
 	)
@@ -271,10 +271,10 @@ func TestPool_UntaggedCountsTheCatalogNotTheReviewQueue(t *testing.T) {
 	a, st := newPoolAdapter(t,
 		[]filler.Clip{
 			// Filed and untagged: this one IS the operator's work, and must count.
-			{Hash: "filed.mp4", Path: "filed.mp4", Name: "filed.mp4", Kind: filler.Commercial, DurationMs: 20_000},
+			{Hash: "filed.mp4", Path: "filed.mp4", Name: "filed.mp4", Role: filler.Commercial, DurationMs: 20_000},
 			// Downloaded, untagged, and still awaiting review below.
-			{Hash: "held-a.mp4", Path: "held-a.mp4", Name: "held-a.mp4", Kind: filler.Commercial, DurationMs: 20_000},
-			{Hash: "held-b.mp4", Path: "held-b.mp4", Name: "held-b.mp4", Kind: filler.Commercial, DurationMs: 20_000},
+			{Hash: "held-a.mp4", Path: "held-a.mp4", Name: "held-a.mp4", Role: filler.Commercial, DurationMs: 20_000},
+			{Hash: "held-b.mp4", Path: "held-b.mp4", Name: "held-b.mp4", Role: filler.Commercial, DurationMs: 20_000},
 		},
 		nil,
 	)

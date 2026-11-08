@@ -58,7 +58,7 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, records.Store) {
 	// then serves the row's path. A path is never addressable directly, only a catalogued hash.
 	for hash, p := range map[string]string{mediaHash: "80s/toys/intro.mp4", htmlHash: "notes.html"} {
 		if err := st.UpsertClip(ctx, clipstore.Clip{
-			Clip:      filler.Clip{Hash: hash, Path: p, Name: p, Kind: filler.Commercial, DurationMs: 30_000},
+			Clip:      filler.Clip{Hash: hash, Path: p, Name: p, Role: filler.Commercial, DurationMs: 30_000},
 			UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)

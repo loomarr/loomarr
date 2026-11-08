@@ -29,7 +29,7 @@ func TestHouseholdRotation_AnEveningOfChannelSurfingNeverRepeatsInsideTheSpacing
 	add := func(prefix string, n, era int) {
 		for i := range n {
 			id := fmt.Sprintf("%s%02d", prefix, i)
-			cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Kind: filler.Commercial, Era: era,
+			cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Role: filler.Commercial, Era: era,
 				Audience: filler.General, Category: fmt.Sprintf("cat%d", i%6), DurationMs: int64(10_000 + 5_000*(i%5))})
 		}
 	}
@@ -37,7 +37,7 @@ func TestHouseholdRotation_AnEveningOfChannelSurfingNeverRepeatsInsideTheSpacing
 	add("eighties", 20, 1984) // the widened era behind it
 	for i := range 4 {
 		id := fmt.Sprintf("ident%d", i)
-		cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Kind: filler.StationID, Era: 1994,
+		cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Role: filler.StationID, Era: 1994,
 			Audience: filler.General, DurationMs: 5_000})
 	}
 	history := &householdHistory{}
@@ -76,7 +76,7 @@ func TestHouseholdRotation_AnEveningOfChannelSurfingNeverRepeatsInsideTheSpacing
 			watched++
 			clipAt := at
 			for _, e := range pod.Entries {
-				if e.Kind == filler.Commercial {
+				if e.Role == filler.Commercial {
 					if prev, ok := lastSeen[e.Hash]; ok && clipAt.Sub(prev.at) < spacing {
 						t.Errorf("%s aired on %s at %s, %v after the household saw it on %s",
 							e.Hash, ch.id, clipAt.Format("15:04"), clipAt.Sub(prev.at), prev.channel)

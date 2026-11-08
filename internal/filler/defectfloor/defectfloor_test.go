@@ -102,7 +102,7 @@ func TestDefectFloor_KeepsEveryRecordCurrentAndDecodesOnlyWhatIsNew(t *testing.T
 	clip := func(body string, era int, edit func(*DefectClip)) DefectClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		c := DefectClip{CreatedAt: t0}
-		c.Hash, c.Path, c.Era, c.Kind, c.Placement = hash, filler.ClipRelPath(hash, ".mp4"), era, filler.Commercial, filler.PlacementBreakBody
+		c.Hash, c.Path, c.Era, c.Role, c.Placement = hash, filler.ClipRelPath(hash, ".mp4"), era, filler.Commercial, filler.PlacementBreakBody
 		if edit != nil {
 			edit(&c)
 		}
@@ -233,7 +233,7 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 			t.Fatal(err)
 		}
 		c := DefectClip{CreatedAt: t0}
-		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.DurationMs = hash, filler.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, 30_000
+		c.Hash, c.Path, c.Era, c.Role, c.Placement, c.DurationMs = hash, filler.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, 30_000
 		return c
 	}
 	shared, own, twins, kept := master("shared-source.mkv"), master("own-source.mkv"), master("twins-source.mkv"), master("kept-source.mkv")
@@ -320,7 +320,7 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 			t.Fatal(err)
 		}
 		c := DefectClip{CreatedAt: t0}
-		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.Held = hash, filler.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, held
+		c.Hash, c.Path, c.Era, c.Role, c.Placement, c.Held = hash, filler.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, held
 		return c
 	}
 	admitted, waiting := clip("an admitted ad", false), clip("an ad still at the defects rung", true)
@@ -418,7 +418,7 @@ func TestDefectFloor_StopsDecodingWhenTheBudgetRunsOut(t *testing.T) {
 	for _, body := range []string{"a", "b", "c"} {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		c := DefectClip{CreatedAt: clock}
-		c.Hash, c.Path, c.Kind, c.Placement = hash, filler.ClipRelPath(hash, ".mp4"), filler.Commercial, filler.PlacementBreakBody
+		c.Hash, c.Path, c.Role, c.Placement = hash, filler.ClipRelPath(hash, ".mp4"), filler.Commercial, filler.PlacementBreakBody
 		clips = append(clips, c)
 	}
 	st := &defectMemStore{clips: clips, records: map[string]DefectRecord{}}

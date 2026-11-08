@@ -6,7 +6,7 @@ import { widthFrame } from "@/test/story-utils";
 const clips: ClipDTO[] = Array.from({ length: 60 }, (_, index) => ({
   hash: `catalog-${index.toString().padStart(3, "0")}`,
   name: `${index % 3 === 0 ? "Soda" : index % 3 === 1 ? "Toy" : "Station"} spot ${index + 1}`,
-  kind: index % 3 === 2 ? "station_id" : "commercial",
+  role: index % 3 === 2 ? "station_id" : "commercial",
   era: 1980 + (index % 5) * 10,
   audience: index % 4 === 0 ? "kids" : "general",
   category: index % 3 === 0 ? "food_drink" : index % 3 === 1 ? "toys" : "station_id",

@@ -9,11 +9,11 @@ import (
 // channel that names one does. A station's own news is station material, so it airs wherever the
 // station's idents do, but only from a station within the channel's radius.
 func TestFilterKinds_PoliticalAndNewsAreOptIn(t *testing.T) {
-	ad := Clip{Hash: "ad", Path: "ad", Kind: Commercial, DurationMs: 30_000}
-	campaign := Clip{Hash: "campaign", Path: "campaign", Kind: Political, DurationMs: 30_000}
-	network := Clip{Hash: "network", Path: "network", Kind: News, GeographicScope: GeographicNational, DurationMs: 60_000}
-	local := Clip{Hash: "local", Path: "local", Kind: News, GeographicScope: GeographicLocal, Station: "wxyz", DurationMs: 60_000}
-	unknown := Clip{Hash: "unknown", Path: "unknown", Kind: Unclassified, Placement: PlacementBreakBody, DurationMs: 30_000}
+	ad := Clip{Hash: "ad", Path: "ad", Role: Commercial, DurationMs: 30_000}
+	campaign := Clip{Hash: "campaign", Path: "campaign", Role: Political, DurationMs: 30_000}
+	network := Clip{Hash: "network", Path: "network", Role: News, GeographicScope: GeographicNational, DurationMs: 60_000}
+	local := Clip{Hash: "local", Path: "local", Role: News, GeographicScope: GeographicLocal, Station: "wxyz", DurationMs: 60_000}
+	unknown := Clip{Hash: "unknown", Path: "unknown", Role: Unclassified, Placement: PlacementBreakBody, DurationMs: 30_000}
 	catalog := []Clip{ad, campaign, network, local, unknown}
 
 	inRadius := map[string]bool{"wxyz": true}
@@ -48,12 +48,12 @@ func TestFilterKinds_PoliticalAndNewsAreOptIn(t *testing.T) {
 
 func TestDefaultKinds_LeavesOutOnlyTheOptInKinds(t *testing.T) {
 	got := DefaultKinds()
-	for _, optIn := range []Kind{Political, News, Unclassified} {
+	for _, optIn := range []Role{Political, News, Unclassified} {
 		if slices.Contains(got, string(optIn)) {
 			t.Errorf("DefaultKinds() = %v, includes %q", got, optIn)
 		}
 	}
-	for _, k := range []Kind{Commercial, Bumper, StationID, PSA, Trailer, Interstitial} {
+	for _, k := range []Role{Commercial, Bumper, StationID, PSA, Trailer, Interstitial} {
 		if !slices.Contains(got, string(k)) {
 			t.Errorf("DefaultKinds() = %v, missing %q", got, k)
 		}

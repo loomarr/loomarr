@@ -16,7 +16,7 @@ func lengthCatalog() []filler.Clip {
 	for i := 0; i < 12; i++ {
 		id := fmt.Sprintf("c%02d", i)
 		cat = append(cat, filler.Clip{
-			Hash: id, Path: id + ".mp4", Kind: filler.Commercial,
+			Hash: id, Path: id + ".mp4", Role: filler.Commercial,
 			DurationMs: int64(15_000 + i*1_733 + (i*i*317)%977), Category: fmt.Sprintf("cat%d", i%4),
 		})
 	}

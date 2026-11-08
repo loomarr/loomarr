@@ -45,8 +45,8 @@ func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 func TestPreviewAtUsesBreakScopedExposureSnapshot(t *testing.T) {
 	start := time.Date(2026, 8, 23, 12, 0, 0, 123_000_000, time.UTC)
 	cat := []filler.Clip{
-		{Hash: "recent", Path: "recent.mp4", Kind: filler.Commercial, DurationMs: 30_000, Category: "one"},
-		{Hash: "new", Path: "new.mp4", Kind: filler.Commercial, DurationMs: 30_000, Category: "two"},
+		{Hash: "recent", Path: "recent.mp4", Role: filler.Commercial, DurationMs: 30_000, Category: "one"},
+		{Hash: "new", Path: "new.mp4", Role: filler.Commercial, DurationMs: 30_000, Category: "two"},
 	}
 	// "new" first aired AT this break's start: that play belongs to the break itself, so the
 	// snapshot must not see it, or the clip would reshuffle the break it is airing in.
@@ -70,7 +70,7 @@ func TestPreviewAtManyReadsOnceAndMatchesPreviewAt(t *testing.T) {
 	var cat []filler.Clip
 	for i := 0; i < 8; i++ {
 		id := string(rune('a' + i))
-		cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Kind: filler.Commercial, DurationMs: 30_000})
+		cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Role: filler.Commercial, DurationMs: 30_000})
 	}
 	// "a" aired in the second break: breaks before it must not see that play, breaks after must.
 	records := []filler.Airing{
@@ -205,7 +205,7 @@ func TestFillerListContainsCommercialsNotJustBumpers(t *testing.T) {
 	}
 	var commercials int
 	for _, id := range ids {
-		if byID[id].Kind == filler.Commercial {
+		if byID[id].Role == filler.Commercial {
 			commercials++
 		}
 	}
@@ -261,7 +261,7 @@ func TestPreviewEmptyCatalogIsNotAnError(t *testing.T) {
 func TestHasPool_LocalClipNeedsNoTunarrProgramID(t *testing.T) {
 	adapter := filler.NewPodAdapter(stubCatalog{clips: []filler.Clip{{
 		Hash: "local", Path: "commercials/local.mp4", Name: "Local ad",
-		Kind: filler.Commercial, DurationMs: 30_000,
+		Role: filler.Commercial, DurationMs: 30_000,
 	}}}, nil, nil, discardLogger())
 
 	if !adapter.HasPool(context.Background(), "internal", 42, filler.Selection{}) {

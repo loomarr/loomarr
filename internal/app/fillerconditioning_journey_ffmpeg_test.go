@@ -86,7 +86,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Kind: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Role: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.HoldClips(ctx, []string{parentRel}, time.Now().UTC()); err != nil {
@@ -167,8 +167,8 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 		t.Fatalf("durable conditioned publication = %+v, held=%v placement=%q found=%v err=%v",
 			pipelineRow, conditioned.Held, conditioned.Placement, found, err)
 	}
-	if conditioned.Kind != filler.Commercial {
-		t.Fatalf("conditioned child kind = %q, want inherited commercial", conditioned.Kind)
+	if conditioned.Role != filler.Commercial {
+		t.Fatalf("conditioned child role = %q, want inherited commercial", conditioned.Role)
 	}
 	if conditioned.Hash == childHash || conditioned.DurationMs <= 0 {
 		t.Fatalf("real conditioned transcode = %+v", conditioned)

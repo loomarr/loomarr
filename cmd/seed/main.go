@@ -472,11 +472,11 @@ func acqItem(id string) proposals.ProposalItem {
 	}
 }
 
-func clip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat, brand string, durMs int64) filler.Clip {
+func clip(id, name string, kind filler.Role, era int, aud filler.Audience, cat, brand string, durMs int64) filler.Clip {
 	hash := sha256.Sum256([]byte("loomarr-dev-seed:" + id))
 	return filler.Clip{
 		Hash: fmt.Sprintf("%x", hash), Path: "seed/" + id + ".mp4", TunarrProgramID: id,
-		Name: name, Kind: kind, Era: era, Audience: aud, Category: cat, Brand: brand,
+		Name: name, Role: kind, Era: era, Audience: aud, Category: cat, Brand: brand,
 		DurationMs: durMs, Source: "seed",
 	}
 }

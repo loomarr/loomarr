@@ -144,8 +144,8 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Logf("acquisition = %+v artifacts = %+v", run, artifacts)
 		t.Fatalf("catalog after acquisition = %+v, want one held clip", held)
 	}
-	if held[0].Kind != filler.Unclassified {
-		t.Fatalf("downloaded clip kind = %q, want descriptively unclassified", held[0].Kind)
+	if held[0].Role != filler.Unclassified {
+		t.Fatalf("downloaded clip kind = %q, want descriptively unclassified", held[0].Role)
 	}
 	if playable, err := (clipCatalogAdapter{st: st}).AllClips(ctx); err != nil || len(playable) != 0 {
 		t.Fatalf("playable catalog before readiness = %+v, %v; want empty", playable, err)
@@ -190,7 +190,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(playable) != 1 || playable[0].Held || playable[0].Kind != filler.Unclassified || playable[0].Placement != filler.PlacementBreakBody {
+	if len(playable) != 1 || playable[0].Held || playable[0].Role != filler.Unclassified || playable[0].Placement != filler.PlacementBreakBody {
 		t.Fatalf("playable catalog = %+v, want one unclassified break-body Ready clip", playable)
 	}
 	event, found, err := reopened.GetFillerReadyEvent(ctx, playable[0].Hash)

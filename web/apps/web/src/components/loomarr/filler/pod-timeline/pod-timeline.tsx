@@ -21,10 +21,10 @@ const MATCH: Record<PodPoolDTOMatchLevel, { label: string; tone: BadgeTone } | n
 };
 
 // A member-readable pod withholds a name that is only a filename (#1980); the segment then reads
-// as its kind ("Commercial").
+// as its role ("Commercial").
 const clipName = (entry: PodEntryDTO): string => entry.name.trim() || guideFillerEntryLabel(entry);
 
-const SEGMENT_FILL: Record<PodEntryDTO["kind"], string> = {
+const SEGMENT_FILL: Record<PodEntryDTO["role"], string> = {
   bumper: "bg-tune-tint-30",
   station_id: "bg-tune-tint-30",
   commercial: "bg-suggest-tint-30",
@@ -36,7 +36,7 @@ const SEGMENT_FILL: Record<PodEntryDTO["kind"], string> = {
   news: "bg-static-700",
 };
 
-const SEGMENT_ABBR: Record<PodEntryDTO["kind"], string> = {
+const SEGMENT_ABBR: Record<PodEntryDTO["role"], string> = {
   bumper: "BMP",
   station_id: "ID",
   commercial: "AD",
@@ -50,8 +50,8 @@ const SEGMENT_ABBR: Record<PodEntryDTO["kind"], string> = {
 // The full word behind each abbreviation, for the legend. The segments stay abbreviated
 // (they're narrow, sized by duration), but a legend beneath spells out the codes actually
 // present in THIS pod — so "BMP"/"AD" don't read as mystery tokens, without explaining
-// kinds the break doesn't contain.
-const SEGMENT_WORD: Record<PodEntryDTO["kind"], string> = {
+// roles the break doesn't contain.
+const SEGMENT_WORD: Record<PodEntryDTO["role"], string> = {
   bumper: "bumper",
   station_id: "station ID",
   commercial: "commercial",
@@ -72,10 +72,10 @@ const PodTimeline = ({
 }: PodTimelineProps) => {
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
-  // The distinct segment kinds in THIS pod, in first-appearance order — the legend
+  // The distinct segment roles in THIS pod, in first-appearance order — the legend
   // explains only the codes on screen.
-  const kinds = entries.reduce<PodEntryDTO["kind"][]>((acc, e) => {
-    if (!acc.includes(e.kind)) acc.push(e.kind);
+  const roles = entries.reduce<PodEntryDTO["role"][]>((acc, e) => {
+    if (!acc.includes(e.role)) acc.push(e.role);
     return acc;
   }, []);
   return (
@@ -112,7 +112,7 @@ const PodTimeline = ({
             key={`${entry.hash ?? entry.path ?? "card"}-${i}`}
             title={`${clipName(entry)} · ${formatClipDuration(entry.durationMs)}`}
             style={{ flexBasis: `${(entry.durationMs / total) * 100}%` }}
-            className={cn("border-border min-w-0 border-r last:border-r-0", SEGMENT_FILL[entry.kind])}
+            className={cn("border-border min-w-0 border-r last:border-r-0", SEGMENT_FILL[entry.role])}
           >
             {onPreview && entry.hash && !entry.isFallbackCard ? (
               <button
@@ -123,14 +123,14 @@ const PodTimeline = ({
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
                 <Text as="span" className="truncate" shout textRole="captionMono" tone="primary">
-                  {SEGMENT_ABBR[entry.kind]}
+                  {SEGMENT_ABBR[entry.role]}
                 </Text>
               </button>
             ) : (
               <span className="flex h-full min-w-0 items-center justify-center px-1">
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
                 <Text as="span" className="truncate" shout textRole="captionMono" tone="primary">
-                  {SEGMENT_ABBR[entry.kind]}
+                  {SEGMENT_ABBR[entry.role]}
                 </Text>
               </span>
             )}
@@ -138,12 +138,12 @@ const PodTimeline = ({
         ))}
       </ul>
 
-      {kinds.length > 0 && (
+      {roles.length > 0 && (
         <p className="text-muted-foreground text-xs">
-          {kinds.map((kind, i) => (
-            <span key={kind}>
+          {roles.map((role, i) => (
+            <span key={role}>
               {i > 0 && " · "}
-              <span className="font-mono">{SEGMENT_ABBR[kind]}</span> = {SEGMENT_WORD[kind]}
+              <span className="font-mono">{SEGMENT_ABBR[role]}</span> = {SEGMENT_WORD[role]}
             </span>
           ))}
         </p>

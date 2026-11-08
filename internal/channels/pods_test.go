@@ -121,7 +121,7 @@ func TestReconcile_UnclassifiedClipCannotProjectCommercialBreak(t *testing.T) {
 	// impossible unheld row, the real pod adapter must not turn it into a scheduled break.
 	pods := filler.NewPodAdapter(fixedClipCatalog{{
 		Hash: "unclassified", Path: "unclassified.mp4", TunarrProgramID: "unclassified-program",
-		Name: "Unknown clip", Kind: filler.Unclassified, DurationMs: 30_000,
+		Name: "Unknown clip", Role: filler.Unclassified, DurationMs: 30_000,
 	}}, nil, func() filler.Policy {
 		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, testkit.Logger())
@@ -157,7 +157,7 @@ func TestReconcileFillerChange_TargetsOnlyCompatibleChannels(t *testing.T) {
 	pods := &fakePods{ids: []string{"clip-a"}, fitChannels: map[string]bool{"fits": true}}
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil).WithPods(pods)
 
-	if err := e.ReconcileFillerChange(context.Background(), []filler.Clip{{Hash: "clip-a", Kind: filler.Commercial}}); err != nil {
+	if err := e.ReconcileFillerChange(context.Background(), []filler.Clip{{Hash: "clip-a", Role: filler.Commercial}}); err != nil {
 		t.Fatal(err)
 	}
 	fit, _ := st.GetChannel(context.Background(), "fits")

@@ -12,7 +12,7 @@ import "testing"
 func commercial(path string, era int, aud Audience) Clip {
 	// ⚠ Hash AND Path. Identity is the hash since V38c, and pin/exclude lists key on `ID()` — a
 	// literal that sets only Path leaves the id empty, so every pin and exclusion silently misses.
-	return Clip{Hash: path, Path: path, Kind: Commercial, Era: era, Audience: aud, DurationMs: 30_000}
+	return Clip{Hash: path, Path: path, Role: Commercial, Era: era, Audience: aud, DurationMs: 30_000}
 }
 
 // ⚠ THE load-bearing property: for every clip and every rung, FitFor's answer must match the
@@ -26,7 +26,7 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 		commercial("other-era", 1975, Kids),
 		commercial("general-aud", 1992, General),
 		commercial("wrong-aud", 1992, LateNight),
-		{Hash: "bumper", Path: "bumper", Kind: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
+		{Hash: "bumper", Path: "bumper", Role: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
 	}
 	// ⚠ The varied dimension used to be `EraStrict` (a field no operator could set). It is now the
 	// era RANGE, which is the thing that actually varies in the wild — and a single year, a span
@@ -52,7 +52,7 @@ func TestFitFor_AgreesWithTheLadder(t *testing.T) {
 			fit := FitFor(c, w, policy)
 			want, isCandidate := landsIn[c.ID()]
 			switch {
-			case c.Kind != Commercial:
+			case c.Role != Commercial:
 				// Bumpers never run the ladder; FitFor says so with no reason.
 				if fit.Level != MatchBumperCard || fit.Reason != "" {
 					t.Errorf("era=%v %s: bumper reported %s, want bumper_card with no reason",
@@ -153,7 +153,7 @@ func TestFitFor_APinBypassesTheLadder(t *testing.T) {
 // checks durationEligible itself. So "a pin bypasses the ladder" is not "a pin bypasses
 // everything", and the note must not over-promise.
 func TestFitFor_APinStillObeysKindAndDuration(t *testing.T) {
-	tooLong := Clip{Hash: "long", Path: "long", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000}
+	tooLong := Clip{Hash: "long", Path: "long", Role: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000}
 	w := Window{Era: Year(1992), Audience: Kids, Pinned: []string{"long"}, GapMs: 120_000, PodMax: 4, Seed: 1}
 	policy := Policy{MaxClipMs: 60_000}
 
@@ -182,27 +182,27 @@ func TestFitFor_NamesTheRejectingPredicate(t *testing.T) {
 	}{
 		{
 			name:   "kind the channel does not use",
-			clip:   Clip{Hash: "b", Path: "b", Kind: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
+			clip:   Clip{Hash: "b", Path: "b", Role: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
 			window: Window{Era: Year(1992), Audience: Kids, Kinds: []string{"commercial"}},
 			want:   FitKind,
 		},
 		{
 			name:   "too long for the break",
-			clip:   Clip{Hash: "long", Path: "long", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000},
+			clip:   Clip{Hash: "long", Path: "long", Role: Commercial, Era: 1992, Audience: Kids, DurationMs: 600_000},
 			window: base,
 			policy: Policy{MaxClipMs: 60_000},
 			want:   FitDuration,
 		},
 		{
 			name:   "below the quality floor",
-			clip:   Clip{Hash: "grainy", Path: "grainy", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Quality: "240p"},
+			clip:   Clip{Hash: "grainy", Path: "grainy", Role: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Quality: "240p"},
 			window: base,
 			policy: Policy{MinQualityHeight: 720},
 			want:   FitQuality,
 		},
 		{
 			name:   "not in the channel's categories",
-			clip:   Clip{Hash: "car", Path: "car", Kind: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Category: "auto"},
+			clip:   Clip{Hash: "car", Path: "car", Role: Commercial, Era: 1992, Audience: Kids, DurationMs: 30_000, Category: "auto"},
 			window: Window{Era: Year(1992), Audience: Kids, Categories: []string{"toys"}},
 			want:   FitCategory,
 		},

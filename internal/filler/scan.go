@@ -223,9 +223,9 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			}
 		}
 
-		kind := KindFromName(heuristicName)
-		if tags.Kind != "" && validKind(Kind(tags.Kind)) {
-			kind = Kind(tags.Kind)
+		kind := RoleFromName(heuristicName)
+		if tags.Kind != "" && validRole(Role(tags.Kind)) {
+			kind = Role(tags.Kind)
 		}
 		found = append(found, RawClip{
 			ID:               id,
@@ -243,7 +243,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			// §8 grounds an era only when the year is literally in the text. Reading Era off the
 			// clean title would silently lose filename-encoded eras. An absent explicit role leaves the
 			// clip held and unclassified until exact role authority exists.
-			Kind:            kind,
+			Role:            kind,
 			Era:             EraFromName(heuristicName),
 			GeographicScope: GeographicScope(tags.GeographicScope),
 			Country:         tags.Country, Network: tags.Network,

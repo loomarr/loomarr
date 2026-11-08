@@ -379,7 +379,7 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 	}
 	srv, st, _ := newFillerServerWithImages(t, imageService)
 	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
-		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Kind: filler.Commercial,
+		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Role: filler.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "still-art", HoverImageHash: "hover-art",
 	}}); err != nil {
 		t.Fatal(err)
@@ -418,7 +418,7 @@ func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *test
 	}
 	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "source-label", Path: "source-label.mp4", Name: "Friendly advert",
-		Kind: filler.Commercial, DurationMs: 30_000, Source: source.ID,
+		Role: filler.Commercial, DurationMs: 30_000, Source: source.ID,
 	}}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -456,7 +456,7 @@ func clearSeededSources(t *testing.T, st records.Store) {
 	}
 }
 
-func seedClip(t *testing.T, st records.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
+func seedClip(t *testing.T, st records.Store, id string, kind filler.Role, era int, aud filler.Audience, cat string) {
 	t.Helper()
 	c := clipstore.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
@@ -466,7 +466,7 @@ func seedClip(t *testing.T, st records.Store, id string, kind filler.Kind, era i
 	c.Path = id
 	c.TunarrProgramID = "tun-" + id
 	c.Name = "clip " + id
-	c.Kind = kind
+	c.Role = kind
 	c.Era = era
 	c.Audience = aud
 	c.Category = cat
@@ -495,19 +495,19 @@ func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {
 	seedClip(t, st, "c2", filler.Commercial, 1994, filler.Kids, "toys")
 	seedClip(t, st, "b1", filler.Bumper, 1992, filler.General, "")
 
-	resp := do(t, srv, http.MethodGet, "/v1/filler?kind=commercial", adminToken, "")
+	resp := do(t, srv, http.MethodGet, "/v1/filler?role=commercial", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list → %d", resp.StatusCode)
 	}
 	var body struct {
 		Clips []struct {
-			Path, Kind string
+			Path, Role string
 			Tagged     bool
 		}
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if len(body.Clips) != 2 {
-		t.Errorf("kind=commercial = %d, want 2", len(body.Clips))
+		t.Errorf("role=commercial = %d, want 2", len(body.Clips))
 	}
 	for _, c := range body.Clips {
 		if !c.Tagged {
@@ -862,15 +862,15 @@ func TestFiller_NameSearch(t *testing.T) {
 	}
 }
 
-// Kind is correctable by hand (§10): detection at sync mis-reads a trailer as a
-// commercial often enough to matter, and kind drives pod ROLE, so a wrong kind produces
+// Role is correctable by hand (§10): detection at sync mis-reads a trailer as a commercial often
+// enough to matter, and the role decides where a clip sits in a pod, so a wrong one produces
 // structurally wrong pods rather than merely a mis-tagged clip.
-func TestFiller_PatchCorrectsKind(t *testing.T) {
+func TestFiller_PatchCorrectsRole(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "t1", filler.Commercial, 1994, filler.Kids, "toys")
 
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken,
-		`{"hash":"t1","era":1994,"audience":"kids","tags":["toys"],"kind":"trailer"}`)
+		`{"hash":"t1","era":1994,"audience":"kids","tags":["toys"],"role":"trailer"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("patch → %d, want 200", resp.StatusCode)
 	}
@@ -878,8 +878,8 @@ func TestFiller_PatchCorrectsKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Kind != filler.Trailer {
-		t.Errorf("kind = %q, want trailer", got.Kind)
+	if got.Role != filler.Trailer {
+		t.Errorf("kind = %q, want trailer", got.Role)
 	}
 	states, err := st.ListFillerEnrichment(context.Background(), "t1")
 	if err != nil {
@@ -900,8 +900,8 @@ func TestFiller_PatchCorrectsKind(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("tag-only patch → %d, want 200", resp.StatusCode)
 	}
-	if got, _ = st.GetClip(context.Background(), "t1"); got.Kind != filler.Trailer {
-		t.Errorf("tag-only edit rewrote kind to %q, want it left as trailer", got.Kind)
+	if got, _ = st.GetClip(context.Background(), "t1"); got.Role != filler.Trailer {
+		t.Errorf("tag-only edit rewrote kind to %q, want it left as trailer", got.Role)
 	}
 }
 

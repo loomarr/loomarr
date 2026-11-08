@@ -22,7 +22,7 @@ const clip: ClipDTO = {
   hash: "aaaa1111",
   tunarrProgramId: "p1",
   name: "Crunchlings",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30000,
   tagged: true,
   needsDetails: false,

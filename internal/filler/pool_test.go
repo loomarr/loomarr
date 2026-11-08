@@ -13,10 +13,10 @@ import (
 // A catalog can be large and still fill nothing. This is the number the strip leads with.
 func TestPoolCounts_EligibleExcludesClipsTooLongForABreak(t *testing.T) {
 	catalog := []filler.Clip{
-		{Path: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000},
-		{Path: "b.mp4", Kind: filler.Commercial, DurationMs: 15_000},
+		{Path: "a.mp4", Role: filler.Commercial, DurationMs: 30_000},
+		{Path: "b.mp4", Role: filler.Commercial, DurationMs: 15_000},
 		// A downloaded compilation: one file, twenty adverts, unplaceable until it is split.
-		{Path: "comp.mp4", Kind: filler.Commercial, DurationMs: 900_000},
+		{Path: "comp.mp4", Role: filler.Commercial, DurationMs: 900_000},
 	}
 	policy := filler.Policy{MinClipMs: 5_000, MaxClipMs: 120_000}
 
@@ -38,9 +38,9 @@ func TestPoolCounts_EligibleExcludesClipsTooLongForABreak(t *testing.T) {
 // healthy on `Clips` and produces breaks with no adverts in them.
 func TestPoolCounts_OnlyCommercialsFillABreakBody(t *testing.T) {
 	catalog := []filler.Clip{
-		{Path: "bump.mp4", Kind: filler.Bumper, DurationMs: 5_000},
-		{Path: "ident.mp4", Kind: filler.StationID, DurationMs: 4_000},
-		{Path: "ad.mp4", Kind: filler.Commercial, DurationMs: 30_000},
+		{Path: "bump.mp4", Role: filler.Bumper, DurationMs: 5_000},
+		{Path: "ident.mp4", Role: filler.StationID, DurationMs: 4_000},
+		{Path: "ad.mp4", Role: filler.Commercial, DurationMs: 30_000},
 	}
 
 	got := filler.PoolCounts(catalog, filler.Policy{})
@@ -60,7 +60,7 @@ func TestPoolCounts_OnlyCommercialsFillABreakBody(t *testing.T) {
 // AI-tagging job that acts on it. If this ever stops being zero, a second definition has been
 // introduced in Go and is free to drift from the job.
 func TestPoolCounts_LeavesUntaggedToTheStore(t *testing.T) {
-	catalog := []filler.Clip{{Path: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000}}
+	catalog := []filler.Clip{{Path: "a.mp4", Role: filler.Commercial, DurationMs: 30_000}}
 
 	if got := filler.PoolCounts(catalog, filler.Policy{}); got.Untagged != 0 {
 		t.Errorf("Untagged = %d, want 0 — PoolCounts must not define 'untagged'; "+

@@ -53,7 +53,7 @@ func GroundedName(c Clip) (string, NameSource) {
 	if category := strings.ReplaceAll(c.Category, "_", " "); category != "" {
 		return withEra(strings.ToUpper(category[:1]) + category[1:] + " commercial"), NameFromCategory
 	}
-	kind := strings.TrimSpace(strings.ReplaceAll(string(c.Kind), "_", " "))
+	kind := strings.TrimSpace(strings.ReplaceAll(string(c.Role), "_", " "))
 	if c.Era > 0 && kind != "" {
 		return fmt.Sprintf("%d %s", c.Era, kind), NameFromEra
 	}

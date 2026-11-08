@@ -44,15 +44,15 @@ func TestConfirmBindsExactStructureDecisionToPublishedChildren(t *testing.T) {
 	if len(spawned) != 2 {
 		t.Fatalf("spawned=%v", spawned)
 	}
-	wantKinds := []filler.Kind{filler.Commercial, filler.Interstitial}
+	wantKinds := []filler.Role{filler.Commercial, filler.Interstitial}
 	wantRoles := []filler.StructureSegmentRole{filler.SegmentRoleCommercial, filler.SegmentRolePromo}
 	for index, childHash := range spawned {
 		child, found, err := store.GetClip(t.Context(), childHash)
 		if err != nil || !found {
 			t.Fatalf("child %s found=%v error=%v", childHash, found, err)
 		}
-		if child.Kind != wantKinds[index] {
-			t.Fatalf("child %s kind=%q want=%q", childHash, child.Kind, wantKinds[index])
+		if child.Role != wantKinds[index] {
+			t.Fatalf("child %s kind=%q want=%q", childHash, child.Role, wantKinds[index])
 		}
 		tags, ok := filler.ReadSidecarTags(filepath.Join(drop, filepath.FromSlash(child.Path)))
 		lineage := tags.ConditioningLineage

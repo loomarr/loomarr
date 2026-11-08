@@ -41,7 +41,7 @@ const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   hash: "c1-hash",
   tunarrProgramId: "c1",
   name: "Crunchlings",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30000,
   era: 1992,
   audience: "kids",
@@ -180,8 +180,8 @@ const stubFiller = ({
       if (hashes.length > 0) out = out.filter((c) => hashes.includes(c.hash));
       const q = params.get("q");
       if (q) out = out.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
-      const kind = params.get("kind");
-      if (kind) out = out.filter((c) => c.kind === kind);
+      const role = params.get("role");
+      if (role) out = out.filter((c) => c.role === role);
       // ⚠ `total` is the count IGNORING limit/offset (§10 V51d's pager). It is required, and no
       // hand-rolled stub in this suite ever sent it.
       return { clips: out, total: out.length };
@@ -351,7 +351,7 @@ describe("Filler page", () => {
 
   it("opens the tag editor and saves corrected structural and grounded facts", async () => {
     const { tagPatches } = stubFiller({
-      clips: [clip({ kind: "commercial", name: "Some Trailer", brand: "Wrong brand" })],
+      clips: [clip({ role: "commercial", name: "Some Trailer", brand: "Wrong brand" })],
     });
     renderAt("/filler/library");
     await screen.findByText("Some Trailer");
@@ -373,7 +373,7 @@ describe("Filler page", () => {
     // ⚠ Was `find(([, i]) => i?.method === "PATCH")` — "a PATCH, to anything". `tagPatches` is fed
     // only by the resolver bound to `PATCH /v1/filler/tags`.
     await expect.poll(() => tagPatches).toHaveLength(1);
-    expect((tagPatches[0] as { kind: string }).kind).toBe("trailer");
+    expect((tagPatches[0] as { role: string }).role).toBe("trailer");
     expect((tagPatches[0] as { brand: string }).brand).toBe("Larkspur Bros.");
   });
 

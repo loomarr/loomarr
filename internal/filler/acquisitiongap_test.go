@@ -49,7 +49,7 @@ func TestPlanAcquisitionFor_AGapNeverRejectsACandidate(t *testing.T) {
 		candidate("a", "undated", 0, 720, ""),
 	}
 	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 2}, input, nil,
-		filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}, Roles: []filler.Kind{filler.StationID}})
+		filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}, Roles: []filler.Role{filler.StationID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestCoverageGapsFrom_AChannelShortOfItsTargetIsAGap(t *testing.T) {
 // station ID at all. Every pod then opens and closes on the break body alone.
 func TestCoverageGapsFrom_NoBookendIsARoleGap(t *testing.T) {
 	live := filler.PoolReport{Channels: []filler.ChannelCoverage{{Report: filler.CoverageReport{Level: filler.MatchExact}}}}
-	want := []filler.Kind{filler.Bumper, filler.StationID}
+	want := []filler.Role{filler.Bumper, filler.StationID}
 	if got := filler.CoverageGapsFrom(live, filler.PoolTargets{}, 2026).Roles; !reflect.DeepEqual(got, want) {
 		t.Fatalf("role gaps with no bookends = %v, want %v", got, want)
 	}
@@ -154,7 +154,7 @@ func TestPlanAcquisitionFor_RoleGapTakesTitledBookendsFirst(t *testing.T) {
 	spot := candidate("a", "spot", 0, 1080, "")
 	spot.Title = "Soda commercial"
 	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 1}, []filler.AcquisitionCandidate{spot, ident}, nil,
-		filler.CoverageGaps{Roles: []filler.Kind{filler.Bumper, filler.StationID}})
+		filler.CoverageGaps{Roles: []filler.Role{filler.Bumper, filler.StationID}})
 	if err != nil {
 		t.Fatal(err)
 	}

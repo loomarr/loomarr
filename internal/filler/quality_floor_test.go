@@ -10,13 +10,13 @@ import (
 // variable that can move a result.
 func qualityCatalog() []filler.Clip {
 	return []filler.Clip{
-		{Path: "hd.mp4", Name: "HD spot", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Quality: "1080p"},
-		{Path: "sd.mp4", Name: "SD spot", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Quality: "480p"},
-		{Path: "rip.mp4", Name: "240p rip", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000, Quality: "240p"},
+		{Path: "hd.mp4", Name: "HD spot", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Quality: "1080p"},
+		{Path: "sd.mp4", Name: "SD spot", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Quality: "480p"},
+		{Path: "rip.mp4", Name: "240p rip", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000, Quality: "240p"},
 		// No quality: audio-only, or scanned before 00014_clips_quality added the column.
-		{Path: "unknown.mp4", Name: "Unprobed spot", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cars", DurationMs: 30000},
+		{Path: "unknown.mp4", Name: "Unprobed spot", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cars", DurationMs: 30000},
 		// A low-res BUMPER: the floor must not touch it (see the ladder's comment).
-		{Path: "bump.mp4", Name: "We'll be right back", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000, Quality: "240p"},
+		{Path: "bump.mp4", Name: "We'll be right back", Role: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000, Quality: "240p"},
 	}
 }
 

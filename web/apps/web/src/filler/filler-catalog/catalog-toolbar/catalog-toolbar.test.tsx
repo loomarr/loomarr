@@ -6,7 +6,7 @@ import { CatalogToolbar } from "./catalog-toolbar";
 
 const props = {
   q: "",
-  kind: "",
+  role: "",
   audience: "",
   untagged: false,
   view: "grid",
@@ -27,13 +27,13 @@ describe("CatalogToolbar", () => {
     expect(onFilterChange).toHaveBeenLastCalledWith({ q: undefined });
   });
 
-  it("filters by kind and audience, and Any clears the filter", async () => {
+  it("filters by role and audience, and Any clears the filter", async () => {
     const onFilterChange = vi.fn();
     render(<CatalogToolbar {...props} phone={false} audience="kids" onFilterChange={onFilterChange} />);
 
     await userEvent.click(screen.getByRole("combobox", { name: "Kind" }));
     await userEvent.click(await screen.findByRole("option", { name: "PSA" }));
-    expect(onFilterChange).toHaveBeenLastCalledWith({ kind: "psa" });
+    expect(onFilterChange).toHaveBeenLastCalledWith({ role: "psa" });
 
     await userEvent.click(screen.getByRole("combobox", { name: "Audience" }));
     await userEvent.click(await screen.findByRole("option", { name: "Any" }));

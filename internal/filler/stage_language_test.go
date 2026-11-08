@@ -54,7 +54,7 @@ func (d *fixedDetector) DetectLanguage(context.Context, string, int64, int64) (s
 
 func langClip(path, language string) filler.StoreClip {
 	return filler.StoreClip{Clip: filler.Clip{
-		Hash: path + "-hash", Path: path, Name: path, Kind: filler.Commercial,
+		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial,
 		DurationMs: 30_000, Language: language,
 	}}
 }

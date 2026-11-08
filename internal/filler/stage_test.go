@@ -143,8 +143,8 @@ func TestFinishStage_AlwaysAppliesAndContinues(t *testing.T) {
 		t.Fatalf("finish is not the terminal rung: id=%s order=%v", s.ID(), filler.StageOrder)
 	}
 	for _, clip := range []filler.Clip{
-		{Hash: "c1", Path: "a3/f9/c1.mp4", Kind: filler.Commercial, Held: true},
-		{Hash: "c2", Path: "b4/e8/c2.mp4", Kind: filler.Unclassified, Held: true, Transcript: filler.TranscriptNone},
+		{Hash: "c1", Path: "a3/f9/c1.mp4", Role: filler.Commercial, Held: true},
+		{Hash: "c2", Path: "b4/e8/c2.mp4", Role: filler.Unclassified, Held: true, Transcript: filler.TranscriptNone},
 	} {
 		if ok, why := s.Applies(context.Background(), filler.StoreClip{Clip: clip}); !ok {
 			t.Fatalf("finish skipped %s (%s) — the ready commit would never validate", clip.Hash, why)

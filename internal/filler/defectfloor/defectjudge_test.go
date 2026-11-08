@@ -51,7 +51,7 @@ func borderlineCatalog(t *testing.T, n int) ([]DefectClip, *defectMemStore) {
 	for i := range n {
 		hash := writeContentAddressedClip(t, dir, []byte{byte('a' + i)}, ".mp4")
 		c := DefectClip{CreatedAt: t0.Add(time.Duration(i) * time.Minute)}
-		c.Hash, c.Path, c.Era, c.Kind, c.Placement, c.DurationMs = hash, filler.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, 30_000
+		c.Hash, c.Path, c.Era, c.Role, c.Placement, c.DurationMs = hash, filler.ClipRelPath(hash, ".mp4"), 1988, filler.Commercial, filler.PlacementBreakBody, 30_000
 		clips = append(clips, c)
 		st.records[hash] = DefectRecord{ClipHash: hash, Readings: soft, Era: 1988, Assessment: defects.Assess(soft, 1988)}
 	}

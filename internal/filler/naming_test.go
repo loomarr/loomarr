@@ -16,21 +16,21 @@ func TestGroundedName_Ladder(t *testing.T) {
 		want       string
 		wantSource filler.NameSource
 	}{
-		{"brand wins", filler.Clip{Kind: filler.Commercial, Brand: "Acme Tires", Era: 1994,
+		{"brand wins", filler.Clip{Role: filler.Commercial, Brand: "Acme Tires", Era: 1994,
 			Transcript: "come on down to the big sale"}, "Acme Tires — 1994", filler.NameFromBrand},
-		{"transcript opening is quoted", filler.Clip{Kind: filler.Commercial, Era: 1994,
+		{"transcript opening is quoted", filler.Clip{Role: filler.Commercial, Era: 1994,
 			Transcript: "[Music] true tales of the canyon patrol. Troopers close in on a desperate gunman."},
 			"“True tales of the canyon patrol” — 1994", filler.NameFromTranscript},
-		{"long opening is cut at a word", filler.Clip{Kind: filler.Commercial,
+		{"long opening is cut at a word", filler.Clip{Role: filler.Commercial,
 			Transcript: "tonight at eight on channel nineteen the whole family gathers for a very special hour"},
 			"“Tonight at eight on channel nineteen…”", filler.NameFromTranscript},
-		{"wordless clip falls through to on-screen text", filler.Clip{Kind: filler.Bumper,
+		{"wordless clip falls through to on-screen text", filler.Clip{Role: filler.Bumper,
 			Transcript: filler.TranscriptNone, VisibleText: "\n  SATURDAY  MORNING FUN \nstay tuned"},
 			"“SATURDAY MORNING FUN”", filler.NameFromScreenText},
-		{"a lone word is not a title", filler.Clip{Kind: filler.Commercial, Category: "fast_food",
+		{"a lone word is not a title", filler.Clip{Role: filler.Commercial, Category: "fast_food",
 			Transcript: "♪ yeah ♪"}, "Fast food commercial", filler.NameFromCategory},
-		{"era only", filler.Clip{Kind: filler.StationID, Era: 1988}, "1988 station id", filler.NameFromEra},
-		{"nothing grounded", filler.Clip{Kind: filler.Commercial}, "Untitled commercial", filler.NameUntitled},
+		{"era only", filler.Clip{Role: filler.StationID, Era: 1988}, "1988 station id", filler.NameFromEra},
+		{"nothing grounded", filler.Clip{Role: filler.Commercial}, "Untitled commercial", filler.NameUntitled},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, source := filler.GroundedName(tc.clip)

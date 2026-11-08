@@ -21,7 +21,7 @@ const PLAYBAR_PAST_MS = 15 * MINUTE;
 const PLAYBAR_AHEAD_MS = 120 * MINUTE;
 
 // What a spot is when it has no viewer name, or what it is beside a commercial's brand (§9.3).
-const SPOT_KIND: Record<PodEntry["kind"], string> = {
+const SPOT_ROLE: Record<PodEntry["role"], string> = {
   bumper: "Bumper",
   commercial: "Commercial",
   interstitial: "Interstitial",
@@ -33,12 +33,12 @@ const SPOT_KIND: Record<PodEntry["kind"], string> = {
 };
 
 // The spot's line under its name: a commercial reads by `brand · era` when it has them, everything
-// else by its kind. A spot already named by its kind has nothing more to say.
+// else by its role. A spot already named by its role has nothing more to say.
 const spotOf = (entry: PodEntry, index: number): PlaybarSpot => {
-  const kind = SPOT_KIND[entry.kind];
-  const name = entry.name.trim() || kind;
+  const role = SPOT_ROLE[entry.role];
+  const name = entry.name.trim() || role;
   const brandEra = [entry.brand, entry.era ? String(entry.era) : undefined].filter(Boolean).join(" · ");
-  const detail = entry.kind === "commercial" && brandEra ? brandEra : name === kind ? "" : kind;
+  const detail = entry.role === "commercial" && brandEra ? brandEra : name === role ? "" : role;
   return {
     detail,
     durationLabel: formatClipDuration(entry.durationMs),

@@ -140,7 +140,7 @@ func TestChannelPoliciesHookRewritesAndBumpsRevision(t *testing.T) {
 	}
 
 	clip := Clip{UpdatedAt: now}
-	clip.Hash, clip.Path, clip.Name, clip.Kind = "old", "ol/d0/old.mp4", "Old", clips.Commercial
+	clip.Hash, clip.Path, clip.Name, clip.Role = "old", "ol/d0/old.mp4", "Old", clips.Commercial
 	clip.DurationMs, clip.Source = 30_000, "archive"
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)

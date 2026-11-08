@@ -119,7 +119,7 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 	// A compilation to split.
 	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
 		Hash: compHash,
-		Path: compPath, Name: "1987.mp4", Kind: filler.Commercial, DurationMs: 61_000,
+		Path: compPath, Name: "1987.mp4", Role: filler.Commercial, DurationMs: 61_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +440,7 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 	}
 	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{
 		Hash: compHash, Path: compPath, Name: "1987.mp4",
-		Kind: filler.Commercial, DurationMs: 61_000, Source: "archive",
+		Role: filler.Commercial, DurationMs: 61_000, Source: "archive",
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +567,7 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 	}
 	now := time.Unix(1_902_000_000, 0).UTC()
 	parent := clipstore.Clip{Clip: filler.Clip{
-		Hash: compHash, Path: compPath, Name: "reel", Kind: filler.Commercial,
+		Hash: compHash, Path: compPath, Name: "reel", Role: filler.Commercial,
 		DurationMs: 30_000, Held: true,
 	}, UpdatedAt: now}
 	if err := st.UpsertClip(ctx, parent); err != nil {

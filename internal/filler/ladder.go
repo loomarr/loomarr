@@ -516,14 +516,14 @@ func filterAudienceWithUngrounded(clips []Clip, aud Audience) []Clip {
 // station in `local`, the channel's resolved radius. The check is here rather than left to
 // GeographicallyEligible, which admits every clip on an installation with no location.
 func filterKinds(clips []Clip, kinds []string, local map[string]bool) []Clip {
-	allow := map[Kind]bool{}
+	allow := map[Role]bool{}
 	if len(kinds) == 0 {
 		for _, k := range defaultKinds {
 			allow[k] = true
 		}
 	}
 	for _, k := range kinds {
-		allow[Kind(k)] = true
+		allow[Role(k)] = true
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
@@ -531,9 +531,9 @@ func filterKinds(clips []Clip, kinds []string, local map[string]bool) []Clip {
 			continue
 		}
 		switch {
-		case len(kinds) == 0 && c.Kind == Unclassified, allow[c.Kind] && c.Kind != Unclassified:
+		case len(kinds) == 0 && c.Role == Unclassified, allow[c.Role] && c.Role != Unclassified:
 			out = append(out, c)
-		case c.Kind == News && c.GeographicScope == GeographicLocal && local[c.Station] && allow[StationID]:
+		case c.Role == News && c.GeographicScope == GeographicLocal && local[c.Station] && allow[StationID]:
 			out = append(out, c)
 		}
 	}
@@ -541,7 +541,7 @@ func filterKinds(clips []Clip, kinds []string, local map[string]bool) []Clip {
 }
 
 // defaultKinds is what a channel that chose no kinds airs: every role except the opt-in ones.
-var defaultKinds = []Kind{Commercial, Bumper, StationID, PSA, Trailer, Interstitial}
+var defaultKinds = []Role{Commercial, Bumper, StationID, PSA, Trailer, Interstitial}
 
 // DefaultKinds is defaultKinds as wire strings, for a page that shows the default ticked.
 func DefaultKinds() []string {

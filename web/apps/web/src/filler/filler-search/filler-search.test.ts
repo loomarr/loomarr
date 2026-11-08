@@ -6,7 +6,7 @@ describe("validateCatalogSearch", () => {
     expect(
       validateCatalogSearch({
         q: "cereal",
-        kind: "commercial",
+        role: "commercial",
         audience: "kids",
         taxon: "breakfast-food",
         withoutAxis: "seasonal",
@@ -17,7 +17,7 @@ describe("validateCatalogSearch", () => {
       }),
     ).toEqual({
       q: "cereal",
-      kind: "commercial",
+      role: "commercial",
       audience: "kids",
       taxon: "breakfast-food",
       withoutAxis: "seasonal",
@@ -31,7 +31,7 @@ describe("validateCatalogSearch", () => {
   it("drops invalid or default values before they reach the API", () => {
     expect(
       validateCatalogSearch({
-        kind: "programme",
+        role: "programme",
         audience: "adults-only",
         taxon: "not valid!",
         withoutAxis: "era",

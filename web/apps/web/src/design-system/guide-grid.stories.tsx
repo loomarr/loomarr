@@ -37,10 +37,10 @@ const pod = (start: number, stop: number): GuideAiring => ({
   kind: "filler",
   pod: {
     entries: [
-      { durationMs: 20_000, isFallbackCard: false, kind: "bumper", name: "bumper" },
-      { durationMs: 40_000, isFallbackCard: false, kind: "commercial", name: "Soda spot" },
-      { durationMs: 40_000, isFallbackCard: false, kind: "commercial", name: "Toy spot" },
-      { durationMs: 20_000, isFallbackCard: false, kind: "station_id", name: "ident" },
+      { durationMs: 20_000, isFallbackCard: false, name: "bumper", role: "bumper" },
+      { durationMs: 40_000, isFallbackCard: false, name: "Soda spot", role: "commercial" },
+      { durationMs: 40_000, isFallbackCard: false, name: "Toy spot", role: "commercial" },
+      { durationMs: 20_000, isFallbackCard: false, name: "ident", role: "station_id" },
     ],
     matchLevel: "exact",
     totalMs: 120_000,

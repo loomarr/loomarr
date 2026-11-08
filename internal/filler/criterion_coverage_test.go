@@ -15,7 +15,7 @@ import "testing"
 // round trip here. Both are set, consistently, the way the tagger writes them.
 func bodyClip(id string, era int, aud Audience, category string) Clip {
 	return Clip{
-		Hash: id, Path: id, Kind: Commercial, Era: era, Audience: aud,
+		Hash: id, Path: id, Role: Commercial, Era: era, Audience: aud,
 		Category: category, Tags: []string{category}, DurationMs: 30_000,
 	}
 }
@@ -30,7 +30,7 @@ func breakdownCatalog() []Clip {
 		// A late-night one — wrong audience for a kids channel.
 		bodyClip("ln92", 1992, LateNight, "toys"),
 		// A bumper: bookend material, never break BODY, so it is outside the base entirely.
-		{Hash: "bump", Path: "bump", Kind: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
+		{Hash: "bump", Path: "bump", Role: Bumper, Era: 1992, Audience: General, DurationMs: 5_000},
 	}
 }
 
@@ -78,8 +78,8 @@ func TestCriterionCoverage_CountsEachSettingIndependently(t *testing.T) {
 // reads as "get more clips" rather than "change this one setting".
 func TestCriterionCoverage_NamesTheOneSettingThatIsEmptyingTheLadder(t *testing.T) {
 	cat := []Clip{
-		{Hash: "a", Path: "a", Kind: Commercial, Era: 1992, Audience: LateNight, Category: "toys", DurationMs: 30_000},
-		{Hash: "b", Path: "b", Kind: Commercial, Era: 1994, Audience: LateNight, Category: "toys", DurationMs: 30_000},
+		{Hash: "a", Path: "a", Role: Commercial, Era: 1992, Audience: LateNight, Category: "toys", DurationMs: 30_000},
+		{Hash: "b", Path: "b", Role: Commercial, Era: 1994, Audience: LateNight, Category: "toys", DurationMs: 30_000},
 	}
 	w := Window{Era: EraRange{From: 1990, To: 1999}, Audience: Kids, GapMs: 120_000, PodMax: 4}
 	report := Coverage(cat, w, Policy{})

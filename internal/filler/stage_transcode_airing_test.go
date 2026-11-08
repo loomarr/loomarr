@@ -67,7 +67,7 @@ func airingFixture(t *testing.T, check ReplacementCheck) (string, *TranscodeStag
 	dir := t.TempDir()
 	hash := writeContentAddressedClip(t, dir, []byte("the airing clip's source master"), ".mkv")
 	out, err := derivativeStage(t, dir, nil, "software derivative").Run(context.Background(),
-		StoreClip{Clip: Clip{Hash: hash, Path: filepath.ToSlash(ClipRelPath(hash, ".mkv")), Name: "Advert", Kind: Commercial}})
+		StoreClip{Clip: Clip{Hash: hash, Path: filepath.ToSlash(ClipRelPath(hash, ".mkv")), Name: "Advert", Role: Commercial}})
 	if err != nil {
 		t.Fatal(err)
 	}

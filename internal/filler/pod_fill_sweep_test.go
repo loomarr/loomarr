@@ -47,7 +47,7 @@ func sweepCatalog(mix []int64, pool int, bookends []int64) []filler.Clip {
 	for i := 0; i < pool; i++ {
 		cat = append(cat, filler.Clip{
 			Hash: "ad" + strconv.Itoa(i), Path: "ad" + strconv.Itoa(i), Name: "ad" + strconv.Itoa(i),
-			Kind: filler.Commercial, Era: 1992, Audience: filler.General,
+			Role: filler.Commercial, Era: 1992, Audience: filler.General,
 			// Four categories so category variety binds without being impossible.
 			Category:   []string{"cars", "food", "toys", "tech"}[i%4],
 			DurationMs: mix[i%len(mix)],
@@ -60,7 +60,7 @@ func sweepCatalog(mix []int64, pool int, bookends []int64) []filler.Clip {
 		}
 		cat = append(cat, filler.Clip{
 			Hash: "bk" + strconv.Itoa(i), Path: "bk" + strconv.Itoa(i), Name: "bk" + strconv.Itoa(i),
-			Kind: kind, Era: 1992, Audience: filler.General, DurationMs: d,
+			Role: kind, Era: 1992, Audience: filler.General, DurationMs: d,
 		})
 	}
 	return cat
@@ -87,7 +87,7 @@ func sweepCheck(t *testing.T, label string, cat []filler.Clip, gapMs int64, pod 
 	ads := 0
 	for _, e := range pod.Entries {
 		sum += e.DurationMs
-		if e.Kind == filler.Commercial {
+		if e.Role == filler.Commercial {
 			ads++
 		}
 	}
@@ -100,7 +100,7 @@ func sweepCheck(t *testing.T, label string, cat []filler.Clip, gapMs int64, pod 
 
 	adFits := false
 	for _, c := range cat {
-		if c.Kind == filler.Commercial && c.DurationMs <= gapMs {
+		if c.Role == filler.Commercial && c.DurationMs <= gapMs {
 			adFits = true
 		}
 	}
@@ -127,9 +127,9 @@ func podShape(p filler.Pod) string {
 		switch {
 		case e.IsFallbackCard:
 			k = "card"
-		case e.Kind == filler.Bumper:
+		case e.Role == filler.Bumper:
 			k = "bumper"
-		case e.Kind == filler.StationID:
+		case e.Role == filler.StationID:
 			k = "ident"
 		}
 		s += fmt.Sprintf("%s:%ds ", k, e.DurationMs/1000)

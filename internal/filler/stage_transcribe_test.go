@@ -80,7 +80,7 @@ func utter(text string) filler.TranscriptSegment {
 // survived their own tests (see conformance_filler.go).
 func transcribeClip(path, transcript string) filler.StoreClip {
 	return filler.StoreClip{Clip: filler.Clip{
-		Hash: path + "-hash", Path: path, Name: path, Kind: filler.Commercial,
+		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial,
 		DurationMs: 30_000, Transcript: transcript,
 	}}
 }

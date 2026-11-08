@@ -590,7 +590,7 @@ func clipPool(n int) []filler.Clip {
 	for i := range out {
 		out[i] = filler.Clip{
 			Hash: fmt.Sprintf("%064x", i+1), Path: fmt.Sprintf("aa/bb/%064x.mp4", i+1), Name: fmt.Sprintf("clip %d", i),
-			Kind: filler.Commercial, Placement: filler.PlacementBreakBody, Audience: filler.Audience("general"),
+			Role: filler.Commercial, Placement: filler.PlacementBreakBody, Audience: filler.Audience("general"),
 			DurationMs: int64(15+15*r.Intn(3)) * 1000, Category: cats[r.Intn(len(cats))],
 		}
 	}

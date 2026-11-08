@@ -47,7 +47,7 @@ const previewBody: PreviewDraftPodsOutputBody = {
       path: "p1.mp4",
       tunarrProgramId: "p1",
       name: "Ad",
-      kind: "commercial",
+      role: "commercial",
       durationMs: 30000,
       isFallbackCard: false,
     },

@@ -417,7 +417,7 @@ func TestOpenHealsPreAtomicTaxonomyProjections(t *testing.T) {
 	}
 	clip := Clip{}
 	clip.Hash, clip.Path, clip.TunarrProgramID = "upgrade-clip", "p/upgrade-clip.mp4", "tun-upgrade-clip"
-	clip.Name, clip.Kind, clip.Era, clip.Audience = "upgrade.mp4", clips.Commercial, 1994, clips.General
+	clip.Name, clip.Role, clip.Era, clip.Audience = "upgrade.mp4", clips.Commercial, 1994, clips.General
 	clip.DurationMs, clip.Source, clip.UpdatedAt = 30000, "archive", time.Unix(1_700_000_000, 0).UTC()
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)

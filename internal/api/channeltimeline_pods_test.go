@@ -101,11 +101,11 @@ func seedPodClips(t *testing.T, st records.Store) {
 	t.Helper()
 	for _, c := range []filler.Clip{
 		{
-			Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Kind: filler.Commercial,
+			Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: filler.Commercial,
 			DurationMs: 30_000, ThumbImageHash: "spot-still", HoverImageHash: "spot-hover",
 		},
 		{
-			Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Kind: filler.StationID,
+			Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: filler.StationID,
 			DurationMs: 10_000,
 		},
 	} {
@@ -120,8 +120,8 @@ func timelinePodsFixture() (*fakePods, *fakeImageService) {
 		MatchLevel: filler.MatchExact,
 		TotalMs:    40_000,
 		Entries: []filler.PodEntry{
-			{Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Kind: filler.Commercial, DurationMs: 30_000},
-			{Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Kind: filler.StationID, DurationMs: 10_000},
+			{Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: filler.Commercial, DurationMs: 30_000},
+			{Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: filler.StationID, DurationMs: 10_000},
 		},
 	}}
 	img := newFakeImageService()
@@ -192,7 +192,7 @@ func TestChannelTimeline_FallbackCardHasNoStill(t *testing.T) {
 	fp, img := timelinePodsFixture()
 	fp.pod = filler.Pod{
 		MatchLevel: filler.MatchBumperCard, TotalMs: 5_000,
-		Entries: []filler.PodEntry{{Name: "Please stand by", Kind: filler.Bumper, DurationMs: 5_000, IsFallbackCard: true}},
+		Entries: []filler.PodEntry{{Name: "Please stand by", Role: filler.Bumper, DurationMs: 5_000, IsFallbackCard: true}},
 	}
 	h := startTimelinePodsHarness(t, timelineBreakGuide(now), fp, img, false)
 	seedChannel(t, h.Store, "ch1", "Kettleton Classics", 1, "internal")

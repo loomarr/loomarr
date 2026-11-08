@@ -41,7 +41,7 @@ import type { FillerPageProps } from "./filler-page.type";
 const clip = (hash: string, name: string): ClipDTO => ({
   hash,
   name,
-  kind: "commercial",
+  role: "commercial",
   era: 1990,
   audience: "kids",
   category: "toys",

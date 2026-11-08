@@ -8,7 +8,7 @@ import { ClipDetails } from "./clip-details";
 const clip: ClipDTO = {
   hash: "detail-clip",
   name: "Candy commercial",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30000,
   tagged: false,
   needsDetails: true,
@@ -67,7 +67,7 @@ describe("ClipDetails", () => {
   });
 
   it("keeps unknown optional facts quiet and does not infer home location", () => {
-    render(<ClipDetails clip={{ ...clip, kind: "unclassified", source: "filler-dir" }} />);
+    render(<ClipDetails clip={{ ...clip, role: "unclassified", source: "filler-dir" }} />);
     expect(screen.getByText("Your clip folder")).toBeInTheDocument();
     expect(
       screen.queryByText(/Unclassified|Untagged|Geography unknown|review required/i),

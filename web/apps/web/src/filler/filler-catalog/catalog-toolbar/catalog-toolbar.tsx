@@ -12,7 +12,7 @@ interface CatalogToolbarProps {
   /** A phone gets the folded toolbar: search, Filters and the view toggle on one line. */
   phone: boolean;
   q: string;
-  kind: string;
+  role: string;
   audience: string;
   untagged: boolean;
   view: string;
@@ -21,13 +21,13 @@ interface CatalogToolbarProps {
   onViewChange: (view: CatalogView) => unknown;
 }
 
-// The catalog's filter bar: name search, kind, audience, "Untagged only", and the grid/list toggle.
+// The catalog's filter bar: name search, role, audience, "Untagged only", and the grid/list toggle.
 // On a phone the toolbar folds to one line — search, Filters, and the view toggle — so the first
 // clips land above the fold (#1817, decided on #1908). Filters opens the rest.
 const CatalogToolbar = ({
   phone,
   q,
-  kind,
+  role,
   audience,
   untagged,
   view,
@@ -84,8 +84,8 @@ const CatalogToolbar = ({
             <Label htmlFor="clip-kind">Kind</Label>
             {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
             <Select
-              value={kind || "any"}
-              onValueChange={(v) => onFilterChange({ kind: v === "any" ? undefined : v })}
+              value={role || "any"}
+              onValueChange={(v) => onFilterChange({ role: v === "any" ? undefined : v })}
             >
               <SelectTrigger id="clip-kind">
                 <SelectValue />

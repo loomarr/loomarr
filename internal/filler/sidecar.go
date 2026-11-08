@@ -435,7 +435,7 @@ func decodeSidecarTags(raw []byte) (SidecarTags, SidecarReadState, bool) {
 	if json.Unmarshal(ours, &tags) != nil {
 		return SidecarTags{}, SidecarInvalid, true
 	}
-	if tags.Kind != "" && !validKind(Kind(tags.Kind)) {
+	if tags.Kind != "" && !validRole(Role(tags.Kind)) {
 		return SidecarTags{}, SidecarInvalid, true
 	}
 	if _, present := fields["mediaAssets"]; present && (tags.MediaAssets == nil || tags.MediaAssets.validate() != nil) {

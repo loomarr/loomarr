@@ -23,9 +23,9 @@ func (c *countingCatalog) AllClips(context.Context) ([]filler.Clip, error) {
 // reads as a role gap (#749) whatever channels exist.
 func TestPoolCounts_CountsTheBookends(t *testing.T) {
 	catalog := []filler.Clip{
-		{Path: "bump.mp4", Kind: filler.Bumper, DurationMs: 5_000},
-		{Path: "ident.mp4", Kind: filler.StationID, DurationMs: 4_000},
-		{Path: "ad.mp4", Kind: filler.Commercial, DurationMs: 30_000},
+		{Path: "bump.mp4", Role: filler.Bumper, DurationMs: 5_000},
+		{Path: "ident.mp4", Role: filler.StationID, DurationMs: 4_000},
+		{Path: "ad.mp4", Role: filler.Commercial, DurationMs: 30_000},
 	}
 	if got := filler.PoolCounts(catalog, filler.Policy{}).Bookends; got != 2 {
 		t.Errorf("Bookends = %d, want 2 — the bumper and the station ID, not the commercial", got)
@@ -65,8 +65,8 @@ func TestOrderWorstFirst_LevelThenNumber(t *testing.T) {
 // and carries the selection each channel was given.
 func TestPoolFor_OneCatalogReadForEveryChannel(t *testing.T) {
 	catalog := &countingCatalog{clips: []filler.Clip{
-		{Hash: "a", Path: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000, Era: 1992},
-		{Hash: "i", Path: "i.mp4", Kind: filler.StationID, DurationMs: 4_000, Era: 1992},
+		{Hash: "a", Path: "a.mp4", Role: filler.Commercial, DurationMs: 30_000, Era: 1992},
+		{Hash: "i", Path: "i.mp4", Role: filler.StationID, DurationMs: 4_000, Era: 1992},
 	}}
 	adapter := filler.NewPodAdapter(catalog, nil, nil, slog.New(slog.DiscardHandler))
 

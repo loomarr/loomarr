@@ -50,8 +50,8 @@ import (
 // (`filler/clippath_test.go`). A wall of hex would cost readability without buying coverage. The
 // property that matters is that the two fields are DISTINGUISHABLE, not that the hash is realistic,
 // so the readable path gets a short readable hash beside it.
-func clipAt(path, name string, kind filler.Kind, durationMs int64) filler.Clip {
-	return filler.Clip{Hash: clipHashFor(path), Path: path, Name: name, Kind: kind, DurationMs: durationMs}
+func clipAt(path, name string, kind filler.Role, durationMs int64) filler.Clip {
+	return filler.Clip{Hash: clipHashFor(path), Path: path, Name: name, Role: kind, DurationMs: durationMs}
 }
 
 // clipHashFor derives a fixture clip's identity from its path, and clipPathFor derives a fixture
@@ -64,7 +64,7 @@ func clipHashFor(path string) string { return "h:" + path }
 
 func clipPathFor(hash string) string { return "p/" + hash + ".mp4" }
 
-func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience, cat string) Clip {
+func sampleClip(id, name string, kind filler.Role, era int, aud filler.Audience, cat string) Clip {
 	c := Clip{}
 	// ⚠ Identity is the HASH since V38c, not the path (§10).
 	//
@@ -82,7 +82,7 @@ func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience,
 	c.Path = clipPathFor(id)
 	c.TunarrProgramID = "tun-" + id
 	c.Name = name
-	c.Kind = kind
+	c.Role = kind
 	c.Era = era
 	c.Audience = aud
 	c.Category = cat
@@ -187,7 +187,7 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Crunchlings" || got.Kind != filler.Commercial || got.Era != 1992 || got.Audience != filler.Kids || got.Category != "cereal" {
+	if got.Name != "Crunchlings" || got.Role != filler.Commercial || got.Era != 1992 || got.Audience != filler.Kids || got.Category != "cereal" {
 		t.Errorf("clip round-trip mismatch: %+v", got.Clip)
 	}
 	if got.DurationMs != 30000 {
@@ -202,7 +202,7 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Filter by kind.
-	comms, _ := s.ListClips(ctx, ClipFilter{Kind: filler.Commercial})
+	comms, _ := s.ListClips(ctx, ClipFilter{Role: filler.Commercial})
 	if len(comms) != 3 {
 		t.Errorf("kind=commercial = %d, want 3", len(comms))
 	}
@@ -2339,7 +2339,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	realClip.Hash = "clipReal"
 	realClip.Path = "cr/clipReal.mp4"
 	realClip.Name = "Real"
-	realClip.Kind = filler.Commercial
+	realClip.Role = filler.Commercial
 	realClip.DurationMs = 30000
 	if err := s.UpsertClip(ctx, realClip); err != nil {
 		t.Fatal(err)
@@ -2664,7 +2664,7 @@ func testClipCounts(t *testing.T, newStore NewStoreFunc) {
 		"catalog":  {},
 		"held":     {HeldOnly: true},
 		"untagged": {UntaggedOnly: true},
-		"by-kind":  {Kind: filler.Commercial},
+		"by-kind":  {Role: filler.Commercial},
 	}
 	for name, f := range filters {
 		listed, err := s.ListClips(ctx, f)
@@ -2721,12 +2721,12 @@ func testClipLicense(t *testing.T, newStore NewStoreFunc) {
 
 	licensed := Clip{Clip: filler.Clip{
 		Hash: "licensed.mp4",
-		Path: "licensed.mp4", Name: "Licensed", Kind: filler.Commercial, DurationMs: 30000,
+		Path: "licensed.mp4", Name: "Licensed", Role: filler.Commercial, DurationMs: 30000,
 		License: "https://creativecommons.org/publicdomain/zero/1.0/",
 	}, UpdatedAt: now}
 	unknown := Clip{Clip: filler.Clip{
 		Hash: "unknown.mp4",
-		Path: "unknown.mp4", Name: "Unknown", Kind: filler.Commercial, DurationMs: 30000,
+		Path: "unknown.mp4", Name: "Unknown", Role: filler.Commercial, DurationMs: 30000,
 	}, UpdatedAt: now}
 	for _, c := range []Clip{licensed, unknown} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -2760,10 +2760,10 @@ func testClipNameSource(t *testing.T, newStore NewStoreFunc) {
 
 	named := Clip{Clip: filler.Clip{
 		Hash: "named.mp4", Path: "named.mp4", Name: "Widgetmax Ad 1991", NameSource: clips.NameFromFilename,
-		Kind: filler.Commercial, DurationMs: 30000,
+		Role: filler.Commercial, DurationMs: 30000,
 	}, UpdatedAt: now}
 	unrecorded := Clip{Clip: filler.Clip{
-		Hash: "unrecorded.mp4", Path: "unrecorded.mp4", Name: "Unrecorded", Kind: filler.Commercial, DurationMs: 30000,
+		Hash: "unrecorded.mp4", Path: "unrecorded.mp4", Name: "Unrecorded", Role: filler.Commercial, DurationMs: 30000,
 	}, UpdatedAt: now}
 	for _, c := range []Clip{named, unrecorded} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -2827,12 +2827,12 @@ func testClipHeld(t *testing.T, newStore NewStoreFunc) {
 
 	filed := Clip{Clip: filler.Clip{
 		Hash: "filed.mp4",
-		Path: "filed.mp4", Name: "Filed", Kind: filler.Commercial, DurationMs: 30000,
+		Path: "filed.mp4", Name: "Filed", Role: filler.Commercial, DurationMs: 30000,
 		Era: 1990, Audience: filler.Kids, Category: "toys",
 	}, UpdatedAt: at}
 	held := Clip{Clip: filler.Clip{
 		Hash: "held.mp4",
-		Path: "held.mp4", Name: "Held", Kind: filler.Commercial, DurationMs: 30000,
+		Path: "held.mp4", Name: "Held", Role: filler.Commercial, DurationMs: 30000,
 		Era: 1990, Audience: filler.Kids, Category: "toys", Held: true,
 	}, UpdatedAt: at}
 	for _, c := range []Clip{filed, held} {
@@ -3268,7 +3268,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	// reason to throw it away.
 	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
 		Hash: "from-src-1.mp4",
-		Path: "from-src-1.mp4", Name: "From src 1", Kind: filler.Commercial, DurationMs: 30000,
+		Path: "from-src-1.mp4", Name: "From src 1", Role: filler.Commercial, DurationMs: 30000,
 		Source: "archive", License: src.License,
 	}, UpdatedAt: created}); err != nil {
 		t.Fatal(err)
@@ -5047,9 +5047,9 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 
 	for _, c := range []Clip{
 		{Clip: filler.Clip{Hash: "draft-reel", Path: "reels/draft.mp4", Name: "Draft reel",
-			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
+			Role: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
 		{Clip: filler.Clip{Hash: "ready-reel", Path: "reels/ready.mp4", Name: "Ready reel",
-			Kind: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
+			Role: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
 	} {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
@@ -5170,7 +5170,7 @@ func testFillerHeldClipUpsertAndCompositeRelease(t *testing.T, newStore NewStore
 	at := time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC)
 	hash := strings.Repeat("8", 64)
 	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
-		Hash: hash, Path: "88/88/" + hash + ".mp4", Name: "Held candidate", Kind: filler.Unclassified,
+		Hash: hash, Path: "88/88/" + hash + ".mp4", Name: "Held candidate", Role: filler.Unclassified,
 		DurationMs: 30_000, Held: true,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
@@ -5208,7 +5208,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	hash := strings.Repeat("7", 64)
 	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
 		Hash: hash, Path: "77/77/" + hash + ".mp4", Name: "Unknown enrolled clip",
-		Kind: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
+		Role: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
 		DurationMs: 30_000,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
@@ -5239,7 +5239,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	clip, err := s.GetClip(ctx, hash)
-	if err != nil || clip.Held || clip.Placement != filler.PlacementBreakBody || clip.Kind != filler.Unclassified {
+	if err != nil || clip.Held || clip.Placement != filler.PlacementBreakBody || clip.Role != filler.Unclassified {
 		t.Fatalf("ready clip = %+v, err = %v", clip, err)
 	}
 	row, found, err := s.GetClipPipeline(ctx, hash)
@@ -5307,7 +5307,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	staleHash := strings.Repeat("6", 64)
 	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
 		Hash: staleHash, Path: "66/66/" + staleHash + ".mp4", Name: "No pipeline",
-		Kind: filler.Unclassified, Source: "test-folder", Held: true, DurationMs: 30_000,
+		Role: filler.Unclassified, Source: "test-folder", Held: true, DurationMs: 30_000,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
@@ -5334,7 +5334,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	driftHash := strings.Repeat("5", 64)
 	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
 		Hash: driftHash, Path: "55/55/" + driftHash + ".mp4", Name: "Drifted ladder",
-		Kind: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
+		Role: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
 		DurationMs: 30_000,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)

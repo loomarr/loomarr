@@ -29,7 +29,7 @@ func TestPodAdapter_DatesHolidaysOnTheHouseholdCalendar(t *testing.T) {
 		want    filler.FitReason
 	}{{"GB", ""}, {"US", filler.FitSeason}} {
 		// A national ad of the household's own country, so only the season can refuse it.
-		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Kind: filler.Commercial, Audience: filler.General,
+		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Role: filler.Commercial, Audience: filler.General,
 			DurationMs: 15_000, Tags: []string{"pancake-day"}, AssertedTags: []string{"pancake-day"},
 			GeographicScope: filler.GeographicNational, Country: tc.country}
 		set := visionSet(t, map[string]string{"filler.home_country": tc.country})
@@ -50,7 +50,7 @@ func TestPodAdapter_TheHouseholdLanguageIsEveryChannelsDefault(t *testing.T) {
 		household string
 		want      filler.FitReason
 	}{{"es", ""}, {"en", filler.FitLanguage}} {
-		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Kind: filler.Commercial, Audience: filler.General,
+		ad := filler.Clip{Hash: "ad", Path: "ad.mp4", Role: filler.Commercial, Audience: filler.General,
 			DurationMs: 15_000, Language: "es"}
 		set := visionSet(t, map[string]string{"filler.language": tc.household})
 		pods := buildPodAdapter(nil, set, householdCalendar(set, holidays, log), log)

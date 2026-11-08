@@ -12,7 +12,7 @@ import { CompositeCatalogGroup } from "./composite-catalog-group";
 const clip = (hash: string, name: string, over: Partial<ClipDTO> = {}): ClipDTO => ({
   hash,
   name,
-  kind: "commercial",
+  role: "commercial",
   era: 1990,
   audience: "general",
   category: "drinks",

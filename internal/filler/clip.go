@@ -36,8 +36,8 @@ import (
 type (
 	// Clip is one filler item in the catalog. Identity is Hash; see clipcatalog.Clip.
 	Clip = clips.Clip
-	// Kind is what a clip is. A clip is never a program.
-	Kind = clips.Kind
+	// Role is what a clip is. A clip is never a program.
+	Role = clips.Role
 	// Placement says where a Ready clip may be scheduled, separate from Kind.
 	Placement = clips.Placement
 	// Audience is who a clip suits.
@@ -67,7 +67,7 @@ const (
 
 // PlacementForRole derives scheduling placement without inventing a descriptive role. An enrolled
 // unknown is ordinary break-body filler; composites remain containers and can never be scheduled.
-func PlacementForRole(kind Kind, enrolled, composite bool) Placement {
+func PlacementForRole(kind Role, enrolled, composite bool) Placement {
 	if composite || !enrolled {
 		return PlacementNotPlayable
 	}
@@ -81,10 +81,10 @@ func PlacementForRole(kind Kind, enrolled, composite bool) Placement {
 	}
 }
 
-// KindFromName records an explicit filler-role token from the filename convention (§10 — the
+// RoleFromName records an explicit filler-role token from the filename convention (§10 — the
 // cheapest tagging tier). Absence is Unclassified, never a placement default: acquisition and
 // unrelated grounding do not prove that unknown bytes are a commercial.
-func KindFromName(name string) Kind {
+func RoleFromName(name string) Role {
 	tokens := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
 		return r < 'a' || r > 'z'
 	})

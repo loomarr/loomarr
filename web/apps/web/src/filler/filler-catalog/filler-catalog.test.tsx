@@ -13,7 +13,7 @@ import { FillerCatalog } from "./filler-catalog";
 const clip: ClipDTO = {
   hash: "catalog-hash",
   name: "Local soda commercial",
-  kind: "commercial",
+  role: "commercial",
   era: 1990,
   audience: "general",
   category: "drinks",
@@ -227,7 +227,7 @@ describe("FillerCatalog", () => {
       const grid = name.closest(".grid") as HTMLElement;
       expect(grid).toHaveClass("grid-cols-2");
       expect(grid).not.toHaveClass("lg:grid-cols-3");
-      // Compact: the kind/era chips and the aired line move to the details sheet.
+      // Compact: the role/era chips and the aired line move to the details sheet.
       expect(within(grid).queryByText("Commercial")).not.toBeInTheDocument();
       expect(within(grid).queryByText("Never aired")).not.toBeInTheDocument();
     });

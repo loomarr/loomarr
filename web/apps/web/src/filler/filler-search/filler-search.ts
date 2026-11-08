@@ -1,10 +1,10 @@
-import { ClipDTOKind } from "@loomarr/api/models/clipDTOKind";
+import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
 import { isTaxonomyAxis, type TaxonomyAxis } from "../taxonomy-axes";
 
 type FillerSearch = {
   q?: string;
-  kind?: string;
+  role?: string;
   audience?: string;
   taxon?: string;
   unclassified?: boolean;
@@ -15,13 +15,13 @@ type FillerSearch = {
   parent?: string;
 };
 
-// The generated enums, so a new kind (#2037) or audience is a valid link without a second list here.
-const KINDS: string[] = Object.values(ClipDTOKind);
+// The generated enums, so a new role (#2037) or audience is a valid link without a second list here.
+const ROLES: string[] = Object.values(ClipDTORole);
 const AUDIENCES: string[] = Object.values(ListFillerAudience);
 
 const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch => {
   const q = typeof search.q === "string" && search.q ? search.q : undefined;
-  const kind = KINDS.includes(search.kind as string) ? (search.kind as string) : undefined;
+  const role = ROLES.includes(search.role as string) ? (search.role as string) : undefined;
   const audience = AUDIENCES.includes(search.audience as string) ? (search.audience as string) : undefined;
   const taxon =
     typeof search.taxon === "string" && /^[a-z0-9_-]{1,64}$/.test(search.taxon) ? search.taxon : undefined;
@@ -34,7 +34,7 @@ const validateCatalogSearch = (search: Record<string, unknown>): FillerSearch =>
   const parent = typeof search.parent === "string" && search.parent.length <= 128 ? search.parent : undefined;
   return {
     ...(q ? { q } : {}),
-    ...(kind ? { kind } : {}),
+    ...(role ? { role } : {}),
     ...(audience ? { audience } : {}),
     ...(taxon ? { taxon } : {}),
     ...(unclassified ? { unclassified } : {}),

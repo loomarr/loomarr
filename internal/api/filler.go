@@ -252,7 +252,7 @@ type ClipDTO struct {
 	// empty on an install with no Tunarr. NOT an identity — clients must key on Path.
 	TunarrProgramID string `json:"tunarrProgramId,omitempty"`
 	Name            string `json:"name"`
-	Kind            string `json:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
+	Role            string `json:"role" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	Era             int    `json:"era,omitempty"`
 	Audience        string `json:"audience,omitempty" enum:"kids,family,general,late_night,"`
 	GeographicScope string `json:"geographicScope,omitempty" enum:"unknown,national,local"`
@@ -492,7 +492,7 @@ func (s *Server) clipArtworkResolver(ctx context.Context, clips []clipstore.Clip
 // imageDTOsByHash: the catalog is a grid, so a per-row lookup is two queries per tile).
 func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *ImageDTO) ClipDTO {
 	d := ClipDTO{
-		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
+		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Role: string(c.Role),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags, AssertedTags: c.AssertedTags,
 		GeographicScope: string(c.GeographicScope), Country: c.Country,
 		Network: c.Network, Station: c.Station, AirDate: c.AirDate, GeoEvidence: c.GeoEvidence,
@@ -550,7 +550,7 @@ func fillerSourceLabel(source string, labels map[string]string) string {
 }
 
 type listFillerInput struct {
-	Kind            string `query:"kind" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
+	Role            string `query:"role" enum:"unclassified,commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	Era             int    `query:"era"`
 	Audience        string `query:"audience" enum:"kids,family,general,late_night"`
 	Category        string `query:"category"`
@@ -625,7 +625,7 @@ type listFillerOutput struct {
 
 func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFillerOutput, error) {
 	f := clipstore.ClipFilter{
-		Kind:                filler.Kind(in.Kind),
+		Role:                filler.Role(in.Role),
 		Era:                 in.Era,
 		Audience:            filler.Audience(in.Audience),
 		Category:            in.Category,
@@ -744,12 +744,12 @@ type patchClipInput struct {
 		// semantics distinguish omission (leave it alone) from an explicit empty string (clear a
 		// bad model guess). The operator is a valid grounding source.
 		Brand *string `json:"brand,omitempty" maxLength:"120" doc:"Grounded advertiser name. Omit to leave unchanged; send an empty string to clear."`
-		// Kind is correctable by hand (§10). Detection at sync gets it wrong in one
+		// Role is correctable by hand (§10). Detection at sync gets it wrong in one
 		// direction often enough to matter — a trailer scanned as a commercial — and
 		// kind drives pod ROLE (a bumper bookends a pod, a commercial fills it), so a
 		// wrong kind yields structurally wrong pods rather than just a mis-tagged clip.
 		// Empty means "leave it alone", so a tag-only edit never rewrites kind.
-		Kind string `json:"kind,omitempty" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news,"`
+		Role string `json:"role,omitempty" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news,"`
 		// Geography is a complete, grounded replacement. Omit to leave it unchanged; use scope
 		// unknown to clear a bad classification. Operator edits are recorded as their own evidence.
 		Geography *ClipGeographyDTO `json:"geography,omitempty"`
@@ -784,7 +784,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		}
 	}
 	// ⚠ Identity is the HASH (§10 V45a), so the store lookups (`GetClip`/classification update/
-	// `UpdateClipKind`, all keyed `WHERE hash = ?`) take it directly — no path resolution. Fetch once
+	// `UpdateClipRole`, all keyed `WHERE hash = ?`) take it directly — no path resolution. Fetch once
 	// to 404 a missing clip synchronously and to read the pre-edit tags below.
 	clip, err := s.store.GetClip(ctx, in.Body.Hash)
 	if err != nil {
@@ -856,8 +856,8 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	// Kind is a separate write because the AI tagging job shares UpdateClipClassification and must
 	// never touch kind. Both are idempotent single-row updates, so the same PATCH is
 	// safe to retry if the second fails.
-	if in.Body.Kind != "" {
-		if err := s.store.UpdateClipKind(ctx, clip.Hash, in.Body.Kind, now); err != nil {
+	if in.Body.Role != "" {
+		if err := s.store.UpdateClipRole(ctx, clip.Hash, in.Body.Role, now); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
@@ -884,8 +884,8 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	if err := evidence.record(ctx, enrichment.AxisAudience, enrichment.Value{Text: in.Body.Audience}); err != nil {
 		return nil, err
 	}
-	if in.Body.Kind != "" {
-		if err := evidence.record(ctx, enrichment.AxisKind, enrichment.Value{Text: in.Body.Kind}); err != nil {
+	if in.Body.Role != "" {
+		if err := evidence.record(ctx, enrichment.AxisKind, enrichment.Value{Text: in.Body.Role}); err != nil {
 			return nil, err
 		}
 	}

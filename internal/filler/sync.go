@@ -65,7 +65,7 @@ type RawClip struct {
 	// NameSource is where the scan found Name (#1988); the catalog row takes it with the name.
 	NameSource      clips.NameSource
 	DurationMs      int64
-	Kind            Kind
+	Role            Role
 	Era             int // initial era from filename; 0 if none
 	GeographicScope GeographicScope
 	Country         string
@@ -502,7 +502,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		// Scan-owned fields (always taken fresh — the filesystem is source of truth).
 		merged.Name, merged.NameSource = rc.Name, rc.NameSource
 		merged.DurationMs = rc.DurationMs
-		merged.Kind = rc.Kind
+		merged.Role = rc.Role
 		merged.GeographicScope = rc.GeographicScope
 		merged.Country = rc.Country
 		merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = rc.Network, rc.Station, rc.AirDate, rc.GeoEvidence
@@ -535,8 +535,8 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		if found {
 			// A filename with no explicit role token cannot erase a concrete kind from an already
 			// Ready row. Existing descriptive metadata remains the stronger fact.
-			if rc.Kind == Unclassified && !existing.Held && validConcreteKind(existing.Kind) {
-				merged.Kind = existing.Kind
+			if rc.Role == Unclassified && !existing.Held && validConcreteRole(existing.Role) {
+				merged.Role = existing.Role
 			}
 			// PRESERVE loomarr-owned match tags across syncs (§10) — never clobber a
 			// hand-edited or AI-assigned era/audience. Category is derived from the taxonomy tags.
@@ -792,7 +792,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 	if !isHashDisplayName(rc.Name) {
 		return rc, false, nil
 	}
-	grounded := Clip{Kind: rc.Kind}
+	grounded := Clip{Role: rc.Role}
 	if found {
 		grounded = existing.Clip
 	}
@@ -806,7 +806,7 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 		tags.OriginalName = rc.Name
 		carryNameProvenance(&tags, rc.Name, rc.NameSource)
 		if found {
-			tags.Kind = string(existing.Kind)
+			tags.Kind = string(existing.Role)
 			tags.Era = existing.Era
 			tags.Audience = string(existing.Audience)
 			tags.Brand = existing.Brand
@@ -853,7 +853,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 		if tags.OriginalName == "" || isHashDisplayName(tags.OriginalName) {
 			tags.OriginalName = repairName
 			carryNameProvenance(&tags, repairName, repairSource)
-			tags.Kind = string(existing.Kind)
+			tags.Kind = string(existing.Role)
 			tags.Era = existing.Era
 			tags.Audience = string(existing.Audience)
 			tags.Brand = existing.Brand
@@ -1015,7 +1015,7 @@ func serverFieldsUnchanged(a, b Clip) bool {
 	// "" and 'unknown' are one state, so neither spelling forces a write on every pass.
 	sameNameSource := a.NameSource == b.NameSource || !a.NameSource.Known() && !b.NameSource.Known()
 	return a.Path == b.Path && a.TunarrProgramID == b.TunarrProgramID &&
-		a.Name == b.Name && sameNameSource && a.DurationMs == b.DurationMs && a.Kind == b.Kind &&
+		a.Name == b.Name && sameNameSource && a.DurationMs == b.DurationMs && a.Role == b.Role &&
 		a.Quality == b.Quality && a.License == b.License &&
 		a.Thumbnail == b.Thumbnail && a.Preview == b.Preview
 }

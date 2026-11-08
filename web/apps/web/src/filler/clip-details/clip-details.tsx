@@ -2,7 +2,7 @@ import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration } from "@loomarr/core/format";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
-import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "@/components/loomarr/filler/clip-card";
+import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { Button } from "@/components/ui/button";
 
@@ -31,7 +31,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
           .join(" · ")
       : undefined;
   const facts = [
-    ["Type", clip.kind === "unclassified" ? undefined : KIND_LABEL[clip.kind]],
+    ["Type", clip.role === "unclassified" ? undefined : ROLE_LABEL[clip.role]],
     [
       "Year",
       clip.era

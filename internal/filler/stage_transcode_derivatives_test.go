@@ -143,7 +143,7 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	})
 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: childHash, Path: childRel, Name: "Reviewed child", Kind: Commercial, ParentHash: parentHash,
+		Hash: childHash, Path: childRel, Name: "Reviewed child", Role: Commercial, ParentHash: parentHash,
 	}})
 	return out, measurements, stored, childHash, err
 }
@@ -179,7 +179,7 @@ func TestTranscodeStage_OneEncodeFromMasterServesEvidenceAndPlayback(t *testing.
 		return MediaQuality{}, nil
 	}
 
-	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Kind: Commercial}})
+	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: Commercial}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestTranscodeStage_EncodesBothDerivativesOnTheHostFamily(t *testing.T) {
 	}
 	stage.evidenceTranscode, stage.transcode = onHost("evidence"), onHost("playback")
 
-	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Kind: Commercial}})
+	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: Commercial}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestTranscodeStage_RefusesAClipTooQuietToCorrect(t *testing.T) {
 				return MediaQuality{DurationMs: 30_000}, os.WriteFile(request.Out, []byte("playback "+tc.name), 0o600)
 			}
 
-			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Kind: Commercial}})
+			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Advert", Role: Commercial}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -341,7 +341,7 @@ func TestTranscodeStage_PlaybackQCFailurePreservesSourceAndCatalogIdentity(t *te
 	}
 
 	if _, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: sourceHash, Path: sourceRel, Name: "Advert", Kind: Commercial,
+		Hash: sourceHash, Path: sourceRel, Name: "Advert", Role: Commercial,
 	}}); err == nil || !strings.Contains(err.Error(), "midpoint seek failed") {
 		t.Fatalf("playback verification error = %v", err)
 	}
@@ -380,7 +380,7 @@ func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *te
 		t.Fatal("backfill must not create another playback generation")
 		return MediaQuality{}, nil
 	}
-	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Legacy advert", Kind: Commercial}}
+	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Legacy advert", Role: Commercial}}
 	if applies, _ := stage.Applies(context.Background(), clip); !applies {
 		t.Fatal("legacy playback without evidence did not re-enter the rung")
 	}
@@ -605,7 +605,7 @@ type derivativeBuildCounts struct {
 func derivativeReuseFixture(t *testing.T, dir string) (*TranscodeStage, *derivativeBuildCounts, StoreClip) {
 	t.Helper()
 	sourceHash := writeContentAddressedClip(t, dir, []byte(strings.Repeat("authoritative source master\n", 4096)), ".mkv")
-	clip := StoreClip{Clip: Clip{Hash: sourceHash, Path: filepath.ToSlash(ClipRelPath(sourceHash, ".mkv")), Name: "Fixture", Kind: Commercial}}
+	clip := StoreClip{Clip: Clip{Hash: sourceHash, Path: filepath.ToSlash(ClipRelPath(sourceHash, ".mkv")), Name: "Fixture", Role: Commercial}}
 	counts := new(derivativeBuildCounts)
 	stage := NewTranscodeStage(&transcodeStore{}, func(context.Context, string) (Probed, error) {
 		return Probed{DurationMs: 30_000, Height: 480}, nil

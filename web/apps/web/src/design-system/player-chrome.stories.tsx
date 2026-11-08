@@ -59,18 +59,18 @@ const programme = (
 });
 
 const spot = (
-  kind: "commercial" | "station_id" | "bumper",
+  role: "commercial" | "station_id" | "bumper",
   name: string,
   seconds: number,
   brand?: string,
 ) => ({
   brand,
   durationMs: seconds * 1000,
-  era: kind === "commercial" ? 1996 : undefined,
-  hash: `${kind}-${name}`,
+  era: role === "commercial" ? 1996 : undefined,
+  hash: `${role}-${name}`,
   isFallbackCard: false,
-  kind,
   name,
+  role,
 });
 
 const breakOf = (id: string, from: number, entries: ReturnType<typeof spot>[]): GuideAiring => {

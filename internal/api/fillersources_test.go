@@ -56,7 +56,7 @@ func clip(path, source string) clipstore.Clip {
 	c.Hash = path
 	c.Path = path
 	c.Name = path
-	c.Kind = filler.Commercial
+	c.Role = filler.Commercial
 	c.Source = source
 	c.DurationMs = 30000
 	c.UpdatedAt = time.Unix(1_700_000_000, 0).UTC()

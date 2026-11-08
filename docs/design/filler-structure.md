@@ -14,7 +14,7 @@ never matched into a pod, like a held clip. Duration only asks for assessment; i
 that the source is a compilation. Boundary detection belongs to `split`, not `probe`, so an
 hour-long capture is decoded once.
 
-`IsComposite` is a separate axis from `Kind`: a container is excluded from pods once, the safe
+`IsComposite` is a separate axis from `Role`: a container is excluded from pods once, the safe
 polarity, instead of every `filterKinds` caller special-casing a `composite` kind. While structure is
 unresolved it means "long-source candidate"; only the structure assessment below makes it a
 semantic verdict.

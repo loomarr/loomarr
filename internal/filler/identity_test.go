@@ -113,7 +113,7 @@ func TestCreativeIdentity_MergesOnlyCopiesThatMatchTheSurvivorDirectly(t *testin
 		hash := writeContentAddressedClip(t, dir, []byte{byte(i), 'x'}, ".mp4")
 		hashes[hash] = spec.fp
 		ic := IdentityClip{CreatedAt: t0.Add(time.Duration(i) * time.Hour)}
-		ic.Hash, ic.Path, ic.Quality, ic.DurationMs, ic.Kind = hash, ClipRelPath(hash, ".mp4"), spec.quality, 30_000, Commercial
+		ic.Hash, ic.Path, ic.Quality, ic.DurationMs, ic.Role = hash, ClipRelPath(hash, ".mp4"), spec.quality, 30_000, Commercial
 		ic.Placement = PlacementBreakBody
 		clips = append(clips, ic)
 	}
@@ -143,7 +143,7 @@ func TestCreativeIdentity_UpgradesAWantedAdAndPrefersTheCleanerCopy(t *testing.T
 	clip := func(body, quality string, a *defects.Assessment) IdentityClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		c := IdentityClip{CreatedAt: t0, Defects: a}
-		c.Hash, c.Path, c.Quality, c.DurationMs, c.Kind = hash, ClipRelPath(hash, ".mp4"), quality, 30_000, Commercial
+		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, ClipRelPath(hash, ".mp4"), quality, 30_000, Commercial
 		c.Placement = PlacementBreakBody
 		return c
 	}
@@ -226,7 +226,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 
 	clip := func(hash, quality string, durationMs int64, created time.Time) IdentityClip {
 		c := IdentityClip{CreatedAt: created}
-		c.Hash, c.Path, c.Quality, c.DurationMs, c.Kind = hash, ClipRelPath(hash, ".mp4"), quality, durationMs, Commercial
+		c.Hash, c.Path, c.Quality, c.DurationMs, c.Role = hash, ClipRelPath(hash, ".mp4"), quality, durationMs, Commercial
 		c.Placement = PlacementBreakBody
 		return c
 	}

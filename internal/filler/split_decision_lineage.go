@@ -25,7 +25,7 @@ func structureDecisionAuthorityForInterval(proposal SplitProposal, segment Split
 	return structureDecisionIntervalAuthority{}, false
 }
 
-func catalogKindForStructureRole(role StructureSegmentRole) (Kind, bool) {
+func catalogRoleForStructureRole(role StructureSegmentRole) (Role, bool) {
 	switch role {
 	case SegmentRoleCommercial:
 		return Commercial, true

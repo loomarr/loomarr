@@ -33,7 +33,7 @@ func completedReadyRow(hash string, at time.Time) filler.ClipPipeline {
 func readyClip(hash string) filler.StoreClip {
 	return filler.StoreClip{Clip: filler.Clip{
 		Hash: hash, Path: "clip.mp4", Source: "archive:classic_tv_commercials",
-		Kind: filler.Unclassified, Held: true, DurationMs: 30_000,
+		Role: filler.Unclassified, Held: true, DurationMs: 30_000,
 	}}
 }
 

@@ -192,14 +192,14 @@ func TestTranscodeStage_ConcurrentSyncHoldsPublishedConditionedTargetUntilCatalo
 	runDone := make(chan runResult, 1)
 	go func() {
 		result, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-			Hash: sourceHash, Path: sourceRel, Name: "Reviewed child", Kind: Commercial, ParentHash: parentHash,
+			Hash: sourceHash, Path: sourceRel, Name: "Reviewed child", Role: Commercial, ParentHash: parentHash,
 		}})
 		runDone <- runResult{result: result, err: err}
 	}()
 	target := <-published
 
 	syncStore := &cleanupSyncStore{clips: map[string]StoreClip{
-		sourceHash: {Clip: Clip{Hash: sourceHash, Path: sourceRel, Name: "Reviewed child", Kind: Commercial, ParentHash: parentHash}},
+		sourceHash: {Clip: Clip{Hash: sourceHash, Path: sourceRel, Name: "Reviewed child", Role: Commercial, ParentHash: parentHash}},
 		parentHash: {Clip: Clip{Hash: parentHash, Path: parentRel, Name: "Composite", IsComposite: true}},
 	}}
 	layout, err := NewLayout(dir, "")
@@ -307,7 +307,7 @@ func TestTranscodeStage_UnavailableOrMalformedConditioningHoldsChildWithoutTrans
 				return measurement, nil
 			})
 			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-				Hash: childHash, Path: childRel, Name: "Child", Kind: Commercial, ParentHash: parentHash,
+				Hash: childHash, Path: childRel, Name: "Child", Role: Commercial, ParentHash: parentHash,
 			}})
 			if err != nil {
 				t.Fatal(err)
@@ -523,7 +523,7 @@ func TestTranscodeStage_RestartReusesCompleteConditioningWithoutRewrite(t *testi
 	})
 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: childHash, Path: childRel, Name: "Completed child", Kind: Commercial, ParentHash: parentHash,
+		Hash: childHash, Path: childRel, Name: "Completed child", Role: Commercial, ParentHash: parentHash,
 	}})
 	if err != nil || out.Verdict != VerdictContinue || out.Clip.Hash != childHash {
 		t.Fatalf("restart result = %+v, %v", out, err)
@@ -699,7 +699,7 @@ func TestTranscodeStage_PostMeasurementFailurePublishesNothing(t *testing.T) {
 	})
 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: childHash, Path: childRel, Name: "Child", Kind: Commercial, ParentHash: parentHash,
+		Hash: childHash, Path: childRel, Name: "Child", Role: Commercial, ParentHash: parentHash,
 	}})
 	if err != nil || out.Verdict != VerdictReview || stored.oldHash != "" {
 		t.Fatalf("post-measurement result = %+v, stored=%q, err=%v", out, stored.oldHash, err)
@@ -735,7 +735,7 @@ func TestTranscodeStage_MissingParentHoldsBeforeMeasurement(t *testing.T) {
 		return MediaQuality{}, nil
 	}
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: childHash, Path: childRel, Name: "Child", Kind: Commercial, ParentHash: "missing-parent",
+		Hash: childHash, Path: childRel, Name: "Child", Role: Commercial, ParentHash: "missing-parent",
 	}})
 	if err != nil || out.Verdict != VerdictReview || out.Clip.Hash != childHash {
 		t.Fatalf("missing parent result = %+v, %v", out, err)
@@ -811,7 +811,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 			}, 1)
 			go func() {
 				out, runErr := stage.Run(ctx, StoreClip{Clip: Clip{
-					Hash: childHash, Path: childRel, Name: "Child", Kind: Commercial, ParentHash: parentHash,
+					Hash: childHash, Path: childRel, Name: "Child", Role: Commercial, ParentHash: parentHash,
 				}})
 				result <- struct {
 					out StageResult
@@ -876,7 +876,7 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 	})
 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: childHash, Path: childRel, Name: "Reviewed advert", Kind: Commercial,
+		Hash: childHash, Path: childRel, Name: "Reviewed advert", Role: Commercial,
 		ParentHash: parentHash,
 	}})
 	if err != nil {
@@ -970,7 +970,7 @@ func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t 
 			})
 
 			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-				Hash: childHash, Path: childRel, Name: "Reviewed advert", Kind: Commercial, ParentHash: parentHash,
+				Hash: childHash, Path: childRel, Name: "Reviewed advert", Role: Commercial, ParentHash: parentHash,
 			}})
 			if err != nil {
 				t.Fatal(err)
@@ -1003,7 +1003,7 @@ func TestTranscodeStage_RecoversAPublishedPairAfterStoreFailure(t *testing.T) {
 	stage.transcode = func(_ context.Context, req tools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
 		return MediaQuality{}, os.WriteFile(req.Out, []byte("replacement"), 0o644)
 	}
-	clip := StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Named advert", Kind: Commercial}}
+	clip := StoreClip{Clip: Clip{Hash: oldHash, Path: oldRel, Name: "Named advert", Role: Commercial}}
 
 	if _, err := stage.Run(context.Background(), clip); err == nil {
 		t.Fatal("first run succeeded despite the simulated store failure")
@@ -1347,7 +1347,7 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 	}
 
 	in := StoreClip{Clip: Clip{
-		Hash: oldHash, Path: oldRel, Name: "Burger Barn 1993", Kind: Commercial,
+		Hash: oldHash, Path: oldRel, Name: "Burger Barn 1993", Role: Commercial,
 		Era: 1993, Audience: Kids, Category: "fast_food", Source: "archive:wktl",
 		Held: true,
 	}, UpdatedAt: time.Unix(1_800_000_000, 0)}
@@ -1427,7 +1427,7 @@ func TestTranscodeStage_IdenticalOutputAlreadyAtCanonicalPath(t *testing.T) {
 	}
 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: hash, Path: rel, Name: "Already normalized", Kind: Commercial,
+		Hash: hash, Path: rel, Name: "Already normalized", Role: Commercial,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -1463,7 +1463,7 @@ func TestTranscodeStage_IdenticalOutputMovesToCanonicalPath(t *testing.T) {
 	}
 
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: hash, Path: oldRel, Name: "Move without re-key", Kind: Commercial,
+		Hash: hash, Path: oldRel, Name: "Move without re-key", Role: Commercial,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -1514,7 +1514,7 @@ func TestTranscodeStage_RejectsNearTotalBlackContentAndPersistsEvidence(t *testi
 			os.WriteFile(req.Out, []byte("replacement"), 0o644)
 	}
 	out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
-		Hash: oldHash, Path: oldRel, Name: "Named advert", Kind: Commercial,
+		Hash: oldHash, Path: oldRel, Name: "Named advert", Role: Commercial,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -1548,7 +1548,7 @@ func TestTranscodeStage_ReemitsPersistedAnomalousQualityWithoutDecoding(t *testi
 		t.Fatal("a persisted verdict must not be re-encoded")
 		return MediaQuality{}, nil
 	}
-	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Silent advert", Kind: Commercial}}
+	clip := StoreClip{Clip: Clip{Hash: hash, Path: rel, Name: "Silent advert", Role: Commercial}}
 	if applies, _ := stage.Applies(context.Background(), clip); !applies {
 		t.Fatal("an anomalous report must remain applicable until its airability gate is durable")
 	}

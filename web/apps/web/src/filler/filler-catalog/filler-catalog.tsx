@@ -1,5 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
+import type { ListFillerRole } from "@loomarr/api/models/listFillerRole";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -49,7 +50,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   // the route's exported search contract; Incoming and Sources never mount this module.
   const {
     q = "",
-    kind = "",
+    role = "",
     audience = "",
     taxon = "",
     unclassified = false,
@@ -59,10 +60,10 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     page = 1,
     parent: parentHash,
   } = useSearch({ strict: false }) as Partial<FillerSearch>;
-  const filtered = Boolean(q || kind || audience || taxon || unclassified || withoutAxis || untagged);
+  const filtered = Boolean(q || role || audience || taxon || unclassified || withoutAxis || untagged);
   const resultScope = JSON.stringify({
     q,
-    kind,
+    role,
     audience,
     taxon,
     unclassified,
@@ -116,7 +117,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   const clips = fillerApi.useListFiller(
     {
       ...(q ? { q } : {}),
-      ...(kind ? { kind: kind as never } : {}),
+      ...(role ? { role: role as ListFillerRole } : {}),
       ...(audience ? { audience: audience as never } : {}),
       ...(taxon ? { taxon } : {}),
       ...(unclassified ? { unclassified: true } : {}),
@@ -267,7 +268,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       <CatalogToolbar
         phone={phone}
         q={q}
-        kind={kind}
+        role={role}
         audience={audience}
         untagged={untagged}
         view={view}
@@ -292,7 +293,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                   onClick: () =>
                     setFilters({
                       q: undefined,
-                      kind: undefined,
+                      role: undefined,
                       audience: undefined,
                       taxon: undefined,
                       unclassified: undefined,

@@ -169,7 +169,7 @@ func (t *TerminalReady) Commit(ctx context.Context, clip StoreClip, row ClipPipe
 	if !ok {
 		return row, fmt.Errorf("%w: enrollment authority is missing", ErrReadyStale)
 	}
-	placement := PlacementForRole(clip.Kind, true, false)
+	placement := PlacementForRole(clip.Role, true, false)
 	if placement == PlacementNotPlayable {
 		return row, fmt.Errorf("%w: no playable placement", ErrReadyStale)
 	}

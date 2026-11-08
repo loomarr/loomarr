@@ -205,7 +205,7 @@ const Block = ({
                 const share = (entry.durationMs || 0) / podTotal;
                 return (
                   <Surface
-                    backgroundColor={clipFill[entry.kind]}
+                    backgroundColor={clipFill[entry.role]}
                     borderRadius={2}
                     borderWidth={0}
                     flex={share}

@@ -15,7 +15,7 @@ improved, and the broadcast context every child shares with its tape.
 
 Confirm keeps the compilation as a **composite**: in the store and on disk, marked composite and
 never airable. Each child carries `parent_hash`. `IsComposite` is its own axis, separate from
-`Kind`, so pods exclude containers once. A completed re-split replaces the prior generation of
+`Role`, so pods exclude containers once. A completed re-split replaces the prior generation of
 children rather than stacking beside it.
 
 ## Consequences

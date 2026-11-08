@@ -127,7 +127,7 @@ func rejectByIntent(intent AcquisitionIntent, c AcquisitionCandidate) (Candidate
 		if len(c.ObservedRoles) == 0 {
 			return CandidateRoleUnknown, "the provider supplied no content-role observation"
 		}
-		if !kindOverlap(intent.Roles, c.ObservedRoles) {
+		if !roleOverlap(intent.Roles, c.ObservedRoles) {
 			return CandidateRoleMismatch, "observed content role does not match the intent"
 		}
 	}
@@ -180,7 +180,7 @@ type CoverageGaps struct {
 	Eras []EraRange
 	// Roles are break roles the catalog lacks entirely: bookends (bumpers and station IDs) when
 	// no live channel's pod can open or close on one.
-	Roles []Kind
+	Roles []Role
 	// Short is how many commercials the shortest channel's exact rung lacks of its pool target
 	// (#2035). Zero with no gap is a met target: an unattended pass has nothing to fetch.
 	Short int
@@ -219,18 +219,18 @@ func gapFilled(c AcquisitionCandidate, gaps CoverageGaps) (string, bool) {
 // observedRoles are the provider's observed roles or, failing those, the explicit role token in
 // the item's title: the same KindFromName rule intake applies to the downloaded file's name, so an
 // item steered here as an ident is classified as one on arrival. Ranking evidence only.
-func observedRoles(c AcquisitionCandidate) []Kind {
+func observedRoles(c AcquisitionCandidate) []Role {
 	if len(c.ObservedRoles) > 0 {
 		return c.ObservedRoles
 	}
-	if kind := KindFromName(c.Title); kind != Unclassified {
-		return []Kind{kind}
+	if kind := RoleFromName(c.Title); kind != Unclassified {
+		return []Role{kind}
 	}
 	return nil
 }
 
 // RoleGapKey is the stable record of a role gap an acquisition was for: "role:station_id".
-func RoleGapKey(role Kind) string { return "role:" + string(role) }
+func RoleGapKey(role Role) string { return "role:" + string(role) }
 
 // StationGapKey is the stable record of a station search an acquisition came from: "station:WPIX".
 func StationGapKey(callSign string) string { return "station:" + callSign }
@@ -280,7 +280,7 @@ func CoverageGapsFrom(pool PoolReport, targets PoolTargets, thisYear int) Covera
 	}
 	gaps := CoverageGaps{Eras: NormalizeEraWindows(eras), Short: short}
 	if len(pool.Channels) > 0 && pool.Bookends == 0 {
-		gaps.Roles = []Kind{Bumper, StationID}
+		gaps.Roles = []Role{Bumper, StationID}
 	}
 	return gaps
 }
@@ -324,7 +324,7 @@ func normalizeCandidate(c AcquisitionCandidate) AcquisitionCandidate {
 	c.Title = strings.TrimSpace(c.Title)
 	c.License = strings.TrimSpace(c.License)
 	c.Geography = c.Geography.Normalize()
-	c.ObservedRoles = uniqueKinds(c.ObservedRoles)
+	c.ObservedRoles = uniqueRoles(c.ObservedRoles)
 	c.Audiences = uniqueAudiences(c.Audiences)
 	c.Taxonomy = uniqueStrings(c.Taxonomy)
 	return c
@@ -339,7 +339,7 @@ func containsFold(haystack []string, needle string) bool {
 	return false
 }
 
-func kindOverlap(a, b []Kind) bool {
+func roleOverlap(a, b []Role) bool {
 	for _, left := range a {
 		for _, right := range b {
 			if left == right {

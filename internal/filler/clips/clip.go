@@ -7,25 +7,25 @@ package clips
 
 import "time"
 
-// Kind is what a clip is (§10). A clip is NEVER a program — the scheduler places
+// Role is what a clip is (§10). A clip is NEVER a program — the scheduler places
 // clips only as SlotFiller, never SlotProgram (the filler-never-a-program gate).
-type Kind string
+type Role string
 
 const (
 	// Unclassified means only that the exact filler role has not been established. Enrollment may
 	// still give it a break-body Placement; it is never silently relabelled Commercial (§10).
-	Unclassified Kind = "unclassified"
-	Commercial   Kind = "commercial"
-	Bumper       Kind = "bumper"
-	StationID    Kind = "station_id"
-	PSA          Kind = "psa"
-	Trailer      Kind = "trailer"
-	Interstitial Kind = "interstitial"
+	Unclassified Role = "unclassified"
+	Commercial   Role = "commercial"
+	Bumper       Role = "bumper"
+	StationID    Role = "station_id"
+	PSA          Role = "psa"
+	Trailer      Role = "trailer"
+	Interstitial Role = "interstitial"
 	// Political is a campaign or issue ad, and News is a news or weather segment (#2037). Both
 	// download and pass the floor like any clip, but a channel airs them only once it opts in; a
 	// station's own news within the channel's radius is the exception (see filler's filterKinds).
-	Political Kind = "political"
-	News      Kind = "news"
+	Political Role = "political"
+	News      Role = "news"
 )
 
 // Placement says where a Ready clip may be scheduled. It is deliberately separate from Kind:
@@ -131,7 +131,7 @@ type Clip struct {
 	// NameSource is where Name came from (#1988). Every writer of Name sets it; viewer surfaces
 	// show Name only when it is not a filename (NameSource.ShownToViewers).
 	NameSource      NameSource
-	Kind            Kind      // descriptive role; unclassified means unknown
+	Role            Role      // descriptive role; unclassified means unknown
 	Placement       Placement // break_body | bookend | not_playable; committed by terminal readiness
 	Era             int       // decade/year, e.g. 1994; 0 = untagged
 	Audience        Audience  // kids | family | general | late_night; "" = untagged
@@ -326,7 +326,7 @@ func (c Clip) Tagged() bool {
 // is this rule in SQL, and a conformance test over both backends pins that the two select the same
 // clips. Change one, change the other in the same commit.
 func (c Clip) NeedsDetails() bool {
-	return c.Kind == Commercial && !c.Tagged()
+	return c.Role == Commercial && !c.Tagged()
 }
 
 // EffectivePlacement returns an explicitly committed placement when present. A zero Placement on
@@ -336,7 +336,7 @@ func (c Clip) EffectivePlacement() Placement {
 	if c.Placement != "" {
 		return c.Placement
 	}
-	switch c.Kind {
+	switch c.Role {
 	case Bumper, StationID:
 		return PlacementBookend
 	case Commercial, PSA, Trailer, Interstitial, Political, News:

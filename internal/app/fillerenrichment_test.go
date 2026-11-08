@@ -97,7 +97,7 @@ func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) 
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_100, 0).UTC()
 	clip := clipstore.Clip{Clip: filler.Clip{
-		Hash: "ready", Path: "ready.mp4", Name: "Ready advert", Kind: filler.Commercial,
+		Hash: "ready", Path: "ready.mp4", Name: "Ready advert", Role: filler.Commercial,
 		Placement: filler.PlacementBreakBody, Held: false, DurationMs: 30_000,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
@@ -126,7 +126,7 @@ func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAns
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_200, 0).UTC()
 	clip := clipstore.Clip{Clip: filler.Clip{
-		Hash: "operator", Path: "operator.mp4", Name: "Operator advert", Kind: filler.Commercial,
+		Hash: "operator", Path: "operator.mp4", Name: "Operator advert", Role: filler.Commercial,
 		Brand: "Operator Brand", Era: 1987, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
@@ -190,7 +190,7 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 	}
 	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "inherited-geography", Path: "inherited-geography.mp4", Name: "Local advert",
-		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
+		Role: filler.Commercial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -227,7 +227,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	}
 	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "explicit-geography", Path: "explicit-geography.mp4", Name: "Regional advert",
-		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
+		Role: filler.Commercial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	at := time.Unix(1_700_000_500, 0).UTC()
 	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "cleveland-news", Path: "cleveland-news.mp4", Name: "WEWS NewsChannel 5 News Update 03/10/1991",
-		Kind: filler.Interstitial, Placement: filler.PlacementBreakBody,
+		Role: filler.Interstitial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -305,7 +305,7 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_000, 0).UTC()
 	clip := clipstore.Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "Brambly Sauce Advert",
-		Kind: filler.Commercial}, UpdatedAt: at, CreatedAt: at}
+		Role: filler.Commercial}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func geographyFixture(t *testing.T, st records.Store, at time.Time, country, tit
 	}
 	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "geo-clip", Path: "geo-clip.mp4", Name: title,
-		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
+		Role: filler.Commercial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
