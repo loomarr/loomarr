@@ -45,7 +45,7 @@ WITH due AS (
 )
 UPDATE channels c SET reconcile_deadline = $1, revision = c.revision + 1
 FROM due WHERE c.id = due.id
-RETURNING c.id, c.intent_ref, c.intent_json, c.requested_by, c.name, c.number, c.grp, c.logo, c.strategy, c.filler_ref,
+RETURNING c.id, c.intent_ref, c.intent_json, c.requested_by, c.name, c.number, c.grp, c.logo, c.strategy,
           c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json, c.policy_json,
           c.broadcast_codec, c.playout_anchor, c.reconcile_deadline, c.updated_at, c.revision, c.created_at` // channelColumns, aliased
 

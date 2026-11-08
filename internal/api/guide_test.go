@@ -153,7 +153,7 @@ func newGuideHarness(t *testing.T, config guideHarnessConfig) *guideHarness {
 func seedGridChannel(t *testing.T, st store.Store, id string, number int) {
 	t.Helper()
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential"},
+		Channel: schedule.Channel{ID: id, Name: id, Number: number, Strategy: "sequential", Status: schedule.StatusLive},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestGuide_IncludesTunarrBackedChannels(t *testing.T) {
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g})
 	srv, st := harness.Server, harness.Store
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
-		Channel: schedule.Channel{ID: "tunarr-ch", Name: "Tunarr", Number: 7, Strategy: "sequential"},
+		Channel: schedule.Channel{ID: "tunarr-ch", Name: "Tunarr", Number: 7, Strategy: "sequential", Status: schedule.StatusLive},
 		Policy: schedule.ChannelPolicy{
 			OperatorPolicy: schedule.OperatorPolicy{
 				Playout: &schedule.PlayoutPolicy{Backend: "tunarr"},

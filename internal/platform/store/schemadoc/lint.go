@@ -147,16 +147,9 @@ var KnownGaps = map[string]string{
 	"unbounded proposals":                           needsPrune,
 	"unbounded series_episodes":                     needsPrune,
 	"unbounded titles":                              needsPrune,
-	// Tables other tables reference: a SQLite rebuild has to carry their children with them.
-	"check channels.status":                      needsCheck,
-	"check filler_acquisition_runs.status":       needsCheck,
+	// The spoken-safety ledger that writes most of outcome's values is dead; it goes first.
 	"check filler_inference_evaluations.outcome": needsCheck,
 	"check filler_inference_evaluations.state":   needsCheck,
-	"check filler_pulls.status":                  needsCheck,
-	"check filler_sources.kind":                  needsCheck,
-	"check inventory_sources.kind":               needsCheck,
-	"check library_items.kind":                   needsCheck,
-	"check proposal_jobs.kind":                   needsCheck,
 	// Three call sites write untyped literals; they become constants before the CHECK.
 	"check activity.kind": needsCheck,
 	// Holds Sonarr's and Radarr's coverType as sent; mapped onto Loomarr's own art kinds first.

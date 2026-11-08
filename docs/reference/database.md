@@ -257,7 +257,6 @@ One row per channel. A channel is created by approving a channel request or by h
 | `grp` | The group the channel is listed under in the guide. Empty for none. | `TEXT` |
 | `logo` | The channel icon's URL, either one of this Loomarr's own image URLs or an outside link. Empty for no icon. | `TEXT` |
 | `strategy` | How programmes are ordered onto the timeline. `sequential` plays them in lineup order, `shuffle` rotates them in a shuffled order, and `time_slot` pins them to blocks of the day. | `TEXT` |
-| `filler_ref` | Reserved for a reference to the channel's filler list. Nothing in the current app sets it, so it is empty. | `TEXT` |
 | `tunarr_id` | The id of the channel's copy in Tunarr, an outside playout server, kept from the first time Loomarr pushed the channel there. Empty for a channel that never went to Tunarr. | `TEXT` |
 | `status` | The channel's state. `building` (being set up), `live` (ready to play), `drifted` (a scheduled programme left the library and was replaced), `empty` (every lineup entry was filtered out, so nothing can air), `paused` (taken off air by an admin but kept), or `detached` (no longer managed by Loomarr). | `TEXT` |
 | `shuffle_seed` | The number a shuffled channel's order is drawn from, so it repeats the same way. 0 means it is worked out from the channel id. | `BIGINT` |
