@@ -39,7 +39,7 @@ const DialogWorkshop = ({ layout = "padded", size = "default", spread = false }:
             <DialogClose>
               <Action variant="outline">Cancel</Action>
             </DialogClose>
-            <Action variant="suggest">Save</Action>
+            <Action>Save</Action>
           </div>
         </DialogFooter>
       </DialogContent>
