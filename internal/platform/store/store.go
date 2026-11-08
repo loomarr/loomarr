@@ -592,7 +592,6 @@ type ScheduledAiring struct {
 	AiredAt       time.Time
 }
 
-
 // ActivityStore is the Dashboard feed (§5, §12, V32).
 type ActivityStore interface {
 	// RecordActivity appends one Dashboard feed row. Best-effort by contract: callers log
