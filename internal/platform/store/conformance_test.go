@@ -52,6 +52,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LibraryCatalog", func(t *testing.T) { testLibraryCatalog(t, newStore) })
 		t.Run("LibraryNeeds", func(t *testing.T) { testLibraryNeeds(t, newStore) })
 		t.Run("LibraryProjection", func(t *testing.T) { testLibraryProjection(t, newStore) })
+		t.Run("LibraryTitleFacts", func(t *testing.T) { testLibraryTitleFacts(t, newStore) })
 	})
 
 	t.Run("Titles", func(t *testing.T) {

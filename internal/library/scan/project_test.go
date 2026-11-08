@@ -2,6 +2,7 @@ package scan
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -42,7 +43,7 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 		Catalog: store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
 		Origin:  store.LibraryOrigin{Authority: authorityPrefix + "a", Key: "file:1"},
 		Match:   store.LibraryMatch{Basis: "manager", App: "radarr", Page: "https://radarr.invalid/1"}}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("listed = %+v\nwant     %+v", got, want)
 	}
 
@@ -53,7 +54,15 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	if _, ok := ProjectLibraryItem(inventory.Item{ID: "m3", Kind: kindMovie, Origins: []inventory.ItemOrigin{old}}); ok {
 		t.Error("an origin written before write version 10 is listed; its row would lose its match")
 	}
-	if _, ok := ProjectLibraryItem(inventory.Item{ID: "e1", Kind: kindEpisode, Origins: []inventory.ItemOrigin{present}}); ok {
-		t.Error("an episode is listed")
+	// An episode is listed with its numbering and its series' origin; its genres and studios are
+	// its show's, so it has none of its own (decision 42).
+	epExt, _ := json.Marshal(originExtension{Listed: &listedExtension{
+		Series: store.LibraryOrigin{Authority: authorityPrefix + "a", Key: "series:dir:1"}}})
+	ep := origin(authorityPrefix+"a", "file:4", "Pilot", at, false, epExt)
+	ep.Observation.Facts.SeasonNumber, ep.Observation.Facts.EpisodeNumber = 1, 1
+	ep.Observation.Facts.Genres, ep.Observation.Facts.Studios = []string{"Drama"}, []string{"Network"}
+	got, ok = ProjectLibraryItem(inventory.Item{ID: "e1", Kind: kindEpisode, Origins: []inventory.ItemOrigin{ep}})
+	if !ok || got.Season != 1 || got.Episode != 1 || got.Series.Key != "series:dir:1" || got.Genres != nil || got.Studios != nil {
+		t.Errorf("episode = %+v, %v; want it listed under its series with no genres or studios", got, ok)
 	}
 }
