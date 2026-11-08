@@ -3,23 +3,31 @@ import { describe, expect, it } from "vitest";
 import { ArtworkFallback } from "./artwork-fallback";
 
 describe("ArtworkFallback", () => {
-  it("renders the line motif with no monogram when no channel is known", () => {
-    render(<ArtworkFallback />);
+  it("is a tinted wash, never hatched", () => {
+    render(<ArtworkFallback label="Night Train" />);
     const el = screen.getByRole("presentation");
-    expect(el).toBeInTheDocument();
-    expect(el.textContent).toBe("");
+    expect(el.style.backgroundImage).toContain("linear-gradient");
+    expect(el.style.backgroundImage).not.toContain("repeating");
   });
 
-  it("shows the channel's monogram, tinted by its identity hue, when a channel is given", () => {
+  it("is never blank for a title with no channel: it sets the title's letters", () => {
+    render(<ArtworkFallback label="Night Train" />);
+    expect(screen.getByText("NT")).toBeInTheDocument();
+  });
+
+  it("shows the channel's monogram, tinted by its identity hue", () => {
     render(<ArtworkFallback channel={{ name: "Field Notes", number: 7 }} />);
-    const mark = screen.getByText("FN");
-    expect(mark).toBeInTheDocument();
-    expect(mark.style.color).toBe("var(--color-signal)");
+    expect(screen.getByText("FN").style.color).toBe("var(--color-signal)");
   });
 
   it("derives a different hue for a different channel number", () => {
     render(<ArtworkFallback channel={{ name: "Night Owl", number: 1 }} />);
     expect(screen.getByText("NO").style.color).toBe("var(--color-suggest)");
+  });
+
+  it("prefers the channel's letters over a label", () => {
+    render(<ArtworkFallback channel={{ name: "Night Owl", number: 1 }} label="Other Thing" />);
+    expect(screen.queryByText("OT")).not.toBeInTheDocument();
   });
 
   it("merges a caller className with its own layout classes", () => {

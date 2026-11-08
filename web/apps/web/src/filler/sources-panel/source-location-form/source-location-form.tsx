@@ -37,7 +37,11 @@ const SourceLocationForm = ({ source, actions }: SourceLocationFormProps) => {
       />
       <div className="flex flex-wrap gap-2">
         <Action
-          disabled={actions.updating || !country.trim()}
+          disabled={
+            actions.updating ||
+            !country.trim() ||
+            country.trim().toUpperCase() === (source.country ?? "").toUpperCase()
+          }
           onPress={() => void form.handleSubmit()}
           variant="outline"
         >

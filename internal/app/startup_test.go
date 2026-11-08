@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/jobs"
 )
 
 type healthSettingStore struct{ fail bool }
@@ -93,6 +95,45 @@ func TestCurrentHealthRunnerConfirmsDatabaseFailureAndRecovers(t *testing.T) {
 	}
 	if got := health.Health().State; got != diagnostics.HealthHealthy {
 		t.Fatalf("recovered probe state = %q, want healthy", got)
+	}
+}
+
+type starvedTasks []jobs.JobStatus
+
+func (s *starvedTasks) Starved(context.Context) ([]jobs.JobStatus, error) { return *s, nil }
+
+// #2721: Current Health must not say Healthy while scheduled tasks are days overdue.
+func TestCurrentHealthRunnerDegradesAndNamesStarvedTasks(t *testing.T) {
+	now := time.Unix(100, 0)
+	health := diagnostics.NewStartup(now, 1, "dev", []diagnostics.StartupCheck{
+		{Key: diagnostics.StartupCheckDatabase, Required: true, Mode: diagnostics.HealthCheckContinuous},
+		{Key: diagnostics.StartupCheckScheduledTasks, Required: false, Mode: diagnostics.HealthCheckContinuous},
+	}, func() time.Time { return now })
+	health.Complete(diagnostics.StartupCheckDatabase, diagnostics.StartupPassed, "available", "", "")
+	health.Complete(diagnostics.StartupCheckScheduledTasks, diagnostics.StartupSkipped, "", "", "")
+	runner := newCurrentHealthRunner(health, &healthSettingStore{}, visionSet(t, nil), nil)
+	tasks := &starvedTasks{{Name: "library-scan", Title: "Full library scan"}, {Name: "recurate", Title: "Re-curate channels"}}
+	runner.watchTasks(tasks)
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	report := health.Health()
+	if report.State != diagnostics.HealthDegraded {
+		t.Fatalf("state = %q, want degraded while tasks are starved", report.State)
+	}
+	check := report.Checks[1]
+	if check.Status != diagnostics.HealthWarning || !strings.Contains(check.Detail, "Full library scan") ||
+		!strings.Contains(check.Detail, "Re-curate channels") {
+		t.Fatalf("scheduled tasks check = %+v, want a warning naming both tasks", check)
+	}
+
+	*tasks = nil
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := health.Health().State; got != diagnostics.HealthHealthy {
+		t.Fatalf("state after tasks caught up = %q, want healthy", got)
 	}
 }
 

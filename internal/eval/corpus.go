@@ -283,6 +283,17 @@ var Corpus = withProductionStructuralBounds([]Case{
 		MinJudgeScore: 0.65, MinRelevanceScore: 0.7, MinSerendipityScore: 0.55,
 	},
 	{
+		// Title words alone are not evidence (#2740): "ghosts" must not pull in
+		// movies that merely have "Ghost" in the name.
+		Name:          "halloween_ghost_title_words_are_not_evidence",
+		Intent:        Intent{Description: "Halloween channel with ghosts, witches and haunted houses", MaxAcquire: 3},
+		MinLineup:     1,
+		TitleEvidence: TitleEvidenceGrounded,
+		ForbidTitles:  []string{"Mission: Impossible - Ghost Protocol", "Ghost World"},
+		JudgeRubric: "A good result is Halloween programming about ghosts, witches or haunted houses. " +
+			"Penalize titles that only share a word with the request, such as an action film or a drama with Ghost in the name.",
+	},
+	{
 		Name: "holiday_family_halloween",
 		Intent: Intent{
 			Description: "Playful Halloween movies for families, spooky but never gruesome",
