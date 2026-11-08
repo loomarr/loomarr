@@ -5,6 +5,7 @@ import type { CreateInvitationInputBody } from "@loomarr/api/models/createInvita
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantInputBodyConveyance } from "@loomarr/api/models/issueInvitationGrantInputBodyConveyance";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -16,7 +17,6 @@ import { InvitationRoster } from "@/components/loomarr/people/invitation-roster"
 import { PeopleRoster } from "@/components/loomarr/people/people-roster";
 import { PersonDetail } from "@/components/loomarr/people/person-detail";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 // UsersPage — the §11 allowlist. You can sign in iff you have a row here, so this screen
 // is the access-control surface: import who may sign in, set what they may spend, and end
@@ -218,19 +218,15 @@ const UsersPage = () => {
           onSelect={(user) => setSelectedId(user.id)}
         />
 
-        <Sheet
-          open={Boolean(selected)}
-          onOpenChange={(open) => !open && setSelectedId(undefined)}
-          swipeDirection="right"
-        >
+        <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(undefined)}>
           {selected && (
-            <SheetContent>
-              <SheetHeader>
-                <SheetTitle>{selected.name}</SheetTitle>
-                <SheetDescription>
+            <DialogContent placement="side">
+              <DialogHeader>
+                <DialogTitle>{selected.name}</DialogTitle>
+                <DialogDescription>
                   Manage this person's access, request policy, credentials, and sessions.
-                </SheetDescription>
-              </SheetHeader>
+                </DialogDescription>
+              </DialogHeader>
               <PersonDetail
                 user={selected}
                 busy={busyUser === selected.id}
@@ -267,9 +263,9 @@ const UsersPage = () => {
                   await invalidate();
                 }}
               />
-            </SheetContent>
+            </DialogContent>
           )}
-        </Sheet>
+        </Dialog>
       </div>
     </div>
   );

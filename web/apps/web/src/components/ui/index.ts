@@ -8,5 +8,4 @@ export * from "./list-row";
 export * from "./nav-tabs";
 export * from "./panel-row";
 export * from "./select";
-export * from "./sheet";
 export * from "./video-player";

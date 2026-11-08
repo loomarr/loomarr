@@ -5,7 +5,14 @@ import type { IncomingHelpGroupDTO } from "@loomarr/api/models/incomingHelpGroup
 import type { IncomingStatusDTO } from "@loomarr/api/models/incomingStatusDTO";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
-import { Card } from "@loomarr/design-system";
+import {
+  Card,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -14,7 +21,6 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
 import { IncomingPreparationSummary } from "./incoming-preparation-summary";
@@ -341,17 +347,13 @@ const Incoming = () => {
         </section>
       ) : null}
 
-      <Sheet
-        open={Boolean(selected)}
-        onOpenChange={(open) => !open && setSelected(undefined)}
-        swipeDirection="right"
-      >
+      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(undefined)}>
         {selected ? (
-          <SheetContent finalFocus={detailTrigger}>
-            <SheetHeader>
-              <SheetTitle>{selected.name}</SheetTitle>
-              <SheetDescription>{selected.statusLabel}</SheetDescription>
-            </SheetHeader>
+          <DialogContent finalFocus={detailTrigger} placement="side">
+            <DialogHeader>
+              <DialogTitle>{selected.name}</DialogTitle>
+              <DialogDescription>{selected.statusLabel}</DialogDescription>
+            </DialogHeader>
             <div className="space-y-5 p-6">
               {selectedClip ? (
                 <ClipDetails clip={selectedClip} />
@@ -368,9 +370,9 @@ const Incoming = () => {
               <p className="text-muted-foreground text-xs">Updated {formatRelative(selected.updatedAt)}</p>
               <IncomingProcessingDetails key={selected.clipHash} processing={selected.processing} />
             </div>
-          </SheetContent>
+          </DialogContent>
         ) : null}
-      </Sheet>
+      </Dialog>
     </section>
   );
 };

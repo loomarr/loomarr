@@ -1,14 +1,21 @@
 import type { SplitReviewSegmentDTO } from "@loomarr/api/models/splitReviewSegmentDTO";
 import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
-import { Badge, Card } from "@loomarr/design-system";
+import {
+  Badge,
+  Card,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@loomarr/design-system";
 import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
@@ -157,7 +164,7 @@ const SplitReviewEditor = ({
   const [draft, setDraft] = useState<DraftSegment[]>(() => (proposal.segments ?? []).map(toDraft));
   // Selection belongs to this review session, not the URL: merges and removals deliberately change
   // the draft identities beneath it. The trigger is retained separately so Base UI restores focus
-  // to the exact filmstrip tile or compact row that opened the Sheet.
+  // to the exact filmstrip tile or compact row that opened the panel.
   const [selectedKey, setSelectedKey] = useState<string>();
   const detailTrigger = useRef<HTMLElement>(null);
 
@@ -236,7 +243,7 @@ const SplitReviewEditor = ({
 
   return (
     <div className={cn("flex w-full max-w-full min-w-0 flex-col gap-4 overflow-x-hidden", className)}>
-      {/* The reel stays stable while the selected clip is inspected in the shared Sheet. */}
+      {/* The reel stays stable while the selected clip is inspected in the side panel. */}
       <SegmentFilmstrip
         segments={stripSegments}
         {...(selectedKey ? { activeKey: selectedKey } : {})}
@@ -276,21 +283,20 @@ const SplitReviewEditor = ({
         </div>
       </div>
 
-      <Sheet
+      <Dialog
         open={Boolean(selected)}
         onOpenChange={(open) => {
           if (!open) setSelectedKey(undefined);
         }}
-        swipeDirection="right"
       >
         {selected ? (
-          <SheetContent finalFocus={detailTrigger}>
-            <SheetHeader>
-              <SheetTitle>{selected.name || "Unnamed clip"}</SheetTitle>
-              <SheetDescription>
+          <DialogContent finalFocus={detailTrigger} placement="side">
+            <DialogHeader>
+              <DialogTitle>{selected.name || "Unnamed clip"}</DialogTitle>
+              <DialogDescription>
                 {`Clip ${selectedIndex + 1} of ${draft.length} · ${selected.startText}–${selected.endText}`}
-              </SheetDescription>
-            </SheetHeader>
+              </DialogDescription>
+            </DialogHeader>
             <div className="flex flex-col gap-5 p-6">
               <div className="flex items-center justify-between gap-3">
                 <Button
@@ -332,9 +338,9 @@ const SplitReviewEditor = ({
                 onMergeWithNext={() => mergeWithNext(selectedIndex)}
               />
             </div>
-          </SheetContent>
+          </DialogContent>
         ) : null}
-      </Sheet>
+      </Dialog>
     </div>
   );
 };

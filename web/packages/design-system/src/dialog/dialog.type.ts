@@ -28,10 +28,21 @@ interface DialogActionProps {
 interface DialogContentProps {
   children: ReactNode;
   /**
+   * Web only: where focus goes when the dialog closes, for a dialog opened from a row that may no
+   * longer be there (the detail panels' "Open details" buttons). Defaults to the trigger.
+   */
+  finalFocus?: { readonly current: PortalContainer | null };
+  /**
    * `sectioned` draws the header and footer as ruled bands with their own padding, and leaves the
-   * body between them to the caller (the people import list). `padded` pads the whole panel.
+   * body between them to the caller (the people import list). `padded` pads the whole panel. A side
+   * panel defaults to `sectioned`.
    */
   layout?: "padded" | "sectioned";
+  /**
+   * Web only: `side` docks the panel to the right edge at full height, for detail that sits beside
+   * the list it came from (a clip, a source, a person). Native always centres it.
+   */
+  placement?: "center" | "side";
   /** Web only: where the dialog portals, for a contained renderer such as the story gallery. */
   portalContainer?: PortalContainer | null;
   /** The panel's widest: `default` 448, `form` 672, `reading` 768. */

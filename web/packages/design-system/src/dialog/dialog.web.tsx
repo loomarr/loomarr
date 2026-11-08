@@ -76,42 +76,70 @@ const CornerClose = () => {
   );
 };
 
+// The side panel the Tailwind sheet drew: docked right at full height, 576 wide at most, with a
+// hairline on its open edge and the body scrolling under the header band.
+const sidePanel: CSSProperties = {
+  position: "fixed",
+  top: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: 50,
+  boxSizing: "border-box",
+  width: "100%",
+  maxWidth: 576,
+  overflowY: "auto",
+  borderLeft: `1px solid ${semanticColors.border.decorative}`,
+  background: semanticColors.surface.raised,
+  color: semanticColors.content.primary,
+  boxShadow: shadow,
+  outline: "none",
+};
+
 const DialogContent = ({
   children,
-  layout = "padded",
+  finalFocus,
+  layout,
+  placement = "center",
   portalContainer,
   size = "default",
 }: DialogContentProps) => {
   const wide = useWindowWidth() >= WIDE;
-  const popup: CSSProperties = {
-    position: "fixed",
-    top: "50%",
-    left: "50%",
-    zIndex: 50,
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    boxSizing: "border-box",
-    width: wide ? "calc(100% - 2rem)" : "100%",
-    maxWidth: maxWidths[size],
-    maxHeight: "calc(100dvh - 2rem)",
-    overflow: layout === "sectioned" ? "hidden" : "auto",
-    padding: layout === "sectioned" ? 0 : 24,
-    transform: "translate(-50%, -50%)",
-    border: `1px solid ${semanticColors.border.decorative}`,
-    borderRadius: semanticRadius.cardCompact,
-    background: semanticColors.surface.raised,
-    color: semanticColors.content.primary,
-    boxShadow: shadow,
-    outline: "none",
-  };
+  const side = placement === "side";
+  const resolvedLayout = layout ?? (side ? "sectioned" : "padded");
+  const popup: CSSProperties = side
+    ? sidePanel
+    : {
+        position: "fixed",
+        top: "50%",
+        left: "50%",
+        zIndex: 50,
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        boxSizing: "border-box",
+        width: wide ? "calc(100% - 2rem)" : "100%",
+        maxWidth: maxWidths[size],
+        maxHeight: "calc(100dvh - 2rem)",
+        overflow: resolvedLayout === "sectioned" ? "hidden" : "auto",
+        padding: resolvedLayout === "sectioned" ? 0 : 24,
+        transform: "translate(-50%, -50%)",
+        border: `1px solid ${semanticColors.border.decorative}`,
+        borderRadius: semanticRadius.cardCompact,
+        background: semanticColors.surface.raised,
+        color: semanticColors.content.primary,
+        boxShadow: shadow,
+        outline: "none",
+      };
   return (
     <DialogPrimitive.Portal container={portalContainer as HTMLElement | ShadowRoot | null | undefined}>
       <DialogPrimitive.Backdrop
         style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgb(0 0 0 / 0.6)" }}
       />
-      <DialogPrimitive.Popup style={popup}>
-        <LayoutContext.Provider value={layout}>{children}</LayoutContext.Provider>
+      <DialogPrimitive.Popup
+        finalFocus={finalFocus as { readonly current: HTMLElement | null } | undefined}
+        style={popup}
+      >
+        <LayoutContext.Provider value={resolvedLayout}>{children}</LayoutContext.Provider>
         <CornerClose />
       </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
