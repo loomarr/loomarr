@@ -16,7 +16,7 @@
       "tailwindClasses": 40
     },
     "src/channels/guide-page/guide-page.tsx": {
-      "tailwindClasses": 134,
+      "tailwindClasses": 128,
       "legacyUi": 2
     },
     "src/channels/tuner-osd/tuner-osd.tsx": {
@@ -138,9 +138,6 @@
       "tailwindClasses": 50,
       "baseUi": 1
     },
-    "src/components/loomarr/feedback/empty-state/empty-state.tsx": {
-      "tailwindClasses": 18
-    },
     "src/components/loomarr/feedback/error-details/error-details.tsx": {
       "tailwindClasses": 22
     },
@@ -154,7 +151,7 @@
       "tailwindClasses": 40
     },
     "src/components/loomarr/feedback/placeholder/placeholder.tsx": {
-      "tailwindClasses": 23
+      "tailwindClasses": 14
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
       "tailwindClasses": 108,

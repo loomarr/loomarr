@@ -21,7 +21,6 @@ import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { ColorBars } from "@/components/loomarr/shell/color-bars";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { TvStatic } from "@/components/loomarr/shell/tv-static";
 import { Button } from "@/components/ui/button";
@@ -525,29 +524,9 @@ const GuidePage = ({ search }: GuidePageProps) => {
             <TvStatic className="z-0" />
             <EmptyState
               className="relative z-10"
-              // SMPTE bars over "Dead air": a test card is literally what a set showed when
-              // nothing was broadcasting, so the motif IS the state rather than decoration
-              // applied to it. Reuses the shell's ColorBars (aria-hidden, purely decorative)
-              // rather than a new asset — it is the design's namesake strip, in the same
-              // tokens the rest of the UI uses for state.
-              //
-              // The scanline drifts down it on a slow loop: a sign of life on the one screen
-              // whose message is that nothing is on. `overflow-hidden` clips the sweep to the
-              // strip, and `motion-safe:` means a reduced-motion visitor simply gets the bars.
-              // The whole thing is aria-hidden, so none of it reaches assistive tech.
-              // ⚠ STILL, deliberately — the motion is the ambient layer behind this, never the
-              // card. A test card that jitters reads as a fault; one that holds while snow
-              // drifts behind it reads as standing by, which is what "Dead air" means.
-              //
-              // A test-card BLOCK rather than the sidebar's thin 200×14 strip: presence comes
-              // from size here, not movement. `h-16` on the wrapper with the bars told to fill
-              // it — ColorBars fixes its own height, and `cn` puts className last so the
-              // override wins.
-              icon={
-                <div className="h-16 w-50 overflow-hidden rounded-sm" aria-hidden>
-                  <ColorBars size="lg" breathe className="h-full w-full" />
-                </div>
-              }
+              // The state family's own static colour bars lead the panel (#2783): a test card is
+              // what a set showed when nothing was broadcasting. STILL, deliberately — the motion
+              // is the ambient snow behind it, so the card reads as standing by.
               title="Dead air"
               description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
               action={{
