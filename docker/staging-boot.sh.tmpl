@@ -115,7 +115,26 @@ if [ "$STAGING_GPU" = nvidia ]; then
 			xargs -r "${APT[@]}" purge -y
 		"${APT[@]}" update
 		"${APT[@]}" install -y nvidia-headless-open libnvidia-encode libnvidia-decode
-		modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia
+		# Something of the image's (a monitoring agent, a leftover daemon) can hold the old driver
+		# open. Stop whatever holds it, by its service where it has one, until the modules unload.
+		unloaded=''
+		for _ in 1 2 3 4 5; do
+			if modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia; then
+				unloaded=1
+				break
+			fi
+			for pid in $(fuser /dev/nvidia* 2>/dev/null | tr -cs '0-9' ' '); do
+				unit="$(ps -o unit= -p "$pid" || true)"
+				echo "holds the GPU: $pid $(ps -o args= -p "$pid" || true) ($unit)"
+				case "$unit" in
+				*.service) systemctl stop "$unit" || kill "$pid" || true ;;
+				*) kill "$pid" || true ;;
+				esac
+			done
+			sleep 5
+		done
+		lsmod | grep nvidia || true
+		[ -n "$unloaded" ]
 		modprobe nvidia
 		modprobe nvidia_uvm
 		systemctl start nvidia-persistenced 2>/dev/null || true
