@@ -129,6 +129,10 @@ var simLoc = func() *time.Location {
 // the grid's zone from the carry-over itself.
 var utcGrid = flag.Bool("utc-grid", false, "turn rolling windows at 00:00 UTC instead of local midnight")
 
+// watchedOnly replays the pipeline before the scheduled ledger (#1677): history is only what was
+// watched. Without it, every programme the schedule aired counts too, known from its start.
+var watchedOnly = flag.Bool("watched-only", false, "history is watched airings only (before #1677's scheduled ledger)")
+
 func main() {
 	days := flag.Int("days", 14, "days to simulate")
 	out := flag.String("out", "", "write JSON results here")
@@ -266,9 +270,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 			if !stop.Before(to) {
 				return out
 			}
-			if watched {
-				last = last.with(leg, from)
-			}
+			last = remember(last, leg, watched, from)
 			opened = schedule.WindowStart(stop, window, grid)
 			slots, epoch = arrange(opened, stop, last), stop
 		}
@@ -317,9 +319,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 			seen[id] = true
 			airings = append(airings, kit.Airing{Unit: b.LibraryItemID, Title: string(b.Key), Kind: "program", Start: b.Start, Stop: b.Stop})
 		}
-		if watched {
-			lastAired = lastAired.with(hour, t)
-		}
+		lastAired = remember(lastAired, hour, watched, t)
 	}
 	if ex != nil {
 		var xs []struct {
@@ -339,6 +339,18 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 }
 
 // airLog mirrors the #1674 airings table: one row per airing of a unit, with when it was recorded.
+// remember adds what aired to the history: the watched airings, recorded when seen, and (#1677)
+// the scheduled ledger, every programme recorded as of its own start, watched or not.
+func remember(l airLog, bs []playout.Broadcast, watched bool, seen time.Time) airLog {
+	if watched {
+		l = l.with(bs, seen)
+	}
+	if !*watchedOnly {
+		l = l.with(bs, time.Time{})
+	}
+	return l
+}
+
 type airLog map[string][][2]time.Time
 
 func (l airLog) record(unit string, aired, recorded time.Time) {
