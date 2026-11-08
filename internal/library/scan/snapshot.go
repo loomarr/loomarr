@@ -70,7 +70,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    the series as the disk does (decision 53).
 //	16: an audio track whose container states no channel layout is labelled as ffmpeg states it.
 //	17: a movie's file notes its edition, and each edition has its own copy that plays (decision 54).
-const writeVersion = 17
+//	18: a series carries a poster for each season it has one for (decisions 45, 61).
+const writeVersion = 18
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -218,7 +219,7 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 		it.IDs = append(it.IDs, store.LibraryID{Namespace: id.Namespace, Value: id.Value})
 	}
 	for _, a := range facts.Artwork {
-		it.Art = append(it.Art, store.LibraryArt{Kind: a.Kind, Ref: a.Ref})
+		it.Art = append(it.Art, store.LibraryArt{Kind: a.Kind, Season: a.Season, Ref: a.Ref})
 	}
 	it.Sources = librarySources(item)
 	return it, true
@@ -326,7 +327,7 @@ func itemFacts(r precedence.Resolved) (inventory.ItemFacts, map[string]inventory
 		f.SeasonNumber, f.EpisodeNumber, f.EpisodeEnd = r.Numbering.Value.Season, r.Numbering.Value.Episode, r.Numbering.Value.EpisodeEnd
 	}
 	for _, a := range r.Artwork {
-		f.Artwork = append(f.Artwork, inventory.ArtworkRef{Kind: a.Value.Kind, Ref: a.Value.Ref})
+		f.Artwork = append(f.Artwork, inventory.ArtworkRef{Kind: a.Value.Kind, Ref: a.Value.Ref, Season: a.Value.Season})
 	}
 	for _, p := range r.Parent {
 		f.Relationships = append(f.Relationships, inventory.Relationship{

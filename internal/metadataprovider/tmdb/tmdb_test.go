@@ -251,13 +251,21 @@ func TestFetchSeries(t *testing.T) {
 		t.Errorf("certification = %+v, want the US content rating, not DE's", rec.Certification)
 	}
 	var logo string
+	var seasonPosters []mp.ArtworkRef
 	for _, a := range rec.Artwork {
-		if a.Kind == "clearlogo" {
+		switch a.Kind {
+		case "clearlogo":
 			logo = a.Ref
+		case mp.KindSeasonPoster:
+			seasonPosters = append(seasonPosters, a)
 		}
 	}
 	if logo != "https://image.tmdb.org/t/p/original/img-logo-en-90000701.png" {
 		t.Errorf("series logo = %q: logos are captured", logo)
+	}
+	wantPosters := []mp.ArtworkRef{{Kind: mp.KindSeasonPoster, Season: 1, Ref: "https://image.tmdb.org/t/p/original/img-season-90000722.jpg"}}
+	if !reflect.DeepEqual(seasonPosters, wantPosters) {
+		t.Errorf("season posters = %+v, want only season 1's, the one season with a poster", seasonPosters)
 	}
 	if len(rec.Children) != 0 {
 		t.Error("TMDB's season layout differs from TVDB's, so a series carries no episodes; they are fetched by their own ids")

@@ -64,6 +64,8 @@ type Rating struct {
 type ArtworkRef struct {
 	Kind string `json:"kind"`
 	Ref  string `json:"ref"`
+	// Season is the season a season poster belongs to, 0 for the specials; zero for other kinds.
+	Season int `json:"season,omitempty"`
 }
 
 type Relationship struct {

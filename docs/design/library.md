@@ -294,8 +294,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the transfer; audio format; the channel layout where the container states none (neither
   Matroska nor MP4 does), as ffmpeg's decoder states it for the codec and channel count, checked
   against ffprobe in the header parity test; the ISO 639-1 language code and its English name.
-  `library_art` has
-  one row per artwork reference. Each `library_files` row records
+  `library_art` has one row per artwork reference. A series has a `season-poster` row for each
+  season with a poster, by `season` (0 is the specials): the folder's Kodi-named
+  `season01-poster.jpg` or `season-specials-poster.jpg` first, else TMDB's poster for that season
+  (`season-all-poster` is not a season's). Each `library_files` row records
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
   headers is unread. A file row from before these columns has no item, so the next pass writes it
