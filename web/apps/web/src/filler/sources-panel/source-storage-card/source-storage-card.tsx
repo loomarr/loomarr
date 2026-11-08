@@ -72,7 +72,7 @@ const SourceStorageCard = () => {
             {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
             this drive
           </p>
-          <Text as="p" marginTop={4} textRole="hint" tone={allowanceFull ? "warning" : "muted"}>
+          <Text as="p" style={{ marginTop: 4 }} textRole="hint" tone={allowanceFull ? "warning" : "muted"}>
             {storage.pausedBy === "host_reserve"
               ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
               : storage.pausedBy === "library_limit"

@@ -76,7 +76,7 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
       <p className="font-medium">
         {storage.automatic ? "Automatic" : "Custom"} {formatBytes(storage.softBudgetBytes)} allowance
       </p>
-      <Text as="p" marginTop={4} textRole="body" tone={allowanceFull ? "warning" : "muted"}>
+      <Text as="p" style={{ marginTop: 4 }} textRole="body" tone={allowanceFull ? "warning" : "muted"}>
         {formatBytes(storage.managedBytes)} used · {formatBytes(storage.availableBytes)} available to Loomarr.
         Loomarr keeps at least {formatBytes(storage.hardReserveBytes)} free for this device.
       </Text>
