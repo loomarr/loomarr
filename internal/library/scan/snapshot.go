@@ -69,7 +69,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	15: an episode with no TVDB id takes TMDB's entry for its season and number, when TMDB numbers
 //	    the series as the disk does (decision 53).
 //	16: an audio track whose container states no channel layout is labelled as ffmpeg states it.
-const writeVersion = 16
+//	17: a movie's file notes its edition, and each edition has its own copy that plays (decision 54).
+const writeVersion = 17
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -123,6 +124,8 @@ type originExtension struct {
 	// Managed is true for a file its arr lists: the arr's current file, the one that plays when a
 	// title has several (decision 37).
 	Managed bool `json:"managed,omitempty"`
+	// Edition is the labelled version of a movie this file is, "" for the default (decision 54).
+	Edition string `json:"edition,omitempty"`
 	// Listed is how a title is listed in the Library; nil for an origin written before it carried
 	// one (a movie or series before write version 10, an episode before 12), whose row stays as it
 	// was until it is written again.
@@ -140,7 +143,7 @@ type listedExtension struct {
 // originExtensionOf is r's provenance, whether an arr lists the file, and how the title is listed
 // (m is what said which title it is; series an episode's series origin), as an origin's
 // Observation.Extension.
-func originExtensionOf(kind mp.Kind, res resolution, managed bool, series inventory.OriginKey) json.RawMessage {
+func originExtensionOf(kind mp.Kind, res resolution, managed bool, series inventory.OriginKey, edition string) json.RawMessage {
 	r := res.resolved
 	ext := originExtension{From: DetailsFrom{
 		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
@@ -148,7 +151,10 @@ func originExtensionOf(kind mp.Kind, res resolution, managed bool, series invent
 		Score: r.CommunityRating.From.Provider, Runtime: r.Runtime.From.Provider,
 	}, Managed: managed}
 	switch kind {
-	case mp.KindMovie, mp.KindSeries:
+	case mp.KindMovie:
+		ext.Listed = &listedExtension{Catalog: res.catalog, Match: res.match}
+		ext.Edition = edition
+	case mp.KindSeries:
 		ext.Listed = &listedExtension{Catalog: res.catalog, Match: res.match}
 	case mp.KindEpisode:
 		ext.Listed = &listedExtension{Catalog: res.catalog, Series: libraryOrigin(series)}
@@ -221,9 +227,9 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 // librarySources is each of an item's present files with its tracks, in path order, the copy
 // that plays marked (decision 37).
 func librarySources(item inventory.Item) []store.LibrarySource {
-	managed := map[inventory.OriginKey]bool{}
+	exts := map[inventory.OriginKey]originExtension{}
 	for _, o := range item.Origins {
-		managed[o.Key] = readOriginExtension(o.Observation.Extension).Managed
+		exts[o.Key] = readOriginExtension(o.Observation.Extension)
 	}
 	type file struct {
 		src     store.LibrarySource
@@ -237,11 +243,11 @@ func librarySources(item inventory.Item) []store.LibrarySource {
 			}
 			f := o.Observation.Facts
 			src := store.LibrarySource{Path: o.Locator.Path, Container: f.Container, SizeBytes: f.SizeBytes,
-				Bitrate: f.Bitrate, DurationMs: f.DurationMillis}
+				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition}
 			for _, st := range f.Streams {
 				src.Streams = append(src.Streams, libraryStream(st))
 			}
-			files = append(files, file{src: src, managed: managed[o.Key]})
+			files = append(files, file{src: src, managed: exts[o.Key].Managed})
 			break
 		}
 	}
@@ -249,18 +255,19 @@ func librarySources(item inventory.Item) []store.LibrarySource {
 		return nil
 	}
 	slices.SortFunc(files, func(a, b file) int { return strings.Compare(a.src.Path, b.src.Path) })
-	best := playingCopy(len(files), func(i int) bool { return files[i].managed }, func(i int) int {
-		for _, st := range files[i].src.Streams {
-			if st.Kind == string(inventory.StreamVideo) {
-				return st.Width * st.Height
+	plays := playingCopies(len(files), func(i int) string { return files[i].src.Edition },
+		func(i int) bool { return files[i].managed }, func(i int) int {
+			for _, st := range files[i].src.Streams {
+				if st.Kind == string(inventory.StreamVideo) {
+					return st.Width * st.Height
+				}
 			}
-		}
-		return 0
-	}, func(i int) int64 { return files[i].src.SizeBytes })
+			return 0
+		}, func(i int) int64 { return files[i].src.SizeBytes })
 	out := make([]store.LibrarySource, len(files))
 	for i, f := range files {
 		out[i] = f.src
-		out[i].Plays = i == best
+		out[i].Plays = plays[i]
 	}
 	return out
 }
@@ -380,5 +387,5 @@ func fallbackName(rel string) string {
 	if dot := strings.LastIndex(name, "."); dot > 0 {
 		name = name[:dot]
 	}
-	return strings.TrimSpace(embeddedID.ReplaceAllString(name, ""))
+	return strings.TrimSpace(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), ""))
 }

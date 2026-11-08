@@ -242,6 +242,9 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// A movie is named by its file or its own folder. A folder further up is a collection or a
 	// series, and a tvdb id never names a movie.
 	rec := mp.Record{Source: src, Kind: mp.KindMovie}
+	if edition := editionIn(name); edition != "" {
+		rec.Descriptive = &mp.Descriptive{Edition: edition}
+	}
 	for i := len(segments) - 1; i >= 0 && i >= len(segments)-2 && len(rec.IDs) == 0; i-- {
 		for _, id := range idsIn(segments[i]) {
 			if id.Namespace != mp.NamespaceTVDB {
