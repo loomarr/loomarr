@@ -585,6 +585,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **The provisioning backstop asks the Library first** (step 15e). Its last look before a title is
   given up as unavailable confirms one the Library holds, under its library item id; the media
   server answers only what the Library doesn't hold.
+- **Channel ideas ask the Library first** (step 15e). Home's channel ideas draw from the Library's
+  movies and series with their year and genres (`LibraryTitles`, `LibraryItemFacts`), then only the
+  media server's titles the Library doesn't hold, by provider id, so no title counts twice in a
+  facet. With no media server, the Library's alone.
 - **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
   stored records name at library items: titles, airings, channels' slots, scopes, rules and
   lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
