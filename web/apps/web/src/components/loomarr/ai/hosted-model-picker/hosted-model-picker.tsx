@@ -1,10 +1,10 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
 import { Badge } from "@loomarr/design-system";
-import { Check, Search } from "lucide-react";
+import { SearchField } from "@loomarr/ui";
+import { Check } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { HostedModelPickerProps } from "./hosted-model-picker.type";
 
@@ -186,24 +186,14 @@ const HostedModelPicker = ({
               </p>
             ) : models.length > 0 && isSearching ? (
               <>
-                <div className="relative">
-                  <Search
-                    className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
-                    aria-hidden
-                  />
-                  <Input
-                    type="search"
-                    aria-label="Search models"
-                    placeholder={`Search ${models.length} models by name or ID`}
-                    className="pl-9"
-                    autoFocus
-                    value={query}
-                    onChange={(event) => {
-                      const nextQuery = event.currentTarget.value;
-                      setQueries((value) => ({ ...value, [hp.key]: nextQuery }));
-                    }}
-                  />
-                </div>
+                <SearchField
+                  autoFocus
+                  label="Search models"
+                  labelHidden
+                  onChangeText={(nextQuery) => setQueries((value) => ({ ...value, [hp.key]: nextQuery }))}
+                  placeholder={`Search ${models.length} models by name or ID`}
+                  value={query}
+                />
                 {!normalizedQuery ? (
                   <p className="text-muted-foreground text-sm">Start typing to find a model.</p>
                 ) : matchingModels.length === 0 ? (

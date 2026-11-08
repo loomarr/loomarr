@@ -2,14 +2,14 @@ import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { ListDiagnosticProcessesParams } from "@loomarr/api/models/listDiagnosticProcessesParams";
 import { ListDiagnosticProcessesStatus } from "@loomarr/api/models/listDiagnosticProcessesStatus";
 import type { ProcessRunView } from "@loomarr/api/models/processRunView";
-import { StatusDot, type StatusTone, Tooltip } from "@loomarr/design-system";
+import { Field, StatusDot, type StatusTone, Surface, Tooltip } from "@loomarr/design-system";
+import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AlertTriangle, Check, Clipboard, Download, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { DiagnosticsSearch } from "../diagnostics-page";
 import { DiagnosticsPager } from "../diagnostics-pager";
@@ -152,13 +152,15 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          className="min-w-48 flex-1"
-          aria-label="Search Process output"
-          placeholder="Search output"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+        <Surface backgroundColor="transparent" borderWidth={0} flexBasis={192} flexGrow={1} minWidth={0}>
+          <SearchField
+            label="Search Process output"
+            labelHidden
+            onChangeText={setSearch}
+            placeholder="Search output"
+            value={search}
+          />
+        </Surface>
         <Button
           variant={wrap ? "secondary" : "outline"}
           size="sm"
@@ -414,23 +416,29 @@ const PlayoutDiagnostics = ({
         <details className="sm:col-span-2">
           <summary className="text-muted-foreground cursor-pointer py-1 text-sm">More filters</summary>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
-            <Input
-              aria-label="Process purpose"
+            <Field
+              accessibilityLabel="Process purpose"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={(processPurpose) => update({ ...filters, processPurpose })}
               placeholder="Purpose"
               value={filters.processPurpose}
-              onChange={(event) => update({ ...filters, processPurpose: event.target.value })}
             />
-            <Input
-              aria-label="Process Channel id"
+            <Field
+              accessibilityLabel="Process Channel id"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={(processChannelId) => update({ ...filters, processChannelId })}
               placeholder="Channel id"
               value={filters.processChannelId}
-              onChange={(event) => update({ ...filters, processChannelId: event.target.value })}
             />
-            <Input
-              aria-label="Process Job id"
+            <Field
+              accessibilityLabel="Process Job id"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={(processJobId) => update({ ...filters, processJobId })}
               placeholder="Job id"
               value={filters.processJobId}
-              onChange={(event) => update({ ...filters, processJobId: event.target.value })}
             />
           </div>
         </details>

@@ -8,12 +8,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  Field,
   Toggle,
 } from "@loomarr/design-system";
 import { Download, LoaderCircle, Settings2, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Range = "1h" | "6h" | "24h";
@@ -296,18 +296,18 @@ const SupportBundle = ({
                 <h4 className="mb-2 text-sm font-medium">Exact identifiers</h4>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {correlationFields.map(([label, key]) => (
-                    <div key={key} className="space-y-1 text-sm">
-                      <span>{label}</span>
-                      <Input
-                        aria-label={label}
-                        value={fields[key] ?? ""}
-                        maxLength={128}
-                        onChange={(event) => {
-                          setFields((current) => ({ ...current, [key]: event.target.value || undefined }));
-                          invalidate();
-                        }}
-                      />
-                    </div>
+                    <Field
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      key={key}
+                      label={label}
+                      maxLength={128}
+                      onChangeText={(text) => {
+                        setFields((current) => ({ ...current, [key]: text || undefined }));
+                        invalidate();
+                      }}
+                      value={fields[key] ?? ""}
+                    />
                   ))}
                 </div>
               </div>

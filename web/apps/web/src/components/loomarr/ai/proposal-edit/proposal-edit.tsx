@@ -4,12 +4,10 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
-import { Badge, Toggle } from "@loomarr/design-system";
+import { Badge, Field, Toggle } from "@loomarr/design-system";
 import { LoaderCircle, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { MovieCollectionChoices, movieCollectionKeys } from "@/suggest/movie-collection-choices";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
@@ -483,18 +481,14 @@ const ProposalEdit = (props: ProposalEditProps) => {
       )}
 
       {showNote && editable && (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="approval-note">Note to the requester</Label>
-          <Input
-            id="approval-note"
-            value={note}
-            disabled={disabled}
-            placeholder={edited ? "Explain what you changed" : "Optional"}
-            onChange={(event) => {
-              emit(dropped, added, event.target.value);
-            }}
-          />
-        </div>
+        <Field
+          disabled={disabled}
+          id="approval-note"
+          label="Note to the requester"
+          onChangeText={(text) => emit(dropped, added, text)}
+          placeholder={edited ? "Explain what you changed" : "Optional"}
+          value={note}
+        />
       )}
     </div>
   );
