@@ -42,6 +42,30 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 	if _, err := provider.UpTo(ctx, integrityParentChecksMigration-1); err != nil {
 		t.Fatalf("migrate through %d: %v", integrityParentChecksMigration-1, err)
 	}
+	// A table that references a rebuilt one must be rebuilt with it, or dropping the renamed parent
+	// cascades through its rows. A migration that adds such a child before this one fails here.
+	rebuilt := map[string]bool{"filler_spoken_safety_events": true} // dropped by the migration
+	for _, table := range integrityParentRebuilt {
+		rebuilt[table] = true
+	}
+	rows, err := db.QueryContext(ctx, `SELECT m.name, f."table" FROM sqlite_master m, pragma_foreign_key_list(m.name) f
+		WHERE m.type = 'table'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var child, parent string
+		if err := rows.Scan(&child, &parent); err != nil {
+			t.Fatal(err)
+		}
+		if rebuilt[parent] && !rebuilt[child] {
+			t.Errorf("%s references %s, which %d rebuilds: rebuild %s with it", child, parent,
+				integrityParentChecksMigration, child)
+		}
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
 	before := map[string]string{}
 	for _, table := range integrityParentRebuilt {
 		before[table] = tableShape(t, db, table)
