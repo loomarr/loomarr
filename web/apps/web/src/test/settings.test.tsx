@@ -401,7 +401,8 @@ describe("Settings", () => {
     stubSettings();
     const { container } = renderAt("/settings/advanced");
     await screen.findByText("job.workers");
-    expect(container.querySelector("#setting-job\\.workers")).toBeDisabled();
+    // Read-only, not disabled: the pinned value stays at full strength (#2759).
+    expect(container.querySelector("#setting-job\\.workers")).toHaveAttribute("readonly");
   });
 });
 

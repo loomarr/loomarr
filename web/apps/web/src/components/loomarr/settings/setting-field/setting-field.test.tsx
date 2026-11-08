@@ -237,9 +237,15 @@ describe("SettingField", () => {
     expect(onChange).toHaveBeenCalledWith("true");
   });
 
-  it("locks an env-pinned field and says so", () => {
+  // #2759: a pinned value is read-only, not disabled. Disabled dims it to placeholder grey, and a
+  // real value must never be mistaken for an empty hint.
+  it("locks an env-pinned field read-only at full strength and says so", () => {
     render(<SettingField entry={entry({ provenance: "env" })} value="http://x" onChange={vi.fn()} />);
-    expect(screen.getByLabelText("Library URL")).toBeDisabled();
+    const input = screen.getByLabelText("Library URL");
+    expect(input).toHaveAttribute("readonly");
+    expect(input).not.toBeDisabled();
+    expect(input).toHaveValue("http://x");
+    expect(input).not.toHaveStyle({ opacity: "0.62" });
     expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
   });
 

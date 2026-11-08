@@ -89,6 +89,10 @@ const SettingField = ({
   // An unlocked key (§3.1) resolves as `db` while its variable is still set, so it is
   // editable — but still overriding, which the badge below has to say.
   const pinned = entry.provenance === SettingEntryProvenance.env;
+  // ⚠ A pinned VALUE is real, so it is shown read-only at full strength, never in the dimmed
+  // disabled look that reads as an empty placeholder (#2759). Text boxes take `readOnly`; a
+  // select stays disabled (it has no read-only state) but keeps body-strength text.
+  const pinnedSelect = pinned ? "disabled:opacity-100" : undefined;
   const overriding = entry.envOverride === true;
   // Offer the affordance only where it can actually do something: the environment must set
   // the key, and the surface must have supplied a handler.
@@ -147,6 +151,7 @@ const SettingField = ({
         <Select value={value} disabled={pinned || disabledReason !== undefined} onValueChange={onChange}>
           <SelectTrigger
             id={id}
+            className={pinnedSelect}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
             aria-invalid={invalid ? "true" : undefined}
@@ -188,6 +193,7 @@ const SettingField = ({
           >
             <SelectTrigger
               id={id}
+              className={pinnedSelect}
               aria-describedby={describedBy}
               aria-labelledby={labelledBy}
               aria-invalid={invalid ? "true" : undefined}
@@ -208,15 +214,19 @@ const SettingField = ({
               <NumberField
                 accessibilityLabel="Custom check interval"
                 amount={current.amount}
-                disabled={pinned || disabledReason !== undefined}
+                disabled={disabledReason !== undefined}
                 onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
+                readOnly={pinned}
               />
               <Select
                 value={current.unit}
                 disabled={pinned || disabledReason !== undefined}
                 onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
               >
-                <SelectTrigger aria-label="Custom check interval unit" className="w-32 shrink-0">
+                <SelectTrigger
+                  aria-label="Custom check interval unit"
+                  className={cn("w-32 shrink-0", pinnedSelect)}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -240,17 +250,18 @@ const SettingField = ({
             amount={current.amount}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
-            disabled={pinned || disabledReason !== undefined}
+            disabled={disabledReason !== undefined}
             id={id}
             invalid={invalid}
             onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
+            readOnly={pinned}
           />
           <Select
             value={current.unit}
             disabled={pinned || disabledReason !== undefined}
             onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
           >
-            <SelectTrigger aria-label={`${label} unit`} className="w-32 shrink-0">
+            <SelectTrigger aria-label={`${label} unit`} className={cn("w-32 shrink-0", pinnedSelect)}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -272,10 +283,11 @@ const SettingField = ({
             amount={current.amount}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
-            disabled={pinned || disabledReason !== undefined}
+            disabled={disabledReason !== undefined}
             id={id}
             invalid={invalid}
             onAmount={(amount) => onChange(String(Math.round(amount * 1024 ** 2)))}
+            readOnly={pinned}
           />
         </WithUnit>
       );
@@ -288,12 +300,13 @@ const SettingField = ({
           autoCapitalize="none"
           autoComplete={entry.secret ? "new-password" : "off"}
           autoCorrect={false}
-          disabled={pinned || disabledReason !== undefined}
+          disabled={disabledReason !== undefined}
           id={id}
           invalid={invalid}
           keyboardType={keyboardFor(entry.kind)}
           onChangeText={onChange}
           placeholder={entry.secret && entry.set ? "Enter a new value to replace" : undefined}
+          readOnly={pinned}
           secureTextEntry={entry.secret}
           value={value}
         />
