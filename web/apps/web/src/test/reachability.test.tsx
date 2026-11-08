@@ -32,6 +32,7 @@ import {
   getMeMockHandler,
   getPreviewChannelCycleMockHandler,
   getPreviewChannelPodsMockHandler,
+  getPreviewChannelProgrammingMockHandler,
   getPreviewDraftChannelPodsMockHandler,
   getSettingsListMockHandler,
   getSystemBackupsListMockHandler,
@@ -230,6 +231,10 @@ const stubReachable = () => {
     // id, which is NOT the URL. The old stub matched `u.includes("/pods")`, which is also true of
     // `/pods/preview`, the POST one route over.
     getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
+    // The Programming section's rules draft posts a preview after a debounce. A test that opens the
+    // section and ends before it fires leaks the POST into whichever test runs next, so it needs an
+    // answer even where no test reads it.
+    getPreviewChannelProgrammingMockHandler(),
     // ⚠ Ahead of the by-id read: `/v1/channels/:id` also matches `/v1/channels/now-next`, and the
     // first match answers, so the channel header would read a ChannelDTO as the now/next list.
     getChannelsNowNextMockHandler({ channels: [] }),
