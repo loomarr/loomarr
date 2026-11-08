@@ -2,6 +2,5 @@
 export * from "./button";
 export * from "./input";
 export * from "./label";
-export * from "./nav-tabs";
 export * from "./panel-row";
 export * from "./select";

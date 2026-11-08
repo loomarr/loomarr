@@ -369,9 +369,6 @@
     "src/components/ui/label/label.tsx": {
       "tailwindClasses": 4
     },
-    "src/components/ui/nav-tabs/nav-tabs.tsx": {
-      "tailwindClasses": 52
-    },
     "src/components/ui/panel-row/panel-row.tsx": {
       "tailwindClasses": 21
     },
@@ -491,7 +488,7 @@
     },
     "src/filler/filler-page/filler-page.tsx": {
       "tailwindClasses": 45,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/filler/filler-settings/filler-settings.tsx": {
       "tailwindClasses": 110,
@@ -634,15 +631,13 @@
       "tailwindClasses": 38
     },
     "src/routes/_authed/channels/$id/route.tsx": {
-      "tailwindClasses": 88,
-      "legacyUi": 1
+      "tailwindClasses": 88
     },
     "src/routes/_authed/filler/settings/route.tsx": {
       "tailwindClasses": 6
     },
     "src/routes/_authed/requests/_tabs.tsx": {
-      "tailwindClasses": 12,
-      "legacyUi": 1
+      "tailwindClasses": 12
     },
     "src/routes/_authed/settings/access.tsx": {
       "tailwindClasses": 13
