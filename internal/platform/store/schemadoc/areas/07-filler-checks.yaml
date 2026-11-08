@@ -77,6 +77,33 @@ tables:
         Empty on success.
       created_at: When the call was reserved, in Unix seconds. Also decides which day's ceiling it counts against (UTC).
       updated_at: When the row last changed (reserved or settled), in Unix seconds.
+    groups:
+      - group: The call
+        why: One row is one call to a model; these say which check made it and how it ended.
+        columns: [id, cache_key, clip_hash, run_id, role, rung, state, outcome, failure_reason, attempts, latency_ms, created_at, updated_at]
+      - group: Who answered
+        why: >
+          One provider and model asked, and one that answered, per call. Comparing them is how a
+          routing service's substitutions show up.
+        columns: [requested_provider, requested_model, resolved_provider, resolved_model, upstream_provider, generation_id, capability_snapshot]
+      - group: What was sent
+        why: One media excerpt per call; its size is what the cost estimate is worked out from.
+        columns: [modalities_json, derivative_bytes, derivative_duration_ms, derivative_pixels]
+      - group: Tokens
+        why: >
+          The usage the provider reported for this call, one count per kind, kept to check its bill
+          against.
+        columns: [prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, image_tokens, audio_tokens, video_tokens]
+      - group: Cost
+        why: >
+          The spend ceilings (per clip, per day, per run) add up reserved_nano_usd across calls in
+          one statement, which needs it on the call's own row.
+        columns: [charged_amount, charged_currency, charged_nano_usd, estimated_nano_usd, reserved_nano_usd, price_snapshot]
+      - group: Versions
+        why: >
+          The cache key hashes every one of these, so an answer is reused only when nothing that
+          shaped it changed; they describe this call and no other.
+        columns: [evidence_version, extractor_version, prompt_version, schema_version, taxonomy_version, admission_policy_version, role_policy_version]
 
   - name: filler_inference_budget_guards
     about: >

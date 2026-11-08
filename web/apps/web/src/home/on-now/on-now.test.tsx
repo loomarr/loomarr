@@ -145,11 +145,13 @@ describe("OnNow — up to six channels in number order (#1822 evidence)", () => 
     expect(screen.queryByText("Ad break")).not.toBeInTheDocument();
   });
 
-  it("gives a channel with no artwork the line-motif monogram fallback, not a broken image", async () => {
+  it("gives a channel with no artwork generated channel art, never a hatched tile (#2762)", async () => {
     await renderOnNow([live("c1", 7, { name: "Field Notes" })]);
     // No <img> is rendered for the still: the ArtworkFallback renders a presentation div instead.
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    // Twice: the still's own fallback, and the small channel-identity mark beside the title.
+    const art = screen.getByRole("presentation", { hidden: true });
+    expect(art.style.backgroundImage).not.toContain("repeating");
+    // Twice: the generated art's monogram, and the small channel-identity mark beside the title.
     expect(screen.getAllByText("FN")).toHaveLength(2);
   });
 

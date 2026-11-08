@@ -79,11 +79,13 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
           <p className="text-muted-foreground">No processing steps recorded yet.</p>
         )}
         {skipped ? (
-          <Action onPress={() => setShowSkipped((open) => !open)} variant="ghost">
-            {showSkipped
-              ? "Hide skipped steps"
-              : `Show ${skipped === 1 ? "skipped step" : `${skipped} skipped steps`}`}
-          </Action>
+          <div className="flex">
+            <Action onPress={() => setShowSkipped((open) => !open)} variant="ghost">
+              {showSkipped
+                ? "Hide skipped steps"
+                : `Show ${skipped === 1 ? "skipped step" : `${skipped} skipped steps`}`}
+            </Action>
+          </div>
         ) : null}
       </div>
     </details>

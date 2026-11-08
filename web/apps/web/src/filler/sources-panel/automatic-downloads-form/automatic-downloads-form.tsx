@@ -43,23 +43,42 @@ interface AutomaticDownloadsFormProps {
   actions: Pick<SourceActions, "updateSource" | "updating" | "updatingSourceID">;
 }
 
+type AutomaticDownloadsDraft = {
+  mode: SourceAutomaticDownloadsInputMode;
+  everySeconds: number;
+  maxPerCheck: number;
+};
+
+// The schedule numbers only matter to a custom schedule; switching between defaults and never
+// changes nothing else.
+const sameDraft = (a: AutomaticDownloadsDraft, b: AutomaticDownloadsDraft): boolean =>
+  a.mode === b.mode &&
+  (a.mode !== "custom" || (a.everySeconds === b.everySeconds && a.maxPerCheck === b.maxPerCheck));
+
 // Per-source "Automatic downloads": follow the defaults, use a schedule of its own, or never. The
 // draft is seeded from the source once, when the form mounts — remount per source (`key`) — so a
-// background refetch cannot overwrite what the operator is mid-way through typing.
+// background refetch cannot overwrite what the operator is mid-way through typing. Save stays off
+// until the draft differs from what was last saved.
 const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps) => {
-  const [mode, setMode] = useState<SourceAutomaticDownloadsInputMode>(
-    source.automaticDownloads?.mode ?? "defaults",
-  );
-  const [everySeconds, setEverySeconds] = useState(source.automaticDownloads?.everySeconds || 6 * 3600);
-  const [maxPerCheck, setMaxPerCheck] = useState(source.automaticDownloads?.maxPerCheck ?? 10);
+  const [saved, setSaved] = useState<AutomaticDownloadsDraft>(() => ({
+    mode: source.automaticDownloads?.mode ?? "defaults",
+    everySeconds: source.automaticDownloads?.everySeconds || 6 * 3600,
+    maxPerCheck: source.automaticDownloads?.maxPerCheck ?? 10,
+  }));
+  const [mode, setMode] = useState<SourceAutomaticDownloadsInputMode>(saved.mode);
+  const [everySeconds, setEverySeconds] = useState(saved.everySeconds);
+  const [maxPerCheck, setMaxPerCheck] = useState(saved.maxPerCheck);
   const [editingCustomSchedule, setEditingCustomSchedule] = useState(
-    downloadSchedulePreset(source.automaticDownloads?.everySeconds || 6 * 3600) === "custom",
+    downloadSchedulePreset(saved.everySeconds) === "custom",
   );
   const [saveError, setSaveError] = useState<string>();
   const saveButton = useRef<ComponentRef<typeof Action>>(null);
+  const modeTrigger = useRef<HTMLButtonElement>(null);
   const automaticDownloads = source.automaticDownloads;
   if (!automaticDownloads) return null;
   const interval = downloadIntervalParts(everySeconds);
+  const draft: AutomaticDownloadsDraft = { mode, everySeconds, maxPerCheck };
+  const changed = !sameDraft(draft, saved);
 
   return (
     <div className="flex flex-col gap-3">
@@ -81,7 +100,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
           }
         }}
       >
-        <SelectTrigger aria-label="Automatic downloads for this source">
+        <SelectTrigger aria-label="Automatic downloads for this source" ref={modeTrigger}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -162,7 +181,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         </div>
       )}
       <Action
-        disabled={actions.updating}
+        disabled={actions.updating || !changed}
         ref={saveButton}
         style={{ alignSelf: "flex-start" }}
         variant="outline"
@@ -176,10 +195,16 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
                 mode === "custom" ? { mode: "custom", everySeconds, maxPerCheck } : { mode },
             },
             {
-              onSuccess: () => toast.success("Automatic downloads updated"),
-              onError: (error) =>
-                setSaveError(error.detail ?? "Automatic downloads couldn’t be saved. Try again."),
-              onSettled: () => requestAnimationFrame(() => saveButton.current?.focus()),
+              onSuccess: () => {
+                setSaved(draft);
+                toast.success("Automatic downloads updated");
+                // Save turns off once nothing is left to save, so focus goes back to the form.
+                requestAnimationFrame(() => modeTrigger.current?.focus());
+              },
+              onError: (error) => {
+                setSaveError(error.detail ?? "Automatic downloads couldn’t be saved. Try again.");
+                requestAnimationFrame(() => saveButton.current?.focus());
+              },
             },
           );
         }}

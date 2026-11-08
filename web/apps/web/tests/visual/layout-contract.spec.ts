@@ -7,7 +7,8 @@ test("adaptive layout and disclosure retain browser semantics", async ({ page })
   const disclosure = page.getByRole("button", { name: /Episode information/ });
   await expect(adaptiveLayout).toBeVisible();
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByText(/Season 4 · Episode 12/)).toHaveCount(0);
+  // Collapsed, the body stays in the page for find-in-page but is hidden until opened.
+  await expect(page.getByText(/Season 4 · Episode 12/)).toBeHidden();
 
   await disclosure.click();
   await expect(disclosure).toHaveAttribute("aria-expanded", "true");
