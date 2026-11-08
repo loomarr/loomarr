@@ -42,7 +42,7 @@ const RequestsLayout = () => {
             description="Describe a channel and Loomarr will build it. You'll follow it here, from request to your guide."
             action={{
               label: "Request a channel",
-              onClick: () => void navigate({ to: "/guide", search: { new: "1" } }),
+              onClick: () => void navigate({ to: "/requests/new" }),
             }}
           />
         </div>

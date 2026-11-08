@@ -144,16 +144,13 @@ const ManualChannelBuilder = ({
 
   return (
     <div className={cn("flex flex-col gap-5", className)}>
-      <div>
-        <h2 className="text-lg font-semibold">
-          {fromIdea ? "Edit before you request" : isAdmin ? "Add a channel" : "Request a channel"}
-        </h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {fromIdea
-            ? `Starting from the "${initialIdea.name}" idea. Everything below is already library-grounded — edit the lineup before requesting.`
-            : "No AI service is connected yet, so Loomarr can't generate suggestions. Start from a template, build from your library below, or search for titles directly — you'll choose every title before anything is created."}
-        </p>
-      </div>
+      {/* The page's one heading names this ("Add a channel", or "Edit before you request" from an
+          idea); this sentence is its description, so the builder nests no heading of its own. */}
+      <p className="text-muted-foreground text-sm">
+        {fromIdea
+          ? `Starting from the "${initialIdea.name}" idea. Everything below is already library-grounded — edit the lineup before requesting.`
+          : "No AI service is connected yet, so Loomarr can't generate suggestions. Start from a template, build from your library below, or search for titles directly — you'll choose every title before anything is created."}
+      </p>
 
       {aiReconnected && !keepManual && (
         <AiReconnectBanner

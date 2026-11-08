@@ -16,7 +16,7 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
 import { setting } from "@/test/fixtures/settings";
@@ -158,13 +158,14 @@ const renderAt = (path: string) => {
   // searches the shared document.body, and a query that reaches a neighbouring test's markup
   // clicks a detached button, which silently does nothing.
   // LoomarrProvider as main.tsx mounts it: the grid and the programme card are design-system views.
-  return render(
+  const view = render(
     <LoomarrProvider theme="dark">
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>
     </LoomarrProvider>,
   );
+  return Object.assign(view, { router });
 };
 
 describe("Guide", () => {
@@ -421,20 +422,22 @@ describe("Guide", () => {
     expect(screen.queryByText("Saturday Cartoons")).not.toBeInTheDocument();
   });
 
-  it("owns origination: 'Add a channel' opens the describe panel in place", async () => {
+  it("is the door to origination: 'Add a channel' goes to the request page (#2746)", async () => {
     const user = userEvent.setup();
     stubGuide();
-    renderAt("/guide");
+    const view = renderAt("/guide");
 
     // Each row carries a ⋮ actions menu (pause/resume + delete) so removing a channel doesn't
     // require opening it — awaited because the rows depend on the guide query resolving.
     expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
 
-    // THE origination door (§12), and the reason `/channels` could fold away: describing a
-    // channel happens here, inline, rather than on a separate page.
-    const add = screen.getByRole("button", { name: /add a channel/i });
+    // THE origination door (§12): describing a channel happens on its own page under Requests,
+    // at a plain path with no params.
+    const add = screen.getByRole("link", { name: /add a channel/i });
+    expect(add).toHaveAttribute("href", "/requests/new");
     await user.click(add);
     expect(await screen.findByLabelText("Channel intent")).toBeInTheDocument();
+    expect(view.router.state.location.href).toBe("/requests/new");
   });
 
   // The fresh-install state. ⚠ Before this, the header's "Add a channel" and the empty
@@ -464,26 +467,17 @@ describe("Guide", () => {
     expect(screen.getByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
   });
 
-  // ⚠ The dead end this avoids: the header button becomes "Close" once the panel is open,
-  // and an empty guide is exactly when someone is most likely to have opened it. Hiding it
-  // unconditionally would leave the panel with no way out.
-  it("brings the header door back as Close once the panel is open on an empty guide", async () => {
+  // The empty state's one door goes to the same page as the header's.
+  it("sends the empty state's door to the request page", async () => {
     const user = userEvent.setup();
     stubGuide(me(), { empty: true });
     const view = renderAt("/guide");
 
-    // Wait for the EMPTY STATE, not just the button. "Dead air" only renders once the guide
-    // query has answered; before that `channels` is [] for a different reason (still loading)
-    // and the header door is still on screen. Clicking that one opens the panel in a tree the
-    // very next render replaces, so the Close never appears.
     await view.findByText("Dead air");
     await user.click(view.getByRole("button", { name: /add a channel/i }));
 
-    // Scoped to THIS render rather than `screen`: document.body is shared across tests in
-    // the file, and a query that reaches a neighbour's markup clicks a detached button, which
-    // silently does nothing. The point of the assertion is only that the EXIT exists; the
-    // panel's own contents are covered by the origination test above.
-    expect(await view.findByRole("button", { name: /close/i })).toBeInTheDocument();
+    expect(await view.findByLabelText("Channel intent")).toBeInTheDocument();
+    expect(view.router.state.location.pathname).toBe("/requests/new");
   });
 
   it("keeps the header door on a populated guide, where no empty state offers it", async () => {
@@ -491,7 +485,7 @@ describe("Guide", () => {
     renderAt("/guide");
 
     expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /add a channel/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /add a channel/i })).toBeInTheDocument();
     expect(screen.queryByText("Dead air")).not.toBeInTheDocument();
   });
 
@@ -500,34 +494,33 @@ describe("Guide", () => {
     renderAt("/guide");
     // A member has no other way to ask for a channel now that /suggest is gone, so the
     // affordance must be present for them too — worded for what they are actually doing.
-    expect(await screen.findByRole("button", { name: /request a channel/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /add a channel/i })).not.toBeInTheDocument();
-  });
-
-  it("opens the describe panel when the wizard hands off ?intent=", async () => {
-    stubGuide();
-    renderAt("/guide?intent=saturday-morning%20cartoons");
-    // §13's blank-page killer: the handoff must land on a FILLED form, not a bare grid with
-    // the operator wondering where their template went.
-    const intent = await screen.findByLabelText("Channel intent");
-    expect(intent).toHaveValue("saturday-morning cartoons");
+    expect(await screen.findByRole("link", { name: /request a channel/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /add a channel/i })).not.toBeInTheDocument();
   });
 });
 
-// The Requests page's "Request a channel" action lands here (#1405).
-describe("?new=1", () => {
-  it("opens the empty describe panel", async () => {
+// #2746: the flow lived on the Guide route, as `/guide?new=%221%22`. Those URLs still arrive from
+// old links and bookmarks; they land on the request page, whose URL reads plainly.
+describe("old Guide origination URLs", () => {
+  it("sends ?new=1 to the empty describe form on /requests/new", async () => {
     stubGuide();
-    renderAt("/guide?new=1");
+    const view = renderAt("/guide?new=%221%22");
+
     expect(await screen.findByLabelText("Channel intent")).toHaveValue("");
+    expect(view.router.state.location.href).toBe("/requests/new");
   });
-});
 
-// Origination lives in the URL, and the tab remembers the Job it follows: arriving at the Guide
-// with no origination params resumes it, while Close (which stays on the route) does not reopen.
-describe("returning to the Guide", () => {
-  beforeEach(() => {
-    window.sessionStorage.clear();
+  // §13's blank-page killer: the wizard's handoff lands on a FILLED form.
+  it("carries ?intent= over to the request page's form", async () => {
+    stubGuide();
+    const view = renderAt("/guide?intent=saturday-morning%20cartoons");
+
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue("saturday-morning cartoons");
+    expect(view.router.state.location.pathname).toBe("/requests/new");
+  });
+
+  it("carries ?job= and ?manual=1 over, with the flag as a plain 1", async () => {
+    stubGuide();
     server.use(
       getGetProposalJobMockHandler({
         version: 1,
@@ -540,36 +533,17 @@ describe("returning to the Guide", () => {
         updatedAt: "2026-08-22T12:00:00Z",
       }),
     );
+    const view = renderAt("/guide?job=job-1&manual=1");
+
+    await waitFor(() => expect(view.router.state.location.pathname).toBe("/requests/new"));
+    expect(view.router.state.location.href).toBe("/requests/new?job=job-1&manual=1");
   });
 
-  it("resumes the Job this tab follows", async () => {
+  it("leaves an ordinary Guide visit on the Guide", async () => {
     stubGuide();
-    window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
-    renderAt("/guide");
-
-    expect(await screen.findByRole("heading", { name: "Finding titles", level: 1 })).toBeInTheDocument();
-  });
-
-  it("stays closed after Close, and reopens onto the same Job", async () => {
-    stubGuide();
-    window.sessionStorage.setItem("loomarr.activeProposalJob", "job-1");
     const view = renderAt("/guide");
 
-    await userEvent.click(await view.findByRole("button", { name: /close/i }));
-    expect(await view.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
-
-    await userEvent.click(view.getByRole("button", { name: /add a channel/i }));
-    expect(await view.findByRole("heading", { name: "Finding titles", level: 1 })).toBeInTheDocument();
-  });
-
-  it("reopens a draft kept across the setup trip", async () => {
-    stubGuide();
-    window.sessionStorage.setItem(
-      "loomarr.pendingProposalIntent",
-      JSON.stringify({ description: "Saturday morning cartoons" }),
-    );
-    renderAt("/guide");
-
-    expect(await screen.findByLabelText("Channel intent")).toHaveValue("Saturday morning cartoons");
+    expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+    expect(view.router.state.location.pathname).toBe("/guide");
   });
 });

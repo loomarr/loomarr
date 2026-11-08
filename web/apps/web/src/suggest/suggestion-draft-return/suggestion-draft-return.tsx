@@ -12,7 +12,7 @@ const SuggestionDraftReturn = () => {
         <p className="text-sm font-medium">Your channel draft is saved</p>
         <p className="text-muted-foreground text-sm">Finish setup, then return without retyping it.</p>
       </div>
-      <Action accessibilityRole="link" render={<Link to="/guide" />} variant="outline">
+      <Action accessibilityRole="link" render={<Link to="/requests/new" />} variant="outline">
         Return to channel
       </Action>
     </aside>

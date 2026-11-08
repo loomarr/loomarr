@@ -40,7 +40,7 @@ const HomeStrip = ({ state, count, isAdmin, onRetry }: HomeStripProps) => {
       <section className="flex max-w-[460px] flex-col items-start gap-4 py-10">
         <h2 className="m-0 text-lg font-semibold">Your first channel starts here</h2>
         <p className="text-static-400 m-0">{isAdmin ? "Create" : "Request"} a channel to start watching.</p>
-        <Action accessibilityRole="link" render={<Link to="/guide" search={{ new: "1" }} />}>
+        <Action accessibilityRole="link" render={<Link to="/requests/new" />}>
           {isAdmin ? "Add your first channel" : "Request a channel"}
         </Action>
       </section>

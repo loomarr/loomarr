@@ -14,7 +14,7 @@ import {
 import { Action, Text } from "@loomarr/design-system";
 import { GuideCompact, type GuideFilter, GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -28,21 +28,16 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
-import { ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
-import { originationHeading } from "@/suggest/origination-flow";
-import { useOriginationFlow } from "@/suggest/use-origination-flow";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
-import type { GuidePageProps } from "./guide-page.type";
 
 // The Guide — THE channels surface (§12), headed "Channels". One row per channel, time the
 // shared axis. It answers both halves of the question the old card list and this grid used to
 // split between them: "what do I have" and "what is on".
 //
-// It also owns **origination**: `✦ Add a channel` in the header opens the inline describe→
-// approve panel, and the "Dead air" empty state opens the same one. That affordance is why the
-// card list could fold away — removing it earlier would have stranded the everyday way a
-// channel gets made. **Evolution** still lives on /channels/{id}; this page never re-originates.
+// It is also the door to **origination**: `✦ Add a channel` in the header and the "Dead air" empty
+// state both go to the request page (/requests/new), where describe→approve lives under Requests.
+// **Evolution** still lives on /channels/{id}; this page never re-originates.
 //
 // Answers what the per-channel Upcoming strip cannot: "what is on across ALL my channels right
 // now?". Reads GET /v1/guide, which returns per-channel timelines with an explicit `kind` per
@@ -117,7 +112,7 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = ({ search }: GuidePageProps) => {
+const GuidePage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -145,21 +140,6 @@ const GuidePage = ({ search }: GuidePageProps) => {
   // remains active, so progressive disclosure never turns into invisible state.
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
   const hasCustomView = startHour !== null;
-  // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
-  // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
-  // dialog. Its state is the route's search params (useOriginationFlow); the header names its
-  // current step from the same run the panel renders.
-  const flow = useOriginationFlow(search);
-  const adding = flow.open;
-  const heading = originationHeading(flow.stage, isAdmin);
-
-  // The inline panel approved a proposal, which created the channel — drop the operator on
-  // its page, and refresh the guide behind them.
-  const onCreated = (id: string) => {
-    void queryClient.invalidateQueries({ queryKey: channelsApi.getListChannelsQueryKey() });
-    void navigate({ to: "/channels/$id", params: { id } });
-  };
-
   // The window lives in guide-window.ts, shared with the route's prefetch loader: TODAY's start
   // is quantised to a minute so a hover-prefetch and the click that follows address the SAME
   // react-query key. An unquantised window recomputes `from` between the two and warms an entry
@@ -279,34 +259,27 @@ const GuidePage = ({ search }: GuidePageProps) => {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
-        title={adding ? heading.title : "Channels"}
-        description={adding ? heading.description : "Every channel Loomarr manages, and what's on right now."}
+        title="Channels"
+        description="Every channel Loomarr manages, and what's on right now."
         actions={
-          /* THE origination door (§12) — for both roles, since `/suggest` folded in here and
-            this is now the only one in the app. Toggles the ChannelSuggestPanel open below:
-            the create path IS describe→approve, inlined.
+          /* THE origination door (§12) — for both roles. It goes to the request page
+            (/requests/new), where the describe→approve flow lives under Requests.
 
             The LABEL carries the role difference, not the presence: an admin adds a channel
             (their approval is the last step), a member requests one (an admin approves it).
-            Same panel, same call — §7 enforces the gate server-side either way.
+            Same flow, same call — §7 enforces the gate server-side either way.
 
             ⚠ HIDDEN ON AN EMPTY GUIDE, because the empty state below already offers this
-            exact action — same onClick, same panel. Two buttons a few hundred pixels apart
-            firing one handler read as two different features, which is precisely how it
-            landed for the maintainer on a fresh install.
-
-            ⚠ …but NOT while the panel is open. Once `adding` is true this button is the
-            "Close", and an empty guide is exactly when the operator is most likely to have
-            opened it: hiding it there would leave the panel with no way out. So the door
-            reappears the moment it becomes the exit. */
-          (!isEmpty || adding) && (
+            exact action. Two buttons a few hundred pixels apart read as two different
+            features, which is precisely how it landed for the maintainer on a fresh install. */
+          !isEmpty && (
             <Action
-              aria-expanded={adding}
-              icon={adding ? "close" : "suggest"}
-              onPress={adding ? flow.close : flow.openPanel}
-              variant={adding ? "outline" : "suggest"}
+              accessibilityRole="link"
+              icon="suggest"
+              render={<Link to="/requests/new" />}
+              variant="suggest"
             >
-              {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
+              {isAdmin ? "Add a channel" : "Request a channel"}
             </Action>
           )
         }
@@ -315,15 +288,9 @@ const GuidePage = ({ search }: GuidePageProps) => {
       {/* The inline create surface — describe a channel, review, approve, land on it. The band
           spans the guide; its content sits in the centred form tier (#1817 Q10), inside the
           page-edge contract's 24 px gutter (16 below `sm`). */}
-      {adding && (
-        <div className="border-border bg-card border-b px-4 py-4.5 sm:px-6">
-          <ChannelSuggestPanel className="max-w-form mx-auto" flow={flow} onCreated={onCreated} />
-        </div>
-      )}
-
       {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
           much time is on screen. Precise planning controls live in the secondary View row. */}
-      {!adding && channels.length > 0 && (
+      {channels.length > 0 && (
         <>
           <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
             <div className="flex items-center gap-1.75">
@@ -478,114 +445,113 @@ const GuidePage = ({ search }: GuidePageProps) => {
         </>
       )}
 
-      {!adding &&
-        (isEmpty ? (
-          // No channels yet is a real, expected state on a fresh install — not an error. The
-          // one next action (§6) opens the same inline panel the header toggles, worded for
-          // who is asking.
-          //
-          // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
-          // channel" while the header said "Add a channel" and the panel that opened was
-          // titled "Add a channel" — three names for one handler. One action, one name.
-          // ⚠ The MOTION lives here, behind everything, not on the test card itself.
-          //
-          // A scanline sweeping over the bars was tried first and removed: to register on a
-          // small element it had to be scaled up and brightened, at which point it dominated a
-          // surface whose whole job is to stay calm and point at one button. Tuning it was the
-          // wrong move; the premise was. A sweep is an attention-grabber, and "Dead air" is a
-          // RESTING state.
-          //
-          // Ambient snow is the honest read: a real test card is not still because nothing is
-          // happening, it is standing by. TvStatic is the design's own idle-surface layer (§1,
-          // and its doc names empty states specifically), it is `motion-safe:` gated, and the
-          // visual suite pins `reducedMotion: reduce` so it never rasterizes into a baseline.
-          // The bars stay crisp and STILL on top, so the anchor never moves.
-          <div className="relative flex flex-1 items-center justify-center overflow-hidden p-10">
-            {/* ⚠ NO extra dimming. TvStatic is ALREADY faint by construction — its snow layer
+      {isEmpty ? (
+        // No channels yet is a real, expected state on a fresh install — not an error. The
+        // one next action (§6) opens the same inline panel the header toggles, worded for
+        // who is asking.
+        //
+        // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
+        // channel" while the header said "Add a channel" and the panel that opened was
+        // titled "Add a channel" — three names for one handler. One action, one name.
+        // ⚠ The MOTION lives here, behind everything, not on the test card itself.
+        //
+        // A scanline sweeping over the bars was tried first and removed: to register on a
+        // small element it had to be scaled up and brightened, at which point it dominated a
+        // surface whose whole job is to stay calm and point at one button. Tuning it was the
+        // wrong move; the premise was. A sweep is an attention-grabber, and "Dead air" is a
+        // RESTING state.
+        //
+        // Ambient snow is the honest read: a real test card is not still because nothing is
+        // happening, it is standing by. TvStatic is the design's own idle-surface layer (§1,
+        // and its doc names empty states specifically), it is `motion-safe:` gated, and the
+        // visual suite pins `reducedMotion: reduce` so it never rasterizes into a baseline.
+        // The bars stay crisp and STILL on top, so the anchor never moves.
+        <div className="relative flex flex-1 items-center justify-center overflow-hidden p-10">
+          {/* ⚠ NO extra dimming. TvStatic is ALREADY faint by construction — its snow layer
               carries `opacity-[0.11]` internally — so an `opacity-60` wrapper (which this had)
               multiplied out to roughly 6.6% over a near-black background, i.e. nothing you
               could see. The login and wizard shells both use it plain, and this matches them. */}
-            <TvStatic className="z-0" />
-            <EmptyState
-              className="relative z-10"
-              // SMPTE bars over "Dead air": a test card is literally what a set showed when
-              // nothing was broadcasting, so the motif IS the state rather than decoration
-              // applied to it. Reuses the shell's ColorBars (aria-hidden, purely decorative)
-              // rather than a new asset — it is the design's namesake strip, in the same
-              // tokens the rest of the UI uses for state.
-              //
-              // The scanline drifts down it on a slow loop: a sign of life on the one screen
-              // whose message is that nothing is on. `overflow-hidden` clips the sweep to the
-              // strip, and `motion-safe:` means a reduced-motion visitor simply gets the bars.
-              // The whole thing is aria-hidden, so none of it reaches assistive tech.
-              // ⚠ STILL, deliberately — the motion is the ambient layer behind this, never the
-              // card. A test card that jitters reads as a fault; one that holds while snow
-              // drifts behind it reads as standing by, which is what "Dead air" means.
-              //
-              // A test-card BLOCK rather than the sidebar's thin 200×14 strip: presence comes
-              // from size here, not movement. `h-16` on the wrapper with the bars told to fill
-              // it — ColorBars fixes its own height, and `cn` puts className last so the
-              // override wins.
-              icon={
-                <div className="h-16 w-50 overflow-hidden rounded-sm" aria-hidden>
-                  <ColorBars size="lg" breathe className="h-full w-full" />
-                </div>
-              }
-              title="Dead air"
-              description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
-              action={{
-                label: isAdmin ? "Add a channel" : "Request a channel",
-                onClick: flow.openPanel,
-              }}
-            />
-          </div>
-        ) : (
-          // Desktop browsing uses the full available width with contextual previews.
-          <div className="relative flex min-h-0 flex-1">
-            {/* The next window is still loading and the grid below is the PREVIOUS one. An
+          <TvStatic className="z-0" />
+          <EmptyState
+            className="relative z-10"
+            // SMPTE bars over "Dead air": a test card is literally what a set showed when
+            // nothing was broadcasting, so the motif IS the state rather than decoration
+            // applied to it. Reuses the shell's ColorBars (aria-hidden, purely decorative)
+            // rather than a new asset — it is the design's namesake strip, in the same
+            // tokens the rest of the UI uses for state.
+            //
+            // The scanline drifts down it on a slow loop: a sign of life on the one screen
+            // whose message is that nothing is on. `overflow-hidden` clips the sweep to the
+            // strip, and `motion-safe:` means a reduced-motion visitor simply gets the bars.
+            // The whole thing is aria-hidden, so none of it reaches assistive tech.
+            // ⚠ STILL, deliberately — the motion is the ambient layer behind this, never the
+            // card. A test card that jitters reads as a fault; one that holds while snow
+            // drifts behind it reads as standing by, which is what "Dead air" means.
+            //
+            // A test-card BLOCK rather than the sidebar's thin 200×14 strip: presence comes
+            // from size here, not movement. `h-16` on the wrapper with the bars told to fill
+            // it — ColorBars fixes its own height, and `cn` puts className last so the
+            // override wins.
+            icon={
+              <div className="h-16 w-50 overflow-hidden rounded-sm" aria-hidden>
+                <ColorBars size="lg" breathe className="h-full w-full" />
+              </div>
+            }
+            title="Dead air"
+            description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
+            action={{
+              label: isAdmin ? "Add a channel" : "Request a channel",
+              onClick: () => void navigate({ to: "/requests/new" }),
+            }}
+          />
+        </div>
+      ) : (
+        // Desktop browsing uses the full available width with contextual previews.
+        <div className="relative flex min-h-0 flex-1">
+          {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
-            {guide.isPlaceholderData && (
-              <div
-                role="status"
-                aria-label="Loading guide"
-                className="bg-signal pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse"
-              />
-            )}
-            {layout && phoneWidth ? (
-              // A phone gets the native compact grid (#1785, mocks 5d/5f, decision N6): the number
-              // column, the filter chips, and the tapped programme docked with Watch.
-              <GuideCompact
-                layout={layout}
-                nowMs={nowMs}
-                myChannels={myChannels}
-                filter={filter}
-                onFilterChange={setFilter}
-                selection={selected}
-                onSelect={setSelection}
-                onWatch={(id) => void navigate({ to: "/watch/$id", params: { id } })}
-                renderArtwork={renderArtwork}
-              />
-            ) : layout ? (
-              <GuideGrid
-                layout={layout}
-                nowMs={nowMs}
-                onMove={onMove}
-                onOpenChannel={onOpenChannel}
-                onSelect={setSelection}
-                renderRowMenu={renderRowMenu}
-                selection={selected}
-                renderPreview={(previewSelection) => (
-                  <GuideProgrammeDetail
-                    focused={false}
-                    layout={layout}
-                    renderArtwork={renderArtwork}
-                    selection={previewSelection}
-                  />
-                )}
-              />
-            ) : null}
-          </div>
-        ))}
+          {guide.isPlaceholderData && (
+            <div
+              role="status"
+              aria-label="Loading guide"
+              className="bg-signal pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse"
+            />
+          )}
+          {layout && phoneWidth ? (
+            // A phone gets the native compact grid (#1785, mocks 5d/5f, decision N6): the number
+            // column, the filter chips, and the tapped programme docked with Watch.
+            <GuideCompact
+              layout={layout}
+              nowMs={nowMs}
+              myChannels={myChannels}
+              filter={filter}
+              onFilterChange={setFilter}
+              selection={selected}
+              onSelect={setSelection}
+              onWatch={(id) => void navigate({ to: "/watch/$id", params: { id } })}
+              renderArtwork={renderArtwork}
+            />
+          ) : layout ? (
+            <GuideGrid
+              layout={layout}
+              nowMs={nowMs}
+              onMove={onMove}
+              onOpenChannel={onOpenChannel}
+              onSelect={setSelection}
+              renderRowMenu={renderRowMenu}
+              selection={selected}
+              renderPreview={(previewSelection) => (
+                <GuideProgrammeDetail
+                  focused={false}
+                  layout={layout}
+                  renderArtwork={renderArtwork}
+                  selection={previewSelection}
+                />
+              )}
+            />
+          ) : null}
+        </div>
+      )}
     </div>
   );
 };
