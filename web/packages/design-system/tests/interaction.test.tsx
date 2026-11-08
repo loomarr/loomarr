@@ -34,6 +34,25 @@ describe("shared interaction controls", () => {
     expect(markup).toContain("<svg");
   });
 
+  // A field row's "Reset to default" sits beside its source badge in a narrow column; a
+  // control-sized box there wraps the reset onto its own line.
+  it("draws a text action as an underlined hint-size line with no control box", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action layout="text" variant="link">
+          Reset to default
+        </Action>
+      </LoomarrProvider>,
+    );
+
+    const styles = declarationsOf(markup, tagBefore(markup, "Reset to default"));
+    expect(styles).toContain("font-size:12px");
+    expect(styles).toContain("line-height:16px");
+    expect(styles).toContain("text-decoration-line:underline");
+    expect(markup).not.toContain("min-height:40px");
+    expect(markup).toContain('role="button"');
+  });
+
   it("keeps a toggle action's own aria-pressed when it is off", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

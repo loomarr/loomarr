@@ -51,8 +51,13 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    *
    * `icon` draws the icon alone on a square the density's target wide; the children, a string,
    * become its accessible name. For a row's Remove, a pane's close, a pager's arrows. Give it an icon.
+   *
+   * `text` draws the label alone as a line of hint-size text, with no box, control height or
+   * padding: a field row's "Reset to default" beside its source badge, where a control-sized
+   * button would wrap a narrow column. Focus is an outline, so the row does not move. Pair it with
+   * `variant="link"`.
    */
-  layout?: "icon" | "inline" | "stacked";
+  layout?: "icon" | "inline" | "stacked" | "text";
   /**
    * Web-only composition escape hatch (Base UI's `render` prop equivalent, #970 PR B checkpoint 3):
    * renders Action's resolved style and content onto this element instead of a `Pressable`, so a
@@ -157,6 +162,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     const tv = density === "tv";
     const stacked = layout === "stacked" && icon !== undefined;
     const iconOnly = layout === "icon" && icon !== undefined;
+    const textOnly = layout === "text";
     const iconLabel = iconOnly && typeof children === "string" ? children : undefined;
     const look = variant ? variantLook(theme)[variant] : undefined;
     // A solid fill: an amber focus border cannot show on the amber primary (WCAG 2.4.7), and is
@@ -218,67 +224,66 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             : "secondary"
           : "inverse";
 
-    const content =
-      iconOnly && icon ? (
-        <Icon decorative glyph={icons[icon]} size={tv ? "touch" : "default"} tone={iconTone} />
-      ) : stacked && icon ? (
-        <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
-          <Icon
-            decorative
-            glyph={icons[icon]}
-            size="default"
-            tone={
-              look
-                ? look.iconTone
-                : tone === "danger"
-                  ? "danger"
-                  : tone === "secondary"
-                    ? "content"
-                    : "inverse"
-            }
-          />
-          <TamaguiText
-            color={textColor ?? (tone === "secondary" ? "contentSecondary" : "contentInverse")}
-            fontFamily="body"
-            fontSize={typography[density].cardMeta.size}
-            fontWeight={pressed ? "600" : undefined}
-            lineHeight={lineHeightPx(typography[density].cardMeta.lineHeight)}
-            numberOfLines={1}
-          >
-            {children}
-          </TamaguiText>
-        </View>
-      ) : icon ? (
-        <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="inline">
-          <Icon
-            decorative
-            glyph={icons[icon]}
-            size={density === "tv" ? "touch" : "default"}
-            tone={iconTone}
-          />
-          <TamaguiText
-            color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
-            fontFamily="body"
-            fontSize={tv ? typography.tv.data.size : typography[density].label.size}
-            flexShrink={fitLabel ? 1 : undefined}
-            fontWeight={labelWeight}
-            textDecorationLine={variant === "link" ? "underline" : undefined}
-            {...(fitLabel ? { adjustsFontSizeToFit: true, minimumFontScale: 0.5, numberOfLines: 1 } : {})}
-          >
-            {children}
-          </TamaguiText>
-        </View>
-      ) : (
+    const content = textOnly ? (
+      <TamaguiText
+        color={textColor ?? "contentPrimary"}
+        fontFamily="body"
+        fontSize={typography[density].hint.size}
+        fontWeight={typography[density].hint.weight}
+        lineHeight={lineHeightPx(typography[density].hint.lineHeight)}
+        textDecorationLine={variant === "link" ? "underline" : undefined}
+      >
+        {children}
+      </TamaguiText>
+    ) : iconOnly && icon ? (
+      <Icon decorative glyph={icons[icon]} size={tv ? "touch" : "default"} tone={iconTone} />
+    ) : stacked && icon ? (
+      <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
+        <Icon
+          decorative
+          glyph={icons[icon]}
+          size="default"
+          tone={
+            look ? look.iconTone : tone === "danger" ? "danger" : tone === "secondary" ? "content" : "inverse"
+          }
+        />
+        <TamaguiText
+          color={textColor ?? (tone === "secondary" ? "contentSecondary" : "contentInverse")}
+          fontFamily="body"
+          fontSize={typography[density].cardMeta.size}
+          fontWeight={pressed ? "600" : undefined}
+          lineHeight={lineHeightPx(typography[density].cardMeta.lineHeight)}
+          numberOfLines={1}
+        >
+          {children}
+        </TamaguiText>
+      </View>
+    ) : icon ? (
+      <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="inline">
+        <Icon decorative glyph={icons[icon]} size={density === "tv" ? "touch" : "default"} tone={iconTone} />
         <TamaguiText
           color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
           fontFamily="body"
           fontSize={tv ? typography.tv.data.size : typography[density].label.size}
+          flexShrink={fitLabel ? 1 : undefined}
           fontWeight={labelWeight}
           textDecorationLine={variant === "link" ? "underline" : undefined}
+          {...(fitLabel ? { adjustsFontSizeToFit: true, minimumFontScale: 0.5, numberOfLines: 1 } : {})}
         >
           {children}
         </TamaguiText>
-      );
+      </View>
+    ) : (
+      <TamaguiText
+        color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
+        fontFamily="body"
+        fontSize={tv ? typography.tv.data.size : typography[density].label.size}
+        fontWeight={labelWeight}
+        textDecorationLine={variant === "link" ? "underline" : undefined}
+      >
+        {children}
+      </TamaguiText>
+    );
 
     const boxStyle = {
       alignItems: "center" as const,
@@ -307,6 +312,25 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       paddingHorizontal: iconOnly ? 0 : tv ? 24 : stacked ? 4 : semanticSpace.control,
       paddingVertical: tv && !iconOnly ? 8 : 0,
       ...(iconOnly ? { width: semanticTargets[density] } : {}),
+      // Text alone: no box to fill or border, and an outline for focus so nothing beside it moves.
+      ...(textOnly
+        ? {
+            backgroundColor: "transparent",
+            borderRadius: 2,
+            borderWidth: 0,
+            minHeight: 0,
+            paddingHorizontal: 0,
+            paddingVertical: 0,
+            ...(focused
+              ? {
+                  outlineColor: theme.actionFocus.val,
+                  outlineOffset: 2,
+                  outlineStyle: "solid" as const,
+                  outlineWidth: 2,
+                }
+              : {}),
+          }
+        : {}),
     };
 
     if (isWeb && render && isValidElement(render)) {
