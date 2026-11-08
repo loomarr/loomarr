@@ -100,6 +100,8 @@ func TestPackValidationRejectsWhatThePublicSiteMustNotServe(t *testing.T) {
 		"unknown channel title":  {func(p *Pack) { p.Channels[0].Titles = append(p.Channels[0].Titles, "open-film-09") }, "unknown title"},
 		"duplicate title":        {func(p *Pack) { p.Titles = append(p.Titles, p.Titles[0]) }, "duplicate"},
 		"over the size cap":      {func(p *Pack) { p.Titles[0].Media.Size = MaxPackBytes }, "exceeds"},
+		"plain http mirror":      {func(p *Pack) { p.Mirror = "http://example.org/pack/" }, "mirror"},
+		"mirror without slash":   {func(p *Pack) { p.Mirror = "https://example.org/pack" }, "mirror"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := validPack()
