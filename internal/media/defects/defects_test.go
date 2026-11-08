@@ -33,7 +33,7 @@ lavfi.signalstats.VREP=0.3
 // one (filter 16) comes first here and must still read as UpscaleSSIM4.
 func TestParse_ReadsEverySummaryAndTheFrameLog(t *testing.T) {
 	active := ActiveArea{Width: 600, Height: 440, X: 20, Y: 20}
-	got := Parse(sampleLog, sampleMetadata, 640, 480, active, true)
+	got := Parse(sampleLog, sampleMetadata, "", 640, 480, active, true)
 	want := Readings{
 		Version: MeasurementVersion, Width: 640, Height: 480, Frames: 2,
 		BlockMean: 10.5984955, BlurMean: 4.5358817, OutlierShare: 0.003, RepeatedLineShare: 0.4,
@@ -43,8 +43,56 @@ func TestParse_ReadsEverySummaryAndTheFrameLog(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Parse =\n %+v\nwant\n %+v", got, want)
 	}
-	if silent := Parse(sampleLog, sampleMetadata, 640, 480, active, false); silent.FlatFactor != 0 || silent.PeakCount != 0 {
+	if silent := Parse(sampleLog, sampleMetadata, "", 640, 480, active, false); silent.FlatFactor != 0 || silent.PeakCount != 0 {
 		t.Fatalf("a clip with no audio stream took audio readings: %+v", silent)
+	}
+}
+
+// The framing evidence is the first and last sampled frame's luma and the first and last 100 ms
+// window's level (#2034). Readings taken without it, or without sound, say so.
+func TestParse_RecordsFramingEvidenceAtBothEdges(t *testing.T) {
+	const metadata = `frame:0    pts:0       pts_time:0
+lavfi.signalstats.YAVG=16.2
+lavfi.signalstats.TOUT=0.002
+frame:1    pts:6400    pts_time:0.25
+lavfi.signalstats.YAVG=120.5
+frame:2    pts:12800   pts_time:0.5
+lavfi.signalstats.YAVG=98.0
+`
+	const edges = `frame:0    pts:0       pts_time:0
+lavfi.astats.Overall.RMS_level=-inf
+frame:1    pts:4800    pts_time:0.1
+lavfi.astats.Overall.RMS_level=-21.5
+frame:2    pts:9600    pts_time:0.2
+lavfi.astats.Overall.RMS_level=-20.9
+`
+	active := ActiveArea{Width: 640, Height: 480}
+	got := Parse(sampleLog, metadata, edges, 640, 480, active, true).Framing
+	want := &FramingEvidence{Version: FramingVersion, FirstLuma: 16.2, LastLuma: 98, LeadDB: -200, TailDB: -20.9}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Framing = %+v, want %+v", got, want)
+	}
+	if silent := Parse(sampleLog, metadata, edges, 640, 480, active, false).Framing; silent == nil || silent.LeadDB != 0 || silent.TailDB != 0 {
+		t.Errorf("a clip with no sound took audio edges: %+v", silent)
+	}
+	if old := Parse(sampleLog, sampleMetadata, "", 640, 480, active, true).Framing; old != nil {
+		t.Errorf("a pass with no luma readings recorded framing evidence: %+v", old)
+	}
+}
+
+// ⚠ RECORD-ONLY (maintainer decision, 2026-11-08): the floor retires and deletes clear fails, and
+// the framing bars are not calibrated on real clips. However cut off the evidence reads, the
+// assessment must be exactly what it is without it.
+func TestAssess_NeverReadsTheFramingEvidence(t *testing.T) {
+	clean := Readings{Version: MeasurementVersion, Width: 640, Height: 480, Frames: 16,
+		BlockMean: 1, BlurMean: 5, ActiveWidth: 640, ActiveHeight: 480, UpscaleSSIM: 0.9, UpscaleSSIM4: 0.9,
+		HasAudio: true, FlatFactor: 0}
+	cut := clean
+	cut.Framing = &FramingEvidence{Version: FramingVersion, FirstLuma: 235, LastLuma: 235, LeadDB: 0, TailDB: 0}
+	for _, era := range []int{1985, 2002, 2015} {
+		if got, want := Assess(cut, era), Assess(clean, era); !reflect.DeepEqual(got, want) || got.Outcome != Pass {
+			t.Errorf("era %d: Assess with cut-off framing = %+v, want %+v (a pass)", era, got, want)
+		}
 	}
 }
 
@@ -62,12 +110,12 @@ func TestParse_AMissingSummaryIsUnmeasurableNotClean(t *testing.T) {
 				kept = append(kept, line)
 			}
 		}
-		got := Parse(strings.Join(kept, ""), sampleMetadata, 640, 480, active, true)
+		got := Parse(strings.Join(kept, ""), sampleMetadata, "", 640, 480, active, true)
 		if got.Unmeasurable == "" {
 			t.Errorf("without %s the pass read as measured: %+v", name, got)
 		}
 	}
-	if got := Parse(sampleLog, sampleMetadata, 640, 480, active, true); got.Unmeasurable != "" {
+	if got := Parse(sampleLog, sampleMetadata, "", 640, 480, active, true); got.Unmeasurable != "" {
 		t.Fatalf("a whole log read as unmeasurable: %s", got.Unmeasurable)
 	}
 }

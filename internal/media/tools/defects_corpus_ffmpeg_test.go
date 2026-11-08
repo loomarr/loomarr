@@ -29,17 +29,43 @@ func TestDefectCorpus_ScoresEachEraBand(t *testing.T) {
 	}
 	dir := t.TempDir()
 	var results []defects.LabelledResult
+	// The loudest sound edge of every clip labelled pass in every era, and the quietest of the
+	// record-only cut clips: the framing evidence must separate them (#2034).
+	loudestWhole, quietestCut := -1000.0, 1000.0
 	var table strings.Builder
-	fmt.Fprintf(&table, "%s, floor %s\n", corpus.Version, defects.FloorVersion)
+	fmt.Fprintf(&table, "%s, floor %s, %s\n", corpus.Version, defects.FloorVersion, defects.FramingVersion)
 	for _, c := range corpus.Cases {
 		file := testkit.FillerDefectClip(t, dir, testkit.DefectDamage(c.Damage), c.Severity)
 		r, err := tools.MeasureDefects(context.Background(), ffmpeg, file, 640, 480, true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&table, "%-9s %5g  block %5.1f blur %5.2f tout %.4f idet %.2f window %.3f ssim2 %.4f ssim4 %.4f flat %.1f |",
+		if r.Framing == nil {
+			t.Fatalf("%s %g: no framing evidence recorded", c.Damage, c.Severity)
+		}
+		fmt.Fprintf(&table, "%-9s %5g  block %5.1f blur %5.2f tout %.4f idet %.2f window %.3f ssim2 %.4f ssim4 %.4f flat %.1f "+
+			"luma %.0f/%.0f edge dB %.1f/%.1f |",
 			c.Damage, c.Severity, r.BlockMean, r.BlurMean, r.OutlierShare, r.InterlacedShare,
-			measured(r, defects.CheckWindowbox), r.UpscaleSSIM, r.UpscaleSSIM4, r.FlatFactor)
+			measured(r, defects.CheckWindowbox), r.UpscaleSSIM, r.UpscaleSSIM4, r.FlatFactor,
+			r.Framing.FirstLuma, r.Framing.LastLuma, r.Framing.LeadDB, r.Framing.TailDB)
+		edge := max(r.Framing.LeadDB, r.Framing.TailDB)
+		if c.RecordOnly {
+			// ⚠ Record-only: the floor's outcome must be exactly what it is without the evidence,
+			// and is not scored against the label.
+			bare := r
+			bare.Framing = nil
+			for _, era := range corpus.Eras {
+				if got, want := defects.Assess(r, era).Outcome, defects.Assess(bare, era).Outcome; got != want {
+					t.Errorf("%s %g in %d: framing evidence changed the outcome %s to %s", c.Damage, c.Severity, era, want, got)
+				}
+			}
+			quietestCut = min(quietestCut, edge)
+			table.WriteString(" record-only\n")
+			continue
+		}
+		if c.Labels["1985"] == defects.LabelPass && c.Labels["2002"] == defects.LabelPass && c.Labels["2015"] == defects.LabelPass {
+			loudestWhole = max(loudestWhole, edge)
+		}
 		for _, era := range corpus.Eras {
 			label := c.Labels[strconv.Itoa(era)]
 			outcome := defects.Assess(r, era).Outcome
@@ -65,6 +91,11 @@ func TestDefectCorpus_ScoresEachEraBand(t *testing.T) {
 	}
 	if falseFails > corpus.Thresholds.MaxFalseFails {
 		t.Errorf("%d clips labelled pass were failed outright, want at most %d", falseFails, corpus.Thresholds.MaxFalseFails)
+	}
+	t.Logf("sound edges: loudest whole clip %.1f dBFS, quietest cut clip %.1f dBFS", loudestWhole, quietestCut)
+	if loudestWhole >= quietestCut {
+		t.Errorf("the framing evidence does not separate cut clips (quietest edge %.1f dBFS) from whole ones (loudest %.1f dBFS)",
+			quietestCut, loudestWhole)
 	}
 }
 

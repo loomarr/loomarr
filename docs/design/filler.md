@@ -718,6 +718,13 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
   - The corpus proves the direction of each bar and catches regressions. Absolute readings depend
     on content, so the household labelling report recalibrates the bars on real clips that never
     leave the machine.
+- **Cut-off start and end are recorded, never judged (#2034).** Each measurement keeps the first
+  and last sampled frames' luma and the first and last 100 ms of sound's level
+  (`defects.FramingEvidence`, versioned on its own as `defects.FramingVersion` so recording it
+  re-measured nothing). No check reads it: the floor retires and deletes clear fails, and a real
+  advert may open on a music sting or a bright card. It becomes a check only after household
+  labels calibrate it. Corpus v2's `recordOnly` cases (`cut_start`, `cut_end`) are scored on that
+  evidence, not on the outcome.
 - **A vision model rules on the borderline band** (`filler.VisionDefectJudge`). It sees six stills
   spread across the clip, the names of the borderline checks, and what a fair bar is for the era.
   It answers pass, fail or abstain with a reason (`defects.JudgeVersion`). The record keeps the
