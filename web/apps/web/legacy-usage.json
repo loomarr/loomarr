@@ -78,16 +78,14 @@
       "tailwindClasses": 28
     },
     "src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.tsx": {
-      "tailwindClasses": 34,
-      "legacyUi": 1
+      "tailwindClasses": 32
     },
     "src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
       "tailwindClasses": 151,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
-      "tailwindClasses": 68,
-      "legacyUi": 1
+      "tailwindClasses": 68
     },
     "src/components/loomarr/channels/channel-defaults-summary/channel-defaults-summary.tsx": {
       "tailwindClasses": 6
@@ -100,7 +98,7 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
-      "tailwindClasses": 132,
+      "tailwindClasses": 130,
       "legacyUi": 1
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
@@ -111,12 +109,11 @@
       "tailwindClasses": 47
     },
     "src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
-      "tailwindClasses": 64,
+      "tailwindClasses": 65,
       "legacyUi": 2
     },
     "src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
-      "tailwindClasses": 30,
-      "legacyUi": 1
+      "tailwindClasses": 28
     },
     "src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
       "tailwindClasses": 29
