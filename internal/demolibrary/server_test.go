@@ -89,8 +89,8 @@ func TestStandInAnswersSearchPresenceEpisodesAndPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want, _ := filepath.Abs(l.Item(eps[0].LibraryItemID)); path != want {
-		t.Fatalf("episode path = %q, want the per-item file %q", path, want)
+	if want, _ := filepath.Abs(l.EpisodeFile(cartoon, demolibrary.EpisodesOf(cartoon)[0])); path != want {
+		t.Fatalf("episode path = %q, want its file in the shows folder %q", path, want)
 	}
 
 	folders, err := c.LibraryFolders(ctx, demolibrary.FillerLibraryName)
@@ -134,7 +134,7 @@ func TestStandInStatesAFilmsFileSizeOnlyOnceTheFileExists(t *testing.T) {
 	if got := sizeOf(); got != 0 {
 		t.Fatalf("size before the file exists = %d, want none", got)
 	}
-	path := l.Item(film.ID())
+	path := l.FilmFile(film)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
