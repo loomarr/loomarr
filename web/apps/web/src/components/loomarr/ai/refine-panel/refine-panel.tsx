@@ -1,13 +1,12 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
-import { Field, Surface } from "@loomarr/design-system";
+import { Action, Field, Surface } from "@loomarr/design-system";
 import { Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { RefineReview } from "@/components/loomarr/ai/refine-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import { suggestionFailureCopy } from "@/suggest/suggestion-failure-copy";
@@ -147,9 +146,12 @@ const RefinePanel = ({
                       value={field.state.value}
                     />
                   </Surface>
-                  <Button type="submit" disabled={field.state.value.trim().length === 0}>
+                  <Action
+                    // A real submit button under Action's look, so Enter in a field still submits.
+                    render={<button disabled={field.state.value.trim().length === 0} type="submit" />}
+                  >
                     Suggest changes
-                  </Button>
+                  </Action>
                 </>
               )}
             </form.Field>

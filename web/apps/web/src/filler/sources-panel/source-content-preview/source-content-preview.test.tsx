@@ -1,6 +1,7 @@
 import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { SourceContentPreview } from "./source-content-preview";
 
 const provider: FillerProviderDescriptionDTO = {

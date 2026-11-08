@@ -39,15 +39,20 @@ type Area struct {
 
 // Table describes one table and each of its columns, keyed by column name.
 type Table struct {
-	Name    string            `yaml:"name"`
-	About   string            `yaml:"about"`
-	Columns map[string]string `yaml:"columns"`
+	Name      string            `yaml:"name"`
+	About     string            `yaml:"about"`
+	Retention string            `yaml:"retention"` // how long rows are kept, in plain words
+	Columns   map[string]string `yaml:"columns"`
 }
 
 // LiveTable is one table as the database reports it.
 type LiveTable struct {
 	Name    string
 	Columns []LiveColumn
+	// ForeignKeys lists each foreign key's columns, in key order (several for a composite key).
+	ForeignKeys [][]string
+	// Indexes lists each index's columns in index order, the primary key's among them.
+	Indexes [][]string
 }
 
 // LiveColumn is one column as the database reports it, in table order.
@@ -57,6 +62,8 @@ type LiveColumn struct {
 	NotNull    bool
 	PrimaryKey bool
 	References string // "table.column" for a foreign key, else ""
+	Checked    bool   // named inside one of the table's CHECK constraints
+	JSON       bool   // SQLite only: CHECKed with json_valid(column), so its Postgres twin is jsonb
 }
 
 // Comment is one Postgres COMMENT ON target: a table when Column is empty, else a column.
@@ -208,6 +215,9 @@ func Markdown(doc Doc, live []LiveTable) ([]byte, error) {
 		fmt.Fprintf(&b, "\n## %s\n\n%s\n", a.Title, oneLine(a.About))
 		for _, t := range a.Tables {
 			fmt.Fprintf(&b, "\n### %s\n\n%s\n\n", t.Name, oneLine(t.About))
+			if r := oneLine(t.Retention); r != "" {
+				fmt.Fprintf(&b, "**Kept:** %s\n\n", r)
+			}
 			b.WriteString("| Column | What it holds | Type |\n| --- | --- | --- |\n")
 			for _, c := range byName[t.Name].Columns {
 				fmt.Fprintf(&b, "| `%s` | %s | %s |\n", c.Name, cell(t.Columns[c.Name]), shape(c))

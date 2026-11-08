@@ -2,6 +2,7 @@ package library_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library"
@@ -36,76 +37,37 @@ func TestItemDurationMs_FromRunTimeTicks(t *testing.T) {
 	}
 }
 
-// ListFillerClips reads the media-server filler library and derives duration from
-// the server's RunTimeTicks (§10 — the core never probes media).
-func TestListFillerClips_DurationFromServer(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
-
-	clips, err := c.ListFillerClips(context.Background(), "filler-lib-id")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(clips) != 4 {
-		t.Fatalf("want 4 clips from the filler fixture, got %d", len(clips))
-	}
-
-	byID := map[string]library.FillerClip{}
-	for _, cl := range clips {
-		byID[cl.LibraryItemID] = cl
-	}
-
-	// Duration comes from RunTimeTicks (300000000 ticks / 10000 = 30000ms).
-	if byID["clip-100"].DurationMs != 30000 {
-		t.Errorf("clip-100 duration = %d, want 30000 (from server ticks)", byID["clip-100"].DurationMs)
-	}
-}
-
-// LibraryIDByName resolves the NAME an operator reads off their media server to the item id
-// `ParentId` needs (§10 V38c). Written against a fixture CAPTURED from Emby 4.10.0.22 rather than
-// from remembered field names — `GET /Library/VirtualFolders` returns a bare array, not the
-// `{"Items": […]}` envelope every other endpoint uses, which is exactly the kind of detail that
-// gets remembered wrong.
-func TestLibraryIDByName_ResolvesTheNameAnOperatorTypes(t *testing.T) {
+// LibraryFolders resolves the NAME an operator typed for a filler library to its folders, as the
+// media server sees them. Written against a fixture CAPTURED from Emby 4.10.0.22 —
+// `GET /Library/VirtualFolders` returns a bare array, not the `{"Items": […]}` envelope.
+func TestLibraryFolders_ResolvesTheNameAnOperatorTyped(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 
 	for _, tc := range []struct{ name, want string }{
-		{"Movies", "3"},
-		{"TV shows", "12471"},
-		// ⚠ A library with NO CollectionType — three of the seven in the capture omit that key
-		// entirely, and a hand-made commercials library is typically exactly this kind. Matching
-		// must not filter on it, or the libraries an operator is most likely to point at become
-		// invisible.
-		{"Mixed content", "2849151"},
-		// Case-insensitive: the operator is retyping something they read off a screen.
-		{"movies", "3"},
-		{"  TV shows  ", "12471"},
+		{"Movies", "/data/movies"},
+		// ⚠ A library with NO CollectionType, as a hand-made commercials library usually is:
+		// matching must not filter on it.
+		{"Mixed content", "/data/fictional-backup/emby-live-recordings"},
+		// Case-insensitive: the operator retyped something they read off a screen.
+		{"  tv SHOWS  ", "/data/tv"},
 	} {
-		got, err := c.LibraryIDByName(context.Background(), tc.name)
-		if err != nil {
-			t.Fatalf("%q: %v", tc.name, err)
-		}
-		if got != tc.want {
-			t.Errorf("LibraryIDByName(%q) = %q, want %q", tc.name, got, tc.want)
+		got, err := c.LibraryFolders(context.Background(), tc.name)
+		if err != nil || !slices.Equal(got, []string{tc.want}) {
+			t.Errorf("LibraryFolders(%q) = %v, %v; want [%s]", tc.name, got, err, tc.want)
 		}
 	}
 }
 
-// ⚠ An unknown name is ("", nil) — "found nothing", never an error. An operator can rename or
-// delete a library at any time, and that must degrade to a source scanning zero clips rather than
-// to a failure that stops every OTHER source from being scanned (§9.1's guarantee, one level down).
-func TestLibraryIDByName_UnknownNameIsNotAnError(t *testing.T) {
+// ⚠ An unknown name is (nil, nil) — "found nothing", never an error.
+func TestLibraryFolders_UnknownNameIsNotAnError(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 
 	for _, name := range []string{"Commercials", "", "   "} {
-		got, err := c.LibraryIDByName(context.Background(), name)
-		if err != nil {
-			t.Errorf("LibraryIDByName(%q) errored: %v — a missing library is not a failure", name, err)
-		}
-		if got != "" {
-			t.Errorf("LibraryIDByName(%q) = %q, want empty", name, got)
+		got, err := c.LibraryFolders(context.Background(), name)
+		if err != nil || got != nil {
+			t.Errorf("LibraryFolders(%q) = %v, %v; want nothing", name, got, err)
 		}
 	}
 }

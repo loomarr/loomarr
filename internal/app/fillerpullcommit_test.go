@@ -3,13 +3,13 @@ package app
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestIngestPull_RequiresApprovalCommit(t *testing.T) {
@@ -47,7 +47,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 			name = "CrashBeforeLaunch"
 		}
 		t.Run(name, func(t *testing.T) {
-			dsn := "sqlite://" + filepath.Join(t.TempDir(), "pull.db")
+			dsn := testkit.MigratedSQLiteDSN(t)
 			st, err := records.Open(t.Context(), dsn, true)
 			if err != nil {
 				t.Fatal(err)

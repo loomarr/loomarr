@@ -1,6 +1,6 @@
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
-import { AlertTriangle, Database, Download, HardDriveDownload } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action } from "@loomarr/design-system";
+import { AlertTriangle, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BackupPanelProps } from "./backup-panel.type";
 
@@ -48,10 +48,9 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
             file as a credential.
           </p>
         </div>
-        <Button type="button" onClick={onBackUpNow} disabled={pending}>
-          <HardDriveDownload className="size-4" aria-hidden />
+        <Action disabled={pending} icon="download" onPress={onBackUpNow}>
           {pending ? "Backing up..." : "Back up now"}
-        </Button>
+        </Action>
       </div>
 
       {error ? (
@@ -78,16 +77,14 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
                 {/* writtenAt is Unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
                 {formatRelative(b.writtenAt * 1000)}
               </span>
-              <Button
-                type="button"
+              <Action
+                accessibilityLabel={`Download ${b.name}`}
+                icon="download"
+                onPress={() => onDownload(b.name)}
                 variant="outline"
-                size="sm"
-                onClick={() => onDownload(b.name)}
-                aria-label={`Download ${b.name}`}
               >
-                <Download className="size-4" aria-hidden />
                 Download
-              </Button>
+              </Action>
             </li>
           ))}
         </ul>

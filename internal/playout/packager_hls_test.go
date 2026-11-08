@@ -465,6 +465,39 @@ func TestChannelStartDoesNotWaitForTheSlate(t *testing.T) {
 	}
 }
 
+// A channel whose airing's file can't be read fails its start within the start deadline, naming the
+// read error, instead of holding the master until the client gives up (#1938). The API answers that
+// failure with the shared start-failure problem.
+func TestOriginFailsTheStartOfAChannelWhoseSourceIsUnreadable(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads a mode-000 file")
+	}
+	src := filepath.Join(t.TempDir(), "movie.mkv")
+	if err := os.WriteFile(src, []byte("x"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewPackagerHLS(stuckSlateSource{}, sleepingFFmpeg(t), t.TempDir(), time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	m.source = fixedItemSource{item: PackagerItem{Label: "movie", Remaining: time.Hour, Input: src, Format: MediaFormat{
+		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
+		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}}
+	m.startDeadline = 300 * time.Millisecond
+	o := newOrigin(nil, m)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	_, err = o.Tune(ctx, TuneRequest{ChannelID: "ch", Delivery: DeliveryHLS})
+	if !errors.Is(err, packager.ErrNoStart) || !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("Tune of an unreadable source = %v, want a start failure naming the permission error", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("the start failed only when the request gave up")
+	}
+}
+
 // slowItemSource airs one real item, whose encoder is still starting.
 type slowItemSource struct{ stuckSlateSource }
 

@@ -193,6 +193,24 @@ func TestTunerPublishingDisabledFlag(t *testing.T) {
 	}
 }
 
+// LOOMARR_TMDB_BASE_URL points the TMDB client at a stand-in (#1941). Unset means the public API;
+// a value that is not an absolute http(s) URL stops the boot rather than failing every lookup.
+func TestLoadEnvTMDBBaseURL(t *testing.T) {
+	c, err := LoadEnv(map[string]string{})
+	if err != nil || c.TMDBBaseURL != "" {
+		t.Fatalf("unset = %q, %v; want empty", c.TMDBBaseURL, err)
+	}
+	c, err = LoadEnv(map[string]string{"LOOMARR_TMDB_BASE_URL": " http://localhost:22438/tmdb/3/ "})
+	if err != nil || c.TMDBBaseURL != "http://localhost:22438/tmdb/3" {
+		t.Fatalf("set = %q, %v; want the trimmed URL", c.TMDBBaseURL, err)
+	}
+	for _, bad := range []string{"localhost:22438", "ftp://host/3", "/tmdb/3"} {
+		if _, err := LoadEnv(map[string]string{"LOOMARR_TMDB_BASE_URL": bad}); err == nil || !strings.Contains(err.Error(), "LOOMARR_TMDB_BASE_URL") {
+			t.Errorf("LoadEnv(%q) error = %v, want it refused", bad, err)
+		}
+	}
+}
+
 // Demo mode needs the whole account: half of one would offer visitors a sign-in that cannot work.
 func TestLoadEnvDemoAccount(t *testing.T) {
 	c, err := LoadEnv(map[string]string{})

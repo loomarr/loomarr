@@ -76,7 +76,9 @@ asked for a webhook in each app; if you added one, you can delete it.
 ## 6. Tunarr (optional)
 
 The alternative way to stream channels, chosen on the wizard's Playout step. Pick it if your
-hardware can't transcode, or if you already run Tunarr. Loomarr still decides what plays.
+hardware can't transcode, or if you already run Tunarr. Loomarr still decides what plays. On
+Tunarr, a programme airing when the schedule turns over to its next window (at midnight, in the
+guide's time zone) may be cut off; the default backend finishes it first.
 
 - `TUNARR_URL`: for example `http://192.168.1.10:8000`. Tunarr has no login.
 - `TUNARR_TRANSCODE_CONFIG_ID`: optional. Leave it empty to use your Tunarr's `Default`.

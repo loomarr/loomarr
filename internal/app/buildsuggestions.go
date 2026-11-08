@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -63,6 +64,7 @@ func buildSuggestions(
 	owner *generationLifecycle,
 	metricRecorder *metrics.Recorder,
 	holidays holidayvocab.Source,
+	interactiveLLM *llm.InteractiveGate,
 ) (suggestionBuild, error) {
 	var result suggestionBuild
 	if st == nil {
@@ -95,15 +97,15 @@ func buildSuggestions(
 		engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
 	}
 
-	catalogService := catalog.New(libraryClient, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-		return libraryPresence{lib: libraryClient.Snapshot()}
+	catalogService := catalog.New(librarySearch{titles: st, facts: st, lib: libraryClient}, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
+		return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
 	})
 	result.search = searchAdapter{catalogService}
 	collectionResolver := moviecollections.New(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
-		return libraryPresence{lib: libraryClient.Snapshot()}
+		return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
 	})
 	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
-	result.collections = libraryCollections{lib: libraryClient}
+	result.collections = libraryCollections{own: st, lib: libraryClient}
 	result.ideaLibrary = &libraryIdeaItems{lib: libraryClient, now: time.Now}
 	result.icons = iconAdapter{
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,
@@ -115,6 +117,7 @@ func buildSuggestions(
 	}
 	suggester := suggest.New(provider, catalogService, tmdbClient, settings.SuggestMaxAcquisitions.Get(set))
 	suggester.WithRatings(tmdbClient).
+		WithInteractiveGate(interactiveLLM).
 		WithCalendar(householdCalendar(set, holidays, log)).
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).

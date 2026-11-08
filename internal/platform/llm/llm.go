@@ -22,7 +22,6 @@ package llm
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 )
 
@@ -235,22 +234,12 @@ type Evictor interface {
 // configured model to unload, not that one failed. Same three-outcome honesty.
 var ErrNothingToEvict = errors.New("llm: no model configured to evict")
 
-// ParseProvider validates the configured provider (§15 LLM_PROVIDER). `ollama` is
-// the local default; `openai` is the OpenAI-compatible client (which also reaches
-// hosted OpenAI/Gemini/Groq/OpenRouter/… and Ollama's own /v1 mode).
-func ParseProvider(s string) (string, error) {
-	switch s {
-	case "ollama", "openai":
-		return s, nil
-	default:
-		return "", fmt.Errorf("unknown LLM_PROVIDER %q (want ollama|openai)", s)
-	}
-}
-
 // NewProvider builds the configured provider (§8). url is the base (Ollama
 // baseURL, or the OpenAI-compatible base ending in /v1); key is used only by the
-// openai provider. An unknown provider falls back to Ollama (the safe local
-// default) after ParseProvider has already validated at startup.
+// openai provider, the OpenAI-compatible client that also reaches hosted
+// OpenAI/Gemini/Groq/OpenRouter/… and Ollama's own /v1 mode. An unknown provider
+// falls back to Ollama, the safe local default; the setting's enum (§15) already
+// refuses anything but ollama|openai.
 func NewProvider(provider, url, model, key string) Provider {
 	if provider == "openai" {
 		return NewOpenAI(url, model, key)

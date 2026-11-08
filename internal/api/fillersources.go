@@ -791,7 +791,7 @@ type addFillerSourceInput struct {
 		// was applied to every URI, and a YouTube playlist URL 400'd on a message about
 		// archive.org collections. One validator cannot serve two vocabularies.
 		Kind    string `json:"kind" doc:"The provider's id, as listed by GET /v1/filler/providers, whose sources are added by typing an address"`
-		URI     string `json:"uri" minLength:"1" doc:"An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name"`
+		URI     string `json:"uri" minLength:"1" doc:"An archive.org collection identifier/URL, a YouTube playlist or channel URL, or a folder path Loomarr can read (a watched folder, or a folder of the household library)"`
 		Label   string `json:"label,omitempty" doc:"Operator-facing name; falls back to the identifier"`
 		Country string `json:"country,omitempty" maxLength:"2" doc:"ISO 3166-1 alpha-2 source country"`
 	}

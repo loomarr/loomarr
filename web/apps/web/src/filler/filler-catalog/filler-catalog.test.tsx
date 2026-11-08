@@ -243,7 +243,7 @@ describe("FillerCatalog", () => {
     it("folds the filters behind a Filters button", async () => {
       stubWidth(false);
       await showCatalog();
-      expect(screen.getByRole("textbox", { name: "Search" })).toBeInTheDocument();
+      expect(screen.getByRole("searchbox", { name: "Search" })).toBeInTheDocument();
       expect(screen.getByRole("radiogroup", { name: "Clip view" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Untagged only" })).not.toBeInTheDocument();
       const filters = screen.getByRole("button", { name: "Filters" });

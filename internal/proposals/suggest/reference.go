@@ -787,11 +787,28 @@ func clauseTitles(clause string) []string {
 	var titles []string
 	for _, title := range strings.Split(clause, ",") {
 		title = strings.Trim(strings.TrimSpace(title), "-–—:;.!?()[]{}\"'")
-		if title != "" {
+		if title != "" && !pronounLedProse(title) {
 			titles = append(titles, title)
 		}
 	}
 	return titles
+}
+
+// pronounLedProse reports a clause that is a sentence about the viewer, not a title: "like I
+// watched as a kid", "like we used to watch", "keep it PG-13" (#1940). A subject pronoun followed
+// by a lowercase word is prose, while "I Love Lucy" and "We Bought a Zoo" stay title-shaped. A
+// lowercase object pronoun ("it", "them") leading the clause is prose too; the film is "It".
+func pronounLedProse(clause string) bool {
+	words := strings.Fields(clause)
+	switch words[0] {
+	case "it", "them", "me", "us":
+		return true
+	}
+	switch strings.ToLower(words[0]) {
+	case "i", "we", "you", "they", "he", "she":
+		return len(words) > 1 && words[1] == strings.ToLower(words[1])
+	}
+	return false
 }
 
 // directIncludedTitles extracts only the bounded value of an explicit inclusion
@@ -828,7 +845,8 @@ func directClauseEnd(clause string) int {
 	if match := directExcludePattern.FindStringIndex(clause); match != nil {
 		end = min(end, match[0])
 	}
-	for _, delimiter := range []string{";", "\n", ".", "!", "?"} {
+	// A spaced dash starts an aside ("It Follows — slow and creepy"); titles do not contain one.
+	for _, delimiter := range []string{";", "\n", ".", "!", "?", " — ", " – ", " -- "} {
 		if index := strings.Index(clause, delimiter); index >= 0 {
 			end = min(end, index)
 		}

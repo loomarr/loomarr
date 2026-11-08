@@ -2,6 +2,7 @@ package provisionbackstop
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -70,6 +71,43 @@ func TestLibraryScan_ConfirmsRequestedMovie(t *testing.T) {
 	arrivals, err := st.ListTitlesAvailableSince(context.Background(), now.Add(-time.Hour))
 	if err != nil || len(arrivals) != 1 || arrivals[0].Key != key {
 		t.Errorf("arrivals since an hour ago = %+v (err %v), want %s", arrivals, err, key)
+	}
+}
+
+type partialScanner struct {
+	items []library.SearchResult
+	err   error
+}
+
+func (p partialScanner) RecentlyAdded(context.Context, time.Time) ([]library.SearchResult, error) {
+	return p.items, p.err
+}
+func (p partialScanner) AllItems(context.Context) ([]library.SearchResult, error) {
+	return p.items, p.err
+}
+
+// One source of titles down never holds back what another confirmed: the items that rode with the
+// error confirm, and the error still reaches the job.
+func TestLibraryScan_ConfirmsAPartialAnswer(t *testing.T) {
+	down := errors.New("media server down")
+	scanner := partialScanner{items: []library.SearchResult{
+		{LibraryItemID: "lib-1", MediaType: library.Movie, TMDBID: 90000603},
+	}, err: down}
+	for _, full := range []bool{false, true} {
+		st := testkit.MigratedSQLiteStore(t)
+		key := provision.Key("movie:tmdb:90000603")
+		put(t, st, key, provision.Requested, 90000603, now.Add(24*time.Hour))
+		ls := NewLibraryScan(st, scanner, &captureEmitter{}, time.Hour, func() time.Time { return now }, slog.New(slog.DiscardHandler))
+		run := ls.Incremental
+		if full {
+			run = ls.Full
+		}
+		if n, err := run(context.Background()); n != 1 || !errors.Is(err, down) {
+			t.Errorf("full=%v: confirmed %d, err %v; want 1 with the scanner's error", full, n, err)
+		}
+		if rec, _ := st.GetTitle(context.Background(), key); rec.State != provision.Available || rec.LibraryID != "lib-1" {
+			t.Errorf("full=%v: title = %s %q, want available as lib-1", full, rec.State, rec.LibraryID)
+		}
 	}
 }
 

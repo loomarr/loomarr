@@ -169,6 +169,9 @@ type playoutResolver struct {
 	// item id reads it directly, with no media server. nil, or any other id, resolves through the
 	// media server.
 	libraryFile libraryFileReader
+	// libraryVideo is a Library item's video format as the scanner read it, for lineup formats and
+	// still tone mapping; nil, or any other id, reads the inventory.
+	libraryVideo libraryVideoReader
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil,
 	// or any other id, asks the media server.
 	itemFacts store.LibraryItemFactsReader
@@ -379,6 +382,9 @@ func (r *playoutResolver) indexedKeyframe(ctx context.Context, input string, off
 // the inventory's stream facts (never ffprobe), importing the item when they are missing or stale.
 // Unknown is false: an untone-mapped still is dim, not broken.
 func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string) bool {
+	if format, ok := r.libraryFormat(ctx, libraryItemID); ok {
+		return format.HDR()
+	}
 	if r.inventory == nil || r.lib == nil {
 		return false
 	}
@@ -566,6 +572,9 @@ func (r *playoutResolver) LineupFormats(ctx context.Context, channelID string) (
 // inventoryFormat is one library item's stream facts from the inventory, importing the library's
 // snapshot on a miss (as inventoryAudioTracks does). The zero MediaFormat means unknown.
 func (r *playoutResolver) inventoryFormat(ctx context.Context, libraryItemID string) playout.MediaFormat {
+	if format, ok := r.libraryFormat(ctx, libraryItemID); ok {
+		return format
+	}
 	if r.inventory == nil || r.lib == nil {
 		return playout.MediaFormat{}
 	}
@@ -1207,36 +1216,6 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 	return playout.PickAudioTrack(tracks, prefer)
 }
 
-// AudioTrackFromInventory applies the channel's audio policy using only Loomarr-owned durable
-// metadata. A missing observation is explicit so the planner can spend its bounded refresh budget;
-// this path never contacts the Library server and never invokes ffprobe.
-func (r *playoutResolver) AudioTrackFromInventory(
-	ctx context.Context, channelID, libraryItemID string,
-) (int, bool) {
-	if r.audioLanguage == nil {
-		return 0, true
-	}
-	prefer := r.preferredAudioLanguage(ctx, channelID)
-	if strings.TrimSpace(prefer) == "" {
-		return 0, true
-	}
-	if r.inventory == nil || r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
-		return 0, false
-	}
-	origin, err := r.lib.InventoryOrigin(libraryItemID)
-	if err != nil {
-		return 0, false
-	}
-	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
-		Item: inventory.ItemRef{Origin: &origin}, Kinds: []inventory.SourceKind{inventory.SourceLibraryOriginal},
-		RequiredCoverage: []string{"audioStreams"},
-	})
-	if err != nil || !ok {
-		return 0, false
-	}
-	return playout.PickAudioTrack(playoutAudioTracks(source.Observation.Facts.Streams), prefer), true
-}
-
 func (r *playoutResolver) preferredAudioLanguage(ctx context.Context, channelID string) string {
 	prefer := r.audioLanguage()
 	// A channel override wins over the instance default. Failure to reload the channel is
@@ -1276,6 +1255,31 @@ func (r *playoutResolver) itemInput(ctx context.Context, lib *library.Client, it
 		pm = r.pathMap()
 	}
 	return lib.ResolveInput(ctx, itemID, pm, library.StatReadableFile)
+}
+
+// libraryVideoReader is the store's read of the video a Library item plays.
+type libraryVideoReader interface {
+	LibraryPlayingVideo(ctx context.Context, itemID string) (store.LibraryStream, bool, error)
+}
+
+// libraryFormat is a library item's video format as the scanner read its playing file's header
+// (#2151 step 15): what a channel's format and a still's tone mapping need. ok is false for any
+// other id, which the inventory answers as before.
+func (r *playoutResolver) libraryFormat(ctx context.Context, itemID string) (playout.MediaFormat, bool) {
+	if r.libraryVideo == nil {
+		return playout.MediaFormat{}, false
+	}
+	v, ok, err := r.libraryVideo.LibraryPlayingVideo(ctx, itemID)
+	if err != nil || !ok {
+		if err != nil && r.log != nil {
+			r.log.Debug("playout: library video unavailable", "item", itemID, "err", err)
+		}
+		return playout.MediaFormat{}, false
+	}
+	return playoutFormatOf(inventory.SourceFacts{Streams: []inventory.Stream{{
+		Index: v.Index, Kind: inventory.StreamVideo, Codec: v.Codec, Width: v.Width, Height: v.Height,
+		FrameRate: v.FrameRate, PixelFormat: v.PixelFormat, ColorTransfer: v.ColorTransfer,
+	}}}), true
 }
 
 // libraryAudioReader is the store's one Library read audio selection makes.
@@ -1571,7 +1575,23 @@ func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout
 // MediaFormat, which reads as SDR/unknown rather than as anything asserted, so the item transcodes.
 // A copy of an unprobed source could ship a codec the output cannot play — a black frame — whereas
 // an unnecessary transcode is merely slow.
-func (r *playoutResolver) FormatOf(ctx context.Context, input string) playout.MediaFormat {
+//
+// A library item's colour transfer comes from the scanner's header read of its playing file when
+// that names one (#2173): an HDR10 Matroska file can signal PQ only in the HEVC parameter set, which
+// the header reader parses and ffprobe's stream summary reports as unknown, so the airing would skip
+// tone mapping. Any other id keeps the probe's.
+func (r *playoutResolver) FormatOf(ctx context.Context, libraryItemID, input string) playout.MediaFormat {
+	format := r.probedFormat(ctx, input)
+	if libraryItemID == "" {
+		return format
+	}
+	if header, ok := r.libraryFormat(ctx, libraryItemID); ok && header.ColorTransfer != "" && header.ColorTransfer != "unknown" {
+		format.ColorTransfer = header.ColorTransfer
+	}
+	return format
+}
+
+func (r *playoutResolver) probedFormat(ctx context.Context, input string) playout.MediaFormat {
 	if input == "" {
 		return playout.MediaFormat{}
 	}

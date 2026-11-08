@@ -102,7 +102,9 @@ test-sso: ## SSO against REAL Authelia + Authentik containers (requires Docker)
 	$(GO) test -count=1 -tags=integration -timeout 20m -run 'TestSSO_AgainstReal' ./internal/people/auth/
 
 .PHONY: dev-be
-dev-be: rust-dev-build ## backend with live reload (Air) — rebuilds + restarts on Go/Rust changes
+dev-be: ## backend with live reload (Air) — rebuilds + restarts on Go/Rust changes
+	@# Air's build step builds the image worker --release before each Go build (.air.toml), as
+	@# production ships it; the debug worker `rust-dev-build` makes is the tests'.
 	@# Air is a dev tool, not a dependency (§14): run via `go run` so it is never added to
 	@# go.mod and needs no manual install step. A committed .air.toml with no way to run it
 	@# is how this box spent a session serving a stale binary.
@@ -128,7 +130,7 @@ dev-be: rust-dev-build ## backend with live reload (Air) — rebuilds + restarts
 	@# it when Air exits so `make dev-be` leaves nothing behind. Opt out with DEV_BE_NO_WATCHDOG=1.
 
 .PHONY: rust-dev-build
-rust-dev-build: ## build the required Rust worker for local development
+rust-dev-build: ## build the debug Rust image worker the Go tests use (make dev-be runs a release one)
 	LOOMARR_RELEASE=dev $(CARGO) build --locked -p loomarr-image
 .PHONY: dev-gpu
 dev-gpu: ## dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit)

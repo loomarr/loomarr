@@ -2,13 +2,13 @@ package app
 
 import (
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // Each hosted look is reserved at the per-look ceiling under the daily one and settled at its cost.
@@ -16,7 +16,7 @@ import (
 // endpoint never waits, whatever its provider is called.
 func TestFillerDefectJudgeLedger_HoldsHostedLooksAtTheDailyCeiling(t *testing.T) {
 	ctx := t.Context()
-	st, err := records.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := records.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

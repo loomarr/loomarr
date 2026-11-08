@@ -39,10 +39,16 @@ change per channel.
   playout resolver, which airs the next window from that end even before reconcile has run by
   arranging it with `CyclePreview`. The guide chains windows at the same ends, so no block is
   clipped at a boundary. If reconcile missed more than one window, the current window is walked
-  from its own opening, and that one turn may join a programme part-way. Tunarr-backed channels
-  cannot carry over: Tunarr loops the list it was given from its own clock and cannot be told
-  where a window starts, so their anchor stays fixed and their guide still cuts at the boundary
-  (#1691).
+  from its own opening, and that one turn may join a programme part-way.
+- **Tunarr channels cut at the window boundary, by decision** (#1691). Internal playout carries the
+  programme on air over the rolling-window turn; Tunarr-backed channels do not. Tunarr loops the
+  list it was given from its own clock and cannot be told where a window starts or at what offset to
+  join the new list, so their anchor stays fixed (`channels.Engine.CarriesOver` is false), their guide
+  cuts at the boundary (`fixedAnchorLegs`), and the programme airing there can be cut off at local
+  midnight in `guide.timezone`, depending on when reconcile pushes the new list relative to Tunarr's
+  loop. This is accepted rather than worked around: internal playout is the default backend, and
+  delaying the push or offsetting the list would depend on Tunarr API behaviour Loomarr does not
+  control.
 - **Availability resolution** turns an approved entry's key into `(library item id, duration,
   available)`. Duration comes from the media server's `RunTimeTicks`; a program slot always has a
   real `duration > 0`.
@@ -162,6 +168,18 @@ window's history is fixed when the window opens (#1674). A tune-in during the wi
 that first records a programme which started before the boundary, shapes the next window and
 cannot re-arrange the one on air. A channel on an unbounded window never opens a new window, so it
 reads no history.
+
+`airings` is the **watched** signal: a channel nobody tunes to records nothing there.
+`scheduled_airings` (same shape) is the **scheduled** signal (#1677; "aired" means both, as separate
+signals, #1678 decision 1). On internal playout, each reconcile records every programme the accepted
+cycle has started, up to where that cycle hands over at its window boundary. Each row is stamped
+`recorded_at = aired_at`, so it counts for every window that opens after the programme started,
+however late the reconcile that writes it. The write is idempotent and best-effort. Placement takes
+each unit's later time across watched airings, the scheduled ledger, and the accepted cycle's own
+programmes that started before the window opened. The last of these is read in memory, so a window
+the playout resolver arranges at the turn, before reconcile has recorded the old cycle's final
+programmes, comes out the same as reconcile's. Tunarr channels record no scheduled airings: Tunarr
+loops its list on its own clock.
 
 Recency is a **soft ranking signal**, not a constraint (`programming-design.md` §3.1). A 24-hour day
 consumes about 13 films, so a week without repeats needs about 168 hours of content; a hard

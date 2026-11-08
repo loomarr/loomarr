@@ -92,8 +92,8 @@ describe("ChannelPolicyFields", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("From year (Movie release, range 1)")).toHaveValue(2005);
-    expect(screen.getByLabelText("To year (Movie release, range 1)")).toHaveValue(1999);
+    expect(screen.getByLabelText("From year (Movie release, range 1)")).toHaveValue("2005");
+    expect(screen.getByLabelText("To year (Movie release, range 1)")).toHaveValue("1999");
   });
 
   it("commits a recovered date pair without widening the range after an invalid From edit", async () => {
@@ -139,8 +139,8 @@ describe("ChannelPolicyFields", () => {
         },
       },
     });
-    expect(screen.getByLabelText("From year (Movie release, range 1)")).toHaveValue(2005);
-    expect(screen.getByLabelText("To year (Movie release, range 1)")).toHaveValue(2009);
+    expect(screen.getByLabelText("From year (Movie release, range 1)")).toHaveValue("2005");
+    expect(screen.getByLabelText("To year (Movie release, range 1)")).toHaveValue("2009");
   });
 
   it("commits a recovered date pair after an invalid To edit", async () => {
@@ -230,8 +230,8 @@ describe("ChannelPolicyFields", () => {
     render(<ChannelPolicyFields policy={POPULATED} onChange={vi.fn()} />);
     expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent("Shuffled");
     expect(screen.getByRole("combobox", { name: "Audience ceiling" })).toHaveTextContent("TV-14");
-    expect(screen.getAllByLabelText("From year")[0]).toHaveValue(1990);
-    expect(screen.getAllByLabelText("To year")[0]).toHaveValue(1999);
+    expect(screen.getAllByLabelText("From year")[0]).toHaveValue("1990");
+    expect(screen.getAllByLabelText("To year")[0]).toHaveValue("1999");
     // Duration strings tidied for display (the wire form the operator reads/types).
     expect(screen.getByLabelText("Repeat spacing · same movie")).toHaveValue("168h");
     expect(screen.getByLabelText("Repeat spacing · same episode")).toHaveValue("24h");
@@ -501,8 +501,8 @@ describe("ChannelPolicyFields defaults and overrides", () => {
   // Reset remounts each uncontrolled box keyed by its stored value, so none keeps the old text.
   it.each([
     [{ separation: { movieNoRepeat: "168h" } }, "Repeat spacing · same movie", "168h", ""],
-    [{ separation: { blockMax: 3 } }, "Max from one series", 3, null],
-    [{ scope: { runtimeMax: 5400 } }, "Longest programme", 90, null],
+    [{ separation: { blockMax: 3 } }, "Max from one series", "3", ""],
+    [{ scope: { runtimeMax: 5400 } }, "Longest programme", "90", ""],
   ] as const)("re-seeds the box when %o is reset", async (initial, label, before, after) => {
     render(<PolicyHarness initial={initial as ChannelPolicy} onChange={vi.fn()} />);
     expect(screen.getByLabelText(label)).toHaveValue(before);
@@ -512,10 +512,10 @@ describe("ChannelPolicyFields defaults and overrides", () => {
 
   it("re-seeds the era years when the dates are reset", async () => {
     render(<PolicyHarness initial={POPULATED} onChange={vi.fn()} />);
-    expect(screen.getByLabelText("From year")).toHaveValue(1990);
+    expect(screen.getByLabelText("From year")).toHaveValue("1990");
     await userEvent.click(screen.getByRole("button", { name: "Reset to default (Era)" }));
-    expect(screen.getByLabelText("From year")).toHaveValue(null);
-    expect(screen.getByLabelText("To year")).toHaveValue(null);
+    expect(screen.getByLabelText("From year")).toHaveValue("");
+    expect(screen.getByLabelText("To year")).toHaveValue("");
   });
 
   it("shows Era for era-shaped dates and the per-axis editor otherwise", () => {
@@ -556,7 +556,7 @@ describe("ChannelPolicyFields defaults and overrides", () => {
     await userEvent.click(screen.getByRole("button", { name: "Use separate date windows" }));
     expect(screen.getByText("Programming dates")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Use a single era" }));
-    expect(screen.getByLabelText("From year")).toHaveValue(1990);
+    expect(screen.getByLabelText("From year")).toHaveValue("1990");
   });
 });
 

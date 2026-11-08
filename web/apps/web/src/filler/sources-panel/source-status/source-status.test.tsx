@@ -1,8 +1,9 @@
 import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { fillerSource } from "@/test/fixtures/filler";
+import { render } from "@/test/render";
 import { checkResultText, readinessLabel, SourceStatus } from "./source-status";
 
 const result = (over: Partial<FetchFillerSourceOutputBody> = {}): FetchFillerSourceOutputBody => ({

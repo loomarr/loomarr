@@ -172,7 +172,6 @@ var migratedTests = []string{
 	"web/apps/web/src/components/loomarr/channels/channel-series-scope/",
 	"web/apps/web/src/components/loomarr/channels/now-next-strip/",
 	"web/apps/web/src/components/loomarr/filler/clip-card/",
-	"web/apps/web/src/components/loomarr/filler/clip-player/",
 	"web/apps/web/src/components/loomarr/filler/clip-row/",
 	"web/apps/web/src/components/loomarr/filler/pod-timeline/",
 	"web/apps/web/src/components/loomarr/filler/split-review-editor/",

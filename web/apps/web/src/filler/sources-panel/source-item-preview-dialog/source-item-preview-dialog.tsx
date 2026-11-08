@@ -1,5 +1,6 @@
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import {
+  Action,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -7,8 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@loomarr/design-system";
-import { ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 interface SourceItemPreviewDialogProps {
   /** The item to play; `embedUrl` is the provider's own player, absent when it cannot be embedded. */
@@ -45,10 +44,14 @@ const SourceItemPreviewDialog = ({ item, providerLabel, onClose }: SourceItemPre
         )}
         <DialogFooter>
           {item && (
-            <Button variant="outline" render={<a href={item.url} target="_blank" rel="noreferrer" />}>
+            <Action
+              accessibilityRole="link"
+              icon="external"
+              render={<a href={item.url} target="_blank" rel="noreferrer" />}
+              variant="outline"
+            >
               Open original
-              <ExternalLink aria-hidden />
-            </Button>
+            </Action>
           )}
         </DialogFooter>
       </DialogContent>

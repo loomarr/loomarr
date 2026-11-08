@@ -64,8 +64,11 @@ type Service interface {
   candidates (chapters first, otherwise coinciding black and silence near quarter-hour points), and the
   active picture that the channel watermark anchors to. Reads are byte-budgeted, so no file is decoded
   whole. Results live in `inventory_source_analysis`, are dropped when the revision changes, and are
-  read through `inventory.AnalysisReader`. Playout never asks the media server at airtime: an
-  unmeasured source gets one stream-facts probe on first play.
+  read through `inventory.AnalysisReader`. Each reconcile of an internal-playout channel queues
+  the library files it airs in the next 48 hours that are not yet measured at their current
+  revision, so a first airing usually starts with its keyframe index; nothing past that horizon is
+  measured ahead, and Tunarr-backed channels queue nothing. Playout never asks the media server at
+  airtime: a source still unmeasured gets one stream-facts probe on first play.
 - **Playout moves onto the Library tables one reader at a time.** Audio-track choice reads first: a
   local file the scanner read at its current size and modification time takes its own audio tracks
   from `library_streams` (`LibraryAudioTracks`), with external audio files excluded. Any other file
@@ -339,9 +342,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
   again. `GET /v1/library/items` pages and searches the list (admin-only);
   `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
   files, or a series' episodes by season.
-- **Posters** (step 10b). When the importer writes a title it hands the resolved poster to the
-  image service, and the title owns it through an `image_refs` row (owner `library_item`, role
-  `poster`); that ref is the one record of which image is its poster. A sidecar file is imported
+- **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
+  the resolved poster, fanart and clear logo to the image service, and the title owns each
+  through an `image_refs` row (owner `library_item`, role `poster`, `backdrop` or `logo`); that
+  ref is the one record of which image it is, and a kind replaces only its own role's ref. Banner,
+  landscape, clearart and discart stay references: nothing shows them. A clear logo's alpha is its
+  shape, so the `logo` role has no JPEG rendition and its `<img>` fallback is WebP; its dominant
+  colour weighs each pixel by its alpha, so the transparent canvas doesn't dim it. A local sidecar
+  outranks TMDB's image of the same kind (decision 19). The item page carries `logoImage` and
+  `backdropImage`, each absent when the title has none, and so does every guide airing (the
+  guide, a channel's timeline and Home's highlights): the art of the title its provisioning key
+  names, so an episode carries its show's logo and fanart beside its own still. One batched read
+  per response (`LibraryTitleArt`); an image still being fetched is left off. A sidecar file is imported
   then, keyed by its content, opened only as a regular file and never through a symlink, and
   skipped when the service already holds those bytes; it is `extracted`, since the file beside the
   media is its source. A manager's https URL is adopted, and the fetch job moves the ref onto the
@@ -489,7 +501,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   whole) and deletes them; each says which channels use it: a channel's scope or any rule's
   `what` that names its id. Delete answers 409 while any do. `imported_from` marks one brought
   over from the media server at cutover (step 15). These are not the media server's collections
-  at `/v1/library/collections`, which channel scopes name until then.
+  at `/v1/library/collections`, which channel scopes name until then. A channel's collection
+  scope matches either: the reconcile's membership index holds the household's collections under
+  their own ids beside the media server's (`LibraryCollectionMemberIDs`, keyed by each title's
+  TMDB and TVDB ids), and with no media server configured, the household's alone.
 - **Ready-made sets** (step 12b, decision 28). A movie's TMDB record names the TMDB collection it
   belongs to; the scanner keeps that as `library_items.set_key` and asks the catalog cache for the
   set's own record (`tmdb_collection`), which lists every movie in it in release order. The
@@ -534,16 +549,66 @@ step 5). Nothing reads the scanner's origins until the cutover.
     found the file, the scanner skips it, the file isn't a title yet, or versions or episodes
     disagree.
 
+  `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
+  pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`
+  prints the map's coverage.
+
   Readers learn library item ids before the rewrite turns stored ids into them. Playout reads first:
   a programme keyed by a library item id plays that item's own playing file, with no media-server
   call (`LibraryPlayingFile`); any other id resolves through the media server as before. Item
   metadata follows: the guide's descriptions, a lineup's durations and a proposal's outlook read a
   library item's overview, genres, year, rating and runtime from the tables (`LibraryItemFacts`).
-  The runtime is the playing file's own duration, and an episode takes its show's genres.
+  The runtime is the playing file's own duration, and an episode takes its show's genres. A
+  lineup's series expands from the tables too (`LibraryEpisodes`): the episodes with a present file
+  to play, in season and episode order, under the media server's listing rules (an episode that
+  could not play is dropped, editorial evidence is bounded). A library series with nothing to play
+  expands to nothing; it never falls back to the media server. A channel's derived format (4K,
+  HDR) and a still's tone mapping read a library item's video from its playing file's header as
+  the scanner read it (`LibraryPlayingVideo`), with no media server or inventory import.
+- **Writers name library items** (step 15c). The availability scan, discovery's presence and the
+  channel engine's rating heal ask the Library first (`LibraryTitles`, `LibraryTitleByProviderID`:
+  movies and series with a present file, by their TMDB and TVDB ids), so a title that confirms or
+  is found owned records its library item id. The media server answers only what the Library
+  doesn't hold, and a media server that is down no longer holds back what the Library confirms.
+  The ids already stored are the rewrite's.
+- **Collection scopes read the household's collections first** (step 15e). The scope.collections
+  picker lists the household's collections, then only the media server's that were never imported
+  (`imported_id`); the reconcile's membership index does the same, so an imported collection is
+  known only by the household's id the rewrite pointed scopes at. With no media server, the
+  household's alone, without an error.
+- **Title search asks the Library first** (step 15e). Library-scope search, which `/v1/search`
+  and the suggester's tools share, answers with the Library's movies and series by name
+  (`SearchLibraryTitles`: an exact name, then one starting with the term, then the rest), under
+  their library item ids and with their facts. The media server adds only titles the Library
+  didn't answer, while it is short of the limit; with none connected, a term the Library has no
+  title for is no results rather than an error.
+- **The provisioning backstop asks the Library first** (step 15e). Its last look before a title is
+  given up as unavailable confirms one the Library holds, under its library item id; the media
+  server answers only what the Library doesn't hold.
+- **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
+  stored records name at library items: titles, airings, channels' slots, scopes, rules and
+  lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
+  are history and keep theirs). An id the map doesn't pair still maps when its record names a
+  title (a title's key, a proposal pick's) whose TMDB or TVDB id a Library title carries: a media
+  server that re-added its library left every old id dead, but not the titles. The pass runs in
+  one transaction and drops the media server's episode and path caches.
 
-  `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
-  pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`
-  prints the map's coverage.
+  There is no all-or-nothing gate: every reader takes either kind of id, so what maps is rewritten
+  at once and the rest is logged and waits for a later pass. An airing names an episode with no
+  key, so one the map can't pair keeps its id and its spacing history lapses.
+
+  The media server's collections become household collections (`library_collections.imported_id`
+  names the one each came from): the hand-made ones once, behind the
+  `migration.library.collections_import.v1` marker so one the household deletes stays deleted, and
+  a TMDB-generated one only when a record names it, since the Library's ready-made sets already
+  hold those. Members come over through the id map.
+- **The filler library source reads a folder** (step 15d, decision 36). A `library` filler source
+  names one of the household library's folders and is copied from, never drained: each clip file
+  under it is copied into the filler watch folder for intake to hash and file, skipping a clip the
+  catalog already holds (#1605), so a re-scan of an unchanged folder copies nothing. A row that
+  still names a media-server library is rewritten on the next filler sync to its folder: the
+  library's folders as the media server reports them, through the path map, with a row for each
+  extra folder. A name with no mapped folder is logged once and does no work.
 
 ## Cached series episodes
 

@@ -34,30 +34,16 @@ type LoginStore interface {
 	GetUserByName(ctx context.Context, name string) (identitystore.User, error)
 	ListUsers(ctx context.Context) ([]identitystore.User, error)
 	UpsertUser(ctx context.Context, u identitystore.User) error
-	accessRevoker
+	userDisabler
 }
 
-// accessRevoker removes every credential a user holds. Each path that disables a user calls
-// revokeAccess, so none can kill sessions but leave paired devices behind.
-type accessRevoker interface {
-	RevokeSessionsForUser(ctx context.Context, userID string) error
-	RevokeDeviceTokensForUser(ctx context.Context, userID string) error
-	RevokeDevicePairingsForUser(ctx context.Context, userID string) error
-}
-
-// revokeAccess kills a disabled user's sessions and paired devices for good (§11, ADR 0043).
-// Devices are deleted rather than merely refused while disabled: a paired device acts with its
-// user's role, so re-enabling the user must not bring back a device that was lost. Pairings the user
-// approved but no device has redeemed go too. The store refuses to approve or redeem for a disabled
-// user, and callers set the flag before calling this, so nothing is minted after it either.
-func revokeAccess(ctx context.Context, st accessRevoker, userID string) error {
-	if err := st.RevokeDevicePairingsForUser(ctx, userID); err != nil {
-		return err
-	}
-	if err := st.RevokeDeviceTokensForUser(ctx, userID); err != nil {
-		return err
-	}
-	return st.RevokeSessionsForUser(ctx, userID)
+// userDisabler disables a user and removes every credential they hold in one transaction (§11,
+// ADR 0043): sessions, paired devices, and approved pairings no device has redeemed. Every path
+// that disables a user goes through it, so none can set the flag but leave a credential behind
+// that comes back when the user is re-enabled. The store refuses to approve or redeem for a
+// disabled user, so nothing is minted after it either.
+type userDisabler interface {
+	DisableUser(ctx context.Context, userID string, at time.Time) error
 }
 
 // LoginService ties credential verification, user upsert + bootstrap, and
@@ -174,7 +160,7 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 			if err != nil {
 				return identitystore.User{}, err
 			}
-			return s.refreshOnLogin(ctx, local, local.Name, local.Disabled, hash)
+			return s.refreshOnLogin(ctx, local, local.Name, hash)
 		}
 		return local, nil
 	}
@@ -207,13 +193,7 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 		return identitystore.User{}, ErrInvalidCredentials
 	}
 	if msUser.Disabled {
-		existing.Name = msUser.Name
-		existing.Disabled = true
-		existing.UpdatedAt = s.now()
-		if err := s.store.UpsertUser(ctx, existing); err != nil {
-			return identitystore.User{}, err
-		}
-		if err := revokeAccess(ctx, s.store, existing.ID); err != nil {
+		if err := s.store.DisableUser(ctx, existing.ID, s.now()); err != nil {
 			return identitystore.User{}, err
 		}
 		return identitystore.User{}, ErrInvalidCredentials
@@ -222,19 +202,18 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 	if err != nil {
 		return identitystore.User{}, err
 	}
-	// Refresh name + disabled from the source of truth on each login (a
-	// server-side disable takes effect at once); role/quota stay Loomarr-owned.
-	return s.refreshOnLogin(ctx, existing, msUser.Name, msUser.Disabled, hash)
+	// Refresh the name from the provider on each login; a server-side disable took effect above.
+	// Role, quota and the disabled flag stay Loomarr-owned.
+	return s.refreshOnLogin(ctx, existing, msUser.Name, hash)
 }
 
-// refreshOnLogin persists provider identity state and, when supplied, replaces
-// the offline verifier. Role, quota, and grants remain Loomarr-owned.
-func (s *LoginService) refreshOnLogin(ctx context.Context, u identitystore.User, name string, disabled bool, passwordHash string) (identitystore.User, error) {
-	if u.Name == name && u.Disabled == disabled && (passwordHash == "" || u.PasswordHash == passwordHash) {
+// refreshOnLogin persists the provider's name and, when supplied, replaces the offline
+// verifier. Role, quota, grants and the disabled flag remain Loomarr-owned.
+func (s *LoginService) refreshOnLogin(ctx context.Context, u identitystore.User, name string, passwordHash string) (identitystore.User, error) {
+	if u.Name == name && (passwordHash == "" || u.PasswordHash == passwordHash) {
 		return u, nil // no change — skip the write
 	}
 	u.Name = name
-	u.Disabled = disabled
 	if passwordHash != "" {
 		u.PasswordHash = passwordHash
 	}
@@ -246,15 +225,7 @@ func (s *LoginService) refreshOnLogin(ctx context.Context, u identitystore.User,
 }
 
 // Disable disables a user and immediately revokes their sessions and paired devices (§11).
+// The flag and the revocations commit together or not at all (#1861).
 func (s *LoginService) Disable(ctx context.Context, userID string) error {
-	u, err := s.store.GetUser(ctx, userID)
-	if err != nil {
-		return err
-	}
-	u.Disabled = true
-	u.UpdatedAt = s.now()
-	if err := s.store.UpsertUser(ctx, u); err != nil {
-		return err
-	}
-	return revokeAccess(ctx, s.store, userID)
+	return s.store.DisableUser(ctx, userID, s.now())
 }

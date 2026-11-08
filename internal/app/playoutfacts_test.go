@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -153,5 +156,58 @@ func TestPlayoutResolver_InventoryHDRFollowsTheLibraryTransfer(t *testing.T) {
 	}
 	if r.inventoryHDR(t.Context(), "missing") {
 		t.Fatal("unknown item reported HDR")
+	}
+}
+
+type libraryVideoFake map[string]store.LibraryStream
+
+func (f libraryVideoFake) LibraryPlayingVideo(_ context.Context, itemID string) (store.LibraryStream, bool, error) {
+	v, ok := f[itemID]
+	return v, ok, nil
+}
+
+// An HDR10 Matroska file whose Colour element carries only its matrix coefficients signals PQ in the HEVC
+// parameter set alone, so ffprobe's stream summary reads its transfer as unknown and the airing
+// skipped tone mapping (#2173). The scanner's header read takes the parameter set's transfer, so a
+// library item's airtime format takes its colour transfer from there; any other id keeps the probe's.
+func TestPlayoutResolver_FormatOfTakesALibraryItemsTransferFromItsHeader(t *testing.T) {
+	r := &playoutResolver{
+		libraryVideo: libraryVideoFake{
+			"lib-hdr": {Kind: "video", Codec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le",
+				ColorTransfer: "smpte2084"},
+			"lib-untagged": {Kind: "video", Codec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le"},
+		},
+		probeFormat: func(context.Context, string) (playout.MediaFormat, error) {
+			return playout.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, PixelFormat: "yuv420p10le",
+				ColorTransfer: "unknown", Container: "matroska,webm"}, nil
+		},
+	}
+	got := r.FormatOf(t.Context(), "lib-hdr", "/media/hdr.mkv")
+	if !got.PQ() || got.VideoCodec != "hevc" || got.Container != "matroska,webm" {
+		t.Errorf("library item format = %+v, want the probe's facts with the header's PQ transfer", got)
+	}
+	for _, id := range []string{"lib-untagged", "90000001", ""} {
+		if got := r.FormatOf(t.Context(), id, "/media/hdr.mkv"); got.ColorTransfer != "unknown" {
+			t.Errorf("item %q transfer = %q, want the probe's", id, got.ColorTransfer)
+		}
+	}
+}
+
+// A library item's format and HDR come from its playing file's header as the scanner read it, with
+// no media server or inventory; any other id is unknown without them.
+func TestPlayoutResolver_LibraryItemFormatFromTheTables(t *testing.T) {
+	r := &playoutResolver{libraryVideo: libraryVideoFake{
+		"lib-hdr": {Kind: "video", Codec: "HEVC", Width: 3840, Height: 2160, FrameRate: "24000/1001",
+			PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084"},
+		"lib-sdr": {Kind: "video", Codec: "h264", Width: 1920, Height: 1080, ColorTransfer: "bt709"},
+	}}
+	if got := r.inventoryFormat(t.Context(), "lib-hdr"); got.VideoCodec != "hevc" || got.Height != 2160 || !got.HDR() {
+		t.Errorf("lib-hdr format = %+v, want hevc 2160 HDR", got)
+	}
+	if !r.inventoryHDR(t.Context(), "lib-hdr") || r.inventoryHDR(t.Context(), "lib-sdr") {
+		t.Error("HDR should follow the playing file's color transfer")
+	}
+	if got := r.inventoryFormat(t.Context(), "90000001"); got != (playout.MediaFormat{}) {
+		t.Errorf("a media-server id with no inventory = %+v, want unknown", got)
 	}
 }

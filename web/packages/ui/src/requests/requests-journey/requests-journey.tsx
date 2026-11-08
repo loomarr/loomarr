@@ -10,8 +10,8 @@ import {
   requestsNeedsYouCount,
 } from "@loomarr/core/requests";
 import { Action, PHONE_GUTTER, Screen, ScrollFrame, Surface, Text } from "@loomarr/design-system";
-import { useEffect, useReducer, useState, useSyncExternalStore } from "react";
-import { RefreshControl } from "react-native";
+import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from "react";
+import { BackHandler, RefreshControl } from "react-native";
 import type { BriefState } from "../request-channel";
 import { RequestChannel } from "../request-channel";
 import { RequestDetail } from "../request-detail";
@@ -110,11 +110,23 @@ const RequestsJourney = ({
 
   // Back on the list, on the section the person was reading. A refusal the form showed (an idea that
   // couldn't be requested) belongs to the form, so it goes with it rather than greeting the list.
-  const goList = () => {
+  const goList = useCallback(() => {
     if (route.view === "request") controller.dismissNotice();
     setBrief({ kind: "idle" });
     setRoute({ view: "list" });
-  };
+  }, [controller, route.view]);
+  // Android's hardware Back steps out of a detail or the composer to the list, as ‹ Requests does
+  // (#1880). The listener is added when one opens, so it is newer than the host shell's, and React
+  // Native asks it first; on the list there is none, and Back is the shell's.
+  const onList = route.view === "list";
+  useEffect(() => {
+    if (onList) return undefined;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      goList();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [goList, onList]);
 
   const approve = async (proposal: ProposalDTO, edit?: ApprovalEditDTO) => {
     const result = await controller.approve(proposal.id, edit);

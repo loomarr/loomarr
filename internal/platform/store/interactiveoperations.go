@@ -85,6 +85,20 @@ func (s *sqlStore) GetInteractiveOperation(ctx context.Context, id string) (Inte
 	return operation, nil
 }
 
+// PurgeFinishedInteractiveOperations deletes operations that succeeded or failed before `before`.
+// A row exists so a page can pick its operation up again after a reconnect; once finished and
+// old, nothing will ask for it. Queued and running ones are never purged.
+func (s *sqlStore) PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error) {
+	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM interactive_operations
+		WHERE status IN (?, ?) AND completed_at < ?`),
+		string(InteractiveOperationSuccess), string(InteractiveOperationError), epoch(before))
+	if err != nil {
+		return 0, fmt.Errorf("purge finished interactive operations: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 func (s *sqlStore) RecoverInterruptedInteractiveOperations(ctx context.Context, at time.Time) (int, error) {
 	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE interactive_operations
 		SET status = ?, error = ?, completed_at = ?, updated_at = ?

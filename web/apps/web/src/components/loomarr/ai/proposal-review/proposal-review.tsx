@@ -1,8 +1,6 @@
 import { provisionKey } from "@loomarr/core/provision";
-import { Badge, type BadgeTone, Field } from "@loomarr/design-system";
-import { Check, X } from "lucide-react";
+import { Action, Badge, type BadgeTone, Field } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   MAX_SUGGESTION_OPTIONS,
@@ -188,35 +186,34 @@ const ProposalReview = ({
             </details>
           )}
           <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setEditingBrief(false)}>
+            <Action onPress={() => setEditingBrief(false)} variant="ghost">
               Cancel
-            </Button>
-            <Button
-              type="submit"
+            </Action>
+            <Action
+              // A real submit button under Action's look, so Enter in a field still submits.
+              render={<button disabled={controlsDisabled || brief.trim() === ""} type="submit" />}
               variant="suggest"
-              size="sm"
-              disabled={controlsDisabled || brief.trim() === ""}
             >
               Update suggestions
-            </Button>
+            </Action>
           </div>
         </form>
       ) : (
         <div className="border-border flex flex-wrap items-start justify-between gap-3 border-y py-3">
           <p className="text-muted-foreground min-w-0 flex-1 text-sm">“{proposal.intent.description}”</p>
           {actionable && onRevise && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="-my-1 shrink-0"
-              onClick={() => {
-                setBrief(proposal.intent.description);
-                setEditingBrief(true);
-              }}
-              disabled={controlsDisabled}
-            >
-              Edit brief
-            </Button>
+            <div className="-my-1 shrink-0">
+              <Action
+                disabled={controlsDisabled}
+                onPress={() => {
+                  setBrief(proposal.intent.description);
+                  setEditingBrief(true);
+                }}
+                variant="ghost"
+              >
+                Edit brief
+              </Action>
+            </div>
           )}
         </div>
       )}
@@ -298,32 +295,33 @@ const ProposalReview = ({
                 value={reason}
               />
               <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="ghost" onClick={() => setDenying(false)} disabled={controlsDisabled}>
+                <Action disabled={controlsDisabled} onPress={() => setDenying(false)} variant="ghost">
                   Cancel
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => onDeny?.(reason.trim() || undefined)}
+                </Action>
+                <Action
                   disabled={controlsDisabled}
+                  icon="close"
+                  onPress={() => onDeny?.(reason.trim() || undefined)}
+                  variant="outline"
                 >
-                  <X aria-hidden /> Not approved
-                </Button>
+                  Not approved
+                </Action>
               </div>
             </div>
           ) : (
             <div className="flex flex-wrap justify-end gap-2">
               {onDeny && (
-                <Button
-                  variant="ghost"
-                  onClick={() => (selfService ? onDeny() : setDenying(true))}
+                <Action
                   disabled={controlsDisabled}
+                  onPress={() => (selfService ? onDeny() : setDenying(true))}
+                  variant="ghost"
                 >
                   {selfService ? "Discard" : "Not approved"}
-                </Button>
+                </Action>
               )}
-              <Button onClick={onApprove} disabled={controlsDisabled || selectedCount === 0}>
-                <Check aria-hidden /> Create channel
-              </Button>
+              <Action disabled={controlsDisabled || selectedCount === 0} icon="success" onPress={onApprove}>
+                Create channel
+              </Action>
             </div>
           )}
         </footer>

@@ -3,11 +3,11 @@ import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerPro
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Field } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { SourceContentPreview } from "../source-content-preview";
 
@@ -30,7 +30,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
   const kind = provider.id;
   const minimumQueryLength = provider.findMinQuery ?? 2;
   const listID = useId();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputID = useId();
   const currentInput = useRef("");
   const resolveGeneration = useRef(0);
   const queryClient = useQueryClient();
@@ -129,7 +129,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
     setSelected(undefined);
     setVerified(false);
     setActive(-1);
-    inputRef.current?.focus();
+    document.getElementById(inputID)?.focus();
   };
 
   const submit = () => {
@@ -168,44 +168,48 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
           submit();
         }}
       >
-        <Input
-          ref={inputRef}
-          role="combobox"
-          aria-label={provider.findLabel}
-          aria-autocomplete="list"
-          aria-controls={listID}
-          aria-expanded={showSuggestions && suggestions.length > 0}
-          aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined}
-          autoComplete="off"
-          className="min-w-0 flex-1"
-          placeholder={provider.findPlaceholder}
-          value={input}
-          disabled={!enabled}
-          onChange={(event) => {
-            resolveGeneration.current += 1;
-            currentInput.current = event.target.value;
-            setInput(event.target.value);
-            setSelected(undefined);
-            setVerified(false);
-            setActive(-1);
-          }}
-          onKeyDown={(event) => {
-            if (!showSuggestions || suggestions.length === 0) return;
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setActive((current) => Math.min(current + 1, suggestions.length - 1));
-            } else if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setActive((current) => Math.max(current - 1, 0));
-            } else if (event.key === "Escape") {
+        <div className="min-w-0 flex-1">
+          <Field
+            accessibilityLabel={provider.findLabel}
+            aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined}
+            aria-autocomplete="list"
+            aria-controls={listID}
+            aria-expanded={showSuggestions && suggestions.length > 0}
+            autoCapitalize="none"
+            autoComplete="off"
+            autoCorrect={false}
+            disabled={!enabled}
+            id={inputID}
+            onChangeText={(text) => {
+              resolveGeneration.current += 1;
+              currentInput.current = text;
+              setInput(text);
+              setSelected(undefined);
+              setVerified(false);
               setActive(-1);
-            } else if (event.key === "Enter" && active >= 0) {
-              event.preventDefault();
-              const choice = suggestions[active];
-              if (choice) choose(choice);
-            }
-          }}
-        />
+            }}
+            onKeyPress={(event) => {
+              const key = event.nativeEvent.key;
+              if (!showSuggestions || suggestions.length === 0) return;
+              if (key === "ArrowDown") {
+                event.preventDefault();
+                setActive((current) => Math.min(current + 1, suggestions.length - 1));
+              } else if (key === "ArrowUp") {
+                event.preventDefault();
+                setActive((current) => Math.max(current - 1, 0));
+              } else if (key === "Escape") {
+                setActive(-1);
+              } else if (key === "Enter" && active >= 0) {
+                event.preventDefault();
+                const choice = suggestions[active];
+                if (choice) choose(choice);
+              }
+            }}
+            placeholder={provider.findPlaceholder}
+            role="combobox"
+            value={input}
+          />
+        </div>
         <Button
           type="submit"
           variant={selected ? "default" : "outline"}

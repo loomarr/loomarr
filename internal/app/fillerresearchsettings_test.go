@@ -3,12 +3,12 @@ package app
 import (
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestFillerResearchSettingsAdapterTestsSavedProviderWithoutReturningItsSecret(t *testing.T) {
@@ -20,7 +20,7 @@ func TestFillerResearchSettingsAdapterTestsSavedProviderWithoutReturningItsSecre
 	}))
 	defer server.Close()
 
-	st, err := records.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := records.Open(t.Context(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

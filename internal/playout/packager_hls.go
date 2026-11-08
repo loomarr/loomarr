@@ -89,6 +89,8 @@ type PackagerHLS struct {
 	// premiumLookup bounds how long a master waits for its premium lookup; zero is
 	// premiumLookupTimeout (a test seam).
 	premiumLookup time.Duration
+	// startDeadline is each packager's Config.StartDeadline; zero is its default (a test seam).
+	startDeadline time.Duration
 
 	// life bounds background work that outlives a viewer (the slate encodes); Stop ends it.
 	life    context.Context
@@ -493,7 +495,8 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 		return nil, fmt.Errorf("packager hls: channel dir: %w", err)
 	}
 	log := m.log.With("channel", key.channel, "format", string(key.format))
-	cfg := packager.Config{FPS: out.FPS, Dir: dir, DVR: DVRHorizon, URIPrefix: string(key.format) + "-", Log: log}
+	cfg := packager.Config{FPS: out.FPS, Dir: dir, DVR: DVRHorizon, URIPrefix: string(key.format) + "-", Log: log,
+		StartDeadline: m.startDeadline}
 	if out.HDR {
 		cfg.HDR10 = ChannelHDR10.Packager() // no encoder writes the channel's fixed metadata (#1527)
 	}
@@ -613,6 +616,15 @@ func (m *PackagerHLS) schedule(
 		// channel stopped): the cost sample's media.
 		var delivered atomic.Int64
 		item.Open = func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
+			// A local file the server can't read fails here with its reason, which a failed start
+			// names (#1938); ffmpeg would only exit without a frame.
+			if filepath.IsAbs(it.Input) {
+				f, err := os.Open(it.Input)
+				if err != nil {
+					return nil, fmt.Errorf("source unreadable: %w", err)
+				}
+				_ = f.Close()
+			}
 			pl, args, err := packagerItemArgs(host, itemOut, it, wm, slot, faults.get(it.Input))
 			if err != nil {
 				return nil, err

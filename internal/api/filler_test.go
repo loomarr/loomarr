@@ -75,6 +75,7 @@ type fakeFiller struct {
 	splitNotFound         bool
 	confirmNotFound       bool
 	confirmInvalid        bool
+	confirmFiled          bool
 	fetchStatus           filler.FetchStatus
 	fetchResult           filler.FetchResult
 	fetchErr              error
@@ -306,6 +307,9 @@ func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments
 	}
 	if f.confirmInvalid {
 		return filler.ErrSplitValidation
+	}
+	if f.confirmFiled {
+		return fmt.Errorf("complete split confirmation %s: %w", proposalID, filler.ErrSplitParentNotHeld)
 	}
 	f.splits = append(f.splits, fakeSplitCall{proposalID: proposalID, segments: len(segments)})
 	return nil
@@ -1537,6 +1541,16 @@ func TestConfirmFillerSplit_Route(t *testing.T) {
 		`{"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"a"}]}`)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("missing proposal → %d, want 404", resp.StatusCode)
+	}
+	ff.confirmNotFound = false
+
+	// A filed parent is not a missing proposal (#1761): the proposal still reads back, so a 404
+	// "proposal not found" contradicts the GET beside it.
+	ff.confirmFiled = true
+	resp = do(t, srv, http.MethodPost, "/v1/filler/splits/sp_1/confirm", adminToken,
+		`{"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"a"}]}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("filed parent → %d, want 409", resp.StatusCode)
 	}
 }
 

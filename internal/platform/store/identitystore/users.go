@@ -302,6 +302,43 @@ func (s *Store) RevokeSessionsForUser(ctx context.Context, userID string) error 
 	return err
 }
 
+// DisableUser sets a user's disabled flag and deletes every credential they hold, in one
+// transaction (§11, ADR 0043, #1861): their sessions, their paired devices, and the pairings they
+// approved but no device has redeemed. Devices are deleted rather than merely refused, so
+// re-enabling the user never brings back a device that was lost. Either all of it commits or none
+// does, so a failed delete cannot leave a disabled user whose credentials return on re-enable.
+// ErrNotFound when the user does not exist.
+func (s *Store) DisableUser(ctx context.Context, userID string, at time.Time) error {
+	tx, err := s.h.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("disable user: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE users SET disabled = ?, updated_at = ? WHERE id = ?`),
+		true, epoch(at), userID)
+	if err != nil {
+		return fmt.Errorf("disable user: flag: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("disable user: flag: %w", err)
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	for _, del := range []struct{ what, sql string }{
+		{"pairings", `DELETE FROM device_pairings WHERE user_id = ?`},
+		{"devices", `DELETE FROM device_tokens WHERE user_id = ?`},
+		{"sessions", `DELETE FROM sessions WHERE user_id = ?`},
+	} {
+		if _, err := tx.ExecContext(ctx, s.h.Rebind(del.sql), userID); err != nil {
+			return fmt.Errorf("disable user: revoke %s: %w", del.what, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("disable user: commit: %w", err)
+	}
+	return nil
+}
+
 // PurgeExpiredSessions removes sessions past their expiry (janitor, §5).
 func (s *Store) PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error) {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM sessions WHERE expires_at <= ?`), epoch(now))
