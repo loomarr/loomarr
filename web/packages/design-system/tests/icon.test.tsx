@@ -27,6 +27,17 @@ describe("Icon", () => {
     expect(markup).toContain("<svg");
   });
 
+  it("draws the catalog grid glyph as a labelled image", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Icon accessibilityLabel="Grid" glyph={icons.grid} />
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain('aria-label="Grid"');
+    expect(markup).toContain("<svg");
+  });
+
   it("keeps decorative glyphs out of the accessibility tree", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

@@ -42,6 +42,21 @@ type Title struct {
 	// USRating is the US content rating /content_ratings (tv) or /release_dates (movie)
 	// reports. Empty ⇒ no US rating, the common sparse-coverage case.
 	USRating string
+	// GenreNames name GenreIDs in order, for the details endpoints' genres; absent, details
+	// carry none.
+	GenreNames []string
+	// TVDBID is a series' TVDB id in its details' external_ids; zero carries none.
+	TVDBID int
+}
+
+// Episode is one episode a season lists (/tv/{id}/season/{n}).
+type Episode struct {
+	ID             int
+	Number         int
+	Name           string
+	Overview       string
+	AirDate        string
+	RuntimeMinutes int
 }
 
 type network struct {
@@ -70,6 +85,8 @@ type Catalog struct {
 	people      map[int]string
 	networks    map[int]network
 	collections map[int]collection
+	// seasons are each series' episodes by season number.
+	seasons     map[int]map[int][]Episode
 	personDecoy bool
 }
 
@@ -78,7 +95,18 @@ func New() *Catalog {
 	return &Catalog{
 		movies: map[int]Title{}, series: map[int]Title{}, keywords: map[int]string{}, nextKeywordID: 5000,
 		recommends: map[int][]int{}, people: map[int]string{}, networks: map[int]network{}, collections: map[int]collection{},
+		seasons: map[int]map[int][]Episode{},
 	}
+}
+
+// PutSeason adds or replaces one season of a series.
+func (c *Catalog) PutSeason(seriesID, number int, episodes []Episode) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.seasons[seriesID] == nil {
+		c.seasons[seriesID] = map[int][]Episode{}
+	}
+	c.seasons[seriesID][number] = append([]Episode(nil), episodes...)
 }
 
 // WithPersonDecoy makes /search/multi also return a person row, which the client must filter out.
@@ -316,8 +344,38 @@ func (c *Catalog) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /movie/{id}/recommendations", func(w http.ResponseWriter, r *http.Request) { c.recommend(w, r, c.movies) })
 	mux.HandleFunc("GET /tv/{id}/recommendations", func(w http.ResponseWriter, r *http.Request) { c.recommend(w, r, c.series) })
-	mux.HandleFunc("GET /movie/{id}", func(w http.ResponseWriter, r *http.Request) { details(w, r, c.movies) })
-	mux.HandleFunc("GET /tv/{id}", func(w http.ResponseWriter, r *http.Request) { details(w, r, c.series) })
+	mux.HandleFunc("GET /movie/{id}", func(w http.ResponseWriter, r *http.Request) {
+		t, ok := c.movies[atoiPath(r.PathValue("id"))]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound) // fabricated id → 404 (grounding drops it)
+			return
+		}
+		writeJSON(w, movieDetails(t))
+	})
+	mux.HandleFunc("GET /tv/{id}", func(w http.ResponseWriter, r *http.Request) {
+		t, ok := c.series[atoiPath(r.PathValue("id"))]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writeJSON(w, c.seriesDetails(t))
+	})
+	mux.HandleFunc("GET /tv/{id}/season/{n}", func(w http.ResponseWriter, r *http.Request) {
+		number := atoiPath(r.PathValue("n"))
+		eps, ok := c.seasons[atoiPath(r.PathValue("id"))][number]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		rows := make([]map[string]any, 0, len(eps))
+		for _, e := range eps {
+			rows = append(rows, map[string]any{
+				"id": e.ID, "episode_number": e.Number, "season_number": number, "name": e.Name,
+				"overview": e.Overview, "air_date": e.AirDate, "runtime": e.RuntimeMinutes,
+			})
+		}
+		writeJSON(w, map[string]any{"season_number": number, "episodes": rows})
+	})
 	mux.HandleFunc("GET /collection/{id}", func(w http.ResponseWriter, r *http.Request) {
 		col, ok := c.collections[atoiPath(r.PathValue("id"))]
 		if !ok {
@@ -335,18 +393,10 @@ func (c *Catalog) Handler() http.Handler {
 	// Content ratings: a US entry iff the title has a USRating; an empty results array is the
 	// realistic sparse-coverage answer.
 	mux.HandleFunc("GET /tv/{id}/content_ratings", func(w http.ResponseWriter, r *http.Request) {
-		results := []map[string]any{}
-		if t, ok := c.series[atoiPath(r.PathValue("id"))]; ok && t.USRating != "" {
-			results = append(results, map[string]any{"iso_3166_1": "US", "rating": t.USRating})
-		}
-		writeJSON(w, map[string]any{"results": results})
+		writeJSON(w, map[string]any{"results": contentRatings(c.series[atoiPath(r.PathValue("id"))])})
 	})
 	mux.HandleFunc("GET /movie/{id}/release_dates", func(w http.ResponseWriter, r *http.Request) {
-		results := []map[string]any{}
-		if t, ok := c.movies[atoiPath(r.PathValue("id"))]; ok && t.USRating != "" {
-			results = append(results, map[string]any{"iso_3166_1": "US", "release_dates": []map[string]any{{"certification": t.USRating}}})
-		}
-		writeJSON(w, map[string]any{"results": results})
+		writeJSON(w, map[string]any{"results": releaseDates(c.movies[atoiPath(r.PathValue("id"))])})
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c.mu.RLock()
@@ -376,17 +426,77 @@ func matchingNames(names map[int]string, query string) []map[string]any {
 	return results
 }
 
-func details(w http.ResponseWriter, r *http.Request, cat map[int]Title) {
-	t, ok := cat[atoiPath(r.PathValue("id"))]
-	if !ok {
-		w.WriteHeader(http.StatusNotFound) // fabricated id → 404 (grounding drops it)
-		return
+// movieDetails is a movie's /movie/{id} answer, with the release dates TMDB appends.
+func movieDetails(t Title) map[string]any {
+	row := map[string]any{
+		"id": t.ID, "title": t.Name, "original_title": t.Name, "overview": t.Overview,
+		"release_date": t.Date, "runtime": t.RuntimeMinutes, "genres": genres(t),
+		"vote_average": t.VoteAverage, "vote_count": t.VoteCount, "belongs_to_collection": nil,
+		"release_dates": map[string]any{"results": releaseDates(t)},
 	}
-	row := map[string]any{"id": t.ID, "title": t.Name, "belongs_to_collection": nil}
 	if t.CollectionID > 0 {
 		row["belongs_to_collection"] = map[string]any{"id": t.CollectionID, "name": t.CollectionName}
 	}
-	writeJSON(w, row)
+	return row
+}
+
+// seriesDetails is a series' /tv/{id} answer, with what TMDB appends: its content ratings, its
+// TVDB id, and no other episode orderings, so its episodes are found by season and number.
+func (c *Catalog) seriesDetails(t Title) map[string]any {
+	numbers := make([]int, 0, len(c.seasons[t.ID]))
+	for n := range c.seasons[t.ID] {
+		numbers = append(numbers, n)
+	}
+	sort.Ints(numbers)
+	seasons := make([]map[string]any, 0, len(numbers))
+	for _, n := range numbers {
+		seasons = append(seasons, map[string]any{"season_number": n, "episode_count": len(c.seasons[t.ID][n])})
+	}
+	runtimes := []int{}
+	if t.RuntimeMinutes > 0 {
+		runtimes = append(runtimes, t.RuntimeMinutes)
+	}
+	row := map[string]any{
+		"id": t.ID, "name": t.Name, "original_name": t.Name, "overview": t.Overview,
+		"first_air_date": t.Date, "episode_run_time": runtimes, "genres": genres(t),
+		"vote_average": t.VoteAverage, "vote_count": t.VoteCount, "seasons": seasons,
+		"episode_groups":  map[string]any{"results": []any{}},
+		"content_ratings": map[string]any{"results": contentRatings(t)},
+		"external_ids":    map[string]any{},
+	}
+	if t.TVDBID > 0 {
+		row["external_ids"] = map[string]any{"tvdb_id": t.TVDBID}
+	}
+	return row
+}
+
+// genres pairs GenreIDs with GenreNames, as details carry them.
+func genres(t Title) []map[string]any {
+	out := make([]map[string]any, 0, len(t.GenreNames))
+	for i, name := range t.GenreNames {
+		row := map[string]any{"name": name}
+		if i < len(t.GenreIDs) {
+			row["id"] = t.GenreIDs[i]
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// releaseDates and contentRatings carry a US entry iff the title has a USRating; an empty list is
+// the realistic sparse-coverage answer.
+func releaseDates(t Title) []map[string]any {
+	if t.USRating == "" {
+		return []map[string]any{}
+	}
+	return []map[string]any{{"iso_3166_1": "US", "release_dates": []map[string]any{{"certification": t.USRating}}}}
+}
+
+func contentRatings(t Title) []map[string]any {
+	if t.USRating == "" {
+		return []map[string]any{}
+	}
+	return []map[string]any{{"iso_3166_1": "US", "rating": t.USRating}}
 }
 
 // recommend serves the adjacency graph for one seed; an unwired seed answers an empty list (200).

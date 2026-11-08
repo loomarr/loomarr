@@ -87,6 +87,9 @@ func (r *Registry) Markdown() []byte {
 func row(s Setting) string {
 	def := defaultCell(s)
 	notes := s.Doc
+	if s.Detail != "" {
+		notes += " " + s.Detail
+	}
 	var tags []string
 	if s.Advanced {
 		tags = append(tags, "advanced")

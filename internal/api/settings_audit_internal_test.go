@@ -9,10 +9,10 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// #2736: the settings audit line read "Changed by c9c1815f5b7e46308169209bf320e196". The list
+// #2736: the settings audit line read "Changed by" and a raw 32-character user id. The list
 // names the author, marks the caller's own change as theirs, and never hands back a raw id.
 func TestSettingsAuditNamesTheAuthorAndNeverAnID(t *testing.T) {
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	now := time.Now()
 	for _, u := range []identitystore.User{
 		{ID: "90000001aaaaaaaaaaaaaaaaaaaaaaaa", Name: "Sam", Role: identitystore.RoleAdmin, CreatedAt: now, UpdatedAt: now},

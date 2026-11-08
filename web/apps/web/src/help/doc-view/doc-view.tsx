@@ -36,13 +36,30 @@ const headingId = (children: ReactNode): string =>
       : String(children ?? ""),
   );
 
+// A page may carry an editor note in an HTML comment: GitHub and the docs site hide it. Without
+// rehype-raw, react-markdown prints raw HTML as text, so the comment would show as body copy.
+// This drops comment nodes (block or inline) from the tree and leaves any other HTML alone.
+interface MarkdownNode {
+  type: string;
+  value?: string;
+  children?: MarkdownNode[];
+}
+const isHtmlComment = (node: MarkdownNode): boolean =>
+  node.type === "html" && /^<!--[\s\S]*-->$/.test(node.value?.trim() ?? "");
+const dropComments = (node: MarkdownNode): void => {
+  if (!node.children) return;
+  node.children = node.children.filter((child) => !isHtmlComment(child));
+  node.children.forEach(dropComments);
+};
+const remarkDropHtmlComments = () => dropComments;
+
 // DocView renders one embedded help page. Styling is explicit per element rather than a
 // prose plugin: the design system already defines type scale and color, and a generic
 // typography reset would fight it.
 const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
   <article className={cn("flex flex-col gap-4", className)}>
     <Markdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkDropHtmlComments]}
       components={{
         h1: ({ children }) => (
           <h2 id={headingId(children)} className="text-xl font-semibold">
