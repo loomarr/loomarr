@@ -1,8 +1,7 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { Badge } from "@loomarr/design-system";
-import { CalendarClock, Loader2, LogIn, ShieldCheck, UserRound } from "lucide-react";
+import { Action, Badge } from "@loomarr/design-system";
+import { CalendarClock, Loader2, ShieldCheck, UserRound } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
 
@@ -129,10 +128,10 @@ const InvitationJoin = ({
         </form.AppField>
       ) : null}
 
-      <Button type="submit" disabled={isRedeeming}>
-        {isRedeeming ? <Loader2 className="animate-spin" aria-hidden /> : <LogIn aria-hidden />}
+      {/* A real submit button under Action's look, so Enter in a field still submits. */}
+      <Action disabled={isRedeeming} render={<button disabled={isRedeeming} type="submit" />}>
         {isRedeeming ? "Activating…" : "Activate account"}
-      </Button>
+      </Action>
     </form>
   );
 };

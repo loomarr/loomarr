@@ -215,6 +215,22 @@ func buildTemplate() (string, error) {
 func MigratedSQLiteStore(t testing.TB) records.Store {
 	t.Helper()
 
+	st, err := records.Open(context.Background(), MigratedSQLiteDSN(t), false)
+	if err != nil {
+		t.Fatalf("open copied SQLite test store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+// MigratedSQLiteDSN copies the migrated template into the test's own t.TempDir() and returns its
+// sqlite:// DSN, for a test that opens the store itself: through another package's Open, or twice to
+// prove something survives a restart. Opening it with migrate=true is cheap, since nothing is
+// pending. Never migrate a fresh file in a test instead: replaying every migration costs ~15 s per
+// open under -race, and it grows with each migration (#2716).
+func MigratedSQLiteDSN(t testing.TB) string {
+	t.Helper()
+
 	templateOnce.Do(func() {
 		templatePath, templateErr = buildTemplate()
 	})
@@ -226,13 +242,7 @@ func MigratedSQLiteStore(t testing.TB) records.Store {
 	if err := copyFile(templatePath, dest); err != nil {
 		t.Fatalf("copy migrated SQLite template: %v", err)
 	}
-
-	st, err := records.Open(context.Background(), "sqlite://"+dest, false)
-	if err != nil {
-		t.Fatalf("open copied SQLite test store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return "sqlite://" + dest
 }
 
 // copyFile duplicates src's bytes into dst. The template file is closed and

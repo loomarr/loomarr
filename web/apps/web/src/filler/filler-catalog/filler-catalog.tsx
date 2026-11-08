@@ -3,13 +3,13 @@ import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ListFillerRole } from "@loomarr/api/models/listFillerRole";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ClipCard } from "@/components/loomarr/filler/clip-card";
 import { ClipRow } from "@/components/loomarr/filler/clip-row";
-import { Button } from "@/components/ui/button";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
@@ -216,9 +216,9 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
             <p className="text-sm font-medium">{parentName || "Compilation segments"}</p>
             <p className="text-muted-foreground text-xs">Airable clips filed from this compilation.</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setFilters({ parent: undefined })}>
+          <Action onPress={() => setFilters({ parent: undefined })} variant="outline">
             Back to top-level catalog
-          </Button>
+          </Action>
         </div>
       ) : null}
 
@@ -231,13 +231,12 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                 ? `Showing clips without a directly assigned ${withoutAxis} tag`
                 : `Showing clips matching “${taxon}”, including descendants`}
           </p>
-          <Button
+          <Action
+            onPress={() => setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })}
             variant="ghost"
-            size="sm"
-            onClick={() => setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })}
           >
             Clear taxonomy filter
-          </Button>
+          </Action>
         </div>
       ) : null}
 
@@ -329,7 +328,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                 "Select this page" whenever there is more than one — and `goToPage` clears
                 the selection, or a Remove would reach rows from a page nobody is looking at. */}
             {isAdmin && (
-              <Button variant="ghost" size="sm" onClick={() => selection.selectAll(selectableRows)}>
+              <Action onPress={() => selection.selectAll(selectableRows)} variant="ghost">
                 {selection.allSelected(selectableRows)
                   ? "Clear selection"
                   : pageCount > 1
@@ -337,7 +336,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                     : filtered
                       ? "Select these"
                       : "Select all"}
-              </Button>
+              </Action>
             )}
           </div>
           {view === "list" ? (
@@ -367,22 +366,17 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               row 60 unreachable, which is what a page size with no pager would be. */}
           {pageCount > 1 && (
             <nav aria-label="Catalog pages" className="flex items-center justify-between gap-3 pt-1">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
+              <Action disabled={page <= 1} onPress={() => goToPage(page - 1)} variant="outline">
                 Previous
-              </Button>
+              </Action>
               {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
                   announcement a screen-reader user gets a silently different list. */}
               <p aria-live="polite" className="text-muted-foreground text-sm">
                 Page {page.toLocaleString()} of {pageCount.toLocaleString()}
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= pageCount}
-                onClick={() => goToPage(page + 1)}
-              >
+              <Action disabled={page >= pageCount} onPress={() => goToPage(page + 1)} variant="outline">
                 Next
-              </Button>
+              </Action>
             </nav>
           )}
         </>

@@ -2,9 +2,8 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, pluralize } from "@loomarr/core/format";
-import { Disclosure } from "@loomarr/design-system";
+import { Action, Disclosure } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
-import { Button } from "@/components/ui/button";
 
 interface CompositeCatalogGroupProps {
   clip: ClipDTO;
@@ -42,9 +41,9 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
           <span className="text-muted-foreground text-xs">Loading segments…</span>
         ) : (
           <div>
-            <Button variant="outline" size="sm" onClick={onManage}>
-              Manage {pluralize(total, "segment")}
-            </Button>
+            <Action onPress={onManage} variant="outline">
+              {`Manage ${pluralize(total, "segment")}`}
+            </Action>
           </div>
         )}
         {children.error ? (

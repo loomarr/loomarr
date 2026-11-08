@@ -1,8 +1,9 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { ruleVocabularyFixture } from "@loomarr/fixtures";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ChannelRulesEditor } from "./channel-rules-editor";
 
 // Each rule's `when`/`what`/`how` are set to the EXACT shape the lowering table produces

@@ -1,6 +1,7 @@
 import type { BundlePreview } from "@loomarr/api/models/bundlePreview";
 import type { BundleSelection } from "@loomarr/api/models/bundleSelection";
 import {
+  Action,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -335,17 +336,13 @@ const SupportBundle = ({
         )}
 
         <DialogFooter>
-          <Button
-            onClick={() => void download()}
+          <Action
             disabled={!preview || busy !== undefined || (!events && !processes && !processOutput)}
+            icon={busy === "download" ? "loading" : "download"}
+            onPress={() => void download()}
           >
-            {busy === "download" ? (
-              <LoaderCircle className="animate-spin" aria-hidden />
-            ) : (
-              <Download aria-hidden />
-            )}
             {busy === "download" ? "Preparing report…" : "Download report"}
-          </Button>
+          </Action>
         </DialogFooter>
       </DialogContent>
     </Dialog>

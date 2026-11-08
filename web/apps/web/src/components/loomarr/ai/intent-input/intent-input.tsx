@@ -1,5 +1,4 @@
-import { Loader2, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { IntentInputProps } from "./intent-input.type";
 
@@ -56,10 +55,14 @@ const IntentInput = ({
       )}
 
       <div className="flex justify-end">
-        <Button variant="suggest" onClick={submit} disabled={!canSubmit}>
-          {submitting ? <Loader2 className="animate-spin" aria-hidden /> : <Sparkles aria-hidden />}
+        <Action
+          disabled={!canSubmit}
+          icon={submitting ? "loading" : "suggest"}
+          onPress={submit}
+          variant="suggest"
+        >
           {submitting ? "Suggesting…" : "Suggest a lineup"}
-        </Button>
+        </Action>
       </div>
     </div>
   );

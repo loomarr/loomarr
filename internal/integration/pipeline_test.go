@@ -84,7 +84,7 @@ type rig struct {
 
 func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	t.Helper()
-	st, err := records.Open(context.Background(), "sqlite://"+t.TempDir()+"/integration.db", true)
+	st, err := records.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

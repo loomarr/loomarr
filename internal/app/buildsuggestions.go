@@ -97,7 +97,7 @@ func buildSuggestions(
 		engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
 	}
 
-	catalogService := catalog.New(libraryClient, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
+	catalogService := catalog.New(librarySearch{titles: st, facts: st, lib: libraryClient}, tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
 		return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
 	})
 	result.search = searchAdapter{catalogService}
@@ -106,7 +106,7 @@ func buildSuggestions(
 	})
 	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
 	result.collections = libraryCollections{own: st, lib: libraryClient}
-	result.ideaLibrary = &libraryIdeaItems{lib: libraryClient, now: time.Now}
+	result.ideaLibrary = &libraryIdeaItems{lib: libraryIdeaTitles{titles: st, facts: st, server: libraryClient}, now: time.Now}
 	result.icons = iconAdapter{
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,
 	}

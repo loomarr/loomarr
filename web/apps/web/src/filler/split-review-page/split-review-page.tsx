@@ -5,13 +5,13 @@ import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageEx
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatMmSs, pluralize } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SplitReviewEditor } from "@/components/loomarr/filler/split-review-editor";
-import { Button } from "@/components/ui/button";
 import { languageList, languageName } from "@/lib/languages";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import type { SplitReviewPageProps } from "./split-review-page.type";
@@ -166,14 +166,13 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
               This split was checked for {languageList(checked)}. Recheck it before you confirm.
             </p>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
+          <Action
             disabled={recheck.isPending}
-            onClick={() => recheck.mutate({ data: { hash: p.clipHash, from: "split" } })}
+            onPress={() => recheck.mutate({ data: { hash: p.clipHash, from: "split" } })}
+            variant="outline"
           >
             {recheck.isPending ? "Starting recheck…" : recheckLabel}
-          </Button>
+          </Action>
         </div>
       ) : null}
       <LanguageReceipt exclusions={p.languageExclusions ?? []} checkedFor={checked} />

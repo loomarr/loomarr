@@ -576,6 +576,20 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (`imported_id`); the reconcile's membership index does the same, so an imported collection is
   known only by the household's id the rewrite pointed scopes at. With no media server, the
   household's alone, without an error.
+- **Title search asks the Library first** (step 15e). Like the collections picker and channel
+  ideas, it needs no media server: only TMDB search waits on its key. Library-scope search, which
+  `/v1/search` and the suggester's tools share, answers with the Library's movies and series by name
+  (`SearchLibraryTitles`: an exact name, then one starting with the term, then the rest), under
+  their library item ids and with their facts. The media server adds only titles the Library
+  didn't answer, while it is short of the limit; with none connected, a term the Library has no
+  title for is no results rather than an error.
+- **The provisioning backstop asks the Library first** (step 15e). Its last look before a title is
+  given up as unavailable confirms one the Library holds, under its library item id; the media
+  server answers only what the Library doesn't hold.
+- **Channel ideas ask the Library first** (step 15e). Home's channel ideas draw from the Library's
+  movies and series with their year and genres (`LibraryTitles`, `LibraryItemFacts`), then only the
+  media server's titles the Library doesn't hold, by provider id, so no title counts twice in a
+  facet. With no media server, the Library's alone.
 - **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
   stored records name at library items: titles, airings, channels' slots, scopes, rules and
   lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
