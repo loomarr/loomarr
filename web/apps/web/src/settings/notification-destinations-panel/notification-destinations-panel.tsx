@@ -4,7 +4,7 @@ import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificat
 import { NotificationProviderFieldDTOKind } from "@loomarr/api/models/notificationProviderFieldDTOKind";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Card, Field, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Surface, Text, Toggle } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, X } from "lucide-react";
 import { type ComponentProps, useId, useMemo, useState } from "react";
@@ -711,6 +711,9 @@ const NotificationDestinationsPanel = () => {
     [typesQuery.data],
   );
   const providers = providersQuery.data?.status === 200 ? providersQuery.data.data.providers : [];
+  // Everything any provider type can be told about, once each: the empty state's answer to
+  // "what would I be notified about?".
+  const events = useMemo(() => [...new Set(definitions.flatMap((item) => item.events))], [definitions]);
   const definition = definitions.find((item) => item.type === selectedType) ?? definitions[0];
   const create = notificationsApi.useNotificationProvidersCreate({
     mutation: {
@@ -754,9 +757,36 @@ const NotificationDestinationsPanel = () => {
         </p>
       ) : null}
       {!providersQuery.isLoading && providers.length === 0 ? (
-        <p className="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          No notification providers yet.
-        </p>
+        <section
+          aria-labelledby="notification-events-title"
+          className="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-sm"
+        >
+          <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} gap="inline">
+            <Text as="p" id="notification-events-title" textRole="label">
+              No notification providers yet
+            </Text>
+            <Text as="p" textRole="body" tone="muted">
+              Once you add one, you choose which of these it tells you about.
+            </Text>
+            {events.length > 0 ? (
+              <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} gap={4} role="list">
+                {events.map((event) => (
+                  <Surface
+                    backgroundColor="transparent"
+                    borderRadius={0}
+                    borderWidth={0}
+                    key={event}
+                    role="listitem"
+                  >
+                    <Text textRole="body" tone="muted">
+                      {words(event)}
+                    </Text>
+                  </Surface>
+                ))}
+              </Surface>
+            ) : null}
+          </Surface>
+        </section>
       ) : null}
 
       <ul className="grid gap-3">
