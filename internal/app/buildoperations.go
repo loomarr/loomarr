@@ -69,8 +69,10 @@ type operationsBuild struct {
 	liveSettings             settings.Reader
 	libraryConfigured        func() bool
 	jobs                     api.JobService
-	database                 api.DatabaseService
-	residentLLM              residentLLMBuild
+	// scheduler is nil without a store; Current Health reads starved tasks from it.
+	scheduler   *jobs.Scheduler
+	database    api.DatabaseService
+	residentLLM residentLLMBuild
 }
 
 func buildOperations(
@@ -132,9 +134,13 @@ func buildOperations(
 		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
 	)
 	providerValidators = append(accountDelivery.validators, providerValidators...)
-	jobService, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
+	scheduler, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	if err != nil {
 		return operationsBuild{}, err
+	}
+	var jobService api.JobService
+	if scheduler != nil {
+		jobService = jobsAdapter{s: scheduler}
 	}
 	triggerHealth := func(ctx context.Context) {
 		if jobService == nil {
@@ -159,6 +165,7 @@ func buildOperations(
 		invitationDelivery:   accountDelivery.invitations,
 		passwordRecovery:     accountDelivery.recovery,
 		jobs:                 jobService,
+		scheduler:            scheduler,
 		database:             buildDatabase(st, set, overrides, eventBus),
 		residentLLM:          buildResidentLLM(set, log),
 	}
@@ -421,7 +428,7 @@ func buildScheduler(
 	owner *generationLifecycle,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
-) (api.JobService, error) {
+) (*jobs.Scheduler, error) {
 	if st == nil {
 		return nil, nil
 	}
@@ -445,5 +452,5 @@ func buildScheduler(
 		return nil, fmt.Errorf("start River job queue: %w", err)
 	}
 	owner.addStop(stop)
-	return jobsAdapter{s: service}, nil
+	return service, nil
 }
