@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -74,8 +75,9 @@ func introspectSQLite(ctx context.Context, db *sql.DB) ([]schemadoc.LiveTable, e
 		if err := db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&ddl); err != nil {
 			return nil, err
 		}
-		checked, json := checkedColumns(ddl), jsonColumns(ddl)
-		rows, err := db.QueryContext(ctx, `SELECT name, type, "notnull", pk FROM pragma_table_info(?) ORDER BY cid`, name)
+		checked, json, flag := checkedColumns(ddl), jsonColumns(ddl), flagColumns(ddl)
+		rows, err := db.QueryContext(ctx, `SELECT name, type, "notnull", pk, coalesce(dflt_value, '')
+			FROM pragma_table_info(?) ORDER BY cid`, name)
 		if err != nil {
 			return nil, err
 		}
@@ -83,12 +85,13 @@ func introspectSQLite(ctx context.Context, db *sql.DB) ([]schemadoc.LiveTable, e
 		for rows.Next() {
 			var c schemadoc.LiveColumn
 			var pk int
-			if err := rows.Scan(&c.Name, &c.Type, &c.NotNull, &pk); err != nil {
+			if err := rows.Scan(&c.Name, &c.Type, &c.NotNull, &pk, &c.Default); err != nil {
 				_ = rows.Close()
 				return nil, err
 			}
 			c.PrimaryKey, c.References = pk > 0, refs[c.Name]
-			c.Checked, c.JSON = checked[strings.ToLower(c.Name)], json[strings.ToLower(c.Name)]
+			lower := strings.ToLower(c.Name)
+			c.Checked, c.JSON, c.Flag = checked[lower], json[lower], flag[lower]
 			t.Columns = append(t.Columns, c)
 			if pk > 0 {
 				primary = append(primary, make([]string, max(0, pk-len(primary)))...)
@@ -149,6 +152,19 @@ func jsonColumns(ddl string) map[string]bool {
 			out[strings.Trim(strings.TrimSpace(rest[:end]), `"`)] = true
 		}
 	}
+}
+
+// flagCheck matches the CHECK that declares a SQLite flag: column IN (0, 1).
+var flagCheck = regexp.MustCompile(`(?i)"?(\w+)"?\s+IN\s*\(\s*0\s*,\s*1\s*\)`)
+
+// flagColumns names the columns a CREATE TABLE checks with column IN (0, 1): the one way a SQLite
+// column is declared a flag (#2793), so its Postgres twin must be boolean.
+func flagColumns(ddl string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range flagCheck.FindAllStringSubmatch(ddl, -1) {
+		out[strings.ToLower(m[1])] = true
+	}
+	return out
 }
 
 func checkedColumns(ddl string) map[string]bool {

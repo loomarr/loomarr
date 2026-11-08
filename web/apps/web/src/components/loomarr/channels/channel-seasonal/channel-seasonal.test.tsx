@@ -197,10 +197,12 @@ describe("ChannelSeasonal", () => {
   });
 
   // The mode is the defaultable field (#1817 item 4); "auto" is the default spelled out.
-  it("badges the built-in mode Default with Reset disabled", () => {
+  it("badges the built-in mode Default with no Reset", () => {
     render(<ChannelSeasonal policy={{ seasonal: { mode: "auto" } }} onChange={vi.fn()} vocabulary={VOCAB} />);
     expect(screen.getByText("Default")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reset to default (Seasonal behavior)" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Reset to default (Seasonal behavior)" }),
+    ).not.toBeInTheDocument();
   });
 
   it("resets an overridden mode to the empty sentinel, keeping the holidays", async () => {

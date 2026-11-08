@@ -114,8 +114,14 @@ describe("LibraryTitle", () => {
     expect(host.textContent).toContain("R");
     expect(host.textContent).toContain("Crime, Thriller");
     expect(host.textContent).toContain("bursting at the seams");
-    expect(host.textContent).not.toContain("Paper Kites.mkv");
+    // Closed, the file is mounted but hidden until found (find-in-page can still reach it).
+    const hiddenFile = () =>
+      Array.from(host.querySelectorAll('[hidden="until-found"]')).some((n) =>
+        n.textContent?.includes("Paper Kites.mkv"),
+      );
+    expect(hiddenFile()).toBe(true);
     act(() => button("Technical details").click());
+    expect(hiddenFile()).toBe(false);
     expect(host.textContent).toContain("/media/movies/Paper Kites (1996)/Paper Kites.mkv");
     expect(host.textContent).toContain("7.5 GB");
     expect(host.textContent).toContain("Description and rating from TMDB.");

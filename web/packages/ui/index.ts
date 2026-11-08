@@ -21,6 +21,8 @@ export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
 export type { CommitFieldProps } from "./src/commit-field";
 export { CommitField } from "./src/commit-field";
+export type { ConfirmStepProps } from "./src/confirm-step";
+export { ConfirmStep } from "./src/confirm-step";
 export type { DemoBannerNext, DemoBannerProps } from "./src/demo-banner";
 export { DemoBanner } from "./src/demo-banner";
 export type { DemoSignInProps } from "./src/demo-sign-in";
@@ -43,6 +45,8 @@ export type {
   GuideGridProps,
   GuideJourneyProps,
   GuideLogoRenderer,
+  GuideNowNextProps,
+  GuidePhoneHeaderProps,
   GuideProgrammeDetailProps,
   GuideSurfaceProps,
   GuideUnavailableState,
@@ -52,6 +56,8 @@ export {
   GuideExperience,
   GuideGrid,
   GuideJourney,
+  GuideNowNext,
+  GuidePhoneHeader,
   GuideProgrammeDetail,
   GuideSurface,
 } from "./src/guide";

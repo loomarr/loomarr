@@ -43,7 +43,21 @@ type Table struct {
 	About     string            `yaml:"about"`
 	Retention string            `yaml:"retention"` // how long rows are kept, in plain words
 	Columns   map[string]string `yaml:"columns"`
+	// Groups splits a wide table's columns into the jobs they do, each with why it lives in this
+	// table rather than its own. A table wider than WideTable columns must have them (#2793).
+	Groups []Group `yaml:"groups"`
 }
+
+// Group is one job a wide table's columns do together.
+type Group struct {
+	Title   string   `yaml:"group"`
+	Why     string   `yaml:"why"` // why these columns stay in this table instead of a table of their own
+	Columns []string `yaml:"columns"`
+}
+
+// WideTable is the most columns a table may have before its columns must be grouped: past it, a
+// reader scanning one flat list of columns loses track of which belong together.
+const WideTable = 30
 
 // LiveTable is one table as the database reports it.
 type LiveTable struct {
@@ -64,6 +78,8 @@ type LiveColumn struct {
 	References string // "table.column" for a foreign key, else ""
 	Checked    bool   // named inside one of the table's CHECK constraints
 	JSON       bool   // SQLite only: CHECKed with json_valid(column), so its Postgres twin is jsonb
+	Flag       bool   // SQLite only: CHECKed with column IN (0, 1), so its Postgres twin is boolean
+	Default    string // SQLite only: the default as declared ('[]', 0, ...), "" when there is none
 }
 
 // Comment is one Postgres COMMENT ON target: a table when Column is empty, else a column.
@@ -142,6 +158,7 @@ func Check(doc Doc, live []LiveTable) []string {
 				problems = append(problems, fmt.Sprintf("column %s.%s is described but doesn't exist", lt.Name, name))
 			}
 		}
+		problems = append(problems, checkGroups(t, lt)...)
 	}
 	for name := range described {
 		if !seen[name] {
@@ -149,6 +166,44 @@ func Check(doc Doc, live []LiveTable) []string {
 		}
 	}
 	slices.Sort(problems)
+	return problems
+}
+
+// checkGroups: a table wider than WideTable groups its columns, and a grouped table puts each
+// column it has in exactly one group, each group with a title and a reason.
+func checkGroups(t Table, lt LiveTable) []string {
+	if len(t.Groups) == 0 {
+		if len(lt.Columns) > WideTable {
+			return []string{fmt.Sprintf("table %s has %d columns; group them by the job they do (more than %d must be grouped)",
+				lt.Name, len(lt.Columns), WideTable)}
+		}
+		return nil
+	}
+	var problems []string
+	have := map[string]bool{}
+	for _, c := range lt.Columns {
+		have[c.Name] = true
+	}
+	placed := map[string]string{}
+	for _, g := range t.Groups {
+		if strings.TrimSpace(g.Title) == "" || strings.TrimSpace(g.Why) == "" {
+			problems = append(problems, fmt.Sprintf("table %s has a group without a title and a why", lt.Name))
+		}
+		for _, name := range g.Columns {
+			if !have[name] {
+				problems = append(problems, fmt.Sprintf("group %q of %s names column %s, which doesn't exist", g.Title, lt.Name, name))
+			}
+			if other, dup := placed[name]; dup {
+				problems = append(problems, fmt.Sprintf("column %s.%s is in groups %q and %q", lt.Name, name, other, g.Title))
+			}
+			placed[name] = g.Title
+		}
+	}
+	for _, c := range lt.Columns {
+		if _, ok := placed[c.Name]; !ok {
+			problems = append(problems, fmt.Sprintf("column %s.%s is in no group", lt.Name, c.Name))
+		}
+	}
 	return problems
 }
 
@@ -218,9 +273,24 @@ func Markdown(doc Doc, live []LiveTable) ([]byte, error) {
 			if r := oneLine(t.Retention); r != "" {
 				fmt.Fprintf(&b, "**Kept:** %s\n\n", r)
 			}
-			b.WriteString("| Column | What it holds | Type |\n| --- | --- | --- |\n")
-			for _, c := range byName[t.Name].Columns {
-				fmt.Fprintf(&b, "| `%s` | %s | %s |\n", c.Name, cell(t.Columns[c.Name]), shape(c))
+			if len(t.Groups) == 0 {
+				columnTable(&b, t, byName[t.Name].Columns)
+				continue
+			}
+			for _, g := range t.Groups {
+				in := map[string]bool{}
+				for _, name := range g.Columns {
+					in[name] = true
+				}
+				var columns []LiveColumn
+				for _, c := range byName[t.Name].Columns {
+					if in[c.Name] {
+						columns = append(columns, c)
+					}
+				}
+				fmt.Fprintf(&b, "**%s.** %s\n\n", oneLine(g.Title), oneLine(g.Why))
+				columnTable(&b, t, columns)
+				b.WriteString("\n")
 			}
 		}
 	}
@@ -233,6 +303,14 @@ func Markdown(doc Doc, live []LiveTable) ([]byte, error) {
 		}
 	}
 	return b.Bytes(), nil
+}
+
+// columnTable writes one Markdown table of columns, in the order the database keeps them.
+func columnTable(b *bytes.Buffer, t Table, columns []LiveColumn) {
+	b.WriteString("| Column | What it holds | Type |\n| --- | --- | --- |\n")
+	for _, c := range columns {
+		fmt.Fprintf(b, "| `%s` | %s | %s |\n", c.Name, cell(t.Columns[c.Name]), shape(c))
+	}
 }
 
 func ownerOf(table string) string {

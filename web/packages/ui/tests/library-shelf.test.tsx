@@ -94,6 +94,17 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  // #2779: "All caught up — every title's ready to air" sat above "Needs you (4)". With anything
+  // waiting the line says only what the folders' state is.
+  it("doesn't claim every title is ready while Needs you is waiting", () => {
+    const { host, cleanup } = render({
+      status: { health: "ok", scan: IDLE, held: [], offline: [], needsYou: true },
+    });
+    expect(host.textContent).not.toContain("All caught up");
+    expect(host.textContent).toContain("Up to date");
+    cleanup();
+  });
+
   // WCAG 2.5.3: a tile's name is what it shows. A label of its own ("Harbour Lights") left out the
   // year and kind beside it, which axe flags and a voice-control user cannot say.
   it("names a tile by what it shows, with no label of its own", () => {
@@ -193,7 +204,8 @@ describe("LibraryShelf", () => {
       status: { health: "needs_folders", scan: IDLE, held: [], offline: [] },
       titles: [],
     });
-    expect(host.textContent).toContain("Dead air — tell Loomarr where your media is.");
+    expect(host.textContent).toContain("Dead air");
+    expect(host.textContent).toContain("Point it at your movie and show folders");
     expect(host.textContent).not.toContain("Search");
     act(() => button("Tell Loomarr where your media is").click());
     expect(props.onOpenSettings).toHaveBeenCalled();

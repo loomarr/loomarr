@@ -1,13 +1,13 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Field } from "@loomarr/design-system";
+import { Action, Field } from "@loomarr/design-system";
+import { ConfirmStep } from "@loomarr/ui";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 
 // The two halves of device pairing, in the order an operator meets them: approve the code a TV is
 // showing, then manage what is already paired (§11, Shield P1).
@@ -112,9 +112,12 @@ const ApproveDevice = () => {
         </form.Field>
         <form.Subscribe selector={(state) => state.values.userCode}>
           {(userCode) => (
-            <Button disabled={!userCode.trim() || approve.isPending} type="submit">
+            <Action
+              // A real submit button under Action's look, so Enter in a field still submits.
+              render={<button disabled={!userCode.trim() || approve.isPending} type="submit" />}
+            >
               {approve.isPending ? "Checking…" : "Approve device"}
-            </Button>
+            </Action>
           )}
         </form.Subscribe>
       </form>
@@ -133,17 +136,35 @@ const ApproveDevice = () => {
   );
 };
 
-const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () => void; busy: boolean }) => (
-  <li className="border-border flex flex-wrap items-center justify-between gap-2 border-b py-3 last:border-b-0">
-    <div className="min-w-0">
-      <p className="truncate text-sm font-medium">{device.deviceName || "Device"}</p>
-      <p className="text-muted-foreground text-xs">Last used {relativeAge(device.lastSeenAt)}</p>
-    </div>
-    <Button disabled={busy} onClick={onRevoke} size="sm" variant="outline">
-      {busy ? "Removing…" : "Remove"}
-    </Button>
-  </li>
-);
+// Removing signs the device out for good (it has to pair again), so the first press only asks.
+const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () => void; busy: boolean }) => {
+  const [confirming, setConfirming] = useState(false);
+  const name = device.deviceName || "Device";
+  return (
+    <li className="border-border flex flex-wrap items-center justify-between gap-2 border-b py-3 last:border-b-0">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{name}</p>
+        <p className="text-muted-foreground text-xs">Last used {relativeAge(device.lastSeenAt)}</p>
+      </div>
+      {confirming ? (
+        <ConfirmStep
+          confirmLabel="Remove device"
+          disabled={busy}
+          message={`Remove ${name}? It signs out now and has to be paired again to watch.`}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            onRevoke();
+            setConfirming(false);
+          }}
+        />
+      ) : (
+        <Action disabled={busy} onPress={() => setConfirming(true)} variant="destructive">
+          {busy ? "Removing…" : "Remove"}
+        </Action>
+      )}
+    </li>
+  );
+};
 
 const PairedDevices = () => {
   const queryClient = useQueryClient();

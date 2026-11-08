@@ -35,6 +35,8 @@ const statusDot = (job: JobView): { tone: StatusTone; label: string } => {
   if (job.paused) return { tone: "off", label: "Paused" };
   if (job.running) return { tone: "pending", label: "Running" };
   if (job.lastResult === "error") return { tone: "error", label: "Failed last run" };
+  // An overdue task is never green: its last run went fine, but it is waiting on a worker now.
+  if (job.overdue) return { tone: "warn", label: "Overdue" };
   if (job.lastResult === "ok") return { tone: "ok", label: "OK" };
   return { tone: "off", label: "Not run yet" };
 };
@@ -42,11 +44,13 @@ const statusDot = (job: JobView): { tone: StatusTone; label: string } => {
 const groupSummary = (jobs: JobView[]) => {
   const running = jobs.filter((job) => job.running).length;
   const failed = jobs.filter((job) => job.lastResult === "error").length;
+  const overdue = jobs.filter((job) => job.overdue && !job.running).length;
   const paused = jobs.filter((job) => job.paused).length;
   const unavailable = jobs.filter((job) => job.disabledReason).length;
   const details = [
     running && `${running} running`,
     failed && `${failed} failed`,
+    overdue && `${overdue} overdue`,
     paused && `${paused} paused`,
     unavailable && `${unavailable} unavailable`,
   ].filter(Boolean);
@@ -279,17 +283,19 @@ const TasksPage = () => {
                                 {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
                               </td>
                               <td className="text-muted-foreground px-4 py-3">
-                                {job.disabledReason
-                                  ? "—"
-                                  : job.paused
-                                    ? "Paused"
-                                    : job.running
-                                      ? "running…"
-                                      : isZero(job.nextRun)
-                                        ? "—"
-                                        : job.overdue
-                                          ? "overdue"
-                                          : formatUntil(job.nextRun ?? zero)}
+                                {job.disabledReason ? (
+                                  "—"
+                                ) : job.paused ? (
+                                  "Paused"
+                                ) : job.running ? (
+                                  "running…"
+                                ) : isZero(job.nextRun) ? (
+                                  "—"
+                                ) : job.overdue ? (
+                                  <span title="Due, but waiting for a free worker">Overdue</span>
+                                ) : (
+                                  formatUntil(job.nextRun ?? zero)
+                                )}
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <Button

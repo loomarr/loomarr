@@ -127,8 +127,10 @@ const semanticThemes = {
       focus: "#8A5700",
       disabled: "#8B93A3",
     },
+    // The magenta's own text stop on white: #DC5BAC is 3.4:1 there, this is 6.7:1 (and 5.5:1 on
+    // the suggest badge's 15% wash). Amber's light text stop is `action.primary` (#795000, 7.1:1).
     accent: {
-      suggest: "#DC5BAC",
+      suggest: "#A8246F",
     },
     artwork: {
       placeholder: "#E7EAF0",

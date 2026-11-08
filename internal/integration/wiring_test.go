@@ -121,7 +121,8 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertLibrarySearchStatus(t, h, admin, http.StatusNotImplemented)
+	// Library search reads Loomarr's own Library, so it answers without a media server (#2807).
+	assertLibrarySearchStatus(t, h, admin, http.StatusOK)
 	assertUserImportStatus(t, h, admin, http.StatusNotImplemented)
 	assertUserSyncStatus(t, h, admin, http.StatusNotImplemented)
 	assertFillerSyncStatus(t, h, admin, http.StatusOK)
@@ -142,7 +143,6 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	assertUserSyncStatus(t, h, admin, http.StatusOK)
 	assertFillerSyncStatus(t, h, admin, http.StatusOK)
 	requests := h.ms.Requests()
-	assertJellyfinSearchAuth(t, requests, "jellyfin-token-one")
 	assertJellyfinUserAuth(t, requests, "jellyfin-token-one")
 	assertFillerLibraryScanned(t, requests, "jellyfin-token-one")
 
@@ -158,7 +158,6 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	// that already captured token two can arrive while the clear operation is under assertion.
 	waitForJobRunCount(t, h, admin, "system-health", healthRuns+2)
 	requests = h.ms.Requests()
-	assertJellyfinSearchAuth(t, requests, "jellyfin-token-two")
 	assertJellyfinUserAuth(t, requests, "jellyfin-token-two")
 
 	beforeClear := len(requests)
@@ -168,7 +167,7 @@ func TestWiring_LibraryConfigHotApplies(t *testing.T) {
 	// Clear queues its own health pass. Waiting for it proves the background path observes the
 	// cleared snapshot too; checking immediately could pass before that job even starts.
 	waitForJobRunCount(t, h, admin, "system-health", healthRuns+3)
-	assertLibrarySearchStatus(t, h, admin, http.StatusNotImplemented)
+	assertLibrarySearchStatus(t, h, admin, http.StatusOK)
 	assertUserImportStatus(t, h, admin, http.StatusNotImplemented)
 	assertUserSyncStatus(t, h, admin, http.StatusNotImplemented)
 	assertFillerSyncStatus(t, h, admin, http.StatusOK)
@@ -254,22 +253,6 @@ func assertJellyfinUserAuth(t *testing.T, requests []testkit.MediaServerRequest,
 	t.Fatalf("no media-server user-list request found in %+v", requests)
 }
 
-func assertJellyfinSearchAuth(t *testing.T, requests []testkit.MediaServerRequest, token string) {
-	t.Helper()
-	for i := len(requests) - 1; i >= 0; i-- {
-		request := requests[i]
-		if request.Path != "/Items" || !strings.Contains(request.RawQuery, "SearchTerm=matrix") {
-			continue
-		}
-		assertJellyfinAuthorization(t, "Jellyfin search", request.Authorization, token)
-		if request.EmbyToken != "" {
-			t.Fatalf("Jellyfin search sent X-Emby-Token %q", request.EmbyToken)
-		}
-		return
-	}
-	t.Fatalf("no media-server search request found in %+v", requests)
-}
-
 func assertJellyfinAuthorization(t *testing.T, surface, authorization, token string) {
 	t.Helper()
 	if !strings.HasPrefix(authorization, "MediaBrowser ") ||
@@ -295,6 +278,8 @@ func TestWiring_FreshInstall(t *testing.T) {
 		{http.MethodGet, "/v1/settings"},
 		{http.MethodGet, "/v1/setup/status"},
 		{http.MethodGet, "/v1/backup"},
+		// Search reads Loomarr's own Library first; only the TMDB scope needs a key (#2807).
+		{http.MethodGet, "/v1/search?q=matrix"},
 	}
 	for _, r := range works {
 		if code := h.status(r.method, r.path, "", admin); code != http.StatusOK {
@@ -310,7 +295,7 @@ func TestWiring_FreshInstall(t *testing.T) {
 		want               int
 	}{
 		{http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, http.StatusConflict},
-		{http.MethodGet, "/v1/search?q=matrix", "", http.StatusNotImplemented},
+		{http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", http.StatusNotImplemented},
 		{http.MethodPost, "/v1/setup/tunarr-connect", "", http.StatusNotImplemented},
 	}
 	for _, r := range unconfigured {
@@ -368,7 +353,7 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 		want               int
 	}{
 		{http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, http.StatusConflict},
-		{http.MethodGet, "/v1/search?q=matrix", "", http.StatusNotImplemented},
+		{http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", http.StatusNotImplemented},
 	}
 	for _, r := range preCheck {
 		if code := h.status(r.method, r.path, r.body, admin); code != r.want {
@@ -403,8 +388,8 @@ func TestWiring_ConfigEnablesLive(t *testing.T) {
 	if code := h.status(http.MethodPost, "/v1/proposals", `{"description":"90s action"}`, admin); code == http.StatusNotImplemented {
 		t.Error("POST /v1/proposals still 501 after saving config — not live-enabled (would need a restart)")
 	}
-	if code := h.status(http.MethodGet, "/v1/search?q=matrix", "", admin); code != http.StatusOK {
-		t.Errorf("GET /v1/search → %d after saving library, want 200 (live-enabled)", code)
+	if code := h.status(http.MethodGet, "/v1/search?q=matrix&scope=tmdb", "", admin); code != http.StatusOK {
+		t.Errorf("GET /v1/search?scope=tmdb → %d after saving the TMDB key, want 200 (live-enabled)", code)
 	}
 	// Saving external connections does not change the already-live channel scheduler contract.
 	if code := h.status(http.MethodPost, "/v1/channels/x/reconcile", "", admin); code != http.StatusNotFound {

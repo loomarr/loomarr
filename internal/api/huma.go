@@ -396,7 +396,8 @@ type SettingEntry struct {
 	Presets      []SettingPreset     `json:"presets,omitempty" doc:"Common choices offered before a custom value, in canonical form. Any value the setting accepts still saves."`
 	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
 	RequiredFor  string              `json:"requiredFor,omitempty"`
-	Doc          string              `json:"doc"`
+	Doc          string              `json:"doc" doc:"One plain sentence, shown under the field."`
+	Detail       string              `json:"detail,omitempty" doc:"The rest of the help: trade-offs, units and edge cases, shown behind the field's info icon. Absent when the sentence says it all."`
 	UpdatedBy    string              `json:"updatedBy,omitempty"`
 	UpdatedAt    string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
 }
