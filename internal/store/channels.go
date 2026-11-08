@@ -118,7 +118,7 @@ func (s *sqlStore) GetChannelByIntentRef(ctx context.Context, intentRef string) 
 }
 
 // GetChannelForJob finds the channel a suggestion job's proposal belongs to: the channel a refine
-// or re-curation job names in `jobs.channel_id`, or else the channel the job originated
+// or re-curation job names in `proposal_jobs.channel_id`, or else the channel the job originated
 // (`intent_ref`). It answers "which channel does approving this proposal change?" for the binder,
 // the auto-curate grant and the job's journey.
 //
@@ -131,7 +131,7 @@ func (s *sqlStore) GetChannelForJob(ctx context.Context, jobID string) (Channel,
 
 func channelForJob(ctx context.Context, q channelDB, ph placeholder, jobID string) (Channel, error) {
 	var channelID string
-	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM jobs WHERE id = ?`), jobID).Scan(&channelID)
+	err := q.QueryRowContext(ctx, ph(`SELECT channel_id FROM proposal_jobs WHERE id = ?`), jobID).Scan(&channelID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Channel{}, fmt.Errorf("read job %s channel: %w", jobID, err)
 	}
@@ -152,7 +152,7 @@ func channelForJob(ctx context.Context, q channelDB, ph placeholder, jobID strin
 func (s *sqlStore) ChannelHasUnfinishedJob(ctx context.Context, channelID string) (bool, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT COUNT(*) FROM jobs j
+		`SELECT COUNT(*) FROM proposal_jobs j
 		  WHERE j.channel_id = ?
 		    AND (j.status IN ('queued', 'running')
 		         OR (j.status = 'done' AND EXISTS (
@@ -179,7 +179,7 @@ func (s *sqlStore) SaveChannel(ctx context.Context, ch Channel) (Channel, error)
 			return Channel{}, err
 		}
 		if _, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE jobs SET reached_live=TRUE WHERE id=?`), ch.IntentRef); err != nil {
+			`UPDATE proposal_jobs SET reached_live=TRUE WHERE id=?`), ch.IntentRef); err != nil {
 			return Channel{}, fmt.Errorf("save live channel %s Journey milestone: %w", ch.ID, err)
 		}
 		if err := tx.Commit(); err != nil {

@@ -33,7 +33,7 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE jobs SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
+		`UPDATE proposal_jobs SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
 		  WHERE id=? AND status='running' AND attempts=? AND created_by=?`),
 		epoch(updatedAt), jobID, expectedAttempt, p.CreatedBy)
 	if err != nil {
@@ -45,7 +45,7 @@ func (s *sqlStore) CommitSuggestionSuccess(
 	}
 	if affected != 1 {
 		var status, createdBy string
-		err := tx.QueryRowContext(ctx, s.ph(`SELECT status, created_by FROM jobs WHERE id = ?`), jobID).
+		err := tx.QueryRowContext(ctx, s.ph(`SELECT status, created_by FROM proposal_jobs WHERE id = ?`), jobID).
 			Scan(&status, &createdBy)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -86,7 +86,7 @@ func (s *sqlStore) CommitSuggestionSuccess(
 			p.UpdatedAt = p.CreatedAt
 		}
 		if _, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE jobs SET updated_at=? WHERE id=?`), epoch(p.CreatedAt), jobID); err != nil {
+			`UPDATE proposal_jobs SET updated_at=? WHERE id=?`), epoch(p.CreatedAt), jobID); err != nil {
 			return fmt.Errorf("complete suggestion job %s: order completion: %w", jobID, err)
 		}
 	}
@@ -126,7 +126,7 @@ func (s *sqlStore) ReviseSubmittedProposal(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lockQuery := storedb.LockRows(s.dialect, `SELECT status FROM jobs WHERE id = ?`)
+	lockQuery := storedb.LockRows(s.dialect, `SELECT status FROM proposal_jobs WHERE id = ?`)
 	var status string
 	if err := tx.QueryRowContext(ctx, s.ph(lockQuery), jobID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
@@ -138,19 +138,19 @@ func (s *sqlStore) ReviseSubmittedProposal(
 	}
 
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE jobs
+		`UPDATE proposal_jobs
 		    SET kind='suggest', status='queued', intent_json=?, intent_hash=?, last_error='',
 		        failure_code='', failure_trace_json='', deadline=?, updated_at=?
 		  WHERE id=? AND status IN ('done', 'failed') AND attempts=?
 		    AND ? = (
 		        SELECT p.id FROM proposals p
-		         WHERE p.job_id=jobs.id AND p.created_by=jobs.created_by
+		         WHERE p.job_id=proposal_jobs.id AND p.created_by=proposal_jobs.created_by
 		         ORDER BY p.created_at DESC, p.id DESC
 		         LIMIT 1
 		    )
 		    AND EXISTS (
 		        SELECT 1 FROM proposals p
-		         WHERE p.id=? AND p.job_id=jobs.id AND p.created_by=jobs.created_by
+		         WHERE p.id=? AND p.job_id=proposal_jobs.id AND p.created_by=proposal_jobs.created_by
 		           AND p.status='submitted'
 		    )`),
 		intentJSON, intentHash, epoch(deadline), epoch(updatedAt), jobID, expectedAttempt,
@@ -189,7 +189,7 @@ func (s *sqlStore) CommitSuggestionFailure(
 	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE jobs
+		`UPDATE proposal_jobs
 		    SET status='failed', last_error=?, failure_code=?, failure_trace_json=?, updated_at=?
 		  WHERE id=? AND status='running' AND attempts=?`),
 		cause, failureCode, failureTraceJSON, epoch(updatedAt), jobID, expectedAttempt)
@@ -202,7 +202,7 @@ func (s *sqlStore) CommitSuggestionFailure(
 	}
 	if affected != 1 {
 		var status string
-		err = tx.QueryRowContext(ctx, s.ph(`SELECT status FROM jobs WHERE id = ?`), jobID).Scan(&status)
+		err = tx.QueryRowContext(ctx, s.ph(`SELECT status FROM proposal_jobs WHERE id = ?`), jobID).Scan(&status)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -248,7 +248,7 @@ func (s *sqlStore) CreateSuggestionResult(ctx context.Context, job Job, p Propos
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, s.ph(
-		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
+		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
 		 VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, 1, ?, ?, '')`),
 		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy,
@@ -294,7 +294,7 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	// source changes concurrently, the later SELECT still sees one coherent
 	// snapshot instead of failing a deferred read-to-write upgrade.
 	if _, err := tx.ExecContext(ctx, s.ph(
-		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
+		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy, "", "",
@@ -306,7 +306,7 @@ func (s *sqlStore) CloneSuggestionSuccess(
 	var proposalJSON string
 	if err := tx.QueryRowContext(ctx, s.ph(
 		`SELECT p.proposal_json
-		   FROM jobs j
+		   FROM proposal_jobs j
 		   JOIN proposals p ON p.id = (
 		       SELECT p2.id FROM proposals p2
 		        WHERE p2.job_id = j.id AND p2.created_by = j.created_by
@@ -340,7 +340,7 @@ func (s *sqlStore) CloneSuggestionSuccess(
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: create cached Attempt: %w", job.ID, err)
 	}
 	if _, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE jobs SET workflow_version=?, attempts=1 WHERE id=?`),
+		`UPDATE proposal_jobs SET workflow_version=?, attempts=1 WHERE id=?`),
 		ProposalWorkflowVersion, job.ID); err != nil {
 		return Proposal{}, fmt.Errorf("clone suggestion job %s: version cached result: %w", job.ID, err)
 	}

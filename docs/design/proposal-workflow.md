@@ -60,7 +60,7 @@ separately. An impossible combination fails the read closed and is recorded for 
   Intent cannot decode is failed on its own and never aborts the rest of the claim batch.
 - Retrying a failed first request creates a fresh Job. Refine and re-curate also create a fresh Job,
   seeded from the intent the Channel owns (`channels.intent_json`); the Job names the Channel
-  (`jobs.channel_id`), so approving its Proposal patches that Channel in place. It never reuses or
+  (`proposal_jobs.channel_id`), so approving its Proposal patches that Channel in place. It never reuses or
   edits the Job the Channel was made from, and it never reads the cache. A refine is the refining
   admin's own request; a re-curation is ownerless system work (`kind=recurate`, empty owner) and is
   in nobody's request list. A refine never takes the requester auto-approve grant (an admin reviews

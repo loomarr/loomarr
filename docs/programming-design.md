@@ -783,13 +783,13 @@ A channel built from an intent shouldn't be frozen at build time — as the libr
 **It is a composition over existing parts, not a new engine.** The suggester already (a) re-runs against a stored intent + the current lineup as context (the *refine* path, §7), (b) splits picks into **in-library** (free, instant) vs **acquisition** (must request), (c) scores theme-first (§8.1 suggester), and (d) re-validates acquisitions vs TMDB. Re-curation just *schedules* a refine and lets the results flow through the same approve → bind → reconcile pipeline. The genuinely new pieces are a scheduled job, a per-channel opt-in, and a channel-scoped auto-approve grant.
 
 - **A scheduled job `channel-recurate`** (default **weekly**, `job.recurate.schedule`; Run-now-triggerable like every §18.1 job; LLM-cost-bearing so infrequent). For each **live, intent-backed, auto-curate-opted-in** channel (`IntentRef != "" ∧ AutoCurate ∧ status live/building`; hand-made / paused / detached / opted-out channels are skipped) it triggers a **refresh refine** — a new job seeded from the intent the channel owns (`channels.intent_json`) + its current lineup, with no operator `RefineText` (the "change" is simply "re-evaluate against what's in the library now"). A channel with no stored intent is skipped with a logged reason.
-  The new job names the channel (`jobs.channel_id`), has no requester, and is durably marked `kind=recurate`; the worker uses that server-owned marker
+  The new job names the channel (`proposal_jobs.channel_id`), has no requester, and is durably marked `kind=recurate`; the worker uses that server-owned marker
   to select the channel-scoped grant. It skips the requester's ordinary auto-approve grant for
   this run, and ordinary/manual refine jobs never reach the auto-curate grant. Without that
   discriminator, a requester grant could bypass the channel quality/cap thresholds, while a
   human refine on an opted-in channel could be silently treated as unattended work.
   Discovery-feedback scope follows the same durable authority: immediately before generation the
-  worker resolves the Channel the trusted claimed Job names (`jobs.channel_id`) and attaches that
+  worker resolves the Channel the trusted claimed Job names (`proposal_jobs.channel_id`) and attaches that
   Channel id only to the in-memory Intent. The serializer never
   persists this execution field. Missing, removed, detached, unreadable or empty ownership
   fails the Attempt before catalog or provider access; fresh suggestions and manual refines use

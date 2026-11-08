@@ -53,7 +53,7 @@ tracked title and the intent's `building` channel are written in one transaction
 approve, deny or retry has exactly one winner. A failed approval changes nothing. A channel's non-empty
 `intent_ref` is unique in the database, so concurrent materialization cannot create two channels for one
 intent; uniqueness races roll back and replan. A refine or re-curation job names its channel
-(`jobs.channel_id`) instead, and approval checks, in the same transaction, that the planned channel is
+(`proposal_jobs.channel_id`) instead, and approval checks, in the same transaction, that the planned channel is
 the one the job belongs to, and a newer approved proposal of any job of that channel supersedes an
 older candidate (supersession is per channel). A channel carries its own approved intent (`intent_json`) and requester
 (`requested_by`), so retention never removes what a refine or re-curation needs. Codec derivation and the first Tunarr reconcile run after

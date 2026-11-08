@@ -38,7 +38,7 @@ func (s *sqlStore) CountTitlesByState(ctx context.Context) (map[provision.State]
 // CountJobsByStatus returns the number of suggester jobs in each status
 // (queued/running/done/failed) — the queue-depth gauge (§17).
 func (s *sqlStore) CountJobsByStatus(ctx context.Context) (map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM jobs GROUP BY status`)
+	rows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM proposal_jobs GROUP BY status`)
 	if err != nil {
 		return nil, fmt.Errorf("count jobs by status: %w", err)
 	}
@@ -59,7 +59,7 @@ func (s *sqlStore) CountJobsByStatus(ctx context.Context) (map[string]int, error
 // Job creation time for each nonterminal status. Re-curation Jobs have a
 // different operator lifecycle and do not enter the First-channel health view.
 func (s *sqlStore) OldestProposalJobsByStatus(ctx context.Context) (map[string]time.Time, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT status, MIN(created_at) FROM jobs
+	rows, err := s.db.QueryContext(ctx, `SELECT status, MIN(created_at) FROM proposal_jobs
 		WHERE kind = 'suggest' AND status IN ('queued', 'running') GROUP BY status`)
 	if err != nil {
 		return nil, fmt.Errorf("oldest Proposal Jobs by status: %w", err)
@@ -82,7 +82,7 @@ func (s *sqlStore) OldestProposalJobsByStatus(ctx context.Context) (map[string]t
 // Job status/age gauges instead of a second, potentially contradictory gauge.
 func (s *sqlStore) CountProposalJobAttemptsByStatus(ctx context.Context) (map[string]int, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT a.status, COUNT(*)
-		FROM proposal_job_attempts a JOIN jobs j ON j.id = a.job_id
+		FROM proposal_job_attempts a JOIN proposal_jobs j ON j.id = a.job_id
 		WHERE j.kind = 'suggest' AND a.status IN ('succeeded', 'failed', 'interrupted')
 		GROUP BY a.status`)
 	if err != nil {
@@ -105,7 +105,7 @@ func (s *sqlStore) CountProposalJobAttemptsByStatus(ctx context.Context) (map[st
 // Jobs. Returning raw values here keeps policy out of persistence; the metrics
 // module owns the closed public label set and maps every unknown value to other.
 func (s *sqlStore) CountFailedProposalJobsByCode(ctx context.Context) (map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT failure_code, COUNT(*) FROM jobs
+	rows, err := s.db.QueryContext(ctx, `SELECT failure_code, COUNT(*) FROM proposal_jobs
 		WHERE kind = 'suggest' AND status = 'failed' GROUP BY failure_code`)
 	if err != nil {
 		return nil, fmt.Errorf("count failed Proposal Jobs by code: %w", err)
