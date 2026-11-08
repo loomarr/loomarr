@@ -569,6 +569,20 @@ type AiringStore interface {
 	// channel, for ranking lineup entries by how long they have gone without airing. A key that
 	// has not aired inside the retained history is absent — callers read that as "never aired".
 	LastAiredByKey(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
+	// RecordScheduledAirings stamps programmes a channel's schedule put on air, watched or not
+	// (#1677): the scheduled signal, kept apart from RecordAiring's watched one. Written from
+	// reconcile; idempotent per airing, so recording the same started programmes again is a no-op.
+	RecordScheduledAirings(ctx context.Context, channelID string, airings []ScheduledAiring, recordedAt time.Time) error
+	// LastScheduledByChannel is LastAiredByChannel over the scheduled ledger: the latest scheduled
+	// airing per unit, counting only rows recorded strictly before `before`.
+	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
+}
+
+// ScheduledAiring is one programme a channel's schedule put on air (#1677).
+type ScheduledAiring struct {
+	Key           provision.Key
+	LibraryItemID string
+	AiredAt       time.Time
 }
 
 // LibraryPathStore caches the media server's file path per library item (#1456) so playout

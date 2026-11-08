@@ -38,7 +38,7 @@ clients show them beside the data.
 ## Contents
 
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
-- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
+- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`library_item_paths`](#library_item_paths), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
@@ -283,6 +283,18 @@ What a channel actually broadcast: one row each time an episode or film started 
 | --- | --- | --- |
 | `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
 | `library_item_id` | The library item id of the episode or film that aired. | `TEXT` · key |
+| `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
+| `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
+| `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
+
+### scheduled_airings
+
+What a channel's schedule put on air: one row each time an episode or film started on a channel's timeline, whether or not anyone watched. Kept apart from `airings`, which records only what was actually streamed. The schedule reads both, so a channel nobody watches still rotates evenly instead of re-airing something it showed hours ago. Pruned and deleted like `airings`.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
+| `library_item_id` | The library item id of the episode or film. | `TEXT` · key |
 | `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
 | `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
 | `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
