@@ -30,22 +30,17 @@ MOD = "github.com/loomarr/loomarr/"
 # "other".
 PKG = {}
 for sub, pkgs in {
-    "API": "api platform/httpx auth platform/web setup invitation contact secretprotection",
-    "scheduler/guide": "channels/schedule channels/approval channels/edit programmer channels channelmaint",
+    "API": "api people platform/httpx platform/web",
+    "scheduler/guide": "channels",
     "jobs runtime": "platform/jobs media/bgexec",
-    "filler": "filler filleradmission fillerscreening fillercorpus fillerenrichment fillereval "
-              "fillerresearch fillerstructure fillerstructuremedia fillerstructurewindow "
-              "fillerstructurewindowopenrouter clipfetch media/measure media media/tools episodeevidence",
-    "curation": "proposals channels/recommend channels/recurate channels/ideas taxonomy platform/holidayvocab platform/textmatch "
-                "moviecollections tmdb catalog",
-    "library sync": "library inventory requester provision provisionbackstop",
+    "filler": "filler media",
+    "curation": "proposals channels/recommend channels/recurate channels/ideas platform/holidayvocab "
+                "platform/textmatch moviecollections tmdb catalog",
+    "library sync": "library inventory requester provision provisionbackstop episodeevidence metadataprovider",
     "images": "media/images",
-    "database": "store fillerstore",
-    "playout": "playout playout/watermark channels/viewing playout/bench",
-    "platform": "platform/settings platform/config notifications platform/diagnostics recovery retention "
-                "platform/storagegovernor platform/events platform/activity app playout/landiscovery "
-                "installationlocation platform/logchange platform/releasenotes platform/buildinfo "
-                "playout/backendtransition media/proctree platform",
+    "database": "store",
+    "playout": "playout channels/viewing",
+    "platform": "platform app playout/landiscovery playout/backendtransition media/proctree",
     "llm": "platform/llm platform/openroutercatalog platform/openroutermedia eval",
     "metrics scrape": "platform/metrics",
 }.items():

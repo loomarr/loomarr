@@ -312,12 +312,12 @@ original assignees and acceptance criteria.
   `metro@0.87.0`; establish the actual input/consumer exposure and a compatible remedy. Earlier
   dependency patches #1154 cover different package families.
 - Keep #688 open for its remaining homelab acceptance; its scheme/verifier code exists in
-  `internal/library/auth.go`, `internal/library/client_test.go` and `internal/auth/auth_test.go`.
+  `internal/library/auth.go`, `internal/library/client_test.go` and `internal/people/auth/auth_test.go`.
 - Keep #955 open: `internal/api/fillerpullapproval.go` still starts ingestion before persisting the
   decision and explicitly tracks concurrent atomicity there. #1142 protects a different boundary.
 - Keep #1098 open: general theme matching still credits any matching term, while general era
   scoring measures decade spread. #1151's named-membership/unknown-episode repairs do not satisfy
-  all of this issue's counterexamples (`internal/suggest/score.go`, Proposal review UI).
+  all of this issue's counterexamples (`internal/proposals/suggest/score.go`, Proposal review UI).
 - Keep #1097/#1037 open for their remaining convergence and declared-profile evidence; current
   planner classes and `TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption` are
   reusable implementation evidence, not the complete qualification result.
