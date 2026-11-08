@@ -5088,12 +5088,17 @@ components:
           type: string
         markdown:
           type: string
+        section:
+          description: The canonical heading anchor for the requested section; empty when none was requested or the content is the page's top
+          type: string
         slug:
+          description: The canonical slug of the page served, which differs from the requested one when the page moved
           type: string
         title:
           type: string
       required:
         - slug
+        - section
         - title
         - markdown
       type: object
@@ -15776,6 +15781,15 @@ paths:
           schema:
             examples:
               - troubleshooting
+            type: string
+        - description: The heading anchor a link names. A section that was renamed or moved resolves to where its content lives now.
+          explode: false
+          in: query
+          name: section
+          schema:
+            description: The heading anchor a link names. A section that was renamed or moved resolves to where its content lives now.
+            examples:
+              - setup-checks
             type: string
       responses:
         "200":
