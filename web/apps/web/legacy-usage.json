@@ -238,7 +238,7 @@
       "tailwindClasses": 96
     },
     "src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
-      "tailwindClasses": 41
+      "tailwindClasses": 28
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "tailwindClasses": 130,
