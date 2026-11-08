@@ -1,3 +1,5 @@
+export type { AboutDetail, AboutPageProps } from "./src/about-page";
+export { AboutPage, TMDB_NOTICE } from "./src/about-page";
 export type { AiReconnectBannerProps } from "./src/ai-reconnect-banner";
 export { AiReconnectBanner } from "./src/ai-reconnect-banner";
 export type { ChannelIdentProps } from "./src/channel-ident";
