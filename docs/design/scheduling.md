@@ -39,10 +39,16 @@ change per channel.
   playout resolver, which airs the next window from that end even before reconcile has run by
   arranging it with `CyclePreview`. The guide chains windows at the same ends, so no block is
   clipped at a boundary. If reconcile missed more than one window, the current window is walked
-  from its own opening, and that one turn may join a programme part-way. Tunarr-backed channels
-  cannot carry over: Tunarr loops the list it was given from its own clock and cannot be told
-  where a window starts, so their anchor stays fixed and their guide still cuts at the boundary
-  (#1691).
+  from its own opening, and that one turn may join a programme part-way.
+- **Tunarr channels cut at the window boundary, by decision** (#1691). Internal playout carries the
+  programme on air over the rolling-window turn; Tunarr-backed channels do not. Tunarr loops the
+  list it was given from its own clock and cannot be told where a window starts or at what offset to
+  join the new list, so their anchor stays fixed (`channels.Engine.CarriesOver` is false), their guide
+  cuts at the boundary (`fixedAnchorLegs`), and the programme airing there can be cut off at local
+  midnight in `guide.timezone`, depending on when reconcile pushes the new list relative to Tunarr's
+  loop. This is accepted rather than worked around: internal playout is the default backend, and
+  delaying the push or offsetting the list would depend on Tunarr API behaviour Loomarr does not
+  control.
 - **Availability resolution** turns an approved entry's key into `(library item id, duration,
   available)`. Duration comes from the media server's `RunTimeTicks`; a program slot always has a
   real `duration > 0`.
