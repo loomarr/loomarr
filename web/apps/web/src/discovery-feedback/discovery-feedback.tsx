@@ -1,6 +1,7 @@
 import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import type { DiscoveryFeedbackDTO } from "@loomarr/api/models/discoveryFeedbackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -94,9 +95,9 @@ const DiscoveryFeedbackControls = ({
           </Button>
         ))}
         {canClear && (
-          <Button type="button" variant="link" size="sm" disabled={disabled} onClick={onClear}>
+          <Action disabled={disabled} onPress={onClear} variant="link">
             Undo
-          </Button>
+          </Action>
         )}
       </fieldset>
       <p className="text-muted-foreground text-xs">

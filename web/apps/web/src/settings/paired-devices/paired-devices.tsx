@@ -1,13 +1,12 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Field } from "@loomarr/design-system";
+import { Action, Field } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 
 // The two halves of device pairing, in the order an operator meets them: approve the code a TV is
 // showing, then manage what is already paired (§11, Shield P1).
@@ -112,9 +111,12 @@ const ApproveDevice = () => {
         </form.Field>
         <form.Subscribe selector={(state) => state.values.userCode}>
           {(userCode) => (
-            <Button disabled={!userCode.trim() || approve.isPending} type="submit">
+            <Action
+              // A real submit button under Action's look, so Enter in a field still submits.
+              render={<button disabled={!userCode.trim() || approve.isPending} type="submit" />}
+            >
               {approve.isPending ? "Checking…" : "Approve device"}
-            </Button>
+            </Action>
           )}
         </form.Subscribe>
       </form>
@@ -139,9 +141,9 @@ const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () =>
       <p className="truncate text-sm font-medium">{device.deviceName || "Device"}</p>
       <p className="text-muted-foreground text-xs">Last used {relativeAge(device.lastSeenAt)}</p>
     </div>
-    <Button disabled={busy} onClick={onRevoke} size="sm" variant="outline">
+    <Action disabled={busy} onPress={onRevoke} variant="outline">
       {busy ? "Removing…" : "Remove"}
-    </Button>
+    </Action>
   </li>
 );
 
