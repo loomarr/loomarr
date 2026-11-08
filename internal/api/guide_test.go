@@ -662,14 +662,14 @@ func TestGuide_ProgrammesCarryTheirTitlesLogoAndBackdrop(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, ref := range []store.ImageRef{
+	for _, ref := range []clipstore.ImageRef{
 		{ImageHash: "film-logo", OwnerID: "film", Role: "logo"},
 		{ImageHash: "film-fanart", OwnerID: "film", Role: "backdrop"},
 		{ImageHash: "show-fanart", OwnerID: "show", Role: "backdrop"},
 		{ImageHash: "show-logo", OwnerID: "show", Role: "logo"},
 	} {
 		ref.OwnerKind = store.LibraryItemImageOwner
-		if err := st.PutImage(ctx, store.Image{Hash: ref.ImageHash, Role: ref.Role, Width: 1, Height: 1,
+		if err := st.PutImage(ctx, clipstore.Image{Hash: ref.ImageHash, Role: ref.Role, Width: 1, Height: 1,
 			Visibility: "member", CreatedAt: now}); err != nil {
 			t.Fatal(err)
 		}

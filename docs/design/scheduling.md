@@ -169,6 +169,18 @@ that first records a programme which started before the boundary, shapes the nex
 cannot re-arrange the one on air. A channel on an unbounded window never opens a new window, so it
 reads no history.
 
+`airings` is the **watched** signal: a channel nobody tunes to records nothing there.
+`scheduled_airings` (same shape) is the **scheduled** signal (#1677; "aired" means both, as separate
+signals, #1678 decision 1). On internal playout, each reconcile records every programme the accepted
+cycle has started, up to where that cycle hands over at its window boundary. Each row is stamped
+`recorded_at = aired_at`, so it counts for every window that opens after the programme started,
+however late the reconcile that writes it. The write is idempotent and best-effort. Placement takes
+each unit's later time across watched airings, the scheduled ledger, and the accepted cycle's own
+programmes that started before the window opened. The last of these is read in memory, so a window
+the playout resolver arranges at the turn, before reconcile has recorded the old cycle's final
+programmes, comes out the same as reconcile's. Tunarr channels record no scheduled airings: Tunarr
+loops its list on its own clock.
+
 Recency is a **soft ranking signal**, not a constraint (`programming-design.md` §3.1). A 24-hour day
 consumes about 13 films, so a week without repeats needs about 168 hours of content; a hard
 constraint would relax on nearly every real channel and teach operators to ignore the ladder. The

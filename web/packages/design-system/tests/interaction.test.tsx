@@ -20,6 +20,32 @@ describe("shared interaction controls", () => {
     expect(markup).toContain('aria-pressed="true"');
   });
 
+  it("draws an icon action's glyph alone and announces its children as the name", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action icon="close" layout="icon" variant="ghost">
+          Close player
+        </Action>
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain('aria-label="Close player"');
+    expect(markup).not.toContain(">Close player<");
+    expect(markup).toContain("<svg");
+  });
+
+  it("keeps a toggle action's own aria-pressed when it is off", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action aria-pressed={false} variant="ghost">
+          More like this
+        </Action>
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain('aria-pressed="false"');
+  });
+
   it("owns accessible label, help, invalid, and disabled field presentation", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider theme="light">

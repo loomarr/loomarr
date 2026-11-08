@@ -5,6 +5,7 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
 import {
+  Action,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -16,7 +17,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Search, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
-import { Button } from "@/components/ui/button";
 
 type Provider = "brave" | "searxng";
 
@@ -261,15 +261,15 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 />
               ) : null}
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" onClick={() => void runCurrentTest()} disabled={busy}>
+                <Action disabled={busy} onPress={() => void runCurrentTest()} variant="outline">
                   {testProvider.isPending ? "Checking…" : "Test connection"}
-                </Button>
-                <Button type="button" variant="outline" onClick={openSetup} disabled={busy}>
+                </Action>
+                <Action disabled={busy} onPress={openSetup} variant="outline">
                   Replace provider
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => void remove()} disabled={busy}>
+                </Action>
+                <Action disabled={busy} onPress={() => void remove()} variant="ghost">
                   Remove web search
-                </Button>
+                </Action>
               </div>
             </section>
           ) : null}
@@ -284,14 +284,11 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               Add it if you want Loomarr to search more broadly when these sources come up short.
             </p>
           </div>
-          <Button
-            type="button"
-            className="shrink-0 self-start sm:self-auto"
-            onClick={openSetup}
-            disabled={!enabled || statusQuery.isLoading || statusQuery.isError}
-          >
-            Add web search
-          </Button>
+          <div className="shrink-0 self-start sm:self-auto">
+            <Action disabled={!enabled || statusQuery.isLoading || statusQuery.isError} onPress={openSetup}>
+              Add web search
+            </Action>
+          </div>
         </div>
       ) : null}
 
@@ -380,12 +377,12 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               </p>
             ) : null}
             <div className="border-border flex justify-end gap-2 border-t pt-4">
-              <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+              <Action disabled={busy} onPress={() => setOpen(false)} variant="ghost">
                 Cancel
-              </Button>
-              <Button type="button" onClick={() => void testAndSave()} disabled={busy}>
+              </Action>
+              <Action disabled={busy} onPress={() => void testAndSave()}>
                 {busy ? "Checking…" : "Test and add"}
-              </Button>
+              </Action>
             </div>
           </div>
         </DialogContent>

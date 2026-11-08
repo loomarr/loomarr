@@ -141,12 +141,10 @@
       "tailwindClasses": 91
     },
     "src/components/loomarr/dashboard/service-control/service-control.tsx": {
-      "tailwindClasses": 46,
-      "legacyUi": 1
+      "tailwindClasses": 41
     },
     "src/components/loomarr/dashboard/services-panel/services-panel.tsx": {
-      "tailwindClasses": 49,
-      "legacyUi": 1
+      "tailwindClasses": 49
     },
     "src/components/loomarr/feedback/collapsible-section/collapsible-section.tsx": {
       "tailwindClasses": 50,
@@ -256,12 +254,10 @@
       "tailwindClasses": 101
     },
     "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
-      "tailwindClasses": 83,
-      "legacyUi": 1
+      "tailwindClasses": 81
     },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
-      "tailwindClasses": 146,
-      "legacyUi": 1
+      "tailwindClasses": 146
     },
     "src/components/loomarr/settings/installation-location/installation-location.tsx": {
       "tailwindClasses": 16
@@ -274,8 +270,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
-      "tailwindClasses": 47,
-      "legacyUi": 1
+      "tailwindClasses": 41
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "tailwindClasses": 130,
@@ -285,8 +280,7 @@
       "tailwindClasses": 14
     },
     "src/components/loomarr/settings/settings-save-bar/settings-save-bar.tsx": {
-      "tailwindClasses": 13,
-      "legacyUi": 1
+      "tailwindClasses": 12
     },
     "src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
       "tailwindClasses": 37
@@ -404,27 +398,25 @@
     },
     "src/filler/channel-filler/channel-filler.tsx": {
       "tailwindClasses": 116,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
       "tailwindClasses": 48,
       "legacyUi": 1
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
-      "tailwindClasses": 112,
-      "legacyUi": 3
+      "tailwindClasses": 108,
+      "legacyUi": 2
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
       "tailwindClasses": 85,
       "legacyUi": 4
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
-      "tailwindClasses": 144,
-      "legacyUi": 1
+      "tailwindClasses": 144
     },
     "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 62,
-      "legacyUi": 1
+      "tailwindClasses": 62
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
       "tailwindClasses": 24,
@@ -449,24 +441,19 @@
       "tailwindClasses": 25
     },
     "src/filler/filler-catalog/composite-catalog-group/composite-catalog-group.tsx": {
-      "tailwindClasses": 13,
-      "legacyUi": 1
+      "tailwindClasses": 13
     },
     "src/filler/filler-catalog/filler-catalog.tsx": {
-      "tailwindClasses": 59,
-      "legacyUi": 1
+      "tailwindClasses": 59
     },
     "src/filler/filler-manage/filler-manage.tsx": {
-      "tailwindClasses": 20,
-      "legacyUi": 1
+      "tailwindClasses": 20
     },
     "src/filler/filler-overview/filler-overview.tsx": {
-      "tailwindClasses": 63,
-      "legacyUi": 1
+      "tailwindClasses": 63
     },
     "src/filler/filler-page/filler-page.tsx": {
-      "tailwindClasses": 45,
-      "legacyUi": 1
+      "tailwindClasses": 45
     },
     "src/filler/filler-settings/filler-settings.tsx": {
       "tailwindClasses": 110,
@@ -476,12 +463,10 @@
       "tailwindClasses": 18
     },
     "src/filler/incoming/incoming-processing-details/incoming-processing-details.tsx": {
-      "tailwindClasses": 54,
-      "legacyUi": 1
+      "tailwindClasses": 54
     },
     "src/filler/incoming/incoming.tsx": {
-      "tailwindClasses": 113,
-      "legacyUi": 1
+      "tailwindClasses": 112
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
       "tailwindClasses": 38,
@@ -523,8 +508,7 @@
       "tailwindClasses": 3
     },
     "src/filler/split-review-page/split-review-page.tsx": {
-      "tailwindClasses": 60,
-      "legacyUi": 1
+      "tailwindClasses": 60
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "tailwindClasses": 211,
