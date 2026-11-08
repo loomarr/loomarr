@@ -113,6 +113,37 @@ type Descriptive struct {
 	Status string
 	// Runtime is the nominal running time, not a measurement of a file.
 	Runtime time.Duration
+	// Tagline is the one-line pitch printed on a poster.
+	Tagline string
+	// Countries are the production countries, as the source names them.
+	Countries []string
+	// Trailer is a web page that plays the trailer: an http(s) URL.
+	Trailer string
+	// Edition labels the version of the title this file is, such as "Director's Cut" (decision
+	// 54); empty is the theatrical version or unknown.
+	Edition string
+	// People are the cast, in billing order, then the key crew.
+	People []Person
+}
+
+// PersonRole is what a person did on a title.
+type PersonRole string
+
+const (
+	PersonActor    PersonRole = "actor"
+	PersonDirector PersonRole = "director"
+	PersonWriter   PersonRole = "writer"
+)
+
+// Person is someone credited on a title (decision 49). TMDB is their TMDB person id when the
+// source knows it; a person without one is kept by name, unlinked.
+type Person struct {
+	Name      string
+	Role      PersonRole
+	Character string
+	TMDB      string
+	// Photo is an http(s) URL of their headshot.
+	Photo string
 }
 
 // Certification is a content rating as one source states it. Country is the ISO 3166-1 alpha-2

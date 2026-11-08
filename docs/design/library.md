@@ -106,10 +106,16 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   its current file and the arr's media summary. Radarr returns a movie by TMDB id. Ratings from Radarr
   carry its configured certification country. The connection is read once per operation.
 - **NFO** (`metadataprovider/nfo`) is a sidecar, resolved by the media path: `<file>.nfo`, `movie.nfo`
-  when the folder holds only that video, or `tvshow.nfo` in a series folder. It reads typed `uniqueid`
-  elements, guide text, `mpaa` and numbering. The default `uniqueid` names its catalog. Reads are capped
-  at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop malformed
-  ids.
+  when the folder holds only that video, or `tvshow.nfo` in a series folder. It reads the whole title
+  (decision 59): typed `uniqueid` elements and the older `<id>`, `<imdbid>`, `<tmdbid>` and `<tvdbid>`
+  tags (a bare numeric `<id>` is TMDB's for a movie and TVDB's for a show, by Kodi's convention; a
+  `uniqueid` wins its namespace), guide text, `mpaa`, numbering, tags, the default `<ratings>` score,
+  tagline, countries, trailer (Kodi's YouTube add-on link becomes the YouTube page), `<edition>`,
+  `<set>` (linked when it carries `tmdbcolid`), and people: the cast in billing order with character,
+  photo and TMDB id, then directors and writers. Watched state and the scraper's stream details are
+  not read. Its details rank below every service. The default `uniqueid` names its catalog. Reads are
+  capped at 1 MiB, refuse symlinks and any DOCTYPE, accept UTF-8, Latin-1 and Windows-1252, and drop
+  malformed ids.
 - **TMDB** (`metadataprovider/tmdb`) is a catalog over the shared `internal/tmdb` client. A movie or
   series by TMDB id is one detail call with `append_to_response` (external ids, US release dates or
   content ratings, keywords, images), so the record carries guide text, genres, keywords, the

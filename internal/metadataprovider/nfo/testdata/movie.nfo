@@ -5,6 +5,9 @@
     <originaltitle>Le Verger de Cuivre</originaltitle>
     <sorttitle>Copper Orchard</sorttitle>
     <ratings>
+        <rating name="tomatometerallcritics" max="100">
+            <value>91</value>
+        </rating>
         <rating name="themoviedb" max="10" default="true">
             <value>7.2</value>
             <votes>310</votes>
@@ -14,7 +17,10 @@
     <outline></outline>
     <plot>A clockmaker inherits an orchard
         whose trees keep perfect time.</plot>
-    <tagline></tagline>
+    <tagline>Every tree keeps
+        time.</tagline>
+    <trailer>plugin://plugin.video.youtube/?action=play_video&amp;videoid=AbCdEfGhIjK</trailer>
+    <edition>Director's Cut</edition>
     <runtime>112</runtime>
     <thumb aspect="poster">https://artwork.example/movie/90000501/poster.jpg</thumb>
     <mpaa>Rated PG-13</mpaa>
@@ -27,14 +33,27 @@
     <genre>Drama</genre>
     <genre>Fantasy</genre>
     <country>France</country>
-    <set>
+    <tag>Clockwork</tag>
+    <set tmdbcolid="90000701">
         <name>The Copper Orchard Collection</name>
+        <overview />
     </set>
     <credits>Invented Writer</credits>
     <director>Invented Director</director>
     <premiered>2016-05-20</premiered>
     <year>2016</year>
     <studio>Ironbell Pictures</studio>
+    <actor>
+        <name>Invented Extra</name>
+        <role>Passer-by</role>
+    </actor>
+    <actor>
+        <name>Invented Costar</name>
+        <role>The Gardener</role>
+        <order>1</order>
+        <thumb>https://artwork.example/person/90000802.jpg</thumb>
+        <tmdbid>90000802</tmdbid>
+    </actor>
     <actor>
         <name>Invented Actor</name>
         <role>The Clockmaker</role>
