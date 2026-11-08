@@ -105,18 +105,20 @@ test -d "$eligible"
 
 audit="$(PATH="$fake_bin:$PATH" GH_GC_FIXTURE="$fixture" AGENT_GC_MAIN_REF=main \
 	LOOMARR_REPO_ROOT="$repo" "$SCRIPT_DIR/agent-worktree-gc.sh")"
-printf '%s\n' "$audit" | grep -q $'^ELIGIBLE\teligible\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\tdirty\tdirty\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\tactive\tactive\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\topen\topen-pr\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\tdiverged\thead-diverged\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\tno-pr\tno-pr\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\tcredential\tlocal-credentials\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\tlocked\tlocked\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\tdependency\tactive-dependency\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\tdependent\tactive\t'
-printf '%s\n' "$audit" | grep -q $'^PROTECTED\truntime\trunning-process\t'
-printf '%s\n' "$audit" | grep -q 'eligible=1 removed=0 protected=10'
+# Here-strings, not `printf | grep -q`: grep -q exits on its first match, so printf can hit a closed
+# pipe and pipefail fails the script on a passing check.
+grep -q $'^ELIGIBLE\teligible\t' <<<"$audit"
+grep -q $'^PROTECTED\tdirty\tdirty\t' <<<"$audit"
+grep -q $'^PROTECTED\tactive\tactive\t' <<<"$audit"
+grep -q $'^PROTECTED\topen\topen-pr\t' <<<"$audit"
+grep -q $'^PROTECTED\tdiverged\thead-diverged\t' <<<"$audit"
+grep -q $'^PROTECTED\tno-pr\tno-pr\t' <<<"$audit"
+grep -q $'^PROTECTED\tcredential\tlocal-credentials\t' <<<"$audit"
+grep -q $'^PROTECTED\tlocked\tlocked\t' <<<"$audit"
+grep -q $'^PROTECTED\tdependency\tactive-dependency\t' <<<"$audit"
+grep -q $'^PROTECTED\tdependent\tactive\t' <<<"$audit"
+grep -q $'^PROTECTED\truntime\trunning-process\t' <<<"$audit"
+grep -q 'eligible=1 removed=0 protected=10' <<<"$audit"
 test -d "$eligible"
 
 kill "$runtime_pid"
@@ -135,9 +137,9 @@ fi
 kill "$runtime_pid"
 wait "$runtime_pid" 2>/dev/null || true
 runtime_pid=
-printf '%s\n' "$applied" | grep -q $'^REMOVED\teligible\t'
-printf '%s\n' "$applied" | grep -q $'^REMOVED\truntime\t'
-printf '%s\n' "$applied" | grep -q 'eligible=2 removed=2 protected=9'
+grep -q $'^REMOVED\teligible\t' <<<"$applied"
+grep -q $'^REMOVED\truntime\t' <<<"$applied"
+grep -q 'eligible=2 removed=2 protected=9' <<<"$applied"
 test ! -e "$eligible"
 test ! -e "$runtime"
 if git -C "$repo" show-ref --verify --quiet refs/heads/eligible; then
