@@ -106,6 +106,8 @@ interface SelectControlProps<Value extends string> {
   onValueChange: (value: Value) => void;
   open: boolean;
   options: readonly SelectOption<Value>[];
+  // What the closed control says before anything is chosen ("Choose one account").
+  placeholder?: string;
   value: Value;
 }
 
@@ -118,6 +120,7 @@ const SelectControl = <Value extends string>({
   onValueChange,
   open,
   options,
+  placeholder = "Choose an option",
   value,
 }: SelectControlProps<Value>) => {
   const selected = options.find((option) => option.value === value);
@@ -146,7 +149,7 @@ const SelectControl = <Value extends string>({
             <View flex={1} minWidth={0}>
               {/* Left, like a form field: the web Pressable's button would otherwise centre it. */}
               <Text density={density} numberOfLines={1} textAlign="left" textRole="compact" tone="primary">
-                {selected?.label ?? "Choose an option"}
+                {selected?.label ?? placeholder}
               </Text>
             </View>
             <Icon decorative glyph={icons.channelDown} size="compact" tone="secondary" />
@@ -166,7 +169,7 @@ const SelectControl = <Value extends string>({
             onPress={() => onOpenChange(!open)}
             tone="secondary"
           >
-            {selected?.label ?? "Choose an option"}
+            {selected?.label ?? placeholder}
           </Action>
         </>
       )}

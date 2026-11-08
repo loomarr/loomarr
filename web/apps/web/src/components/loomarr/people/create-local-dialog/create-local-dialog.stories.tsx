@@ -39,8 +39,8 @@ const Validation: Story = {
 };
 const AdminSelected: Story = {
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("combobox", { name: "Role" }));
-    await userEvent.keyboard("a{Enter}");
+    await userEvent.click(await canvas.findByRole("button", { name: "Role, Member" }));
+    await userEvent.click(await canvas.findByRole("radio", { name: /^Admin/ }));
   },
 };
 

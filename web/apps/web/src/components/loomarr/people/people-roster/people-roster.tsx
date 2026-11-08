@@ -1,13 +1,25 @@
+import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { formatRelative } from "@loomarr/core/format";
 import { Badge } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { KeyRound, Server } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { PeopleRosterProps } from "./people-roster.type";
+
+const ROLE_FILTERS = [
+  { label: "All roles", value: "all" },
+  { label: "Admin", value: UserBodyRole.admin },
+  { label: "Member", value: UserBodyRole.member },
+];
+
+const STATUS_FILTERS = [
+  { label: "All statuses", value: "all" },
+  { label: "Enabled", value: "enabled" },
+  { label: "Disabled", value: "disabled" },
+];
 
 const credentialLabel = (local: boolean, offlineLogin: boolean) => {
   if (local) return "Local account";
@@ -17,8 +29,6 @@ const credentialLabel = (local: boolean, offlineLogin: boolean) => {
 };
 
 const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }: PeopleRosterProps) => {
-  const roleId = useId();
-  const statusId = useId();
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("all");
   const [status, setStatus] = useState("all");
@@ -46,32 +56,20 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
         </div>
         <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_9rem_9rem] lg:w-auto">
           <SearchField label="Search people" onChangeText={setQuery} placeholder="Name" value={query} />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={roleId}>Role</Label>
-            <Select value={role} onValueChange={(value) => setRole(String(value))}>
-              <SelectTrigger id={roleId}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All roles</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="member">Member</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={statusId}>Status</Label>
-            <Select value={status} onValueChange={(value) => setStatus(String(value))}>
-              <SelectTrigger id={statusId}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="enabled">Enabled</SelectItem>
-                <SelectItem value="disabled">Disabled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <BrowserSelectControl
+            appearance="field"
+            label="Role"
+            onValueChange={setRole}
+            options={ROLE_FILTERS}
+            value={role}
+          />
+          <BrowserSelectControl
+            appearance="field"
+            label="Status"
+            onValueChange={setStatus}
+            options={STATUS_FILTERS}
+            value={status}
+          />
         </div>
       </div>
 

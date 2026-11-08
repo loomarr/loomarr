@@ -7,6 +7,7 @@ import {
   type SelectControlProps,
   Tabs,
   type TabsProps,
+  Text,
 } from "@loomarr/design-system";
 import type { ReactElement, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -87,8 +88,19 @@ const BrowserSelectControl = <Value extends string>({
         root.current?.querySelector<HTMLElement>("[aria-expanded]")?.focus();
       }}
       ref={root}
-      style={{ border: 0, margin: 0, minWidth: 0, padding: 0 }}
+      style={{
+        border: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        margin: 0,
+        minWidth: 0,
+        padding: 0,
+      }}
     >
+      {/* The field look announces its label but does not print it; a web form always shows one,
+          as the channel page's default-audio picker does. */}
+      {props.appearance === "field" ? <Text textRole="label">{props.label}</Text> : null}
       <SelectControl
         {...props}
         onOpenChange={setOpen}

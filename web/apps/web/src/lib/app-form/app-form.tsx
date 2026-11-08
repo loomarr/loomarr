@@ -1,6 +1,7 @@
-import { Field } from "@loomarr/design-system";
+import { Field, type SelectOption, Surface } from "@loomarr/design-system";
 import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
 import type { ComponentProps } from "react";
+import { BrowserSelectControl } from "@/client-adapters";
 import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { cn } from "@/lib/utils";
 
@@ -72,8 +73,40 @@ const TextField = ({
   );
 };
 
+interface SelectFieldProps<Value extends string> {
+  disabled?: boolean;
+  label: string;
+  options: readonly SelectOption<Value>[];
+  placeholder?: string;
+}
+
+// SelectField — a choice among a few known values, as the design-system select the channel page
+// already uses. The value's type is the option list's, so a form cannot hand it a stray string.
+const SelectField = <Value extends string>({
+  disabled,
+  label,
+  options,
+  placeholder,
+}: SelectFieldProps<Value>) => {
+  const field = useFieldContext<Value>();
+  return (
+    <Surface backgroundColor="transparent" borderWidth={0} gap={8}>
+      <BrowserSelectControl
+        appearance="field"
+        disabled={disabled}
+        label={label}
+        onValueChange={field.handleChange}
+        options={options}
+        placeholder={placeholder}
+        value={field.state.value}
+      />
+      <FieldError errors={field.state.meta.errors} />
+    </Surface>
+  );
+};
+
 const { useAppForm } = createFormHook({
-  fieldComponents: { TextField },
+  fieldComponents: { SelectField, TextField },
   fieldContext,
   formComponents: {},
   formContext,

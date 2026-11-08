@@ -61,7 +61,7 @@ describe("InvitationDialog", () => {
   it("creates a member by default and presents one in-memory link as QR and copy", async () => {
     const { onCreate, onIssueGrant } = renderDialog();
 
-    expect(screen.getByRole("combobox", { name: "Initial role" })).toHaveTextContent("Member");
+    expect(screen.getByRole("button", { name: "Initial role, Member" })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Reserved username"), "  newcomer  ");
     await userEvent.type(screen.getByLabelText("Contact email (optional)"), "person@example.com");
     await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
@@ -86,13 +86,13 @@ describe("InvitationDialog", () => {
   it("requires an explicit Library account and explicit administrator choice", async () => {
     const { onCreate } = renderDialog();
     await userEvent.click(screen.getByRole("radio", { name: "Emby or Jellyfin account" }));
-    await userEvent.click(screen.getByRole("combobox", { name: "Library account" }));
-    await userEvent.click(await screen.findByRole("option", { name: /Ada/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Library account,/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: /Ada/ }));
     expect(screen.getByText("Media-server role: Administrator")).toBeInTheDocument();
     expect(screen.getByText("Initial Loomarr role: Member")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Initial role" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Administrator" }));
+    await userEvent.click(screen.getByRole("button", { name: "Initial role, Member" }));
+    await userEvent.click(await screen.findByRole("radio", { name: /^Administrator/ }));
     expect(screen.getByText("Initial Loomarr role: Administrator")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Create invitation" }));
 

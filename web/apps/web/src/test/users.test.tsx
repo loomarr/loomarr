@@ -279,8 +279,8 @@ describe("Users page", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Grace/ }));
     const detail = await screen.findByRole("dialog", { name: "Grace" });
-    await userEvent.click(within(detail).getByLabelText("Role"));
-    await userEvent.click(await screen.findByRole("option", { name: "Admin" }));
+    await userEvent.click(within(detail).getByRole("button", { name: /^Role,/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: /^Admin/ }));
     await waitFor(() => expect(patches).toEqual([{ role: "admin" }]));
 
     const quota = within(detail).getByLabelText("Quota");
@@ -444,7 +444,7 @@ describe("Users page", () => {
     renderAt("/people");
     await userEvent.click(await screen.findByRole("button", { name: /^Manage Ada/ }));
     const detail = await screen.findByRole("dialog", { name: "Ada" });
-    expect(within(detail).getByLabelText("Role")).toBeDisabled();
+    expect(within(detail).getByRole("button", { name: /^Role,/ })).toBeDisabled();
     expect(within(detail).getByRole("button", { name: "Disable account" })).toBeDisabled();
   });
 

@@ -20,7 +20,7 @@ describe("CreateLocalDialog", () => {
     expect(screen.getByText(/non-reversible Argon2id verifier/i)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Username"), "  newcomer  ");
     await userEvent.type(screen.getByLabelText("Password"), "a-good-password");
-    expect(screen.getByRole("combobox", { name: "Role" })).toHaveTextContent("Member");
+    expect(screen.getByRole("button", { name: "Role, Member" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
 
     expect(onCreate).toHaveBeenCalledWith({
@@ -64,7 +64,7 @@ describe("CreateLocalDialog", () => {
     expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
     expect(screen.getByLabelText("Username")).toBeDisabled();
     expect(screen.getByLabelText("Password")).toBeDisabled();
-    expect(screen.getByRole("combobox", { name: "Role" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Role, Member" })).toBeDisabled();
   });
 
   it("creates an explicitly selected admin, closes, clears credentials, and returns focus", async () => {
@@ -76,9 +76,8 @@ describe("CreateLocalDialog", () => {
     await user.click(trigger);
     await user.type(screen.getByLabelText("Username"), "operator");
     await user.type(screen.getByLabelText("Password"), "admin-password");
-    await user.click(screen.getByRole("combobox", { name: "Role" }));
-    await screen.findByRole("option", { name: "Admin" });
-    await user.keyboard("a{Enter}");
+    await user.click(screen.getByRole("button", { name: "Role, Member" }));
+    await user.click(await screen.findByRole("radio", { name: /^Admin/ }));
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
     expect(onCreate).toHaveBeenCalledWith({
@@ -92,7 +91,7 @@ describe("CreateLocalDialog", () => {
     await user.click(trigger);
     expect(screen.getByLabelText("Username")).toHaveValue("");
     expect(screen.getByLabelText("Password")).toHaveValue("");
-    expect(screen.getByRole("combobox", { name: "Role" })).toHaveTextContent("Member");
+    expect(screen.getByRole("button", { name: "Role, Member" })).toBeInTheDocument();
   });
 
   it("clears the password and returns focus after Cancel or Escape", async () => {

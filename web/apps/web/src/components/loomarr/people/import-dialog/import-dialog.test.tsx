@@ -66,8 +66,8 @@ describe("ImportDialog", () => {
   it("filters the loaded candidate set without selecting hidden rows", async () => {
     const user = userEvent.setup();
     renderDialog();
-    await user.click(screen.getByRole("combobox", { name: "Show" }));
-    await user.click(await screen.findByRole("option", { name: "Already imported" }));
+    await user.click(screen.getByRole("button", { name: "Show, All accounts" }));
+    await user.click(await screen.findByRole("radio", { name: /^Already imported/ }));
     expect(screen.getByText("Marta Hollis")).toBeInTheDocument();
     expect(screen.queryByText("Adela Hale")).not.toBeInTheDocument();
     expect(screen.getByText("0 selected · 0 importable shown")).toBeInTheDocument();
