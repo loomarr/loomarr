@@ -8,7 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClipSelect, NeedsDetailsChip } from "../index";
 
 // The package type-checks without the DOM lib, so the test names only the node surface it reads.
-type BoxNode = { click(): void; getAttribute(name: string): string | null };
+type BoxNode = {
+  click(): void;
+  closest(selector: string): BoxNode | null;
+  getAttribute(name: string): string | null;
+};
 type Host = Parameters<typeof createRoot>[0] & {
   querySelector(selector: string): BoxNode | null;
   remove(): void;
