@@ -106,10 +106,9 @@ describe("GuideNowNext", () => {
     expect(html).toContain(">18 min left<");
     expect(html).toContain(">8:25 PM<");
     expect(html).toContain(">Kettle Kids · Snow Day for Gulls<");
-    // The row's name is its visible text in order, so it holds every piece drawn above.
-    expect(html).toContain(
-      "18 min left. Kettle Kids · The Upside-Down Picnic. 8:25 PM: Kettle Kids · Snow Day for Gulls",
-    );
+    // A row is named by what it draws, never by a written label that says something else: the
+    // list's own "Channel schedule" is the only label.
+    expect(html.match(/aria-label="[^"]*"/g)).toEqual(['aria-label="Channel schedule"']);
   });
 
   it("names a break and skips it when naming what is next", () => {
