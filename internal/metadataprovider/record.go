@@ -208,5 +208,18 @@ type ArtworkRef struct {
 	Season int `json:",omitempty"`
 }
 
-// KindSeasonPoster is a series' poster for one of its seasons (#2151 decisions 45, 61).
-const KindSeasonPoster = "season-poster"
+// Artwork kinds, named as the arrs and TMDB name them so precedence picks one per kind. Every
+// provider maps what it is sent onto these; library_art.kind's CHECK lists exactly this set.
+const (
+	KindPoster    = "poster"
+	KindFanart    = "fanart"
+	KindClearlogo = "clearlogo"
+	KindBanner    = "banner"
+	KindLandscape = "landscape"
+	KindClearart  = "clearart"
+	KindDiscart   = "discart"
+	// KindThumb is an episode's still.
+	KindThumb = "thumb"
+	// KindSeasonPoster is a series' poster for one of its seasons (#2151 decisions 45, 61).
+	KindSeasonPoster = "season-poster"
+)

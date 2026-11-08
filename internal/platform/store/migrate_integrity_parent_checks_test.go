@@ -54,6 +54,8 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 		`INSERT INTO library_items (id, kind, name, sort_name, updated_at_ms) VALUES ('m1', 'movie', 'Film', 'film', 1)`,
 		`INSERT INTO library_sources (item_id, path) VALUES ('m1', '/m/film.mkv')`,
 		`INSERT INTO library_streams (item_id, path, stream_index, kind) VALUES ('m1', '/m/film.mkv', 0, 'video')`,
+		`INSERT INTO library_art (item_id, kind, position, ref) VALUES ('m1', 'poster', 0, 'https://a/p.jpg')`,
+		`INSERT INTO library_art (item_id, kind, position, ref) VALUES ('m1', 'headshot', 0, 'https://a/h.jpg')`,
 		`INSERT INTO proposal_jobs (id, kind, status) VALUES ('j1', 'recurate', 'done')`,
 		`INSERT INTO proposal_job_attempts (job_id, attempt, workflow_version, status, started_at)
 			VALUES ('j1', 1, 1, 'succeeded', 1)`,
@@ -91,6 +93,8 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 	for query, want := range map[string]int{
 		`SELECT count(*) FROM airings WHERE channel_id = 'ch1'`:                      1,
 		`SELECT count(*) FROM library_streams WHERE item_id = 'm1'`:                  1,
+		`SELECT count(*) FROM library_art WHERE kind = 'poster'`:                     1,
+		`SELECT count(*) FROM library_art WHERE kind = 'headshot'`:                   0,
 		`SELECT count(*) FROM proposal_job_attempts WHERE job_id = 'j1'`:             1,
 		`SELECT count(*) FROM filler_structure_window_call_ledger`:                   1,
 		`SELECT count(*) FROM sqlite_master WHERE name LIKE 'filler_spoken_safety%'`: 0,
@@ -104,6 +108,7 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 	for _, stmt := range []string{
 		`UPDATE channels SET status = 'on_air' WHERE id = 'ch1'`,
 		`UPDATE library_items SET kind = 'film' WHERE id = 'm1'`,
+		`UPDATE library_art SET kind = 'Poster' WHERE item_id = 'm1'`,
 		`UPDATE proposal_jobs SET kind = 'curate' WHERE id = 'j1'`,
 		`UPDATE filler_inference_evaluations SET state = 'done' WHERE id = 'e1'`,
 		`UPDATE filler_inference_evaluations SET outcome = 'allowed' WHERE id = 'e1'`,

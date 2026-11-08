@@ -356,7 +356,10 @@ tables:
     retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
-      kind: What the image is, such as poster, fanart, clearlogo, or season-poster for one season's poster.
+      kind: >
+        What the image is: poster, fanart, clearlogo, banner, landscape, clearart, discart, thumb (an
+        episode's still), or season-poster for one season's poster. Each source's own names are mapped
+        onto these.
       season: For a season-poster, the season it belongs to (0 is the specials); 0 for every other kind.
       position: The order among images of the same kind and season, from 0.
       ref: Where the image is, a file beside the media or an address.

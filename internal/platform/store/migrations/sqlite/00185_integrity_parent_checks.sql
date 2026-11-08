@@ -485,7 +485,8 @@ CREATE TABLE library_markers (
 );
 CREATE TABLE library_art (
     item_id  TEXT    NOT NULL REFERENCES library_items(id) ON DELETE CASCADE,
-    kind     TEXT    NOT NULL,
+    kind     TEXT    NOT NULL CHECK (kind IN ('poster', 'fanart', 'clearlogo', 'banner', 'landscape',
+        'clearart', 'discart', 'thumb', 'season-poster')),
     season   INTEGER NOT NULL DEFAULT 0,
     position INTEGER NOT NULL,
     ref      TEXT    NOT NULL,
@@ -537,7 +538,9 @@ SELECT item_id, path, position, start_ms, end_ms, title FROM library_chapters_ol
 INSERT INTO library_markers (item_id, path, position, start_ms, end_ms, kind)
 SELECT item_id, path, position, start_ms, end_ms, kind FROM library_markers_old;
 INSERT INTO library_art (item_id, kind, season, position, ref)
-SELECT item_id, kind, season, position, ref FROM library_art_old;
+SELECT item_id, kind, season, position, ref FROM library_art_old
+ WHERE kind IN ('poster', 'fanart', 'clearlogo', 'banner', 'landscape', 'clearart', 'discart', 'thumb',
+     'season-poster'); -- an arr's own words (headshot, unknown): the next scan writes mapped art
 INSERT INTO library_countries (item_id, name, position) SELECT item_id, name, position FROM library_countries_old;
 INSERT INTO library_credits (item_id, position, person_id, role, character_name)
 SELECT item_id, position, person_id, role, character_name FROM library_credits_old;

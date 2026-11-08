@@ -776,7 +776,7 @@ func (p *Provider) episode(ctx context.Context, loc locale, tvdb int) (mp.Record
 		rec.Parent = []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(e.ShowID)}}
 	}
 	if ref := tmdbclient.ImageURL(e.StillPath); ref != "" {
-		rec.Artwork = []mp.ArtworkRef{{Kind: "thumb", Ref: ref}}
+		rec.Artwork = []mp.ArtworkRef{{Kind: mp.KindThumb, Ref: ref}}
 	}
 	return rec, nil
 }
@@ -950,9 +950,9 @@ func artwork(loc locale, images wireImages, poster, backdrop string) []mp.Artwor
 			out = append(out, mp.ArtworkRef{Kind: kind, Ref: ref})
 		}
 	}
-	add("poster", firstNonEmpty(pick(images.Posters, loc.base, ""), poster))
-	add("fanart", firstNonEmpty(pick(images.Backdrops, "", loc.base), backdrop))
-	add("clearlogo", pick(images.Logos, loc.base, ""))
+	add(mp.KindPoster, firstNonEmpty(pick(images.Posters, loc.base, ""), poster))
+	add(mp.KindFanart, firstNonEmpty(pick(images.Backdrops, "", loc.base), backdrop))
+	add(mp.KindClearlogo, pick(images.Logos, loc.base, ""))
 	return out
 }
 

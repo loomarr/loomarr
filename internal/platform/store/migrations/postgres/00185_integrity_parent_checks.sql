@@ -16,6 +16,12 @@ ALTER TABLE inventory_sources ADD CONSTRAINT inventory_sources_kind_check
     CHECK (kind IN ('library_original', 'local_file'));
 ALTER TABLE library_items ADD CONSTRAINT library_items_kind_check
     CHECK (kind IN ('movie', 'series', 'episode'));
+-- Art an arr named in its own words (headshot, unknown) goes; the next scan writes mapped art.
+DELETE FROM library_art WHERE kind NOT IN ('poster', 'fanart', 'clearlogo', 'banner', 'landscape',
+    'clearart', 'discart', 'thumb', 'season-poster');
+ALTER TABLE library_art ADD CONSTRAINT library_art_kind_check
+    CHECK (kind IN ('poster', 'fanart', 'clearlogo', 'banner', 'landscape', 'clearart', 'discart',
+        'thumb', 'season-poster'));
 ALTER TABLE proposal_jobs ADD CONSTRAINT proposal_jobs_kind_check
     CHECK (kind IN ('suggest', 'recurate'));
 

@@ -92,9 +92,9 @@ func TestMovieArtwork(t *testing.T) {
 	dir := filepath.Join(root, "movies", "Amber Field (2004)")
 	got := fetch(t, mp.KindMovie, filepath.Join(dir, "Amber Field (2004).mkv"))
 	want := map[string]string{
-		localart.KindPoster:    filepath.Join(dir, "Amber Field (2004)-poster.jpg"),
-		localart.KindFanart:    filepath.Join(dir, "Fanart.JPG"),
-		localart.KindClearlogo: filepath.Join(dir, "clearlogo.png"),
+		mp.KindPoster:    filepath.Join(dir, "Amber Field (2004)-poster.jpg"),
+		mp.KindFanart:    filepath.Join(dir, "Fanart.JPG"),
+		mp.KindClearlogo: filepath.Join(dir, "clearlogo.png"),
 	}
 	if len(got) != len(want) {
 		t.Fatalf("artwork = %v, want %v", got, want)
@@ -107,7 +107,7 @@ func TestMovieArtwork(t *testing.T) {
 
 	shared := filepath.Join(root, "movies", "Shared")
 	got = fetch(t, mp.KindMovie, filepath.Join(shared, "Birch Lane.mkv"))
-	if len(got) != 1 || got[localart.KindFanart] != filepath.Join(shared, "Birch Lane-fanart.jpg") {
+	if len(got) != 1 || got[mp.KindFanart] != filepath.Join(shared, "Birch Lane-fanart.jpg") {
 		t.Errorf("a shared folder's poster was given to one of its movies: %v", got)
 	}
 	if _, err := localart.New().Fetch(context.Background(), fileRef(mp.KindMovie, filepath.Join(shared, "Cedar Point.mkv"))); !errors.Is(err, mp.ErrNotFound) {
@@ -120,11 +120,11 @@ func TestSeriesAndEpisodeArtwork(t *testing.T) {
 	root := fixture(t)
 	show := filepath.Join(root, "tv", "Dune Office")
 	got := fetch(t, mp.KindSeries, show)
-	if got[localart.KindPoster] != filepath.Join(show, "poster.jpg") || got[localart.KindFanart] != filepath.Join(show, "backdrop.webp") || len(got) != 2 {
+	if got[mp.KindPoster] != filepath.Join(show, "poster.jpg") || got[mp.KindFanart] !=filepath.Join(show, "backdrop.webp") || len(got) != 2 {
 		t.Errorf("series artwork = %v", got)
 	}
 	got = fetch(t, mp.KindEpisode, filepath.Join(show, "Season 01", "Dune Office S01E01.mkv"))
-	if len(got) != 1 || got[localart.KindThumb] != filepath.Join(show, "Season 01", "Dune Office S01E01-thumb.jpg") {
+	if len(got) != 1 || got[mp.KindThumb] !=filepath.Join(show, "Season 01", "Dune Office S01E01-thumb.jpg") {
 		t.Errorf("episode artwork = %v", got)
 	}
 }

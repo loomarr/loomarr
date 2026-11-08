@@ -114,11 +114,7 @@ func lintFix(gap string) string {
 // Unbounded opens the retention of a table nothing prunes yet; Lint reports each one as a gap.
 const Unbounded = "Unbounded:"
 
-const (
-	needsIndex = "#2528: the integrity migration indexes it"
-	needsCheck = "#2528: the integrity migration lists its values in a CHECK"
-	needsPrune = "#2528: nothing prunes it yet"
-)
+const needsPrune = "#2528: nothing prunes it yet"
 
 // KnownGaps are the lint problems the schema had when the lint arrived, each with the work that
 // removes it. Add nothing here: fix the schema instead.
@@ -147,8 +143,6 @@ var KnownGaps = map[string]string{
 	"unbounded proposals":                           needsPrune,
 	"unbounded series_episodes":                     needsPrune,
 	"unbounded titles":                              needsPrune,
-	// Holds Sonarr's and Radarr's coverType as sent; mapped onto Loomarr's own art kinds first.
-	"check library_art.kind": needsCheck,
 }
 
 // FreeForm are state-named columns that hold another system's words as it sent them, so a CHECK

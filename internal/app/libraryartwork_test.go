@@ -16,7 +16,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
+	"github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -88,7 +88,7 @@ func TestLibraryPosters(t *testing.T) {
 	ctx, st, svc := artworkFixture(t)
 	art := libraryArtworkOf(svc, st)
 	poster := func() string { return libraryItem(t, st).Poster }
-	setPoster := func(ref string) error { return art.Art(ctx, "90000001", localart.KindPoster, ref) }
+	setPoster := func(ref string) error { return art.Art(ctx, "90000001", metadataprovider.KindPoster, ref) }
 
 	dir := t.TempDir()
 	first := filepath.Join(dir, "poster.png")
@@ -156,7 +156,8 @@ func TestLibraryClearLogoKeepsItsAlpha(t *testing.T) {
 	writeClearLogo(t, logoPath)
 	writePoster(t, fanartPath, 90)
 	for kind, ref := range map[string]string{
-		localart.KindPoster: posterPath, localart.KindClearlogo: logoPath, localart.KindFanart: fanartPath,
+		metadataprovider.KindPoster: posterPath, metadataprovider.KindClearlogo: logoPath,
+		metadataprovider.KindFanart: fanartPath,
 	} {
 		if err := art.Art(ctx, "90000001", kind, ref); err != nil {
 			t.Fatalf("%s: %v", kind, err)
@@ -204,7 +205,7 @@ func TestLibraryClearLogoKeepsItsAlpha(t *testing.T) {
 	}
 
 	// Letting the logo go keeps the poster and backdrop.
-	if err := art.Art(ctx, "90000001", localart.KindClearlogo, ""); err != nil {
+	if err := art.Art(ctx, "90000001", metadataprovider.KindClearlogo, ""); err != nil {
 		t.Fatal(err)
 	}
 	if it := libraryItem(t, st); it.Logo != "" || it.Poster == "" || it.Backdrop == "" {
