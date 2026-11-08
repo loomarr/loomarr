@@ -1,5 +1,4 @@
-import { Loader2, Play } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action } from "@loomarr/design-system";
 import type { RunButtonProps } from "./run-button.type";
 
 // RunButton — "do this now" with visible, honest feedback that it is happening.
@@ -28,21 +27,18 @@ import type { RunButtonProps } from "./run-button.type";
 // ⚠ Progress is INDETERMINATE by design (§18.1). A job's Run returns only at the end, so any
 // percentage would be invented — and a bar that reaches 90% and stops is a worse claim than a
 // spinner that says only "running".
-const RunButton = ({ busy, onRun, label, busyLabel, disabled, className, ...rest }: RunButtonProps) => (
-  <Button
-    variant="outline"
-    size="sm"
-    className={className}
-    disabled={busy || disabled}
+const RunButton = ({ busy, onRun, label, busyLabel, disabled }: RunButtonProps) => (
+  <Action
     // aria-busy is what tells a screen reader the control is mid-action; `disabled` alone says
     // "unavailable", which is a different claim.
     aria-busy={busy}
-    onClick={onRun}
-    {...rest}
+    disabled={busy || disabled}
+    icon="play"
+    onPress={onRun}
+    variant="outline"
   >
-    {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Play className="size-4" aria-hidden />}
     {busy ? (busyLabel ?? "Running…") : (label ?? "Run now")}
-  </Button>
+  </Action>
 );
 
 export { RunButton };
