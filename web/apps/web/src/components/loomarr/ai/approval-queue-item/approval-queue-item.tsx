@@ -1,10 +1,9 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Badge, Card, Field, Surface, Text } from "@loomarr/design-system";
-import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
+import { Action, Badge, Card, Field, Surface, Text } from "@loomarr/design-system";
+import { ChevronDown, ShieldAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import { ProposalEdit } from "../proposal-edit";
@@ -140,14 +139,12 @@ const ApprovalQueueItem = ({
 
         {!denied && !denying && (
           <div className="flex shrink-0 gap-2">
-            <Button variant="outline" size="sm" onClick={() => setDenying(true)} disabled={busy}>
-              <X aria-hidden />
+            <Action disabled={busy} icon="close" onPress={() => setDenying(true)} variant="outline">
               Deny
-            </Button>
-            <Button size="sm" onClick={onApprove} disabled={busy}>
-              {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
+            </Action>
+            <Action aria-busy={busy} disabled={busy} icon={busy ? "loading" : "success"} onPress={onApprove}>
               Approve
-            </Button>
+            </Action>
           </div>
         )}
       </div>
@@ -171,26 +168,24 @@ const ApprovalQueueItem = ({
             value={reason}
           />
           <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
+            <Action
+              disabled={busy}
+              onPress={() => {
                 setDenying(false);
                 setReason("");
               }}
-              disabled={busy}
+              variant="ghost"
             >
               Cancel
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onDeny?.(reason.trim() || undefined)}
+            </Action>
+            <Action
               disabled={busy}
+              icon="close"
+              onPress={() => onDeny?.(reason.trim() || undefined)}
+              variant="outline"
             >
-              <X aria-hidden />
               Deny
-            </Button>
+            </Action>
           </div>
         </div>
       )}
