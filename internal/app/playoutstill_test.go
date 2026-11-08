@@ -73,7 +73,7 @@ func TestStillAiring_IsTheProgrammeOnNowAndRecordsNothing(t *testing.T) {
 		t.Fatalf("recorded %d airings: showing a still is not airing the programme", history.n)
 	}
 
-	later, _, _ := stillResolver(t, slots,testPlayoutAnchor().Add(90*time.Second), history).StillAiring(context.Background(), "ch1")
+	later, _, _ := stillResolver(t, slots, testPlayoutAnchor().Add(90*time.Second), history).StillAiring(context.Background(), "ch1")
 	if later.Key != airing.Key {
 		t.Fatal("the key moved within one airing, so the frame would be decoded again")
 	}
