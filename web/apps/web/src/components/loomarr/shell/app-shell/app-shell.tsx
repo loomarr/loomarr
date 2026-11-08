@@ -112,6 +112,7 @@ const MAIN_ID = "main-content";
 
 const AppShell = ({
   children,
+  banner,
   isAdmin = true,
   userName = "Operator",
   serverVersion,
@@ -285,13 +286,20 @@ const AppShell = ({
           non-scrolling div. `min-h-0` lets this shrink below its content so the OVERFLOW lands
           on the region that asked for it. */}
       {/* `tabIndex={-1}` so the skip link moves focus here, not just the scroll position. */}
-      <main
-        id={MAIN_ID}
-        tabIndex={-1}
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto focus:outline-none"
-      >
-        {children}
-      </main>
+      {/* The banner slot sits ABOVE `main`, in a column with it, so its height comes out of main's
+          viewport instead of being added to main's scrollable content (a second scroller at phone
+          width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
+          the document and dragging the whole shell off-screen. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {banner}
+        <main
+          id={MAIN_ID}
+          tabIndex={-1}
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto overscroll-contain focus:outline-none"
+        >
+          {children}
+        </main>
+      </div>
       {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
           `position: fixed`, so it reserves real space rather than floating over content. Lazy
           (above): the Suspense fallback holds that row at the bar's own height so layout doesn't

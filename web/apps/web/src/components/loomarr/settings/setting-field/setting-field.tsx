@@ -321,7 +321,8 @@ const SettingField = ({
     // `group` so the audit line can reveal on hover/focus of the whole field (below).
     <div
       className={cn(
-        "group",
+        // `relative` anchors the absolutely positioned `sr-only` doc below to this field.
+        "group relative",
         inlineSwitch
           ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5"
           : "flex flex-col gap-1.5",

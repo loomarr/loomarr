@@ -44,6 +44,15 @@ describe("SettingField", () => {
     expect(screen.getByText("Base URL of your Emby/Jellyfin server.")).toBeInTheDocument();
   });
 
+  // `sr-only` is `position: absolute`. With no positioned ancestor it lands against the page,
+  // below the viewport, and stretches the document so scroll chains out of main (#2724).
+  it("anchors the visually hidden doc to the field", () => {
+    render(<SettingField entry={entry()} value="" onChange={vi.fn()} />);
+    const doc = screen.getByText("Base URL of your Emby/Jellyfin server.");
+    expect(doc).toHaveClass("sr-only");
+    expect(doc.parentElement).toHaveClass("relative");
+  });
+
   it("uses the registry-owned label instead of deriving product copy from the key", () => {
     render(<SettingField entry={entry({ label: "Media server address" })} value="" onChange={vi.fn()} />);
     expect(screen.getByLabelText("Media server address")).toBeInTheDocument();

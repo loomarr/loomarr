@@ -32,6 +32,31 @@ describe("AppShell", () => {
     expect(skip).toHaveFocus();
   });
 
+  // The banner above the page is not part of the page's scroller: inside `main` it adds its own
+  // height to main's overflow, a second scrollbar at phone width (#2726).
+  it("renders a banner above main, outside its scroll container", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell banner={<section aria-label="Demo tour" />} isAdmin>
+            content
+          </AppShell>
+        }
+      />,
+    );
+    const main = await screen.findByRole("main");
+    const banner = screen.getByRole("region", { name: "Demo tour" });
+
+    expect(main).not.toContainElement(banner);
+    expect(banner.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Scroll must end at `main`: chaining into the document drags the whole shell off-screen (#2724).
+  it("keeps scroll inside main", async () => {
+    renderShell(true);
+    expect(await screen.findByRole("main")).toHaveClass("overscroll-contain");
+  });
+
   it("shows the server identity above the account footer and links admins to About", async () => {
     render(
       <RouterHarness
