@@ -57,6 +57,35 @@ describe("AppShell", () => {
     expect(await screen.findByRole("main")).toHaveClass("overscroll-contain");
   });
 
+  // One focus style across the app: the amber ring the design system's controls draw. A rail
+  // control with no focus classes falls back to the browser's white rectangular outline (#2780).
+  it("draws the amber focus ring on every rail control", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell isAdmin onLogout={vi.fn()} serverVersion="v1.0.0">
+            content
+          </AppShell>
+        }
+      />,
+    );
+    await screen.findByRole("main");
+    const rail = [
+      screen.getByRole("button", { name: /search/i }),
+      screen.getByRole("link", { name: "Guide" }),
+      screen.getByRole("link", { name: /About/ }),
+      screen.getByRole("link", { name: /Your account/ }),
+      screen.getByRole("button", { name: "Sign out" }),
+    ];
+    for (const control of rail) {
+      expect(control).toHaveClass(
+        "focus-visible:ring-2",
+        "focus-visible:ring-signal",
+        "focus-visible:outline-none",
+      );
+    }
+  });
+
   it("shows the server identity above the account footer and links admins to About", async () => {
     render(
       <RouterHarness
@@ -276,7 +305,8 @@ describe("AppShell", () => {
       const watch = await screen.findByRole("link", { name: "Watch" });
       // "You are here" is neutral (#1909 Q1): elevated fill, foreground text at 500, never amber.
       expect(watch).toHaveClass("bg-static-800", "font-medium", "text-foreground");
-      expect(watch.className).not.toContain("signal");
+      // Amber is focus only: the focus-visible ring is the one place `signal` may appear.
+      expect(watch.className.replace(/focus-visible:ring-signal/, "")).not.toContain("signal");
       expect(screen.getByRole("link", { name: "Guide" })).not.toHaveClass("bg-static-800");
     });
 

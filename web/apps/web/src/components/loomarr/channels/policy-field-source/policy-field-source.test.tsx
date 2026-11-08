@@ -13,13 +13,14 @@ describe("PolicyFieldSource", () => {
     expect(onReset).toHaveBeenCalledOnce();
   });
 
-  it("keeps Reset in place but disabled on a default", () => {
+  // #2744: a Reset beside the Default badge would have nothing to reset.
+  it("offers no Reset on a default", () => {
     render(<PolicyFieldSource overridden={false} onReset={vi.fn()} label="Play order" />);
     expect(screen.getByText("Default")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reset to default (Play order)" })).toBeDisabled();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("can drop Reset on a default and use its own wording", () => {
+  it("uses its own wording", () => {
     render(
       <PolicyFieldSource
         overridden={false}
@@ -27,10 +28,8 @@ describe("PolicyFieldSource", () => {
         label="Add new titles without asking"
         overrideLabel="Opted in"
         defaultLabel="Default: off"
-        hideResetWhenDefault
       />,
     );
     expect(screen.getByText("Default: off")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

@@ -35,13 +35,31 @@ const downloadSchedulePresets = [
 ];
 
 describe("SettingField", () => {
-  it("labels the field from its key and exposes the doc via a help affordance", () => {
-    render(<SettingField entry={entry()} value="" onChange={vi.fn()} />);
-    expect(screen.getByLabelText("Library URL")).toBeInTheDocument();
-    // The doc is now a FieldHelp (i) tooltip in the label row (visible on hover) …
-    expect(screen.getByRole("button", { name: /about library url/i })).toBeInTheDocument();
-    // … and still in the DOM (visually hidden) for the control's aria-describedby (a11y).
-    expect(screen.getByText("Base URL of your Emby/Jellyfin server.")).toBeInTheDocument();
+  it("shows the one-sentence summary under the field and keeps the detail behind the info icon", () => {
+    render(
+      <SettingField
+        entry={entry({ doc: "The address of your media server.", detail: "For example http://emby:8096." })}
+        value=""
+        onChange={vi.fn()}
+      />,
+    );
+    const input = screen.getByLabelText("Library URL");
+    expect(input).toHaveAccessibleDescription("The address of your media server.");
+    expect(screen.getByText("The address of your media server.")).toBeVisible();
+    const info = screen.getByRole("button", { name: /about library url/i });
+    expect(info).toHaveAccessibleDescription("For example http://emby:8096.");
+  });
+
+  it("offers no info icon when the summary says it all", () => {
+    render(
+      <SettingField
+        entry={entry({ doc: "The address of your media server." })}
+        value=""
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("The address of your media server.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /about library url/i })).not.toBeInTheDocument();
   });
 
   // `sr-only` is `position: absolute`. With no positioned ancestor it lands against the page,

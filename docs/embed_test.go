@@ -16,6 +16,12 @@ import (
 // It is duplicated here deliberately rather than imported: this test exists to prove the
 // two sides AGREE, and importing the source of truth would make it agree with itself.
 // Adding a check without a target here is the failure this catches.
+//
+// Editor note, moved out of docs/guides/troubleshooting.md where Help printed it as body text:
+// the headings of that page are an API contract, not a style choice. internal/api/setup.go emits
+// anchors like "troubleshooting#tunarr-library" on every failed setup check, and this file proves
+// each one resolves. Renaming a heading breaks a link the running server is already sending. Add
+// sections freely; rename with care.
 var docHrefs = []string{
 	"troubleshooting#media-server",
 	"troubleshooting#seerr",
@@ -25,6 +31,23 @@ var docHrefs = []string{
 	"troubleshooting#filler",
 	"troubleshooting#livetv",
 	"troubleshooting#tunarr-library",
+}
+
+// #2751: Help's nav follows the order a household reads in, so Get started is first, not sixth in
+// slug order. Everything off that path follows, by slug.
+func TestPagesFollowTheReadingPath(t *testing.T) {
+	var slugs []string
+	for _, p := range docs.Pages() {
+		slugs = append(slugs, p.Slug)
+	}
+	want := []string{"get-started", "install-docker", "connect-services", "add-a-channel"}
+	if len(slugs) < len(want) || !slices.Equal(slugs[:len(want)], want) {
+		t.Fatalf("Help starts %v, want it to start %v", slugs, want)
+	}
+	rest := slugs[len(want):]
+	if !slices.IsSorted(rest) {
+		t.Fatalf("pages after the reading path are not by slug: %v", rest)
+	}
 }
 
 // §13: "every red check in the wizard deep-links to its section here." The backend has

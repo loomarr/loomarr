@@ -1,5 +1,6 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { Action } from "@loomarr/design-system";
+import { ConfirmStep } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -9,6 +10,8 @@ const EncryptionSettings = () => {
   const status = systemApi.useSystemEncryptionStatus({ query: { retry: false } });
   const rotate = systemApi.useSystemEncryptionRotateDataKey();
   const [message, setMessage] = useState<string>();
+  // Rotation can't be taken back, so the first press only asks, as Delete channel does.
+  const [confirming, setConfirming] = useState(false);
   const encryption = status.data?.status === 200 ? status.data.data : undefined;
 
   const onRotate = () => {
@@ -33,9 +36,26 @@ const EncryptionSettings = () => {
             key with your host or secrets manager—it is not included in database backups.
           </p>
         </div>
-        <Action disabled={!encryption?.enabled || rotate.isPending} onPress={onRotate} variant="outline">
-          {rotate.isPending ? "Rotating…" : "Rotate data key"}
-        </Action>
+        {confirming ? (
+          <ConfirmStep
+            confirmLabel="Rotate data key"
+            disabled={rotate.isPending}
+            message="Rotate the data key? Every stored setting is re-encrypted with a new key. This can't be undone."
+            onCancel={() => setConfirming(false)}
+            onConfirm={() => {
+              setConfirming(false);
+              onRotate();
+            }}
+          />
+        ) : (
+          <Action
+            disabled={!encryption?.enabled || rotate.isPending}
+            onPress={() => setConfirming(true)}
+            variant="destructive"
+          >
+            {rotate.isPending ? "Rotating…" : "Rotate data key"}
+          </Action>
+        )}
       </div>
       {status.error != null && (
         <div className="mt-3">

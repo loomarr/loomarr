@@ -301,7 +301,7 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	now := time.Date(2026, time.November, 3, 9, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
 	for _, job := range []store.Job{
-		{ID: "poison", IntentJSON: "{"},
+		{ID: "poison", IntentJSON: "[1]"}, // JSON, as the column demands, but not an Intent
 		{ID: "good", IntentJSON: `{"description":"Noir"}`},
 	} {
 		job.Kind, job.Status, job.CreatedBy, job.WorkflowVersion = "suggest", "queued", "alice", store.ProposalWorkflowVersion

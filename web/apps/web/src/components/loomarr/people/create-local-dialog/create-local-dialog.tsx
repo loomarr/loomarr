@@ -1,18 +1,16 @@
 import { CreateLocalUserInputBodyRole } from "@loomarr/api/models/createLocalUserInputBodyRole";
 import { createLocalUserSchema } from "@loomarr/core/schemas";
 import {
+  Action,
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@loomarr/design-system";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import type { CreateLocalDialogProps } from "./create-local-dialog.type";
 
@@ -53,55 +51,60 @@ const CreateLocalDialog = ({
     if (!nextOpen) form.reset();
   };
 
+  // The dialog opens from its own state rather than a trigger part, so the opener can be an Action;
+  // the Dialog returns focus to it on close all the same.
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogTrigger>
-        <Button variant="outline">Add local account</Button>
-      </DialogTrigger>
-      <DialogContent portalContainer={portalContainer}>
-        <form
-          className="flex flex-col gap-4"
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault();
-            void form.handleSubmit();
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>Add local account</DialogTitle>
-            <DialogDescription>
-              Create access for someone without an Emby or Jellyfin account. Loomarr stores only a
-              non-reversible Argon2id verifier for this password.
-            </DialogDescription>
-          </DialogHeader>
+    <>
+      <Action onPress={() => changeOpen(true)} variant="outline">
+        Add local account
+      </Action>
+      <Dialog open={open} onOpenChange={changeOpen}>
+        <DialogContent portalContainer={portalContainer}>
+          <form
+            className="flex flex-col gap-4"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              void form.handleSubmit();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Add local account</DialogTitle>
+              <DialogDescription>
+                Create access for someone without an Emby or Jellyfin account. Loomarr stores only a
+                non-reversible Argon2id verifier for this password.
+              </DialogDescription>
+            </DialogHeader>
 
-          <form.AppField name="username">
-            {(field) => <field.TextField className="gap-1.5" disabled={creating} label="Username" />}
-          </form.AppField>
-          <form.AppField name="password">
-            {(field) => (
-              <field.TextField className="gap-1.5" disabled={creating} label="Password" type="password" />
-            )}
-          </form.AppField>
-          <form.AppField name="role">
-            {(field) => <field.SelectField disabled={creating} label="Role" options={ROLE_OPTIONS} />}
-          </form.AppField>
+            <form.AppField name="username">
+              {(field) => <field.TextField className="gap-1.5" disabled={creating} label="Username" />}
+            </form.AppField>
+            <form.AppField name="password">
+              {(field) => (
+                <field.TextField className="gap-1.5" disabled={creating} label="Password" type="password" />
+              )}
+            </form.AppField>
+            <form.AppField name="role">
+              {(field) => <field.SelectField disabled={creating} label="Role" options={ROLE_OPTIONS} />}
+            </form.AppField>
 
-          {error != null && <ErrorState error={error} className="p-4" />}
+            {error != null && <ErrorState error={error} className="p-4" />}
 
-          <DialogFooter>
-            <DialogClose>
-              <Button type="button" variant="outline" disabled={creating}>
+            <DialogFooter>
+              <Action disabled={creating} onPress={() => changeOpen(false)} variant="outline">
                 Cancel
-              </Button>
-            </DialogClose>
-            <Button type="submit" disabled={creating}>
-              {creating ? "Creating…" : "Create account"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+              </Action>
+              <Action
+                // A real submit button under Action's look, so Enter in a field still submits.
+                render={<button disabled={creating} type="submit" />}
+              >
+                {creating ? "Creating…" : "Create account"}
+              </Action>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

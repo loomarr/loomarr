@@ -124,5 +124,10 @@ func checkpointSQLite(s Store) error {
 // suite against Postgres under the integration tag.
 func TestSQLiteConformance(t *testing.T) {
 	t.Parallel()
-	RunConformance(t, storetest.SQLiteClones(t, openExtended, checkpointSQLite))
+	newStore := storetest.SQLiteClones(t, openRecording, checkpointSQLite)
+	explain := store.HandleOf(newStore(t))
+	t.Cleanup(func() {
+		storetest.CheckQueryPlans(t, explain, planRecorder.Statements(), scannedWhole, 150)
+	})
+	RunConformance(t, newStore)
 }
