@@ -598,6 +598,9 @@ func verifyDigestOnlyBuild(step *yaml.Node) error {
 		"push":       "true",
 		"outputs":    "type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true",
 		"build-args": "VERSION=${{ github.ref_name }}\nCOMMIT=${{ github.sha }}",
+		// The TMDB key Loomarr ships with (#2151 decision 51): a BuildKit secret mount, so neither
+		// the image history nor the provenance records it. Only this one secret reaches the build.
+		"secrets":    "tmdb_key=${{ secrets.TMDB_BUNDLED_KEY }}",
 		"provenance": "mode=max",
 		"sbom":       "true",
 		// No cache-from/cache-to (#1679): a tag-scoped BuildKit export is unreadable by the next
