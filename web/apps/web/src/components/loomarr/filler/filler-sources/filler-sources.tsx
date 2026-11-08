@@ -1,11 +1,10 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Badge } from "@loomarr/design-system";
+import { Badge, Toggle } from "@loomarr/design-system";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
 
@@ -221,17 +220,18 @@ const FillerSources = ({
       >
         <div className="flex min-w-0 items-center gap-2">
           {onToggleEnabled && source.switchable && (
-            <Switch
+            <Toggle
+              kind="switch"
               id={`source-use-${source.id}`}
+              label={`Use ${source.target}`}
+              labelHidden
               checked={source.enabled}
               disabled={
                 toggling != null ||
                 !source.providerEnabled ||
                 (source.parentId != null && togglingProvider === source.kind)
               }
-              onChange={() => onToggleEnabled(source.id, !source.enabled)}
-              aria-label={`Use ${source.target}`}
-              className="mt-0.5 shrink-0"
+              onCheckedChange={(checked) => onToggleEnabled(source.id, checked)}
             />
           )}
           {onSelect ? (
@@ -334,12 +334,14 @@ const FillerSources = ({
               <div className="ml-auto flex shrink-0 items-center gap-3">
                 <span className="text-muted-foreground text-xs">{sourceSummary(children)}</span>
                 {onToggleProvider && (
-                  <Switch
+                  <Toggle
+                    kind="switch"
                     id={`provider-use-${provider.kind}`}
+                    label={`Use ${provider.target}`}
+                    labelHidden
                     checked={provider.enabled}
                     disabled={togglingProvider != null}
-                    onChange={() => onToggleProvider(provider.kind, !provider.enabled)}
-                    aria-label={`Use ${provider.target}`}
+                    onCheckedChange={(checked) => onToggleProvider(provider.kind, checked)}
                   />
                 )}
               </div>

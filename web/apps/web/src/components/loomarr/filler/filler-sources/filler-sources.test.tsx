@@ -424,8 +424,9 @@ describe("FillerSources provider roll-up", () => {
 
     const classic = screen.getByRole("switch", { name: "Use Classic TV Commercials", hidden: true });
     const psas = screen.getByRole("switch", { name: "Use Vintage PSAs", hidden: true });
-    expect(classic).toBeDisabled();
-    expect(psas).toBeDisabled();
+    // The design-system switch is a pressable, so it says disabled in ARIA rather than natively.
+    expect(classic).toHaveAttribute("aria-disabled", "true");
+    expect(psas).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("list", { name: "Sources under Archive.org", hidden: true })).not.toBeVisible();
 
     rerender(<FillerSources sources={grouped()} onToggleEnabled={vi.fn()} onToggleProvider={vi.fn()} />);
@@ -445,7 +446,10 @@ describe("FillerSources provider roll-up", () => {
       />,
     );
 
-    expect(screen.getByRole("switch", { name: "Use Classic TV Commercials", hidden: true })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Use Classic TV Commercials", hidden: true })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(screen.getByRole("list", { name: "Sources under Archive.org", hidden: true })).not.toBeVisible();
   });
 

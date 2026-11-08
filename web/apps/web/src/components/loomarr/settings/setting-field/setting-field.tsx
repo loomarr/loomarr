@@ -3,14 +3,13 @@ import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, FieldHint } from "@loomarr/design-system";
+import { Badge, FieldHint, Toggle } from "@loomarr/design-system";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { SettingFieldProps } from "./setting-field.type";
@@ -120,13 +119,15 @@ const SettingField = ({
     if (entry.kind === SettingKind.bool) {
       if (entry.presentation === SettingPresentation.switch) {
         return (
-          <Switch
+          <Toggle
+            kind="switch"
             id={id}
+            label={label}
+            labelHidden
             checked={value === "true"}
             disabled={pinned || disabledReason !== undefined}
             aria-describedby={describedBy}
-            aria-labelledby={labelledBy}
-            onChange={(event) => onChange(String(event.target.checked))}
+            onCheckedChange={(checked) => onChange(String(checked))}
           />
         );
       }
