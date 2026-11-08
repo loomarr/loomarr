@@ -102,7 +102,9 @@ func resolveImageWorker(explicit string) (string, error) {
 			return candidate, nil
 		}
 	}
+	// A source checkout prefers the release worker production ships: the debug one is ~25x slower.
 	for _, candidate := range []string{
+		filepath.Join("target", "release", "loomarr-image"),
 		filepath.Join("target", "debug", "loomarr-image"),
 		filepath.Join("bin", "loomarr-image"),
 	} {
@@ -114,9 +116,11 @@ func resolveImageWorker(explicit string) (string, error) {
 	}
 	if _, source, _, ok := runtime.Caller(0); ok {
 		root := filepath.Clean(filepath.Join(filepath.Dir(source), "..", ".."))
-		candidate := filepath.Join(root, "target", "debug", "loomarr-image")
-		if info, statErr := os.Stat(candidate); statErr == nil && info.Mode().IsRegular() {
-			return candidate, nil
+		for _, profile := range []string{"release", "debug"} {
+			candidate := filepath.Join(root, "target", profile, "loomarr-image")
+			if info, statErr := os.Stat(candidate); statErr == nil && info.Mode().IsRegular() {
+				return candidate, nil
+			}
 		}
 	}
 	if found, err := exec.LookPath("loomarr-image"); err == nil {

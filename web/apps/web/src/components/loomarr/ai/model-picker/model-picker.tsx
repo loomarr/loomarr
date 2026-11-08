@@ -1,8 +1,6 @@
 import type { LLMModelView } from "@loomarr/api/models/lLMModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Badge, type BadgeTone } from "@loomarr/design-system";
-import { Check, Download, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action, Badge, type BadgeTone } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ModelPickerProps } from "./model-picker.type";
 
@@ -94,31 +92,25 @@ const ModelPicker = ({
             </div>
 
             {model.pulled ? (
-              <Button
-                variant={isActive ? "outline" : "default"}
-                size="sm"
+              <Action
                 disabled={busy || isActive || unusable}
-                onClick={() => onSelect(model.tag)}
+                icon={isActive ? "success" : undefined}
+                onPress={() => onSelect(model.tag)}
+                variant={isActive ? "outline" : undefined}
               >
-                {isActive ? <Check className="size-4" aria-hidden /> : null}
                 {isActive ? "In use" : "Use this"}
-              </Button>
+              </Action>
             ) : (
               // A model must exist locally before it can be selected (§8.1: select 409s
               // on an unpulled tag), so download is the only offer until it is here.
-              <Button
-                variant="outline"
-                size="sm"
+              <Action
                 disabled={busy || isPulling || unusable}
-                onClick={() => onPull(model.tag)}
+                icon={isPulling ? "loading" : "download"}
+                onPress={() => onPull(model.tag)}
+                variant="outline"
               >
-                {isPulling ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden />
-                ) : (
-                  <Download className="size-4" aria-hidden />
-                )}
                 {isPulling ? "Downloading…" : "Download"}
-              </Button>
+              </Action>
             )}
           </li>
         );

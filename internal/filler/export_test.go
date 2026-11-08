@@ -62,7 +62,8 @@ func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int
 	if len(minDurationMs) > 0 {
 		minMs = minDurationMs[0]
 	}
-	return scanDir(ctx, dir, "", probe, minMs)
+	clips, skipped, _, err = scanDir(ctx, dir, "", probe, minMs)
+	return clips, skipped, err
 }
 
 // GenerateArtwork is generateArtwork with no storage governor, returning the failure count.

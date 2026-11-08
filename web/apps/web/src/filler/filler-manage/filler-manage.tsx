@@ -1,10 +1,9 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
+import { Action, StatusDot, type StatusTone } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
-import { Button } from "@/components/ui/button";
 
 type HubRow = {
   title: string;
@@ -101,14 +100,13 @@ const FillerManage = () => {
               <p className="text-muted-foreground mt-0.5 text-xs">{row.summary}</p>
             </div>
             {row.open ? (
-              <Button
-                size="sm"
+              <Action
+                accessibilityRole="link"
+                render={<Link aria-label={`Open ${row.title}`} to={row.open.to} />}
                 variant="outline"
-                aria-label={`Open ${row.title}`}
-                render={<Link to={row.open.to} />}
               >
                 Open
-              </Button>
+              </Action>
             ) : null}
           </li>
         ))}

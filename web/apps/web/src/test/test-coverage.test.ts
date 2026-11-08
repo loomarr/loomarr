@@ -81,7 +81,6 @@ const KNOWN_GAPS = new Set([
   "wizard/tunarr-library-step/tunarr-library-step.tsx",
   "wizard/use-complete-setup/use-complete-setup.ts",
   "wizard/setup-completed/setup-completed.ts",
-  "components/loomarr/channels/channel-icon-field/channel-icon-field.tsx",
   "lib/use-copied/use-copied.ts",
   "settings/settings-edits/settings-edits.tsx",
   "suggest/round/round.ts",

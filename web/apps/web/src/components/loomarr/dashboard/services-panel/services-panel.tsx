@@ -1,6 +1,6 @@
+import { Action } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
 import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
 
@@ -56,26 +56,22 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
                 {/* ⚠ Only a FAILING row offers Fix — and only when the server said where its
                   settings live. Offering it on a healthy row would train the eye past it. */}
                 {!row.ok && row.settingsGroup ? (
-                  <Button
-                    type="button"
+                  <Action
+                    accessibilityLabel={`Fix ${serviceLabel(row.name)}`}
+                    onPress={() => onFix(row.settingsGroup as string)}
                     variant="outline"
-                    size="sm"
-                    onClick={() => onFix(row.settingsGroup as string)}
-                    aria-label={`Fix ${serviceLabel(row.name)}`}
                   >
                     Fix →
-                  </Button>
+                  </Action>
                 ) : null}
                 {!row.ok && onDiagnose ? (
-                  <Button
-                    type="button"
+                  <Action
+                    accessibilityLabel={`View ${serviceLabel(row.name)} diagnostics`}
+                    onPress={() => onDiagnose(row.name)}
                     variant="ghost"
-                    size="sm"
-                    onClick={() => onDiagnose(row.name)}
-                    aria-label={`View ${serviceLabel(row.name)} diagnostics`}
                   >
                     Logs →
-                  </Button>
+                  </Action>
                 ) : null}
               </>
             }

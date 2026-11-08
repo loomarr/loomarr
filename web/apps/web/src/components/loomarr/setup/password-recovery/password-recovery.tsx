@@ -1,7 +1,7 @@
 import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
+import { Action } from "@loomarr/design-system";
 import { CheckCircle2, KeyRound, Loader2, Mail } from "lucide-react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
 
@@ -62,10 +62,10 @@ const PasswordRecoveryRequest = ({
         {(field) => <field.TextField autoComplete="username" id="recovery-username" label="Username" />}
       </form.AppField>
 
-      <Button type="submit" disabled={isPending}>
-        {isPending ? <Loader2 className="animate-spin" aria-hidden /> : <Mail aria-hidden />}
+      {/* A real submit button under Action's look, so Enter in a field still submits. */}
+      <Action disabled={isPending} render={<button disabled={isPending} type="submit" />}>
         {isPending ? "Requesting…" : "Email reset link"}
-      </Button>
+      </Action>
 
       <div className="border-border space-y-2 border-t pt-4 text-center">
         <p className="text-muted-foreground text-xs">
@@ -169,10 +169,10 @@ const PasswordRecoveryReset = ({
         )}
       </form.AppField>
 
-      <Button type="submit" disabled={isRedeeming}>
-        {isRedeeming ? <Loader2 className="animate-spin" aria-hidden /> : <KeyRound aria-hidden />}
+      {/* A real submit button under Action's look, so Enter in a field still submits. */}
+      <Action disabled={isRedeeming} render={<button disabled={isRedeeming} type="submit" />}>
         {isRedeeming ? "Resetting…" : "Reset password"}
-      </Button>
+      </Action>
     </form>
   );
 };

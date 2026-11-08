@@ -1,4 +1,5 @@
-import { Action, Badge } from "@loomarr/design-system";
+import { Badge } from "@loomarr/design-system";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PolicyFieldSourceProps } from "./policy-field-source.type";
 
@@ -24,17 +25,20 @@ const PolicyFieldSource = ({
       {overridden ? overrideLabel : defaultLabel}
     </Badge>
     {overridden || !hideResetWhenDefault ? (
-      <Action
-        // A dozen identical "Reset to default" buttons would be indistinguishable in a screen
-        // reader's button list or to voice control, so the name carries the field while the
-        // visible text stays the mock's (and still starts the name).
-        accessibilityLabel={`Reset to default (${label})`}
-        disabled={!overridden}
-        onPress={onReset}
+      <Button
+        type="button"
         variant="link"
+        className="h-auto p-0 text-xs underline"
+        // 16 px tall as drawn: a touch screen gets the 24 px tap area (styles.css, #1785).
+        data-touch-target
+        disabled={!overridden}
+        onClick={onReset}
       >
-        Reset to default
-      </Action>
+        {/* A dozen identical "Reset to default" buttons would be indistinguishable in a
+            screen reader's button list or to voice control, so the name carries the field
+            while the visible text stays the mock's (and still starts the name). */}
+        Reset to default <span className="sr-only">({label})</span>
+      </Button>
     ) : null}
   </div>
 );

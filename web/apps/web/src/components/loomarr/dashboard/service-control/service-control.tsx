@@ -1,7 +1,7 @@
 import { pluralize } from "@loomarr/core/format";
-import { AlertTriangle, Loader2, RotateCcw } from "lucide-react";
+import { Action } from "@loomarr/design-system";
+import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
 
@@ -41,16 +41,14 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           </p>
         </div>
         {cost.available ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="border-signal/35 text-signal"
-            onClick={() => setConfirming(true)}
+          <Action
             disabled={restarting || confirming}
+            icon="refresh"
+            onPress={() => setConfirming(true)}
+            variant="outline"
           >
-            <RotateCcw className="size-4" aria-hidden />
             Restart...
-          </Button>
+          </Action>
         ) : null}
       </div>
 
@@ -75,20 +73,18 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           <p className="min-w-0 flex-1 text-sm">
             {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
           </p>
-          <Button
-            type="button"
-            onClick={() => {
+          <Action
+            disabled={restarting}
+            onPress={() => {
               setConfirming(false);
               onRestart();
             }}
-            disabled={restarting}
           >
-            {restarting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
             {restarting ? "Restarting..." : "Restart now"}
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
+          </Action>
+          <Action onPress={() => setConfirming(false)} variant="ghost">
             Cancel
-          </Button>
+          </Action>
         </div>
       )}
     </section>

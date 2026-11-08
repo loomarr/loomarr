@@ -165,6 +165,23 @@ const channelSectionBodies: [RegExp, () => unknown][] = [
   ],
   [/^\/v1\/filler$/, (): ListFillerOutputBody => ({ clips: [], total: 0 })],
   [/^\/v1\/library\/collections$/, (): CollectionsOutputBody => ({ collections: [] })],
+  [/^\/v1\/programming\/vocabulary$/, (): Vocabulary => ({ when: [], what: [], how: [] })],
+  [/^\/v1\/search$/, (): SearchOutputBody => ({ candidates: [] })],
+  [
+    /^\/v1\/taxonomy$/,
+    (): ListTaxonomyOutputBody => ({
+      taxa: [],
+      totalClips: 0,
+      taggedClips: 0,
+      unclassifiedClips: 0,
+      axisCoverage: [],
+    }),
+  ],
+];
+
+// The media folders, answered for every walk rather than only channel detail: the wizard's
+// Library step reads them, and the `{}` fallback would crash it on `roots`.
+const libraryBodies: [RegExp, () => unknown][] = [
   // The wizard's Library step (#2151 decision 30): one folder found through Emby, none in use yet.
   [
     /^\/v1\/library\/roots$/,
@@ -205,18 +222,6 @@ const channelSectionBodies: [RegExp, () => unknown][] = [
         paused: false,
         arrIncomplete: false,
       },
-    }),
-  ],
-  [/^\/v1\/programming\/vocabulary$/, (): Vocabulary => ({ when: [], what: [], how: [] })],
-  [/^\/v1\/search$/, (): SearchOutputBody => ({ candidates: [] })],
-  [
-    /^\/v1\/taxonomy$/,
-    (): ListTaxonomyOutputBody => ({
-      taxa: [],
-      totalClips: 0,
-      taggedClips: 0,
-      unclassifiedClips: 0,
-      axisCoverage: [],
     }),
   ],
 ];
@@ -554,6 +559,10 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     }
     if (opts.channelDetail) {
       const body = channelSectionBodies.find(([pattern]) => pattern.test(path))?.[1];
+      if (body) return json(route, body());
+    }
+    if (method === "GET") {
+      const body = libraryBodies.find(([pattern]) => pattern.test(path))?.[1];
       if (body) return json(route, body());
     }
     if (opts.requests && path === "/v1/proposal-jobs" && method === "GET") {

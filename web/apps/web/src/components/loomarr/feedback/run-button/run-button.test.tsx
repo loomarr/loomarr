@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { RunButton } from "./run-button";
 
 describe("RunButton", () => {
@@ -23,7 +24,8 @@ describe("RunButton", () => {
     expect(button).toHaveAttribute("aria-busy", "true");
     expect(button).toBeDisabled();
 
-    await userEvent.click(button);
+    // A disabled Action also drops pointer events; click through that so the handler is what's tested.
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(button);
     expect(onRun).not.toHaveBeenCalled();
   });
 
@@ -46,7 +48,7 @@ describe("RunButton", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("aria-busy", "false");
 
-    await userEvent.click(button);
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(button);
     expect(onRun).not.toHaveBeenCalled();
   });
 });

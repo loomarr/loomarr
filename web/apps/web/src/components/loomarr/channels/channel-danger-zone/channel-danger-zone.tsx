@@ -1,6 +1,6 @@
+import { Action } from "@loomarr/design-system";
 import { useState } from "react";
 import { useDeleteConfirm } from "@/channels/use-delete-confirm";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChannelDangerZoneProps } from "./channel-danger-zone.type";
 
@@ -55,13 +55,13 @@ const ChannelDangerZone = ({
           {paused ? "Paused: off air but kept." : "Take this channel off air without deleting it."}
         </p>
         {paused ? (
-          <Button variant="outline" size="sm" disabled={busy} onClick={onResume}>
+          <Action disabled={busy} onPress={onResume} variant="outline">
             Resume
-          </Button>
+          </Action>
         ) : (
-          <Button variant="outline" size="sm" disabled={busy} onClick={onPause}>
+          <Action disabled={busy} onPress={onPause} variant="outline">
             Pause
-          </Button>
+          </Action>
         )}
       </div>
 
@@ -81,15 +81,11 @@ const ChannelDangerZone = ({
                   Loomarr keeps its record and leaves any Tunarr channel in place.
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                disabled={busy}
-                onClick={() => chooseRemoval("detach")}
-              >
-                Stop updating
-              </Button>
+              <div className="shrink-0">
+                <Action disabled={busy} onPress={() => chooseRemoval("detach")} variant="outline">
+                  Stop updating
+                </Action>
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-3">
@@ -97,15 +93,11 @@ const ChannelDangerZone = ({
                 <p className="text-sm">Delete this channel from Loomarr, and from Tunarr if it's there.</p>
                 <p className="text-onair-300 text-xs">This can't be undone.</p>
               </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="shrink-0"
-                disabled={busy}
-                onClick={() => chooseRemoval("purge")}
-              >
-                Delete channel
-              </Button>
+              <div className="shrink-0">
+                <Action disabled={busy} onPress={() => chooseRemoval("purge")} variant="destructive">
+                  Delete channel
+                </Action>
+              </div>
             </div>
           </div>
         ) : (
@@ -123,17 +115,16 @@ const ChannelDangerZone = ({
             )}
 
             <div className="flex items-center gap-2">
-              <Button
-                variant={removal === "purge" ? "destructive" : "outline"}
-                size="sm"
+              <Action
                 disabled={busy}
-                onClick={() => onDelete({ purge: removal === "purge" })}
+                onPress={() => onDelete({ purge: removal === "purge" })}
+                variant={removal === "purge" ? "destructive" : "outline"}
               >
                 {removal === "purge" ? "Delete channel" : "Stop updating"}
-              </Button>
-              <Button variant="ghost" size="sm" disabled={busy} onClick={cancel}>
+              </Action>
+              <Action disabled={busy} onPress={cancel} variant="ghost">
                 Cancel
-              </Button>
+              </Action>
             </div>
           </div>
         )}

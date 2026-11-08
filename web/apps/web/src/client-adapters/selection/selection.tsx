@@ -62,10 +62,16 @@ const BrowserMenuList = <Value extends string>({ onDismiss, ...props }: BrowserM
 type BrowserSelectControlProps<Value extends string> = Omit<
   SelectControlProps<Value>,
   "onOpenChange" | "open"
-> & { initialOpen?: boolean };
+> & {
+  initialOpen?: boolean;
+  // The field look announces its label without printing it, for a filter whose place on the page
+  // already says what it chooses.
+  labelHidden?: boolean;
+};
 
 const BrowserSelectControl = <Value extends string>({
   initialOpen = false,
+  labelHidden = false,
   ...props
 }: BrowserSelectControlProps<Value>) => {
   const [open, setOpen] = useState(initialOpen);
@@ -100,7 +106,7 @@ const BrowserSelectControl = <Value extends string>({
     >
       {/* The field look announces its label but does not print it; a web form always shows one,
           as the channel page's default-audio picker does. */}
-      {props.appearance === "field" ? <Text textRole="label">{props.label}</Text> : null}
+      {props.appearance === "field" && !labelHidden ? <Text textRole="label">{props.label}</Text> : null}
       <SelectControl
         {...props}
         onOpenChange={setOpen}
