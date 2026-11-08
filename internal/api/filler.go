@@ -212,7 +212,7 @@ func (s *Server) registerFiller(api huma.API) {
 type rewindFillerClipInput struct {
 	Body struct {
 		Hash  string `json:"hash" minLength:"1"`
-		From  string `json:"from" enum:"probe,transcode,split,screen,defects,language,transcribe,vision,score"`
+		From  string `json:"from" enum:"probe,transcode,split,screen,defects,language,transcribe,vision,finish"`
 		Force bool   `json:"force,omitempty"`
 	}
 }
@@ -336,9 +336,6 @@ type ClipDTO struct {
 	// Brand is the advertiser the clip is FOR (§10 V44) — grounded, so absent is the common and
 	// honest case, never a gap to fill in with a guess.
 	Brand string `json:"brand,omitempty" doc:"The advertiser, when it appears literally in a text or visual signal (§10 V44). Absent means no GROUNDED brand — never inferred."`
-	// Confidence is the grounding-capped tagging score (§10 V38), 0-100. 0 means never scored,
-	// which is not the same as scored-low.
-	Confidence int `json:"confidence,omitempty" doc:"Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score"`
 	// Held marks a clip recorded but NOT yet in the playable catalog (§10 V38).
 	//
 	// ⚠ Shipped in the same change as the `includeHeld` parameter, never after it. A client that
@@ -507,7 +504,7 @@ func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *ImageDTO) 
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
 		Tagged: c.Tagged(), NeedsDetails: c.NeedsDetails(), SuggestedEra: c.SuggestedEra,
 		IsComposite: c.IsComposite, ParentHash: c.ParentHash,
-		Brand: c.Brand, Confidence: c.Confidence, Held: c.Held, Language: c.Language,
+		Brand: c.Brand, Held: c.Held, Language: c.Language,
 		VisionTagged: c.VisionTagged, License: c.License,
 		// ⚠ The PRESENCE of the transcript, not the transcript. See the field's own warning.
 		HasTranscript: c.Transcript != "",
@@ -587,7 +584,7 @@ type listFillerInput struct {
 	Offset int `query:"offset" minimum:"0" doc:"Rows to skip. Use with total to render 'showing 61-120 of 1,204'."`
 	// Sort / Order. ⚠ A closed enum, mapped to a column by a fixed switch in the store; an unknown
 	// value is rejected rather than silently ignored.
-	Sort  string `query:"sort" enum:"name,duration,added,plays,confidence" doc:"Sort key; default is the historical path order. Every ordering is made total by a hash tie-break (§10 V51d)."`
+	Sort  string `query:"sort" enum:"name,duration,added,plays" doc:"Sort key; default is the historical path order. Every ordering is made total by a hash tie-break (§10 V51d)."`
 	Order string `query:"order" enum:"asc,desc" doc:"Sort direction; default ascending."`
 	// IncludeHeld / HeldOnly surface the review queue's clips (§10 V38).
 	//

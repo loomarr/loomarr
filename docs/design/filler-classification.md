@@ -107,8 +107,8 @@ Two server-owned projections answer what needs a person:
   are ineligible, and the browser never invents a task or action.
 
 Readiness is member-readable and Needs help is admin-only; the browser renders the server's ranking
-and never rebuilds it from counts. Incoming stays a calm progress summary, never one review form per clip; confidence detail
-and certification comparisons are Advanced or development views.
+and never rebuilds it from counts. Incoming stays a calm progress summary, never one review form per clip; certification
+comparisons are Advanced or development views.
 
 ## What Loomarr learns about a clip
 
@@ -187,10 +187,10 @@ With brand, broadcast context and tags, pod assembly can avoid repeat advertiser
 station distance and era window, pace breaks by measured loudness, and rank by theme, all from auditable
 signals. Operator exclusions and quotas use the scheduling rules layer.
 
-**Tagging confidence (V38)** is a 0–100 diagnostic score. Grounding facts cap it (an ungrounded era
-can never reach the fully grounded score, a hard ceiling to sabotage-test), and the model's own
-confidence may only lower it. It prioritises review and never publishes; the former threshold,
-`auto_filed` state and withdrawal route are retired.
+**Tagging confidence (V38) is retired** (#2323). The 0–100 score never decided anything once
+enrollment became the runtime authority, so the pipeline no longer computes it, the clip DTO no longer
+carries it, and its terminal rung is now `finish`. The former threshold, `auto_filed` state and
+withdrawal route went before it.
 
 **Provider settings.** Provider connections live on the AI page (the lineup model, an Advanced
 vision override, and one Speech recognition section: built-in or connected), and feature toggles and

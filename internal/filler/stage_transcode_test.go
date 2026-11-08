@@ -1349,7 +1349,7 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 	in := StoreClip{Clip: Clip{
 		Hash: oldHash, Path: oldRel, Name: "Burger Barn 1993", Kind: Commercial,
 		Era: 1993, Audience: Kids, Category: "fast_food", Source: "archive:wktl",
-		Held: true, Confidence: 91,
+		Held: true,
 	}, UpdatedAt: time.Unix(1_800_000_000, 0)}
 	out, err := stage.Run(context.Background(), in)
 	if err != nil {

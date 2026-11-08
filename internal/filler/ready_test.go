@@ -24,7 +24,7 @@ func completedReadyRow(hash string, at time.Time) filler.ClipPipeline {
 		records = append(records, filler.StageRecord{Stage: stage, Status: filler.StatusDone, At: at})
 	}
 	return filler.ClipPipeline{
-		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: filler.StageScore,
+		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: filler.StageFinish,
 		Status: filler.StatusDone, Progress: 100, Disposition: filler.DispositionRunning,
 		Stages: records, EnrolledAt: at, UpdatedAt: at,
 	}

@@ -385,7 +385,7 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 		filler.NewLanguageStage(langDetect, fillerLanguageStoreAdapter{st}, clipDir, wantLanguages, time.Now),
 		transcribeStage,
 		visionStage,
-		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, nil, time.Now),
+		filler.NewFinishStage(),
 	}
 	if splitter != nil {
 		// A compilation can contain adverts in several languages, so the whole-clip language rung

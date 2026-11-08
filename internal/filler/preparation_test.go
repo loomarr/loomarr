@@ -97,7 +97,7 @@ func TestEstimatePreparationReady(t *testing.T) {
 func readyPreparationSample(finishedAt time.Time, durationMs int64, perStage time.Duration) PreparationWork {
 	startedAt := finishedAt.Add(-perStage * time.Duration(len(StageOrder)))
 	row := ClipPipeline{
-		Stage: StageScore, Status: StatusDone, Disposition: DispositionReady,
+		Stage: StageFinish, Status: StatusDone, Disposition: DispositionReady,
 		PreparationAttempt: 1, PreparationProgress: 100, PreparationStartedAt: startedAt, UpdatedAt: finishedAt,
 	}
 	for _, stage := range StageOrder {

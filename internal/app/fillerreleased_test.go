@@ -40,7 +40,7 @@ func releasedClipRunningRow(t *testing.T, st records.Store, hash string) {
 		stages = append(stages, filler.StageRecord{Stage: id, Status: filler.StatusDone, At: at})
 	}
 	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusRunning,
+		ClipHash: hash, Stage: filler.StageFinish, Status: filler.StatusRunning,
 		Disposition: filler.DispositionRunning, Stages: stages, Attempts: 3,
 		EnrolledAt: at, UpdatedAt: at, StageQueuedAt: at,
 	}); err != nil {
@@ -93,7 +93,7 @@ func TestPipeline_RunningRowForAlreadyReleasedClipSettlesWithoutRepublishing(t *
 	if row.Disposition != filler.DispositionReady || row.Status != filler.StatusDone || !row.NextRun.IsZero() {
 		t.Fatalf("row did not settle: %+v", row)
 	}
-	if note := row.Stages[filler.StageIndex(filler.StageScore)].Note; note == "" {
+	if note := row.Stages[filler.StageIndex(filler.StageFinish)].Note; note == "" {
 		t.Fatal("the settlement left no note on the score rung")
 	}
 	after, err := st.GetClip(ctx, "released")

@@ -40,17 +40,17 @@ func TestClipPipelineLifecycle(t *testing.T) {
 		},
 		{
 			name: "human handoff is a decision",
-			row:  ClipPipeline{Disposition: DispositionReview, Stage: StageScore, Status: StatusDone},
+			row:  ClipPipeline{Disposition: DispositionReview, Stage: StageFinish, Status: StatusDone},
 			want: PipelineLifecycle{State: LifecycleNeedsDecision},
 		},
 		{
 			name: "ready is playable",
-			row:  ClipPipeline{Disposition: DispositionReady, Stage: StageScore, Status: StatusDone},
+			row:  ClipPipeline{Disposition: DispositionReady, Stage: StageFinish, Status: StatusDone},
 			want: PipelineLifecycle{State: LifecycleReady},
 		},
 		{
 			name: "completed composite is not ready",
-			row:  ClipPipeline{Disposition: DispositionComplete, Stage: StageScore, Status: StatusDone},
+			row:  ClipPipeline{Disposition: DispositionComplete, Stage: StageFinish, Status: StatusDone},
 			want: PipelineLifecycle{State: LifecycleComplete},
 		},
 		{
@@ -74,7 +74,7 @@ func TestClipPipelineLifecycle(t *testing.T) {
 		},
 		{
 			name: "operator dismissal remains distinct",
-			row:  ClipPipeline{Disposition: DispositionDismissed, Stage: StageScore, Status: StatusDone},
+			row:  ClipPipeline{Disposition: DispositionDismissed, Stage: StageFinish, Status: StatusDone},
 			want: PipelineLifecycle{State: LifecycleDismissed},
 		},
 	}

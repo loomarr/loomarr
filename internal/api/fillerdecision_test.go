@@ -19,7 +19,7 @@ func seedForDecision(t *testing.T, st interface {
 	t.Helper()
 	put()
 	if err := st.UpsertClipPipeline(context.Background(), filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone,
+		ClipHash: hash, Stage: filler.StageFinish, Status: filler.StatusDone,
 		Disposition: d, UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)

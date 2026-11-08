@@ -38,7 +38,7 @@ func testQuarantineLegacyFillerMigration(t *testing.T, s Store, db *sql.DB, migr
 		}
 		if disposition != "" {
 			if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
-				ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone,
+				ClipHash: hash, Stage: filler.StageFinish, Status: filler.StatusDone,
 				Progress: 100, Disposition: disposition, EnrolledAt: at, UpdatedAt: at,
 			}); err != nil {
 				t.Fatal(err)

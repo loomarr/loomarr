@@ -21,11 +21,10 @@ type (
 )
 
 const (
-	ClipSortAdded      = clipstore.ClipSortAdded
-	ClipSortConfidence = clipstore.ClipSortConfidence
-	ClipSortDuration   = clipstore.ClipSortDuration
-	ClipSortName       = clipstore.ClipSortName
-	ClipSortPlays      = clipstore.ClipSortPlays
+	ClipSortAdded    = clipstore.ClipSortAdded
+	ClipSortDuration = clipstore.ClipSortDuration
+	ClipSortName     = clipstore.ClipSortName
+	ClipSortPlays    = clipstore.ClipSortPlays
 
 	InteractiveOperationRunning     = store.InteractiveOperationRunning
 	InteractiveOperationSuccess     = store.InteractiveOperationSuccess

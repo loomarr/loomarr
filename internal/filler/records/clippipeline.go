@@ -153,7 +153,7 @@ func affectedOne(result sql.Result, err error) (bool, error) {
 
 // RetryClipPipeline commits the cross-table recovery boundary. A terminal execution failure has
 // been tombstoned; it must become present and queued together, and it remains held until the
-// downstream score stage admits it. If invalidation failed, the caller never reaches this method.
+// terminal ready commit admits it. If invalidation failed, the caller never reaches this method.
 func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p filler.ClipPipeline, restore bool) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {

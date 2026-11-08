@@ -26,7 +26,7 @@ const (
 	StageLanguage   StageID = "language"
 	StageTranscribe StageID = "transcribe"
 	StageVision     StageID = "vision"
-	StageScore      StageID = "score"
+	StageFinish     StageID = "finish"
 )
 
 // StageOrder is the pipeline, in order. It is the ONE definition of the sequence: the runner
@@ -39,11 +39,12 @@ const (
 // `defects` waits for the floor's verdict on the bytes that air, before enrichment spends anything
 // on a copy that fails (#2036); `transcribe` must precede `tag` because the transcript is one of the text signals `tag` grounds
 // against (running them the other way round is what the cron schedule did, and why a clip could
-// be scored low against a transcript that arrived ten minutes later); `score` remains the final
-// descriptive rung, after which terminal readiness owns the effective publication transition.
+// be classified against a transcript that arrived ten minutes later); `finish` is the final rung.
+// It always runs, so the ready commit has one known terminal rung to anchor on, after which terminal
+// readiness owns the effective publication transition.
 var StageOrder = []StageID{
 	StageProbe, StageTranscode, StageSplit, StageScreen, StageDefects, StageLanguage,
-	StageTranscribe, StageVision, StageScore,
+	StageTranscribe, StageVision, StageFinish,
 }
 
 // StageIndex returns a stage's position in StageOrder, or -1 when it is not a stage.

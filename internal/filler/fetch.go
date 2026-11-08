@@ -27,7 +27,7 @@ import (
 //     scanning, searching and downloading" from a source that is off; auto-fetch honouring
 //     anything less makes that copy false.
 //  2. Everything fetched arrives HELD. Auto-fetch does not bypass the lifecycle — the clip is
-//     still tagged, scored and gated by the confidence cap before it can play. The unattended
+//     still conditioned and classified by the pipeline before it can play. The unattended
 //     step is ACQUISITION, never ADMISSION.
 //  3. A limit that stops the fetch is REPORTED. A crawler that quietly does nothing is
 //     indistinguishable from one that is broken.

@@ -567,9 +567,8 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		// ⚠ **A composite skips everything except measuring and cutting, and the rule lives HERE
 		// rather than in six `Applies` methods.** A compilation is a CONTAINER of adverts, not an
 		// advert: transcoding it burns an encode on a file about to be cut up, and tagging or
-		// scoring it would describe "twenty unrelated adverts" as though it were one clip — the
-		// score rung would then find nothing coherent and could tombstone it as unidentified,
-		// destroying the reel its segments are cut from.
+		// classifying it would describe "twenty unrelated adverts" as though it were one clip,
+		// and publishing it would put the reel its segments are cut from on air.
 		//
 		// Six copies of that check is six chances for a new rung to forget it, and forgetting it
 		// is silent. One rule, stated once, and a new rung inherits it by existing.
@@ -767,7 +766,7 @@ func settleReleased(row ClipPipeline, clip StoreClip, at time.Time) (ClipPipelin
 		validateCompletedReadyLadder(row) != nil {
 		return row, false
 	}
-	row.Record(StageScore, StatusDone, "clip was already released to the catalog; settled without republishing", row.Attempts, at)
+	row.Record(StageFinish, StatusDone, "clip was already released to the catalog; settled without republishing", row.Attempts, at)
 	row.Disposition = DispositionReady
 	row.Status = StatusDone
 	row.Progress = 100
@@ -820,7 +819,7 @@ func (p *Pipeline) repairLadderGaps(row *ClipPipeline) bool {
 // onReadyFailure gives a failed terminal commit the same treatment as a failed stage: the error
 // is recorded on the final rung, the attempt count is bounded at MaxAttempts and the row is
 // persisted with a backoff. Without it the row stayed running with next_run=0, sorted first, and
-// took a work slot on every pass (#1392). The row is never skipped past the score rung, since
+// took a work slot on every pass (#1392). The row is never skipped past the finish rung, since
 // readiness requires it to have completed, so at MaxAttempts it keeps retrying at the longest
 // backoff — the same fail-closed shape screening uses.
 func (p *Pipeline) onReadyFailure(ctx context.Context, row ClipPipeline, clip StoreClip, cause error) error {

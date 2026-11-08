@@ -386,7 +386,7 @@ func friendlyIncomingProcessingStage(stage filler.StageID) string {
 		return "Listening for speech"
 	case filler.StageVision:
 		return "Checking the picture"
-	case filler.StageScore:
+	case filler.StageFinish:
 		return "Finishing"
 	default:
 		return "Getting ready"
@@ -401,7 +401,7 @@ func friendlyIncomingStage(stage filler.StageID) string {
 		return "Checking for separate clips"
 	case filler.StageLanguage, filler.StageTranscribe, filler.StageVision:
 		return "Adding details"
-	case filler.StageScore:
+	case filler.StageFinish:
 		return "Finishing"
 	default:
 		return "Getting ready"

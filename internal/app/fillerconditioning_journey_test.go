@@ -318,7 +318,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, drop, nil,
 			func() time.Duration { return 45 * time.Second }, time.Now),
 		transcode,
-		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, func() bool { return false }, time.Now),
+		filler.NewFinishStage(),
 	}, filler.Budget{}, nil, time.Now, slog.New(slog.DiscardHandler))
 	app := fillerServiceAdapter{
 		splitter: splitter, splitClips: fillerSplitStoreAdapter{st: st}, pipeline: pipeline,

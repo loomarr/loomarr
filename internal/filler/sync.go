@@ -561,7 +561,6 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			// because a future edit to one that forgot the other fails silently.
 			merged.Held = existing.Held
 			merged.Placement = existing.Placement
-			merged.Confidence = existing.Confidence
 			merged.IsComposite = existing.IsComposite || rc.IsComposite
 			// ⚠ Play counters are PRESERVED, not re-derived: a scan knows nothing about what
 			// aired. Belt and braces with UpsertClip's ON CONFLICT list, which also omits them
@@ -817,7 +816,6 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 			tags.Category = existing.Category
 			tags.Brand = existing.Brand
 			tags.Transcript = existing.Transcript
-			tags.Confidence = existing.Confidence
 			tags.SuggestedEra = existing.SuggestedEra
 		}
 		if err := WriteSidecarTags(full, tags, false); err != nil {
@@ -867,7 +865,6 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 			tags.Category = existing.Category
 			tags.Brand = existing.Brand
 			tags.Transcript = existing.Transcript
-			tags.Confidence = existing.Confidence
 			tags.SuggestedEra = existing.SuggestedEra
 			if err := WriteSidecarTags(oldFull, tags, false); err != nil {
 				return rc, false, err
