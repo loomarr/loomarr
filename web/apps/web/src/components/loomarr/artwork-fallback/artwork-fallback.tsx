@@ -2,31 +2,28 @@ import { channelIdentHue, monogramOf } from "@loomarr/core/guide";
 import { cn } from "@/lib/utils";
 import type { ArtworkFallbackProps } from "./artwork-fallback.type";
 
-// ArtworkFallback — missing or failed artwork (#1822 evidence: "a restrained line motif with a
-// channel monogram where available"). Keeps the caller's own geometry (16:9 channel art, 2:3
-// posters); this only fills the box with a neutral surface, a few faint diagonal lines and, when
-// a channel is known, its monogram — never a broken-image glyph or invented photography.
-//
-// CSS gradients, not an inline SVG string: there is no per-channel paste-able content here (the
-// monogram and hue are both derived, §22's raster-only rule is about operator-pasted logos), but
-// a plain `background-image` costs nothing and keeps this component inert markup.
-const LINES =
-  "repeating-linear-gradient(135deg, transparent 0 24px, color-mix(in srgb, var(--color-static-400) 16%, transparent) 24px 25px)";
-
-const ArtworkFallback = ({ channel, className }: ArtworkFallbackProps) => {
-  const hue = channel ? `var(--color-${channelIdentHue(channel.number)})` : undefined;
+// ArtworkFallback — generated art for a slot with no picture (#2762): a soft wash in the channel's
+// own identity hue with its monogram set large, so a card with no still still looks finished. Keeps
+// the caller's own geometry (16:9 channel art, 2:3 posters). No hatching and never a blank box, and
+// never AI art: it is only the channel's hue and letters. A title with no channel sets its own
+// letters, in a hue picked from `seed`.
+const ArtworkFallback = ({ channel, label, seed = 0, className }: ArtworkFallbackProps) => {
+  const hue = `var(--color-${channelIdentHue(channel?.number ?? seed)})`;
+  const words = channel?.name ?? label;
   return (
     <div
       role="presentation"
-      style={{ backgroundImage: LINES }}
-      className={cn("bg-static-800 flex size-full items-center justify-center", className)}
+      style={{
+        backgroundImage: `linear-gradient(155deg, color-mix(in srgb, ${hue} 34%, var(--color-static-900)) 0%, var(--color-static-900) 88%)`,
+      }}
+      className={cn("bg-static-900 flex size-full items-center justify-center", className)}
     >
-      {channel && (
+      {words && (
         <span
           style={{ color: hue }}
-          className="font-mono text-base font-semibold tracking-[0.08em] opacity-75"
+          className="font-mono text-3xl font-semibold tracking-[0.08em] opacity-80"
         >
-          {monogramOf(channel.name)}
+          {monogramOf(words)}
         </span>
       )}
     </div>

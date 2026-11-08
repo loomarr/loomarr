@@ -7,7 +7,7 @@ interface OnNowProps {
 }
 
 interface AiringArtworkProps {
-  airing: Pick<GuideAiring, "thumbImage" | "thumbUrl">;
+  airing: Pick<GuideAiring, "backdropImage" | "thumbImage" | "thumbUrl">;
   // The channel the airing is on, for the code-drawn fallback's monogram.
   channel: { name: string; number: number };
   // The `<ServedImage>` `sizes` hint for the slot this fills.
