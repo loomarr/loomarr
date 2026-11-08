@@ -89,7 +89,6 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ChannelDeleteDropsImageRefs", func(t *testing.T) { testChannelDeleteDropsImageRefs(t, newStore) })
 		t.Run("ClaimDueChannels", func(t *testing.T) { testClaimDueChannels(t, newStore) })
 		t.Run("ClaimDueChannelsConcurrent", func(t *testing.T) { testClaimChannelsConcurrent(t, newStore) })
-		t.Run("SeriesEpisodesCache", func(t *testing.T) { testSeriesEpisodes(t, newStore) })
 		t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
 		t.Run("ScheduledAiringHistory", func(t *testing.T) { testScheduledAiringHistory(t, newStore) })
 		t.Run("FavouriteChannels", func(t *testing.T) { testFavouriteChannels(t, newStore) })

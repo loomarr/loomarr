@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -442,128 +441,6 @@ func testClaimChannelsConcurrent(t *testing.T, newStore NewStoreFunc) {
 		if c != 1 {
 			t.Errorf("channel %s claimed %d times, want exactly 1", id, c)
 		}
-	}
-}
-
-// testSeriesEpisodes covers the cached episode lists (§5, §9 series expansion) on BOTH backends
-// — the upsert-replaces semantics, the empty-vs-missing distinction, and the staleness query
-// the refresh job runs.
-func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
-	t.Helper()
-	ctx := context.Background()
-	st := newStore(t)
-
-	// A show never enumerated is NOT FOUND — distinct from one cached as empty, below.
-	if _, err := st.GetSeriesEpisodes(ctx, "show-unknown"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("unknown show = %v, want ErrNotFound", err)
-	}
-
-	for i, tt := range []struct {
-		name    string
-		episode schedule.ResolvedProgram
-	}{
-		{name: "blank identity", episode: schedule.ResolvedProgram{DurationMs: 1, Season: 1, Episode: 1}},
-		{name: "zero runtime", episode: schedule.ResolvedProgram{LibraryItemID: "ep", Season: 1, Episode: 1}},
-		{name: "negative runtime", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: -1, Season: 1, Episode: 1}},
-		{name: "negative season", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: -1, Episode: 1}},
-		{name: "missing or zero episode", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: 1}},
-		{name: "negative episode", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: 1, Episode: -1}},
-		{name: "negative episode end", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: 1, Episode: 1, EpisodeEnd: -1}},
-		{name: "episode end before episode", episode: schedule.ResolvedProgram{LibraryItemID: "ep", DurationMs: 1, Season: 1, Episode: 2, EpisodeEnd: 1}},
-	} {
-		t.Run("RejectsUnplayableWrite/"+tt.name, func(t *testing.T) {
-			libraryID := fmt.Sprintf("invalid-show-%d", i)
-			err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: libraryID, Episodes: []schedule.ResolvedProgram{tt.episode}})
-			if err == nil {
-				t.Fatalf("structurally unplayable episode was persisted: %+v", tt.episode)
-			}
-			if _, err := st.GetSeriesEpisodes(ctx, libraryID); !errors.Is(err, ErrNotFound) {
-				t.Fatalf("rejected write left a cache row: %v", err)
-			}
-		})
-	}
-
-	fetched := time.Now().Truncate(time.Second)
-	eps := []schedule.ResolvedProgram{
-		{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1, Year: 1993,
-			AirDate: time.Date(1993, time.December, 16, 0, 0, 0, 0, time.UTC), CommunityRating: 9.1, Overview: "A Christmas homecoming", Tags: []string{"holiday", "family"}},
-		{LibraryItemID: "ep-2", Title: "Second", DurationMs: 1_320_000, Season: 1, Episode: 2, EpisodeEnd: 3},
-		{LibraryItemID: "ep-3", Title: "Third", DurationMs: 1_320_000, Season: 1, Episode: 4,
-			CommunityRating: 11, Overview: strings.Repeat("x", 2050), Tags: append([]string{"holiday"}, make([]string, 20)...)},
-	}
-	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "show-a", Episodes: eps, FetchedAt: fetched}); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := st.GetSeriesEpisodes(ctx, "show-a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Episodes) != 3 || got.Episodes[0].LibraryItemID != "ep-1" {
-		t.Fatalf("round-trip lost episodes: %+v", got.Episodes)
-	}
-	if got.Episodes[0].Year != 1993 {
-		t.Fatalf("Year = %d, want 1993 (episode era must survive the cache blob)", got.Episodes[0].Year)
-	}
-	if !got.Episodes[0].AirDate.Equal(eps[0].AirDate) || !got.Episodes[1].AirDate.IsZero() {
-		t.Fatalf("AirDate = %v / %v, want the holiday evidence date and zero for unknown", got.Episodes[0].AirDate, got.Episodes[1].AirDate)
-	}
-	if got.Episodes[0].CommunityRating != 9.1 || got.Episodes[0].Overview != "A Christmas homecoming" ||
-		len(got.Episodes[0].Tags) != 2 || got.Episodes[0].Tags[0] != "holiday" || got.Episodes[0].Tags[1] != "family" {
-		t.Fatalf("editorial evidence did not survive the cache blob: %+v", got.Episodes[0])
-	}
-	// EpisodeEnd is the multi-part span (§5) — a field a naive round-trip silently drops.
-	if got.Episodes[1].EpisodeEnd != 3 {
-		t.Fatalf("EpisodeEnd = %d, want 3 (multi-part span must survive the blob)", got.Episodes[1].EpisodeEnd)
-	}
-	if got.Episodes[2].CommunityRating != 0 || len([]rune(got.Episodes[2].Overview)) != 2048 ||
-		len(got.Episodes[2].Tags) != 1 {
-		t.Fatalf("durable write/read did not sanitize episode evidence: %+v", got.Episodes[2])
-	}
-	if !got.FetchedAt.Equal(fetched) {
-		t.Fatalf("FetchedAt = %v, want %v", got.FetchedAt, fetched)
-	}
-
-	// Upsert REPLACES rather than merging: the library's answer is the truth for that show, so
-	// an episode it no longer reports must disappear rather than linger in every lineup.
-	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{
-		LibraryID: "show-a",
-		Episodes: []schedule.ResolvedProgram{{
-			LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1,
-		}},
-		FetchedAt: fetched,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if got, err = st.GetSeriesEpisodes(ctx, "show-a"); err != nil || len(got.Episodes) != 1 {
-		t.Fatalf("upsert did not replace: %d episodes, err=%v", len(got.Episodes), err)
-	}
-
-	// An EMPTY list is a legitimate cached answer ("no episodes present yet") and must read
-	// back as a hit, not as a miss — otherwise a genuinely-empty show re-enumerates on every
-	// request, which is the N+1 this cache exists to remove.
-	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "show-empty", FetchedAt: fetched}); err != nil {
-		t.Fatal(err)
-	}
-	empty, err := st.GetSeriesEpisodes(ctx, "show-empty")
-	if err != nil {
-		t.Fatalf("a cached EMPTY list must be a hit, got %v", err)
-	}
-	if len(empty.Episodes) != 0 {
-		t.Fatalf("empty cache entry returned %d episodes", len(empty.Episodes))
-	}
-
-	// Staleness: the refresh job asks for rows older than a cutoff, oldest first.
-	old := fetched.Add(-48 * time.Hour)
-	if err := st.UpsertSeriesEpisodes(ctx, SeriesEpisodes{LibraryID: "show-old", FetchedAt: old}); err != nil {
-		t.Fatal(err)
-	}
-	stale, err := st.ListStaleSeriesEpisodes(ctx, fetched.Add(-time.Hour), 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(stale) != 1 || stale[0].LibraryID != "show-old" {
-		t.Fatalf("stale = %+v, want exactly show-old (the fresh rows must be excluded)", stale)
 	}
 }
 
