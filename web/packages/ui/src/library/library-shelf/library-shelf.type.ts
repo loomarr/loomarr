@@ -7,8 +7,8 @@ import type {
 
 type LibraryKind = "movie" | "series";
 
-/** The grid's filter: All, Movies or Shows. */
-type LibraryFilter = "all" | LibraryKind;
+/** The tabs: All, Movies or Shows filter the grid; Collections shows the collections instead. */
+type LibraryFilter = "all" | LibraryKind | "collections";
 
 /** One title on the shelf. */
 interface LibraryShelfTitle {
@@ -55,6 +55,8 @@ interface LibraryShelfProps {
   needs?: ReactNode;
   /** False on Needs you's own screen: the tabs stay, the search and the grid go. Default true. */
   showTitles?: boolean;
+  /** The Collections tab's content, in place of the search and the grid while it's chosen. */
+  collections?: ReactNode;
 }
 
 export type { LibraryFilter, LibraryKind, LibraryShelfProps, LibraryShelfStatus, LibraryShelfTitle };

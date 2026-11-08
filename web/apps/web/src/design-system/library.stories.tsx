@@ -1,4 +1,6 @@
 import {
+  LibraryCollectionEditor,
+  LibraryCollections,
   type LibraryNeed,
   LibraryNeedsCards,
   LibraryNeedsStrip,
@@ -287,16 +289,112 @@ const Series: Story = {
   ),
 };
 
+// Collections: the household's own, one brought over and on a channel, and the ready-made sets.
+const pile = (...colors: (string | undefined)[]) =>
+  colors.map((color, i) => ({ name: TITLES[i]?.name ?? "", poster: color ? art(color) : undefined }));
+
+const Collections: Story = {
+  args: {
+    filter: "collections",
+    collections: (
+      <LibraryCollections
+        collections={[
+          {
+            id: "c1",
+            name: "Rainy Sundays",
+            titles: 12,
+            pile: pile("#3b4a63", "#6b3a2e", "#2f5a46"),
+            importedFrom: "Emby",
+            usedBy: [{ name: "Saturday Morning", number: 4 }],
+          },
+          { id: "c2", name: "Harbour nights", titles: 2, pile: pile("#3b4a63", undefined), usedBy: [] },
+        ]}
+        onCopy={answered}
+        onEdit={() => {}}
+        onNew={() => {}}
+        sets={[
+          {
+            id: "90000611",
+            name: "The Lantern Keeper Collection",
+            have: 2,
+            total: 3,
+            pile: pile("#6b3a2e", "#2f5a46"),
+          },
+        ]}
+      />
+    ),
+  },
+};
+
+const editorActions = {
+  onNameChange: () => {},
+  onDescriptionChange: () => {},
+  onMove: () => {},
+  onRemove: () => {},
+  onSearch: () => Promise.resolve([]),
+  onAdd: () => {},
+  onBack: () => {},
+  onCancel: () => {},
+  onSave: () => {},
+  onDelete: () => {},
+  busy: false,
+};
+
+const MEMBERS = TITLES.slice(0, 4).map((t) => ({ id: t.id, name: t.name, year: t.year, poster: t.poster }));
+
+const CollectionEditor: Story = {
+  render: () => (
+    <LibraryCollectionEditor
+      {...editorActions}
+      description="The slow ones, for a wet afternoon."
+      members={MEMBERS}
+      name="Rainy Sundays"
+      saved
+      usedBy={[]}
+    />
+  ),
+};
+
+const CollectionEditorInUse: Story = {
+  render: () => (
+    <LibraryCollectionEditor
+      {...editorActions}
+      description=""
+      members={MEMBERS}
+      name="Rainy Sundays"
+      saved
+      usedBy={[{ name: "Saturday Morning", number: 4 }]}
+    />
+  ),
+};
+
+const NewCollection: Story = {
+  render: () => (
+    <LibraryCollectionEditor
+      {...editorActions}
+      description=""
+      members={[]}
+      name=""
+      saved={false}
+      usedBy={[]}
+    />
+  ),
+};
+
 export default meta;
 export {
   Adding,
   CaughtUp,
+  CollectionEditor,
+  CollectionEditorInUse,
+  Collections,
   FolderOffline,
   Fresh,
   HeldRemoval,
   Movie,
   NeedsCards,
   NeedsStrip,
+  NewCollection,
   NoMatch,
   NothingNeedsYou,
   Paused,

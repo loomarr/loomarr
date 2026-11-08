@@ -188,6 +188,7 @@ const FILTERS: { label: string; value: LibraryFilter }[] = [
   { label: "All", value: "all" },
   { label: "Movies", value: "movie" },
   { label: "Shows", value: "series" },
+  { label: "Collections", value: "collections" },
 ];
 
 const LibraryShelf = ({
@@ -204,9 +205,12 @@ const LibraryShelf = ({
   loading,
   onOpenTitle,
   needs,
-  showTitles = true,
+  showTitles: showGrid = true,
+  collections,
 }: LibraryShelfProps) => {
   const fresh = status.health === "needs_folders";
+  const onCollections = filter === "collections";
+  const showTitles = showGrid && !onCollections;
   // From a tablet up the search sits beside the tabs; on a phone it takes its own full-width line.
   const wide = useWindowWidth() >= 768;
   return (
@@ -247,6 +251,7 @@ const LibraryShelf = ({
               </Stack>
             ) : null}
           </Line>
+          {onCollections ? collections : null}
           {!showTitles || loading ? null : titles.length === 0 && search.trim() !== "" ? (
             <Text textRole="body" tone="secondary">
               {`Nothing here matches "${search.trim()}".`}

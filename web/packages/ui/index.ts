@@ -60,6 +60,13 @@ export type {
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
 export type {
   LibraryAuthority,
+  LibraryCollectionCard,
+  LibraryCollectionChannel,
+  LibraryCollectionEditorProps,
+  LibraryCollectionMember,
+  LibraryCollectionPoster,
+  LibraryCollectionSortable,
+  LibraryCollectionsProps,
   LibraryFilter,
   LibraryFolder,
   LibraryHealth,
@@ -75,6 +82,7 @@ export type {
   LibraryPathMapping,
   LibraryProblem,
   LibraryScan,
+  LibrarySetCard,
   LibrarySettingsProps,
   LibraryShelfProps,
   LibraryShelfStatus,
@@ -87,6 +95,8 @@ export type {
   LibraryTitleSeason,
 } from "./src/library";
 export {
+  LibraryCollectionEditor,
+  LibraryCollections,
   LibraryNeedsCards,
   LibraryNeedsStrip,
   LibrarySettings,
