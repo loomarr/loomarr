@@ -62,13 +62,17 @@ describe("SettingField", () => {
     expect(screen.queryByRole("button", { name: /about library url/i })).not.toBeInTheDocument();
   });
 
-  // `sr-only` is `position: absolute`. With no positioned ancestor it lands against the page,
-  // below the viewport, and stretches the document so scroll chains out of main (#2724).
-  it("anchors the visually hidden doc to the field", () => {
-    render(<SettingField entry={entry()} value="" onChange={vi.fn()} />);
-    const doc = screen.getByText("Base URL of your Emby/Jellyfin server.");
-    expect(doc).toHaveClass("sr-only");
-    expect(doc.parentElement).toHaveClass("relative");
+  // `sr-only` is `position: absolute`. The info icon's hidden copy of the detail sits in an
+  // unpositioned button, so without a positioned field it lands against the page, below the
+  // viewport, and stretches the document so scroll chains out of main (#2724).
+  it("anchors the info icon's visually hidden detail to the field", () => {
+    const { container } = render(
+      <SettingField entry={entry({ detail: "For example http://emby:8096." })} value="" onChange={vi.fn()} />,
+    );
+    const detail = screen.getByText("For example http://emby:8096.", { selector: ".sr-only" });
+    const field = container.querySelector(".group");
+    expect(field).toHaveClass("relative");
+    expect(field).toContainElement(detail);
   });
 
   it("uses the registry-owned label instead of deriving product copy from the key", () => {
