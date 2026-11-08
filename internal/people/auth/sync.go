@@ -14,9 +14,9 @@ type UserLister interface {
 	ListUsers(ctx context.Context) ([]library.User, error)
 }
 
-// UserSync refreshes ALREADY-IMPORTED media-server users (§11): it updates name +
-// disabled from the source and revokes sessions and paired devices for any user the server now
-// reports disabled. It NEVER adds users — import (Provisioner.Import) defines the
+// UserSync refreshes ALREADY-IMPORTED media-server users (§11): it updates the name from the
+// source and disables, revoking sessions and paired devices, any user the server now reports
+// disabled. It never re-enables a user: Loomarr owns the disabled flag. It NEVER adds users — import (Provisioner.Import) defines the
 // allowlist, sync only reconciles it (§11: "sync refreshes but never adds").
 // Local role/quota/auto_approve are preserved (admin-managed).
 type UserSync struct {
@@ -54,16 +54,16 @@ func (s *UserSync) Sync(ctx context.Context) (int, error) {
 		if !existing.MediaServerLinked {
 			continue // an id collision must never turn a local account into provider-owned state
 		}
-		wasEnabled := !existing.Disabled
 		existing.Name = ms.Name
-		existing.Disabled = ms.Disabled
 		existing.UpdatedAt = now
 		if err := s.store.UpsertUser(ctx, existing); err != nil {
 			return n, err
 		}
-		// Newly disabled server-side → revoke sessions and paired devices immediately (§11).
-		if wasEnabled && ms.Disabled {
-			if err := revokeAccess(ctx, s.store, ms.ID); err != nil {
+		// Newly disabled server-side → disable and revoke sessions and paired devices at once (§11).
+		// Loomarr owns the flag (#1861): sync may set it, but a server reporting the user enabled
+		// never clears it. Re-enabling is an admin action in Loomarr.
+		if !existing.Disabled && ms.Disabled {
+			if err := s.store.DisableUser(ctx, ms.ID, now); err != nil {
 				return n, err
 			}
 		}
