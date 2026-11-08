@@ -362,7 +362,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc encode.Enco
 	}
 
 	if err != nil {
-		msg := strings.TrimSpace(firstLine(stderr.String()))
+		msg := trialFailure(stderr.String())
 		if msg == "" {
 			msg = err.Error()
 		}
@@ -514,6 +514,18 @@ func channelsFromSpeed(speed float64) int {
 		return n
 	}
 	return 1
+}
+
+// trialFailure is the line of a failed trial's stderr that an admin should read. ffmpeg's first
+// line is usually the cause, but an NVENC build newer than the host's driver first says it cannot
+// load the library and only later names the driver it needs, which is the fix.
+func trialFailure(stderr string) string {
+	for line := range strings.Lines(stderr) {
+		if strings.Contains(line, "minimum required Nvidia driver") {
+			return strings.TrimSpace(line)
+		}
+	}
+	return strings.TrimSpace(firstLine(stderr))
 }
 
 func firstLine(s string) string {

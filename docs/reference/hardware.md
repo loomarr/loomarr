@@ -12,7 +12,7 @@ Tunarr's own transcode settings apply.
 | Host | Hardware encoding |
 | --- | --- |
 | Linux, Intel or AMD GPU | VAAPI and Vulkan on amd64 and arm64; QSV on amd64 only (Intel's `intel-media-va-driver` has no arm64 build) |
-| Linux, NVIDIA GPU | NVENC, through the NVIDIA container toolkit |
+| Linux, NVIDIA GPU | NVENC, through the NVIDIA container toolkit. Needs driver 610 or newer; an older driver means software encoding |
 | Docker Desktop on macOS | None: the Mac GPU isn't passed to the Linux container. Playout runs in software |
 | No GPU | Software encoding. Everything works; fewer channels play at once |
 
