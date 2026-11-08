@@ -62,6 +62,12 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   render?: ReactElement<Record<string, unknown>>;
   selected?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
+  /**
+   * An on/off toggle (Wrap, Follow tail): publishes `aria-pressed="false"` while unselected too, so
+   * a screen reader announces a toggle that is off. Without it an unselected Action is a plain
+   * button, which is right for a nav item or guide row that only marks the current one.
+   */
+  toggle?: boolean;
   tone?: "danger" | "primary" | "secondary";
   variant?: ActionVariant;
 };
@@ -137,6 +143,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       selected = false,
       style,
       tabIndex,
+      toggle = false,
       tone = "primary",
       variant,
       ...props
@@ -345,7 +352,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         accessibilityState={{ ...accessibilityState, disabled: isDisabled, selected }}
         accessibilityRole={role}
         aria-disabled={isDisabled || undefined}
-        aria-pressed={role === "button" && selected ? true : undefined}
+        aria-pressed={role === "button" && (toggle || selected) ? selected : undefined}
         aria-selected={role === "tab" ? selected : undefined}
         disabled={isDisabled}
         onBlur={focusLook.onBlur}

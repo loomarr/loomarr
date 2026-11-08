@@ -20,6 +20,32 @@ describe("shared interaction controls", () => {
     expect(markup).toContain('aria-pressed="true"');
   });
 
+  it("announces an off toggle as unpressed, and leaves a plain unselected action without the state", () => {
+    const markup = (ui: React.ReactNode) => renderToStaticMarkup(<LoomarrProvider>{ui}</LoomarrProvider>);
+
+    expect(
+      markup(
+        <Action selected={false} toggle tone="secondary">
+          Wrap
+        </Action>,
+      ),
+    ).toContain('aria-pressed="false"');
+    expect(
+      markup(
+        <Action selected toggle tone="secondary">
+          Wrap
+        </Action>,
+      ),
+    ).toContain('aria-pressed="true"');
+    expect(
+      markup(
+        <Action selected={false} tone="secondary">
+          Guide
+        </Action>,
+      ),
+    ).not.toContain("aria-pressed");
+  });
+
   it("owns accessible label, help, invalid, and disabled field presentation", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider theme="light">
