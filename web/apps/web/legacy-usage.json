@@ -413,27 +413,25 @@
     },
     "src/filler/channel-filler/channel-filler.tsx": {
       "tailwindClasses": 116,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
       "tailwindClasses": 48,
       "legacyUi": 1
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
-      "tailwindClasses": 112,
-      "legacyUi": 3
+      "tailwindClasses": 108,
+      "legacyUi": 2
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
       "tailwindClasses": 85,
       "legacyUi": 4
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
-      "tailwindClasses": 144,
-      "legacyUi": 1
+      "tailwindClasses": 144
     },
     "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 62,
-      "legacyUi": 1
+      "tailwindClasses": 62
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
       "tailwindClasses": 24,
