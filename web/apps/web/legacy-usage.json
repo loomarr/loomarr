@@ -359,8 +359,7 @@
       "tailwindClasses": 83
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
-      "tailwindClasses": 117,
-      "legacyUi": 2
+      "tailwindClasses": 116
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 13,
@@ -491,8 +490,7 @@
       "tailwindClasses": 42
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
-      "tailwindClasses": 90,
-      "legacyUi": 1
+      "tailwindClasses": 85
     },
     "src/home/home-page/home-page.tsx": {
       "tailwindClasses": 19
@@ -591,8 +589,7 @@
       "tailwindClasses": 14
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 76,
-      "legacyUi": 1
+      "tailwindClasses": 61
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
       "tailwindClasses": 34
@@ -602,8 +599,7 @@
       "legacyUi": 2
     },
     "src/settings/pair-device/pair-device.tsx": {
-      "tailwindClasses": 63,
-      "legacyUi": 1
+      "tailwindClasses": 61
     },
     "src/settings/paired-devices/paired-devices.tsx": {
       "tailwindClasses": 53
@@ -637,8 +633,7 @@
       "tailwindClasses": 17
     },
     "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "tailwindClasses": 136,
-      "legacyUi": 1
+      "tailwindClasses": 136
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "tailwindClasses": 63

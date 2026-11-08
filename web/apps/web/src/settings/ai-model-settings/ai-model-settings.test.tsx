@@ -157,7 +157,7 @@ describe("AiModelSettings", () => {
       mount({ provider: "ollama", onRoleSettingChange: staged });
 
       await openVision();
-      await userEvent.click(screen.getByRole("button", { name: /LLaVA 7B/ }));
+      await userEvent.click(screen.getByRole("radio", { name: /LLaVA 7B/ }));
 
       expect(staged.mock.calls).toEqual([
         [SettingKey.FillerVisionProvider, "ollama"],
@@ -173,7 +173,7 @@ describe("AiModelSettings", () => {
       mount({ provider: "openai", onRoleSettingChange: staged });
 
       await openVision();
-      await userEvent.click(screen.getByRole("button", { name: /GPT-4o/ }));
+      await userEvent.click(screen.getByRole("radio", { name: /GPT-4o/ }));
 
       expect(staged.mock.calls).toEqual([
         [SettingKey.FillerVisionProvider, "inherit"],
@@ -195,7 +195,7 @@ describe("AiModelSettings", () => {
       });
 
       await openVision();
-      await userEvent.click(screen.getByRole("button", { name: /Reuse the text-role choice/ }));
+      await userEvent.click(screen.getByRole("radio", { name: /Reuse the text-role choice/ }));
 
       expect(staged.mock.calls).toEqual([
         [SettingKey.FillerVisionProvider, "inherit"],
@@ -219,8 +219,8 @@ describe("AiModelSettings", () => {
 
       await openVision();
 
-      expect(screen.getByRole("button", { name: /LLaVA 7B/ })).toBeDisabled();
-      expect(screen.getByRole("button", { name: /Reuse the text-role choice/ })).toBeEnabled();
+      expect(screen.getByRole("radio", { name: /LLaVA 7B/ })).toBeChecked();
+      expect(screen.getByRole("radio", { name: /Reuse the text-role choice/ })).not.toBeChecked();
     });
   });
 });
