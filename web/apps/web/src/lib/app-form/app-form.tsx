@@ -28,6 +28,8 @@ interface TextFieldProps {
   disabled?: boolean;
   id?: string;
   label: string;
+  // The server's own bound on the value (a username's 200, an email's 320).
+  maxLength?: number;
   placeholder?: string;
   type?: TextFieldType;
 }
@@ -40,6 +42,7 @@ const TextField = ({
   disabled,
   id,
   label,
+  maxLength,
   placeholder,
   type = "text",
 }: TextFieldProps) => {
@@ -58,6 +61,7 @@ const TextField = ({
         invalid={errors.length > 0}
         keyboardType={KEYBOARD[type]}
         label={label}
+        maxLength={maxLength}
         onChangeText={field.handleChange}
         placeholder={placeholder}
         secureTextEntry={type === "password"}

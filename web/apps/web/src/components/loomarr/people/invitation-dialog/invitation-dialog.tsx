@@ -16,15 +16,15 @@ import {
   Toggle,
 } from "@loomarr/design-system";
 import { QrCode } from "@loomarr/design-system/qr-code-web";
-import { useForm, useStore } from "@tanstack/react-form";
+import { useStore } from "@tanstack/react-form";
 import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAppForm } from "@/lib/app-form";
 import type { InvitationDialogProps } from "./invitation-dialog.type";
 
 const invitationName = (value: InvitationBody) =>
@@ -51,8 +51,6 @@ const InvitationDialog = ({
   onRevoke,
   onSendEmail,
 }: InvitationDialogProps) => {
-  const usernameId = useId();
-  const contactId = useId();
   const accountId = useId();
   const roleId = useId();
   const emailId = useId();
@@ -66,7 +64,7 @@ const InvitationDialog = ({
   const [emailProblem, setEmailProblem] = useState(false);
   const open = controlledOpen ?? internalOpen;
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       kind: "local" as CreateInvitationInputBodyKind,
       username: "",
@@ -222,23 +220,16 @@ const InvitationDialog = ({
             </form.Field>
 
             {kind === "local" ? (
-              <form.Field name="username">
+              <form.AppField name="username">
                 {(field) => (
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={usernameId}>Reserved username</Label>
-                    <Input
-                      id={usernameId}
-                      name={field.name}
-                      value={field.state.value}
-                      maxLength={200}
-                      disabled={busy}
-                      aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </div>
+                  <field.TextField
+                    autoComplete="off"
+                    disabled={busy}
+                    label="Reserved username"
+                    maxLength={200}
+                  />
                 )}
-              </form.Field>
+              </form.AppField>
             ) : (
               <form.Field name="libraryUserId">
                 {(field) => {
@@ -289,24 +280,17 @@ const InvitationDialog = ({
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <form.Field name="contactEmail">
+              <form.AppField name="contactEmail">
                 {(field) => (
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={contactId}>Contact email (optional)</Label>
-                    <Input
-                      id={contactId}
-                      name={field.name}
-                      type="email"
-                      value={field.state.value}
-                      maxLength={320}
-                      disabled={busy}
-                      aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </div>
+                  <field.TextField
+                    autoComplete="email"
+                    disabled={busy}
+                    label="Contact email (optional)"
+                    maxLength={320}
+                    type="email"
+                  />
                 )}
-              </form.Field>
+              </form.AppField>
               <form.Field name="role">
                 {(field) => (
                   <div className="flex flex-col gap-1.5">

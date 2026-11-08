@@ -1,9 +1,9 @@
 import { formatRelative } from "@loomarr/core/format";
 import { Badge } from "@loomarr/design-system";
-import { KeyRound, Search, Server } from "lucide-react";
+import { SearchField } from "@loomarr/ui";
+import { KeyRound, Server } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,6 @@ const credentialLabel = (local: boolean, offlineLogin: boolean) => {
 };
 
 const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }: PeopleRosterProps) => {
-  const searchId = useId();
   const roleId = useId();
   const statusId = useId();
   const [query, setQuery] = useState("");
@@ -46,22 +45,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_9rem_9rem] lg:w-auto">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={searchId}>Search people</Label>
-            <div className="relative">
-              <Search
-                className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 size-4"
-                aria-hidden
-              />
-              <Input
-                id={searchId}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="pl-9"
-                placeholder="Name"
-              />
-            </div>
-          </div>
+          <SearchField label="Search people" onChangeText={setQuery} placeholder="Name" value={query} />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={roleId}>Role</Label>
             <Select value={role} onValueChange={(value) => setRole(String(value))}>

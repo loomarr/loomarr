@@ -165,6 +165,8 @@ export {
 } from "./src/requests";
 export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
 export { ScreenHeader } from "./src/screen-header";
+export type { SearchFieldProps } from "./src/search-field";
+export { SearchField } from "./src/search-field";
 export type { StatePanelAction, StatePanelKind, StatePanelProps } from "./src/state-panel";
 export { StatePanel } from "./src/state-panel";
 export type {
