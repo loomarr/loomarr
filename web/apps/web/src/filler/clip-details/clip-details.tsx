@@ -70,9 +70,11 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <p className="text-muted-foreground text-sm">
               This clip is not ready for channels yet. Open the preview when you are ready.
             </p>
-            <Action onPress={() => setRevealedHash(clip.hash)} variant="outline">
-              Preview clip
-            </Action>
+            <div className="flex">
+              <Action onPress={() => setRevealedHash(clip.hash)} variant="outline">
+                Preview clip
+              </Action>
+            </div>
           </div>
         )}
       </div>
@@ -140,9 +142,11 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         </p>
       ) : null}
       {onEdit ? (
-        <Action onPress={onEdit} variant="outline">
-          Edit details
-        </Action>
+        <div className="flex">
+          <Action onPress={onEdit} variant="outline">
+            Edit details
+          </Action>
+        </div>
       ) : null}
     </div>
   );

@@ -380,13 +380,13 @@
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
       "tailwindClasses": 85,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
       "tailwindClasses": 144
     },
     "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 62
+      "tailwindClasses": 64
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
       "tailwindClasses": 24,
@@ -411,7 +411,7 @@
       "tailwindClasses": 25
     },
     "src/filler/filler-catalog/composite-catalog-group/composite-catalog-group.tsx": {
-      "tailwindClasses": 13
+      "tailwindClasses": 14
     },
     "src/filler/filler-catalog/filler-catalog.tsx": {
       "tailwindClasses": 59
@@ -433,7 +433,7 @@
       "tailwindClasses": 18
     },
     "src/filler/incoming/incoming-processing-details/incoming-processing-details.tsx": {
-      "tailwindClasses": 54
+      "tailwindClasses": 55
     },
     "src/filler/incoming/incoming.tsx": {
       "tailwindClasses": 112
@@ -481,8 +481,7 @@
       "tailwindClasses": 60
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 211,
-      "legacyUi": 1
+      "tailwindClasses": 210
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 71
