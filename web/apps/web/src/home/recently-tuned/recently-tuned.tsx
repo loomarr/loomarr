@@ -1,8 +1,8 @@
+import { SectionHeader } from "@loomarr/design-system";
 import { surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { Button } from "@/components/ui/button";
-import { SectionHeader } from "@/components/ui/section-header";
 import { AiringArtwork } from "../on-now";
 import type { RecentlyTunedProps } from "./recently-tuned.type";
 

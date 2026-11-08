@@ -1,10 +1,10 @@
 import type { GuideHighlightDTO } from "@loomarr/api/models/guideHighlightDTO";
 import { GuideHighlightDTOReason } from "@loomarr/api/models/guideHighlightDTOReason";
 import { formatGuideTime } from "@loomarr/core/guide";
+import { Action, SectionHeader } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { HighlightRow } from "@/components/ui/highlight-row";
 import { ListGroup } from "@/components/ui/list-row";
-import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import type { TonightProps } from "./tonight.type";
 
 // Why a highlight is one, worded here from the server's typed reason (#1664): the server never
@@ -28,7 +28,9 @@ const Tonight = ({ highlights, timeZone }: TonightProps) => {
   return (
     <section aria-labelledby="home-tonight">
       <SectionHeader id="home-tonight" title="Tonight">
-        <SectionHeaderAction render={<Link to="/guide" />}>Full guide</SectionHeaderAction>
+        <Action accessibilityRole="link" render={<Link to="/guide" />} variant="link">
+          Full guide
+        </Action>
       </SectionHeader>
       <ListGroup aria-labelledby="home-tonight">
         {highlights.map((h) => (

@@ -1,7 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { Disclosure, LoomarrProvider, resolveAdaptiveDirection, ScrollFrame, Text } from "../index";
+import {
+  Disclosure,
+  LoomarrProvider,
+  resolveAdaptiveDirection,
+  ScrollFrame,
+  SectionHeader,
+  Text,
+} from "../index";
 
 describe("shared adaptive layout", () => {
   it("resolves narrow and wide composition from density-specific breakpoints", () => {
@@ -48,5 +55,19 @@ describe("shared adaptive layout", () => {
 
     expect(markup).toContain("Scrollable programme detail");
     expect(markup).toContain("flex-grow:1");
+  });
+
+  it("titles a section with a labelled heading, its meta and trailing controls", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <SectionHeader id="home-watching" meta="3 people" title="Watching now">
+          <a href="/guide">Full guide</a>
+        </SectionHeader>
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toMatch(/<h2[^>]*id="home-watching"[^>]*>Watching now<\/h2>/);
+    expect(markup).toContain("3 people");
+    expect(markup).toContain('<a href="/guide">Full guide</a>');
   });
 });

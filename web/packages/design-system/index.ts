@@ -49,6 +49,7 @@ export type {
   AdaptiveSplitProps,
   DisclosureProps,
   ScrollFrameProps,
+  SectionHeaderProps,
 } from "./src/layout";
 export {
   AdaptiveSplit,
@@ -56,6 +57,7 @@ export {
   Disclosure,
   resolveAdaptiveDirection,
   ScrollFrame,
+  SectionHeader,
   useWindowWidth,
 } from "./src/layout";
 export type { ActivityIndicatorProps, SignalLoaderProps, SkeletonProps, SkeletonShape } from "./src/loading";

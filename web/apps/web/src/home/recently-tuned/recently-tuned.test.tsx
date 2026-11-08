@@ -1,8 +1,9 @@
 import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import { layoutGuide } from "@loomarr/core/guide";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { RecentlyTuned } from "./recently-tuned";
 import type { RecentlyTunedProps } from "./recently-tuned.type";
 

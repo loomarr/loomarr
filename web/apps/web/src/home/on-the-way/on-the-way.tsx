@@ -2,11 +2,11 @@ import * as titlesApi from "@loomarr/api/endpoints/titles";
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Action, SectionHeader } from "@loomarr/design-system";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { ListGroup, ListRow, type ListRowProps } from "@/components/ui/list-row";
-import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import { REQUEST_ROW_TONE } from "@/queue/request-lists";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 
@@ -37,7 +37,9 @@ const titleRow = (t: TitleDTO): Pick<ListRowProps, "title" | "sub" | "progress">
 const SectionFrame = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section aria-labelledby="home-way">
     <SectionHeader id="home-way" title={title}>
-      <SectionHeaderAction render={<Link to="/requests/in-progress" />}>All requests</SectionHeaderAction>
+      <Action accessibilityRole="link" render={<Link to="/requests/in-progress" />} variant="link">
+        All requests
+      </Action>
     </SectionHeader>
     <ListGroup aria-labelledby="home-way">{children}</ListGroup>
   </section>
