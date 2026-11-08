@@ -1,8 +1,9 @@
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { AlertTriangle, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BackupPanelProps } from "./backup-panel.type";
+import { missingNights } from "./missing-nights";
 
 // BackupPanel — Settings → System → Backup (§16, V12; v2 mock System → Backup).
 //
@@ -15,8 +16,17 @@ import type { BackupPanelProps } from "./backup-panel.type";
 // CLI operation (stop, replace the file, start), and the panel says so rather than leaving
 // its absence to read as an oversight.
 
-const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className }: BackupPanelProps) => {
+const BackupPanel = ({
+  list,
+  onBackUpNow,
+  onDownload,
+  onOpenTasks,
+  pending,
+  error,
+  className,
+}: BackupPanelProps) => {
   const backups = list.backups ?? [];
+  const missing = missingNights(backups);
 
   // On Postgres in-app backup is not offered at all (§16). An empty table would read as
   // "backups are broken" on the one install where the operator is correctly using pg_dump,
@@ -60,6 +70,29 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
         </p>
       ) : null}
 
+      {missing > 0 ? (
+        <Surface
+          alignItems="center"
+          backgroundColor="transparent"
+          borderWidth={0}
+          flexDirection="row"
+          flexWrap="wrap"
+          gap="inline"
+          marginTop={12}
+          role="status"
+        >
+          <Icon decorative glyph={icons.warning} size="compact" tone="warning" />
+          <Text textRole="body" tone="warning">
+            {pluralize(missing, "night")} missing from the nightly backups.
+          </Text>
+          {onOpenTasks ? (
+            <Action onPress={onOpenTasks} variant="ghost">
+              Open Tasks
+            </Action>
+          ) : null}
+        </Surface>
+      ) : null}
+
       {backups.length === 0 ? (
         <p className="border-border text-muted-foreground mt-4 rounded-md border border-dashed p-4 text-center text-sm">
           No backups yet. One is written on the schedule below, or take the first one now.
@@ -95,7 +128,7 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
             so describeCron would render "Custom" — which tells the operator nothing. */}
         {list.schedule} into {list.dir} · keeps{" "}
         {list.retain > 0 ? pluralize(list.retain, "backup") : "every backup"} · restore is a command-line
-        operation, deliberately
+        operation
       </p>
     </section>
   );
