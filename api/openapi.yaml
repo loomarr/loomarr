@@ -11070,7 +11070,11 @@ components:
         caution:
           description: A stored value self-healed to default (§3).
           type: boolean
+        detail:
+          description: "The rest of the help: trade-offs, units and edge cases, shown behind the field's info icon. Absent when the sentence says it all."
+          type: string
         doc:
+          description: One plain sentence, shown under the field.
           type: string
         enum:
           description: Enum values (the closed set) — labels are in enumOptions.

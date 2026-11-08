@@ -63,23 +63,44 @@ interface AutomaticDownloadsFormProps {
   actions: Pick<SourceActions, "updateSource" | "updating" | "updatingSourceID">;
 }
 
+type AutomaticDownloadsDraft = {
+  mode: SourceAutomaticDownloadsInputMode;
+  everySeconds: number;
+  maxPerCheck: number;
+};
+
+// The schedule numbers only matter to a custom schedule; switching between defaults and never
+// changes nothing else.
+const sameDraft = (a: AutomaticDownloadsDraft, b: AutomaticDownloadsDraft): boolean =>
+  a.mode === b.mode &&
+  (a.mode !== SourceAutomaticDownloadsInputMode.custom ||
+    (a.everySeconds === b.everySeconds && a.maxPerCheck === b.maxPerCheck));
+
 // Per-source "Automatic downloads": follow the defaults, use a schedule of its own, or never. The
 // draft is seeded from the source once, when the form mounts — remount per source (`key`) — so a
-// background refetch cannot overwrite what the operator is mid-way through typing.
+// background refetch cannot overwrite what the operator is mid-way through typing. Save stays off
+// until the draft differs from what was last saved.
 const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps) => {
-  const [mode, setMode] = useState<SourceAutomaticDownloadsInputMode>(
-    source.automaticDownloads?.mode ?? SourceAutomaticDownloadsInputMode.defaults,
-  );
-  const [everySeconds, setEverySeconds] = useState(source.automaticDownloads?.everySeconds || 6 * 3600);
-  const [maxPerCheck, setMaxPerCheck] = useState(source.automaticDownloads?.maxPerCheck ?? 10);
+  const [saved, setSaved] = useState<AutomaticDownloadsDraft>(() => ({
+    mode: source.automaticDownloads?.mode ?? SourceAutomaticDownloadsInputMode.defaults,
+    everySeconds: source.automaticDownloads?.everySeconds || 6 * 3600,
+    maxPerCheck: source.automaticDownloads?.maxPerCheck ?? 10,
+  }));
+  const [mode, setMode] = useState<SourceAutomaticDownloadsInputMode>(saved.mode);
+  const [everySeconds, setEverySeconds] = useState(saved.everySeconds);
+  const [maxPerCheck, setMaxPerCheck] = useState(saved.maxPerCheck);
   const [editingCustomSchedule, setEditingCustomSchedule] = useState(
-    downloadSchedulePreset(source.automaticDownloads?.everySeconds || 6 * 3600) === "custom",
+    downloadSchedulePreset(saved.everySeconds) === "custom",
   );
   const [saveError, setSaveError] = useState<string>();
   const saveButton = useRef<ComponentRef<typeof Action>>(null);
+  // The mode select's own trigger is the one control here that carries `aria-expanded`.
+  const modeField = useRef<HTMLDivElement>(null);
   const automaticDownloads = source.automaticDownloads;
   if (!automaticDownloads) return null;
   const interval = downloadIntervalParts(everySeconds);
+  const draft: AutomaticDownloadsDraft = { mode, everySeconds, maxPerCheck };
+  const changed = !sameDraft(draft, saved);
 
   return (
     <div className="flex flex-col gap-3">
@@ -92,20 +113,22 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
           </p>
         )}
       </div>
-      <BrowserSelectControl
-        appearance="field"
-        label="Automatic downloads for this source"
-        labelHidden
-        onValueChange={(value) => {
-          setMode(value);
-          if (value === SourceAutomaticDownloadsInputMode.custom) {
-            setEditingCustomSchedule(downloadSchedulePreset(everySeconds) === "custom");
-          }
-        }}
-        options={MODE_OPTIONS}
-        value={mode}
-      />
-      {mode === "custom" && (
+      <div ref={modeField}>
+        <BrowserSelectControl
+          appearance="field"
+          label="Automatic downloads for this source"
+          labelHidden
+          onValueChange={(value) => {
+            setMode(value);
+            if (value === SourceAutomaticDownloadsInputMode.custom) {
+              setEditingCustomSchedule(downloadSchedulePreset(everySeconds) === "custom");
+            }
+          }}
+          options={MODE_OPTIONS}
+          value={mode}
+        />
+      </div>
+      {mode === SourceAutomaticDownloadsInputMode.custom && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <span className="text-sm">Look for new clips</span>
@@ -166,7 +189,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         </div>
       )}
       <Action
-        disabled={actions.updating}
+        disabled={actions.updating || !changed}
         ref={saveButton}
         style={{ alignSelf: "flex-start" }}
         variant="outline"
@@ -177,13 +200,23 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
             {
               enabled: source.enabled,
               automaticDownloads:
-                mode === "custom" ? { mode: "custom", everySeconds, maxPerCheck } : { mode },
+                mode === SourceAutomaticDownloadsInputMode.custom
+                  ? { mode: SourceAutomaticDownloadsInputMode.custom, everySeconds, maxPerCheck }
+                  : { mode },
             },
             {
-              onSuccess: () => toast.success("Automatic downloads updated"),
-              onError: (error) =>
-                setSaveError(error.detail ?? "Automatic downloads couldn’t be saved. Try again."),
-              onSettled: () => requestAnimationFrame(() => saveButton.current?.focus()),
+              onSuccess: () => {
+                setSaved(draft);
+                toast.success("Automatic downloads updated");
+                // Save turns off once nothing is left to save, so focus goes back to the form.
+                requestAnimationFrame(() =>
+                  modeField.current?.querySelector<HTMLElement>("[aria-expanded]")?.focus(),
+                );
+              },
+              onError: (error) => {
+                setSaveError(error.detail ?? "Automatic downloads couldn’t be saved. Try again.");
+                requestAnimationFrame(() => saveButton.current?.focus());
+              },
             },
           );
         }}

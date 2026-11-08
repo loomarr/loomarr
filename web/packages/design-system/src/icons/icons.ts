@@ -18,6 +18,7 @@ import EyeOff from "lucide-react-native/icons/eye-off";
 import House from "lucide-react-native/icons/house";
 import Inbox from "lucide-react-native/icons/inbox";
 import Info from "lucide-react-native/icons/info";
+import LayoutGrid from "lucide-react-native/icons/layout-grid";
 import Library from "lucide-react-native/icons/library";
 import List from "lucide-react-native/icons/list";
 import ListChecks from "lucide-react-native/icons/list-checks";
@@ -71,6 +72,8 @@ const icons = {
   // The trailing mark of a phone list row that opens or connects to something.
   disclosure: ChevronRight,
   download: Download,
+  // The guide's hour stepper: the window an hour back in time, and an hour on.
+  earlier: ChevronLeft,
   edit: Pencil,
   // A link that leaves Loomarr (an Emby page, a provider's site).
   external: ExternalLink,
@@ -82,10 +85,13 @@ const icons = {
   // The player's window tools (§9.4).
   fullscreen: Maximize,
   fullscreenExit: Minimize,
+  // A catalog's card wall, the alternative to its `list` rows.
+  grid: LayoutGrid,
   guide: BookOpen,
   help: ListChecks,
   home: House,
   info: Info,
+  later: ChevronRight,
   // Web's Library destination (#2151), drawn as the sidebar draws it.
   library: Library,
   // The player's Channels sheet (§9.4): a list of channels, where `channels` is the TV destination.
@@ -102,6 +108,9 @@ const icons = {
   paneOpen: PanelRightOpen,
   pause: Pause,
   people: Users,
+  // A table row's disclosure: closed points at the row's details, open points down into them.
+  rowCollapse: ChevronDown,
+  rowExpand: ChevronRight,
   play: Play,
   // A phone tab header's plain "add" button (#1840's Requests app bar).
   plus: Plus,

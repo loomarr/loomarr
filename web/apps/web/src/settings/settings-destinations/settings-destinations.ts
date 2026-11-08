@@ -104,10 +104,11 @@ const SETTINGS_DESTINATIONS = [
     label: "Your location",
     description: "Set the country and local area Loomarr uses for relevant content.",
     aliases: ["where I live", "country", "city", "area", "radius", "local stations", "geography"],
-    group: "setup",
+    group: "access",
     path: "/settings/access",
     role: "admin",
-    browse: true,
+    // Still searchable, but not a card: it opens the access page, which has its own.
+    browse: false,
   }),
   destination({
     id: "sharing",
@@ -118,13 +119,14 @@ const SETTINGS_DESTINATIONS = [
     group: "access",
     path: "/settings/access",
     role: "admin",
-    browse: true,
+    browse: false,
   }),
   destination({
     id: "access",
     owner: "settings.access",
-    label: "Sign-in and devices",
-    description: "Manage sessions, single sign-on, paired devices, secrets, and encryption.",
+    label: "Sign-in, devices and sharing",
+    description:
+      "Manage sessions, single sign-on, paired devices, the sharing address, your location, secrets, and encryption.",
     aliases: ["security", "SSO", "login", "cookie", "API token", "pair device", "encryption"],
     group: "access",
     path: "/settings/access",

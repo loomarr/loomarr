@@ -282,6 +282,35 @@ func TestEffectiveCronUsesResolverThenDefault(t *testing.T) {
 	}
 }
 
+// Starved names only the jobs that have waited more than twice their own interval: one late claim
+// is ordinary queueing, a paused job is not waiting at all.
+func TestStarvedNamesJobsPastTwiceTheirInterval(t *testing.T) {
+	st := newFakeStore()
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	run := func(context.Context) error { return nil }
+	reg := NewRegistry().
+		Add(Job{Name: "sweep", Group: GroupSystem, Description: "test sweep.", Title: "Sweep", DefaultCron: everyMinute, Run: run}).
+		Add(Job{Name: "late", Group: GroupSystem, Description: "test late.", Title: "Late", DefaultCron: everyMinute, Run: run}).
+		Add(Job{Name: "paused", Group: GroupSystem, Description: "test paused.", Title: "Paused", DefaultCron: everyMinute, Run: run}).
+		Add(Job{Name: "fresh", Group: GroupSystem, Description: "test fresh.", Title: "Fresh", DefaultCron: everyMinute, Run: run})
+	s := New(st, reg, nil, clk.now, testLog())
+	ctx := context.Background()
+	due := clk.now().Truncate(time.Minute)
+	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "sweep", LastResult: "ok", NextRun: due.Add(-10 * time.Minute)})
+	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "late", LastResult: "ok", NextRun: due.Add(-time.Minute)})
+	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "paused", LastResult: "ok", NextRun: due.Add(-10 * time.Minute)})
+	_ = st.SetScheduledJobPaused(ctx, "paused", true)
+	_ = st.UpsertScheduledJob(ctx, store.ScheduledJob{Name: "fresh", LastResult: "ok", NextRun: due.Add(time.Minute)})
+
+	got, err := s.Starved(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "sweep" {
+		t.Fatalf("starved = %+v, want only sweep", got)
+	}
+}
+
 // List joins the registry with state, in registration order.
 func TestListJoinsRegistryAndState(t *testing.T) {
 	st := newFakeStore()

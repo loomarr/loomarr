@@ -3,13 +3,6 @@
 **For:** anyone whose setup check is red, or whose channel won't play.
 **You'll get:** the fix for each symptom, one section per check.
 
-<!--
-EDITOR NOTE: the headings below are an API contract, not a style choice. internal/api/setup.go
-emits anchors like "troubleshooting#tunarr-library" on every failed setup check, and
-docs/embed_test.go proves each one resolves. Renaming a heading breaks a link the running
-server is already sending. Add sections freely; rename with care.
--->
-
 Every red check in the setup wizard links to a section here.
 
 ## Android TV cannot find Loomarr

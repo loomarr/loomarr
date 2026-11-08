@@ -6,6 +6,7 @@ package livetvpublish
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -458,7 +459,17 @@ func wiredTarget(ctx context.Context, lib library.LiveTV, urls tunarr.LiveTVURLs
 // server's guide-refresh task after an existing channel's lineup changed.
 // Best-effort.
 func (c *LiveTVConnector) PokeGuideRefresh(ctx context.Context) error {
-	return c.library().RefreshGuide(ctx)
+	return withoutServerNothingToDo(c.library().RefreshGuide(ctx))
+}
+
+// withoutServerNothingToDo makes a poke with no media server connected a no-op: a household that
+// plays from its own Library (#2151) has no tuner to re-scan and no guide to refresh, and every
+// reconcile would otherwise warn that it couldn't.
+func withoutServerNothingToDo(err error) error {
+	if errors.Is(err, library.ErrConnectionRequired) {
+		return nil
+	}
+	return err
 }
 
 // RescanTuner implements channels.GuidePoker (§9): make the media server re-read
@@ -476,7 +487,7 @@ func (c *LiveTVConnector) RescanTarget(ctx context.Context, urls tunarr.LiveTVUR
 	if urls.M3U == "" {
 		return nil // nothing to rescan; the poke is best-effort by contract (§9)
 	}
-	return c.library().RescanTuner(ctx, urls.M3U)
+	return withoutServerNothingToDo(c.library().RescanTuner(ctx, urls.M3U))
 }
 
 // NewTransientError builds the error withTransientRetry returns once its budget is spent, for

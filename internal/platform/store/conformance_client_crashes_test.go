@@ -40,6 +40,7 @@ func testClientCrashReports(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !ok {
 		t.Fatalf("get = %v, %v", ok, err)
 	}
+	got.BreadcrumbsJSON = asWritten(got.BreadcrumbsJSON, full.BreadcrumbsJSON)
 	if got != full {
 		t.Fatalf("round trip:\n got %+v\nwant %+v", got, full)
 	}

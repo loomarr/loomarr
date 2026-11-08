@@ -521,6 +521,8 @@ describe("SourcesPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Classic TV(?! Commercials)/ }));
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
     const save = screen.getByRole("button", { name: "Save automatic downloads" });
     await userEvent.click(save);
 
@@ -797,9 +799,11 @@ describe("SourcesPanel", () => {
         },
       });
     });
+    // Saved, so Save has nothing left to do: focus goes back to the form rather than a dead button.
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Save automatic downloads" })).toHaveFocus(),
+      expect(screen.getByRole("button", { name: /^Automatic downloads for this source/ })).toHaveFocus(),
     );
+    expect(screen.getByRole("button", { name: "Save automatic downloads" })).toBeDisabled();
   });
 
   it("uses the installation location again when a source exception is cleared", async () => {

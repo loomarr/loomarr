@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type readinessStoreFuncs struct {
@@ -87,7 +88,7 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 
 func TestFillerReadinessRetainsOlderRepairBeyondHistoryPage(t *testing.T) {
 	ctx := t.Context()
-	st, err := records.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := records.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

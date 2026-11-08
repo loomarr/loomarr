@@ -107,9 +107,40 @@ describe("AutomaticDownloadsForm", () => {
     );
     render(<AutomaticDownloadsForm source={archive()} actions={{ ...idle, updateSource }} />);
 
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
     await userEvent.click(screen.getByRole("button", { name: "Save automatic downloads" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Schedule rejected.");
+    // Nothing was saved, so the change is still there to save again.
+    expect(screen.getByRole("button", { name: "Save automatic downloads" })).toBeEnabled();
+  });
+
+  it("cannot save until something changed, and has nothing to save once saved", async () => {
+    const updateSource = vi.fn((_id, _data, callbacks) => callbacks.onSuccess());
+    render(<AutomaticDownloadsForm source={archive()} actions={{ ...idle, updateSource }} />);
+    const save = screen.getByRole("button", { name: "Save automatic downloads" });
+    expect(save).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Automatic downloads for this source/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
+    expect(save).toBeEnabled();
+
+    await userEvent.click(save);
+    expect(updateSource).toHaveBeenCalledOnce();
+    expect(save).toBeDisabled();
+  });
+
+  it("has nothing to save after changing a setting back", async () => {
+    render(<AutomaticDownloadsForm source={archive()} actions={{ ...idle, updateSource: vi.fn() }} />);
+    const trigger = () => screen.getByRole("button", { name: /^Automatic downloads for this source/ });
+
+    await userEvent.click(trigger());
+    await userEvent.click(await screen.findByRole("radio", { name: "Never download automatically" }));
+    await userEvent.click(trigger());
+    await userEvent.click(await screen.findByRole("radio", { name: "Use automatic-download defaults" }));
+
+    expect(screen.getByRole("button", { name: "Save automatic downloads" })).toBeDisabled();
   });
 
   it("labels the button while this source is saving and locks it while any source is", () => {

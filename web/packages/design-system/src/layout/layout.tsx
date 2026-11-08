@@ -1,10 +1,10 @@
 import { isWeb, useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ComponentRef, ReactNode } from "react";
-import { forwardRef, useId } from "react";
+import { forwardRef, useId, useLayoutEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, useWindowDimensions } from "react-native";
 
 import { useFocusLook } from "../focus-look";
-import { Text } from "../primitives";
+import { StatusDot, type StatusTone, Text } from "../primitives";
 import { type Density, semanticSpace, semanticTargets } from "../tokens";
 import { useViewportScale } from "../viewport";
 
@@ -106,32 +106,105 @@ ScrollFrame.displayName = "ScrollFrame";
 
 type DisclosureProps = Omit<ComponentProps<typeof View>, "children"> & {
   children: ReactNode;
+  /** The starting state when `expanded` is not given (uncontrolled). */
+  defaultExpanded?: boolean;
   density?: Density;
   description?: string;
   disabled?: boolean;
-  expanded: boolean;
+  /** Controlled state; leave it out and the disclosure keeps its own, from `defaultExpanded`. */
+  expanded?: boolean;
   label: string;
-  onExpandedChange: (expanded: boolean) => void;
+  onExpandedChange?: (expanded: boolean) => void;
+  /**
+   * A status dot before the label (a connection's ok / failing / untested). Colour alone says
+   * nothing, so put the words in `description` ("OK", "needs attention").
+   */
+  status?: StatusTone;
+  /** What the status dot means, for assistive tech. Defaults to "" (the description says it). */
+  statusLabel?: string;
+};
+
+// The collapsed body on web: still mounted (its state survives), but `hidden="until-found"`, so it
+// is out of the accessibility tree and the tab order while the browser's find-in-page can still
+// reach its text. A match fires `beforematch` just before the browser reveals it, and that opens
+// the disclosure for real. React renders `hidden` as a boolean, so the attribute is set here.
+// Typed by what is used, not as HTMLDivElement: packages that compile this file without the DOM lib
+// (the shared UI package) would otherwise see an element with none of these members.
+type FindableNode = {
+  addEventListener: (type: string, listener: () => void) => void;
+  removeAttribute: (name: string) => void;
+  removeEventListener: (type: string, listener: () => void) => void;
+  setAttribute: (name: string, value: string) => void;
+};
+
+const useFindableBody = (expanded: boolean, onFound: () => void) => {
+  const body = useRef<FindableNode | null>(null);
+  const found = useRef(onFound);
+  found.current = onFound;
+
+  useLayoutEffect(() => {
+    const node = body.current;
+    if (!node) return undefined;
+    if (expanded) {
+      node.removeAttribute("hidden");
+      return undefined;
+    }
+    node.setAttribute("hidden", "until-found");
+    const reveal = () => found.current();
+    node.addEventListener("beforematch", reveal);
+    return () => node.removeEventListener("beforematch", reveal);
+  }, [expanded]);
+
+  return body;
 };
 
 /**
  * Shared progressive disclosure for optional detail. It owns expanded semantics, focus treatment,
- * and the target size while allowing each host to use its native Pressable mechanics.
+ * and the target size while allowing each host to use its native Pressable mechanics. Controlled
+ * through `expanded` + `onExpandedChange`, or uncontrolled from `defaultExpanded`.
+ *
+ * On web a collapsed body stays mounted and findable in-page (see `useFindableBody`); on native it
+ * unmounts, as there is no find-in-page to serve.
  */
 const Disclosure = ({
   children,
+  defaultExpanded = false,
   density = "pointer",
   description,
   disabled = false,
-  expanded,
+  expanded: controlled,
   label,
   onExpandedChange,
+  status,
+  statusLabel = "",
   ...props
 }: DisclosureProps) => {
   const generatedId = useId();
   const contentId = `loomarr-disclosure-${generatedId.replaceAll(":", "")}`;
   const { focused, ...focusHandlers } = useFocusLook();
   const theme = useTheme();
+  const [own, setOwn] = useState(defaultExpanded);
+  const expanded = controlled ?? own;
+  const change = (next: boolean) => {
+    if (controlled === undefined) setOwn(next);
+    onExpandedChange?.(next);
+  };
+  const findable = useFindableBody(expanded, () => change(true));
+
+  const body = (
+    <View
+      borderTopColor="borderDecorative"
+      borderTopWidth={1}
+      gap="control"
+      padding="control"
+      // `id` alone: Tamagui maps it on native, and since Tamagui 3 a `nativeID` reaches the web
+      // DOM as an unknown attribute, which React warns about. On web the findable wrapper carries
+      // it instead, so `aria-controls` names an element that exists while collapsed too.
+      id={isWeb ? undefined : contentId}
+    >
+      {children}
+    </View>
+  );
 
   return (
     <View
@@ -151,7 +224,7 @@ const Disclosure = ({
         aria-expanded={expanded}
         disabled={disabled}
         {...focusHandlers}
-        onPress={() => onExpandedChange(!expanded)}
+        onPress={() => change(!expanded)}
         style={({ pressed }) => ({
           alignItems: "center",
           backgroundColor: focused ? theme.surfaceFocus.val : theme.surfaceRaised.val,
@@ -163,6 +236,7 @@ const Disclosure = ({
           paddingVertical: semanticSpace.inline,
         })}
       >
+        {status ? <StatusDot label={statusLabel} tone={status} /> : null}
         <View alignItems="flex-start" flex={1} gap={2}>
           <Text density={density} textAlign="left" textRole="label" tone="primary">
             {label}
@@ -177,18 +251,17 @@ const Disclosure = ({
           {expanded ? "Hide" : "Show"}
         </Text>
       </Pressable>
-      {expanded ? (
-        <View
-          borderTopColor="borderDecorative"
-          borderTopWidth={1}
-          gap="control"
-          padding="control"
-          // `id` alone: Tamagui maps it on native, and since Tamagui 3 a `nativeID` reaches the web
-          // DOM as an unknown attribute, which React warns about.
+      {isWeb ? (
+        <div
           id={contentId}
+          ref={(node) => {
+            findable.current = node as unknown as FindableNode | null;
+          }}
         >
-          {children}
-        </View>
+          {body}
+        </div>
+      ) : expanded ? (
+        body
       ) : null}
     </View>
   );
