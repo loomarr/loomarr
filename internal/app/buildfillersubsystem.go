@@ -32,6 +32,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -79,6 +80,7 @@ func buildFillerSubsystem(
 	owner *generationLifecycle,
 	holidaysChanged func(context.Context),
 	calendar func() schedule.Calendar,
+	interactiveLLM *llm.InteractiveGate,
 ) fillerBuild {
 	var result fillerBuild
 	if st == nil {
@@ -190,7 +192,7 @@ func buildFillerSubsystem(
 	)
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom, playoutResolver,
-		defectFloor.CheckReplacement)
+		defectFloor.CheckReplacement, interactiveLLM)
 	stations := &stationDirectory{list: st.ListBroadcastStations}
 	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS(), stations: stations}
 	enrichmentRunner := enrichment.NewRunner(

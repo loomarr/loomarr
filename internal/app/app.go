@@ -187,10 +187,12 @@ func buildHandler(
 	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, foundation.holidays, log)
 	proposalApprover := approval.approver
 
+	// One count of interactive LLM work (suggestions) that background filler vision yields to (#1508).
+	interactiveLLM := &llm.InteractiveGate{}
 	suggestions, err := buildSuggestions(
 		rootCtx, st, set, ov, eventBus, emitter, jobReg, fillerLayout, activityRec, log,
 		libraryClient, tmdbClient, channelSvc, proposalApprover, owner,
-		foundation.metrics, foundation.holidays,
+		foundation.metrics, foundation.holidays, interactiveLLM,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -200,6 +202,7 @@ func buildHandler(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,
 		playbackHeadroomFor(channelsBuilt.resourceBudget), owner, foundation.reloadHolidays, calendar,
+		interactiveLLM,
 	)
 	offerCuratedSources(rootCtx, st, log)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
