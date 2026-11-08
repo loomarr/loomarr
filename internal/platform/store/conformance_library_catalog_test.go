@@ -94,12 +94,25 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(paths) != 1 || paths[0].Path != "/media/film/film.mkv" {
 		t.Fatalf("movie rewrite = %+v, %v, want its one present file", paths, err)
 	}
+	// An episode's own key (its TVDB id) finds that episode's file only.
+	episode := LibraryCatalogKey{Provider: "tvdb", Kind: "episode", ExternalID: "90000901"}
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{{ID: "e2", Kind: "episode", Name: "Pilot", Catalog: episode}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{file("/media/show/e2.mkv", "e2", "s1")}); err != nil {
+		t.Fatal(err)
+	}
+	paths, err = st.RewriteLibraryCatalogFiles(ctx, episode)
+	if err != nil || len(paths) != 1 || paths[0].Path != "/media/show/e2.mkv" {
+		t.Fatalf("episode rewrite = %+v, %v, want the episode with that key", paths, err)
+	}
+
 	files, err := st.LibraryFiles(ctx, "/media")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range files {
-		rewritten := f.Path == "/media/film/film.mkv" || f.Path == "/media/show/e1.mkv"
+		rewritten := f.Path == "/media/film/film.mkv" || f.Path == "/media/show/e1.mkv" || f.Path == "/media/show/e2.mkv"
 		if rewritten != (f.Identity == "") {
 			t.Errorf("%s identity = %q, rewritten %v", f.Path, f.Identity, rewritten)
 		}

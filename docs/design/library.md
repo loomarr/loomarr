@@ -312,8 +312,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   secret into `buildinfo` as the `tmdb.api_key` default. A household's own key wins. Settings
   lists the shipped key as `builtIn`, never as set, and never previews it. Only a dev or source
   build has no key. TMDB's notice shows on Settings → System → About whatever key is in use.
-  The kill switch stops it too. Episodes take their text from Sonarr; TMDB episode records (by
-  TVDB episode id) are not fetched yet. The identity digest carries a write version; raising it
+  The kill switch stops it too. An episode whose ids include its own TVDB id (from Sonarr or an
+  NFO) is cached the same way, keyed `tvdb:episode:<id>` in its `library_items.catalog`: TMDB's
+  view of that episode, found through TMDB's `/find`, never by season and number (decision 53).
+  Episodes with no TVDB id are not described by TMDB yet. The identity digest carries a write
+  version; raising it
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.
 - **Needs you** (step 11a, decision 27). A movie or series is grounded when anything gives it a
