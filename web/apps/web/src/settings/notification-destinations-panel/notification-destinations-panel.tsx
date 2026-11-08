@@ -4,7 +4,7 @@ import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificat
 import { NotificationProviderFieldDTOKind } from "@loomarr/api/models/notificationProviderFieldDTOKind";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Card, Field, Toggle } from "@loomarr/design-system";
+import { Action, Card, Field, StatusLabel, Text, Toggle } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, X } from "lucide-react";
 import { type ComponentProps, useId, useMemo, useState } from "react";
@@ -601,12 +601,12 @@ const ProviderRow = ({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-medium">{provider.label}</h3>
-              <Badge shape="square" tone={provider.enabled ? "signal" : "neutral"}>
+              <StatusLabel tone={provider.enabled ? "ok" : "off"}>
                 {provider.enabled ? "Enabled" : "Disabled"}
-              </Badge>
-              <Badge shape="square" tone="neutral">
+              </StatusLabel>
+              <Text textRole="compact" tone="secondary">
                 {definition?.name ?? words(provider.type)}
-              </Badge>
+              </Text>
             </div>
             <p className="text-muted-foreground mt-1 text-sm">{provider.events.map(words).join(", ")}</p>
             {provider.health ? (

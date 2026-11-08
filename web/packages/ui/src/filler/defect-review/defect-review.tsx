@@ -7,7 +7,7 @@ import {
   defectVerdictSummary,
 } from "@loomarr/core/filler-defects";
 import { pluralize } from "@loomarr/core/format";
-import { Action, AdaptiveSplit, Badge, Surface, Text } from "@loomarr/design-system";
+import { Action, AdaptiveSplit, StatusLabel, Surface, Text } from "@loomarr/design-system";
 
 import { StatePanel } from "../../state-panel";
 import type { DefectReviewProps } from "./defect-review.type";
@@ -103,15 +103,13 @@ const DefectReview = ({ busy, error, onLabel, onSkip, player, report }: DefectRe
                 <Text textRole="caption" tone="secondary">
                   {`${row.era || "Era unknown"} · ${defectBandLabel(row.band)} era`}
                 </Text>
-                <Badge
-                  tone={row.verdict === "fail" ? "danger" : row.verdict === "pass" ? "success" : "caution"}
-                >
+                <StatusLabel tone={row.verdict === "fail" ? "error" : row.verdict === "pass" ? "ok" : "warn"}>
                   {row.verdict === "fail"
                     ? "Would retire"
                     : row.verdict === "pass"
                       ? "Passes"
                       : "Not settled"}
-                </Badge>
+                </StatusLabel>
                 {defectFindingsToShow(row.findings).map((finding) => (
                   <Text key={finding.check} textRole="body">
                     {defectFindingLine(finding)}

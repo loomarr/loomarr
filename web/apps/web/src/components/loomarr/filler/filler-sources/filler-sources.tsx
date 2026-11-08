@@ -1,5 +1,5 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Badge, Surface, Toggle } from "@loomarr/design-system";
+import { Action, StatusLabel, Surface, Toggle } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -156,38 +156,16 @@ const FillerSources = ({
             <span className="truncate text-sm font-medium">
               {source.id === "folder" ? "Drop folder" : source.target}
             </span>
-            {source.readiness === "not_configured" && (
-              <Badge shape="square" tone="caution">
-                Add details
-              </Badge>
-            )}
+            {source.readiness === "not_configured" && <StatusLabel tone="warn">Add details</StatusLabel>}
             {source.readiness === "needs_location" && !needsLocation && (
-              <Badge shape="square" tone="caution">
-                Location needed
-              </Badge>
+              <StatusLabel tone="warn">Location needed</StatusLabel>
             )}
-            {source.readiness === "out_of_area" && (
-              <Badge shape="square" tone="caution">
-                Not used here
-              </Badge>
-            )}
-            {source.readiness === "unavailable" && (
-              <Badge shape="square" tone="caution">
-                Needs attention
-              </Badge>
-            )}
+            {source.readiness === "out_of_area" && <StatusLabel tone="warn">Not used here</StatusLabel>}
+            {source.readiness === "unavailable" && <StatusLabel tone="warn">Needs attention</StatusLabel>}
             {source.readiness === "ready" &&
               source.locationSource === "source" &&
-              source.effectiveCountry && (
-                <Badge shape="square" tone="neutral">
-                  {source.effectiveCountry}
-                </Badge>
-              )}
-            {source.onForPlace && source.enabled && (
-              <Badge shape="square" tone="neutral">
-                For your area
-              </Badge>
-            )}
+              source.effectiveCountry && <StatusLabel tone="off">{source.effectiveCountry}</StatusLabel>}
+            {source.onForPlace && source.enabled && <StatusLabel tone="ok">For your area</StatusLabel>}
           </div>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">
             {source.readiness === "provider_off"

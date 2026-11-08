@@ -1,6 +1,6 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { formatRelative } from "@loomarr/core/format";
-import { Badge } from "@loomarr/design-system";
+import { StatusLabel } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { KeyRound, Server } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -119,11 +119,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="truncate font-medium">{user.name}</span>
-                      {selfId === user.id && (
-                        <Badge shape="square" tone="tune">
-                          You
-                        </Badge>
-                      )}
+                      {selfId === user.id && <StatusLabel tone="notice">You</StatusLabel>}
                     </span>
                     <span className="text-static-400 mt-1 flex items-center gap-1.5 text-xs">
                       {user.local ? (
@@ -136,9 +132,9 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                   </span>
                   <span className="flex items-center justify-between gap-3 md:block">
                     <span className="text-muted-foreground text-xs md:hidden">Role</span>
-                    <Badge shape="square" tone={user.role === "admin" ? "tune" : "neutral"}>
-                      {user.role}
-                    </Badge>
+                    <StatusLabel tone={user.role === "admin" ? "notice" : "off"}>
+                      {user.role === "admin" ? "Admin" : "Member"}
+                    </StatusLabel>
                   </span>
                   <span className="flex items-center justify-between gap-3 font-mono text-sm tabular-nums md:block">
                     <span className="text-muted-foreground font-sans text-xs md:hidden">Requests</span>
@@ -147,11 +143,9 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                   <span className="flex items-center justify-between gap-3 md:block">
                     <span className="text-muted-foreground text-xs md:hidden">Status</span>
                     {user.disabled ? (
-                      <Badge shape="square" tone="onair">
-                        Disabled
-                      </Badge>
+                      <StatusLabel tone="error">Disabled</StatusLabel>
                     ) : (
-                      <Badge shape="square">Enabled</Badge>
+                      <StatusLabel tone="ok">Enabled</StatusLabel>
                     )}
                   </span>
                   {/* The web mock's Last seen: mono, muted. The API leaves it out for someone who

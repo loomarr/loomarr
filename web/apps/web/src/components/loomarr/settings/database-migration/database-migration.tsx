@@ -1,5 +1,5 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Action, Badge, Field, FieldHint } from "@loomarr/design-system";
+import { Action, Field, FieldHint, StatusLabel } from "@loomarr/design-system";
 import { AlertTriangle, Check, Database, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
@@ -65,7 +65,7 @@ const DatabaseMigration = ({
         <div className="flex flex-wrap items-center gap-2">
           <Database className="text-tune size-4" aria-hidden />
           <h3 className="text-sm font-medium">Move to PostgreSQL</h3>
-          <Badge shape="square">{status.backend}</Badge>
+          <StatusLabel tone="ok">{status.backend}</StatusLabel>
         </div>
         <p className="text-muted-foreground mt-1.5 text-sm">
           {step === null

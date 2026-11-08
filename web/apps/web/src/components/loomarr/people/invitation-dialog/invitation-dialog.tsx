@@ -5,7 +5,6 @@ import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueIn
 import { createInvitationSchema } from "@loomarr/core/schemas";
 import {
   Action,
-  Badge,
   ChoiceGroup,
   Dialog,
   DialogContent,
@@ -14,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   FieldHint,
+  StatusLabel,
   Toggle,
 } from "@loomarr/design-system";
 import { QrCode } from "@loomarr/design-system/qr-code-web";
@@ -336,12 +336,10 @@ const InvitationDialog = ({
                 </div>
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    <Badge shape="square" tone={invitation.role === "admin" ? "tune" : "neutral"}>
+                    <StatusLabel tone={invitation.role === "admin" ? "notice" : "off"}>
                       {invitation.role === "admin" ? "Administrator" : "Member"}
-                    </Badge>
-                    <Badge shape="square" tone="neutral">
-                      Expires {expiryLabel(grant.expiresAt)}
-                    </Badge>
+                    </StatusLabel>
+                    <StatusLabel tone="pending">Expires {expiryLabel(grant.expiresAt)}</StatusLabel>
                   </div>
                   <p className="text-sm">
                     Ask {invitationName(invitation)} to scan this code, or copy the same private link.

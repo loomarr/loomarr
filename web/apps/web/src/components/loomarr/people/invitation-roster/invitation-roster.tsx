@@ -1,4 +1,4 @@
-import { Action, Badge } from "@loomarr/design-system";
+import { Action, StatusLabel } from "@loomarr/design-system";
 import type { InvitationRosterProps } from "./invitation-roster.type";
 
 const deliveryCopy = {
@@ -73,16 +73,18 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{name}</span>
-                    <Badge shape="square" tone={value.role === "admin" ? "tune" : "neutral"}>
-                      {value.role}
-                    </Badge>
-                    <Badge shape="square" tone={value.status === "revoked" ? "onair" : "neutral"}>
-                      {value.status === "redeemed" ? "Redeemed" : value.status}
-                    </Badge>
+                    <StatusLabel tone={value.role === "admin" ? "notice" : "off"}>
+                      {value.role === "admin" ? "Admin" : "Member"}
+                    </StatusLabel>
+                    <StatusLabel tone={value.status === "revoked" ? "error" : "off"}>
+                      {value.status === "redeemed"
+                        ? "Redeemed"
+                        : `${value.status.charAt(0).toUpperCase()}${value.status.slice(1)}`}
+                    </StatusLabel>
                     {copy && (
-                      <Badge shape="square" tone={delivery?.status === "failed" ? "onair" : "neutral"}>
+                      <StatusLabel tone={delivery?.status === "failed" ? "error" : "off"}>
                         {copy.label}
-                      </Badge>
+                      </StatusLabel>
                     )}
                   </div>
                   <p className="text-static-400 text-sm">
