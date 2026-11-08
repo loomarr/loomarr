@@ -31,7 +31,7 @@ type DemoLibrary struct {
 func NewDemoLibrary(t testing.TB) *DemoLibrary {
 	t.Helper()
 	d := &DemoLibrary{Layout: demolibrary.Layout{Dir: t.TempDir()}}
-	inner := demolibrary.Server{Layout: d.Layout, Token: DemoLibraryToken}
+	inner := demolibrary.Server{Layout: d.Layout, Library: demolibrary.Invented(), Token: DemoLibraryToken}
 	d.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d.mu.Lock()
 		d.requests = append(d.requests, *r.URL)
