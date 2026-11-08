@@ -184,6 +184,7 @@ export {
 } from "./src/surf-rail";
 export type {
   ChannelNumberEntry,
+  ClipChromeProps,
   PlaybarBreak,
   PlaybarProgramme,
   PlaybarSegment,
@@ -207,6 +208,7 @@ export type {
   WatchingSurfaceProps,
 } from "./src/watching-surface";
 export {
+  ClipChrome,
   PlayerChrome,
   PlayerCover,
   PlayerInfo,

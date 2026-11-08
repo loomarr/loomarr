@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LivePlaybackState } from "@/components/ui/video-player";
+import type { LivePlaybackState } from "@/components/loomarr/player/video-player";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
 import type { WatchPlayer } from "../use-watch-player";

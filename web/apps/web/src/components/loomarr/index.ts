@@ -11,6 +11,7 @@ export * from "./dashboard";
 export * from "./feedback";
 export * from "./filler";
 export * from "./people";
+export * from "./player";
 export * from "./settings";
 export * from "./setup";
 export * from "./shell";

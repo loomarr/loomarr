@@ -1,6 +1,8 @@
+export { ClipChrome } from "./clip-chrome";
 export { playbarFromTimeline } from "./playbar-data";
 export { PlayerChrome } from "./player-chrome";
 export type {
+  ClipChromeProps,
   PlaybarBreak,
   PlaybarProgramme,
   PlaybarSegment,

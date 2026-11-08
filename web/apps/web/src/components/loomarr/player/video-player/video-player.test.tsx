@@ -1,5 +1,6 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { render } from "@/test/render";
 import { useHoldControls } from "./internal/hold-controls-context";
 import { VideoPlayer } from "./video-player";
 
@@ -35,8 +36,8 @@ describe("VideoPlayer", () => {
   // overlay goes with it rather than rendering an empty scrim over the frame.
   it("renders no top-bar overlay without a title or leading", () => {
     const { container } = render(<VideoPlayer src={SRC} />);
-    // The top scrim uses the linear-gradient utility; absent when there is nothing to put in it.
-    expect(container.querySelector(".bg-linear-to-b")).toBeNull();
+    // The top scrim is absent when there is nothing to put in it.
+    expect(container.querySelector('[data-testid="clip-chrome-top"]')).toBeNull();
   });
 
   // ⚠ **The mute button's NAME tracks its state.** A control permanently labelled "Mute" lies as
@@ -65,7 +66,7 @@ describe("VideoPlayer", () => {
   });
 
   // Before metadata arrives there is no honest time to show, so a clip's time readout is omitted
-  // (not "0:00 / 0:00", which would assert a zero-length video). It appears once metadata loads —
+  // (not "00:00 / 00:00", which would assert a zero-length video). It appears once metadata loads —
   // which jsdom never fires, so the "absent until ready" half is what is testable here.
   it("shows no time readout until metadata loads", () => {
     render(<VideoPlayer src={SRC} />);
@@ -96,11 +97,11 @@ describe("VideoPlayer", () => {
 
       reportDuration(Number.POSITIVE_INFINITY);
       fireEvent.loadedMetadata(video);
-      expect(screen.getByText("/ 0:00")).toBeInTheDocument();
+      expect(screen.getByText("00:00 / 00:00")).toBeInTheDocument();
 
       reportDuration(31.875);
       fireEvent.durationChange(video);
-      expect(screen.getByText("/ 0:31")).toBeInTheDocument();
+      expect(screen.getByText("00:00 / 00:31")).toBeInTheDocument();
     },
   );
 
@@ -257,9 +258,10 @@ describe("VideoPlayer auto-hide", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  // The bottom control bar is the scrim carrying the shown/hidden opacity — grab it by that gradient.
-  const controlBar = (container: HTMLElement) => container.querySelector(".from-black\\/80") as HTMLElement;
-  const frame = (container: HTMLElement) => container.querySelector(".group\\/player") as HTMLElement;
+  // Hidden chrome is aria-hidden, which role queries skip: a reachable play/pause button IS shown
+  // controls.
+  const controlsShown = () => screen.queryByRole("button", { name: /^(Play|Pause)$/ }) !== null;
+  const frame = (container: HTMLElement) => container.querySelector("video")?.parentElement as HTMLElement;
 
   const startPlaying = (container: HTMLElement) => {
     // Reveal (pointer over the frame), then start playback so the hide logic is armed.
@@ -272,21 +274,21 @@ describe("VideoPlayer auto-hide", () => {
     startPlaying(container);
 
     act(() => vi.advanceTimersByTime(2000));
-    expect(controlBar(container)).toHaveClass("opacity-100");
+    expect(controlsShown()).toBe(true);
     // Still on the frame, but still: the picture goes bare, as a full-bleed player's must.
     act(() => vi.advanceTimersByTime(1000));
-    expect(controlBar(container)).toHaveClass("opacity-0");
+    expect(controlsShown()).toBe(false);
   });
 
   it("hides the controls shortly after the pointer leaves the frame during playback", () => {
     const { container } = render(<VideoPlayer src={SRC} />);
     startPlaying(container);
-    expect(controlBar(container)).toHaveClass("opacity-100");
+    expect(controlsShown()).toBe(true);
 
     // Pointer leaves the frame ⇒ the short GRACE window, then hidden.
     fireEvent.mouseLeave(frame(container));
     act(() => vi.advanceTimersByTime(700));
-    expect(controlBar(container)).toHaveClass("opacity-0");
+    expect(controlsShown()).toBe(false);
   });
 
   it("re-hides after a hold clears while the pointer is off the frame (a closed menu)", () => {
@@ -304,11 +306,11 @@ describe("VideoPlayer auto-hide", () => {
     fireEvent.mouseLeave(frame(container));
     act(() => hold(true));
     act(() => vi.advanceTimersByTime(700));
-    expect(controlBar(container)).toHaveClass("opacity-100");
+    expect(controlsShown()).toBe(true);
 
     // Menu closes: the hold releases and, with the pointer still off the frame, the bar hides.
     act(() => hold(false));
     act(() => vi.advanceTimersByTime(700));
-    expect(controlBar(container)).toHaveClass("opacity-0");
+    expect(controlsShown()).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { formatClipDuration } from "@loomarr/core/format";
+import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
 import {
   type Density,
   Icon,
@@ -12,7 +12,7 @@ import { type ReactNode, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
 import { glass, webOnly } from "../glass";
-import type { PlayerTransportProps } from "../player-chrome.type";
+import type { ClipTransportProps, PlayerTransportProps } from "../player-chrome.type";
 
 // The transport (§9.4, plane 4): glass capsules grouped by job — ⟲ play ⟳ · live state and Start
 // over · volume, then, pushed right, view options · window. Play/pause is the one primary control, a
@@ -292,9 +292,47 @@ const StartOver = ({ density, onPress }: { density: Density; onPress: () => void
   );
 };
 
+// Play/pause: the one primary control, a white disc. Its name follows the state, so a screen reader
+// never hears "Play" over a playing picture.
+const PlayDisc = ({
+  density,
+  onPress,
+  playing,
+}: {
+  density: Density;
+  onPress: () => void;
+  playing: boolean;
+}) => {
+  const size = density === "touch" ? 48 : 44;
+  return (
+    <Pressable
+      accessibilityLabel={playing ? "Pause" : "Play"}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={{
+        alignItems: "center",
+        backgroundColor: playerChrome.disc,
+        borderRadius: 999,
+        height: size,
+        justifyContent: "center",
+        width: size,
+        ...webOnly({
+          boxShadow: "inset 0 -2px 0 rgba(0, 0, 0, 0.12), 0 6px 18px -6px rgba(255, 255, 255, 0.35)",
+        }),
+      }}
+    >
+      <Icon
+        color={playerChrome.discInk}
+        decorative
+        glyph={playing ? icons.pause : icons.play}
+        size="default"
+      />
+    </Pressable>
+  );
+};
+
 const PlayerTransport = (props: PlayerTransportProps) => {
   const { density, pointer, playing } = props;
-  const touch = density === "touch";
   return (
     <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
       <Capsule>
@@ -309,29 +347,7 @@ const PlayerTransport = (props: PlayerTransportProps) => {
             tipAlign="start"
           />
         ) : null}
-        <Pressable
-          accessibilityLabel={playing ? "Pause" : "Play"}
-          accessibilityRole="button"
-          onPress={props.onTogglePlay}
-          style={{
-            alignItems: "center",
-            backgroundColor: playerChrome.disc,
-            borderRadius: 999,
-            height: touch ? 48 : 44,
-            justifyContent: "center",
-            width: touch ? 48 : 44,
-            ...webOnly({
-              boxShadow: "inset 0 -2px 0 rgba(0, 0, 0, 0.12), 0 6px 18px -6px rgba(255, 255, 255, 0.35)",
-            }),
-          }}
-        >
-          <Icon
-            color={playerChrome.discInk}
-            decorative
-            glyph={playing ? icons.pause : icons.play}
-            size="default"
-          />
-        </Pressable>
+        <PlayDisc density={density} onPress={props.onTogglePlay} playing={playing} />
         {props.onSeekForward ? (
           <ToolButton
             density={density}
@@ -422,4 +438,55 @@ const PlayerTransport = (props: PlayerTransportProps) => {
   );
 };
 
-export { PlayerTransport, ToolButton };
+// A clip's transport: the live transport's own pieces, minus everything a finite file has no use
+// for (no window to seek through, no live state, no sheets). Play · volume · elapsed, then,
+// pushed right, fullscreen.
+const ClipTransport = ({
+  density,
+  durationMs,
+  elapsedMs,
+  fullscreen,
+  muted,
+  onFullscreen,
+  onToggleMute,
+  onTogglePlay,
+  onVolume,
+  playing,
+  pointer,
+  volume,
+}: ClipTransportProps) => (
+  <View style={{ alignItems: "center", flexDirection: "row", gap: 10 }}>
+    <Capsule>
+      <PlayDisc density={density} onPress={onTogglePlay} playing={playing} />
+    </Capsule>
+    <Capsule end>
+      <ToolButton
+        density={density}
+        icon={muted ? "volumeMuted" : "volume"}
+        keyHint="M"
+        label={muted ? "Unmute" : "Mute"}
+        onPress={onToggleMute}
+        pointer={pointer}
+      />
+      <VolumeSlider density={density} muted={muted} onVolume={onVolume} volume={volume} />
+    </Capsule>
+    {durationMs !== undefined ? (
+      <Text density={density} textRole="captionMono" tone="secondary">
+        {formatMmSs(elapsedMs)} / {formatMmSs(durationMs)}
+      </Text>
+    ) : null}
+    <View style={{ flex: 1 }} />
+    <Capsule>
+      <ToolButton
+        density={density}
+        icon={fullscreen ? "fullscreenExit" : "fullscreen"}
+        label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+        onPress={onFullscreen}
+        pointer={pointer}
+        tipAlign="end"
+      />
+    </Capsule>
+  </View>
+);
+
+export { ClipTransport, PlayerTransport, ToolButton };

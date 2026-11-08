@@ -79,10 +79,10 @@ classify() {
     web/apps/web/src/components/loomarr/channels/channel-card/*|web/apps/web/src/components/loomarr/channels/channel-collections-scope/*|web/apps/web/src/components/loomarr/channels/channel-cycle-preview/*|web/apps/web/src/components/loomarr/channels/channel-ident/*|web/apps/web/src/components/loomarr/channels/channel-lineup-editor/*|web/apps/web/src/components/loomarr/channels/channel-policy-fields/*|web/apps/web/src/components/loomarr/channels/channel-rules-editor/*|web/apps/web/src/components/loomarr/channels/channel-series-scope/*|web/apps/web/src/components/loomarr/channels/now-next-strip/*)
       [[ "$path" != *.test.* ]] || select_gate contracts
       ;;
-    web/apps/web/src/components/loomarr/filler/clip-card/*|web/apps/web/src/components/loomarr/filler/clip-player/*|web/apps/web/src/components/loomarr/filler/clip-row/*|web/apps/web/src/components/loomarr/filler/pod-timeline/*|web/apps/web/src/components/loomarr/filler/split-review-editor/*|web/apps/web/src/components/loomarr/people/import-dialog/*|web/apps/web/src/components/loomarr/people/invitation-join/*|web/apps/web/src/components/loomarr/shell/search-command/*)
+    web/apps/web/src/components/loomarr/filler/clip-card/*|web/apps/web/src/components/loomarr/filler/clip-player/*|web/apps/web/src/components/loomarr/filler/clip-row/*|web/apps/web/src/components/loomarr/filler/pod-timeline/*|web/apps/web/src/components/loomarr/filler/split-review-editor/*|web/apps/web/src/components/loomarr/people/import-dialog/*|web/apps/web/src/components/loomarr/people/invitation-join/*|web/apps/web/src/components/loomarr/player/video-player/*|web/apps/web/src/components/loomarr/shell/search-command/*)
       [[ "$path" != *.test.* ]] || select_gate contracts
       ;;
-    web/apps/web/src/components/ui/panel-row/*|web/apps/web/src/components/ui/video-player/*|web/apps/web/src/lib/policy-overrides/*|web/apps/web/src/queue/request-detail/*)
+    web/apps/web/src/components/ui/panel-row/*|web/apps/web/src/lib/policy-overrides/*|web/apps/web/src/queue/request-detail/*)
       [[ "$path" != *.test.* ]] || select_gate contracts
       ;;
     web/apps/web/src/channels/use-channel-lineup/*|web/apps/web/src/channels/use-channel-save/*|web/apps/web/src/filler/channel-filler/*|web/apps/web/src/filler/clip-details/*|web/apps/web/src/filler/incoming/*|web/apps/web/src/filler/sources-panel/*|web/apps/web/src/queue/request-lists/*)
