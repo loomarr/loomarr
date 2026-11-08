@@ -17,9 +17,10 @@ import (
 //   - aspect ratio: a 4:3 frame is pre-widescreen; 16:9 is not.
 //
 // ⚠ **These are HINTS, never facts, and never override a grounded tag.** They seed
-// SuggestedEra for a clip that has NO other era signal — exactly the demotion the
-// era-grounding rule (tag.go validateTags) applies to an LLM-proposed year: a
-// human confirms it by PATCHing Era, which clears the suggestion. They are the
+// a suggested era for a clip that has NO other era signal — exactly the demotion the
+// era-grounding rule (tag.go validateTags) applies to an LLM-proposed year: the
+// guess is shown as an uncited Context suggestion, and a human confirms it by
+// PATCHing Era, which hides it. They are the
 // weakest tier for a reason. A B&W 4:3 spot is *probably* pre-1970s, but a modern
 // stylised advert can be shot B&W on purpose and a 4:3 upload can be a cropped
 // export — so the mapping is deliberately COARSE (a decade sentinel, not a year)
@@ -216,16 +217,16 @@ func splitJPEGs(stream []byte) [][]byte {
 // SuggestedEraFrom turns a FrameHint into a SuggestedEra sentinel, or 0 for no hint.
 //
 // ⚠ **This is the ONLY place the measurements become a suggestion, and it produces
-// ONLY a suggestion — never a grounded Era.** The caller writes the result to
-// Clip.SuggestedEra (the operator-confirms field), exactly as validateTags demotes
-// an ungrounded LLM year. Matching never reads it. Conservative by construction: it
+// ONLY a suggestion — never a grounded Era.** The caller records the result as an
+// uncited era observation (a Context suggestion the operator confirms), exactly as
+// validateTags demotes an ungrounded LLM year. Matching never reads it. Conservative by construction: it
 // fires only on the strongest combination (B&W AND 4:3) and returns a decade
 // sentinel, so the worst case is an easily-dismissed "pre-1970s?" prompt on a clip
 // that had no era signal at all — never a wrong fact in the catalog.
 //
 // The caller is responsible for the "no other era signal" precondition (§10 V44):
-// this must seed a suggestion only for a clip with no grounded Era and no other
-// SuggestedEra, so a frame hint never overwrites a stronger one.
+// this must seed a suggestion only for a clip with no grounded Era and no model
+// suggestion, so a frame hint never overwrites a stronger one.
 func SuggestedEraFrom(hint FrameHint) int {
 	if hint.Frames == 0 {
 		return 0

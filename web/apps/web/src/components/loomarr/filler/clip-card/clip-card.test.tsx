@@ -172,16 +172,6 @@ describe("ClipCard", () => {
     expect(screen.getByText("Crunchlings")).toBeInTheDocument();
   });
 
-  // §10 era grounding (V34): an ungrounded AI year renders as a QUESTION, never as a tag —
-  // and the confirm affordance appears only when the call site offers it (admin).
-  it("does not display an ungrounded year as a known fact", () => {
-    render(<ClipCard clip={{ ...base, era: undefined, suggestedEra: 1985 }} />);
-    expect(screen.queryByText(/1985/)).not.toBeInTheDocument();
-  });
-  it("does not offer one-click affirmation of an ungrounded year", () => {
-    render(<ClipCard clip={{ ...base, era: undefined, suggestedEra: 1985 }} onOpen={() => {}} />);
-    expect(screen.queryByRole("button", { name: /confirm/i })).not.toBeInTheDocument();
-  });
   // ⚠ These four pin fields the API has always sent and the card never rendered — a clip
   // that never airs looked identical to one on every break. The last case is the one that
   // matters most: `playsCounted:false` is NOT zero plays.

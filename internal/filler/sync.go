@@ -548,9 +548,6 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			merged.Country = existing.Country
 			merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = existing.Network, existing.Station, existing.AirDate, existing.GeoEvidence
 			merged.Source = existing.Source
-			// The era suggestion (V34) is loomarr-owned too — a scan knows nothing
-			// about it, so it survives like the tags above.
-			merged.SuggestedEra = existing.SuggestedEra
 			// ⚠ The lifecycle fields (§10 V38) are loomarr-owned and a scan knows nothing about
 			// any of them. `Held` is the sharpest: this scan sets it false for every file it
 			// finds on disk, so without this line a single pass would FILE every held clip —
@@ -816,7 +813,6 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 			tags.Category = existing.Category
 			tags.Brand = existing.Brand
 			tags.Transcript = existing.Transcript
-			tags.SuggestedEra = existing.SuggestedEra
 		}
 		if err := WriteSidecarTags(full, tags, false); err != nil {
 			return rc, false, err
@@ -865,7 +861,6 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 			tags.Category = existing.Category
 			tags.Brand = existing.Brand
 			tags.Transcript = existing.Transcript
-			tags.SuggestedEra = existing.SuggestedEra
 			if err := WriteSidecarTags(oldFull, tags, false); err != nil {
 				return rc, false, err
 			}

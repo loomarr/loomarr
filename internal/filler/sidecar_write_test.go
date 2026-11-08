@@ -140,28 +140,6 @@ func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
 	}
 }
 
-// ⚠ An UNGROUNDED era must round-trip as a SUGGESTION, never as a tag. Restoring it as `Era`
-// would launder a guess into a fact — the §8 failure the grounding rule exists to prevent, and
-// the reason the two are separate fields rather than one.
-func TestWriteSidecarTags_KeepsAnUngroundedEraASuggestion(t *testing.T) {
-	dir := t.TempDir()
-	media := filepath.Join(dir, "guess.mp4")
-	if err := os.WriteFile(media, []byte("video"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := filler.WriteSidecarTags(media, filler.SidecarTags{SuggestedEra: 1985, Audience: "kids"}, false); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := filler.ReadSidecarTags(media)
-	if got.Era != 0 {
-		t.Errorf("Era = %d — a guess was laundered into a fact", got.Era)
-	}
-	if got.SuggestedEra != 1985 {
-		t.Errorf("SuggestedEra = %d, want 1985", got.SuggestedEra)
-	}
-}
-
 // ⚠ The held/filed fork's signal (V38c). It reads the FIELD, not the file's existence — which
 // stopped working the moment Loomarr began writing sidecars for hand-dropped clips too.
 func TestSidecarFetchedByUs_ReadsTheFieldNotTheFilesExistence(t *testing.T) {

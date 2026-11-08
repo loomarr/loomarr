@@ -330,19 +330,6 @@ const aiTaggedClip: ClipDTO = {
   tunarrProgramId: "clip-ai",
 };
 
-// A clip whose AI era guess was REFUSED by the grounding validator (§10, V34): the year
-// appears nowhere in the clip's text signals, so it arrives as `suggestedEra` — a question
-// for the operator, not a tag.
-const suggestedEraClip: ClipDTO = {
-  ...untaggedClip,
-  name: "Rotoscoped spot, year unknown",
-  audience: "general",
-  category: "tech",
-  suggestedEra: 1985,
-  hash: "hash-suggested-era",
-  tunarrProgramId: "clip-suggested-era",
-};
-
 // A persisted split proposal (§10 V34) mid-review, covering every segment state the
 // editor must render honestly: a clean classified segment, one with an unconfirmed era
 // suggestion, a dHash duplicate flag, an unsplittable over-long span, and a transcript.
@@ -1113,7 +1100,6 @@ export {
   sampleIntent,
   searchResults,
   splitProposal,
-  suggestedEraClip,
   taggedClip,
   thinPool,
   thumbnailedClip,

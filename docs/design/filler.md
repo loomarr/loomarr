@@ -194,8 +194,9 @@ where the ones above left a gap. A tag is a fact only when its signal literally 
 | 4 | frame heuristics (black-and-white, aspect ratio) | free | era hints without usable text |
 | 5 | vision LLM over keyframes | expensive | silent adverts and on-screen logos |
 
-- **Era must appear literally** in the filename, sidecar text or transcript. Otherwise it is
-  stored as an unconfirmed era the operator confirms (`PATCH /v1/filler/tags`), on every tagging path.
+- **Era must appear literally** in the filename, sidecar text or transcript. A vision or split guess
+  that does not is recorded only as an uncited Context suggestion (an observation), shown as
+  "Likely" until the operator sets the era (`PATCH /v1/filler/tags`).
 - **Transcription is selective:** only when the source description is thin or a text-only pass
   left the clip unidentified. It is local by default; a connected service is an explicit opt-in.
   Transcripts persist to the store and the sidecar.

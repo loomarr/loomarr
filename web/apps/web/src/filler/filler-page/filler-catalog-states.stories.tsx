@@ -16,7 +16,6 @@ const clips: ClipDTO[] = Array.from({ length: 60 }, (_, index) => ({
   playsCounted: true,
   tagged: true,
   needsDetails: false,
-  suggestedEra: 0,
 }));
 
 const LargeCatalogState = () => (

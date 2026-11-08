@@ -137,10 +137,12 @@ type SettledGeographyClip struct {
 	Hash, Path, Scope, Country, Station string
 }
 
-// FillerResearchStore owns cited context reports and their narrowly bounded country projection.
+// FillerResearchStore owns context reports — cited research and uncited era observations — and
+// the narrowly bounded country projection only cited research may feed.
 type FillerResearchStore interface {
 	ListFillerResearchCandidates(ctx context.Context, producer, producerVersion, adapter, adapterVersion string, limit int) ([]research.Candidate, error)
 	SaveFillerResearchReport(ctx context.Context, report research.Report) error
+	RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error
 	PromoteStoredFillerResearchCountries(ctx context.Context, limit int) (int, error)
 	LatestFillerResearchReport(ctx context.Context, clipHash string) (research.Report, error)
 	ReserveFillerResearchWebRequest(ctx context.Context, month string, provider research.WebProvider, limit int, attempt research.WebAttempt) (research.WebUsage, error)

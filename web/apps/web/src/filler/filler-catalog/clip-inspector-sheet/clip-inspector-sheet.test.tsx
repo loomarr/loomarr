@@ -23,7 +23,6 @@ const clip: ClipDTO = {
   playsCounted: true,
   tagged: true,
   needsDetails: false,
-  suggestedEra: 0,
 };
 
 const Wrapper = ({ children }: { children: ReactNode }) => (

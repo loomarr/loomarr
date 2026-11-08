@@ -124,15 +124,9 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 			}
 		}
 
-		// ⚠ Setting an era CONFIRMS an outstanding suggestion, and the existing single-clip
-		// path already encodes that (§10 V34: writing an era clears the suggestion). Routed
-		// through the same store method so a bulk edit and a single edit cannot disagree about
-		// what confirming means — a second rule here is how the grounding invariant rots.
-		suggested := clip.SuggestedEra
-		if in.Body.Era != nil {
-			suggested = 0
-		}
-		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, string(audience), suggested, now); err != nil {
+		// Routed through the same store method as the single-clip edit, so the two cannot
+		// disagree about what an era edit means.
+		if err := s.store.UpdateClipClassification(ctx, clip.Hash, era, string(audience), now); err != nil {
 			return nil, huma.Error500InternalServerError("retag clips", err)
 		}
 		evidence := operatorEvidence{s: s, clipHash: clip.Hash, reference: "operator.bulk_clip_edit", at: now}

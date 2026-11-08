@@ -258,8 +258,8 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, removed_at, held, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(hash) DO UPDATE SET
 		   enrichment_revision=CASE
 		     WHEN clips.name <> excluded.name OR clips.kind <> excluded.kind OR clips.source <> excluded.source
@@ -280,7 +280,6 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		   -- upsert has no idea what they are. Including them would blank a clip's artwork on
 		   -- every re-sync, which is the same class as is_composite/parent_hash above.
 		   language=excluded.language,
-		   suggested_era=excluded.suggested_era,
 		   updated_at=excluded.updated_at`),
 		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, clipNameSource(c), string(c.Kind), string(clipPlacement(c)), c.Era, string(c.Audience), c.Category,
 		clipGeographicScope(c), c.Country, c.Network, c.Station, c.AirDate, c.GeoEvidence,
@@ -289,7 +288,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		c.Quality, c.License, c.Thumbnail, c.Preview, c.ThumbImageHash, c.HoverImageHash, c.Language,
 		c.Transcript, c.Brand, c.VisibleText,
 		c.IsComposite, c.ParentHash,
-		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
+		c.PlayCount, epoch(c.LastPlayedAt), epoch(c.RemovedAt),
 		c.Held, epoch(c.UpdatedAt), epoch(clipCreatedAt(c)))
 	if err != nil {
 		return fmt.Errorf("upsert clip %s: %w", c.Hash, err)
@@ -622,12 +621,12 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 			(name, name_source, kind, era, audience, category, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, is_composite, parent_hash, play_count,
-			 last_played_at, suggested_era, removed_at, held,
+			 last_played_at, removed_at, held,
 			 created_at, reaped_at) =
 			(SELECT name, name_source, kind, era, audience, category, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, is_composite, parent_hash, play_count,
-			 last_played_at, suggested_era, removed_at, held,
+			 last_played_at, removed_at, held,
 			 created_at, reaped_at FROM clips WHERE hash = ?),
 			path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
 			WHERE hash = ? AND path = ? AND parent_hash = ? AND held = ? AND removed_at = ? AND is_composite = ?`),
@@ -773,7 +772,7 @@ const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kin
 	geographic_scope, country, network, station, air_date, geo_evidence,
 	rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text,
 	is_composite, parent_hash,
-	play_count, last_played_at, suggested_era,
+	play_count, last_played_at,
 		removed_at, held, updated_at, created_at FROM clips`
 
 func (s *Store) GetClip(ctx context.Context, id string) (Clip, error) {
@@ -1049,17 +1048,10 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 // to the same clips on both backends; the wire's ClipDTO.needsDetails comes from the Go side.
 const needsDetailsWhere = "kind = ? AND (era = 0 OR audience = '' OR category = '')"
 
-func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, updatedAt time.Time) error {
+func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int, audience string, updatedAt time.Time) error {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(
-		// ⚠ suggested_era is CONDITIONAL (§10 era grounding, V34): writing an era confirms
-		// the suggestion, so it clears in the same write; a NEW suggestion overwrites; and a
-		// write carrying NEITHER (an era-less tag edit) leaves the existing suggestion alone —
-		// the tag job re-classifies untagged clips every run, so wiping on a no-era result
-		// would make the suggestion flap run to run.
-		`UPDATE clips SET era = ?, audience = ?,
-		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 THEN ? ELSE suggested_era END,
-		   updated_at = ? WHERE hash = ?`),
-		era, audience, era, suggestedEra, suggestedEra, epoch(updatedAt), id)
+		`UPDATE clips SET era = ?, audience = ?, updated_at = ? WHERE hash = ?`),
+		era, audience, epoch(updatedAt), id)
 	if err != nil {
 		return fmt.Errorf("update clip classification %s: %w", id, err)
 	}
@@ -1399,7 +1391,7 @@ func scanClip(sc scannable) (Clip, error) {
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText,
 		&isComposite, &c.ParentHash,
-		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &updatedAt, &createdAt)
+		&c.PlayCount, &lastPlayedAt, &removedAt, &held, &updatedAt, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Clip{}, ErrNotFound
 	}
@@ -1788,7 +1780,7 @@ func (s *Store) SetClipBrand(ctx context.Context, path, brand string, at time.Ti
 //
 // A blank vision brand preserves a brand grounded by the text tier. Era behaves the same way. Tags
 // are additive: vision can contribute evidence without erasing an operator or the text classifier.
-func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error {
+func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era int, leaves []string, at time.Time) error {
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("apply clip vision: begin: %w", err)
@@ -1803,12 +1795,10 @@ func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleT
 		   brand = CASE WHEN ? <> '' THEN ? ELSE brand END,
 		   visible_text = ?,
 		   era = CASE WHEN ? > 0 THEN ? ELSE era END,
-		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 AND era = 0 AND suggested_era = 0 THEN ? ELSE suggested_era END,
 		   updated_at = ? WHERE hash = ? AND path = ?`),
 		visibleText,
 		brand, brand, visibleText,
 		era, era,
-		era, suggestedEra, suggestedEra,
 		epoch(at), hash, path)
 	if err != nil {
 		return fmt.Errorf("apply clip vision %s: %w", path, err)

@@ -319,11 +319,6 @@ type ClipDTO struct {
 	// filter cannot disagree: both come from clipcatalog.Clip.NeedsDetails. A client must not
 	// re-derive it from kind + tagged.
 	NeedsDetails bool `json:"needsDetails" doc:"A commercial missing a match tag (era, audience or category) — the same clips the untagged filter selects. Render the 'Needs details' exception from this field; do not re-derive it."`
-	// SuggestedEra is an AI-proposed era the validator refused to persist (§10 era
-	// grounding, V34): the year appears nowhere in the clip's text signals, so it is a
-	// question for the operator, not a tag. Confirming = PATCHing era (clears this);
-	// 0/absent = no suggestion. Nothing in pod matching ever reads it.
-	SuggestedEra int `json:"suggestedEra,omitempty" doc:"AI-proposed era NOT persisted as a tag because the year is absent from the clip's text signals (§10). Confirm by PATCHing era; 0 = no suggestion."`
 	// IsComposite marks a recorded break — many adverts in one file — which is NOT airable (§10 V45).
 	// The client renders it as a container (the "COMPOSITE · NOT AIRABLE" row that expands to its
 	// segments), never as a playable clip. Its segments (ParentHash == this clip's identity) are the
@@ -415,9 +410,12 @@ func clipContextSuggestionDTO(report research.Report, verifiedEra int, verifiedC
 	if suggestion.Year == 0 && suggestion.Decade == 0 && suggestion.Country == "" {
 		return nil
 	}
+	// Sources is never null on the wire: an uncited observation has none, and the client reads
+	// its length.
 	detail := &ClipContextSuggestionDTO{Year: suggestion.Year, Decade: suggestion.Decade,
 		CountryCode: suggestion.CountryCode, Country: suggestion.Country,
-		Confidence: suggestion.Confidence, Explanation: suggestion.Explanation}
+		Confidence: suggestion.Confidence, Explanation: suggestion.Explanation,
+		Sources: []ClipContextSourceDTO{}}
 	for _, citation := range report.Cited() {
 		detail.Sources = append(detail.Sources, ClipContextSourceDTO{Title: citation.Title, URL: citation.URL})
 	}
@@ -500,7 +498,7 @@ func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *ImageDTO) 
 		Network: c.Network, Station: c.Station, AirDate: c.AirDate, GeoEvidence: c.GeoEvidence,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
-		Tagged: c.Tagged(), NeedsDetails: c.NeedsDetails(), SuggestedEra: c.SuggestedEra,
+		Tagged: c.Tagged(), NeedsDetails: c.NeedsDetails(),
 		IsComposite: c.IsComposite, ParentHash: c.ParentHash,
 		Brand: c.Brand, Held: c.Held, Language: c.Language,
 		License: c.License,
@@ -847,10 +845,9 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			return nil, err
 		}
 	}
-	// suggestedEra is 0 here — only vision writes suggestions — and the store's rule applies:
-	// setting era CONFIRMS and clears any suggestion in the same write, while an era-less edit
-	// leaves the operator's unanswered question alone (§10, V34).
-	if err := s.store.UpdateClipClassification(ctx, clip.Hash, in.Body.Era, in.Body.Audience, 0, now); err != nil {
+	// Setting an era makes any era guess moot: the Context suggestion hides its era once the clip
+	// has a verified one (clipContextSuggestionDTO).
+	if err := s.store.UpdateClipClassification(ctx, clip.Hash, in.Body.Era, in.Body.Audience, now); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 		}

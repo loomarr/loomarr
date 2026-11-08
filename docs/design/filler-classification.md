@@ -129,8 +129,9 @@ brand is dropped; no brand is the honest common case.
 - Keyframes are near-full resolution and end-biased (above); resolution mattered more than the model
   for reading text. The default local vision model is `qwen2.5vl:7b`, which returns honest fragments
   where the alternative confidently invented a date that would then have grounded itself.
-- A free frame-heuristic tier (black-and-white, 4:3 or 16:9) only seeds an unconfirmed era for a
-  clip with no other era signal and never overrides a grounded tag.
+- A free frame-heuristic tier (black-and-white, 4:3 or 16:9) only records an uncited era
+  observation (a Context suggestion) for a clip with no other era signal, and never overrides a
+  grounded tag.
 - The hosted vision path costs money and leaves the house, so it is opt-in; the local Ollama path
   keeps it in the house. Image-free text requests stay byte-for-byte unchanged.
 

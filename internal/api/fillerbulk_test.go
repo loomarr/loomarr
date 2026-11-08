@@ -81,30 +81,6 @@ func TestBulkTagFiller_OmittedFieldsAreLeftAlone(t *testing.T) {
 	}
 }
 
-// ⚠ Setting an era CONFIRMS an outstanding suggestion (§10 V34). Bulk and single-clip editing
-// must agree about what confirming means, or the grounding invariant has two rules.
-func TestBulkTagFiller_SettingAnEraConfirmsTheSuggestion(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
-	putClip(t, st, filler.Clip{
-		Path: "guess.mp4", Name: "guess.mp4", Kind: filler.Commercial, DurationMs: 30_000,
-		Audience: filler.Kids, Category: "toys", SuggestedEra: 1988,
-	})
-
-	postBulk(t, srv.URL, "/v1/filler/bulk/tag",
-		`{"hashes":["`+clipHashFor("guess.mp4")+`"],"era":1988}`, adminToken)
-
-	got, err := st.GetClip(context.Background(), clipHashFor("guess.mp4"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Era != 1988 {
-		t.Errorf("era = %d, want 1988", got.Era)
-	}
-	if got.SuggestedEra != 0 {
-		t.Errorf("suggestedEra = %d, want 0 — writing an era must clear the suggestion", got.SuggestedEra)
-	}
-}
-
 // A selection made minutes ago races a re-scan. Failing the whole batch for one stale row would
 // be worse than applying the rest, so a missing clip is counted rather than fatal.
 func TestBulkTagFiller_CountsMissingRatherThanFailing(t *testing.T) {

@@ -136,4 +136,18 @@ describe("ClipDetails", () => {
     );
     expect(screen.queryByText(/Background context, not confirmed/i)).not.toBeInTheDocument();
   });
+
+  // #2323: a guess from the picture is an uncited observation. It reads as likely, says why,
+  // and links nothing.
+  it("shows an uncited era guess as likely with its reason and no links", () => {
+    const explanation = "Guessed from the picture. No year appears on screen, so it isn't confirmed.";
+    render(
+      <ClipDetails
+        clip={{ ...clip, era: 0, contextSuggestion: { year: 1985, confidence: 0, explanation, sources: [] } }}
+      />,
+    );
+    expect(screen.getByText("1985 · Likely")).toBeInTheDocument();
+    expect(screen.getByText(explanation)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
 });

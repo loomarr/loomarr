@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -755,42 +756,47 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	}
 }
 
-// Era suggestions (§10, V34): the list surfaces an unconfirmed suggestion, and
-// PATCHing era CONFIRMS it — the suggestion clears in the same write.
-func TestPatchClip_ConfirmsEraSuggestion(t *testing.T) {
+// An uncited era guess (#2323) reaches the clip page as a sourceless Context suggestion, and
+// PATCHing era confirms it: once the clip has a verified era the suggestion's era is hidden.
+func TestPatchClip_ConfirmsObservedEra(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	seedClip(t, st, "u1", filler.Commercial, 0, "", "")
-	if err := st.SetClipTags(context.Background(), "u1", []string{"cereal"}); err != nil {
+	if err := st.RecordFillerEraObservation(context.Background(), "u1", 1985, research.ObservedByVision, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpdateClipClassification(context.Background(), "u1", 0, "kids", 1985, time.Now()); err != nil {
-		t.Fatal(err)
+	type suggestion struct {
+		Year    int               `json:"year"`
+		Sources []json.RawMessage `json:"sources"`
 	}
-	// The suggestion rides the DTO so the UI can ask the question.
-	resp := do(t, srv, http.MethodGet, "/v1/filler", adminToken, "")
-	var list struct {
-		Clips []struct {
-			Path         string
-			Era          int
-			SuggestedEra int `json:"suggestedEra"`
+	read := func() (raw map[string]json.RawMessage, s *suggestion) {
+		t.Helper()
+		resp := do(t, srv, http.MethodGet, "/v1/filler?hashes=u1", adminToken, "")
+		var list struct{ Clips []map[string]json.RawMessage }
+		if err := json.NewDecoder(resp.Body).Decode(&list); err != nil || len(list.Clips) != 1 {
+			t.Fatalf("single-hash read = %+v, err %v", list, err)
 		}
+		raw = list.Clips[0]
+		if field, ok := raw["contextSuggestion"]; ok {
+			s = &suggestion{}
+			if err := json.Unmarshal(field, s); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return raw, s
 	}
-	_ = json.NewDecoder(resp.Body).Decode(&list)
-	if len(list.Clips) != 1 || list.Clips[0].SuggestedEra != 1985 || list.Clips[0].Era != 0 {
-		t.Fatalf("suggestion not surfaced: %+v", list.Clips)
+	raw, got := read()
+	if got == nil || got.Year != 1985 || got.Sources == nil || len(got.Sources) != 0 {
+		t.Fatalf("observed era not surfaced as a sourceless suggestion: %s", raw["contextSuggestion"])
 	}
-	// Confirm: era lands, suggestion clears.
-	resp = do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1985}`)
+	if _, ok := raw["suggestedEra"]; ok {
+		t.Error("suggestedEra is still on the clip DTO")
+	}
+	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","era":1985}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("confirm patch → %d", resp.StatusCode)
 	}
-	var body struct {
-		Era          int
-		SuggestedEra int `json:"suggestedEra"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&body)
-	if body.Era != 1985 || body.SuggestedEra != 0 {
-		t.Errorf("confirm did not clear the suggestion: %+v", body)
+	if raw, got := read(); got != nil {
+		t.Errorf("suggestion still shown beside a verified era: %s", raw["contextSuggestion"])
 	}
 }
 

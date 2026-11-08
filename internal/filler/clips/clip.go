@@ -250,14 +250,6 @@ type Clip struct {
 	// it can SEE here — reading "KELLOGG'S" off a box grounds the brand exactly as a year in the
 	// filename grounds the era. A vision-proposed tag with no VisibleText backing does not persist.
 	VisibleText string
-	// SuggestedEra is an AI-proposed era whose year did NOT appear in the clip's
-	// text signals (§10 era grounding, V34) — demoted from Era by validateTags so
-	// an inferred-from-tone year is never persisted as fact.
-	//
-	// ⚠ MATCHING NEVER READS THIS. It is not a tag: it is a question for the
-	// operator, rendered on the clip and confirmed by PATCHing Era (which clears
-	// it). 0 = no suggestion. Only the tagger writes it.
-	SuggestedEra int
 	// RemovedAt tombstones a clip the operator removed from the catalog (V35). Zero = present.
 	//
 	// ⚠ A tombstone rather than a DELETE because `clips` is a synced CACHE of FILLER_DIR: the

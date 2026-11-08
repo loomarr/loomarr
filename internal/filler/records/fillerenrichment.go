@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -350,8 +351,13 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass enrichmen
 	}
 	if pass.Observation != nil && pass.Observation.Vision != nil {
 		vision := pass.Observation.Vision
-		if err := clips.RecordVision(ctx, pass.ClipHash, vision.VisibleText, vision.SuggestedEra, pass.CompletedAt); err != nil {
+		if err := clips.RecordVision(ctx, pass.ClipHash, vision.VisibleText, pass.CompletedAt); err != nil {
 			return 0, fmt.Errorf("apply filler enrichment pass: record vision observation: %w", err)
+		}
+		// After the visible text, so the guess binds to the revision that text produced.
+		if err := s.recordEraObservationTx(ctx, tx, pass.ClipHash, vision.SuggestedEra,
+			research.ObservedByVision, pass.CompletedAt); err != nil {
+			return 0, fmt.Errorf("apply filler enrichment pass: record era guess: %w", err)
 		}
 	}
 	// The pass owns the exact input revision it just committed. Reading again after raw media

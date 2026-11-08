@@ -434,7 +434,7 @@ type ClipStore interface {
 	// it shares with SetClipBrand above. UpsertClip omits them so a
 	// re-sync cannot undo a paid vision call. era/category are written only when grounded, leaving
 	// text tags intact.
-	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error
+	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era int, leaves []string, at time.Time) error
 	// SetClipComposite marks a clip as a composite — a recorded break, not airable (§10 V45). The
 	// ONLY writer of `is_composite`; UpsertClip omits it so a re-sync cannot flip a confirmed
 	// composite back to an airable clip. Keyed by hash.
@@ -476,11 +476,8 @@ type ClipStore interface {
 	HoldClips(ctx context.Context, paths []string, at time.Time) (int, error)
 	ReleaseCompositeHolds(ctx context.Context, paths []string, at time.Time) (int, error)
 	// UpdateClipClassification edits the non-taxonomy classifier facts — the tag editor (§10).
-	// Taxonomy writes exclusively own category. suggestedEra records an UNGROUNDED
-	// AI-proposed era (§10 V34) for operator confirmation; writing an era clears
-	// it in the same write, and a write with neither leaves it alone. Returns
-	// ErrNotFound if absent.
-	UpdateClipClassification(ctx context.Context, libraryItemID string, era int, audience string, suggestedEra int, updatedAt time.Time) error
+	// Taxonomy writes exclusively own category. Returns ErrNotFound if absent.
+	UpdateClipClassification(ctx context.Context, libraryItemID string, era int, audience string, updatedAt time.Time) error
 	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipClassification because
 	// the AI tagging job never sets kind — it classifies era/audience/category from text
 	// signals, while kind is detected at sync and only a human corrects it (a trailer
