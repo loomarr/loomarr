@@ -155,11 +155,13 @@ type LibraryItemSummary struct {
 	Pending int
 	// Unplayable counts its present files whose header could not be read: they can't be played.
 	Unplayable int
+	// ExtraBytes is what a movie's extra copies take: its files that are not a copy that plays.
+	ExtraBytes int64
 }
 
 // LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, any
 // case. Problems keeps only the titles that need a look: a file that can't be played, or a movie
-// with more than one file (all but one are extra copies). Limit 0 is every item.
+// with an extra copy. Limit 0 is every item.
 type LibraryItemQuery struct {
 	Kind     string
 	Search   string
@@ -248,10 +250,15 @@ var (
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
 		COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
 			AND r.owner_id = i.id AND r.role = 'poster'), ''),
-		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`)
+		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`) + `,
+		COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0)`
 	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
-	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0 OR (i.kind = 'movie' AND ` + countFiles("") + ` > 1))`
+	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0
+		OR (i.kind = 'movie' AND EXISTS (SELECT 1 FROM ` + extraCopies + `)))`
 )
+
+// extraCopies is title i's files that no edition plays (decision 37), from its rows.
+const extraCopies = `library_sources s WHERE s.item_id = i.id AND NOT s.plays`
 
 func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
 	where := []string{}
@@ -285,11 +292,12 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	}
 	from := ` FROM library_items i WHERE ` + strings.Join(where, " AND ")
 	var page LibraryItemPage
-	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from), args...).Scan(&page.Total); err != nil {
-		return page, fmt.Errorf("count library items: %w", err)
-	}
 	query := `SELECT ` + itemColumns + from + ` ORDER BY i.sort_name, i.id`
 	if q.Limit > 0 {
+		// A page counts the whole list on its own; every item is its own count.
+		if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from), args...).Scan(&page.Total); err != nil {
+			return page, fmt.Errorf("count library items: %w", err)
+		}
 		query += ` LIMIT ? OFFSET ?`
 		args = append(args, q.Limit, q.Offset)
 	}
@@ -298,6 +306,9 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 		return page, err
 	}
 	page.Items = items
+	if q.Limit <= 0 {
+		page.Total = len(items)
+	}
 	return page, nil
 }
 
@@ -323,7 +334,7 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 		var it LibraryItemSummary
 		var catalog, set string
 		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
-			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Files, &it.Pending, &it.Unplayable); err != nil {
+			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraBytes); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}

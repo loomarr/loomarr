@@ -38,7 +38,7 @@ type LibraryRootService interface {
 	RemoveExtraCopy(ctx context.Context, id, path string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
-	Problems(ctx context.Context) ([]scan.Problem, error)
+	Problems(ctx context.Context) ([]store.LibraryItemSummary, error)
 	NeedCount(ctx context.Context) (int, error)
 	Link(ctx context.Context, itemID, tmdbID string) error
 	Ignore(ctx context.Context, itemID string) error
