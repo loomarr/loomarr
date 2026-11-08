@@ -3,15 +3,24 @@ import { Field, Icon, icons, Surface, semanticSpace, semanticTargets } from "@lo
 import type { SearchFieldProps } from "./search-field.type";
 
 // SearchField — a list filter's text box with the magnifier inside its leading edge (People,
-// import, the filler catalog). The design-system Field, with its left padding opened up so the
-// glyph sits in front of the text rather than over it. The glyph is decoration: the label names it.
-const SearchField = ({ disabled, label, onChangeText, placeholder, value }: SearchFieldProps) => (
+// import, Settings, the filler catalog). The design-system Field, with its left padding opened up so
+// the glyph sits in front of the text rather than over it. The glyph is decoration: the label names
+// it, printed above the box or, with `labelHidden`, only announced.
+const SearchField = ({
+  disabled,
+  label,
+  labelHidden = false,
+  onChangeText,
+  placeholder,
+  value,
+}: SearchFieldProps) => (
   <Surface backgroundColor="transparent" borderWidth={0} position="relative" width="100%">
     <Field
+      accessibilityLabel={label}
       autoCapitalize="none"
       autoCorrect={false}
       disabled={disabled}
-      label={label}
+      label={labelHidden ? undefined : label}
       onChangeText={onChangeText}
       placeholder={placeholder}
       style={{ paddingLeft: semanticSpace.control + 24 }}

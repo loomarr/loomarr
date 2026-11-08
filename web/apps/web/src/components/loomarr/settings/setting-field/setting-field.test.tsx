@@ -3,7 +3,7 @@ import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { SettingField } from "./setting-field";
 
@@ -59,10 +59,30 @@ describe("SettingField", () => {
       />,
     );
     const amount = screen.getByLabelText("Sign-in lifetime");
-    expect(amount).toHaveValue(30);
+    expect(amount).toHaveValue("30");
     expect(screen.getByLabelText("Sign-in lifetime unit")).toHaveTextContent("days");
     fireEvent.change(amount, { target: { value: "14" } });
     expect(onChange).toHaveBeenLastCalledWith("1209600s");
+  });
+
+  it("keeps a half-typed decimal in a number box", async () => {
+    const Controlled = () => {
+      const [bytes, setBytes] = useState(String(2 * 1024 ** 2));
+      return (
+        <SettingField
+          entry={entry({ key: "images.max_upload_bytes", kind: "int", presentation: "bytes" })}
+          value={bytes}
+          onChange={setBytes}
+        />
+      );
+    };
+    render(<Controlled />);
+    const amount = screen.getByLabelText("Images max upload bytes");
+    await userEvent.clear(amount);
+    await userEvent.type(amount, "1.");
+    expect(amount).toHaveValue("1.");
+    await userEvent.type(amount, "5");
+    expect(amount).toHaveValue("1.5");
   });
 
   it("offers common automatic-download schedules before revealing a custom duration", async () => {
@@ -88,7 +108,7 @@ describe("SettingField", () => {
     await userEvent.click(schedule);
     expect(await screen.findByRole("option", { name: "Never" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("option", { name: "Custom" }));
-    expect(screen.getByLabelText("Custom check interval")).toHaveValue(6);
+    expect(screen.getByLabelText("Custom check interval")).toHaveValue("6");
     fireEvent.change(screen.getByLabelText("Custom check interval"), { target: { value: "8" } });
     expect(onChange).toHaveBeenLastCalledWith("28800s");
   });
@@ -138,7 +158,7 @@ describe("SettingField", () => {
 
     const schedule = screen.getByLabelText("Look for new clips");
     expect(schedule).toHaveTextContent("Custom");
-    expect(screen.getByLabelText("Custom check interval")).toHaveValue(5);
+    expect(screen.getByLabelText("Custom check interval")).toHaveValue("5");
     await userEvent.click(schedule);
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["Every 3 hours", "Custom"]);
@@ -154,7 +174,7 @@ describe("SettingField", () => {
       />,
     );
     const amount = screen.getByLabelText("Images max upload bytes");
-    expect(amount).toHaveValue(8);
+    expect(amount).toHaveValue("8");
     expect(screen.getByText("MiB")).toBeInTheDocument();
     fireEvent.change(amount, { target: { value: "16" } });
     expect(onChange).toHaveBeenLastCalledWith("16777216");
@@ -170,7 +190,7 @@ describe("SettingField", () => {
       />,
     );
     const amount = screen.getByLabelText("Filler storage library budget gb");
-    expect(amount).toHaveValue(50);
+    expect(amount).toHaveValue("50");
     expect(screen.getByText("GiB")).toBeInTheDocument();
     fireEvent.change(amount, { target: { value: "60" } });
     expect(onChange).toHaveBeenLastCalledWith("60");

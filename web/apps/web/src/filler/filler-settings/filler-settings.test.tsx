@@ -6,12 +6,13 @@ import {
   getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
 import { fillerProviders, fillerSource } from "@/test/fixtures/filler";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import type { FillerSettingsSection } from "../filler-settings-section";
 import { FillerSettings, FillerSettingsIndex } from "./filler-settings";
@@ -115,9 +116,9 @@ beforeEach(() => {
 describe("focused Filler settings", () => {
   it("defaults to downloads without showing unrelated storage fields", async () => {
     renderSettings();
-    expect(await screen.findByRole("spinbutton", { name: "New clips" })).toHaveValue(10);
+    expect(await screen.findByRole("textbox", { name: "New clips" })).toHaveValue("10");
     expect(screen.getByRole("heading", { name: "Automatic downloads" })).toBeInTheDocument();
-    expect(screen.queryByRole("spinbutton", { name: "Storage limit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Storage limit" })).not.toBeInTheDocument();
     expect(
       screen.getByText(/No enabled sources are currently downloading automatically/),
     ).toBeInTheDocument();
@@ -183,22 +184,22 @@ describe("focused Filler settings", () => {
 
   it("shows automatic storage simply and keeps the catalog ceiling advanced", async () => {
     renderSettings("storage");
-    expect(await screen.findByRole("spinbutton", { name: "Filler storage allowance" })).toHaveValue(0);
+    expect(await screen.findByRole("textbox", { name: "Filler storage allowance" })).toHaveValue("0");
     expect(screen.getByText("Automatic 20.0 GB allowance")).toBeInTheDocument();
     expect(screen.getByText(/2.0 GB used · 18.0 GB available to Loomarr/)).toBeInTheDocument();
-    expect(screen.queryByRole("spinbutton", { name: "Catalog limit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Catalog limit" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show advanced (1)" })).toBeInTheDocument();
-    expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "New clips" })).not.toBeInTheDocument();
   });
 
   it("opens the Incoming history task with one human duration control", async () => {
     renderSettings("incoming");
     expect(await screen.findByRole("heading", { name: "Incoming history" })).toBeInTheDocument();
-    expect(screen.getByRole("spinbutton", { name: "Keep ready clips in Incoming" })).toHaveValue(1);
+    expect(screen.getByRole("textbox", { name: "Keep ready clips in Incoming" })).toHaveValue("1");
     expect(screen.getByRole("combobox", { name: "Keep ready clips in Incoming unit" })).toHaveTextContent(
       "days",
     );
-    expect(screen.queryByRole("spinbutton", { name: "New clips" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "New clips" })).not.toBeInTheDocument();
   });
 
   it("switches tasks near the heading instead of burying them at the bottom", async () => {

@@ -1,23 +1,31 @@
 import * as notificationsApi from "@loomarr/api/endpoints/notifications";
 import type { NotificationProviderDTO } from "@loomarr/api/models/notificationProviderDTO";
 import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificationProviderFieldDTO";
+import { NotificationProviderFieldDTOKind } from "@loomarr/api/models/notificationProviderFieldDTOKind";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Badge, Card, Toggle } from "@loomarr/design-system";
-import { useForm } from "@tanstack/react-form";
+import { Badge, Card, Field, Toggle } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, Plus, X } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { type ComponentProps, useId, useMemo, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAppForm } from "@/lib/app-form";
 
 const words = (value: string) =>
   value
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+
+// The keyboard a destination's text field asks for, by the kind the server declares for it.
+const KEYBOARD: Partial<
+  Record<NotificationProviderFieldDTOKind, ComponentProps<typeof Field>["keyboardType"]>
+> = {
+  [NotificationProviderFieldDTOKind.number]: "numeric",
+  [NotificationProviderFieldDTOKind.url]: "url",
+};
 
 const useRefresh = () => {
   const queryClient = useQueryClient();
@@ -89,15 +97,18 @@ const FieldInput = ({
           onChange={(event) => onChange(event.target.value)}
         />
       ) : (
-        <Input
-          id={inputId}
-          type={field.sensitive || field.kind === "password" ? "password" : field.kind}
-          value={value}
-          disabled={cleared}
-          autoComplete={field.sensitive ? "new-password" : undefined}
-          aria-invalid={error ? "true" : undefined}
+        <Field
           aria-describedby={error ? errorId : undefined}
-          onChange={(event) => onChange(event.target.value)}
+          autoCapitalize="none"
+          autoComplete={field.sensitive ? "new-password" : undefined}
+          autoCorrect={false}
+          disabled={cleared}
+          id={inputId}
+          invalid={Boolean(error)}
+          keyboardType={KEYBOARD[field.kind] ?? "default"}
+          onChangeText={onChange}
+          secureTextEntry={field.sensitive || field.kind === "password"}
+          value={value}
         />
       )}
       {error ? (
@@ -153,7 +164,7 @@ const ProviderForm = ({
       ),
     [definition.fields, stored],
   );
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       label: provider?.label ?? definition.name,
       events: provider?.events ?? [],
@@ -212,30 +223,11 @@ const ProviderForm = ({
 
         {error != null ? <ErrorState error={error} /> : null}
 
-        <form.Field name="label">
-          {(field) => {
-            const fieldError = field.state.meta.errors[0]?.message;
-            const inputId = `${idPrefix}-provider-label`;
-            return (
-              <div className="grid gap-1.5">
-                <Label htmlFor={inputId}>Label *</Label>
-                <Input
-                  id={inputId}
-                  name={field.name}
-                  value={field.state.value}
-                  aria-invalid={fieldError ? "true" : undefined}
-                  aria-describedby={fieldError ? `${inputId}-error` : undefined}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                {fieldError ? (
-                  <p id={`${inputId}-error`} className="text-onair-300 text-sm" role="alert">
-                    {fieldError}
-                  </p>
-                ) : null}
-              </div>
-            );
-          }}
-        </form.Field>
+        <form.AppField name="label">
+          {(field) => (
+            <field.TextField autoComplete="off" id={`${idPrefix}-provider-label`} label="Label *" />
+          )}
+        </form.AppField>
 
         <div className="grid gap-4 sm:grid-cols-2">
           {definition.fields.map((field) => (
@@ -411,7 +403,7 @@ const WebPushForm = ({
     }
   };
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       label: provider?.label ?? "This browser",
       events: provider?.events ?? [],
@@ -451,30 +443,11 @@ const WebPushForm = ({
           </Button>
         </div>
         {error != null ? <ErrorState error={error} /> : null}
-        <form.Field name="label">
-          {(field) => {
-            const inputId = `${idPrefix}-provider-label`;
-            const fieldError = field.state.meta.errors[0]?.message;
-            return (
-              <div className="grid gap-1.5">
-                <Label htmlFor={inputId}>Label *</Label>
-                <Input
-                  id={inputId}
-                  name={field.name}
-                  value={field.state.value}
-                  aria-invalid={fieldError ? "true" : undefined}
-                  aria-describedby={fieldError ? `${inputId}-error` : undefined}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                {fieldError ? (
-                  <p id={`${inputId}-error`} className="text-onair-300 text-sm" role="alert">
-                    {fieldError}
-                  </p>
-                ) : null}
-              </div>
-            );
-          }}
-        </form.Field>
+        <form.AppField name="label">
+          {(field) => (
+            <field.TextField autoComplete="off" id={`${idPrefix}-provider-label`} label="Label *" />
+          )}
+        </form.AppField>
         <form.Field name="events">
           {(field) => (
             <fieldset className="grid gap-2 sm:grid-cols-2">
@@ -677,12 +650,14 @@ const ProviderRow = ({
               <p className="text-onair-300 mt-1 text-xs">This can't be undone.</p>
             </div>
             <div className="grid max-w-sm gap-1.5">
-              <Label htmlFor={`${idPrefix}-delete-confirmation`}>Type {provider.label} to confirm</Label>
-              <Input
-                id={`${idPrefix}-delete-confirmation`}
-                value={deleteConfirmation}
+              <Field
+                autoCapitalize="none"
                 autoComplete="off"
-                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                autoCorrect={false}
+                id={`${idPrefix}-delete-confirmation`}
+                label={`Type ${provider.label} to confirm`}
+                onChangeText={setDeleteConfirmation}
+                value={deleteConfirmation}
               />
             </div>
             <div className="flex flex-wrap gap-2">

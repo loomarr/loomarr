@@ -8,13 +8,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Field,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CUSTOM_VALUE, isPreset } from "../cron-presets";
 import type { JobEditModalProps } from "./job-edit-modal.type";
@@ -83,13 +83,14 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
           {/* Advanced: the raw cron field, revealed only for the Custom choice. */}
           {advanced && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium">Cron expression</span>
-              <Input
-                aria-label="Cron expression"
-                value={advancedCron}
-                onChange={(e) => setAdvancedCron(e.target.value)}
+              <Field
+                autoCapitalize="none"
+                autoCorrect={false}
+                label="Cron expression"
+                onChangeText={setAdvancedCron}
                 placeholder="0 */5 * * * *"
                 spellCheck={false}
+                value={advancedCron}
               />
               <p className="text-muted-foreground text-xs">
                 6-field, seconds first (e.g. <code>0 */5 * * * *</code> = every 5 minutes).
