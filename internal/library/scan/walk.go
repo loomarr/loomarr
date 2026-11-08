@@ -208,9 +208,13 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			if st, ok := w.stat(filepath.Join(dir, e.Name()), e); ok {
 				nfos[filepath.Join(dir, e.Name())] = st
 			}
-		case isTrickplay(e.Name()) && e.Type().IsRegular():
+		case (isTrickplay(e.Name()) || externalTrackKind(e.Name()) != "") && e.Type().IsRegular():
 			// Referenced, never read: whether it is there is all that counts, so it costs no stat.
 			nfos[filepath.Join(dir, e.Name())] = Stat{}
+		case isEDL(e.Name()):
+			if st, ok := w.stat(filepath.Join(dir, e.Name()), e); ok {
+				nfos[filepath.Join(dir, e.Name())] = st
+			}
 		}
 	}
 	w.nfo[dir], w.videos[dir] = nfos, videos
@@ -320,6 +324,11 @@ func (w *walker) sidecars(dir, name string) map[string]Stat {
 			if base == stem || strings.HasPrefix(base, stem+"-") {
 				out[path] = st
 			}
+		case externalTrackKind(path) != "" || isEDL(path):
+			// So is an external track ("<name>.en.forced.srt") or an .edl.
+			if base == stem || strings.HasPrefix(base, stem+".") {
+				out[path] = st
+			}
 		case strings.HasPrefix(base, stem+"-") || sole:
 			out[path] = st
 		}
@@ -332,6 +341,34 @@ func isNFO(name string) bool { return strings.EqualFold(filepath.Ext(name), ".nf
 // isTrickplay reports whether name is a trickplay file: a Roku BIF of seek thumbnails, which Emby
 // writes beside the video as "<name>.bif" (decision 61).
 func isTrickplay(name string) bool { return strings.EqualFold(filepath.Ext(name), ".bif") }
+
+// isEDL reports whether name is an edit decision list: the spans a player skips or mutes, or marks
+// as scenes or commercial breaks (decision 61).
+func isEDL(name string) bool { return strings.EqualFold(filepath.Ext(name), ".edl") }
+
+// externalCodecs are the external track files the walk notes, by extension: each one's kind and
+// codec as ffprobe names it ("" where the extension does not say).
+var externalCodecs = map[string][2]string{
+	".srt": {"subtitle", "subrip"}, ".ass": {"subtitle", "ass"}, ".ssa": {"subtitle", "ssa"},
+	".vtt": {"subtitle", "webvtt"}, ".sup": {"subtitle", "hdmv_pgs_subtitle"}, ".sub": {"subtitle", "dvd_subtitle"},
+	".mka": {"audio", ""}, ".ac3": {"audio", "ac3"}, ".eac3": {"audio", "eac3"}, ".dts": {"audio", "dts"},
+	".aac": {"audio", "aac"}, ".flac": {"audio", "flac"},
+}
+
+// externalTrackKind is "subtitle" or "audio" for an external track file, "" for anything else.
+func externalTrackKind(name string) string {
+	return externalCodecs[strings.ToLower(filepath.Ext(name))][0]
+}
+
+// edl is the file's .edl, "" for none.
+func (f File) edl() string {
+	for path := range f.Sidecars {
+		if isEDL(path) {
+			return path
+		}
+	}
+	return ""
+}
 
 // trickplay is the file's trickplay files, by path, in order.
 func (f File) trickplay() []string {

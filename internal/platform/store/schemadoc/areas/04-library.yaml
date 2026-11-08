@@ -185,12 +185,13 @@ tables:
 
   - name: library_streams
     about: >
-      Each track inside a title's files (video, audio, subtitles), one row each, with labels worked out
-      once so every reader uses the same words. Replaced whenever the title is written.
+      Each track of a title's files (video, audio, subtitles), one row each: those inside the file and
+      the subtitle and audio files beside it. Labels are worked out once so every reader uses the same
+      words. Replaced whenever the title is written.
     columns:
       item_id: The title (a library_items id).
-      path: The file the track is in (a library_sources path).
-      stream_index: The track's position among all the file's streams, as the header numbers it.
+      path: The file the track belongs to (a library_sources path).
+      stream_index: The track's position among all the file's streams, as the header numbers it; an external track comes after the file's own.
       kind: video, audio or subtitle.
       codec: The codec the header names, such as hevc or eac3.
       profile: The codec profile, such as Main 10 or DTS-HD MA; empty when the header gives none.
@@ -209,7 +210,35 @@ tables:
       pixel_format: A video track's pixel format, such as yuv420p10le.
       color_transfer: A video track's transfer characteristic, such as smpte2084.
       resolution: A video track's resolution label, such as 1080p or 4K (reading the width too, so a wide film is not undersold).
-      hdr: A video track's dynamic range, such as HDR10 or HLG; empty for standard range.
+      hdr: A video track's dynamic range, such as Dolby Vision, HDR10 or HLG; empty for standard range.
+      commentary: True for a commentary track.
+      hearing_impaired: True for a track for the deaf and hard of hearing, such as SDH subtitles.
+      descriptive: True for an audio track that describes the picture.
+      external_ref: For a track in its own file beside the title's file (such as Film.en.forced.srt), where that file is, as an absolute path; empty for a track inside the file.
+
+  - name: library_chapters
+    about: >
+      A file's chapter marks, as its container lists them, one row each in order. Replaced whenever
+      the title is written.
+    columns:
+      item_id: The title (a library_items id).
+      path: The file the chapters are in (a library_sources path).
+      position: The chapter's order, from 0.
+      start_ms: Where the chapter starts, in milliseconds.
+      end_ms: Where it ends, in milliseconds; -1 when the container does not say.
+      title: The chapter's name, if the file gives one.
+
+  - name: library_markers
+    about: >
+      The spans an .edl file beside a title's file marks, one row each in order. Replaced whenever the
+      title is written.
+    columns:
+      item_id: The title (a library_items id).
+      path: The file the markers are for (a library_sources path).
+      position: The span's order in the .edl, from 0.
+      start_ms: Where the span starts, in milliseconds.
+      end_ms: Where it ends, in milliseconds.
+      kind: What the line asks for; cut (skip it), mute, scene (a scene marker) or commercial (a commercial break).
 
   - name: library_trickplay
     about: >

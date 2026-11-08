@@ -143,6 +143,16 @@ type SourceFacts struct {
 	ModifiedUnixNano int64    `json:"modifiedUnixNano,omitempty"`
 	UnsafePreroll    bool     `json:"unsafePreroll,omitempty"`
 	Streams          []Stream `json:"streams,omitempty"`
+	// Chapters are the container's chapter marks, in order; nil when it has none or they were not
+	// read.
+	Chapters []Chapter `json:"chapters,omitempty"`
+}
+
+// Chapter is one chapter mark. EndMillis is -1 when the container does not say.
+type Chapter struct {
+	StartMillis int64  `json:"startMillis"`
+	EndMillis   int64  `json:"endMillis"`
+	Title       string `json:"title,omitempty"`
 }
 
 // Locator is protected operational data, never an authenticated URL. Library sources retain only

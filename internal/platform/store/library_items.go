@@ -74,6 +74,22 @@ type LibrarySource struct {
 	Streams []LibraryStream
 	// Trickplay are the trickplay files beside it, referenced and never imported (decision 61).
 	Trickplay []LibraryTrickplay
+	// Chapters are its chapter marks, in order; Markers its .edl markers.
+	Chapters []LibraryChapter
+	Markers  []LibraryMarker
+}
+
+// LibraryChapter is one chapter mark of a source. EndMs is -1 when the container does not say.
+type LibraryChapter struct {
+	StartMs, EndMs int64
+	Title          string
+}
+
+// LibraryMarker is one span an .edl file beside a source marks: Kind is "cut", "mute", "scene" or
+// "commercial", as the line's action says.
+type LibraryMarker struct {
+	StartMs, EndMs int64
+	Kind           string
 }
 
 // LibraryTrickplay is one trickplay file of a source: where it is and its format ("bif").
@@ -104,6 +120,11 @@ type LibraryStream struct {
 	ColorTransfer string
 	Resolution    string
 	HDR           string
+	// Commentary, HearingImpaired (SDH) and Descriptive (it describes the picture) flag a track.
+	Commentary, HearingImpaired, Descriptive bool
+	// ExternalRef is the file an external track lives in, beside the media file; "" for a track
+	// inside it. An external track's Index follows the file's own tracks.
+	ExternalRef string
 }
 
 // LibraryArt is one artwork reference: a poster, fanart or logo; Season numbers a season poster.
