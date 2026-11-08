@@ -55,8 +55,8 @@ change per channel.
 - **Series expansion.** A series entry expands at resolution into one program slot per episode that
   exists now, ordered by the strategy (season/episode order, or shuffled with the channel seed). The
   optional `SeasonMin`/`SeasonMax` window on the entry (inclusive, 0 = open) filters episodes and
-  survives re-syncs; nothing in range yet means a `pending` slot. The episode cache rules are in
-  [`library.md`](library.md#cached-series-episodes).
+  survives re-syncs; nothing in range yet means a `pending` slot. Where a series' episodes come
+  from is in [`library.md`](library.md).
 
 **Strategies** are shared by both backends: sequential, shuffle, and time-slot blocks.
 **A shuffle is the channel's own and is dealt afresh each pass (#1676):** the seed is the stored one,

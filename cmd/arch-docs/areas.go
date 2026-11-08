@@ -44,9 +44,6 @@ var areas = []area{
 				"the metadata providers fold certifications onto",
 			"media": "the scanner reads each media file's header to learn its length, streams and " +
 				"embedded ids",
-			"channels": "the backstop's episode refresh re-reads each scheduled show into the scheduler's " +
-				"episode cache, whose entries are `channels/schedule.ResolvedProgram`; the job moves into channels " +
-				"with the Wave 6.4 directory moves",
 		},
 	},
 	{
@@ -198,8 +195,8 @@ var areas = []area{
 			"platform/holidayvocab", "platform/langcode", "platform/rating", "platform/textmatch",
 		},
 		MayImport: map[string]string{
-			"library": "the store persists inventory, provision and episode-evidence values, and settings " +
-				"parses the media-server connection",
+			"library": "the store persists inventory and provision values, and settings parses the " +
+				"media-server connection",
 			"channels":  "the store persists the `channels/schedule` channel, lineup and slot values",
 			"proposals": "the store persists proposals and suggestion-quality runs",
 			"filler":    "the store persists the clip catalog, its taxonomy and broadcast stations",
