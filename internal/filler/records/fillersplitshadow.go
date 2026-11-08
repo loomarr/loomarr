@@ -44,7 +44,17 @@ func (s *sqlStore) PutStructureSplitShadowDecision(ctx context.Context, decision
 	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT decision_json FROM filler_split_shadow_decisions WHERE id = ?`), decision.ID).Scan(&existing); err != nil {
 		return fmt.Errorf("read existing structure split shadow decision %s: %w", decision.ID, err)
 	}
-	if !bytes.Equal([]byte(existing), raw) {
+	// Compare decisions, not stored text: Postgres keeps decision_json as jsonb, which returns the
+	// document with its own spacing and key order, so the stored one is re-encoded as written.
+	var prior filler.StructureSplitShadowDecision
+	if err := json.Unmarshal([]byte(existing), &prior); err != nil {
+		return fmt.Errorf("decode existing structure split shadow decision %s: %w", decision.ID, err)
+	}
+	priorRaw, err := json.Marshal(prior)
+	if err != nil {
+		return fmt.Errorf("encode existing structure split shadow decision %s: %w", decision.ID, err)
+	}
+	if !bytes.Equal(priorRaw, raw) {
 		return filler.ErrStructureSplitShadowConflict
 	}
 	return nil

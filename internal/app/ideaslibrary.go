@@ -7,20 +7,49 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 )
 
-// ideaLibraryTTL is how long one library listing serves channel ideas (#1665). Listing is one
-// media-server call over the whole library and Home asks on every visit; an arrival shows in ideas
-// within this.
+// ideaLibraryTTL is how long one library listing serves channel ideas (#1665). Listing reads the
+// whole library and Home asks on every visit; an arrival shows in ideas within this.
 const ideaLibraryTTL = 5 * time.Minute
 
 type libraryLister interface {
 	AllItems(ctx context.Context) ([]library.SearchResult, error)
 }
 
-// libraryIdeaItems adapts the library client to api.IdeaLibrary, caching the listing.
+// libraryIdeaTitles lists what channel ideas draw from: the Library's movies and series with a
+// file to play, with their year and genres (#2151 step 16). The media server is never asked.
+type libraryIdeaTitles struct {
+	titles store.LibraryTitleReader
+	facts  store.LibraryItemFactsReader
+}
+
+func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]library.SearchResult, error) {
+	titles, err := l.titles.LibraryTitles(ctx, time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(titles))
+	for _, t := range titles {
+		ids = append(ids, t.ID)
+	}
+	facts, err := l.facts.LibraryItemFacts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]library.SearchResult, 0, len(titles))
+	for _, t := range titles {
+		r := librarySearchResult(t)
+		r.Year, r.Genres = facts[t.ID].Year, facts[t.ID].Genres
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// libraryIdeaItems adapts a title listing to api.IdeaLibrary, caching the listing.
 type libraryIdeaItems struct {
 	lib libraryLister
 	now func() time.Time

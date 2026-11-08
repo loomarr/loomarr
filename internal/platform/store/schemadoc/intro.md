@@ -34,12 +34,9 @@ clients show them beside the data.
    available through Seerr or the arr apps. Once it arrives, `titles.library_id` says which item it
    became. Until the switch to Loomarr's own scanner (#2151) that is the media server's id, which
    the switch rewrites to the library's.
-4. **`series_episodes` and `library_item_paths`: the media server's caches.** Copies of what Emby or
-   Jellyfin says, so channels don't ask it on every request. They exist only until the #2151
-   switch, which moves channels onto `library_*` and deletes them.
 
 Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
-and caches nothing names (each table's retention says when).
+(each table's retention says when).
 
 ## Reading the values
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 type fakeLibraryLister struct {
@@ -52,5 +53,32 @@ func TestLibraryIdeaItemsMapsKeysAndCaches(t *testing.T) {
 	_, _ = a.IdeaItems(context.Background())
 	if lister.calls != 2 {
 		t.Errorf("library listed %d times after the TTL, want 2", lister.calls)
+	}
+}
+
+type ideaFactsFake map[string]store.LibraryItemFacts
+
+func (f ideaFactsFake) LibraryItemFacts(_ context.Context, ids []string) (map[string]store.LibraryItemFacts, error) {
+	out := map[string]store.LibraryItemFacts{}
+	for _, id := range ids {
+		if facts, ok := f[id]; ok {
+			out[id] = facts
+		}
+	}
+	return out, nil
+}
+
+// Channel ideas draw from the Library's titles with their year and genres (#2151 step 16).
+func TestLibraryIdeaTitlesReadTheLibrary(t *testing.T) {
+	facts := ideaFactsFake{"lib-film": {Year: 1999, Genres: []string{"Drama"}}, "lib-show": {Year: 2001}}
+	got, err := libraryIdeaTitles{titles: testLibraryTitles, facts: facts}.AllItems(context.Background())
+	if err != nil || len(got) != 2 {
+		t.Fatalf("titles = %+v, %v; want the Library's two", got, err)
+	}
+	if film := got[0]; film.LibraryItemID != "lib-film" || film.Year != 1999 || len(film.Genres) != 1 || film.Genres[0] != "Drama" {
+		t.Errorf("film = %+v; want its Library year and genres", film)
+	}
+	if got[1].LibraryItemID != "lib-show" || got[1].Year != 2001 {
+		t.Errorf("titles = %+v", got)
 	}
 }

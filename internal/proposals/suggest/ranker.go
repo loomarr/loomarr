@@ -222,17 +222,41 @@ func rankDetailed(query rankQuery, candidates []catalog.Candidate, signals []Fee
 }
 
 func relevanceForCandidate(query rankQuery, candidate catalog.Candidate) (int, proposals.ConstraintMatches) {
-	candidateTerms := candidateWordSet(candidate)
+	candidateTerms := candidateWordSet(candidate, query)
 	return overlap(query.all(), candidateTerms), query.match(candidateTerms)
 }
 
-func candidateWordSet(candidate catalog.Candidate) map[string]bool {
-	return wordSet(strings.Join([]string{
-		candidate.Name,
+// candidateWordSet is the evidence a candidate offers a brief. A title word
+// that only echoes the request counts when a genre or keyword also agrees with
+// the request: a brief about "ghosts" must not rank Ghost Protocol or Ghost
+// World as if they were ghost stories. Title words matching a must-include,
+// tone, era or refinement term still count, and explicit title requests
+// resolve elsewhere (reference.go, name_grounding.go) without this overlap.
+func candidateWordSet(candidate catalog.Candidate, query rankQuery) map[string]bool {
+	terms := wordSet(strings.Join([]string{
 		candidate.Overview,
 		strings.Join(candidate.Genres, " "),
 		strings.Join(candidate.Keywords, " "),
 	}, " "))
+	tags := wordSet(strings.Join(append(slices.Clone(candidate.Genres), candidate.Keywords...), " "))
+	corroborated := overlap(query.request, tags) > 0
+	for word := range wordSet(candidate.Name) {
+		if corroborated || !query.request[word] || query.otherThanRequest(word) {
+			terms[word] = true
+		}
+	}
+	return terms
+}
+
+// otherThanRequest reports whether a term is also asked for by a constraint
+// other than the free-text request.
+func (q rankQuery) otherThanRequest(word string) bool {
+	for _, terms := range []map[string]bool{q.tone, q.era, q.mustInclude, q.mustExclude, q.refine} {
+		if terms[word] {
+			return true
+		}
+	}
+	return false
 }
 
 var intentStopwords = map[string]bool{

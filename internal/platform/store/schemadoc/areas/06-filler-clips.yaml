@@ -106,6 +106,36 @@ tables:
         Where the name came from: source (a title inside the media), sidecar (the downloaded info
         file), grounded (built from evidence such as the brand), curated (written by a person),
         filename (never shown to viewers), or unknown.
+    groups:
+      - group: The file
+        why: >
+          One file per clip, and every read of a clip needs it; the hash is the clip's identity.
+        columns: [hash, path, tunarr_program_id, duration_ms, quality, source, license, created_at, updated_at]
+      - group: What it is
+        why: >
+          The facts selection and research read for every clip, one value each. Repeated facts
+          (product tags, defects, research) already live in their own tables.
+        columns: [name, name_source, role, era, audience, language, brand, visible_text, transcript, enrichment_revision]
+      - group: Where and when it aired
+        why: >
+          One place and date per clip, filtered on together with the clip when channels pick filler
+          for their region.
+        columns: [geographic_scope, country, network, station, air_date, geo_evidence]
+      - group: Whether it can air
+        why: >
+          Every read of the pool checks these first, so they stay beside the clip rather than behind
+          a join.
+        columns: [held, placement, removed_at, reaped_at]
+      - group: Composites
+        why: A clip cut from a longer recording names that one recording; a recording names none.
+        columns: [is_composite, parent_hash]
+      - group: Rotation totals
+        why: >
+          Running totals rotation reads with the pool. Each airing itself is kept in filler_airings.
+        columns: [play_count, last_played_at]
+      - group: Pictures
+        why: One still and one hover preview per clip, shown wherever the clip is listed.
+        columns: [thumbnail, preview, thumb_image_hash, hover_image_hash]
 
   - name: clip_tags
     about: >

@@ -59,7 +59,8 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
       label: "View health",
       onClick: () => {
         acknowledge();
-        void navigate({ to: "/settings/system/diagnostics" });
+        // Current Health, not the Logs view Diagnostics opens on by default (#2734).
+        void navigate({ to: "/settings/system/diagnostics", search: { view: "health" } });
       },
     };
     // A warning stays until dismissed, except on a phone, where it covered the bottom 158 px of

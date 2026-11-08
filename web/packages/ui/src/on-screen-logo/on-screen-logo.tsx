@@ -298,20 +298,22 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
             <Badge shape="square" tone={overridden ? "override" : "neutral"}>
               {overridden ? "Channel override" : "Default"}
             </Badge>
-            {/* The mock's .link: 12 px underlined text, no button box, so the header stays one row. */}
-            <Pressable
-              accessibilityLabel={`Reset to default (${label})`}
-              accessibilityRole="button"
-              disabled={!overridden}
-              hitSlop={12}
-              onPress={onReset}
-              // As the help circle's: a 24 px tall tap area on the web for 16 px of text (#1785).
-              style={{ marginVertical: -4, opacity: overridden ? 1 : 0.5, paddingVertical: 4 }}
-            >
-              <Text textDecorationLine="underline" textRole="hint" tone="primary">
-                Reset to default
-              </Text>
-            </Pressable>
+            {/* The mock's .link: 12 px underlined text, no button box, so the header stays one row.
+                Only beside an override: beside Default it would have nothing to reset (#2744). */}
+            {overridden ? (
+              <Pressable
+                accessibilityLabel={`Reset to default (${label})`}
+                accessibilityRole="button"
+                hitSlop={12}
+                onPress={onReset}
+                // As the help circle's: a 24 px tall tap area on the web for 16 px of text (#1785).
+                style={{ marginVertical: -4, paddingVertical: 4 }}
+              >
+                <Text textDecorationLine="underline" textRole="hint" tone="primary">
+                  Reset to default
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </View>
