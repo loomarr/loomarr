@@ -507,6 +507,9 @@ func (s *sqlStore) MarkInventoryUnseen(
 	if err != nil {
 		return fmt.Errorf("read inventory authority origins: %w", err)
 	}
+	// missing is each origin that was present until now and this walk did not see. An origin that
+	// was already missing keeps the missing_at it was first marked with (#2446): every walk used to
+	// rewrite every tombstone, a write per tombstone that grew forever and erased when it went.
 	var missing []string
 	// gone is each item an origin of which was present until now: its library row is projected again.
 	var gone []inventory.ItemID
@@ -518,11 +521,9 @@ func (s *sqlStore) MarkInventoryUnseen(
 			_ = rows.Close()
 			return fmt.Errorf("scan inventory authority origin: %w", err)
 		}
-		if !seenIDs[externalItemID] {
+		if present && !seenIDs[externalItemID] {
 			missing = append(missing, externalItemID)
-			if present {
-				gone = append(gone, itemID)
-			}
+			gone = append(gone, itemID)
 		}
 	}
 	if err := rows.Close(); err != nil {
@@ -536,10 +537,15 @@ func (s *sqlStore) MarkInventoryUnseen(
 			WHERE authority_id = ? AND external_item_id = ?`), epoch(at), string(authority), externalItemID); err != nil {
 			return fmt.Errorf("mark inventory item origin missing: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE inventory_source_origins SET missing_at = ?
-			WHERE authority_id = ? AND external_item_id = ?`), epoch(at), string(authority), externalItemID); err != nil {
-			return fmt.Errorf("mark inventory source origin missing: %w", err)
-		}
+	}
+	// A missing item's sources are missing too. One statement over the authority rather than one per
+	// origin: it marks the newly missing ones and leaves every already-marked source alone.
+	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE inventory_source_origins SET missing_at = ?
+		WHERE authority_id = ? AND missing_at IS NULL AND external_item_id IN (
+		  SELECT external_item_id FROM inventory_item_origins
+		   WHERE authority_id = ? AND missing_at IS NOT NULL)`),
+		epoch(at), string(authority), string(authority)); err != nil {
+		return fmt.Errorf("mark inventory source origins missing: %w", err)
 	}
 	if err := s.projectLibrary(ctx, tx, at, gone...); err != nil {
 		return err
