@@ -216,7 +216,7 @@ func VerifyCIImpactActivation(path string) error {
 			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'",
 		},
 		"docs": {
-			outputs:   []classifierOutput{{name: "impact_docs", source: "docs"}},
+			outputs:   []classifierOutput{{name: "impact_docs", source: "docs"}, {name: "impact_diagrams", source: "diagrams"}},
 			condition: "needs.changes.outputs.impact_docs == 'true'",
 		},
 		"android": {

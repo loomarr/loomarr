@@ -61,9 +61,9 @@ func TestVerifyCIContainerDownloadsRequiresExactReusableWorkflowCallerShape(t *t
 			root := writeCIContainerDownloadsFixture(t)
 			path := filepath.Join(root, ".github", "workflows", "ci.yml")
 			source := readFixtureFile(t, path)
-			anchor := "  docs:\n    name: Docs — links + structure + prose\n    needs: changes\n    if: needs.changes.outputs.impact_docs == 'true'\n    uses: ./.github/workflows/ci-docs.yml\n"
+			anchor := "  playout-bench:\n    name: Playout bench — software-only pipeline\n    needs: changes\n    if: needs.changes.outputs.impact_playout_bench == 'true'\n    uses: ./.github/workflows/ci-playout-bench.yml\n"
 			if !strings.Contains(source, anchor) {
-				t.Fatal("CI docs reusable-workflow caller fixture changed")
+				t.Fatal("CI playout-bench reusable-workflow caller fixture changed")
 			}
 			writeFixtureFile(t, path, strings.Replace(source, anchor, anchor+field, 1))
 			if err := VerifyCIContainerDownloads(root); err == nil {
@@ -146,6 +146,31 @@ func TestVerifyCIContainerDownloadsBindsCacheCleanupCommandAndContext(t *testing
 			writeFixtureFile(t, filepath.Join(root, ".github", "workflows", "cache-cleanup.yml"), string(data))
 			if err := VerifyCIContainerDownloads(root); err == nil {
 				t.Fatal("VerifyCIContainerDownloads accepted changed cache-cleanup command or inherited context")
+			}
+		})
+	}
+}
+
+// The docs job's diagram drift check (#1622) runs exactly when ci-impact selects `diagrams`.
+func TestVerifyCIContainerDownloadsBindsDocsDiagramCheckToItsImpactGate(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct{ workflow, from, to string }{
+		"caller never runs diagrams": {"ci.yml", "diagrams: ${{ needs.changes.outputs.impact_diagrams == 'true' }}", "diagrams: false"},
+		"caller borrows docs gate":   {"ci.yml", "needs.changes.outputs.impact_diagrams == 'true' }}", "needs.changes.outputs.impact_docs == 'true' }}"},
+		"step ignores its input":     {"ci-docs.yml", "        if: inputs.diagrams\n", ""},
+		"step runs another target":   {"ci-docs.yml", "run: make diagrams-verify", "run: make diagrams"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			path := filepath.Join(root, ".github", "workflows", test.workflow)
+			source := readFixtureFile(t, path)
+			if !strings.Contains(source, test.from) {
+				t.Fatalf("%s fixture no longer contains %q", test.workflow, test.from)
+			}
+			writeFixtureFile(t, path, strings.Replace(source, test.from, test.to, 1))
+			if err := VerifyCIContainerDownloads(root); err == nil {
+				t.Fatal("VerifyCIContainerDownloads accepted a docs diagram check detached from its impact gate")
 			}
 		})
 	}
