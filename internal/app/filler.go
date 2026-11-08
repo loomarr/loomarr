@@ -384,23 +384,8 @@ func (w *fillerChannelWake) Run(ctx context.Context, snapshots []filler.Clip) {
 	}
 }
 
-// fillerTagStoreAdapter bridges the store → filler.TagStore (the AI-tagging job).
+// fillerTagStoreAdapter bridges the store → the score stage and the taxonomy readers.
 type fillerTagStoreAdapter struct{ st store.Store }
-
-func (a fillerTagStoreAdapter) ListUntaggedCommercials(ctx context.Context) ([]filler.StoreClip, error) {
-	clips, err := a.st.ListUntaggedCommercials(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return fillerClips(clips), nil
-}
-func (a fillerTagStoreAdapter) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
-	return a.st.UpdateClipClassification(ctx, id, era, audience, suggestedEra, aiTagged, updatedAt)
-}
-
-func (a fillerTagStoreAdapter) SetClipBrand(ctx context.Context, path, brand string, at time.Time) error {
-	return a.st.SetClipBrand(ctx, path, brand, at)
-}
 
 func (a fillerTagStoreAdapter) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
 	return a.st.SetClipConfidence(ctx, path, confidence, at)

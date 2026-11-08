@@ -2039,8 +2039,6 @@ components:
           format: uri
           readOnly: true
           type: string
-        aiTagged:
-          type: boolean
         airDate:
           description: Grounded broadcast date in YYYY-MM-DD form
           type: string
@@ -2187,7 +2185,7 @@ components:
         tunarrProgramId:
           type: string
         visionTagged:
-          description: A vision pass over keyframes contributed tags, distinct from aiTagged (text-only) (§10 V44)
+          description: A vision pass over keyframes contributed tags (§10 V44)
           type: boolean
       required:
         - hash
@@ -2196,7 +2194,6 @@ components:
         - durationMs
         - playCount
         - playsCounted
-        - aiTagged
         - tagged
         - needsDetails
       type: object

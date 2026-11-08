@@ -1206,11 +1206,6 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.License = clip.License
 		nc.Quality = clip.Quality
 		nc.Rating = clip.Rating
-		// The tags came from AI classification — operator-REVIEWED, but the AI
-		// flag records origin, not approval (a manual PATCH still clears it). Includes the taxonomy
-		// tag set (§10 V45a): a segment grounded only on a non-product axis (`psa`, `christmas`) has
-		// an empty Category shadow but real tags, and is still AI-tagged.
-		nc.AITagged = c.segment.Era > 0 || c.segment.Audience != "" || c.segment.Category != "" || len(c.segment.Tags) > 0
 		if err := sp.store.UpsertClip(ctx, nc); err != nil {
 			return nil, err
 		}

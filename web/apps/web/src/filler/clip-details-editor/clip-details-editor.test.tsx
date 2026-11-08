@@ -14,7 +14,6 @@ const clip: ClipDTO = {
   name: "Ready clip",
   kind: "unclassified",
   durationMs: 30000,
-  aiTagged: false,
   tagged: false,
   needsDetails: false,
   era: 1977,

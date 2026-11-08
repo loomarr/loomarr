@@ -11,8 +11,7 @@ import type { ClipCardProps } from "./clip-card.type";
 
 // ClipCard — a filler clip with its match tags (§3, §10): kind/era/audience/category
 // chips + a mono, sub-minute-aware duration. tagged clips are pod-ready; untagged
-// clips flag caution with a "Tag" action; aiTagged clips wear a `suggest` marker
-// (§2.1) and offer a one-click confirm — the human still gates the AI's guess (§8).
+// clips flag caution with a "Tag" action.
 const KIND_LABEL: Record<ClipDTO["kind"], string> = {
   unclassified: "Unclassified",
   commercial: "Commercial",

@@ -20,7 +20,6 @@ const clip = (over: Partial<ClipDTO> = {}): ClipDTO =>
     durationMs: 900_000,
     isComposite: true,
     tagged: false,
-    aiTagged: false,
     playCount: 0,
     playsCounted: true,
     ...over,

@@ -166,7 +166,6 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 	tagged.Era = 1994
 	tagged.Audience = filler.Kids
 	tagged.Category = "cereal"
-	tagged.AITagged = true
 	st.clips["c1"] = tagged
 
 	// The media server re-lists the same clip (maybe with a corrected name).
@@ -178,7 +177,7 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 
 	after := st.clips["c1"]
 	// Tags survive.
-	if after.Era != 1994 || after.Audience != filler.Kids || after.Category != "cereal" || !after.AITagged {
+	if after.Era != 1994 || after.Audience != filler.Kids || after.Category != "cereal" {
 		t.Fatalf("re-sync clobbered loomarr-owned tags: %+v", after.Clip)
 	}
 	// Server-owned name updated.

@@ -20,7 +20,6 @@ const base: ClipDTO = {
   category: "food",
   tagged: true,
   needsDetails: false,
-  aiTagged: false,
   playCount: 0,
   playsCounted: true,
   hash: "hash-clip-test",
@@ -64,10 +63,9 @@ describe("ClipCard", () => {
     expect(screen.queryByText(/Untagged|Geography unknown|Unclassified/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /tag clip|use in a channel/i })).not.toBeInTheDocument();
   });
-  // §10 V45a: the "AI-tagged" badge was removed (it told an operator nothing actionable). The
-  // confirm-tags affordance for an AI-suggested clip remains — that IS the useful action.
+  // Automatic metadata is never a confirmation chore: an untagged clip offers no confirm button.
   it("does not turn automatic metadata into a confirmation chore", () => {
-    render(<ClipCard clip={{ ...base, tagged: false, aiTagged: true }} onOpen={() => {}} />);
+    render(<ClipCard clip={{ ...base, tagged: false }} onOpen={() => {}} />);
     expect(screen.queryByRole("button", { name: /confirm tags/i })).not.toBeInTheDocument();
   });
 

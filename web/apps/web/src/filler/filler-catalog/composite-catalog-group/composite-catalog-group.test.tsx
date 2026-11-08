@@ -20,7 +20,6 @@ const clip = (hash: string, name: string, over: Partial<ClipDTO> = {}): ClipDTO 
   source: "folder",
   playCount: 0,
   playsCounted: true,
-  aiTagged: false,
   tagged: true,
   needsDetails: false,
   suggestedEra: 0,

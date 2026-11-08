@@ -159,8 +159,8 @@ func TestScoreStage_NeverRejectsAClipNothingHasLookedAt(t *testing.T) {
 	rejectOn := func() bool { return true }
 	s := filler.NewScoreStage(st, rejectOn, nil)
 
-	// Untagged AND untouched: AITagged false means the tagger never reached it.
-	out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) { c.AITagged = false }))
+	// Untagged AND untouched.
+	out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) {}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestScoreStage_NeverRejectsAClipNothingHasLookedAt(t *testing.T) {
 // Even when every optional classifier looked and abstained, enrollment remains the runtime
 // authority. The old reject setting is accepted by the constructor only while settings migrate.
 func TestScoreStage_UnidentifiedRemainsDescriptive(t *testing.T) {
-	looked := func(c *filler.Clip) { c.AITagged = true } // the tagger ran and grounded nothing
+	looked := func(c *filler.Clip) {} // the classifiers ran and grounded nothing
 
 	for _, tc := range []struct {
 		name   string
@@ -221,10 +221,7 @@ func TestScoreStage_AnyGroundedSignalCountsAsIdentified(t *testing.T) {
 			st := newScoreMemStore()
 			s := filler.NewScoreStage(st, func() bool { return true }, nil)
 
-			out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) {
-				c.AITagged = true
-				tc.mut(c)
-			}))
+			out, err := s.Run(context.Background(), heldClipWith(tc.mut))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -242,7 +239,6 @@ func TestScoreStage_TheNoSpeechSentinelIsNotGrounding(t *testing.T) {
 	s := filler.NewScoreStage(st, func() bool { return true }, nil)
 
 	out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) {
-		c.AITagged = true
 		c.Transcript = filler.TranscriptNone
 	}))
 	if err != nil {
@@ -260,7 +256,7 @@ func TestScoreStage_ScoresWithoutPublishing(t *testing.T) {
 
 	clip := heldClipWith(func(c *filler.Clip) {
 		c.Kind = filler.Unclassified
-		c.AITagged, c.Era, c.Audience, c.Category = true, 1987, filler.Kids, "toys"
+		c.Era, c.Audience, c.Category = 1987, filler.Kids, "toys"
 	})
 	out, err := s.Run(context.Background(), clip)
 	if err != nil {
@@ -278,7 +274,7 @@ func TestScoreStage_AnUngroundedEraRemainsDiagnostic(t *testing.T) {
 	st := newScoreMemStore()
 	s := filler.NewScoreStage(st, func() bool { return false }, nil)
 	clip := heldClipWith(func(c *filler.Clip) {
-		c.AITagged, c.Audience, c.Category = true, filler.Kids, "toys"
+		c.Audience, c.Category = filler.Kids, "toys"
 		c.SuggestedEra = 1985
 	})
 	out, err := s.Run(context.Background(), clip)

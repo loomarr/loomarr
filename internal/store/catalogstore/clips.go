@@ -268,8 +268,8 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(hash) DO UPDATE SET
 		   enrichment_revision=CASE
 		     WHEN clips.name <> excluded.name OR clips.kind <> excluded.kind OR clips.source <> excluded.source
@@ -280,7 +280,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		   name=excluded.name, name_source=excluded.name_source, kind=excluded.kind,
 		   era=excluded.era, audience=excluded.audience,
 		   category=excluded.category, duration_ms=excluded.duration_ms, rating=excluded.rating,
-		   source=excluded.source, ai_tagged=excluded.ai_tagged, quality=excluded.quality,
+		   source=excluded.source, quality=excluded.quality,
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
 		   preview=excluded.preview,
@@ -295,11 +295,8 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, clipNameSource(c), string(c.Kind), string(clipPlacement(c)), c.Era, string(c.Audience), c.Category,
 		clipGeographicScope(c), c.Country, c.Network, c.Station, c.AirDate, c.GeoEvidence,
 		c.DurationMs, c.Rating, c.Source,
-		// ⚠ Bound as real bools. `ai_tagged` used `boolToInt` until V38c, when 00033 rebuilt the
-		// table and made it BOOLEAN on Postgres like `held`/`auto_filed` — so the helper that was
-		// correct for it yesterday is a 42804 today. The dialect split is per COLUMN, and this
-		// line is the fourth time it has bitten this session. `vision_tagged` joins them (00038).
-		c.AITagged, c.Quality, c.License, c.Thumbnail, c.Preview, c.ThumbImageHash, c.HoverImageHash, c.Language,
+		// ⚠ Flags are bound as real bools: they are BOOLEAN on Postgres (storage.md).
+		c.Quality, c.License, c.Thumbnail, c.Preview, c.ThumbImageHash, c.HoverImageHash, c.Language,
 		c.Transcript, c.Brand, c.VisibleText, c.VisionTagged,
 		c.IsComposite, c.ParentHash,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
@@ -632,15 +629,15 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 			return ErrConditionedClipMismatch
 		}
 		res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips SET
-			(name, name_source, kind, era, audience, category, rating, source, ai_tagged, license,
+			(name, name_source, kind, era, audience, category, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
-			 last_played_at, suggested_era, removed_at, held, confidence, auto_filed,
+			 last_played_at, suggested_era, removed_at, held, confidence,
 			 created_at, reaped_at) =
-			(SELECT name, name_source, kind, era, audience, category, rating, source, ai_tagged, license,
+			(SELECT name, name_source, kind, era, audience, category, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
-			 last_played_at, suggested_era, removed_at, held, confidence, auto_filed,
+			 last_played_at, suggested_era, removed_at, held, confidence,
 			 created_at, reaped_at FROM clips WHERE hash = ?),
 			path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
 			WHERE hash = ? AND path = ? AND parent_hash = ? AND held = ? AND removed_at = ? AND is_composite = ?`),
@@ -784,7 +781,7 @@ func clipPlacement(c Clip) clips.Placement {
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, duration_ms,
 	geographic_scope, country, network, station, air_date, geo_evidence,
-	rating, source, ai_tagged, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
+	rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
 	is_composite, parent_hash,
 	play_count, last_played_at, suggested_era,
 		removed_at, held, confidence, updated_at, created_at FROM clips`
@@ -1062,17 +1059,7 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 // to the same clips on both backends; the wire's ClipDTO.needsDetails comes from the Go side.
 const needsDetailsWhere = "kind = ? AND (era = 0 OR audience = '' OR category = '')"
 
-// ListUntaggedCommercials is the AI-tagging job's work list (§10) — sugar over the
-// commercial-scoped UntaggedOnly filter.
-//
-// ⚠ **IncludeHeld is required, not optional** (§10 V38). Held clips are exactly the ones most in
-// need of tagging — a held clip is waiting for enrichment and terminal readiness — and the default
-// catalog filter excludes them. Without this the tagger would silently skip every new arrival.
-func (s *Store) ListUntaggedCommercials(ctx context.Context) ([]Clip, error) {
-	return s.ListClips(ctx, ClipFilter{UntaggedOnly: true, IncludeHeld: true})
-}
-
-func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, aiTagged bool, updatedAt time.Time) error {
+func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int, audience string, suggestedEra int, updatedAt time.Time) error {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		// ⚠ suggested_era is CONDITIONAL (§10 era grounding, V34): writing an era confirms
 		// the suggestion, so it clears in the same write; a NEW suggestion overwrites; and a
@@ -1081,10 +1068,8 @@ func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int
 		// would make the suggestion flap run to run.
 		`UPDATE clips SET era = ?, audience = ?,
 		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 THEN ? ELSE suggested_era END,
-		   ai_tagged = ?, updated_at = ? WHERE hash = ?`),
-		// ⚠ A real bool, not boolToInt — `ai_tagged` became BOOLEAN on Postgres when 00033 rebuilt
-		// the table (V38c). This writer and the upsert must agree, and they did not for a moment.
-		era, audience, era, suggestedEra, suggestedEra, aiTagged, epoch(updatedAt), id)
+		   updated_at = ? WHERE hash = ?`),
+		era, audience, era, suggestedEra, suggestedEra, epoch(updatedAt), id)
 	if err != nil {
 		return fmt.Errorf("update clip classification %s: %w", id, err)
 	}
@@ -1409,14 +1394,8 @@ func scanClip(sc scannable) (Clip, error) {
 		tunarrID     sql.NullString
 		lastPlayedAt int64
 		removedAt    int64
-		// ⚠ Both are real bools since 00033 rebuilt the table. `aiTagged` was an INTEGER
-		// scanned into an int until V38c — the rebuild made it BOOLEAN on Postgres like its two
-		// neighbours, so the old int would now fail to scan. The dialect split is per COLUMN, and
-		// a rebuild is exactly when a column can change sides.
-		aiTagged bool
-		held     bool
-		// vision_tagged is BOOLEAN (00038), the same side of the dialect split as its three
-		// neighbours above — scanned into a bool, never an int.
+		// Flags are BOOLEAN on Postgres (storage.md), scanned into a bool, never an int.
+		held         bool
 		visionTagged bool
 		// is_composite is BOOLEAN (00039), the same side again.
 		isComposite bool
@@ -1427,7 +1406,7 @@ func scanClip(sc scannable) (Clip, error) {
 	)
 	err := sc.Scan(&c.Hash, &c.Path, &tunarrID, &c.Name, &c.NameSource, &kind, &c.Placement, &c.Era, &audience, &c.Category,
 		&c.DurationMs, &c.GeographicScope, &c.Country, &c.Network, &c.Station, &c.AirDate, &c.GeoEvidence,
-		&c.Rating, &c.Source, &aiTagged, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
+		&c.Rating, &c.Source, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
 		&isComposite, &c.ParentHash,
@@ -1441,7 +1420,6 @@ func scanClip(sc scannable) (Clip, error) {
 	c.Kind = clips.Kind(kind)
 	c.Audience = clips.Audience(audience)
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
-	c.AITagged = aiTagged
 	c.VisionTagged = visionTagged
 	c.IsComposite = isComposite
 	c.LastPlayedAt = fromEpoch(lastPlayedAt)
@@ -1539,8 +1517,7 @@ func escapeLike(term string) string {
 }
 
 // HoldClips sends clips to review. Ordinary callers deliberately receive no boolean that could
-// spell `held=false`; only the applied-admission transaction may release a playable clip. The
-// physical legacy auto_filed column is cleared defensively until a future table rebuild removes it.
+// spell `held=false`; only the applied-admission transaction may release a playable clip.
 func (s *Store) HoldClips(ctx context.Context, paths []string, at time.Time) (int, error) {
 	if len(paths) == 0 {
 		return 0, nil
@@ -1552,7 +1529,7 @@ func (s *Store) HoldClips(ctx context.Context, paths []string, at time.Time) (in
 		placeholders[i] = "?"
 		args = append(args, p)
 	}
-	q := `UPDATE clips SET held = TRUE, auto_filed = FALSE, updated_at = ? WHERE path IN (` +
+	q := `UPDATE clips SET held = TRUE, updated_at = ? WHERE path IN (` +
 		strings.Join(placeholders, ",") + `)`
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
@@ -1580,7 +1557,7 @@ func (s *Store) ReleaseCompositeHolds(ctx context.Context, paths []string, at ti
 		args = append(args, p)
 	}
 	args = append(args, true)
-	q := `UPDATE clips SET held = FALSE, auto_filed = FALSE, updated_at = ? WHERE path IN (` +
+	q := `UPDATE clips SET held = FALSE, updated_at = ? WHERE path IN (` +
 		strings.Join(placeholders, ",") + `) AND is_composite = ?`
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(q), args...)
 	if err != nil {
