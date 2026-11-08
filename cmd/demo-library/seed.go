@@ -98,9 +98,14 @@ func seed(ctx context.Context, lib *demolibrary.Library, cfg seedConfig, log *sl
 	// Transcription is off because the demo interstitials carry music, not speech, and a demo
 	// backend has no speech engine: left on, the filler pipeline fails every clip at that stage
 	// ("whisper not configured") and none ever reaches a break.
+	//
+	// The TMDB key is the half of features.suggestions the demo owns (#1941): the stand-in that
+	// `serve` mounts at /tmdb/3 ignores it, and a backend started without LOOMARR_TMDB_BASE_URL
+	// gets refused by the real TMDB instead of surfacing real titles. The other half, an LLM,
+	// comes from the backend's own LLM_* settings.
 	if err := api.expectOK(ctx, http.MethodPatch, "/v1/settings", map[string]any{"edits": map[string]string{
 		settings.LibraryFlavor.Key(): "emby", settings.LibraryURL.Key(): cfg.libraryURL, settings.LibraryToken.Key(): DemoToken,
-		settings.FillerTranscribeEnabled.Key(): "false",
+		settings.FillerTranscribeEnabled.Key(): "false", settings.TMDBAPIKey.Key(): DemoToken,
 	}}, nil); err != nil {
 		return fmt.Errorf("point the backend at the demo library: %w", err)
 	}
