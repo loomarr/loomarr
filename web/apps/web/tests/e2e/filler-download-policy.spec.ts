@@ -27,7 +27,7 @@ test("automatic downloads expose simple defaults with optional per-source contro
     ),
   ).toBeVisible({ timeout: 10_000 });
   const globalSchedule = page.getByRole("combobox", { name: "Look for new clips" });
-  const globalLimit = page.getByRole("spinbutton", { name: "Add up to" });
+  const globalLimit = page.getByRole("textbox", { name: "Add up to" });
   await expect(globalSchedule).toContainText("Every 6 hours");
   await expect(globalLimit).toHaveValue("10");
   await expect(page.getByRole("link", { name: "Storage limits", exact: true })).toBeVisible();
@@ -63,8 +63,8 @@ test("automatic downloads expose simple defaults with optional per-source contro
   await page.getByRole("option", { name: "Use a different schedule" }).click();
   await page.getByLabel("Source check schedule").click();
   await page.getByRole("option", { name: "Custom" }).click();
-  await page.getByRole("spinbutton", { name: "Source check interval" }).fill("2");
-  await page.getByRole("spinbutton", { name: "Clips per source check" }).fill("3");
+  await page.getByRole("textbox", { name: "Source check interval" }).fill("2");
+  await page.getByRole("textbox", { name: "Clips per source check" }).fill("3");
   await page.getByRole("button", { name: "Save automatic downloads" }).click();
 
   await expect
@@ -117,7 +117,7 @@ test("automatic download controls stay usable on a narrow, zoomed screen and fro
   await downloadsLink.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("combobox", { name: "Look for new clips" })).toBeVisible();
-  await expect(page.getByRole("spinbutton", { name: "Add up to" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Add up to" })).toBeVisible();
 
   await page.evaluate(() => {
     document.body.style.zoom = "2";

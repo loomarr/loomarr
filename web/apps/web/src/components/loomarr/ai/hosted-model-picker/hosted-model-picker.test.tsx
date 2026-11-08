@@ -130,7 +130,7 @@ describe("HostedModelPicker", () => {
     expect(screen.queryByText("Advanced")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /find another model/i }));
-    const search = screen.getByRole("textbox", { name: /search models/i });
+    const search = screen.getByRole("searchbox", { name: /search models/i });
     expect(search).toBeInTheDocument();
     expect(screen.queryByText("Same family variant")).not.toBeInTheDocument();
     await userEvent.type(search, "advanced");
@@ -171,7 +171,7 @@ describe("HostedModelPicker", () => {
     render(<HostedModelPicker providers={[provider({ models })]} onSelect={vi.fn()} />);
 
     await userEvent.click(screen.getByRole("button", { name: /find another model/i }));
-    await userEvent.type(screen.getByRole("textbox", { name: /search models/i }), "model");
+    await userEvent.type(screen.getByRole("searchbox", { name: /search models/i }), "model");
 
     expect(screen.getAllByRole("listitem")).toHaveLength(20);
     expect(screen.getByText(/showing the first 20 matches/i)).toBeInTheDocument();

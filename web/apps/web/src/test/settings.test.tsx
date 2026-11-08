@@ -187,7 +187,7 @@ describe("Settings", () => {
     expect(screen.getByRole("heading", { name: "Troubleshoot" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Filler" })).toBeInTheDocument();
 
-    const finder = screen.getByRole("textbox", { name: "Find a setting" });
+    const finder = screen.getByRole("searchbox", { name: "Find a setting" });
     await userEvent.type(finder, "FILLER_STORAGE_LIBRARY_BUDGET_GB");
     const match = await screen.findByRole("link", { name: /Filler storage allowance/ });
     expect(match).toHaveAttribute("href", "/filler/settings/storage");
@@ -201,7 +201,7 @@ describe("Settings", () => {
     renderAt("/settings");
 
     await userEvent.type(
-      await screen.findByRole("textbox", { name: "Find a setting" }),
+      await screen.findByRole("searchbox", { name: "Find a setting" }),
       "not a real setting",
     );
     expect(await screen.findByText("No settings found")).toBeInTheDocument();
