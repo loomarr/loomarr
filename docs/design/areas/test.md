@@ -6,13 +6,13 @@ Code that exists for tests and never ships in the server: the shared test double
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — library (15), proposals (7), platform (6), channels (5), people (2), media (1), playout (1), filler (1)
+**Imports from other areas:** any, by design — library (15), proposals (7), platform (7), channels (6), people (2), media (1), playout (1), filler (1)
 
 ## Packages
 
 - **`demolibrary`** · 1 importer
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
-- **`eval`** · → `catalog`, `channels/schedule`, `episodeevidence`, `library`, `platform/buildinfo`, `platform/llm`, `platform/openroutercatalog`, `platform/rating`, `proposals`, `proposals/quality`, `proposals/suggest`, `proposals/webreference`, `provision`, `testkit`, `tmdb`
+- **`eval`** · → `catalog`, `channels`, `channels/schedule`, `episodeevidence`, `library`, `platform/buildinfo`, `platform/llm`, `platform/openroutercatalog`, `platform/rating`, `platform/store`, `proposals`, `proposals/quality`, `proposals/suggest`, `proposals/webreference`, `provision`, `testkit`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`platform/store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.

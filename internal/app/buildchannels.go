@@ -202,7 +202,7 @@ func buildChannels(
 		// Tunarr push, and an episode resolver so a series entry expands into the Library's
 		// episodes (§9, #2151 step 16).
 		meta := itemMetadata{facts: st}
-		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(st))
+		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, channels.LibraryEpisodeResolver(st))
 		// Bulk duration resolution, so a cycle layout costs ONE Library read instead of one per
 		// movie (§9 N+1).
 		avail = channels.WithBulkDurations(avail, bulkDurations(meta))

@@ -7,6 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -65,10 +66,10 @@ func buildHTTP(deps httpBuild) http.Handler {
 	var proposalOutlook api.ProposalOutlook
 	if preview, ok := channelSvc.(outlook.Preview); ok && chBinder != nil {
 		additionResolver := approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
-			return libraryPresence{titles: st}
+			return catalog.LibraryOwnership{Titles: st}
 		}}
 		proposalOutlook = outlook.New(outlook.Config{
-			Titles: st, Library: itemMetadata{facts: st}, Episodes: episodeResolver(st),
+			Titles: st, Library: itemMetadata{facts: st}, Episodes: channels.LibraryEpisodeResolver(st),
 			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
 		})
 	}
