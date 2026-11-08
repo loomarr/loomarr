@@ -59,10 +59,10 @@ test("automatic downloads expose simple defaults with optional per-source contro
 
   await expect(page.getByText("Uses your defaults: every 12 hours, up to 4 clips each check.")).toBeVisible();
   await expect(page.getByText(/^Next automatic check /)).toBeVisible();
-  await page.getByLabel("Automatic downloads for this source").click();
-  await page.getByRole("option", { name: "Use a different schedule" }).click();
-  await page.getByLabel("Source check schedule").click();
-  await page.getByRole("option", { name: "Custom" }).click();
+  await page.getByRole("button", { name: /^Automatic downloads for this source/ }).click();
+  await page.getByRole("radio", { name: "Use a different schedule" }).click();
+  await page.getByRole("button", { name: /^Source check schedule/ }).click();
+  await page.getByRole("radio", { name: "Custom" }).click();
   await page.getByRole("textbox", { name: "Source check interval" }).fill("2");
   await page.getByRole("textbox", { name: "Clips per source check" }).fill("3");
   await page.getByRole("button", { name: "Save automatic downloads" }).click();
@@ -79,13 +79,13 @@ test("automatic downloads expose simple defaults with optional per-source contro
       },
     ]);
 
-  await page.getByLabel("Automatic downloads for this source").click();
-  await page.getByRole("option", { name: "Use automatic-download defaults" }).click();
+  await page.getByRole("button", { name: /^Automatic downloads for this source/ }).click();
+  await page.getByRole("radio", { name: "Use automatic-download defaults" }).click();
   await page.getByRole("button", { name: "Save automatic downloads" }).click();
   await expect.poll(() => backend.state.fillerSourcePolicy).toEqual({ mode: "defaults" });
 
-  await page.getByLabel("Automatic downloads for this source").click();
-  await page.getByRole("option", { name: "Never download automatically" }).click();
+  await page.getByRole("button", { name: /^Automatic downloads for this source/ }).click();
+  await page.getByRole("radio", { name: "Never download automatically" }).click();
   await page.getByRole("button", { name: "Save automatic downloads" }).click();
   await expect.poll(() => backend.state.fillerSourcePolicy).toEqual({ mode: "never" });
   await expect(
