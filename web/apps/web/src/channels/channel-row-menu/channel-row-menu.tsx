@@ -1,6 +1,6 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Menu, MenuAction, MenuContent, MenuTrigger } from "@loomarr/design-system";
+import { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreVertical, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
@@ -158,25 +158,24 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
               Delete…
             </MenuAction>
           ) : (
-            <div className="border-onair-tint-15 bg-onair-tint-15 flex flex-col gap-2 rounded border p-2">
-              <p className="text-xs">Delete {channel.name} for good? This can't be undone.</p>
-              <div className="flex items-center gap-2">
-                <Action
-                  density="pointer"
-                  disabled={busy}
-                  // purge: a Delete from the LIST should remove the channel outright, not leave a
-                  // detached record behind (the maintainer's choice). The detail-page danger zone
-                  // still offers detach-vs-purge for the finer distinction.
-                  onPress={() => del.mutate({ id: channel.id, params: { purge: true } })}
-                  variant="destructive"
-                >
-                  Delete
-                </Action>
-                <Action density="pointer" disabled={busy} onPress={resetConfirm} variant="ghost">
-                  Cancel
-                </Action>
-              </div>
-            </div>
+            // ⚠ Menu items in a group, not buttons in a panel: a menu may hold only items and groups
+            // (axe aria-required-children, critical), and only items are reached by the arrow keys.
+            <MenuGroup label={`Delete ${channel.name} for good? This can't be undone.`} tone="danger">
+              <MenuAction
+                closeOnSelect={false}
+                disabled={busy}
+                // purge: a Delete from the LIST should remove the channel outright, not leave a
+                // detached record behind (the maintainer's choice). The detail-page danger zone
+                // still offers detach-vs-purge for the finer distinction.
+                onSelect={() => del.mutate({ id: channel.id, params: { purge: true } })}
+                tone="danger"
+              >
+                Delete
+              </MenuAction>
+              <MenuAction closeOnSelect={false} disabled={busy} onSelect={resetConfirm}>
+                Cancel
+              </MenuAction>
+            </MenuGroup>
           )}
         </MenuContent>
       </Menu>

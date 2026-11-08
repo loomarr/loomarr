@@ -1,4 +1,10 @@
-import type { MenuActionProps, MenuContentProps, MenuProps, MenuTriggerProps } from "./menu.type";
+import type {
+  MenuActionProps,
+  MenuContentProps,
+  MenuGroupProps,
+  MenuProps,
+  MenuTriggerProps,
+} from "./menu.type";
 
 // No native surface opens a pointer menu yet, and a menu cannot degrade the way a tooltip does: its
 // actions are reachable only through it. So the native adapter refuses to render rather than showing
@@ -11,5 +17,6 @@ const Menu = (_props: MenuProps) => unsupported();
 const MenuTrigger = (_props: MenuTriggerProps) => unsupported();
 const MenuContent = (_props: MenuContentProps) => unsupported();
 const MenuAction = (_props: MenuActionProps) => unsupported();
+const MenuGroup = (_props: MenuGroupProps) => unsupported();
 
-export { Menu, MenuAction, MenuContent, MenuTrigger };
+export { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger };

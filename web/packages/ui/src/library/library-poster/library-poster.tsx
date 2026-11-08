@@ -15,6 +15,10 @@ const PAGE_GUTTER = { phone: 16, wide: 32 } as const;
 // A title's poster (design/library): the shared ArtworkFrame on the artwork-placeholder token, held
 // to 2:3. ArtworkFrame fixes a 16:9 ratio, so a 2:3 box sizes it (a frame given both width and
 // height ignores its own ratio). With no artwork the title is set in the frame.
+//
+// ⚠ The set name sits OVER the frame, not in it: `dim` fades the frame, and faded text fell to
+// 2.64:1 (axe color-contrast). It stands in for artwork, so assistive tech skips it, as it skips
+// art; whatever holds the poster names the title once.
 const LibraryPoster = ({
   name,
   art,
@@ -34,18 +38,31 @@ const LibraryPoster = ({
     <ArtworkFrame
       borderRadius="control"
       height="100%"
-      justifyContent={art ? "center" : "flex-end"}
+      justifyContent="center"
       opacity={dim ? 0.55 : 1}
-      padding={art ? 0 : big ? "section" : "control"}
       state="ready"
       width="100%"
     >
-      {art ?? (
+      {/* An empty child keeps the frame from captioning itself "No artwork" under the name. */}
+      {art ?? <Stack />}
+    </ArtworkFrame>
+    {art ? null : (
+      <Stack
+        aria-hidden
+        bottom={0}
+        justifyContent="flex-end"
+        left={0}
+        padding={big ? "section" : "control"}
+        pointerEvents="none"
+        position="absolute"
+        right={0}
+        top={0}
+      >
         <Text numberOfLines={3} textAlign="center" textRole={big ? "body" : "label"} tone="secondary">
           {name}
         </Text>
-      )}
-    </ArtworkFrame>
+      </Stack>
+    )}
     {children}
   </Stack>
 );

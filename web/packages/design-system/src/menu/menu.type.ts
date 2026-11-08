@@ -36,4 +36,13 @@ interface MenuActionProps {
   tone?: "danger";
 }
 
-export type { MenuActionProps, MenuContentProps, MenuProps, MenuTriggerProps };
+interface MenuGroupProps {
+  /** MenuActions. */
+  children: ReactNode;
+  /** Shown above the actions and names the group for assistive tech: the question they answer. */
+  label: string;
+  /** `danger` sets the group on the danger surface: an armed confirmation for an irreversible act. */
+  tone?: "danger";
+}
+
+export type { MenuActionProps, MenuContentProps, MenuGroupProps, MenuProps, MenuTriggerProps };

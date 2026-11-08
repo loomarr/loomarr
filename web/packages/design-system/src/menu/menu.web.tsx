@@ -2,7 +2,13 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 
 import { semanticRadius } from "../tokens";
-import type { MenuActionProps, MenuContentProps, MenuProps, MenuTriggerProps } from "./menu.type";
+import type {
+  MenuActionProps,
+  MenuContentProps,
+  MenuGroupProps,
+  MenuProps,
+  MenuTriggerProps,
+} from "./menu.type";
 
 const shadow = "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)";
 
@@ -76,4 +82,27 @@ const MenuAction = ({ children, closeOnSelect = true, disabled, icon, onSelect, 
   </MenuPrimitive.Item>
 );
 
-export { Menu, MenuAction, MenuContent, MenuTrigger };
+// Actions under a visible label, as one group: the label names the group (aria-labelledby), and the
+// actions stay menu items, so the arrow keys reach them. A menu may hold only items and groups, so
+// an armed confirmation is a group, never a panel of buttons (axe aria-required-children).
+const MenuGroup = ({ children, label, tone }: MenuGroupProps) => (
+  <MenuPrimitive.Group
+    style={{
+      backgroundColor: tone === "danger" ? "var(--stateDangerSurface)" : "transparent",
+      borderRadius: semanticRadius.control,
+      display: "flex",
+      flexDirection: "column",
+      gap: 4,
+      padding: tone === "danger" ? 6 : 0,
+    }}
+  >
+    <MenuPrimitive.GroupLabel
+      style={{ color: "var(--contentPrimary)", fontSize: 12, lineHeight: "16px", padding: "2px 8px" }}
+    >
+      {label}
+    </MenuPrimitive.GroupLabel>
+    {children}
+  </MenuPrimitive.Group>
+);
+
+export { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger };
