@@ -8,7 +8,7 @@
 // ?loop=1 replays it) and a restrained remote. Switch with [ ] variant, , . state, D device, T tint.
 import { ThemeScope } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
-import { DinerFrame } from "@/prototype-direction/player/art";
+import { BrightFrame, DinerFrame } from "@/prototype-direction/player/art";
 import { ClassicChrome } from "@/prototype-direction/player/chrome-classic";
 import { OsdChrome } from "@/prototype-direction/player/chrome-osd";
 import { PolishedChrome } from "@/prototype-direction/player/chrome-polished";
@@ -34,7 +34,13 @@ import {
 } from "@/prototype-direction/shared";
 
 // H only: `t` freezes the tune at that many ms into the sequence (for stills), `loop=1` replays it.
-type PlayerSearch = Omit<ProtoSearch, "device"> & { device: PlayerDevice; loop?: boolean; t?: number };
+// `frame=bright` swaps the diner for a bright daytime beach, to test legibility over light pictures.
+type PlayerSearch = Omit<ProtoSearch, "device"> & {
+  device: PlayerDevice;
+  frame?: "bright";
+  loop?: boolean;
+  t?: number;
+};
 
 const validateSearch = (raw: Record<string, unknown>): PlayerSearch => {
   const t = Number(raw.t);
@@ -43,6 +49,7 @@ const validateSearch = (raw: Record<string, unknown>): PlayerSearch => {
     device: DEVICES.includes(raw.device as PlayerDevice) ? (raw.device as PlayerDevice) : "desktop",
     ...(raw.t !== undefined && Number.isFinite(t) ? { t } : {}),
     ...(String(raw.loop) === "1" || raw.loop === true ? { loop: true } : {}),
+    ...(raw.frame === "bright" ? { frame: "bright" as const } : {}),
   };
 };
 
@@ -73,7 +80,7 @@ const PlayerPrototype = () => {
       <ProtoFrame device={search.device}>
         <ThemeScope theme="dark">
           <PlayerStyles />
-          {polished ? <DinerFrame /> : <LivePicture />}
+          {polished ? search.frame === "bright" ? <BrightFrame /> : <DinerFrame /> : <LivePicture />}
           {tune ? (
             <TuneChrome {...props} freezeAt={search.t} loop={search.loop} />
           ) : tv ? (

@@ -213,4 +213,62 @@ const tintOf = (hex: string): Tint => {
 };
 
 export type { Tint };
-export { DinerFrame, detectivePosterUri, dinerFrameUri, heistFanartUri, tintOf, WORDMARK_RATIO, wordmarkUri };
+
+// ---------------------------------------------------------------------------------------------
+// A bright daytime picture, to test the chrome against light and white areas (?frame=bright): a sunny
+// beach, pale sky and clouds, white surf, light sand and a white-and-red umbrella. Code-drawn, no
+// photo.
+
+const brightSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd0f4"/><stop offset="1" stop-color="#eaf8ff"/></linearGradient>
+  <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fc7d8"/><stop offset="1" stop-color="#bff0ee"/></linearGradient>
+  <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7ecd2"/><stop offset="1" stop-color="#ecd9ae"/></linearGradient>
+  <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fffbe8"/><stop offset="0.35" stop-color="#fff4c2" stop-opacity="0.9"/><stop offset="1" stop-color="#fff4c2" stop-opacity="0"/></radialGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="5"/></filter>
+</defs>
+<rect width="1600" height="900" fill="url(#sky)"/>
+<circle cx="1230" cy="150" r="230" fill="url(#sun)"/>
+<g fill="#ffffff" filter="url(#soft)" opacity="0.95">
+  <ellipse cx="300" cy="170" rx="200" ry="46"/><ellipse cx="430" cy="140" rx="130" ry="42"/><ellipse cx="190" cy="150" rx="110" ry="36"/>
+  <ellipse cx="860" cy="260" rx="240" ry="40"/><ellipse cx="980" cy="232" rx="120" ry="34"/>
+  <ellipse cx="1420" cy="330" rx="170" ry="30"/>
+</g>
+<rect y="430" width="1600" height="190" fill="url(#sea)"/>
+<g fill="#ffffff" opacity="0.8"><rect y="436" width="1600" height="4"/><rect x="120" y="500" width="520" height="5"/><rect x="760" y="540" width="640" height="5"/><rect x="300" y="580" width="420" height="4"/></g>
+<path d="M0 620 Q200 590 400 620 T800 620 T1200 620 T1600 620 V660 H0Z" fill="#ffffff"/>
+<rect y="640" width="1600" height="260" fill="url(#sand)"/>
+<path d="M0 640 Q200 618 400 640 T800 640 T1200 640 T1600 640 V664 Q1400 650 1200 664 T800 664 T400 664 T0 664Z" fill="#e8f9f8" opacity="0.9"/>
+<g transform="translate(1130 560)">
+  <rect x="-5" y="0" width="10" height="250" fill="#f4f4f4"/>
+  <path d="M-230 0 Q0 -190 230 0 Z" fill="#ffffff"/>
+  <path d="M-230 0 Q-170 -140 -95 -118 L-60 0Z" fill="#e5484d"/>
+  <path d="M-10 -172 Q80 -150 150 -100 L110 0 L10 0Z" fill="#e5484d"/>
+  <ellipse cx="0" cy="262" rx="190" ry="18" fill="#d8c394" opacity="0.8"/>
+</g>
+<g transform="translate(360 760)"><rect x="-160" y="-30" width="320" height="110" rx="10" fill="#ffffff"/><rect x="-160" y="-30" width="320" height="22" rx="8" fill="#4cc9e8"/></g>
+</svg>`;
+
+const brightFrameUri = toUri(brightSvg);
+
+const BrightFrame = () => (
+  <div
+    aria-hidden
+    style={{
+      background: `#eaf8ff url("${brightFrameUri}") center/cover no-repeat`,
+      inset: 0,
+      position: "absolute",
+    }}
+  />
+);
+
+export {
+  BrightFrame,
+  DinerFrame,
+  detectivePosterUri,
+  dinerFrameUri,
+  heistFanartUri,
+  tintOf,
+  WORDMARK_RATIO,
+  wordmarkUri,
+};

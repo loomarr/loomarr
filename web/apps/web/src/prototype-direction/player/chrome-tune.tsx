@@ -5,8 +5,7 @@
 // 1. THE TUNE NEVER ADDS WAITING TIME. It only dresses a wait that already exists.
 //    - Warm flip (the target is already streaming; the default): about 340 ms and quiet. The picture
 //      dips once, the seven bars run once along the band's top edge only, and the number updates in
-//      the channel block and the readout. No static, no full-screen bars. Rapid flips just re-target:
-//      the number and band cut at once and a sweep already running is left to finish.
+//      the channel block. No static, no full-screen bars. Rapid flips just re-target.
 //    - Cold start (first tune, or a channel that must spin up): the full signature, paced by the
 //      real wait. If the picture is ready almost at once (inside 960 ms) it is the warm flip instead.
 //        release   0-180    the held picture drains
@@ -14,37 +13,42 @@
 //        sweep     340-770  the seven bars wipe the full frame, hard-edged, left to right
 //        number    560-840  the channel number lands, very large, in ink on the bars
 //        hold      then     long waits (1.5 s and up) fold the bars into a band across the middle of the
-//                           frame, the fanart dimmed above and below, "CH 9 Movie Matinee / TUNING IN_"
+//                           frame, the fanart dimmed above and below, "CH 9 Movie Matinee / Tuning in"
 //        hand-off  on ready the bars collapse together onto the lower third's top edge, the number
 //                  lands in the amber block, the band unfolds from the bars, the fanart crossfades into
 //                  the live picture.
 //    Reduced motion: bars and number appear, then crossfade out; no sweep, no flight.
 //    ?t=<ms> freezes the tune at that moment (Web Animations API), ?loop=1 replays it.
 //
-// 2. THE REMOTE AND BAND. Keys are neutral solid surfaces with crisp 6 px corners and mono legends
-//    on an 8 px grid; amber play is the one colour fill, every other brand colour is a thin edge on
-//    hover, focus, press. The lower third has the brand bars as its top edge, a bold amber block and
-//    a real contrast step. Clock colon ticks, Live dot breathes, nothing else idles.
+// 2. ONE CHANNEL IDENTITY AT A TIME. While the band is up, the amber block and the band name the
+//    channel and nothing else does. The big readout (number and name on a solid ink backing, so it
+//    reads over any frame) shows only for a flip or tune made while the controls are hidden, or for
+//    digits being typed.
 //
-// 3. LOGOS AND FANART where they serve the TV idea: the Now row sets the programme's logo in place of
+// 3. THE REMOTE AND BAND. Keys are neutral solid surfaces with crisp 6 px corners on an 8 px grid.
+//    Amber is for the channel block, the play key and focus rings, nothing else (progress, volume,
+//    readout and active states are white). Type: letter-spaced mono capitals only on the NOW / NEXT
+//    chips; everything else is sentence case in Geist; mono is for channel numbers, clocks and the
+//    details panel's values.
+//
+// 4. LOGOS AND FANART where they serve the TV idea: the Now row sets the programme's logo in place of
 //    its typed title when there is one (text when there is not: CH 9 has none); the cold tune shows the
 //    programme's fanart while it waits; the station-ID card sits on dimmed fanart. Real logos and
 //    fanart come from #2567, which imports them as RoleLogo / RoleBackdrop with dominantHex. Here
 //    they are code-drawn stand-ins (art.tsx, shared standInStill).
 //
-// 4. THE UTILITY LAYER (docs/frontend-design.md section 9.4, playback-clients.md Panels). Top right:
-//    Subtitles, Audio, Picture, Playback details, Picture in picture, Fullscreen, a gap, then Leave
-//    (Esc). Tooltips name shortcuts ("Leave  Esc"). Subtitles on is an amber glyph with a dot. Volume
-//    is a mute key with a level beside the key row. Subtitles, Audio, Picture and Channels are flat
-//    right-hand sheets; Playback details is the enthusiasts' panel (mono, live-ticking, Copy details)
-//    behind its own door. Phones: portrait keeps Leave and one "Subtitles and audio" key, the rest in
-//    More; landscape has Leave, Subtitles, Audio and More.
+// 5. THE UTILITY LAYER (docs/frontend-design.md section 9.4, playback-clients.md Panels). Top right,
+//    on screen: [Subtitles, Audio] ... [Fullscreen] [Leave]. Picture, Playback details (I) and
+//    picture in picture live in More. Subtitles, Audio, Picture, More and Channels are right-hand
+//    sheets that wear the band's identity: the seven-bar edge, a compact amber channel block and the
+//    channel name in the header, the band's row rhythm. Playback details is the enthusiasts' panel
+//    (mono, live-ticking, Copy details) behind its own door. Phones: portrait keeps Leave and one
+//    "Subtitles & audio" key; landscape has Subtitles, Audio, More and Leave.
 //
 // Interactive: ArrowUp / ArrowDown, digits, L (last channel) tune; C cycles subtitles, A audio, I
 // playback details, M mute, F fullscreen, Esc closes the top layer and then leaves.
 import { brandChroma, icons, playerChrome, typography } from "@loomarr/design-system";
 import {
-  Activity,
   ArrowLeftRight,
   AudioLines,
   Captions,
@@ -54,8 +58,6 @@ import {
   Ellipsis,
   Maximize,
   Minimize,
-  PictureInPicture2,
-  SlidersHorizontal,
   Volume2,
   VolumeX,
   X,
@@ -75,7 +77,7 @@ import { standInStill } from "../shared";
 import { dinerFrameUri, heistFanartUri, WORDMARK_RATIO, wordmarkUri } from "./art";
 import type { ChromeProps } from "./chrome-classic";
 import { nowProgramme as current } from "./chrome-rich";
-import { behindLabel, clock, guideOf, IdentCard, mono, ParentalBug, Slot, Strip } from "./chrome-tv";
+import { behindLabel, clock, guideOf, IdentCard, mono, Strip } from "./chrome-tv";
 import {
   b1,
   type ChannelRow,
@@ -84,13 +86,14 @@ import {
   formatTime,
   lastChannel,
   MINUTE,
+  NOW,
   segments,
   WINDOW,
 } from "./data";
 import { flat, scrimStyle } from "./flat";
 import { Playbar } from "./playbar";
 import type { Scenario } from "./scenario";
-import { ChannelList, Cover, Row, Sheet } from "./sheets";
+import { ChannelList, Cover, Row } from "./sheets";
 
 // ---------------------------------------------------------------------------------------------
 // The timeline, in ms from the key press.
@@ -151,6 +154,18 @@ const LAST = channels.findIndex((c) => c.number === lastChannel?.number);
 const MONO = typography.family.data.web;
 const BODY = typography.family.body.web;
 
+/** Geist, sentence case: the voice of everything that is not a number, a clock or a NOW / NEXT chip. */
+const ui = (size: number, weight = 500, extra: CSSProperties = {}): CSSProperties => ({
+  fontFamily: BODY,
+  fontSize: size,
+  fontWeight: weight,
+  lineHeight: 1.2,
+  ...extra,
+});
+
+/** A solid ink backing: the one thing that keeps text legible over any picture. */
+const INK = "rgba(11, 12, 14, 0.94)";
+
 // ---------------------------------------------------------------------------------------------
 // Device metrics, all on the 8 px grid.
 
@@ -175,7 +190,7 @@ interface Dims {
   nameBig: number;
   num: number;
   rocker: { half: number; w: number };
-  /** Distance of the top cluster and the bug from the frame's top edge. */
+  /** Distance of the top cluster and the bug from the frame's side edges. */
   side: number;
   small: number;
   strip: number;
@@ -202,7 +217,7 @@ const dimsOf = (device: string): Dims => {
       legendGap: 16,
       line: 17,
       logo: 40,
-      name: 14,
+      name: 18,
       nameBig: 64,
       num: 80,
       rocker: { half: 56, w: 72 },
@@ -224,14 +239,14 @@ const dimsOf = (device: string): Dims => {
     edge: landscape ? "0 32px 24px" : "0 24px 32px",
     gutter: landscape ? 32 : 24,
     hero: { h: landscape ? 56 : 64, w: landscape ? 80 : 88 },
-    holdName: landscape ? 32 : 32,
+    holdName: 32,
     holdNum: landscape ? 40 : 48,
     key: landscape ? 48 : 56,
     keyGap: landscape ? 16 : 24,
     legendGap: 0,
     line: 13,
     logo: 24,
-    name: 12,
+    name: 14,
     nameBig: 32,
     num: 40,
     rocker: { half: landscape ? 40 : 48, w: landscape ? 56 : 64 },
@@ -297,7 +312,8 @@ const HStyles = () => (
     .tn-key { background: ${flat.elevated}; border: 1px solid ${flat.hairline}; border-radius: 6px; padding: 0; position: relative; }
     .tn-key:hover { background: ${flat.focus}; border-color: var(--edge); }
     .tn-key:active { transform: scale(0.94); transition-duration: 50ms; background: ${flat.focus}; border-color: var(--edge); box-shadow: inset 0 0 0 1px var(--edge); }
-    .tn-key:focus-visible, .tn-half:focus-visible { outline: 3px solid var(--edge); outline-offset: 3px; }
+    /* Focus is the one other place amber lives. */
+    .tn-key:focus-visible, .tn-half:focus-visible { outline: 3px solid ${flat.amber}; outline-offset: 3px; }
     .tn-half { background: transparent; border: 0; padding: 0; border-radius: 0; }
     .tn-half:hover { background: ${flat.focus}; }
     .tn-half:active { background: ${flat.focus}; box-shadow: inset 0 0 0 2px var(--edge); transition-duration: 50ms; }
@@ -314,6 +330,7 @@ const HStyles = () => (
     .tn-hero[data-hit="1"] { animation: tn-flash-b 300ms ${EASE}; }
     .tn-legend { transition: opacity 160ms linear; }
     [data-tune="true"] .tn-legend { opacity: 0; }
+    .tn-opt:hover { background: ${flat.elevated}; }
 
     /* Tooltips name the shortcut ("Leave  Esc"); keyboard focus shows them too. */
     .tn-tipwrap { display: inline-flex; position: relative; }
@@ -395,9 +412,7 @@ const ChannelStack = ({
       transformOrigin: "center",
     }}
   >
-    <span style={{ fontSize: "0.17em", fontWeight: 600, letterSpacing: "0.2em", paddingLeft: "0.2em" }}>
-      CH
-    </span>
+    <span style={{ fontFamily: BODY, fontSize: "max(0.17em, 11px)", fontWeight: 700 }}>CH</span>
     <span style={{ letterSpacing: "-0.03em" }}>
       {number}
       {cursor ? (
@@ -412,6 +427,7 @@ const ChannelStack = ({
 // ---------------------------------------------------------------------------------------------
 // The lower third: brand bars as the top edge, a bold amber block, then Now / progress / Next on ink.
 
+/** The small NOW / NEXT chips: the one place for letter-spaced mono capitals. */
 const Chip = ({ children, dims, solid }: { children: ReactNode; dims: Dims; solid: boolean }) => (
   <span
     style={mono(dims.small - 2, 700, {
@@ -444,10 +460,11 @@ const TickClock = ({ dims, ms }: { dims: Dims; ms: number }) => {
   );
 };
 
+/** Live stays red (dot and word). */
 const LiveMark = ({ dims }: { dims: Dims }) => (
   <span style={{ alignItems: "center", display: "inline-flex", gap: 8 }}>
     <span className="tn-dot" style={{ background: flat.live, borderRadius: 4, height: 8, width: 8 }} />
-    <span style={mono(dims.small, 700, { color: flat.live, letterSpacing: "0.16em" })}>LIVE</span>
+    <span style={ui(dims.small + 2, 650, { color: flat.live })}>Live</span>
   </span>
 );
 
@@ -455,7 +472,7 @@ const GoLive = ({ dims }: { dims: Dims }) => (
   <button
     className="pp-btn"
     style={{
-      ...mono(dims.small - 1, 700, { color: flat.text, letterSpacing: "0.14em" }),
+      ...ui(dims.small + 1, 650, { color: flat.text }),
       alignItems: "center",
       border: `1px solid ${flat.live}`,
       borderRadius: 4,
@@ -467,11 +484,74 @@ const GoLive = ({ dims }: { dims: Dims }) => (
     type="button"
   >
     <span style={{ background: flat.live, borderRadius: 4, height: 8, width: 8 }} />
-    GO LIVE
+    Go live
   </button>
 );
 
+/** The programme's time slot: white on a faint track (amber stays on the block and play key). */
+const Progress = ({ scenario }: { scenario: Scenario }) => {
+  const length = current.stopMs - current.startMs;
+  const at = (ms: number) => Math.min(Math.max((ms - current.startMs) / length, 0), 1);
+  const played = at(scenario.playheadMs);
+  const live = at(NOW);
+  const behind = scenario.lagMs > 1000;
+  return (
+    <div
+      style={{
+        background: "rgba(255, 255, 255, 0.18)",
+        borderRadius: 2,
+        flex: 1,
+        height: 4,
+        minWidth: 0,
+        position: "relative",
+      }}
+    >
+      {behind ? (
+        <div
+          style={{
+            background: "rgba(255, 255, 255, 0.32)",
+            borderRadius: 2,
+            height: 4,
+            position: "absolute",
+            width: `${live * 100}%`,
+          }}
+        />
+      ) : null}
+      <div
+        style={{
+          background: flat.text,
+          borderRadius: 2,
+          height: 4,
+          position: "absolute",
+          width: `${played * 100}%`,
+        }}
+      />
+      {behind ? (
+        <div
+          style={{
+            background: flat.live,
+            height: 12,
+            left: `${live * 100}%`,
+            position: "absolute",
+            top: -4,
+            width: 2,
+          }}
+        />
+      ) : null}
+    </div>
+  );
+};
+
 const ellipsis: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+
+/** The seven brand bars as an edge (the lower third's top, and each sheet's top). */
+const BarsEdge = ({ height }: { height: number }) => (
+  <div aria-hidden style={{ display: "flex", height }}>
+    {brandChroma.map((color) => (
+      <span key={color} style={{ background: color, flex: 1 }} />
+    ))}
+  </div>
+);
 
 const Band = ({
   blockPlateRef,
@@ -547,17 +627,8 @@ const Band = ({
           }}
         >
           <div style={{ alignItems: "center", display: "flex", gap: 16, justifyContent: "space-between" }}>
-            <span
-              style={{
-                ...ellipsis,
-                color: flat.textSecondary,
-                fontFamily: BODY,
-                fontSize: dims.name,
-                fontWeight: 600,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
+            {/* The channel is named once, here; the block beside it carries only the number. */}
+            <span style={{ ...ellipsis, ...ui(dims.name, 600, { color: flat.textSecondary }) }}>
               {row.name}
             </span>
             <span style={{ alignItems: "center", display: "inline-flex", flexShrink: 0, gap: 16 }}>
@@ -606,33 +677,18 @@ const Band = ({
                 <span
                   style={{
                     ...ellipsis,
-                    color: flat.text,
-                    fontFamily: BODY,
-                    fontSize: dims.title,
-                    fontWeight: 700,
-                    letterSpacing: "-0.01em",
-                    lineHeight: 1.1,
+                    ...ui(dims.title, 700, { color: flat.text, letterSpacing: "-0.01em", lineHeight: 1.1 }),
                   }}
                 >
                   {guide.title}
                 </span>
               )}
               {scenario.inBreak ? (
-                <span
-                  style={{
-                    ...ellipsis,
-                    color: playerChrome.breakAccent,
-                    fontFamily: BODY,
-                    fontSize: dims.line,
-                    fontWeight: 600,
-                  }}
-                >
+                <span style={{ ...ellipsis, ...ui(dims.line, 600, { color: playerChrome.breakAccent }) }}>
                   Back in {breakLeft} min
                 </span>
               ) : guide.line ? (
-                <span
-                  style={{ ...ellipsis, color: flat.textSecondary, fontFamily: BODY, fontSize: dims.line }}
-                >
+                <span style={{ ...ellipsis, ...ui(dims.line, 400, { color: flat.textSecondary }) }}>
                   {guide.line}
                 </span>
               ) : null}
@@ -643,7 +699,7 @@ const Band = ({
               <span style={mono(dims.small, 500, { color: flat.textSecondary })}>
                 {clock(current.startMs)}
               </span>
-              <Slot scenario={scenario} />
+              <Progress scenario={scenario} />
               <span style={mono(dims.small, 500, { color: flat.textSecondary })}>
                 {clock(current.stopMs)}
               </span>
@@ -660,15 +716,7 @@ const Band = ({
             </Chip>
             <div style={{ alignItems: "baseline", display: "flex", gap: 16, minWidth: 0 }}>
               <span style={mono(dims.small, 500, { color: flat.textSecondary })}>{guide.nextAt}</span>
-              <span
-                style={{
-                  ...ellipsis,
-                  color: flat.text,
-                  fontFamily: BODY,
-                  fontSize: pointer ? 19 : 14,
-                  fontWeight: 500,
-                }}
-              >
+              <span style={{ ...ellipsis, ...ui(pointer ? 19 : 14, 500, { color: flat.text }) }}>
                 {guide.nextName}
               </span>
             </div>
@@ -680,8 +728,8 @@ const Band = ({
 };
 
 // ---------------------------------------------------------------------------------------------
-// The remote. Neutral solid keys, crisp corners, mono legends, air between them. Amber is the one
-// colour fill (play); every other key's brand colour (--edge) is a thin edge on hover, focus, press.
+// The remote. Neutral solid keys, crisp corners, sentence-case legends, air between them. Amber is
+// the play key; every other key's brand colour (--edge) is a thin edge on hover and press.
 
 interface Hit {
   key: string;
@@ -690,11 +738,7 @@ interface Hit {
 
 const Legend = ({ children, pointer }: { children: string; pointer: boolean }) =>
   pointer ? (
-    <span
-      aria-hidden
-      className="tn-legend"
-      style={mono(11, 600, { color: flat.text, letterSpacing: "0.16em", textTransform: "uppercase" })}
-    >
+    <span aria-hidden className="tn-legend" style={ui(13, 600, { color: flat.text })}>
       {children}
     </span>
   ) : null;
@@ -729,7 +773,7 @@ const Remote = ({
   pointer: boolean;
   volume?: Volume | undefined;
 }) => {
-  const glyph = pointer ? 24 : 24;
+  const glyph = 24;
   const col = (children: ReactNode, key: string): ReactNode => (
     <div
       key={key}
@@ -857,11 +901,11 @@ const Remote = ({
                   strokeWidth={2.25}
                   style={{ marginBottom: 8 }}
                 />
-                {/* The level: a thin amber line inside the key's foot. */}
+                {/* The level: a thin white line inside the key's foot. */}
                 <span
                   aria-hidden
                   style={{
-                    background: "rgba(255, 255, 255, 0.16)",
+                    background: "rgba(255, 255, 255, 0.2)",
                     bottom: 8,
                     height: 4,
                     left: 16,
@@ -871,7 +915,7 @@ const Remote = ({
                 >
                   <span
                     style={{
-                      background: volume.muted ? flat.textMuted : flat.amber,
+                      background: flat.text,
                       display: "block",
                       height: 4,
                       width: `${volume.muted ? 0 : volume.level}%`,
@@ -879,7 +923,7 @@ const Remote = ({
                   />
                 </span>
               </button>
-              <Legend pointer={pointer}>{volume.muted ? "Muted" : `Vol ${volume.level}`}</Legend>
+              <Legend pointer={pointer}>{volume.muted ? "Muted" : "Volume"}</Legend>
             </>,
             "volume",
           )
@@ -905,7 +949,8 @@ const Remote = ({
 };
 
 // ---------------------------------------------------------------------------------------------
-// The top-right cluster: view options, window, then Leave in the corner. Same key language.
+// The top-right cluster: [Subtitles, Audio] ... [Fullscreen] [Leave]. Same key language. The first two
+// carry a short word beside the glyph, so neither can be mistaken for the other.
 
 type Panel = "audio" | "channels" | "details" | "more" | "picture" | "subtitles";
 
@@ -916,6 +961,8 @@ interface TopItem {
   id: string;
   label: string;
   pressed?: boolean;
+  /** The word beside the glyph (sentence case). Absent: an icon-only key with a tooltip. */
+  text?: string;
 }
 
 const TipLabel = ({
@@ -932,7 +979,7 @@ const TipLabel = ({
   <span className="tn-tip" data-align={align} data-open={open} role="tooltip">
     {label}
     <span
-      style={mono(11, 650, {
+      style={ui(11, 650, {
         border: `1px solid ${flat.hairline}`,
         borderRadius: 3,
         color: flat.textSecondary,
@@ -965,124 +1012,198 @@ const TopCluster = ({
 }) => {
   const pointer = device === "desktop";
   const landscape = device === "landscape";
-  const items: TopItem[] = pointer
-    ? [
-        {
-          Glyph: Captions,
-          active: subsOn,
-          hint: "C",
-          id: "subtitles",
-          label: "Subtitles",
-          pressed: panel === "subtitles",
-        },
-        { Glyph: AudioLines, hint: "A", id: "audio", label: "Audio", pressed: panel === "audio" },
-        {
-          Glyph: SlidersHorizontal,
-          hint: "Q",
-          id: "picture",
-          label: "Picture",
-          pressed: panel === "picture",
-        },
-        {
-          Glyph: Activity,
-          hint: "I",
-          id: "details",
-          label: "Playback details",
-          pressed: panel === "details",
-        },
-        { Glyph: PictureInPicture2, hint: "P", id: "pip", label: "Picture in picture" },
-        {
-          Glyph: fullscreen ? Minimize : Maximize,
-          hint: "F",
-          id: "fullscreen",
-          label: fullscreen ? "Exit fullscreen" : "Fullscreen",
-        },
-      ]
-    : landscape
-      ? [
-          {
-            Glyph: Captions,
-            active: subsOn,
-            hint: "C",
-            id: "subtitles",
-            label: "Subtitles",
-            pressed: panel === "subtitles",
-          },
-          { Glyph: AudioLines, hint: "A", id: "audio", label: "Audio", pressed: panel === "audio" },
-          { Glyph: Ellipsis, hint: "", id: "more", label: "More", pressed: panel === "more" },
-        ]
-      : [
-          {
-            Glyph: Captions,
-            active: subsOn,
-            hint: "C",
-            id: "subtitles",
-            label: "Subtitles and audio",
-            pressed: panel === "subtitles" || panel === "audio",
-          },
-        ];
+  const subs: TopItem = {
+    Glyph: Captions,
+    active: subsOn,
+    hint: "C",
+    id: "subtitles",
+    label: "Subtitles",
+    pressed: panel === "subtitles",
+    text: pointer || landscape ? "Subtitles" : "Subtitles & audio",
+  };
+  const audio: TopItem = {
+    Glyph: AudioLines,
+    hint: "A",
+    id: "audio",
+    label: "Audio",
+    pressed: panel === "audio",
+    text: "Audio",
+  };
+  const full: TopItem = {
+    Glyph: fullscreen ? Minimize : Maximize,
+    hint: "F",
+    id: "fullscreen",
+    label: fullscreen ? "Exit fullscreen" : "Fullscreen",
+  };
+  const more: TopItem = { Glyph: Ellipsis, hint: "", id: "more", label: "More", pressed: panel === "more" };
+  const left: TopItem[] =
+    pointer || landscape ? [subs, audio] : [{ ...subs, pressed: panel === "subtitles" || panel === "audio" }];
+  const right: TopItem[] = pointer ? [full] : landscape ? [more] : [];
   const size = 48;
+  const key = ({ Glyph, active, hint, id, label, pressed, text }: TopItem) => (
+    <span className="tn-tipwrap" key={id}>
+      <button
+        aria-label={label}
+        aria-pressed={pressed ?? undefined}
+        className="tn-key"
+        onClick={() => onItem(id)}
+        style={{
+          ...edge(brandChroma[3]),
+          ...(text ? { gap: 8, padding: "0 16px 0 12px" } : { width: size }),
+          height: size,
+        }}
+        type="button"
+      >
+        <Glyph aria-hidden color={playerChrome.text} size={24} strokeWidth={2} />
+        {text ? <span style={ui(14, 600, { color: flat.text })}>{text}</span> : null}
+        {/* Subtitles on: a small white dot, never amber. */}
+        {active ? (
+          <span
+            aria-hidden
+            style={{
+              background: flat.text,
+              borderRadius: 4,
+              height: 8,
+              position: "absolute",
+              right: 6,
+              top: 6,
+              width: 8,
+            }}
+          />
+        ) : null}
+      </button>
+      {pointer && hint ? <TipLabel hint={hint} label={label} /> : null}
+    </span>
+  );
   return (
     <div
       style={{
         alignItems: "center",
         display: "flex",
-        gap: pointer ? 16 : 16,
+        gap: pointer ? 32 : 16,
         position: "absolute",
         right: dims.side,
         top: dims.top,
       }}
     >
-      {items.map(({ Glyph, active, hint, id, label, pressed }) => (
-        <span className="tn-tipwrap" key={id}>
+      <div style={{ alignItems: "center", display: "flex", gap: 16 }}>{left.map(key)}</div>
+      <div style={{ alignItems: "center", display: "flex", gap: 16 }}>
+        {right.map(key)}
+        <span className="tn-tipwrap">
           <button
-            aria-label={label}
-            aria-pressed={pressed ?? undefined}
+            aria-label="Leave, back to Guide"
             className="tn-key"
-            onClick={() => onItem(id)}
-            style={{ ...edge(active ? flat.amber : brandChroma[3]), height: size, width: size }}
+            onClick={onLeave}
+            style={{ ...edge(flat.live), gap: 8, height: size, padding: "0 16px 0 12px" }}
             type="button"
           >
-            <Glyph aria-hidden color={active ? flat.amber : playerChrome.text} size={24} strokeWidth={2} />
-            {active ? (
-              <span
-                aria-hidden
-                style={{
-                  background: flat.amber,
-                  borderRadius: 4,
-                  height: 8,
-                  position: "absolute",
-                  right: 8,
-                  top: 8,
-                  width: 8,
-                }}
-              />
-            ) : null}
+            <X aria-hidden color={playerChrome.text} size={24} strokeWidth={2} />
+            <span style={ui(14, 600, { color: flat.text })}>Leave</span>
           </button>
-          {pointer && hint ? <TipLabel hint={hint} label={label} /> : null}
+          {pointer ? <TipLabel align="end" hint="Esc" label="Leave" open={tip} /> : null}
         </span>
-      ))}
-      <span aria-hidden style={{ width: pointer ? 16 : 0 }} />
-      <span className="tn-tipwrap">
-        <button
-          aria-label="Leave, back to Guide"
-          className="tn-key"
-          onClick={onLeave}
-          style={{ ...edge(flat.live), gap: 8, height: size, padding: "0 16px 0 12px" }}
-          type="button"
-        >
-          <X aria-hidden color={playerChrome.text} size={24} strokeWidth={2} />
-          <span style={mono(13, 650, { color: flat.text, letterSpacing: "0.14em" })}>LEAVE</span>
-        </button>
-        {pointer ? <TipLabel align="end" hint="Esc" label="Leave" open={tip} /> : null}
-      </span>
+      </div>
     </div>
   );
 };
 
 // ---------------------------------------------------------------------------------------------
-// Sheets: flat right-hand panels (sheets.tsx Sheet). Plain words in Subtitles, Audio and Picture;
-// the technical terms live behind Playback details only.
+// Sheets: right-hand panels in H's own language. Each wears the band's identity: the seven-bar edge
+// along its top, a compact amber channel block and the channel name in its header, the band's row
+// rhythm. Plain words in Subtitles, Audio and Picture; the technical terms live behind Playback
+// details only.
+
+const HSheet = ({
+  children,
+  dims,
+  onClose,
+  pointer,
+  row,
+  title,
+}: {
+  children: ReactNode;
+  dims: Dims;
+  onClose: () => void;
+  pointer: boolean;
+  row: ChannelRow;
+  title: string;
+}) => (
+  <>
+    <div
+      style={{ background: flat.dim, inset: 0, pointerEvents: "none", position: "absolute", zIndex: 39 }}
+    />
+    <aside
+      aria-label={title}
+      style={{
+        background: flat.canvas,
+        borderLeft: "1px solid rgba(255, 255, 255, 0.16)",
+        bottom: 0,
+        display: "flex",
+        flexDirection: "column",
+        maxWidth: "100%",
+        pointerEvents: "auto",
+        position: "absolute",
+        right: 0,
+        top: 0,
+        width: pointer ? 416 : 384,
+        zIndex: 40,
+      }}
+    >
+      <BarsEdge height={dims.strip} />
+      <header
+        style={{
+          alignItems: "stretch",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.16)",
+          display: "flex",
+          gap: 16,
+          paddingRight: 16,
+        }}
+      >
+        <div
+          style={{
+            alignItems: "center",
+            background: flat.amber,
+            display: "flex",
+            justifyContent: "center",
+            width: 72,
+          }}
+        >
+          <ChannelStack number={row.number} size={28} />
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            flexDirection: "column",
+            gap: 4,
+            justifyContent: "center",
+            minWidth: 0,
+            padding: "16px 0",
+          }}
+        >
+          <span style={{ ...ellipsis, ...ui(14, 600, { color: flat.textSecondary }) }}>{row.name}</span>
+          <h2
+            style={{ ...ellipsis, ...ui(24, 700, { color: flat.text, letterSpacing: "-0.01em", margin: 0 }) }}
+          >
+            {title}
+          </h2>
+        </div>
+        <span style={{ alignItems: "center", display: "flex" }}>
+          <button
+            aria-label={`Close ${title}`}
+            className="tn-key"
+            onClick={onClose}
+            style={{ height: 48, width: 48 }}
+            type="button"
+          >
+            <X aria-hidden color={playerChrome.text} size={24} strokeWidth={2} />
+          </button>
+        </span>
+      </header>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px 24px 32px" }}>{children}</div>
+    </aside>
+  </>
+);
 
 const SUBTITLE_OPTIONS = [
   { label: "Off" },
@@ -1102,39 +1223,20 @@ const PICTURE_OPTIONS = [
   { label: "480p" },
 ];
 
-const OptionGroup = ({
-  on,
-  options,
-  title,
-}: {
-  on: number;
-  options: { detail?: string; label: string }[];
-  title?: string;
-}) => (
+const SectionLabel = ({ children }: { children: string }) => (
+  <span style={ui(14, 600, { color: flat.textSecondary })}>{children}</span>
+);
+
+const OptionGroup = ({ on, options }: { on: number; options: { detail?: string; label: string }[] }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-    {title ? (
-      <span
-        style={{
-          color: flat.textSecondary,
-          fontFamily: BODY,
-          fontSize: 13,
-          fontWeight: 600,
-          letterSpacing: "0.08em",
-          padding: "0 16px 8px",
-          textTransform: "uppercase",
-        }}
-      >
-        {title}
-      </span>
-    ) : null}
     {options.map((o, i) => (
       <button
         aria-pressed={i === on}
-        className="pp-btn pp-row"
+        className="pp-btn tn-opt"
         key={o.label}
         style={{
           alignItems: "center",
-          background: i === on ? flat.focus : "transparent",
+          background: i === on ? flat.elevated : "transparent",
           borderRadius: 6,
           display: "flex",
           gap: 16,
@@ -1146,16 +1248,10 @@ const OptionGroup = ({
         type="button"
       >
         <span style={{ display: "flex", flex: 1, flexDirection: "column", gap: 4 }}>
-          <span
-            style={{ color: flat.text, fontFamily: BODY, fontSize: 17, fontWeight: i === on ? 600 : 400 }}
-          >
-            {o.label}
-          </span>
-          {o.detail ? (
-            <span style={{ color: flat.textMuted, fontFamily: BODY, fontSize: 13 }}>{o.detail}</span>
-          ) : null}
+          <span style={ui(17, i === on ? 650 : 400, { color: flat.text })}>{o.label}</span>
+          {o.detail ? <span style={ui(13, 400, { color: flat.textMuted })}>{o.detail}</span> : null}
         </span>
-        {i === on ? <Check aria-hidden color={flat.amber} size={20} strokeWidth={2.5} /> : null}
+        {i === on ? <Check aria-hidden color={flat.text} size={20} strokeWidth={2.5} /> : null}
       </button>
     ))}
   </div>
@@ -1164,9 +1260,9 @@ const OptionGroup = ({
 const SubtitlesBody = ({ on }: { on: number }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
     <OptionGroup on={on} options={SUBTITLE_OPTIONS} />
-    <div style={{ borderTop: `1px solid ${flat.hairline}`, paddingTop: 16 }}>
+    <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.16)", paddingTop: 16 }}>
       <button
-        className="pp-btn pp-row"
+        className="pp-btn tn-opt"
         style={{
           alignItems: "center",
           borderRadius: 6,
@@ -1179,8 +1275,8 @@ const SubtitlesBody = ({ on }: { on: number }) => (
         }}
         type="button"
       >
-        <span style={{ color: flat.text, flex: 1, fontFamily: BODY, fontSize: 17 }}>Subtitle style</span>
-        <span style={{ color: flat.textMuted, fontFamily: BODY, fontSize: 14 }}>Medium · White</span>
+        <span style={ui(17, 400, { color: flat.text, flex: 1 })}>Subtitle style</span>
+        <span style={ui(14, 400, { color: flat.textMuted })}>Medium · White</span>
         <ChevronRight aria-hidden color={flat.textMuted} size={20} />
       </button>
     </div>
@@ -1190,39 +1286,55 @@ const SubtitlesBody = ({ on }: { on: number }) => (
 const AudioBody = () => <OptionGroup on={0} options={AUDIO_OPTIONS} />;
 const PictureBody = () => <OptionGroup on={0} options={PICTURE_OPTIONS} />;
 
-/** The More sheet no longer repeats what is on screen: schedule, and on phones what the top bar leaves out. */
-const MoreBodyH = ({ behind, pointer }: { behind: boolean; pointer: boolean }) => (
+/** Phones show subtitles and audio together; the order follows the key that was pressed. */
+const SubtitlesAndAudio = ({ audioFirst, subs }: { audioFirst: boolean; subs: number }) => (
+  <div style={{ display: "flex", flexDirection: audioFirst ? "column-reverse" : "column", gap: 32 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <SectionLabel>Subtitles</SectionLabel>
+      <SubtitlesBody on={subs} />
+    </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <SectionLabel>Audio</SectionLabel>
+      <AudioBody />
+    </div>
+  </div>
+);
+
+/** More: the schedule and everything the screen leaves out, Picture, Playback details and picture in picture included. */
+const MoreBodyH = ({
+  behind,
+  onPanel,
+  pointer,
+}: {
+  behind: boolean;
+  onPanel: (p: Panel) => void;
+  pointer: boolean;
+}) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-    <div>
-      <span
-        style={{
-          color: flat.textSecondary,
-          fontFamily: BODY,
-          fontSize: 13,
-          fontWeight: 600,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-        }}
-      >
-        Schedule
-      </span>
-      <div style={{ marginTop: 16 }}>
-        <Playbar
-          density="touch"
-          plain
-          playheadMs={behind ? WINDOW.nowMs - 134_000 : WINDOW.nowMs}
-          pointer={false}
-          segments={segments}
-        />
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionLabel>Schedule</SectionLabel>
+      <Playbar
+        density="touch"
+        plain
+        playheadMs={behind ? WINDOW.nowMs - 134_000 : WINDOW.nowMs}
+        pointer={false}
+        segments={segments}
+      />
     </div>
     <div>
-      {behind ? <Row density="touch" glyph="startOver" label="Start over" detail="Opening Night" /> : null}
-      {behind ? <Row density="touch" glyph="play" label="Go live" detail={formatTime(WINDOW.nowMs)} /> : null}
-      {pointer ? null : <Row density="touch" label="Last channel" detail="CH 3" swap />}
-      {pointer ? null : <Row density="touch" glyph="settings" label="Picture" detail="Auto · 1080p" />}
-      {pointer ? null : <Row density="touch" glyph="info" label="Playback details" />}
-      <Row density="touch" glyph="list" label="Channels" />
+      {behind ? <Row density="touch" detail="Opening Night" glyph="startOver" label="Start over" /> : null}
+      {behind ? <Row density="touch" detail={formatTime(WINDOW.nowMs)} glyph="play" label="Go live" /> : null}
+      {pointer ? null : <Row density="touch" detail="CH 3" label="Last channel" swap />}
+      <Row
+        density="touch"
+        detail="Auto · 1080p"
+        glyph="settings"
+        label="Picture"
+        onClick={() => onPanel("picture")}
+      />
+      <Row density="touch" glyph="info" label="Playback details" onClick={() => onPanel("details")} />
+      <Row density="touch" glyph="external" label="Picture in picture" />
+      <Row density="touch" glyph="list" label="Channels" onClick={() => onPanel("channels")} />
       <Row density="touch" glyph="info" label="Info" />
       <Row density="touch" glyph="help" label="Shortcuts" />
     </div>
@@ -1262,11 +1374,7 @@ const DetailsBody = ({ lagMs, tick }: { lagMs: number; tick: number }) => {
       <dl style={{ display: "grid", gap: 8, gridTemplateColumns: "auto 1fr", margin: 0 }}>
         {rows.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>
-            <dt
-              style={{ color: flat.textMuted, fontFamily: BODY, fontSize: 13, margin: 0, paddingRight: 24 }}
-            >
-              {k}
-            </dt>
+            <dt style={{ ...ui(13, 400, { color: flat.textMuted }), margin: 0, paddingRight: 24 }}>{k}</dt>
             <dd
               style={{
                 ...mono(13, 500, { color: flat.text }),
@@ -1287,9 +1395,7 @@ const DetailsBody = ({ lagMs, tick }: { lagMs: number; tick: number }) => {
         type="button"
       >
         {copied ? <Check aria-hidden size={16} /> : <Copy aria-hidden size={16} />}
-        <span style={{ fontFamily: BODY, fontSize: 14, fontWeight: 600 }}>
-          {copied ? "Copied" : "Copy details"}
-        </span>
+        <span style={ui(14, 600)}>{copied ? "Copied" : "Copy details"}</span>
       </button>
     </div>
   );
@@ -1299,8 +1405,8 @@ const DetailsPanel = ({ dims, lagMs, tick }: { dims: Dims; lagMs: number; tick: 
   <section
     aria-label="Playback details"
     style={{
-      background: flat.raised,
-      border: `1px solid ${flat.hairline}`,
+      background: flat.canvas,
+      border: "1px solid rgba(255, 255, 255, 0.16)",
       borderRadius: 6,
       left: dims.side,
       padding: 24,
@@ -1312,8 +1418,8 @@ const DetailsPanel = ({ dims, lagMs, tick }: { dims: Dims; lagMs: number; tick: 
     }}
   >
     <div style={{ alignItems: "center", display: "flex", gap: 8, marginBottom: 16 }}>
-      <span className="tn-dot" style={{ background: flat.amber, borderRadius: 4, height: 8, width: 8 }} />
-      <span style={mono(12, 700, { color: flat.text, letterSpacing: "0.16em" })}>PLAYBACK DETAILS</span>
+      <span className="tn-dot" style={{ background: flat.text, borderRadius: 4, height: 8, width: 8 }} />
+      <span style={ui(14, 650, { color: flat.text })}>Playback details</span>
     </div>
     <DetailsBody lagMs={lagMs} tick={tick} />
   </section>
@@ -1553,17 +1659,12 @@ const buildB = (bucket: Animation[], l: Layers, compressed: boolean, bandH: numb
   const end = T.handoffDur;
   const fade = [{ opacity: 1 }, { opacity: 0 }];
   const swapIn = [{ opacity: 0 }, { opacity: 1 }];
-  const readoutFrames = [
-    { opacity: 0, transform: "translateY(-10px)" },
-    { opacity: 1, transform: "translateY(0)" },
-  ];
 
   if (reduced) {
     for (const el of [...l.cols, l.stack, l.name, l.hold, l.snow, l.wash, l.art]) b(el, fade, 0, 220);
     for (const span of l.strip) b(span, swapIn, 0, 220);
     for (const plate of l.plates) b(plate, swapIn, 60, 220);
     b(l.blockStack, swapIn, 60, 220);
-    b(l.readout, [{ opacity: 0 }, { opacity: 1 }], 220, 200);
     return;
   }
 
@@ -1641,7 +1742,6 @@ const buildB = (bucket: Animation[], l: Layers, compressed: boolean, bandH: numb
       OUT,
     );
   }
-  b(l.readout, readoutFrames, T.readoutAt, T.readoutDur, OUT);
 };
 
 interface TuneProps extends ChromeProps {
@@ -1650,6 +1750,27 @@ interface TuneProps extends ChromeProps {
 }
 
 const SUBS = SUBTITLE_OPTIONS.length;
+
+/** The rating bug: a solid ink backing, so it reads over any picture. */
+const RatingBug = ({ dims, shown, top }: { dims: Dims; shown: boolean; top: number }) => (
+  <div
+    aria-hidden
+    className="tv-osd"
+    data-shown={shown}
+    style={{
+      background: INK,
+      border: "1px solid rgba(255, 255, 255, 0.72)",
+      borderRadius: 4,
+      left: dims.side,
+      padding: dims.side === 48 ? "8px 12px" : "4px 8px",
+      pointerEvents: "none",
+      position: "absolute",
+      top,
+    }}
+  >
+    <span style={mono(dims.side === 48 ? 14 : 12, 650, { color: flat.text })}>TV-PG</span>
+  </div>
+);
 
 const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProps) => {
   const pointer = device === "desktop";
@@ -1674,7 +1795,7 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
   const [flipN, setFlipN] = useState(0);
   const [lastIdx, setLastIdx] = useState(LAST);
   const [osdN, setOsdN] = useState(0);
-  const [osd, setOsd] = useState(true);
+  const [osd, setOsd] = useState(false);
   const [bug, setBug] = useState(true);
   const [hit, setHit] = useState<Hit>({ key: "", n: 0 });
   const [touched, setTouched] = useState(false);
@@ -1850,7 +1971,6 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
       if (!fullTune && phaseRef.current === "idle") {
         // Warm: the readout shows the digits typed so far, and the flip lands once typing settles.
         setTouched(true);
-        setOsd(true);
         setOsdN((n) => n + 1);
         window.clearTimeout(entryTimer.current);
         entryTimer.current = window.setTimeout(
@@ -1881,7 +2001,6 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
   const onItem = useCallback(
     (id: string) => {
       if (id === "fullscreen") setFullscreen((f) => !f);
-      else if (id === "pip") return;
       else togglePanel(id as Panel);
     },
     [togglePanel],
@@ -1957,7 +2076,7 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
       .catch(() => undefined);
   }, [phase, session]);
 
-  // Back at rest the persistent elements shed their (matching) end states.
+  // Back at rest after a cold tune, the persistent elements shed their (matching) end states.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only the phase matters
   useLayoutEffect(() => {
     if (phase === "idle" && shedRef.current) {
@@ -2021,9 +2140,11 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
     nameRef.current?.animate([{ opacity: 0.3 }, { opacity: 1 }], { duration: 160, easing: OUT });
   }, [target]);
 
-  // The readout is up after every tune and fades by itself; the bug only at a programme's start.
+  // The readout comes up for a flip or a tune and fades by itself; it never shows on load. The
+  // rating bug shows only at a programme's start.
   // biome-ignore lint/correctness/useExhaustiveDependencies: osdN is the trigger, not a value read here
   useEffect(() => {
+    if (osdN === 0) return;
     setOsd(true);
     if (frozenAt !== undefined) return;
     const t = window.setTimeout(() => setOsd(false), READOUT_MS);
@@ -2036,15 +2157,11 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
   }, [frozenAt]);
   // Playback details' numbers tick once a second while it is open.
   useEffect(() => {
-    if (panel !== "details" || frozenAt !== undefined || scenario.panel === "details") return;
+    if (panel !== "details" && scenario.panel !== "details") return;
+    if (frozenAt !== undefined) return;
     const id = window.setInterval(() => setTick((n) => n + 1), 1000);
     return () => window.clearInterval(id);
   }, [panel, frozenAt, scenario.panel]);
-  useEffect(() => {
-    if (scenario.panel !== "details") return;
-    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [scenario.panel]);
   useEffect(
     () => () => {
       window.clearTimeout(timer.current);
@@ -2065,13 +2182,14 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
   const sheet = panel !== null && !detailsPanel ? panel : null;
   const staticStrip = scenario.surfing === true && !touched && !tuneOn;
   const card = scenario.ident && !scenario.visible && !sheet && !tuneOn;
-  const shown = (scenario.visible && !sheet) || card;
+  const controlsOn = scenario.visible && !sheet;
+  const shown = controlsOn || card;
   const playing = scenario.mode !== "paused";
   const typing = entry !== "" && !tuneOn;
-  const controlsOn = scenario.visible && !sheet;
-  // The chrome-top still keeps the readout away, so the Leave tooltip sits on clean picture.
+  // One channel identity at a time: while the band is up the amber block already says it, so the
+  // readout only shows when the band is not (a flip with the controls hidden), or for typed digits.
   const readoutOn =
-    !sheet && !card && !scenario.topTip && phase !== "tune" && (typing || (osd && scenario.visible));
+    !sheet && !card && !scenario.topTip && phase !== "tune" && (typing || (osd && !controlsOn));
   const bugOn = bug && !sheet && !tuneOn && scenario.visible && !scenario.inBreak && scenario.mode === "live";
   const lastRow = channels[lastIdx];
   const lastNumber = pointer ? lastRow?.number : undefined;
@@ -2119,11 +2237,11 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
     sheet === "subtitles"
       ? pointer
         ? "Subtitles"
-        : "Subtitles and audio"
+        : "Subtitles & audio"
       : sheet === "audio"
         ? pointer
           ? "Audio"
-          : "Subtitles and audio"
+          : "Subtitles & audio"
         : sheet === "picture"
           ? "Picture"
           : sheet === "details"
@@ -2131,6 +2249,8 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
             : sheet === "channels"
               ? "Channels"
               : "More";
+  // The readout sits in the corner, or under the cluster when digits are typed with the controls up.
+  const readoutTop = controlsOn ? dims.top + 48 + (pointer ? 24 : 16) : dims.top;
 
   return (
     <div className="tn-root" style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
@@ -2153,7 +2273,8 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
         <div style={scrimStyle(pointer ? 520 : landscape ? 340 : 460, true)} />
       </div>
       <div ref={dipRef} style={{ background: "#000", inset: 0, opacity: 0, position: "absolute" }} />
-      <ParentalBug device={device} shown={bugOn} />
+      {/* On a portrait phone the top bar is full, so the bug drops below it. */}
+      <RatingBug dims={dims} shown={bugOn} top={pointer || landscape ? dims.top : dims.top + 64} />
       {detailsPanel ? <DetailsPanel dims={dims} lagMs={scenario.lagMs} tick={tick} /> : null}
       <div
         ref={readoutRef}
@@ -2166,6 +2287,7 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
           number={typing ? entry : row.number}
           pointer={pointer}
           shown={readoutOn}
+          top={readoutTop}
         />
       </div>
 
@@ -2246,15 +2368,12 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
             />
             <span
               ref={nameRef}
-              style={{
+              style={ui(dims.nameBig, 700, {
                 color: flat.ink,
-                fontFamily: BODY,
-                fontSize: dims.nameBig,
-                fontWeight: 700,
                 letterSpacing: "-0.015em",
                 lineHeight: 1,
                 textAlign: "center",
-              }}
+              })}
             >
               {/* While a number is half typed the name waits, so "1" never wears "Game Night". */}
               {entry !== "" && aim.number !== entry ? " " : aim.name}
@@ -2286,29 +2405,17 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
               }}
             >
               <span style={mono(dims.holdNum, 700, { color: flat.ink, letterSpacing: "-0.03em" })}>
-                <span style={{ fontSize: "0.34em", letterSpacing: "0.2em", marginRight: "0.5em" }}>CH</span>
+                <span style={{ fontFamily: BODY, fontSize: "0.34em", marginRight: "0.5em" }}>CH</span>
                 {aim.number}
               </span>
-              <span
-                style={{
-                  fontFamily: BODY,
-                  fontSize: dims.holdName,
-                  fontWeight: 700,
-                  letterSpacing: "-0.015em",
-                }}
-              >
-                {aim.name}
-              </span>
+              <span style={ui(dims.holdName, 700, { letterSpacing: "-0.015em" })}>{aim.name}</span>
             </div>
-            <span style={mono(pointer ? 18 : 14, 650, { color: flat.ink, letterSpacing: "0.2em" })}>
-              TUNING IN
-              <span className="tn-cursor">_</span>
-            </span>
+            <span style={ui(pointer ? 20 : 16, 600, { color: flat.ink })}>Tuning in…</span>
           </div>
         </div>
       ) : null}
 
-      {/* The top cluster shows and hides with the rest of the chrome; it needs no scrim of its own. */}
+      {/* The top cluster shows and hides with the rest of the chrome; its keys are solid, so it needs no scrim. */}
       <div
         aria-hidden={!controlsOn || undefined}
         className="tn-fade"
@@ -2366,88 +2473,30 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
       </div>
 
       {sheet ? (
-        <Sheet
-          density={density}
-          icon={
-            sheet === "details"
-              ? "info"
-              : sheet === "channels"
-                ? "list"
-                : sheet === "more"
-                  ? "more"
-                  : sheet === "audio"
-                    ? "volume"
-                    : sheet === "subtitles"
-                      ? undefined // the design system has no subtitles glyph; a wrong one is worse than none
-                      : "settings"
-          }
-          panelStyle={{ pointerEvents: "auto" }}
-          title={sheetTitle}
-        >
+        <HSheet dims={dims} onClose={() => setPanel(null)} pointer={pointer} row={row} title={sheetTitle}>
           {sheet === "channels" ? (
             <ChannelList density={density} tintFor={tintFor} />
           ) : sheet === "more" ? (
-            <MoreBodyH behind={scenario.mode !== "live"} pointer={pointer} />
+            <MoreBodyH behind={scenario.mode !== "live"} onPanel={setPanel} pointer={pointer} />
           ) : sheet === "details" ? (
             <DetailsBody lagMs={scenario.lagMs} tick={tick} />
           ) : sheet === "picture" ? (
             <PictureBody />
           ) : touchSubs ? (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: sheet === "audio" ? "column-reverse" : "column",
-                gap: 32,
-              }}
-            >
-              <div>
-                <span
-                  style={{
-                    color: flat.textSecondary,
-                    fontFamily: BODY,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Subtitles
-                </span>
-                <div style={{ marginTop: 16 }}>
-                  <SubtitlesBody on={subs} />
-                </div>
-              </div>
-              <div>
-                <span
-                  style={{
-                    color: flat.textSecondary,
-                    fontFamily: BODY,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Audio
-                </span>
-                <div style={{ marginTop: 16 }}>
-                  <AudioBody />
-                </div>
-              </div>
-            </div>
+            <SubtitlesAndAudio audioFirst={sheet === "audio"} subs={subs} />
           ) : sheet === "subtitles" ? (
             <SubtitlesBody on={subs} />
           ) : (
             <AudioBody />
           )}
-        </Sheet>
+        </HSheet>
       ) : null}
     </div>
   );
 };
 
-// The on-screen display: the channel number in amber, then the name. It sits under the top cluster,
-// on the same right edge, so the two never collide.
+// The on-screen display: number and name on a solid ink backing, so it reads over any frame. It is
+// the only place the channel is named while the band is down.
 const TuneReadout = ({
   cursor,
   dims,
@@ -2455,6 +2504,7 @@ const TuneReadout = ({
   number,
   pointer,
   shown,
+  top,
 }: {
   cursor: boolean;
   dims: Dims;
@@ -2462,6 +2512,7 @@ const TuneReadout = ({
   number: string;
   pointer: boolean;
   shown: boolean;
+  top: number;
 }) => (
   <div
     aria-live="polite"
@@ -2470,22 +2521,23 @@ const TuneReadout = ({
     role="status"
     style={{
       alignItems: "flex-end",
+      background: INK,
+      border: "1px solid rgba(255, 255, 255, 0.16)",
+      borderRadius: 6,
       display: "flex",
       flexDirection: "column",
       gap: 8,
+      padding: pointer ? "16px 24px" : "8px 16px",
       position: "absolute",
       right: dims.side,
-      textShadow: "0 1px 3px rgba(0, 0, 0, 0.85)",
-      top: dims.top + 48 + (pointer ? 24 : 16),
+      top,
     }}
   >
-    <span style={mono(pointer ? 96 : dims.num + 16, 700, { color: flat.amber, letterSpacing: "-0.02em" })}>
+    <span style={mono(pointer ? 72 : dims.num + 8, 700, { color: flat.text, letterSpacing: "-0.02em" })}>
       {number}
       {cursor ? <span className="tn-cursor">_</span> : null}
     </span>
-    <span style={{ color: flat.text, fontFamily: BODY, fontSize: pointer ? 24 : 16, fontWeight: 650 }}>
-      {name}
-    </span>
+    <span style={ui(pointer ? 22 : 16, 650, { color: flat.text })}>{name}</span>
   </div>
 );
 

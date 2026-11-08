@@ -149,16 +149,19 @@ const Row = ({
   detail,
   glyph,
   label,
+  onClick,
   swap = false,
 }: {
   density: Density;
   detail?: string;
   glyph?: IconName;
   label: string;
+  onClick?: () => void;
   swap?: boolean;
 }) => (
   <button
     className="pp-btn pp-row"
+    onClick={onClick}
     style={{
       alignItems: "center",
       borderBottom: `1px solid ${flat.hairline}`,
