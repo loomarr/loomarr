@@ -15,11 +15,11 @@ import {
 import { liveSeek } from "../live-seek";
 import {
   afterNextPaint,
+  captureDecodedFrame,
   clearHeldFrame,
   clearTransferredBuffers,
   containsMediaTime,
   type DisplayedClockAnchor,
-  captureDecodedFrame,
   discardTransferredMedia,
   displayedProgramTime,
   holdCapturedFrame,
