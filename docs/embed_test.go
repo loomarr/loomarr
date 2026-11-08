@@ -16,6 +16,12 @@ import (
 // It is duplicated here deliberately rather than imported: this test exists to prove the
 // two sides AGREE, and importing the source of truth would make it agree with itself.
 // Adding a check without a target here is the failure this catches.
+//
+// Editor note, moved out of docs/guides/troubleshooting.md where Help printed it as body text:
+// the headings of that page are an API contract, not a style choice. internal/api/setup.go emits
+// anchors like "troubleshooting#tunarr-library" on every failed setup check, and this file proves
+// each one resolves. Renaming a heading breaks a link the running server is already sending. Add
+// sections freely; rename with care.
 var docHrefs = []string{
 	"troubleshooting#media-server",
 	"troubleshooting#seerr",
