@@ -223,7 +223,7 @@ components:
           description: Operator-facing name; falls back to the identifier
           type: string
         uri:
-          description: An archive.org collection identifier/URL, a YouTube playlist or channel URL, a folder path Loomarr can read, or a media-server library name
+          description: An archive.org collection identifier/URL, a YouTube playlist or channel URL, or a folder path Loomarr can read (a watched folder, or a folder of the household library)
           minLength: 1
           type: string
       required:

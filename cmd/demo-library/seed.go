@@ -135,7 +135,11 @@ func seed(ctx context.Context, lib *demolibrary.Library, cfg seedConfig, log *sl
 		out.Channels = append(out.Channels, SeedChannel{ID: id, Number: c.Number, Name: c.Name, Watermark: c.Watermark})
 		log.Info("demo channel ready", "number", c.Number, "name", c.Name, "id", id)
 	}
-	if err := api.seedFiller(ctx, log); err != nil {
+	fillerDir, err := filepath.Abs(lib.FillerDir(l))
+	if err != nil {
+		return err
+	}
+	if err := api.seedFiller(ctx, log, fillerDir); err != nil {
 		return err
 	}
 	for _, c := range out.Channels {
@@ -240,10 +244,7 @@ func createProposal(ctx context.Context, st store.Store, lib *demolibrary.Librar
 	return nil
 }
 
-// fillerSourceID is how the backend names a media-server library filler source.
-const fillerSourceID = "library:" + demolibrary.FillerLibraryName
-
-// seedFiller registers the stand-in's filler library as a filler source, then runs the sync and
+// seedFiller registers the stand-in's filler folder as a library filler source, then runs the sync and
 // the ingest pipeline once each, one after the other, so the interstitials reach channel breaks.
 // A clip airs only after the pipeline's quality gate marks it Ready, so writing clip rows
 // directly would catalogue clips that never air. Run-now works on a paused job and leaves it
@@ -252,25 +253,23 @@ const fillerSourceID = "library:" + demolibrary.FillerLibraryName
 // The jobs run only when this call registers the source. A rerun must not sync again: a
 // re-sync of an unchanged library re-adds clips the pipeline has already normalized, and their
 // transcodes then fail on a duplicate hash (#1605).
-func (b *backend) seedFiller(ctx context.Context, log *slog.Logger) error {
+func (b *backend) seedFiller(ctx context.Context, log *slog.Logger, folder string) error {
+	type row struct {
+		Kind string `json:"kind"`
+		URI  string `json:"uri"`
+	}
 	var list struct {
-		Sources []struct {
-			ID string `json:"id"`
-		} `json:"sources"`
+		Sources []row `json:"sources"`
 	}
 	if err := b.expectOK(ctx, http.MethodGet, "/v1/filler/sources", nil, &list); err != nil {
 		return err
 	}
-	if slices.ContainsFunc(list.Sources, func(s struct {
-		ID string `json:"id"`
-	}) bool {
-		return s.ID == fillerSourceID
-	}) {
+	if slices.ContainsFunc(list.Sources, func(s row) bool { return s.Kind == "library" && s.URI == folder }) {
 		log.Info("demo filler source already registered; not syncing again (#1605)")
 		return nil
 	}
 	if err := b.expectOK(ctx, http.MethodPost, "/v1/filler/sources", map[string]string{
-		"kind": "library", "uri": demolibrary.FillerLibraryName, "label": "Demo filler",
+		"kind": "library", "uri": folder, "label": "Demo filler",
 	}, nil); err != nil {
 		return fmt.Errorf("add the demo filler source: %w", err)
 	}

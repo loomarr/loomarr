@@ -114,14 +114,9 @@ func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog
 		WithStorageGovernor(governor).
 		WithInferiorCopies(st)
 
-	// Keep the library scanner wired while the connection is empty. The adapter treats the
-	// library module's explicit unconfigured result as an empty optional source, then starts
-	// using a newly saved connection on the next scan without rebuilding the syncer.
-	libScanner := filler.NewLibraryScanner(
-		fillerLibraryAdapter{lib},
-		func(msg string, args ...any) { log.Warn(msg, args...) },
-	)
-	return syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
+	libScanner := filler.NewLibraryScanner(func(msg string, args ...any) { log.Warn(msg, args...) })
+	cutover := &fillerLibraryCutover{st: st, roots: st, lib: lib, log: log, now: time.Now, warned: map[string]bool{}}
+	return syncer.WithScanSources(fillerScanSourceAdapter{st: st, cutover: cutover}, libScanner)
 }
 
 // buildFetcher constructs the clip downloader (§10, §16). Nil when ffmpeg is absent, which is a
