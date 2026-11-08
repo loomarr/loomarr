@@ -145,6 +145,18 @@ const GuidePage = ({ search }: GuidePageProps) => {
   // remains active, so progressive disclosure never turns into invisible state.
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
   const hasCustomView = startHour !== null;
+  // Escape closes the panel, wherever focus is. An Escape that belongs to the open Start-hour list
+  // (it is a portal, so its events reach here too) closes that list only.
+  useEffect(() => {
+    if (!viewOptionsOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest('[role="listbox"]')) return;
+      setViewOptionsOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [viewOptionsOpen]);
   // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
   // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
   // dialog. Its state is the route's search params (useOriginationFlow); the header names its
@@ -248,6 +260,11 @@ const GuidePage = ({ search }: GuidePageProps) => {
   // A guide row or block tunes its channel (#2088): the channel page now opens on Info, not Watch.
   const onOpenChannel = useCallback(
     (id: string) => void navigate({ to: "/watch/$id", params: { id } }),
+    [navigate],
+  );
+  // A channel's name opens its page, where the row menu's other actions are one step away (#2745).
+  const onOpenChannelInfo = useCallback(
+    (id: string) => void navigate({ to: "/channels/$id", params: { id } }),
     [navigate],
   );
   const renderRowMenu = useCallback(
@@ -571,6 +588,7 @@ const GuidePage = ({ search }: GuidePageProps) => {
                 nowMs={nowMs}
                 onMove={onMove}
                 onOpenChannel={onOpenChannel}
+                onOpenChannelInfo={onOpenChannelInfo}
                 onSelect={setSelection}
                 renderRowMenu={renderRowMenu}
                 selection={selected}
