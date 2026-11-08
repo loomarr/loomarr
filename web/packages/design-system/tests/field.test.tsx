@@ -21,6 +21,22 @@ describe("Field", () => {
     expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Server address" }));
   });
 
+  it("is a labelled text area when multiline, keeping the newlines typed into it", async () => {
+    const onChangeText = vi.fn();
+    render(
+      <LoomarrProvider theme="dark">
+        <Field label="Channel brief" multiline numberOfLines={3} onChangeText={onChangeText} />
+      </LoomarrProvider>,
+    );
+    const brief = screen.getByRole("textbox", { name: "Channel brief" });
+
+    await userEvent.type(brief, "Cartoons{Enter}Cereal ads");
+
+    expect(brief.tagName).toBe("TEXTAREA");
+    expect(brief.getAttribute("rows")).toBe("3");
+    expect(onChangeText).toHaveBeenLastCalledWith("Cartoons\nCereal ads");
+  });
+
   it("shows and hides a password without submitting its form", async () => {
     const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
     render(
