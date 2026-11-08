@@ -2,6 +2,7 @@ import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { invalidateSettings } from "@loomarr/core/events";
 import {
+  Action,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,7 +15,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CUSTOM_VALUE, isPreset } from "../cron-presets";
 import type { JobEditModalProps } from "./job-edit-modal.type";
@@ -102,12 +102,12 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={patch.isPending}>
+          <Action disabled={patch.isPending} onPress={() => onOpenChange(false)} variant="ghost">
             Cancel
-          </Button>
-          <Button onClick={save} disabled={patch.isPending}>
+          </Action>
+          <Action disabled={patch.isPending} onPress={save}>
             {patch.isPending ? "Saving…" : "Save"}
-          </Button>
+          </Action>
         </DialogFooter>
       </DialogContent>
     </Dialog>
