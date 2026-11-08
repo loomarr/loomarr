@@ -147,12 +147,13 @@ describe("SettingField", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Automatic backup schedule")).toHaveTextContent("Every day at a time");
-    expect(screen.getByLabelText("Automatic backup schedule minute")).toHaveTextContent(":30");
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveDisplayValue(
+      "Every day at a time I choose",
+    );
+    expect(screen.getByLabelText("Automatic backup schedule minute")).toHaveDisplayValue(":30");
     expect(screen.queryByDisplayValue("0 30 3 * * *")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByLabelText("Automatic backup schedule minute"));
-    await userEvent.click(await screen.findByRole("option", { name: ":45" }));
+    await userEvent.selectOptions(screen.getByLabelText("Automatic backup schedule minute"), ":45");
     expect(onChange).toHaveBeenLastCalledWith("0 45 3 * * *");
   });
 
@@ -165,13 +166,12 @@ describe("SettingField", () => {
       presets: [{ value: "0 0 * * * *", label: "Every hour" }],
     });
     const { unmount } = render(<SettingField entry={weekly} value="0 30 3 * * 1" onChange={onChange} />);
-    expect(screen.getByLabelText("Automatic backup schedule")).toHaveTextContent("Custom schedule");
+    expect(screen.getByLabelText("Automatic backup schedule")).toHaveDisplayValue("Custom schedule");
     expect(screen.getByLabelText("Automatic backup schedule custom schedule")).toHaveValue("0 30 3 * * 1");
     unmount();
 
     render(<SettingField entry={weekly} value="0 30 3 * * *" onChange={onChange} />);
-    await userEvent.click(screen.getByLabelText("Automatic backup schedule"));
-    await userEvent.click(await screen.findByRole("option", { name: "Every hour" }));
+    await userEvent.selectOptions(screen.getByLabelText("Automatic backup schedule"), "Every hour");
     expect(onChange).toHaveBeenLastCalledWith("0 0 * * * *");
   });
 
