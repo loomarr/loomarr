@@ -16,7 +16,7 @@
       "tailwindClasses": 40
     },
     "src/channels/guide-page/guide-page.tsx": {
-      "tailwindClasses": 128,
+      "tailwindClasses": 120,
       "legacyUi": 2
     },
     "src/channels/tuner-osd/tuner-osd.tsx": {
@@ -621,7 +621,7 @@
       "tailwindClasses": 17
     },
     "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "tailwindClasses": 136
+      "tailwindClasses": 133
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "tailwindClasses": 63

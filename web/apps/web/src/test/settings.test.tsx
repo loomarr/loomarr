@@ -740,7 +740,7 @@ describe("Settings honesty", () => {
     renderAt("/settings/ai");
 
     expect(await screen.findByText("Your channel draft is saved")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Return to channel" })).toHaveAttribute("href", "/guide");
+    expect(screen.getByRole("link", { name: "Return to channel" })).toHaveAttribute("href", "/requests/new");
   });
 
   it("keeps vision model choice separate from one user-facing speech connection", async () => {
