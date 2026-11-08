@@ -74,7 +74,7 @@ func introspectSQLite(ctx context.Context, db *sql.DB) ([]schemadoc.LiveTable, e
 		if err := db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&ddl); err != nil {
 			return nil, err
 		}
-		checked := checkedColumns(ddl)
+		checked, json := checkedColumns(ddl), jsonColumns(ddl)
 		rows, err := db.QueryContext(ctx, `SELECT name, type, "notnull", pk FROM pragma_table_info(?) ORDER BY cid`, name)
 		if err != nil {
 			return nil, err
@@ -88,7 +88,7 @@ func introspectSQLite(ctx context.Context, db *sql.DB) ([]schemadoc.LiveTable, e
 				return nil, err
 			}
 			c.PrimaryKey, c.References = pk > 0, refs[c.Name]
-			c.Checked = checked[strings.ToLower(c.Name)]
+			c.Checked, c.JSON = checked[strings.ToLower(c.Name)], json[strings.ToLower(c.Name)]
 			t.Columns = append(t.Columns, c)
 			if pk > 0 {
 				primary = append(primary, make([]string, max(0, pk-len(primary)))...)
@@ -134,6 +134,23 @@ func groupedColumns(ctx context.Context, db *sql.DB, query string, args ...any) 
 // CREATE TABLE statement, column-level or table-level. An identifier counts if it appears anywhere
 // in a constraint's parentheses, which over-counts a column only mentioned beside another; that is
 // fine for a lint asking "is this column constrained at all".
+// jsonColumns names the columns a CREATE TABLE checks with json_valid(column): the one way a SQLite
+// column is declared to hold JSON (#2793), so its Postgres twin must be jsonb.
+func jsonColumns(ddl string) map[string]bool {
+	out := map[string]bool{}
+	lower := strings.ToLower(ddl)
+	for rest := lower; ; {
+		at := strings.Index(rest, "json_valid(")
+		if at < 0 {
+			return out
+		}
+		rest = rest[at+len("json_valid("):]
+		if end := strings.IndexByte(rest, ')'); end >= 0 {
+			out[strings.Trim(strings.TrimSpace(rest[:end]), `"`)] = true
+		}
+	}
+}
+
 func checkedColumns(ddl string) map[string]bool {
 	out := map[string]bool{}
 	upper := strings.ToUpper(ddl)

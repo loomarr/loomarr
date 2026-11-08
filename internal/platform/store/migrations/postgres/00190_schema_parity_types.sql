@@ -1,9 +1,8 @@
 -- +goose Up
 -- Schema to a 10 (#2793): one schema, two engines. SQLite keeps every integer in 64 bits, so each
 -- Postgres twin is bigint; these were 32-bit integer, which holds what is written today but would
--- reject what SQLite accepts. images.meta was jsonb, which rewrites a document's spacing and key
--- order, while SQLite returns the text as written; nothing queries inside it. The parity test
--- (schema_parity_postgres_test.go) keeps the engines equal. SQLite needs no change.
+-- reject what SQLite accepts. The parity test (schema_parity_postgres_test.go) keeps the engines
+-- equal. SQLite needs no change.
 ALTER TABLE broadcast_station_seed_revisions ALTER COLUMN version TYPE bigint;
 ALTER TABLE channels ALTER COLUMN number TYPE bigint;
 ALTER TABLE clips ALTER COLUMN era TYPE bigint;
@@ -29,7 +28,7 @@ ALTER TABLE holidays ALTER COLUMN position TYPE bigint;
 ALTER TABLE image_derivatives ALTER COLUMN width TYPE bigint;
 ALTER TABLE images
     ALTER COLUMN frame_count TYPE bigint, ALTER COLUMN height TYPE bigint, ALTER COLUMN loop_count TYPE bigint,
-    ALTER COLUMN width TYPE bigint, ALTER COLUMN meta TYPE text USING meta::text;
+    ALTER COLUMN width TYPE bigint;
 ALTER TABLE interactive_operations ALTER COLUMN percent TYPE bigint;
 ALTER TABLE inventory_source_analysis ALTER COLUMN keyframe_count TYPE bigint, ALTER COLUMN schema_version TYPE bigint;
 ALTER TABLE library_art ALTER COLUMN position TYPE bigint, ALTER COLUMN season TYPE bigint;

@@ -9,6 +9,9 @@ import (
 // noFlagCheck is the work that removes a KnownParityGaps entry.
 const noFlagCheck = "#2793: SQLite flag without a CHECK (col IN (0, 1)); needs a table rebuild"
 
+// noJSONCheck is the work that removes a JSON column's KnownParityGaps entry.
+const noJSONCheck = "#2793: Postgres jsonb, SQLite without a CHECK (json_valid(col)); needs a table rebuild"
+
 // KnownParityGaps are the differences the engines had when the parity test arrived, each with the
 // work that removes it. Like KnownGaps it only shrinks: a listed difference that is gone fails too.
 var KnownParityGaps = map[string]string{
@@ -18,6 +21,7 @@ var KnownParityGaps = map[string]string{
 	"column holidays.name_needs_corroboration": noFlagCheck,
 	"column image_derivatives.animated":        noFlagCheck,
 	"column images.animated":                   noFlagCheck,
+	"column images.meta":                       noJSONCheck,
 	"column library_answers.ignored":           noFlagCheck,
 	"column library_candidates.length_match":   noFlagCheck,
 	"column library_candidates.name_match":     noFlagCheck,
@@ -137,12 +141,15 @@ func tableParity(s, p LiveTable) []string {
 // SameType reports whether a Postgres column stores what its SQLite twin stores. SQLite keeps
 // every integer in 64 bits and every REAL in 8 bytes, so the Postgres twin is bigint and double
 // precision: an integer or real there would overflow or round what SQLite keeps whole. A 0/1
-// flag (BOOLEAN, or an INTEGER CHECKed to its values) is boolean; text is text, never jsonb,
-// which rewrites a document's spacing and key order on the way in.
+// flag (BOOLEAN, or an INTEGER CHECKed to its values) is boolean. JSON is jsonb, declared in
+// SQLite by CHECK (json_valid(column)); any other text is text.
 func SameType(sqlite LiveColumn, postgres string) bool {
 	pg := strings.ToLower(postgres)
 	switch strings.ToUpper(sqlite.Type) {
 	case "TEXT":
+		if sqlite.JSON {
+			return pg == "jsonb"
+		}
 		return pg == "text"
 	case "BOOLEAN":
 		return pg == "boolean"

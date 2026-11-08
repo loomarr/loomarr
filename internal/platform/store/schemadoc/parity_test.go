@@ -23,7 +23,9 @@ func TestParityNamesEachDriftAndHoldsKnownGapsToShrinking(t *testing.T) {
 			{Name: "flag", Type: "INTEGER", NotNull: true, Checked: true}, // a CHECKed 0/1 flag: boolean
 			{Name: "done", Type: "INTEGER", NotNull: true},                // unchecked flag: a listed gap
 			{Name: "ratio", Type: "REAL"},                                 // 8 bytes in SQLite
-			{Name: "doc", Type: "TEXT"},                                   // jsonb would rewrite it
+			{Name: "doc", Type: "TEXT"},                                   // jsonb, but not declared JSON
+			{Name: "body", Type: "TEXT", Checked: true, JSON: true},       // declared JSON: jsonb
+			{Name: "spec", Type: "TEXT", Checked: true, JSON: true},       // declared JSON, left as text
 			{Name: "status", Type: "TEXT", Checked: true},                 // a state column checked on one side only
 			{Name: "user_id", Type: "TEXT", References: "users"},          // SQLite names the parent table alone
 			{Name: "lite_only", Type: "TEXT"},
@@ -40,6 +42,8 @@ func TestParityNamesEachDriftAndHoldsKnownGapsToShrinking(t *testing.T) {
 			{Name: "done", Type: "boolean", NotNull: true},
 			{Name: "ratio", Type: "real"},
 			{Name: "doc", Type: "jsonb"},
+			{Name: "body", Type: "jsonb"},
+			{Name: "spec", Type: "text"},
 			{Name: "status", Type: "text"},
 			{Name: "user_id", Type: "text", References: "users.id"},
 			{Name: "pg_only", Type: "text"},
@@ -53,6 +57,7 @@ func TestParityNamesEachDriftAndHoldsKnownGapsToShrinking(t *testing.T) {
 		"column jobs.lite_only: only in SQLite",
 		"column jobs.pg_only: only in Postgres",
 		"column jobs.ratio: type REAL in SQLite, real in Postgres",
+		"column jobs.spec: type TEXT in SQLite, text in Postgres",
 		"column jobs.status: CHECKed true in SQLite, false in Postgres",
 		"index jobs(user_id): only in SQLite",
 		"table only_lite: only in SQLite",
