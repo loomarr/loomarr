@@ -19,9 +19,10 @@ import {
   clearTransferredBuffers,
   containsMediaTime,
   type DisplayedClockAnchor,
+  captureDecodedFrame,
   discardTransferredMedia,
   displayedProgramTime,
-  holdDecodedFrame,
+  holdCapturedFrame,
   releaseTransferredDecoder,
   webKitRequiresFreshMSEHandoff,
 } from "../media-element";
@@ -843,6 +844,9 @@ const createBrowserTransport = ({
     replace: async (source: PlayerSource, { attemptId, signal }) => {
       const mine = ++generation;
       const current = () => !disposed && generation === mine && !signal.aborted;
+      // Read the outgoing picture before the teardown below: native HLS (WebKit) cleanup empties
+      // the element (readyState 0, no frame), so a capture after it has nothing to draw (#2691).
+      const outgoingFrame = video ? captureDecodedFrame(video) : undefined;
       releaseBind();
       if (clearHeld) video?.removeEventListener("loadeddata", clearHeld);
       const el = await attachedVideo(signal);
@@ -860,7 +864,7 @@ const createBrowserTransport = ({
       clock.begin(source.serverTimeMs);
       // The picture the viewer was watching holds under the tuning overlay until this source has
       // frame data of its own: `loadeddata` itself means the replacement has a current frame.
-      holdDecodedFrame(el);
+      if (el === video) holdCapturedFrame(el, outgoingFrame);
       const release = () => clearHeldFrame(el);
       clearHeld = release;
       el.addEventListener("loadeddata", release, { once: true });
