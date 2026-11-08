@@ -11,8 +11,12 @@ code path is shared through `database/sql`.
 
 - **Selection:** the `DATABASE_URL` scheme, `sqlite:///data/loomarr.db` or `postgres://…`. An unknown
   scheme fails at boot.
-- **SQLite** uses `modernc.org/sqlite` (pure Go, no cgo), opened with WAL and `busy_timeout`.
-  **PostgreSQL** uses `pgx` through its `database/sql` shim.
+- **SQLite** uses `modernc.org/sqlite` (pure Go, no cgo), opened with WAL, `synchronous=NORMAL`, a
+  15 s `busy_timeout` and `_txlock=immediate`, in a pool of four connections that River shares. Reads
+  run beside the one writer SQLite allows; each write transaction takes the write lock when it begins,
+  so a waiting writer queues on `busy_timeout` instead of failing mid-transaction. Until #2446 the pool
+  had one connection, and every read queued behind every write. Open also runs `PRAGMA optimize` so the
+  planner has statistics. **PostgreSQL** uses `pgx` through its `database/sql` shim.
 - **Schema:** `goose` migrations embedded in the binary, one directory per dialect so dialect DDL never
   leaks; they run at startup. SQL stays ANSI where it can (`INSERT … ON CONFLICT … DO UPDATE` works on
   both). Migrations are forward-only.

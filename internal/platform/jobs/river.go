@@ -180,10 +180,9 @@ func (s *Scheduler) StartRiver(ctx context.Context, dialect store.Dialect, db *s
 	}
 
 	client, err := river.NewClient(driver, &river.Config{
-		// ⚠ MaxWorkers 1 on SQLite is not tuning, it is correctness-adjacent: the store holds
-		// MaxOpenConns(1) because modernc serializes writes, so concurrent workers would spend
-		// their time contending for the one connection. These are a dozen cron jobs, not a
-		// throughput workload.
+		// ⚠ MaxWorkers 1 on SQLite's default queue: SQLite admits one writer at a time, so
+		// concurrent workers would mostly wait on each other's write locks. These are a dozen
+		// cron jobs, not a throughput workload.
 		//
 		// ⚠ **That reasoning is about the DEFAULT queue's WIDTH, and it is not a prohibition on a
 		// second producer** — see `riverQueues`. A long media job spends its time inside

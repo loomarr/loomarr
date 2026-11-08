@@ -96,10 +96,10 @@ func (s *sqlStore) WriteBackup(ctx context.Context, dir string) (BackupFile, err
 	// VACUUM INTO refuses to overwrite, which is the behaviour we want: a same-second
 	// collision should surface, not silently replace the earlier backup.
 	//
-	// ⚠ **On a handle of its own, never the shared pool.** The store's pool is MaxOpenConns(1), and
-	// VACUUM INTO on a 1.8 GB database holds its connection for the whole copy; River's leader
-	// election and the health probe queue behind it and time out (#1411: 06:30–07:30 UTC leadership
-	// loss, stale health at the 07:30 backup). VACUUM INTO only READS the source, and under WAL a
+	// ⚠ **On a handle of its own, never the shared pool.** VACUUM INTO on a large database holds its
+	// connection for the whole copy; when the pool had one connection, River's leader election and
+	// the health probe queued behind it and timed out (#1411: 06:30–07:30 UTC leadership loss, stale
+	// health at the 07:30 backup), and even with a few it would take one away for minutes. VACUUM INTO only READS the source, and under WAL a
 	// reader neither blocks nor is blocked by the app's writer, so a second, short-lived handle
 	// costs the write-contention PoolOf warns about nothing. The price is that the copy pins a
 	// WAL read snapshot, delaying checkpoints until it ends.
@@ -274,9 +274,9 @@ func DialectOf(st Store) Dialect {
 // reaching for this is doing something unusual and should look like it.
 //
 // ⚠ River SHARES this pool rather than opening its own. On SQLite that is load-bearing, not a
-// convenience: the store sets MaxOpenConns(1) because modernc's driver serializes writes, and a
-// second pool against the same file would reintroduce exactly the WAL write contention that
-// setting exists to avoid.
+// convenience: the pool's DSN (sqliteDSN) is what makes every transaction take the write lock up
+// front and wait on busy_timeout, and a second pool opened some other way would reintroduce the
+// mid-transaction lock-upgrade failures that setting exists to avoid.
 func PoolOf(st Store) *sql.DB {
 	if s, ok := adapterOf(st); ok {
 		return s.db
