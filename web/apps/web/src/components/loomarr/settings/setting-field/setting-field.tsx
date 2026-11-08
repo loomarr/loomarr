@@ -1,16 +1,20 @@
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
+import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
+import { SettingUnit } from "@loomarr/api/models/settingUnit";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
+import { Badge, CompactSelect, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
+import { DurationField, type DurationUnit } from "./duration-field";
 import type { SettingFieldProps } from "./setting-field.type";
 
 // SettingField — one registry key as a form control (config-design §2, §3, §6). The
@@ -25,28 +29,24 @@ const keyboardFor = (kind: SettingKind): ComponentProps<typeof Field>["keyboardT
   return "default";
 };
 
-type DurationUnit = "days" | "hours" | "minutes" | "seconds";
-
-const durationParts = (raw: string): { amount: number; unit: DurationUnit } => {
+// A Go duration string ("6h0m0s", "90s", "1h30m") as seconds; anything unreadable is zero.
+const durationSeconds = (raw: string): number => {
   const factors: Record<string, number> = { h: 3600, m: 60, s: 1, ms: 0.001 };
   let seconds = 0;
-  let matched = false;
   for (const match of raw.matchAll(/(-?\d+(?:\.\d+)?)(ms|h|m|s)/g)) {
     const factor = factors[match[2] ?? ""];
-    if (factor === undefined) continue;
-    matched = true;
-    seconds += Number(match[1]) * factor;
+    if (factor !== undefined) seconds += Number(match[1]) * factor;
   }
-  if (!matched || !Number.isFinite(seconds)) return { amount: 0, unit: "hours" };
-  if (seconds !== 0 && seconds % 86400 === 0) return { amount: seconds / 86400, unit: "days" };
-  if (seconds % 3600 === 0) return { amount: seconds / 3600, unit: "hours" };
-  if (seconds % 60 === 0) return { amount: seconds / 60, unit: "minutes" };
-  return { amount: seconds, unit: "seconds" };
+  return Number.isFinite(seconds) ? seconds : 0;
 };
 
-const durationRaw = (amount: number, unit: DurationUnit): string => {
-  const seconds = amount * ({ days: 86400, hours: 3600, minutes: 60, seconds: 1 } as const)[unit];
-  return `${Number(seconds.toFixed(3))}s`;
+const durationRaw = (seconds: number): string => `${Number(seconds.toFixed(3))}s`;
+
+// A whole number of time, per its registry-declared unit: what one stored step is worth in seconds
+// and the units it can be edited in. Only this unit and larger ones, so every edit stays whole.
+const TIME_UNITS: Partial<Record<SettingUnit, { seconds: number; units: readonly DurationUnit[] }>> = {
+  [SettingUnit.seconds]: { seconds: 1, units: ["days", "hours", "minutes", "seconds"] },
+  [SettingUnit.hours]: { seconds: 3600, units: ["days", "hours"] },
 };
 
 // The Custom choice offered after the registry's presets. It cannot collide with a preset: preset
@@ -171,7 +171,6 @@ const SettingField = ({
       const presets = entry.presets ?? [];
       const matched = presets.find((option) => option.value === value);
       const preset = editingCustomSchedule || !matched ? CUSTOM_PRESET : matched.value;
-      const current = durationParts(value);
       return (
         <div className="flex flex-col gap-2">
           <Select
@@ -204,64 +203,78 @@ const SettingField = ({
             </SelectContent>
           </Select>
           {preset === CUSTOM_PRESET && (
-            <div className="flex gap-2">
-              <NumberField
-                accessibilityLabel="Custom check interval"
-                amount={current.amount}
-                disabled={pinned || disabledReason !== undefined}
-                onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
-              />
-              <Select
-                value={current.unit}
-                disabled={pinned || disabledReason !== undefined}
-                onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
-              >
-                <SelectTrigger aria-label="Custom check interval unit" className="w-32 shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["days", "hours", "minutes"] as const).map((unit) => (
-                    <SelectItem key={unit} value={unit}>
-                      {unit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <DurationField
+              amountLabel="Custom check interval"
+              disabled={pinned || disabledReason !== undefined}
+              label="Custom check interval"
+              onSeconds={(seconds) => onChange(durationRaw(seconds))}
+              seconds={durationSeconds(value)}
+              units={["days", "hours", "minutes"]}
+            />
           )}
         </div>
       );
     }
     if (entry.kind === SettingKind.duration) {
-      const current = durationParts(value);
       return (
-        <div className="flex gap-2">
-          <NumberField
-            amount={current.amount}
-            aria-describedby={describedBy}
-            aria-labelledby={labelledBy}
-            disabled={pinned || disabledReason !== undefined}
-            id={id}
-            invalid={invalid}
-            onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
-          />
-          <Select
-            value={current.unit}
-            disabled={pinned || disabledReason !== undefined}
-            onValueChange={(unit) => onChange(durationRaw(current.amount, unit as DurationUnit))}
-          >
-            <SelectTrigger aria-label={`${label} unit`} className="w-32 shrink-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["days", "hours", "minutes", "seconds"] as const).map((unit) => (
-                <SelectItem key={unit} value={unit}>
-                  {unit}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <DurationField
+          describedBy={describedBy}
+          disabled={pinned || disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          labelledBy={labelledBy}
+          onSeconds={(seconds) => onChange(durationRaw(seconds))}
+          seconds={durationSeconds(value)}
+          units={["days", "hours", "minutes", "seconds"]}
+        />
+      );
+    }
+    const timeUnit = entry.kind === SettingKind.int && entry.unit ? TIME_UNITS[entry.unit] : undefined;
+    if (timeUnit) {
+      const stored = Number(value);
+      return (
+        <DurationField
+          describedBy={describedBy}
+          disabled={pinned || disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          labelledBy={labelledBy}
+          onSeconds={(seconds) => onChange(String(Math.round(seconds / timeUnit.seconds)))}
+          seconds={(Number.isFinite(stored) ? stored : 0) * timeUnit.seconds}
+          units={timeUnit.units}
+        />
+      );
+    }
+    if (
+      entry.kind === SettingKind.string &&
+      (entry.presentation === SettingPresentation.timezone ||
+        entry.presentation === SettingPresentation.language)
+    ) {
+      // The server's choices, never free text. A pinned or stored value outside them (a legacy zone
+      // name, a rare language) is still shown as chosen rather than silently swapped for another.
+      const presets = entry.presets ?? [];
+      const choices = presets.some((option) => option.value === value)
+        ? presets
+        : [...presets, { value, label: value }];
+      // Language names are interface copy, localized from CLDR; the registry's labels are codes.
+      const optionLabel = (option: SettingPreset) =>
+        entry.presentation === SettingPresentation.language && option.value
+          ? languageName(option.value)
+          : option.label;
+      return (
+        <CompactSelect
+          aria-describedby={describedBy}
+          aria-labelledby={labelledBy}
+          disabled={pinned || disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          label={label}
+          onValueChange={onChange}
+          options={choices.map((option) => ({ value: option.value, label: optionLabel(option) }))}
+          value={value}
+        />
       );
     }
     if (entry.presentation === SettingPresentation.bytes) {

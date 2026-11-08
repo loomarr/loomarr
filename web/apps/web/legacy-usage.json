@@ -241,7 +241,7 @@
       "tailwindClasses": 41
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 130,
+      "tailwindClasses": 122,
       "legacyUi": 2
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
@@ -351,7 +351,7 @@
       "tailwindClasses": 5
     },
     "src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "tailwindClasses": 83
+      "tailwindClasses": 82
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
       "tailwindClasses": 117,
