@@ -61,9 +61,10 @@ describe("LibraryPage", () => {
     );
     renderPage();
 
-    // A title whose files aren't read yet says so in its name.
-    expect(await screen.findByRole("button", { name: "Bravo, getting ready" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    // A title whose files aren't read yet says so in its name, which is what its tile shows.
+    // jsdom lays nothing out, so the tile's lines join without spaces in the computed name.
+    expect(await screen.findByRole("button", { name: /^Getting ready\s*Bravo/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Alpha/ }));
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/$id", params: { id: "90000001" } });
   });
 

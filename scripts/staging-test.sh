@@ -147,14 +147,19 @@ VERSION=0.2.0-beta.9-rc.11 "$ROOT/scripts/staging.sh" up >/dev/null
 # A private server never receives the tunnel token, which only a public one has any use for.
 reset '{"instances":[]}'
 VERSION=1.0.0 CF_TUNNEL_TOKEN=test-tunnel-token DEMO_ADMIN_PASSWORD=test-admin-password "$ROOT/scripts/staging.sh" up >/dev/null
-if jq -r .user_data "$WORK/body.json" | base64 -d | grep -qE 'test-tunnel-token|test-admin-password'; then
+# Decoded once and searched as a string: `base64 -d | grep -q` fails under pipefail whenever grep
+# matches and exits before base64 has written everything (a flaky "Broken pipe" in CI).
+user_data() { jq -r .user_data "$WORK/body.json" | base64 -d; }
+private="$(user_data)"
+if grep -qE 'test-tunnel-token|test-admin-password' <<<"$private"; then
 	fail 'a private server received the tunnel token or admin password'
 fi
 reset '{"instances":[]}'
 VERSION=1.0.0 STAGING_HOURS=keep STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=test-tunnel-token \
 	DEMO_ADMIN_PASSWORD=test-admin-password "$ROOT/scripts/staging.sh" up >/dev/null
-jq -r .user_data "$WORK/body.json" | base64 -d | grep -q test-tunnel-token || fail 'a public server got no tunnel token'
-jq -r .user_data "$WORK/body.json" | base64 -d | grep -q test-admin-password || fail 'a public server got no admin password'
+public="$(user_data)"
+grep -q test-tunnel-token <<<"$public" || fail 'a public server got no tunnel token'
+grep -q test-admin-password <<<"$public" || fail 'a public server got no admin password'
 
 # A public demo site is replaced without a gap: the old one goes only once the new one answers.
 PUBLIC_UP=(VERSION=1.0.0 STAGING_HOURS=keep STAGING_PUBLIC_URL=https://demo.example.test CF_TUNNEL_TOKEN=tunnel

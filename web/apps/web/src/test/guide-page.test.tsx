@@ -414,7 +414,8 @@ describe("Guide", () => {
 
     await user.click(await screen.findByRole("button", { name: /actions for saturday cartoons/i }));
     await user.click(await screen.findByRole("menuitem", { name: /delete/i }));
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    // The armed confirmation's Delete is a menu item too, inside the group that asks the question.
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
     expect(await screen.findByText("Dead air")).toBeInTheDocument();
     expect(screen.queryByText("Saturday Cartoons")).not.toBeInTheDocument();

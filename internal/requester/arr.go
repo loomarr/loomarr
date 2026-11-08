@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -381,12 +382,18 @@ func (a *Arr) Reachable(ctx context.Context) error {
 			return fmt.Errorf("%s unreachable: %w", app.name, err)
 		}
 		code := resp.StatusCode
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		_ = resp.Body.Close()
 		if code == http.StatusUnauthorized || code == http.StatusForbidden {
 			return fmt.Errorf("%s rejected the API key (status %d)", app.name, code)
 		}
 		if code < 200 || code >= 300 {
 			return fmt.Errorf("%s unexpected status %d", app.name, code)
+		}
+		// A login in front of the arr (an SSO proxy) redirects the request to its own page,
+		// which answers 200 with HTML: reachable, but not the arr's API.
+		if !json.Valid(body) {
+			return fmt.Errorf("%s answered with a web page, not its API: is a login in front of it?", app.name)
 		}
 	}
 	if checked == 0 {

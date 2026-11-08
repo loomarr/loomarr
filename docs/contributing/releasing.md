@@ -59,8 +59,8 @@ covered by required CI. For the others, dispatch `playout-bench.yml` with `run_a
 make hardware-gate COMMIT=<full commit id>
 ```
 
-A skipped leg counts as missing. `release.yml` doesn't enforce this yet, because the Intel and
-NVIDIA runners aren't registered. Wire it in once they are, or every release would stop.
+A skipped leg counts as missing. `release.yml` runs the same check and refuses a final tag until
+both legs have passed on its commit; a `-rc.` tag doesn't need them.
 
 ## Docs pass
 

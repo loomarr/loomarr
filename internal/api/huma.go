@@ -85,6 +85,9 @@ type Server struct {
 	// tunarrConnect wires the media server as Tunarr's media source (§6) — backs
 	// POST /v1/setup/tunarr-connect + the tunarr_library setup check. Nil ⇒ 501.
 	tunarrConnect TunarrConnector
+	// arrDiscovery reads the Sonarr and Radarr the requester already knows, for
+	// POST /v1/setup/arrs-from-requester. Nil ⇒ the route fills nothing.
+	arrDiscovery ArrDiscovery
 	// suggest/search wire /v1/proposals*, /v1/search (§7.2/§8); nil until
 	// Phase 11 is configured.
 	suggest          SuggestService
@@ -896,6 +899,22 @@ type TunarrConnector interface {
 	LibrariesReady(ctx context.Context) (bool, error)
 }
 
+// ArrDiscovery reads the Sonarr and Radarr the requester (Seerr) already knows, so the
+// wizard can fill in their connections instead of asking for them (#2151).
+type ArrDiscovery interface {
+	// ArrServers is Seerr's default Sonarr and Radarr; none when Seerr isn't the requester.
+	ArrServers(ctx context.Context) ([]DiscoveredArr, error)
+	// Reachable probes one arr at url with apiKey.
+	Reachable(ctx context.Context, app, url, apiKey string) error
+}
+
+// DiscoveredArr is one arr the requester knows: the addresses to try, in order, and its key.
+type DiscoveredArr struct {
+	App    string
+	URLs   []string
+	APIKey string
+}
+
 // ProposalOutlook observes pending content without approval or persistence.
 type ProposalOutlook interface {
 	Assess(context.Context, store.Proposal, *suggest.ApprovalEdit) (outlook.Assessment, error)
@@ -1063,6 +1082,7 @@ type Options struct {
 	LiveTV           LiveTVService          // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
 	TunerRescanner   TunerRescanner         // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
 	TunarrConnect    TunarrConnector        // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
+	ArrDiscovery     ArrDiscovery           // /v1/setup/arrs-from-requester; nil ⇒ fills nothing
 	Suggest          SuggestService         // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
 	ProposalProgress ProposalProgress       // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
 	ProposalWorkflow ProposalWorkflow       // authoritative /v1/proposal-jobs Journey reads

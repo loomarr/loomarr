@@ -258,7 +258,15 @@ func (r *run) measureClass(ctx context.Context, c Clip, pipe playout.Pipeline, f
 		r.fail(c, "speed run: "+err.Error())
 		return
 	}
-	r.rep.Set("speed_x/"+c.Class, float64(c.Seconds)/t.wall.Seconds(), "x", Higher)
+	// Speed is throughput, so it leaves out the process start-up that start_p95 already measures:
+	// a one-frame run of the same pipeline. NVENC's ~460 ms start-up would otherwise cap a 10 s clip
+	// near 10x however fast the encoder is.
+	one, err := r.exec(ctx, pipe.ItemArgs(path, 0, 1, fps, 0), nil)
+	if err != nil {
+		r.fail(c, "start-up run: "+err.Error())
+		return
+	}
+	r.rep.Set("speed_x/"+c.Class, throughput(float64(c.Seconds), t.wall, one.wall), "x", Higher)
 	r.rep.Set("cores_per_stream/"+c.Class, t.cpu.Seconds()/float64(c.Seconds), "cores", Lower)
 
 	if c.VMAF {
@@ -267,6 +275,17 @@ func (r *run) measureClass(ctx context.Context, c Clip, pipe playout.Pipeline, f
 }
 
 // percentile is nearest-rank over a sorted sample.
+// throughput is seconds of media per second of encoding: the whole run less the start-up a
+// one-frame run of the same pipeline costs. A start-up as long as the run (a noisy host) leaves
+// the whole run, so the figure is never inflated.
+func throughput(seconds float64, whole, startup time.Duration) float64 {
+	encoding := whole - startup
+	if encoding <= 0 {
+		encoding = whole
+	}
+	return seconds / encoding.Seconds()
+}
+
 func percentile(sorted []float64, p float64) float64 {
 	if len(sorted) == 0 {
 		return math.NaN()

@@ -1,2 +1,8 @@
-export { Menu, MenuAction, MenuContent, MenuTrigger } from "./menu";
-export type { MenuActionProps, MenuContentProps, MenuProps, MenuTriggerProps } from "./menu.type";
+export { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "./menu";
+export type {
+  MenuActionProps,
+  MenuContentProps,
+  MenuGroupProps,
+  MenuProps,
+  MenuTriggerProps,
+} from "./menu.type";

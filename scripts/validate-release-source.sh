@@ -67,5 +67,8 @@ case "$GITHUB_REF_NAME" in
       echo "run: make migration-rehearsal BACKUP=<backup directory> IMAGE=ghcr.io/loomarr/loomarr-staging:${GITHUB_SHA} RECORD=1" >&2
       exit 1
     fi
+
+    # Intel and NVIDIA block a final release too (software is in the CI run above).
+    ./scripts/check-hardware-gate.sh "$GITHUB_SHA"
     ;;
 esac

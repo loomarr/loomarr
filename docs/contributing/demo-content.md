@@ -14,6 +14,16 @@ against its hash and refuses to serve anything that doesn't match. The posters a
 frames cut from the videos themselves. Each title's overview ends with its credit and licence, which
 is how the app attributes it.
 
+The downloads come from a mirror first: the manifest's `mirror` is a `demo-pack-v<N>` release of
+this repository, which holds every file under its SHA-256. It is about five times faster than the
+Internet Archive, and a deploy doesn't depend on the Archive being up. A file the mirror can't serve
+comes from its own URL instead, and the hash check is the same either way. After changing the
+pack's files, publish a new mirror and point `mirror` at it:
+
+```bash
+scripts/mirror-demo-pack.sh demo-pack-v2
+```
+
 Turn it on with `DEMO_SITE_CONTENT=open` (see [Environments](environments.md)). The public site uses
 it by default. Tests, screenshots and the docs keep using the invented library, so nothing in them
 names a real title.

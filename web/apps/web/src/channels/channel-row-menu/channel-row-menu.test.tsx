@@ -4,7 +4,7 @@ import {
   getUpdateChannelMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -103,10 +103,15 @@ describe("ChannelRowMenu", () => {
     await user.click(screen.getByRole("button", { name: /actions for/i }));
     await user.click(await screen.findByRole("menuitem", { name: /delete/i }));
 
-    // Step 2 is a plain confirm — no textbox to fill, the execute button is enabled.
+    // Step 2 is a plain confirm — no textbox to fill, the execute item is enabled. Both choices are
+    // menu items in a group naming the question, so the arrow keys reach them.
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    const confirm = screen.getByRole("button", { name: "Delete" });
-    expect(confirm).toBeEnabled();
+    const question = screen.getByRole("group", {
+      name: `Delete ${live.name} for good? This can't be undone.`,
+    });
+    expect(within(question).getByRole("menuitem", { name: "Cancel" })).toBeInTheDocument();
+    const confirm = within(question).getByRole("menuitem", { name: "Delete" });
+    expect(confirm).not.toHaveAttribute("aria-disabled", "true");
     await user.click(confirm);
 
     await waitFor(() => expect(deletes).toHaveLength(1));

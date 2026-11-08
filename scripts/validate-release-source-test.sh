@@ -24,6 +24,12 @@ cat > "$test_root/bin/gh" <<'STUB'
 set -euo pipefail
 if [[ "$*" == *'/statuses?per_page=100'* ]]; then
   printf '%s\n' "$RELEASE_TEST_REHEARSAL"
+elif [[ "$*" == *'/workflows/playout-bench.yml/runs'* ]]; then
+  printf '7\n8\n'
+elif [[ "$*" == *'/runs/7/jobs'* ]]; then
+  printf '%b\n' "${RELEASE_TEST_BENCH_JOBS%%;*}"
+elif [[ "$*" == *'/runs/8/jobs'* ]]; then
+  [[ "$RELEASE_TEST_BENCH_JOBS" != *';'* ]] || printf '%b\n' "${RELEASE_TEST_BENCH_JOBS#*;}"
 elif [[ "$*" == *'/jobs?per_page=100'* ]]; then
   printf '%b\n' "$RELEASE_TEST_JOBS"
 else
@@ -35,8 +41,13 @@ chmod +x "$test_root/bin/git" "$test_root/bin/gh"
 common_jobs=$'CI\tsuccess\nImage — release build / Image — release build (linux/amd64)\tsuccess\nImage — release build / Image — release build (linux/arm64)\tsuccess'
 candidate_jobs=$'Release candidate — exact main scope\tsuccess\nGo — repository contracts / Go — repository contracts (1/2)\tsuccess\nGo — repository contracts / Go — repository contracts (2/2)\tsuccess\nRust — repository contracts / Rust — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess'
 
+arc='Self-hosted — Intel Arc (VAAPI)'
+geforce='Self-hosted — NVIDIA GeForce (NVENC)'
+# Successful bench job names per run: run 7, then (after ';') run 8.
+both_legs="$arc\\n$geforce"
+
 run_case() {
-  local name=$1 event=$2 jobs=$3 expected=$4 tag=${5:-v1.2.3} rehearsal=${6-success}
+  local name=$1 event=$2 jobs=$3 expected=$4 tag=${5:-v1.2.3} rehearsal=${6-success} bench=${7-$both_legs}
   local output status
   set +e
   output=$(cd "$root" && \
@@ -45,6 +56,7 @@ run_case() {
     RELEASE_TEST_RUN=$'42\tsuccess\t'"$event" \
     RELEASE_TEST_JOBS="$jobs" \
     RELEASE_TEST_REHEARSAL="$rehearsal" \
+    RELEASE_TEST_BENCH_JOBS="$bench" \
     GITHUB_REF_NAME="$tag" \
     GITHUB_REPOSITORY=loomarr/loomarr \
     GITHUB_SHA="$sha" \
@@ -66,6 +78,10 @@ run_case final-without-rehearsal workflow_dispatch "$common_jobs"$'\n'"$candidat
 run_case final-with-failed-rehearsal workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" fail v1.2.3 failure
 run_case rc-without-rehearsal workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass v1.2.3-rc.1 ''
 run_case candidate-evidence workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass
+run_case final-without-hardware-bench workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" fail v1.2.3 success ''
+run_case final-without-geforce workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" fail v1.2.3 success "$arc"
+run_case final-legs-in-separate-runs workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass v1.2.3 success "$arc;$geforce"
+run_case rc-without-hardware-bench workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass v1.2.3-rc.1 '' ''
 run_case full-evidence workflow_dispatch "$common_jobs"$'\nManual CI — full scope\tsuccess' fail
 run_case candidate-missing-contract workflow_dispatch \
   "$common_jobs"$'\nRelease candidate — exact main scope\tsuccess\nRust — repository contracts / Rust — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess' fail

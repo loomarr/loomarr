@@ -14,7 +14,7 @@ import { blockTitle } from "@/settings/provider-title";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, requiredChecks } from "../steps";
 import { WizardAiBlock } from "../wizard-ai-block";
-import type { ChecklistStepProps } from "./checklist-step.type";
+import type { ChecklistStepProps, ConnectionBlockId } from "./checklist-step.type";
 
 // Wizard step 2 — "Connect your services" (config-design §6). The wizard IS the settings
 // system: each block renders the relevant settings group's form (essentials only) with its
@@ -48,7 +48,16 @@ const BLOCKS = [
 //
 // It stays in BLOCKS because `requiredChecks` and the footer copy still name it: on the Tunarr
 // path it is genuinely a blocking check, just not one configured from this screen.
-const blocksFor = (): (typeof BLOCKS)[number][] => BLOCKS.filter((b) => b.id !== "tunarr");
+//
+// Sonarr and Radarr are the library's managers (#2151 decision 29), so they live on "Where's your
+// media?", beside the folders they name, as they live under Settings → Library.
+const LIBRARY_MANAGERS: readonly ConnectionBlockId[] = ["sonarr", "radarr"];
+const blocksFor = (only?: readonly ConnectionBlockId[]): (typeof BLOCKS)[number][] =>
+  BLOCKS.filter((b) =>
+    only
+      ? (only as readonly string[]).includes(b.id)
+      : b.id !== "tunarr" && !(LIBRARY_MANAGERS as readonly string[]).includes(b.id),
+  );
 
 // titleFor appends the chosen-provider suffix for the provider-selected blocks (requester,
 // AI), reading the saved value from the settings entries; every other block keeps its title.
@@ -58,7 +67,7 @@ const titleFor = (block: (typeof BLOCKS)[number], entries: SettingEntry[]): stri
   return block.title;
 };
 
-const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: ChecklistStepProps) => {
+const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: ChecklistStepProps) => {
   const queryClient = useQueryClient();
   const entries = useSettingsEntries();
   const status = setupApi.useSetupStatus();
@@ -131,7 +140,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
 
   return (
     <div className="flex flex-col gap-3">
-      {blocksFor().map((block) => {
+      {blocksFor(only).map((block) => {
         const custom = "custom" in block && block.custom;
         // "group" in block narrows the union so TS knows block.group exists (the AI block is
         // custom and carries no group); a custom block has no settings-group entries.
@@ -195,13 +204,15 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL }: Checkli
       {/* Names the blocks that actually gate THIS install. Reading the derived set rather
           than a hardcoded pair is what keeps the sentence honest on the internal path, where
           it would otherwise promise the operator a Tunarr requirement that no longer exists. */}
-      <p className="text-muted-foreground mt-1 text-xs">
-        {requiredChecks(backend)
-          .map((c) => BLOCKS.find((b) => b.id === c)?.title ?? c)
-          .join(" and ")}{" "}
-        must pass to continue. The rest add features you can wire up later, and Settings re-runs these checks
-        for the life of the install.
-      </p>
+      {only === undefined && (
+        <p className="text-muted-foreground mt-1 text-xs">
+          {requiredChecks(backend)
+            .map((c) => BLOCKS.find((b) => b.id === c)?.title ?? c)
+            .join(" and ")}{" "}
+          must pass to continue. The rest add features you can wire up later, and Settings re-runs these
+          checks for the life of the install.
+        </p>
+      )}
 
       {patch.error != null && <ErrorState error={patch.error} />}
 

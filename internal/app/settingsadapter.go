@@ -312,7 +312,7 @@ func connectionTests(
 			// Branch on the selected provider (§6): probe the direct arr(s) or Seerr.
 			if settings.RequesterProvider.Get(set) == "arr" {
 				if settings.SonarrURL.Get(set) == "" && settings.RadarrURL.Get(set) == "" {
-					return false, "connect Sonarr and/or Radarr above"
+					return false, "connect Sonarr and/or Radarr (Where's your media? in setup, Settings → Library later)"
 				}
 				if err := requester.NewArr(set.arrConns()).Reachable(ctx); err != nil {
 					return false, "could not reach Sonarr/Radarr: " + err.Error()
