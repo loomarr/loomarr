@@ -148,15 +148,13 @@
       "baseUi": 1
     },
     "src/components/loomarr/feedback/empty-state/empty-state.tsx": {
-      "tailwindClasses": 18,
-      "legacyUi": 1
+      "tailwindClasses": 18
     },
     "src/components/loomarr/feedback/error-details/error-details.tsx": {
       "tailwindClasses": 22
     },
     "src/components/loomarr/feedback/error-state/error-state.tsx": {
-      "tailwindClasses": 19,
-      "legacyUi": 1
+      "tailwindClasses": 19
     },
     "src/components/loomarr/feedback/field-help/field-help.tsx": {
       "tailwindClasses": 15
@@ -166,13 +164,6 @@
     },
     "src/components/loomarr/feedback/placeholder/placeholder.tsx": {
       "tailwindClasses": 23
-    },
-    "src/components/loomarr/feedback/run-button/run-button.tsx": {
-      "tailwindClasses": 3,
-      "legacyUi": 1
-    },
-    "src/components/loomarr/feedback/run-button/run-button.type.ts": {
-      "legacyUi": 1
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
       "tailwindClasses": 108,
@@ -229,8 +220,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/people/invitation-join/invitation-join.tsx": {
-      "tailwindClasses": 64,
-      "legacyUi": 1
+      "tailwindClasses": 63
     },
     "src/components/loomarr/people/invitation-roster/invitation-roster.tsx": {
       "tailwindClasses": 49,
@@ -244,8 +234,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/people/session-list/session-list.tsx": {
-      "tailwindClasses": 33,
-      "legacyUi": 1
+      "tailwindClasses": 32
     },
     "src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
       "tailwindClasses": 101
@@ -287,19 +276,16 @@
       "baseUi": 1
     },
     "src/components/loomarr/setup/login-form/login-form.tsx": {
-      "tailwindClasses": 28,
-      "legacyUi": 1
+      "tailwindClasses": 27
     },
     "src/components/loomarr/setup/login-shell/login-shell.tsx": {
       "tailwindClasses": 12
     },
     "src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
-      "tailwindClasses": 78,
-      "legacyUi": 1
+      "tailwindClasses": 76
     },
     "src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
-      "tailwindClasses": 110,
-      "legacyUi": 1
+      "tailwindClasses": 109
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
       "tailwindClasses": 158

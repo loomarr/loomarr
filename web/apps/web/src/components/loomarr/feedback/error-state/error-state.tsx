@@ -1,6 +1,6 @@
 import { toProblem } from "@loomarr/api/mutator";
+import { Action } from "@loomarr/design-system";
 import { AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ErrorStateProps } from "./error-state.type";
 
@@ -24,9 +24,9 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
         {p.detail && <p className="text-muted-foreground mt-1 max-w-md text-sm">{p.detail}</p>}
       </div>
       {onRetry && (
-        <Button variant="outline" size="sm" onClick={onRetry}>
+        <Action onPress={onRetry} variant="outline">
           Try again
-        </Button>
+        </Action>
       )}
     </div>
   );

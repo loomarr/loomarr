@@ -1,6 +1,5 @@
-import { Card } from "@loomarr/design-system";
-import { Check, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action, Card } from "@loomarr/design-system";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
@@ -146,21 +145,20 @@ const WizardShell = ({
 
         <div className="flex items-center gap-2">
           {onBack && (
-            <Button variant="ghost" onClick={onBack} disabled={busy}>
+            <Action disabled={busy} onPress={onBack} variant="ghost">
               Back
-            </Button>
+            </Action>
           )}
           <div className="ml-auto flex items-center gap-2">
             {onSkip && (
-              <Button variant="outline" onClick={onSkip} disabled={busy}>
+              <Action disabled={busy} onPress={onSkip} variant="outline">
                 Skip for now
-              </Button>
+              </Action>
             )}
             {onNext && (
-              <Button onClick={onNext} disabled={nextDisabled || busy}>
-                {busy && <Loader2 className="animate-spin" aria-hidden />}
+              <Action disabled={nextDisabled || busy} onPress={onNext}>
                 {nextLabel}
-              </Button>
+              </Action>
             )}
           </div>
         </div>
