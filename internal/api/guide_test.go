@@ -243,9 +243,9 @@ func TestGuide_RowCarriesReadyAndPendingTitleCounts(t *testing.T) {
 	if _, err := st.SaveChannel(context.Background(), store.Channel{
 		Channel: schedule.Channel{ID: "ch1", Name: "ch1", Number: 1, Strategy: "sequential", Status: schedule.StatusLive},
 		Desired: []schedule.Slot{
-			{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", Title: "Ready"},
-			{Kind: schedule.SlotPending, Key: "movie:tmdb:2", Title: "Coming"},
-			{Kind: schedule.SlotPending, Key: "movie:tmdb:3", Title: "Also coming"},
+			{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000101", Title: "Ready"},
+			{Kind: schedule.SlotPending, Key: "movie:tmdb:90000102", Title: "Coming"},
+			{Kind: schedule.SlotPending, Key: "movie:tmdb:90000103", Title: "Also coming"},
 			{Kind: schedule.SlotFiller, Title: "Break"},
 		},
 	}); err != nil {

@@ -9,7 +9,7 @@ import {
   guideWaitingForTitles,
 } from "@loomarr/core/guide";
 import type { StatusTone } from "@loomarr/design-system";
-import { Action, Badge, SectionHeader } from "@loomarr/design-system";
+import { Action, Badge, SectionHeader, Text } from "@loomarr/design-system";
 import { ListGroup, ListRow, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -209,7 +209,9 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
                   )}
                 </div>
                 {waiting ? (
-                  <p className="text-static-400 m-0 text-sm break-words">{waiting}</p>
+                  <Text textRole="body" tone="secondary">
+                    {waiting}
+                  </Text>
                 ) : (
                   <>
                     <h3 className="m-0 text-base font-semibold break-words">{title}</h3>
