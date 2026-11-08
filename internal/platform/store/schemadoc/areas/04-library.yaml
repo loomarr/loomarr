@@ -484,9 +484,11 @@ tables:
   - name: titles
     about: >
       One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking
-      it from wanted to in the library (or given up on). Rows are kept.
+      it from wanted to in the library (or given up on).
     retention: >
-      Unbounded: nothing deletes these rows; every title ever requested stays.
+      A title in the library or given up on that no channel's lineup and no open request names is
+      deleted by the nightly housekeeping 180 days after it last changed; picked again, it is
+      requested afresh. A title still on its way is kept.
     columns:
       key: >
         Identifies the title, as series:tvdb:id for a show with a TVDB id, otherwise movie:tmdb:id or

@@ -31,6 +31,7 @@ type retentionStore struct {
 	pairingsAt         time.Time
 	operationsBefore   time.Time
 	recipientsBefore   time.Time
+	titlesBefore       time.Time
 }
 
 type retentionDiagnostics struct {
@@ -58,6 +59,10 @@ func (s *retentionStore) PurgeFinishedInteractiveOperations(_ context.Context, b
 }
 func (*retentionStore) PurgeSupersededDiscoveryFeedback(context.Context) (int, error) { return 0, nil }
 func (*retentionStore) PurgeSpentFillerRecords(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
+func (s *retentionStore) PurgeUnusedTitles(_ context.Context, before time.Time) (int, error) {
+	s.titlesBefore = before
 	return 0, nil
 }
 func (s *retentionStore) PurgeOrphanNotificationReferenceRecipients(_ context.Context, before time.Time) (int, error) {
@@ -141,6 +146,9 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	}
 	if want := now.Add(-30 * 24 * time.Hour); !store.recipientsBefore.Equal(want) {
 		t.Fatalf("orphan recipient grace = %v, want %v", store.recipientsBefore, want)
+	}
+	if want := now.Add(-180 * 24 * time.Hour); !store.titlesBefore.Equal(want) {
+		t.Fatalf("unused title horizon = %v, want %v", store.titlesBefore, want)
 	}
 }
 

@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Retention purges for the accumulating suggester tables (§5, §18.1).
@@ -47,6 +50,59 @@ func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int
 		return 0, nil
 	}
 	return int(n), nil
+}
+
+// PurgeUnusedTitles removes the settled titles (available or given up on) last changed before
+// `before` that no channel's lineup and no open proposal names, and returns the count (#2528).
+//
+// Every read of a title starts from a lineup or a pick, so a title neither names is read only if
+// it is picked again, and then a missing row means "request it": approval writes it afresh and a
+// title once given up on is tried again, which after the window is the right answer. A title
+// still wanted, requested or downloading is in flight and stays at any age.
+func (s *sqlStore) PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error) {
+	named := map[provision.Key]bool{}
+	channels, err := s.ListChannels(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("purge unused titles: %w", err)
+	}
+	for _, ch := range channels {
+		for _, entry := range ch.Lineup {
+			named[entry.Key] = true
+		}
+	}
+	open, err := s.ListProposalsByStatus(ctx, openProposalStatus)
+	if err != nil {
+		return 0, fmt.Errorf("purge unused titles: %w", err)
+	}
+	for _, p := range open {
+		for _, list := range [][]proposals.ProposalItem{p.Body.Lineup, p.Body.Acquisitions, p.Body.Alternates} {
+			for _, pick := range list {
+				if key, err := pick.Key(); err == nil {
+					named[key] = true
+				}
+			}
+		}
+	}
+	candidates, err := s.distinctStrings(ctx, s.db, `SELECT key FROM titles WHERE state IN (?, ?) AND updated_at < ?`,
+		string(provision.Available), string(provision.Unavailable), epoch(before))
+	if err != nil {
+		return 0, fmt.Errorf("purge unused titles: %w", err)
+	}
+	total := 0
+	for _, key := range candidates {
+		if named[provision.Key(key)] {
+			continue
+		}
+		// The state and age are checked again: the row may have moved on since it was listed.
+		res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM titles WHERE key = ? AND state IN (?, ?) AND updated_at < ?`),
+			key, string(provision.Available), string(provision.Unavailable), epoch(before))
+		if err != nil {
+			return total, fmt.Errorf("purge unused title %s: %w", key, err)
+		}
+		n, _ := res.RowsAffected()
+		total += int(n)
+	}
+	return total, nil
 }
 
 // PurgeDiscardedProposals removes `denied` and `superseded` proposals older than `before` and

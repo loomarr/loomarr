@@ -136,6 +136,9 @@ type TitleStore interface {
 	// this is what prevents two replicas both firing a give-up/retry. SQLite: a
 	// guarded UPDATE (single instance, §5). Postgres: FOR UPDATE SKIP LOCKED.
 	ClaimDueTitles(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]provision.Record, error)
+	// PurgeUnusedTitles removes settled titles last changed before `before` that no channel's
+	// lineup and no open proposal names (#2528).
+	PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error)
 }
 
 // ChannelStore is the scheduler/channel surface (§9), including channel icons.

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -138,5 +139,52 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, err := st.GetDevicePairing(ctx, "expired", now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expired pairing lookup = %v, want ErrNotFound", err)
+	}
+}
+
+// A settled title nothing names goes once it is old; one a channel's lineup or an open request
+// names stays at any age, and so does one still in flight.
+func testUnusedTitlePurge(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	ctx := context.Background()
+	st := newStore(t)
+	before := time.Unix(1_750_000_000, 0).UTC() // sampleRecord's titles changed at 1_700_000_000
+
+	if _, err := st.SaveChannel(ctx, sampleChannel("ch-1", 7, time.Time{})); err != nil {
+		t.Fatal(err)
+	}
+	picked := proposals.ProposalItem{MediaType: provision.Movie, TMDBID: 777, Name: "Picked"}
+	if err := st.CreateProposal(ctx, Proposal{ID: "open", Status: "submitted", CreatedAt: before,
+		Body: proposals.Proposal{Alternates: []proposals.ProposalItem{picked}}}); err != nil {
+		t.Fatal(err)
+	}
+	recent := sampleRecord("movie:tmdb:4", provision.Available, time.Time{})
+	recent.UpdatedAt = before.Add(time.Hour)
+	for _, r := range []provision.Record{
+		sampleRecord("movie:tmdb:90000001", provision.Available, time.Time{}), // kept: in ch-1's lineup
+		sampleRecord("movie:tmdb:777", provision.Available, time.Time{}),      // kept: an open request's pick
+		sampleRecord("movie:tmdb:1", provision.Available, time.Time{}),        // gone
+		sampleRecord("movie:tmdb:2", provision.Unavailable, time.Time{}),      // gone
+		sampleRecord("movie:tmdb:3", provision.Requested, time.Time{}),        // kept: in flight
+		recent, // kept: changed inside the window
+	} {
+		if err := st.UpsertTitle(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := st.PurgeUnusedTitles(ctx, before); err != nil || n != 2 {
+		t.Fatalf("purge unused titles = %d, %v; want 2", n, err)
+	}
+	for key, kept := range map[provision.Key]bool{
+		"movie:tmdb:90000001": true, "movie:tmdb:777": true, "movie:tmdb:1": false,
+		"movie:tmdb:2": false, "movie:tmdb:3": true, "movie:tmdb:4": true,
+	} {
+		_, err := st.GetTitle(ctx, key)
+		if kept && err != nil {
+			t.Errorf("%s was purged: %v", key, err)
+		}
+		if !kept && !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s lookup = %v, want ErrNotFound", key, err)
+		}
 	}
 }

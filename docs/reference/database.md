@@ -906,9 +906,9 @@ A cached copy of one show's episode list as the media server reports it, so the 
 
 ### titles
 
-One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking it from wanted to in the library (or given up on). Rows are kept.
+One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking it from wanted to in the library (or given up on).
 
-**Kept:** Unbounded: nothing deletes these rows; every title ever requested stays.
+**Kept:** A title in the library or given up on that no channel's lineup and no open request names is deleted by the nightly housekeeping 180 days after it last changed; picked again, it is requested afresh. A title still on its way is kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |

@@ -45,6 +45,7 @@ type Store interface {
 	PurgeSupersededDiscoveryFeedback(ctx context.Context) (int, error)
 	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
 	PurgeSpentFillerRecords(ctx context.Context, now time.Time) (int, error)
+	PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error)
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
@@ -200,10 +201,15 @@ const FinishedOperationRetention = 7 * 24 * time.Hour
 // approval records who asked before provisioning writes the title.
 const RecipientGrace = 30 * 24 * time.Hour
 
+// UnusedTitleRetention is how long a settled title no channel or open request names is kept. It
+// outlasts a channel being rebuilt or a request being refined, either of which may name it again.
+const UnusedTitleRetention = 180 * 24 * time.Hour
+
 // PurgeSpent removes rows nothing will read again (#2528): pairing codes past their expiry,
 // finished interactive operations past FinishedOperationRetention, discovery choices a newer one
-// replaced, and requesters of a title or channel that is gone. Each returns its own count; the
-// total is what the pass reports.
+// replaced, requesters of a title or channel that is gone, spent filler records, and titles
+// nothing has named for UnusedTitleRetention. Each returns its own count; the total is what the
+// pass reports.
 func (s *Service) PurgeSpent(ctx context.Context) (int, error) {
 	now := s.now()
 	var errs []error
@@ -221,6 +227,7 @@ func (s *Service) PurgeSpent(ctx context.Context) (int, error) {
 			return s.store.PurgeOrphanNotificationReferenceRecipients(ctx, now.Add(-RecipientGrace))
 		}},
 		{"filler records", func() (int, error) { return s.store.PurgeSpentFillerRecords(ctx, now) }},
+		{"unused titles", func() (int, error) { return s.store.PurgeUnusedTitles(ctx, now.Add(-UnusedTitleRetention)) }},
 	} {
 		n, err := purge.run()
 		if err != nil {
