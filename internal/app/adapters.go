@@ -395,9 +395,13 @@ func (a tunarrNumbers) TakenChannelNumbers(ctx context.Context) (map[int]bool, e
 
 // libraryRatings adapts library.Client to channels.RatingResolver: it resolves an
 // approved lineup entry's content rating by the entry's Key, for the reconcile-time
-// heal of unrated entries (§389 amendment). Reuses LookupDetail — the same query the
-// presence backfill uses — so the rating comes from the media server, not a guess.
-type libraryRatings struct{ lib *library.Client }
+// heal of unrated entries (§389 amendment). The Library's own title answers first (#2151 step
+// 15); otherwise it reuses LookupDetail — the same query the presence backfill uses — so the
+// rating comes from the media server, not a guess.
+type libraryRatings struct {
+	titles store.LibraryTitleReader
+	lib    *library.Client
+}
 
 func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, bool, error) {
 	mt, provider, id, ok := provision.ParseKey(key)
@@ -411,6 +415,12 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 	lmt := library.Movie
 	if mt == provision.Series {
 		lmt = library.Series
+	}
+	if t, ok, err := libraryTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt); err != nil || ok {
+		return t.Rating, ok, err
+	}
+	if a.lib == nil {
+		return "", false, nil
 	}
 	d, present, err := a.lib.LookupDetail(ctx, kind, strconv.Itoa(id), lmt)
 	if err != nil || !present {
@@ -583,8 +593,13 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 
 // libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so
 // discovery can mark titles the library already owns as in-library. Prefers the
-// TMDB id (the discovery id space); falls back to TVDB for a series with no tmdb.
-type libraryPresence struct{ lib *library.Client }
+// TMDB id (the discovery id space); falls back to TVDB for a series with no tmdb. The Library's own
+// title answers first (#2151 step 15), so an owned title reads with its library item id; the media
+// server answers the rest.
+type libraryPresence struct {
+	titles store.LibraryTitleReader
+	lib    *library.Client
+}
 
 func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (catalog.Presence, bool, error) {
 	kind, id := library.TMDB, strconv.Itoa(tmdbID)
@@ -594,6 +609,14 @@ func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tm
 	lmt := library.Movie
 	if mt == provision.Series {
 		lmt = library.Series
+	}
+	if t, ok, err := libraryTitle(ctx, a.titles, kind, id, lmt); err != nil || ok {
+		return catalog.Presence{
+			LibraryItemID: t.ID, OfficialRating: t.Rating, Genres: t.Genres, SizeBytes: t.SizeBytes,
+		}, ok, err
+	}
+	if a.lib == nil {
+		return catalog.Presence{}, false, nil
 	}
 	// LookupDetail, not Lookup: discovery needs the rating too, or a kids channel of
 	// owned-but-unrated titles resolves to nothing (§9 dead air).
