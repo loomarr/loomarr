@@ -3,12 +3,13 @@ package app
 import (
 	"context"
 	"errors"
-	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -91,28 +92,28 @@ func TestComputeChannelCodecDoesNotRetryNonStaleWriteError(t *testing.T) {
 	}
 }
 
-func TestMeasureChannelCodecPinsOneLibraryConnectionAcrossBatch(t *testing.T) {
+// A channel's codec is voted from its programmes' own library files (#2151 step 16); a programme
+// whose file is gone has nothing to probe and no vote.
+func TestMeasureChannelCodecProbesTheLibrarysFiles(t *testing.T) {
 	t.Parallel()
-	providerCalls := 0
-	lib := library.NewDynamic(func() library.Connection {
-		providerCalls++
-		if providerCalls == 1 {
-			return library.Connection{
-				Flavor: library.Emby, BaseURL: "https://emby-a.invalid", Token: "token-a",
-			}
+	dir := t.TempDir()
+	files := fakeLibraryFiles{}
+	for _, id := range []string{"lib-1", "lib-2"} {
+		files[id] = filepath.Join(dir, id+".mkv")
+		if err := os.WriteFile(files[id], []byte("matroska"), 0o644); err != nil {
+			t.Fatal(err)
 		}
-		return library.Connection{
-			Flavor: library.Jellyfin, BaseURL: "https://jellyfin-b.invalid", Token: "token-b",
-		}
-	}, "device-1")
+	}
+	files["lib-gone"] = filepath.Join(dir, "gone.mkv")
 	var inputs []string
 	r := &playoutResolver{
 		engine: stubCycle{slots: []schedule.Slot{
-			{Kind: schedule.SlotProgram, LibraryItemID: "item-1"},
-			{Kind: schedule.SlotProgram, LibraryItemID: "item-2"},
+			{Kind: schedule.SlotProgram, LibraryItemID: "lib-1"},
+			{Kind: schedule.SlotProgram, LibraryItemID: "lib-gone"},
+			{Kind: schedule.SlotProgram, LibraryItemID: "lib-2"},
 		}},
-		lib: lib,
-		now: time.Now,
+		libraryFile: files,
+		now:         time.Now,
 		probeFormat: func(_ context.Context, input string) (playout.MediaFormat, error) {
 			inputs = append(inputs, input)
 			return playout.MediaFormat{VideoCodec: "hevc"}, nil
@@ -122,19 +123,7 @@ func TestMeasureChannelCodecPinsOneLibraryConnectionAcrossBatch(t *testing.T) {
 	if got := r.measureChannelCodec(context.Background(), "channel-1"); got != store.BroadcastCodecHEVC {
 		t.Fatalf("codec = %q, want hevc", got)
 	}
-	if providerCalls != 1 {
-		t.Fatalf("connection provider calls = %d, want one for the full batch", providerCalls)
-	}
-	if len(inputs) != 2 {
-		t.Fatalf("probe inputs = %d, want 2", len(inputs))
-	}
-	for _, input := range inputs {
-		parsed, err := url.Parse(input)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if parsed.Host != "emby-a.invalid" || parsed.Query().Get("api_key") != "token-a" {
-			t.Fatalf("probe input = %q, want pinned first connection", input)
-		}
+	if want := []string{files["lib-1"], files["lib-2"]}; !slices.Equal(inputs, want) {
+		t.Fatalf("probe inputs = %q, want the two readable files %q", inputs, want)
 	}
 }

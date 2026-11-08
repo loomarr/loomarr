@@ -4,6 +4,7 @@ import type { StatusTone } from "@loomarr/design-system";
 import { Action, SectionHeader } from "@loomarr/design-system";
 import { ListGroup, ListRow, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -11,22 +12,25 @@ import type { AiringArtworkProps, OnNowProps } from "./on-now.type";
 
 const MAX_CHANNELS = 6;
 
+// A legacy thumbnail URL that 404s must not leave a blank box (#2762): it falls to the generated art.
+const ThumbUrl = ({ url, channel }: { url: string; channel: AiringArtworkProps["channel"] }) => {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (failedUrl === url) return <ArtworkFallback channel={channel} />;
+  return <img src={url} alt="" className="size-full object-cover" onError={() => setFailedUrl(url)} />;
+};
+
 // AiringArtwork — the picture in a Home card's picture slot (On now, Watching now, Recently
-// tuned): the airing's image-service artwork, else its legacy thumbnail URL, else the code-drawn
-// fallback. A card always has a picture, so a title with no artwork still fills the slot
-// (#1817 Q12). The fallback also covers an image-service URL that fails to load.
+// tuned): the title's backdrop, else the media server's still, else its legacy thumbnail URL, else
+// generated channel art (#2762). A card always has a picture, never a blank or hatched tile, and
+// the generated art also covers an image that fails to load.
 const AiringArtwork = ({ airing, channel, sizes }: AiringArtworkProps) => {
-  if (airing.thumbImage) {
+  const image = airing.backdropImage ?? airing.thumbImage;
+  if (image) {
     return (
-      <ServedImage
-        image={airing.thumbImage}
-        alt=""
-        sizes={sizes}
-        fallback={<ArtworkFallback channel={channel} />}
-      />
+      <ServedImage image={image} alt="" sizes={sizes} fallback={<ArtworkFallback channel={channel} />} />
     );
   }
-  if (airing.thumbUrl) return <img src={airing.thumbUrl} alt="" className="size-full object-cover" />;
+  if (airing.thumbUrl) return <ThumbUrl url={airing.thumbUrl} channel={channel} />;
   return <ArtworkFallback channel={channel} />;
 };
 

@@ -38,6 +38,17 @@ describe("settings destination catalog", () => {
     for (const owner of PUBLIC_SETTING_OWNERS) expect(destinationForOwner(owner)?.owner).toBe(owner);
   });
 
+  it("shows one browse card per page", () => {
+    const browsed = SETTINGS_DESTINATIONS.filter((item) => item.browse);
+    const paths = browsed.map((item) => item.path);
+    expect(paths.filter((path, index) => paths.indexOf(path) !== index)).toEqual([]);
+    // Your location and the sharing address live on the access page: still findable by search,
+    // but no longer cards of their own.
+    for (const id of ["location", "sharing"]) {
+      expect(SETTINGS_DESTINATIONS.find((item) => item.id === id)?.browse).toBe(false);
+    }
+  });
+
   it("points every destination at a registered route", () => {
     const router = createRouter({
       routeTree,

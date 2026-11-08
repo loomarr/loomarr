@@ -17,6 +17,8 @@ export {
 export { Card } from "./src/card";
 export type { CompactSelectOption, CompactSelectProps } from "./src/compact-select";
 export { CompactSelect } from "./src/compact-select";
+export type { DateFieldProps } from "./src/date-field";
+export { DateField } from "./src/date-field";
 export type {
   DialogActionProps,
   DialogContentProps,
@@ -93,6 +95,8 @@ export type {
   ProgressTone,
   ScreenProps,
   StatusTone,
+  StatusWordKind,
+  StatusWordProps,
   TextProps,
   TextTone,
 } from "./src/primitives";
@@ -103,6 +107,7 @@ export {
   ProgressTrack,
   Screen,
   StatusDot,
+  StatusWord,
   Surface,
   Text,
 } from "./src/primitives";

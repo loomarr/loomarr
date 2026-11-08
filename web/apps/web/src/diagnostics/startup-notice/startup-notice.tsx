@@ -67,7 +67,7 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
       label: "View health",
       onClick: () => {
         acknowledge();
-        // The page opens on Logs by default; this notice is about health checks (#2750).
+        // Current Health, not the Logs view Diagnostics opens on by default (#2734).
         void navigate({ to: "/settings/system/diagnostics", search: { view: "health" } });
       },
     };

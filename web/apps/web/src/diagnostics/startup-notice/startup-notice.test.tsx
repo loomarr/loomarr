@@ -85,7 +85,8 @@ describe("HealthNotice", () => {
     expect(localStorage.getItem(key)).toBe("1");
   });
 
-  // #2750: "1 check need attention", a 40-character commit, and "View health" landing on Logs.
+  // #2750: "1 check need attention", a 40-character commit, and (#2734) "View health" landing on
+  // Logs, the Diagnostics default view, instead of Current Health.
   it("counts checks in plain words, shortens a commit version, and opens Health", async () => {
     const sha = "0123456789abcdef0123456789abcdef01234567";
     server.use(getGetCurrentHealthMockHandler({ ...report("degraded"), version: sha }));

@@ -85,14 +85,6 @@ func TestStandInAnswersSearchPresenceEpisodesAndPaths(t *testing.T) {
 	if eps[0].DurationMs != int64(f.Duration)*1000 {
 		t.Fatalf("episode runtime = %dms, want the generated file's %ds", eps[0].DurationMs, f.Duration)
 	}
-	path, err := c.ItemPath(ctx, eps[0].LibraryItemID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want, _ := filepath.Abs(l.EpisodeFile(cartoon, demolibrary.EpisodesOf(cartoon)[0])); path != want {
-		t.Fatalf("episode path = %q, want its file in the shows folder %q", path, want)
-	}
-
 	folders, err := c.LibraryFolders(ctx, demolibrary.FillerLibraryName)
 	if err != nil || len(folders) != 1 {
 		t.Fatalf("filler library folders = %v, %v", folders, err)
