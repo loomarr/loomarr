@@ -75,6 +75,7 @@ func putClip(t *testing.T, st store.Store, clip filler.Clip) {
 	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clip, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
+	tagCategory(t, st, clip)
 }
 
 func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWork(t *testing.T) {

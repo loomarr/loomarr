@@ -195,9 +195,6 @@ func (s *Store) ApplyTaxonomyEdit(ctx context.Context, edit TaxonomyEdit, at tim
 	if err := s.rebuildRollupsTx(ctx, tx); err != nil {
 		return err
 	}
-	if err := s.rebuildCategoryShadowsTx(ctx, tx, ""); err != nil {
-		return err
-	}
 	return tx.Commit()
 }
 
@@ -476,7 +473,8 @@ func ConvergeTaxonomySeed(ctx context.Context, s *Store, revisions []taxonomy.Se
 }
 
 // SetClipTags is the per-clip taxonomy transaction. It replaces asserted leaves, expands them
-// through the CURRENT closure, and refreshes the compatibility category shadow before commit.
+// through the CURRENT closure, and rebuilds the clip's rollups before commit. Category is derived on
+// read (clipCategoryExpr), so there is no shadow to refresh.
 // Postgres takes a shared taxonomy lock so an operator graph edit cannot commit between those
 // writes; importantly, the caller supplies no forest snapshot that can become stale while waiting.
 func (s *Store) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
@@ -534,9 +532,6 @@ func (s *Store) setClipTagsTx(ctx context.Context, tx storedb.Querier, clipHash 
 	if err := s.rebuildClipRollupsTx(ctx, tx, clipHash); err != nil {
 		return err
 	}
-	if err := s.rebuildCategoryShadowsTx(ctx, tx, clipHash); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -572,8 +567,8 @@ func getClipTagsFrom(ctx context.Context, queryer taxonomyQueryer, placeholder f
 
 // RebuildTaxonomyDerived is the boot/upgrade backstop for all projections owned by the taxonomy.
 // Live graph changes use ApplyTaxonomyEdit; boot uses the same exclusive Postgres lock so replicas
-// cannot interleave full replacements. A single transaction keeps closure, rollups, and category on
-// one generation while healing data written before graph edits became atomic.
+// cannot interleave full replacements. A single transaction keeps closure and rollups on one
+// generation while healing data written before graph edits became atomic.
 //
 // ⚠ A full replace inside one transaction. The closure is a pure function of the graph, so a partial
 // rebuild would leave a clip's rollups deriving from a half-updated closure — worse than the old one.
@@ -592,9 +587,6 @@ func RebuildTaxonomyDerived(ctx context.Context, s *Store, forest *taxonomy.Fore
 		return err
 	}
 	if err := s.rebuildRollupsTx(ctx, tx); err != nil {
-		return err
-	}
-	if err := s.rebuildCategoryShadowsTx(ctx, tx, ""); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -663,36 +655,6 @@ func (s *Store) rebuildClipRollupsTx(ctx context.Context, tx storedb.Querier, cl
 		 WHERE l.clip_hash = ? AND l.leaf = ? AND c.ancestor <> c.descendant
 		 ON CONFLICT (clip_hash, taxon) DO NOTHING`), clipHash, true); err != nil {
 		return fmt.Errorf("rebuild clip rollups: insert: %w", err)
-	}
-	return nil
-}
-
-// rebuildCategoryShadowsTx keeps the compatibility `clips.category` field a pure function of the
-// live taxonomy. Moving an asserted node off the product axis, or changing relative graph depth,
-// can change PrimaryProductLeaf without touching the clip's assertions. Leaving the shadow behind
-// would make legacy pod matching disagree with the taxonomy browser after an otherwise-atomic edit.
-//
-// One correlated UPDATE is deliberately used on both dialects. taxa_closure includes each node's
-// self-pair, so its row count is the node's stable depth measure; ties use slug order exactly like
-// taxonomy.Forest.PrimaryProductLeaf.
-func (s *Store) rebuildCategoryShadowsTx(ctx context.Context, tx storedb.Querier, clipHash string) error {
-	query := `UPDATE clips SET category = COALESCE((
-		SELECT ct.taxon
-		FROM clip_tags ct
-		JOIN taxa t ON t.slug = ct.taxon
-		WHERE ct.clip_hash = clips.hash AND ct.leaf = TRUE AND t.axis = 'product'
-		ORDER BY (SELECT COUNT(*) FROM taxa_closure tc WHERE tc.descendant = ct.taxon) DESC,
-			ct.taxon ASC
-		LIMIT 1
-	), '')`
-	var args []any
-	if clipHash != "" {
-		query += ` WHERE hash = ?`
-		args = append(args, clipHash)
-	}
-	_, err := tx.ExecContext(ctx, s.h.Rebind(query), args...)
-	if err != nil {
-		return fmt.Errorf("rebuild taxonomy category shadows: %w", err)
 	}
 	return nil
 }

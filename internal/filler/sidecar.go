@@ -140,7 +140,6 @@ type SidecarTags struct {
 	Kind           string `json:"kind,omitempty"`
 	Era            int    `json:"era,omitempty"`
 	Audience       string `json:"audience,omitempty"`
-	Category       string `json:"category,omitempty"`
 	// Brand is the GROUNDED advertiser (§10 V44) — carried here so a catalog rebuild restores it
 	// rather than re-running the tagger (or, for a vision-grounded brand, re-paying for the vision
 	// call) over the whole folder. Only a grounded brand is ever written to a clip in the first

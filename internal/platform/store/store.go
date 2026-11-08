@@ -464,8 +464,8 @@ type ClipStore interface {
 	ListBroadcastStations(ctx context.Context) ([]station.Station, error)
 	// SeedTaxonomy writes the default forest only when `taxa` is empty — idempotent, run at boot.
 	SeedTaxonomy(ctx context.Context, seed []taxonomy.Taxon, at time.Time) error
-	// SetClipTags REPLACES one clip's asserted tags and derives its rollups and category shadow from
-	// the store's current graph in the same transaction. Callers never supply a graph snapshot.
+	// SetClipTags REPLACES one clip's asserted tags and derives its rollups from the store's current
+	// graph in the same transaction. Callers never supply a graph snapshot. Category is derived on read.
 	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	// TaxonomyUsage is the library-accounting read model: playable overall/per-axis coverage plus

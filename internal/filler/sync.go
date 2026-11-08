@@ -539,10 +539,9 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 				merged.Kind = existing.Kind
 			}
 			// PRESERVE loomarr-owned match tags across syncs (§10) — never clobber a
-			// hand-edited or AI-assigned era/audience/category.
+			// hand-edited or AI-assigned era/audience. Category is derived from the taxonomy tags.
 			merged.Era = existing.Era
 			merged.Audience = existing.Audience
-			merged.Category = existing.Category
 			merged.Rating = existing.Rating
 			merged.GeographicScope = existing.GeographicScope
 			merged.Country = existing.Country
@@ -810,7 +809,6 @@ func (s *Syncer) repairOpaqueDisplayName(rc RawClip, existing StoreClip, found b
 			tags.Kind = string(existing.Kind)
 			tags.Era = existing.Era
 			tags.Audience = string(existing.Audience)
-			tags.Category = existing.Category
 			tags.Brand = existing.Brand
 			tags.Transcript = existing.Transcript
 		}
@@ -858,7 +856,6 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 			tags.Kind = string(existing.Kind)
 			tags.Era = existing.Era
 			tags.Audience = string(existing.Audience)
-			tags.Category = existing.Category
 			tags.Brand = existing.Brand
 			tags.Transcript = existing.Transcript
 			if err := WriteSidecarTags(oldFull, tags, false); err != nil {

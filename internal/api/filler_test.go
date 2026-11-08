@@ -474,6 +474,19 @@ func seedClip(t *testing.T, st records.Store, id string, kind filler.Kind, era i
 	if err := st.UpsertClip(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}
+	tagCategory(t, st, c.Clip)
+}
+
+// tagCategory asserts a fixture's category as a taxonomy leaf. Category is derived from the tags
+// on read (#2323), so it exists only once the clip is tagged.
+func tagCategory(t *testing.T, st store.Store, c filler.Clip) {
+	t.Helper()
+	if c.Category == "" {
+		return
+	}
+	if err := st.SetClipTags(context.Background(), c.Hash, []string{c.Category}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestListFiller_FiltersAndVisibleToAll(t *testing.T) {

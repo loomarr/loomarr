@@ -258,8 +258,8 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, removed_at, held, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, removed_at, held, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(hash) DO UPDATE SET
 		   enrichment_revision=CASE
 		     WHEN clips.name <> excluded.name OR clips.kind <> excluded.kind OR clips.source <> excluded.source
@@ -269,7 +269,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		   -- name_source travels with name: every writer of a name says where it came from (#1988).
 		   name=excluded.name, name_source=excluded.name_source, kind=excluded.kind,
 		   era=excluded.era, audience=excluded.audience,
-		   category=excluded.category, duration_ms=excluded.duration_ms, rating=excluded.rating,
+		   duration_ms=excluded.duration_ms, rating=excluded.rating,
 		   source=excluded.source, quality=excluded.quality,
 		   license=excluded.license,
 		   thumbnail=excluded.thumbnail,
@@ -281,7 +281,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		   -- every re-sync, which is the same class as is_composite/parent_hash above.
 		   language=excluded.language,
 		   updated_at=excluded.updated_at`),
-		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, clipNameSource(c), string(c.Kind), string(clipPlacement(c)), c.Era, string(c.Audience), c.Category,
+		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, clipNameSource(c), string(c.Kind), string(clipPlacement(c)), c.Era, string(c.Audience),
 		clipGeographicScope(c), c.Country, c.Network, c.Station, c.AirDate, c.GeoEvidence,
 		c.DurationMs, c.Rating, c.Source,
 		// ⚠ Flags are bound as real bools: they are BOOLEAN on Postgres (storage.md).
@@ -618,12 +618,12 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 			return ErrConditionedClipMismatch
 		}
 		res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips SET
-			(name, name_source, kind, era, audience, category, rating, source, license,
+			(name, name_source, kind, era, audience, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, removed_at, held,
 			 created_at, reaped_at) =
-			(SELECT name, name_source, kind, era, audience, category, rating, source, license,
+			(SELECT name, name_source, kind, era, audience, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, removed_at, held,
@@ -768,7 +768,18 @@ func clipPlacement(c Clip) clips.Placement {
 	return c.EffectivePlacement()
 }
 
-const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, duration_ms,
+// clipProductLeafFrom is the clip's product-axis leaf assertions. Category is derived from them,
+// never stored (#2323).
+const clipProductLeafFrom = `FROM clip_tags ct JOIN taxa t ON t.slug = ct.taxon
+	WHERE ct.clip_hash = clips.hash AND ct.leaf = TRUE AND t.axis = 'product'`
+
+// clipCategoryExpr is taxonomy.Forest.PrimaryProductLeaf in SQL: the deepest product leaf, ties by
+// slug. taxa_closure includes each node's self-pair, so its row count is the node's depth.
+const clipCategoryExpr = `COALESCE((SELECT ct.taxon ` + clipProductLeafFrom + `
+	ORDER BY (SELECT COUNT(*) FROM taxa_closure tc WHERE tc.descendant = ct.taxon) DESC, ct.taxon ASC
+	LIMIT 1), '')`
+
+const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, ` + clipCategoryExpr + `, duration_ms,
 	geographic_scope, country, network, station, air_date, geo_evidence,
 	rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text,
 	is_composite, parent_hash,
@@ -925,7 +936,7 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 		args = append(args, string(f.Audience))
 	}
 	if f.Category != "" {
-		where = append(where, "category = ?")
+		where = append(where, clipCategoryExpr+" = ?")
 		args = append(args, f.Category)
 	}
 	if f.GeographicScope != "" {
@@ -1046,7 +1057,7 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 // (the negation of Tagged: era > 0, audience and category set). The kind is bound, never a literal,
 // so it is the same constant the Go predicate reads. testClipNeedsDetailsAgreesWithSQL pins the two
 // to the same clips on both backends; the wire's ClipDTO.needsDetails comes from the Go side.
-const needsDetailsWhere = "kind = ? AND (era = 0 OR audience = '' OR category = '')"
+const needsDetailsWhere = "kind = ? AND (era = 0 OR audience = '' OR NOT EXISTS (SELECT 1 " + clipProductLeafFrom + "))"
 
 func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int, audience string, updatedAt time.Time) error {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(
@@ -1769,7 +1780,7 @@ func (s *Store) SetClipBrand(ctx context.Context, path, brand string, at time.Ti
 
 // ApplyClipVision records one semantic vision pass (§10 V44/V55): the on-screen text it saw, a
 // grounded brand and era, and the taxonomy assertions supported by the frames. The facts, direct
-// assertions, rollups, and category compatibility shadow commit together.
+// assertions and rollups commit together.
 //
 // ⚠ **The pipeline's writer of `visible_text`.** `brand` it SHARES with SetClipBrand (the text
 // tagger's grounded writer) — both write `brand` and only `brand`, and this one must not be

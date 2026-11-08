@@ -151,8 +151,9 @@ func TestSync_AddsClips_DurationFromServer(t *testing.T) {
 }
 
 // THE KEY PROPERTY (§10): a re-sync PRESERVES loomarr-owned tags. A clip tagged
-// (by AI or by hand) keeps its era/audience/category when the media server
-// re-lists it — the server only owns id/name/duration.
+// (by AI or by hand) keeps its era/audience when the media server re-lists it —
+// the server only owns id/name/duration. Category is derived from the taxonomy
+// tags, which the upsert never touches (#2323).
 func TestSync_PreservesTagsOnResync(t *testing.T) {
 	source := &fakeSource{clips: []filler.RawClip{raw("c1", "clip", filler.Commercial, 30000, 0)}}
 	st := newMemStore()
@@ -165,7 +166,6 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 	tagged := st.clips["c1"]
 	tagged.Era = 1994
 	tagged.Audience = filler.Kids
-	tagged.Category = "cereal"
 	st.clips["c1"] = tagged
 
 	// The media server re-lists the same clip (maybe with a corrected name).
@@ -177,7 +177,7 @@ func TestSync_PreservesTagsOnResync(t *testing.T) {
 
 	after := st.clips["c1"]
 	// Tags survive.
-	if after.Era != 1994 || after.Audience != filler.Kids || after.Category != "cereal" {
+	if after.Era != 1994 || after.Audience != filler.Kids {
 		t.Fatalf("re-sync clobbered loomarr-owned tags: %+v", after.Clip)
 	}
 	// Server-owned name updated.

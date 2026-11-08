@@ -141,11 +141,10 @@ type Clip struct {
 	Station         string // broadcast station directory id; a local clip is local to it
 	AirDate         string // grounded YYYY-MM-DD broadcast date
 	GeoEvidence     string // literal source evidence or "operator" correction attribution
-	// Category is the DERIVED SHADOW of the taxonomy tags (§10 V45a): the primary product leaf of
-	// `Tags`, computed at the single tag-write site (forest.PrimaryProductLeaf) and stored so the
-	// hot pod-selection read path stays a plain column read. ⚠ Never an input any more — it is
-	// always `PrimaryProductLeaf(Tags)`; the conformance suite pins the invariant. "" = no product
-	// tag (a clip tagged only `psa`/`christmas` has no product category, which is honest).
+	// Category is DERIVED from the taxonomy tags (§10 V45a): the primary product leaf of the
+	// asserted tags, computed by the store on every read and never stored (#2323). ⚠ Never an
+	// input — setting it on a clip passed to UpsertClip does nothing; tag the clip instead. "" = no
+	// product tag (a clip tagged only `psa`/`christmas` has no product category, which is honest).
 	Category string
 	// Tags is the clip's DENORMALISED taxonomy tag set (§10 V45a): the full leaf+rollup expansion
 	// from `clip_tags`, loaded alongside the row. This is the source of truth for curation matching

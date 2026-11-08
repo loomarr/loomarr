@@ -1182,7 +1182,6 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.DurationMs = c.segment.EndMs - c.segment.StartMs
 		nc.Era = c.segment.Era
 		nc.Audience = c.segment.Audience
-		nc.Category = c.segment.Category
 		// ⚠ Lineage: each segment points back at the composite it was cut from (§10 V45). This is what
 		// V45 keeps that V34 discarded — provenance ("which break did this advert air in?"), a
 		// re-split when detection improves, and broadcast-context inheritance. `clip.Hash` is the

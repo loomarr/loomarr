@@ -67,7 +67,7 @@ func TestWriteSidecarTags_RoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filler.SidecarTags{SourceID: "archive:classic", AcquisitionID: "acq-17", Kind: "commercial", Era: 1992, Audience: "kids", Category: "toys"}
+	want := filler.SidecarTags{SourceID: "archive:classic", AcquisitionID: "acq-17", Kind: "commercial", Era: 1992, Audience: "kids"}
 	if err := filler.WriteSidecarTags(media, want, false); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,6 @@ func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
 		Kind:            "commercial",
 		Era:             1985,
 		Audience:        "general",
-		Category:        "general",
 		Brand:           "Sparkra-Cola",
 		Transcript:      "Have a Sparkra and a smile — the bright thing.",
 		GeographicScope: "local", Country: "US", Network: "Kestrel One",
