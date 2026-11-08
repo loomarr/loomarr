@@ -1118,4 +1118,5 @@ const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
 // Keyed by state, so switching states in the prototype starts that state's moment afresh.
 const TvChrome = (props: ChromeProps) => <TvInner key={props.scenario.state} {...props} />;
 
-export { TvChrome };
+// Variant H (chrome-tune.tsx) builds on G's pieces and replaces only the tune and the remote.
+export { behindLabel, clock, guideOf, IdentCard, mono, ParentalBug, Slot, Strip, TvChrome };

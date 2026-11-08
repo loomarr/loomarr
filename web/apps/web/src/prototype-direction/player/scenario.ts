@@ -18,6 +18,10 @@ const STATES = [
   // both as "playing".
   "surfing",
   "tuning",
+  // H only: the signature tune playing once (CH 7 to CH 9), and the same with a slow stream, which
+  // holds on the bars until the picture arrives. Other variants draw both as "playing".
+  "tune",
+  "slow-tune",
 ] as const;
 type PlayerState = (typeof STATES)[number];
 
@@ -29,6 +33,7 @@ const VARIANTS = [
   { key: "E", name: "Polished flat" },
   { key: "F", name: "Glass" },
   { key: "G", name: "Loomarr TV" },
+  { key: "H", name: "Loomarr TV · signature tune" },
 ] as const;
 
 const DEVICES = ["desktop", "portrait", "landscape"] as const;
@@ -56,10 +61,14 @@ interface Scenario {
   /** The same on a phone, where the episode's name has no room. */
   programmeShort: string;
   sheet?: "channels" | "more";
+  /** Variant H: the stream is slow, so the tune holds on the bars until the picture arrives. */
+  slow?: boolean;
   state: PlayerState;
   /** Variant G: the viewer is flipping channels (the strip is up). */
   surfing?: boolean;
   timeLabel: string;
+  /** Variant H: play the signature tune on load. */
+  tune?: boolean;
   /** Variant G: the tuner is between channels (static locking to the brand bars). */
   tuning?: boolean;
   /** The title as the on-screen display sets it. */
@@ -130,6 +139,10 @@ const scenarioFor = (state: PlayerState): Omit<Scenario, "state"> => {
       return { ...base, surfing: true };
     case "tuning":
       return { ...base, tuning: true };
+    case "tune":
+      return { ...base, tune: true };
+    case "slow-tune":
+      return { ...base, slow: true, tune: true };
     case "channels":
       return { ...base, sheet: "channels" };
     case "more":

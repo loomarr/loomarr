@@ -3,7 +3,9 @@
 // B: A plus a tuner (channel down / up). C: a television's on-screen display (the design review's
 // structure). D: C's structure with the content and type of a shipped player. E: D polished (logo,
 // artwork tint, motion, scrub preview), flat. F: E in Apple-style glass. G: Loomarr TV, live
-// television as an object (channel readout, broadcast lower third, surfing, tuning). Switch with [ ] variant, , . state, D device, T tint.
+// television as an object (channel readout, broadcast lower third, surfing, tuning). H: G with the
+// channel change rebuilt as one choreographed tune (states "tune", "slow-tune"; ?t=ms freezes it,
+// ?loop=1 replays it) and a restrained remote. Switch with [ ] variant, , . state, D device, T tint.
 import { ThemeScope } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { DinerFrame } from "@/prototype-direction/player/art";
@@ -11,6 +13,7 @@ import { ClassicChrome } from "@/prototype-direction/player/chrome-classic";
 import { OsdChrome } from "@/prototype-direction/player/chrome-osd";
 import { PolishedChrome } from "@/prototype-direction/player/chrome-polished";
 import { RichChrome } from "@/prototype-direction/player/chrome-rich";
+import { TuneChrome } from "@/prototype-direction/player/chrome-tune";
 import { TvChrome } from "@/prototype-direction/player/chrome-tv";
 import { channel } from "@/prototype-direction/player/data";
 import { PlayerStyles } from "@/prototype-direction/player/flat";
@@ -30,19 +33,26 @@ import {
   parseSearch,
 } from "@/prototype-direction/shared";
 
-type PlayerSearch = Omit<ProtoSearch, "device"> & { device: PlayerDevice };
+// H only: `t` freezes the tune at that many ms into the sequence (for stills), `loop=1` replays it.
+type PlayerSearch = Omit<ProtoSearch, "device"> & { device: PlayerDevice; loop?: boolean; t?: number };
 
-const validateSearch = (raw: Record<string, unknown>): PlayerSearch => ({
-  ...parseSearch(VARIANTS, STATES)(raw),
-  device: DEVICES.includes(raw.device as PlayerDevice) ? (raw.device as PlayerDevice) : "desktop",
-});
+const validateSearch = (raw: Record<string, unknown>): PlayerSearch => {
+  const t = Number(raw.t);
+  return {
+    ...parseSearch(VARIANTS, STATES)(raw),
+    device: DEVICES.includes(raw.device as PlayerDevice) ? (raw.device as PlayerDevice) : "desktop",
+    ...(raw.t !== undefined && Number.isFinite(t) ? { t } : {}),
+    ...(String(raw.loop) === "1" || raw.loop === true ? { loop: true } : {}),
+  };
+};
 
 const PlayerPrototype = () => {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const scenario = scenarioOf(search.state as (typeof STATES)[number]);
   const tv = search.variant === "G";
-  const polished = search.variant === "E" || search.variant === "F" || tv;
+  const tune = search.variant === "H";
+  const polished = search.variant === "E" || search.variant === "F" || tv || tune;
   const props = {
     device: search.device,
     scenario,
@@ -64,7 +74,9 @@ const PlayerPrototype = () => {
         <ThemeScope theme="dark">
           <PlayerStyles />
           {polished ? <DinerFrame /> : <LivePicture />}
-          {tv ? (
+          {tune ? (
+            <TuneChrome {...props} freezeAt={search.t} loop={search.loop} />
+          ) : tv ? (
             <TvChrome {...props} />
           ) : polished ? (
             <PolishedChrome {...props} material={search.variant === "F" ? "glass" : "flat"} />
