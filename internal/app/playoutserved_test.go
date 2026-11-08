@@ -44,7 +44,7 @@ func TestResolvingTheAiringRecordsNothing(t *testing.T) {
 		slots := []schedule.Slot{{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "item-1", DurationMs: 60_000}}
 		history := &recordedAirings{}
 		now := testPlayoutAnchor().Add(20 * time.Second)
-		r := stillResolver(slots, now, history)
+		r := stillResolver(t, slots, now, history)
 		r.probeTracks = probed
 
 		if _, _, err := r.AiringNow(context.Background(), "ch1"); err != nil {
@@ -73,7 +73,7 @@ func TestRecordAiringServedStampsAProgramme(t *testing.T) {
 	// The packager resolves item-2 up to its run-ahead early (here 7 s into it, on a wall clock still
 	// 5 s before it): the record is stamped with the start, never observed before it.
 	resolvedAt := start.Add(7 * time.Second)
-	r := stillResolver(slots, start.Add(-5*time.Second), history)
+	r := stillResolver(t, slots, start.Add(-5*time.Second), history)
 	airing, _, err := r.AiringAt(context.Background(), "ch1", resolvedAt)
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestRecordAiringServedStampsAProgramme(t *testing.T) {
 
 	// A tune-in 20 s into item-2: aired is still the programme's start, observed is when it was served.
 	later := start.Add(20 * time.Second)
-	r = stillResolver(slots, later, history)
+	r = stillResolver(t, slots, later, history)
 	airing, _, err = r.AiringAt(context.Background(), "ch1", later)
 	if err != nil {
 		t.Fatal(err)

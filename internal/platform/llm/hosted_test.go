@@ -8,6 +8,29 @@ import (
 	"testing"
 )
 
+// CheckModels is the AI connection check's proof that a hosted address answers with models.
+func TestCheckModels(t *testing.T) {
+	body := `{"data":[{"id":"m1"}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" || r.Header.Get("Authorization") != "Bearer k" {
+			http.Error(w, "nope", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	if err := CheckModels(context.Background(), srv.URL+"/v1", "k"); err != nil {
+		t.Fatalf("listed models: %v", err)
+	}
+	body = `{"data":[]}`
+	if err := CheckModels(context.Background(), srv.URL+"/v1", "k"); err == nil {
+		t.Error("an empty model list passed")
+	}
+	if err := CheckModels(context.Background(), srv.URL+"/v1", "wrong"); err == nil {
+		t.Error("a rejected listing passed")
+	}
+}
+
 func TestHostedProviderByKey(t *testing.T) {
 	if _, ok := HostedProviderByKey("openrouter"); !ok {
 		t.Error("openrouter should be in the curated catalog")

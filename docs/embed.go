@@ -14,6 +14,7 @@ import (
 	"embed"
 	"io/fs"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -90,8 +91,20 @@ type Page struct {
 	Markdown string
 }
 
-// Pages returns every embedded help page, ordered by slug so the Help nav and its
-// manifest are stable across builds.
+// readingPath is the order a new household reads Help in: set up, connect, make a channel. Pages
+// not named here follow it, by slug (#2751: Get started was sixth in plain slug order).
+var readingPath = []string{"get-started", "install-docker", "connect-services", "add-a-channel"}
+
+// readingRank is a slug's place on the reading path; every other page ranks after it.
+func readingRank(slug string) int {
+	if i := slices.Index(readingPath, slug); i >= 0 {
+		return i
+	}
+	return len(readingPath)
+}
+
+// Pages returns every embedded help page, along the reading path first and then by slug, so the
+// Help nav and its manifest are stable across builds.
 func Pages() []Page {
 	var out []Page
 	for _, dir := range helpDirs {
@@ -112,7 +125,12 @@ func Pages() []Page {
 			out = append(out, Page{Slug: slug, Path: file, Title: titleOf(string(body), slug), Markdown: string(body)})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Slug < out[j].Slug })
+	sort.Slice(out, func(i, j int) bool {
+		if ri, rj := readingRank(out[i].Slug), readingRank(out[j].Slug); ri != rj {
+			return ri < rj
+		}
+		return out[i].Slug < out[j].Slug
+	})
 	return out
 }
 

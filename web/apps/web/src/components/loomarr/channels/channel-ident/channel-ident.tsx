@@ -12,10 +12,6 @@ import type { ChannelIdentProps } from "./channel-ident.type";
 // fixed table cannot cover channels the operator creates — and a channel that fell off the
 // table would render blank, which is exactly the case the fallback exists for.
 
-// The hatch overlay the mock puts behind a monogram, so an icon-less row still reads as a
-// deliberate mark rather than a flat coloured square.
-const HATCH = "repeating-linear-gradient(135deg,transparent 0 3px,rgb(255 255 255/0.05) 3px 6px)";
-
 // The letters and the hue come from `@loomarr/core/guide` (#1659, N8), so the shared guide grid
 // and native draw the same mark. Colour is keyed on the channel NUMBER, so renaming a channel
 // does not change how the rail looks.
@@ -45,9 +41,11 @@ const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdent
         height: size,
         // color-mix keeps the tint tied to the same variable as the text, so a palette change
         // moves both together rather than leaving a mismatched pair.
-        backgroundColor: `color-mix(in srgb, ${color} 8%, transparent)`,
+        // ⚠ 6% is the most tint the hue's own letters keep AA (4.5:1) over: the pink (suggest)
+        // monogram fell to 4.24 at 14%, and to 4.49 even at 8%. The old hatch was a background
+        // image, which axe cannot measure, so it never checked this.
+        backgroundColor: `color-mix(in srgb, ${color} 6%, transparent)`,
         borderColor: `color-mix(in srgb, ${color} 30%, transparent)`,
-        backgroundImage: HATCH,
       }}
       className={cn("flex shrink-0 items-center justify-center rounded-[5px] border", className)}
     >

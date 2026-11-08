@@ -151,3 +151,67 @@ func TestMarkdownShowsHowLongRowsAreKept(t *testing.T) {
 		t.Errorf("markdown lacks %q", want)
 	}
 }
+
+// TestCheckHoldsWideTablesToGroupedColumns: past WideTable columns a table must group them, and a
+// grouped table places every column once, in groups that say why they stay.
+func TestCheckHoldsWideTablesToGroupedColumns(t *testing.T) {
+	wide := LiveTable{Name: "wide"}
+	described := map[string]string{}
+	for i := range WideTable + 1 {
+		name := "c" + strings.Repeat("x", i)
+		wide.Columns = append(wide.Columns, LiveColumn{Name: name})
+		described[name] = "A column."
+	}
+	check := func(groups []Group) []string {
+		doc := Doc{Areas: []Area{{Title: "A", About: "B", Tables: []Table{{Name: "wide", About: "Wide.", Columns: described, Groups: groups}}}}}
+		return Check(doc, []LiveTable{wide})
+	}
+	if got := check(nil); len(got) != 1 || !strings.Contains(got[0], "group them") {
+		t.Fatalf("an ungrouped wide table = %v, want one problem asking for groups", got)
+	}
+	all := make([]string, 0, len(wide.Columns))
+	for _, c := range wide.Columns {
+		all = append(all, c.Name)
+	}
+	if got := check([]Group{{Title: "All", Why: "One row, one thing.", Columns: all}}); len(got) != 0 {
+		t.Fatalf("a fully grouped table = %v, want no problems", got)
+	}
+	got := check([]Group{
+		{Title: "First", Why: "Because.", Columns: append([]string{"gone"}, all[1:]...)},
+		{Title: "Second", Columns: all[1:2]},
+	})
+	want := []string{
+		`column wide.c is in no group`,
+		`column wide.cx is in groups "First" and "Second"`,
+		`group "First" of wide names column gone, which doesn't exist`,
+		`table wide has a group without a title and a why`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Check =\n  %s\nwant\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
+	}
+}
+
+func TestMarkdownRendersEachGroupWithItsWhy(t *testing.T) {
+	doc := Doc{Areas: []Area{{Title: "A", About: "B", Tables: []Table{{
+		Name: "clips", About: "One clip.", Columns: map[string]string{"hash": "Its id.", "name": "Its name.", "held": "Not ready."},
+		Groups: []Group{
+			{Title: "Whether it can air", Why: "Read first.", Columns: []string{"held"}},
+			{Title: "The clip", Why: "Every read needs it.", Columns: []string{"name", "hash"}},
+		},
+	}}}}}
+	live := []LiveTable{{Name: "clips", Columns: []LiveColumn{{Name: "hash", Type: "TEXT"}, {Name: "name", Type: "TEXT"}, {Name: "held", Type: "INTEGER"}}}}
+	md, err := Markdown(doc, live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(md)
+	air := strings.Index(s, "**Whether it can air.** Read first.")
+	clip := strings.Index(s, "**The clip.** Every read needs it.")
+	if air < 0 || clip < air {
+		t.Fatalf("groups missing or out of order:\n%s", s)
+	}
+	// Inside a group, columns keep the database's order, not the group's listing.
+	if h, n := strings.Index(s, "| `hash`"), strings.Index(s, "| `name`"); h < clip || n < h {
+		t.Fatalf("group columns not in database order:\n%s", s)
+	}
+}
