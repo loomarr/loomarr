@@ -319,8 +319,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   build has no key. TMDB's notice shows on Settings → System → About whatever key is in use.
   The kill switch stops it too. An episode whose ids include its own TVDB id (from Sonarr or an
   NFO) is cached the same way, keyed `tvdb:episode:<id>` in its `library_items.catalog`: TMDB's
-  view of that episode, found through TMDB's `/find`, never by season and number (decision 53).
-  Episodes with no TVDB id are not described by TMDB yet. The identity digest carries a write
+  view of that episode, found through TMDB's `/find`, never by its season and number when it has
+  that id (decision 53). An episode with no TVDB id takes TMDB's entry for its season and number,
+  keyed `tmdb:season:<series id>/<season>` (one record per season, every episode in it), but only
+  when TMDB numbers the series the way the disk does: TMDB lists no other episode ordering for it
+  (episode groups: DVD, absolute, story arc), and every season on disk ends at TMDB's episode
+  count for that season. A pass identifies every file before writing any, so each series knows
+  its seasons on disk, and each series is resolved once and shared by its episodes. A series
+  record cached before it carried its orderings fails the check until its refresh. Episodes that
+  fail it keep their files' details; Needs you for them is 14b-5c. The identity digest carries a write
   version; raising it
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.

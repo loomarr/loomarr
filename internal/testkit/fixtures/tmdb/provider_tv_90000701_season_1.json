@@ -1,0 +1,15 @@
+{
+  "_id": "90000781a",
+  "air_date": "2019-03-04",
+  "id": 90000781,
+  "name": "Season 1",
+  "overview": "",
+  "poster_path": "/img-season-90000781.jpg",
+  "season_number": 1,
+  "vote_average": 7.4,
+  "episodes": [
+    { "id": 90000791, "episode_number": 1, "season_number": 1, "show_id": 90000701, "name": "First Light", "overview": "The keeper arrives at the station.", "air_date": "2019-03-04", "runtime": 43, "vote_average": 7.6, "vote_count": 12, "episode_type": "standard", "production_code": "", "still_path": null, "crew": [], "guest_stars": [] },
+    { "id": 90000792, "episode_number": 2, "season_number": 1, "show_id": 90000701, "name": "Low Water", "overview": "A storm cuts the harbor off.", "air_date": "2019-03-11", "runtime": 41, "vote_average": 0, "vote_count": 0, "episode_type": "standard", "production_code": "", "still_path": null, "crew": [], "guest_stars": [] },
+    { "id": 0, "episode_number": 3, "season_number": 1, "show_id": 90000701, "name": "", "overview": "", "air_date": null, "runtime": null, "vote_average": 0, "vote_count": 0, "episode_type": "standard", "production_code": "", "still_path": null, "crew": [], "guest_stars": [] }
+  ]
+}

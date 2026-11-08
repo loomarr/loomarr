@@ -64,7 +64,9 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	12: every title, episodes too, is listed with its facts and who supplied each (decision 40).
 //	13: an episode with a TVDB id asks the catalog for TMDB's view of it (decision 53).
 //	14: every title's files, tracks and artwork are listed with it (decisions 41, 44).
-const writeVersion = 14
+//	15: an episode with no TVDB id takes TMDB's entry for its season and number, when TMDB numbers
+//	    the series as the disk does (decision 53).
+const writeVersion = 15
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
@@ -133,7 +135,8 @@ type listedExtension struct {
 // originExtensionOf is r's provenance, whether an arr lists the file, and how the title is listed
 // (m is what said which title it is; series an episode's series origin), as an origin's
 // Observation.Extension.
-func originExtensionOf(kind mp.Kind, r precedence.Resolved, managed bool, m store.LibraryMatch, series inventory.OriginKey) json.RawMessage {
+func originExtensionOf(kind mp.Kind, res resolution, managed bool, series inventory.OriginKey) json.RawMessage {
+	r := res.resolved
 	ext := originExtension{From: DetailsFrom{
 		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
 		Year: r.Year.From.Provider, Premiere: r.PremiereDate.From.Provider,
@@ -141,9 +144,9 @@ func originExtensionOf(kind mp.Kind, r precedence.Resolved, managed bool, m stor
 	}, Managed: managed}
 	switch kind {
 	case mp.KindMovie, mp.KindSeries:
-		ext.Listed = &listedExtension{Catalog: catalogKey(kind, pickedIDs(r.IDs)), Match: m}
+		ext.Listed = &listedExtension{Catalog: res.catalog, Match: res.match}
 	case mp.KindEpisode:
-		ext.Listed = &listedExtension{Catalog: catalogKey(kind, pickedIDs(r.IDs)), Series: libraryOrigin(series)}
+		ext.Listed = &listedExtension{Catalog: res.catalog, Series: libraryOrigin(series)}
 	}
 	raw, _ := json.Marshal(ext)
 	return raw
