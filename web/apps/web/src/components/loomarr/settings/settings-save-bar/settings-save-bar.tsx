@@ -1,5 +1,4 @@
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { SettingsSaveBarProps } from "./settings-save-bar.type";
 
@@ -28,13 +27,12 @@ const SettingsSaveBar = ({
       <p className="flex-1 text-sm">
         {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
       </p>
-      <Button variant="ghost" onClick={onDiscard} disabled={saving}>
+      <Action disabled={saving} onPress={onDiscard} variant="ghost">
         Discard
-      </Button>
-      <Button onClick={onSave} disabled={saving}>
-        {saving && <Loader2 className="animate-spin" aria-hidden />}
+      </Action>
+      <Action disabled={saving} onPress={onSave}>
         {saving ? "Saving…" : "Save changes"}
-      </Button>
+      </Action>
     </section>
   );
 };

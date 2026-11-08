@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
-import { Card } from "@loomarr/design-system";
+import { Action, Card } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
@@ -12,7 +12,6 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { PoolHealth } from "@/components/loomarr/filler/pool-health";
 import { WatchLine } from "@/components/loomarr/filler/watch-line";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Button } from "@/components/ui/button";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { FillerCatalog } from "../filler-catalog";
@@ -172,13 +171,13 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
               </p>
             </div>
             {isAdmin ? (
-              <Button
-                variant="outline"
-                size="sm"
+              <Action
+                accessibilityRole="link"
                 render={<Link to="/filler/settings/$section" params={{ section: "storage" }} />}
+                variant="outline"
               >
                 Review limits
-              </Button>
+              </Action>
             ) : null}
           </Card>
         ) : null}

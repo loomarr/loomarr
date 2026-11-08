@@ -4,12 +4,11 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Toggle } from "@loomarr/design-system";
+import { Action, Toggle } from "@loomarr/design-system";
 import { CommitField, YearField } from "@loomarr/ui";
 import { useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -174,9 +173,9 @@ const WindowRow = ({
         onChangeText={(to) => setDraft({ ...draft, to })}
         value={draft.to}
       />
-      <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => onRemove(index)}>
+      <Action disabled={disabled} onPress={() => onRemove(index)} variant="ghost">
         Remove
-      </Button>
+      </Action>
     </div>
   );
 };
@@ -241,16 +240,9 @@ const WindowEditor = ({
             placeholder="To"
             value={draft.to}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-fit"
-            disabled={disabled}
-            onClick={add}
-          >
+          <Action disabled={disabled} onPress={add} style={{ alignSelf: "flex-start" }} variant="outline">
             Add range
-          </Button>
+          </Action>
         </div>
       )}
       {error && (
@@ -504,49 +496,43 @@ const FillerCriteria = ({
           </div>
         )}
         {eraWindows === undefined && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-fit"
+          <Action
             disabled={disabled}
-            onClick={() => {
+            onPress={() => {
               const { era: _era, ...rest } = selection;
               onChange({ ...rest, eraWindows: [{ from: YEAR_MIN, to: YEAR_MAX }] });
             }}
+            style={{ alignSelf: "flex-start" }}
+            variant="outline"
           >
             Use date ranges
-          </Button>
+          </Action>
         )}
         {eraWindows !== undefined && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-fit"
+          <Action
             disabled={disabled}
-            onClick={() => {
+            onPress={() => {
               const { eraWindows: _windows, ...rest } = selection;
               onChange({ ...rest, era: {} });
             }}
+            style={{ alignSelf: "flex-start" }}
+            variant="outline"
           >
             Use any era
-          </Button>
+          </Action>
         )}
         {!inheriting && !explicitlyAny && scopeLabel && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-fit"
+          <Action
             disabled={disabled}
-            onClick={() => {
+            onPress={() => {
               const { era: _era, eraWindows: _windows, ...rest } = selection;
               onChange(rest);
             }}
+            style={{ alignSelf: "flex-start" }}
+            variant="ghost"
           >
             Follow the channel&rsquo;s era ({scopeLabel})
-          </Button>
+          </Action>
         )}
       </div>
 
@@ -589,16 +575,14 @@ const FillerCriteria = ({
               ? "All products & topics"
               : `${categories.length} ${categories.length === 1 ? "tag" : "tags"} selected`}
           </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={disabled}
+          <Action
             aria-expanded={choosingCategories}
-            onClick={() => setChoosingCategories((current) => !current)}
+            disabled={disabled}
+            onPress={() => setChoosingCategories((current) => !current)}
+            variant="outline"
           >
             {choosingCategories ? "Done" : "Choose products & topics"}
-          </Button>
+          </Action>
         </div>
         {(choosingCategories || categories.length > 0) && (
           <div className="flex flex-wrap gap-1.5">

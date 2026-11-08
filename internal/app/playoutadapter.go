@@ -1575,7 +1575,23 @@ func (r *playoutResolver) Tracks(ctx context.Context, channelID string) (playout
 // MediaFormat, which reads as SDR/unknown rather than as anything asserted, so the item transcodes.
 // A copy of an unprobed source could ship a codec the output cannot play — a black frame — whereas
 // an unnecessary transcode is merely slow.
-func (r *playoutResolver) FormatOf(ctx context.Context, input string) playout.MediaFormat {
+//
+// A library item's colour transfer comes from the scanner's header read of its playing file when
+// that names one (#2173): an HDR10 Matroska file can signal PQ only in the HEVC parameter set, which
+// the header reader parses and ffprobe's stream summary reports as unknown, so the airing would skip
+// tone mapping. Any other id keeps the probe's.
+func (r *playoutResolver) FormatOf(ctx context.Context, libraryItemID, input string) playout.MediaFormat {
+	format := r.probedFormat(ctx, input)
+	if libraryItemID == "" {
+		return format
+	}
+	if header, ok := r.libraryFormat(ctx, libraryItemID); ok && header.ColorTransfer != "" && header.ColorTransfer != "unknown" {
+		format.ColorTransfer = header.ColorTransfer
+	}
+	return format
+}
+
+func (r *playoutResolver) probedFormat(ctx context.Context, input string) playout.MediaFormat {
 	if input == "" {
 		return playout.MediaFormat{}
 	}
