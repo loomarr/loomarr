@@ -15,7 +15,6 @@ import { useId, useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Label } from "@/components/ui/label";
 import type { ImportDialogProps } from "./import-dialog.type";
 
 type CandidateFilter = "all" | "available" | "imported" | "disabled" | "admin";
@@ -202,7 +201,10 @@ const ImportDialog = ({
                               disabled={candidate.imported || importing}
                               onCheckedChange={() => toggle(candidate.id)}
                             />
-                            <Label htmlFor={id} className="min-w-0 flex-1 cursor-pointer py-2 font-normal">
+                            <label
+                              htmlFor={id}
+                              className="text-foreground min-w-0 flex-1 cursor-pointer py-2 text-sm leading-none font-normal"
+                            >
                               <span className="block">
                                 <span className="flex flex-wrap items-center gap-2">
                                   <span className="font-medium">{candidate.name}</span>
@@ -226,7 +228,7 @@ const ImportDialog = ({
                                   Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
                                 </span>
                               </span>
-                            </Label>
+                            </label>
                           </li>
                         );
                       })}
