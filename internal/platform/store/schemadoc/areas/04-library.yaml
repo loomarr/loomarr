@@ -150,6 +150,29 @@ tables:
       runtime_from: The app that supplied the running time; empty when unknown.
       tagline: The one-line pitch printed on a poster; empty when unknown.
       trailer: The web page that plays the title's trailer; empty when it has none.
+    groups:
+      - group: The title
+        why: What every list and search shows for a title.
+        columns: [id, kind, name, sort_name, year, updated_at_ms]
+      - group: Where it was found
+        why: One scan origin per title, which a person's answer is kept against.
+        columns: [origin_authority, origin_key]
+      - group: Which title it is
+        why: >
+          The one match the library settled on and how. Candidates and answers that compete for it
+          live in library_candidates and library_answers.
+        columns: [catalog, grounded, searched, match_basis, match_app, match_page, needs_noticed, set_key]
+      - group: Details
+        why: >
+          The single value shown for each detail. Lists (genres, people, artwork) live in their own
+          tables.
+        columns: [original_title, overview, premiere_date, rating, score, runtime_ms, tagline, trailer]
+      - group: An episode's place
+        why: An episode belongs to one show at one season and number; movies and shows leave these empty.
+        columns: [season, episode, episode_end, series_authority, series_key, series_id]
+      - group: Which app supplied each detail
+        why: One source per detail above, so the detail page can say where each one came from.
+        columns: [name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from]
 
   - name: library_ids
     about: >
@@ -455,22 +478,6 @@ tables:
       collection_id: The collection (a library_collections id).
       inventory_item_id: The title (a library_items id).
       position: The title's place in the collection, from 1.
-
-  - name: library_item_paths
-    about: >
-      The media server's own file path for one of its items, remembered so a channel can play the item
-      without asking the media server at airtime. A stale row is harmless; it is rewritten on the next
-      lookup.
-    retention: >
-      Rewritten on its next lookup. A path no title, airing, channel or open request names is
-      deleted by the nightly housekeeping 30 days after it was written; it is looked up again if
-      it is needed.
-    columns:
-      item_id: The media server's id for the item.
-      server_path: >
-        The file's path as the media server names it, not the local one; the path map is applied when
-        it is read.
-      updated_at: When the path was last written, in Unix seconds.
 
   - name: series_episodes
     about: >

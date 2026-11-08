@@ -95,14 +95,13 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 			VALUES ('tmdb', 'movie', ?, ?, ?)`, c.id, c.fetched, c.retryAt)
 	}
 
-	// The media server's caches: a title's show and path stay; nobody's go once old.
+	// The media server's episode cache: a title's show stays; nobody's goes once old.
 	for _, c := range []struct {
 		id string
 		at time.Time
 	}{{"lib-named", old}, {"emby-gone", old}, {"emby-recent", recent}} {
 		exec(`INSERT INTO series_episodes (library_id, episodes_json, episode_count, fetched_at) VALUES (?, '[]', 0, ?)`,
 			c.id, c.at.Unix())
-		exec(`INSERT INTO library_item_paths (item_id, server_path, updated_at) VALUES (?, '/p', ?)`, c.id, c.at.Unix())
 	}
 
 	n, err := st.PurgeSpentCatalog(ctx, now)
@@ -110,9 +109,9 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	// 2 reports + 1 source + 1 item + 1 file + 1 candidate + 1 image ref + 1 library row
-	// + 2 catalog records + 1 episode list + 1 path.
-	if n != 12 {
-		t.Errorf("purged %d rows, want 12", n)
+	// + 2 catalog records + 1 episode list.
+	if n != 11 {
+		t.Errorf("purged %d rows, want 11", n)
 	}
 	for query, want := range map[string]int{
 		`SELECT count(*) FROM inventory_items`:                                               2,
@@ -130,8 +129,6 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 		`SELECT count(*) FROM library_catalog WHERE external_id IN ('90000202', '90000204')`: 0,
 		`SELECT count(*) FROM series_episodes`:                                               2,
 		`SELECT count(*) FROM series_episodes WHERE library_id = 'emby-gone'`:                0,
-		`SELECT count(*) FROM library_item_paths`:                                            2,
-		`SELECT count(*) FROM library_item_paths WHERE item_id = 'emby-gone'`:                0,
 	} {
 		var got int
 		if err := sqlSt.db.QueryRowContext(ctx, query).Scan(&got); err != nil {

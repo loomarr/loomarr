@@ -20,6 +20,32 @@ describe("shared interaction controls", () => {
     expect(markup).toContain('aria-pressed="true"');
   });
 
+  // #2760: a yes/no pair like Pass and Fail needs two answers of equal weight, green and red.
+  it("draws a success action as the danger action's neutral tile, in the success colour", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action tone="success">Pass</Action>
+        <Action tone="danger">Fail</Action>
+      </LoomarrProvider>,
+    );
+    // The tile's box is inline style on the button; its label colour is an atomic class.
+    const box = (label: string) =>
+      /style="([^"]*)"/.exec(
+        [...markup.slice(0, markup.indexOf(`>${label}<`)).matchAll(/<[a-z]+[^>]*role="button"[^>]*>/g)].at(
+          -1,
+        )?.[0] ?? "",
+      )?.[1];
+
+    expect(box("Pass")).toContain("background-color");
+    expect(box("Pass")).toBe(box("Fail"));
+    expect(declarationsOf(markup, tagBefore(markup, "Pass"))).toContain(
+      `color:${semanticColors.state.success}`,
+    );
+    expect(declarationsOf(markup, tagBefore(markup, "Fail"))).toContain(
+      `color:${semanticColors.state.danger}`,
+    );
+  });
+
   it("draws an icon action's glyph alone and announces its children as the name", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

@@ -8,7 +8,7 @@ import type {
   RefAttributes,
 } from "react";
 import { cloneElement, forwardRef, isValidElement, useId, useState } from "react";
-import { Platform, Pressable, TextInput } from "react-native";
+import { type GestureResponderEvent, Platform, Pressable, TextInput } from "react-native";
 
 import { useFocusLook } from "../focus-look";
 import { Icon, type IconTone } from "../icon";
@@ -41,6 +41,12 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   density?: Density;
   icon?: IconName;
   /**
+   * `end` draws an inline icon after the label, for a glyph that points the way the action goes:
+   * a pager's "Older" with its chevron toward older rows. The icon is decorative either way, so
+   * the name stays the label alone.
+   */
+  iconPlacement?: "end" | "start";
+  /**
    * Keep an inline label on one line by shrinking it to the room beside the icon, rather than
    * breaking a word that cannot fit (a 2×2 tile at an accessibility text size).
    */
@@ -72,7 +78,8 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   render?: ReactElement<Record<string, unknown>>;
   selected?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
-  tone?: "danger" | "primary" | "secondary";
+  /** `success` is `danger`'s twin: the neutral tile in the success colour, for a yes beside a no. */
+  tone?: "danger" | "primary" | "secondary" | "success";
   variant?: ActionVariant;
 };
 
@@ -141,6 +148,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       disabled = false,
       fitLabel = false,
       icon,
+      iconPlacement = "start",
       layout = "inline",
       onBlur,
       onFocus,
@@ -211,13 +219,15 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       ? variantTextColor(theme, variant)
       : tone === "danger"
         ? theme.stateDanger.val
-        : undefined;
+        : tone === "success"
+          ? theme.stateSuccess.val
+          : undefined;
     // A pointer label is already 700, so pressed only lifts the lighter TV label; never thinner.
     const labelWeight = tv ? (pressed ? "600" : "400") : "700";
     const iconTone: IconTone = look
       ? look.iconTone
-      : tone === "danger"
-        ? "danger"
+      : tone === "danger" || tone === "success"
+        ? tone
         : tone === "secondary"
           ? selected
             ? "content"
@@ -244,7 +254,13 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           glyph={icons[icon]}
           size="default"
           tone={
-            look ? look.iconTone : tone === "danger" ? "danger" : tone === "secondary" ? "content" : "inverse"
+            look
+              ? look.iconTone
+              : tone === "danger" || tone === "success"
+                ? tone
+                : tone === "secondary"
+                  ? "content"
+                  : "inverse"
           }
         />
         <TamaguiText
@@ -259,7 +275,12 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         </TamaguiText>
       </View>
     ) : icon ? (
-      <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="inline">
+      <View
+        alignItems="center"
+        flexDirection={iconPlacement === "end" ? "row-reverse" : "row"}
+        flexShrink={fitLabel ? 1 : undefined}
+        gap="inline"
+      >
         <Icon decorative glyph={icons[icon]} size={density === "tv" ? "touch" : "default"} tone={iconTone} />
         <TamaguiText
           color={textColor ?? (tone === "secondary" ? "contentPrimary" : "contentInverse")}
@@ -339,12 +360,16 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       // unchanged, which would silently never fire. `accessibilityRole` and `accessibilityLabel`
       // are RN's too: they reach the host as `role` and `aria-label`, and spread raw they are
       // unknown DOM attributes that leave the element unnamed.
+      // A composing parent's `onClick` (Base UI's DialogTrigger, which hands its props to the
+      // Action it renders) is chained with `onPress`, not overwritten by it.
       const {
         accessibilityLabel,
         accessibilityRole: _role,
+        onClick: parentClick,
         onPress,
         ...restProps
       } = props as typeof props & {
+        onClick?: (event: unknown) => void;
         onPress?: (event: unknown) => void;
       };
       // The host's `style` is CSS, which has no paddingHorizontal/paddingVertical: spell them out.
@@ -358,7 +383,13 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             "aria-disabled": isDisabled || undefined,
             "aria-pressed": ariaPressed,
             onBlur: focusLook.onBlur,
-            onClick: onPress,
+            onClick:
+              parentClick && onPress
+                ? (event: unknown) => {
+                    parentClick(event);
+                    onPress(event);
+                  }
+                : (parentClick ?? onPress),
             onFocus: focusLook.onFocus,
             ref,
             role,
@@ -378,10 +409,26 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       ) as ReactElement;
     }
 
+    // react-native-web's Pressable answers clicks through its own press responder and never calls
+    // an `onClick` prop, so a composing parent's (see the render branch) runs from onPress here.
+    const {
+      onClick: parentClick,
+      onPress,
+      ...pressableProps
+    } = props as typeof props & { onClick?: (event: GestureResponderEvent) => void };
+    const press =
+      parentClick && isWeb
+        ? (event: GestureResponderEvent) => {
+            parentClick(event);
+            onPress?.(event);
+          }
+        : onPress;
+
     return (
       <Pressable
         accessibilityLabel={iconLabel}
-        {...props}
+        {...pressableProps}
+        onPress={press}
         accessibilityState={{ ...accessibilityState, disabled: isDisabled, selected }}
         accessibilityRole={role}
         aria-disabled={isDisabled || undefined}

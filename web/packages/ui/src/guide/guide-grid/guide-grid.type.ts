@@ -20,6 +20,8 @@ interface GuideGridProps {
   onMove?: (direction: GuideNavigationDirection) => GuideNavigationResult | undefined;
   /** Opens a channel from its row or one of its blocks. */
   onOpenChannel?: (channelId: string) => void;
+  /** Opens the channel's page from its name; without it the name opens the channel like a block. */
+  onOpenChannelInfo?: (channelId: string) => void;
   /** A block took focus, or type-to-jump chose a channel. Wire it to the controller's `select`. */
   onSelect?: (selection: GuideSelection) => void;
   /** The row's ⋯ menu, in the channel column's last slot. Keep it stable (useCallback). */

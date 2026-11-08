@@ -29,8 +29,9 @@ const heldTitle = (held: LibraryHeldRemoval) => {
 };
 
 // What the scanner is doing, as one sentence and its dot. reading is true while new files' details
-// are being read, which is when a progress bar shows.
-const scanHeadline = (scan: LibraryScan) => {
+// are being read, which is when a progress bar shows. With anything waiting in Needs you, idle says
+// only "Up to date" (the word sheet's): "every title's ready to air" would contradict it (#2779).
+const scanHeadline = (scan: LibraryScan, needsYou = false) => {
   const reading = scan.enabled && scan.stage === "reading" && scan.headersTotal > 0;
   const percent = reading ? Math.round((scan.headersDone / scan.headersTotal) * 100) : 0;
   const [tone, text]: [ComponentProps<typeof StatusDot>["tone"], string] = !scan.enabled
@@ -39,7 +40,9 @@ const scanHeadline = (scan: LibraryScan) => {
       ? ["pending", "Paused while someone is watching"]
       : reading
         ? ["progress", "Adding your media"]
-        : ["ok", "All caught up — every title's ready to air"];
+        : needsYou
+          ? ["ok", "Up to date"]
+          : ["ok", "All caught up — every title's ready to air"];
   return { percent, reading, text, tone };
 };
 

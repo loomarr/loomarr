@@ -76,7 +76,8 @@ func introspectSQLite(ctx context.Context, db *sql.DB) ([]schemadoc.LiveTable, e
 			return nil, err
 		}
 		checked, json, flag := checkedColumns(ddl), jsonColumns(ddl), flagColumns(ddl)
-		rows, err := db.QueryContext(ctx, `SELECT name, type, "notnull", pk FROM pragma_table_info(?) ORDER BY cid`, name)
+		rows, err := db.QueryContext(ctx, `SELECT name, type, "notnull", pk, coalesce(dflt_value, '')
+			FROM pragma_table_info(?) ORDER BY cid`, name)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +85,7 @@ func introspectSQLite(ctx context.Context, db *sql.DB) ([]schemadoc.LiveTable, e
 		for rows.Next() {
 			var c schemadoc.LiveColumn
 			var pk int
-			if err := rows.Scan(&c.Name, &c.Type, &c.NotNull, &pk); err != nil {
+			if err := rows.Scan(&c.Name, &c.Type, &c.NotNull, &pk, &c.Default); err != nil {
 				_ = rows.Close()
 				return nil, err
 			}

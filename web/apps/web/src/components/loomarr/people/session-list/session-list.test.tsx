@@ -61,7 +61,30 @@ describe("SessionList", () => {
     const onRevoke = vi.fn();
     render(<SessionList userName="Ada" sessions={[session({ id: "hash-xyz" })]} onRevoke={onRevoke} />);
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    // The first press only asks: signing a session out can't be taken back.
+    expect(onRevoke).not.toHaveBeenCalled();
+    expect(screen.getByText(/that device has to sign in again/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(onRevoke).toHaveBeenCalledWith("hash-xyz");
+  });
+
+  it("lets the operator back out of signing a session out", async () => {
+    const onRevoke = vi.fn();
+    render(<SessionList userName="Ada" sessions={[session()]} onRevoke={onRevoke} />);
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onRevoke).not.toHaveBeenCalled();
+    expect(screen.queryByText(/that device has to sign in again/i)).not.toBeInTheDocument();
+  });
+
+  it("asks before signing out everywhere", async () => {
+    const onRevokeAll = vi.fn();
+    render(<SessionList userName="Ada" sessions={[session()]} onRevokeAll={onRevokeAll} />);
+    await userEvent.click(screen.getByRole("button", { name: "Sign out everywhere" }));
+    expect(onRevokeAll).not.toHaveBeenCalled();
+    expect(screen.getByText(/sign ada out of every device/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sign out everywhere" }));
+    expect(onRevokeAll).toHaveBeenCalledOnce();
   });
 
   it("spins only the row being revoked", () => {

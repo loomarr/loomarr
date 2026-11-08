@@ -47,7 +47,7 @@ func (s *sqlStore) ReserveStructureWindowCall(ctx context.Context, reservation w
 	result, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_structure_window_call_ledger (
 		request_sha256, attempt, evaluation_id, source_sha256, media_set_sha256, window_ordinal,
 		assessor_id, state, reservation_json, record_sha256, record_json, requested_at, assessed_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, 0) ON CONFLICT DO NOTHING`),
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', NULL, ?, 0) ON CONFLICT DO NOTHING`),
 		reservation.RequestSHA256, attempt, evaluation.ID, reservation.MediaSet.Plan.Source.SHA256,
 		reservation.MediaSet.SHA256, reservation.WindowOrdinal, reservation.Assessor.ID,
 		string(ledgerState), string(raw), epoch(reservation.RequestedAt))
