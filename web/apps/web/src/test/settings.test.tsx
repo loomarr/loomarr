@@ -300,10 +300,11 @@ describe("Settings", () => {
     expect(await screen.findByText("Emby refused the token.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /media server/i })).toHaveAttribute("aria-expanded", "true");
     // Tunarr has no passing verdict either, but a fresh install must not expand every problem
-    // into one long wall of controls. Its collapsed header still says it needs attention.
+    // into one long wall of controls. Its check probed no target, so its collapsed header says
+    // it is not set up rather than broken (#2755).
     const tunarr = screen.getByRole("button", { name: /tunarr/i });
     expect(tunarr).toHaveAttribute("aria-expanded", "false");
-    expect(tunarr).toHaveTextContent("needs attention");
+    expect(tunarr).toHaveTextContent("Not set up");
     // Exploring the next service stays focused: connection forms behave as an accordion.
     await userEvent.click(tunarr);
     expect(tunarr).toHaveAttribute("aria-expanded", "true");
