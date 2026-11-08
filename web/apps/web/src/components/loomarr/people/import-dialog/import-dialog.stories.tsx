@@ -41,7 +41,7 @@ const AllImported: Story = {
 const Busy: Story = { args: { importing: true } };
 const Selection: Story = {
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByLabelText(/^Adela Hale/));
+    await userEvent.click(await canvas.findByRole("checkbox", { name: /^Adela Hale/ }));
     await canvas.findByText("1 selected · 3 importable shown");
   },
 };

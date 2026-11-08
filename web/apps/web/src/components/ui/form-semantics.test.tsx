@@ -3,7 +3,6 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type * as React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { Checkbox } from "./checkbox";
 import { Input } from "./input";
 import { Label } from "./label";
 
@@ -84,60 +83,14 @@ describe("form field anatomy on the shared design system", () => {
     expect(submitted(onSubmit).get("password")).toBe("correct-horse");
   });
 
-  it("toggles a checkbox from its label and from Space, and submits it only when checked", async () => {
-    const { onSubmit } = renderForm(
-      <>
-        <Checkbox id="purge" name="purge" value="yes" />
-        <Label htmlFor="purge">Also remove it from Tunarr</Label>
-      </>,
-    );
-    const box = screen.getByRole("checkbox", { name: "Also remove it from Tunarr" });
-
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(submitted(onSubmit).has("purge")).toBe(false);
-
-    await userEvent.click(screen.getByText("Also remove it from Tunarr"));
-    expect(box).toBeChecked();
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(submitted(onSubmit).get("purge")).toBe("yes");
-
-    box.focus();
-    await userEvent.keyboard(" ");
-    expect(box).not.toBeChecked();
-  });
-
-  it("keeps a required checkbox's browser validation", () => {
-    const { form } = renderForm(
-      <>
-        <Checkbox id="terms" name="terms" required />
-        <Label htmlFor="terms">I have a backup</Label>
-      </>,
-    );
-
-    expect(screen.getByRole("checkbox", { name: "I have a backup" })).toBeRequired();
-    expect(form.checkValidity()).toBe(false);
-  });
-
   // The values are the design system's, not copies of them: a token change reaches the forms.
-  it("paints the field and checkbox from the shared semantic tokens", () => {
-    renderForm(
-      <>
-        <Input aria-label="Search" />
-        <Checkbox aria-label="Pick" />
-      </>,
-    );
+  it("paints the field from the shared semantic tokens", () => {
+    renderForm(<Input aria-label="Search" />);
 
     const field = screen.getByRole("textbox", { name: "Search" });
     expect(field.style.borderColor).toBe(hexToRgb(semanticColors.border.control));
     expect(field.style.color).toBe(hexToRgb(semanticColors.content.primary));
     expect(field.style.caretColor).toBe(hexToRgb(semanticColors.action.primary));
-    // Checked is neutral-pressed (#1909): no amber accent, a foreground border on the elevated fill.
-    const checkbox = screen.getByRole("checkbox", { name: "Pick" });
-    expect(checkbox.style.accentColor).toBe("");
-    expect(checkbox.style.getPropertyValue("--checkbox-border")).toBe(semanticColors.border.control);
-    expect(checkbox.style.getPropertyValue("--checkbox-checked-border")).toBe(semanticColors.content.primary);
-    expect(checkbox.style.getPropertyValue("--checkbox-checked-fill")).toBe(semanticColors.surface.elevated);
-    expect(checkbox).toHaveClass("size-6", "appearance-none");
   });
 
   // A caller's `style` still wins over the defaults, as a caller's class did before.

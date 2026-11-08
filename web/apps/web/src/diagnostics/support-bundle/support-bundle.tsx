@@ -8,11 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  Toggle,
 } from "@loomarr/design-system";
 import { Download, LoaderCircle, Settings2, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -280,21 +280,14 @@ const SupportBundle = ({
                     ["Process details", "processes", processes],
                     ["Process output", "output", processOutput],
                   ].map(([label, kind, checked]) => (
-                    <div
-                      key={String(kind)}
-                      className="border-border flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                    >
-                      <Checkbox
-                        aria-label={String(label)}
+                    <div key={String(kind)} className="border-border rounded-md border px-3">
+                      <Toggle
+                        label={String(label)}
                         checked={Boolean(checked)}
-                        onChange={(event) =>
-                          updateCategory(
-                            kind as "events" | "processes" | "output",
-                            event.currentTarget.checked,
-                          )
+                        onCheckedChange={(next) =>
+                          updateCategory(kind as "events" | "processes" | "output", next)
                         }
                       />
-                      {label}
                     </div>
                   ))}
                 </div>

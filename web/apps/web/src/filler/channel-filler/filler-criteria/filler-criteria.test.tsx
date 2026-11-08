@@ -4,12 +4,13 @@ import {
   getLocationsSearchMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_KINDS } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { FillerCriteria } from "./filler-criteria";
 
 // ⚠ MSW, not `vi.stubGlobal("fetch")` (retired-ok). The sibling `channel-filler.test.tsx` still
@@ -418,7 +419,7 @@ describe("FillerCriteria clip kinds", () => {
   it("stays disabled until the server says what the default is", () => {
     renderCriteria(<FillerCriteria selection={{}} onChange={vi.fn()} />);
 
-    expect(screen.getByRole("checkbox", { name: "Commercials" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Political ads" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Commercials" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("checkbox", { name: "Political ads" })).toHaveAttribute("aria-disabled", "true");
   });
 });

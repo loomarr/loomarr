@@ -1,4 +1,4 @@
-import { Checkbox } from "@/components/ui/checkbox";
+import { Toggle } from "@loomarr/design-system";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isThresholdOverridden, resetField, resetThreshold } from "@/lib/policy-overrides";
@@ -62,13 +62,14 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       <div className="flex items-start gap-2.5">
-        <Checkbox
+        <Toggle
           id="policy-auto-curate"
-          className="mt-0.5"
+          label={OPT_IN_LABEL}
+          labelHidden
           checked={enabled}
           disabled={!intentBacked}
           aria-describedby="policy-auto-curate-hint"
-          onChange={(e) => toggle(e.target.checked)}
+          onCheckedChange={toggle}
         />
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-1.5">

@@ -1,12 +1,11 @@
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Toggle } from "@loomarr/design-system";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 
 // Wizard step 6 — import media-server users (§11, §13). A media-server account grants
 // NO access until an admin explicitly imports it: signing in is not self-provisioning.
@@ -78,15 +77,15 @@ const UsersStep = () => {
               key={c.id}
               className="border-border bg-card flex items-center gap-3 rounded-md border px-3 py-2.5"
             >
-              <Checkbox
-                id={id}
-                checked={c.imported || selected.has(c.id)}
-                disabled={c.imported}
-                onChange={() => toggle(c.id)}
-              />
-              <Label htmlFor={id} className="flex-1 cursor-pointer font-normal">
-                {c.name}
-              </Label>
+              <div className="flex-1">
+                <Toggle
+                  id={id}
+                  label={c.name}
+                  checked={c.imported || selected.has(c.id)}
+                  disabled={c.imported}
+                  onCheckedChange={() => toggle(c.id)}
+                />
+              </div>
               {c.isAdmin && <span className="text-static-400 text-xs">server admin</span>}
               {c.imported && <span className="text-lock text-xs">imported</span>}
             </li>

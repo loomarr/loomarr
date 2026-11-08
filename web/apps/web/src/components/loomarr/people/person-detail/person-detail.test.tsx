@@ -28,7 +28,7 @@ describe("PersonDetail", () => {
     expect(onQuotaChange).not.toHaveBeenCalled();
     await userEvent.tab();
     expect(onQuotaChange).toHaveBeenCalledWith(12);
-    await userEvent.click(screen.getByLabelText("Auto-approve requests"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Auto-approve requests" }));
     expect(onToggleAutoApprove).toHaveBeenCalledWith(false);
   });
 

@@ -37,12 +37,15 @@ describe("ImportDialog", () => {
     expect(within(dialog).getByText("Disabled on server")).toBeInTheDocument();
     expect(within(dialog).getByText("Server admin")).toBeInTheDocument();
     expect(within(dialog).getByText("Initial Loomarr role: Admin")).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(/^Marta Hollis/)).toBeDisabled();
+    expect(within(dialog).getByRole("checkbox", { name: /^Marta Hollis/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("selects only visible importable results and posts only explicit ids", async () => {
     const { onImport } = renderDialog();
-    await userEvent.click(screen.getByLabelText(/^Adela Hale/));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Adela Hale/ }));
     await userEvent.type(screen.getByLabelText("Search accounts"), "Greta");
     await userEvent.click(screen.getByRole("button", { name: "Select visible" }));
     expect(screen.getByText("2 selected · 1 importable shown")).toBeInTheDocument();
@@ -53,8 +56,8 @@ describe("ImportDialog", () => {
 
   it("clears only visible selected results", async () => {
     renderDialog();
-    await userEvent.click(screen.getByLabelText(/^Adela Hale/));
-    await userEvent.click(screen.getByLabelText(/^Greta Finch/));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Adela Hale/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Greta Finch/ }));
     await userEvent.type(screen.getByLabelText("Search accounts"), "Greta");
     await userEvent.click(screen.getByRole("button", { name: "Clear visible" }));
     expect(screen.getByText("1 selected · 1 importable shown")).toBeInTheDocument();
@@ -74,7 +77,7 @@ describe("ImportDialog", () => {
   it("retains selection when import fails", async () => {
     const onImport = vi.fn().mockRejectedValue(new Error("provider unavailable"));
     renderDialog({ onImport });
-    await userEvent.click(screen.getByLabelText(/^Adela Hale/));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Adela Hale/ }));
     await userEvent.click(screen.getByRole("button", { name: "Import 1 account" }));
     await waitFor(() => expect(onImport).toHaveBeenCalledOnce());
     expect(screen.getByRole("button", { name: "Import 1 account" })).toBeEnabled();

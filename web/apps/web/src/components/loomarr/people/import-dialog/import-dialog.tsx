@@ -7,13 +7,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  Toggle,
 } from "@loomarr/design-system";
 import { Search, Server, ShieldCheck } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -202,19 +202,20 @@ const ImportDialog = ({
                     {visible.map((candidate) => {
                       const id = `${searchId}-${candidate.id}`;
                       return (
-                        <li key={candidate.id} className="border-static-800 border-b last:border-b-0">
-                          <Label
-                            htmlFor={id}
-                            className="flex cursor-pointer items-start gap-3 px-4 py-3 font-normal has-[:disabled]:cursor-not-allowed"
-                          >
-                            <Checkbox
-                              id={id}
-                              checked={candidate.imported || picked.has(candidate.id)}
-                              disabled={candidate.imported || importing}
-                              onChange={() => toggle(candidate.id)}
-                              className="mt-1"
-                            />
-                            <span className="min-w-0 flex-1">
+                        <li
+                          key={candidate.id}
+                          className="border-static-800 flex items-start gap-3 border-b px-4 py-1 last:border-b-0"
+                        >
+                          <Toggle
+                            id={id}
+                            label={candidate.name}
+                            labelHidden
+                            checked={candidate.imported || picked.has(candidate.id)}
+                            disabled={candidate.imported || importing}
+                            onCheckedChange={() => toggle(candidate.id)}
+                          />
+                          <Label htmlFor={id} className="min-w-0 flex-1 cursor-pointer py-2 font-normal">
+                            <span className="block">
                               <span className="flex flex-wrap items-center gap-2">
                                 <span className="font-medium">{candidate.name}</span>
                                 {candidate.imported && (

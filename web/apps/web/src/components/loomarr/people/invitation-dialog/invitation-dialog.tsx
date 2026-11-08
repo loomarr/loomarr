@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  Toggle,
 } from "@loomarr/design-system";
 import { QrCode } from "@loomarr/design-system/qr-code-web";
 import { useForm, useStore } from "@tanstack/react-form";
@@ -21,7 +22,6 @@ import { useId, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -335,20 +335,16 @@ const InvitationDialog = ({
             {onSendEmail && (
               <form.Field name="sendEmail">
                 {(field) => (
-                  <Label htmlFor={emailId} className="flex min-h-11 items-center gap-3 rounded-lg border p-3">
-                    <Checkbox
+                  <div className="rounded-lg border px-3 py-1">
+                    <Toggle
                       id={emailId}
+                      label="Also send by email"
+                      description="QR and copy remain available even if email is disabled or fails."
                       checked={field.state.value}
                       disabled={busy || !contactEmail.trim()}
-                      onChange={(event) => field.handleChange(event.target.checked)}
+                      onCheckedChange={field.handleChange}
                     />
-                    <span>
-                      <span className="block font-medium">Also send by email</span>
-                      <span className="text-muted-foreground block text-xs">
-                        QR and copy remain available even if email is disabled or fails.
-                      </span>
-                    </span>
-                  </Label>
+                  </div>
                 )}
               </form.Field>
             )}

@@ -6,7 +6,6 @@ import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
 import { Badge, FieldHint, Toggle } from "@loomarr/design-system";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -132,13 +131,14 @@ const SettingField = ({
         );
       }
       return (
-        <Checkbox
+        <Toggle
           id={id}
+          label={label}
+          labelHidden
           checked={value === "true"}
           disabled={pinned || disabledReason !== undefined}
           aria-describedby={describedBy}
-          aria-labelledby={labelledBy}
-          onChange={(e) => onChange(String(e.target.checked))}
+          onCheckedChange={(checked) => onChange(String(checked))}
         />
       );
     }

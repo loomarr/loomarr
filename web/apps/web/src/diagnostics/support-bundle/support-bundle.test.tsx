@@ -83,7 +83,7 @@ describe("SupportBundle", () => {
     await userEvent.click(screen.getByRole("button", { name: "Download troubleshooting report" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Download report" })).toBeEnabled());
     await userEvent.click(screen.getByText("Customize report"));
-    await userEvent.click(screen.getByLabelText("Application and player logs"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Application and player logs" }));
     expect(screen.getByRole("button", { name: "Download report" })).toBeDisabled();
     await waitFor(() => expect(screen.getByRole("button", { name: "Download report" })).toBeEnabled());
   });
@@ -93,11 +93,11 @@ describe("SupportBundle", () => {
     render(<SupportBundle />);
     await userEvent.click(screen.getByRole("button", { name: "Download troubleshooting report" }));
     await userEvent.click(screen.getByText("Customize report"));
-    await userEvent.click(screen.getByLabelText("Process details"));
-    expect(screen.getByLabelText("Process details")).not.toBeChecked();
-    expect(screen.getByLabelText("Process output")).not.toBeChecked();
-    await userEvent.click(screen.getByLabelText("Process output"));
-    expect(screen.getByLabelText("Process details")).toBeChecked();
-    expect(screen.getByLabelText("Process output")).toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Process details" }));
+    expect(screen.getByRole("checkbox", { name: "Process details" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Process output" })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Process output" }));
+    expect(screen.getByRole("checkbox", { name: "Process details" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Process output" })).toBeChecked();
   });
 });

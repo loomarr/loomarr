@@ -1,12 +1,11 @@
 import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
-import { Badge, FieldHint } from "@loomarr/design-system";
+import { Badge, FieldHint, Toggle } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { KeyRound, Mail, Server } from "lucide-react";
 import { useId, useState } from "react";
 import { SessionList } from "@/components/loomarr/people/session-list";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -305,15 +304,13 @@ const PersonDetail = ({
             />
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id={autoId}
-            checked={user.autoApprove}
-            disabled={busy}
-            onChange={(event) => onToggleAutoApprove?.(event.target.checked)}
-          />
-          <Label htmlFor={autoId}>Auto-approve requests</Label>
-        </div>
+        <Toggle
+          id={autoId}
+          label="Auto-approve requests"
+          checked={user.autoApprove}
+          disabled={busy}
+          onCheckedChange={(checked) => onToggleAutoApprove?.(checked)}
+        />
       </section>
 
       <section

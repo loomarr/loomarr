@@ -381,7 +381,7 @@ describe("SettingField", () => {
         onChange={onChange}
       />,
     );
-    await userEvent.click(screen.getByLabelText("Listen for missing clip details"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Listen for missing clip details" }));
     expect(onChange).toHaveBeenCalledWith("true");
   });
 

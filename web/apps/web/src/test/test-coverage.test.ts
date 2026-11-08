@@ -56,7 +56,6 @@ const KNOWN_GAPS = new Set([
   "components/loomarr/channels/channel-rules-editor/label/label.ts",
   "components/loomarr/channels/channel-rules-editor/presets/presets.ts",
   "components/loomarr/settings/settings-save-bar/settings-save-bar.tsx",
-  "components/ui/checkbox/checkbox.tsx",
   "dashboard/restart-watch-provider/restart-watch-provider.tsx",
   "dashboard/use-restart-watch/use-restart-watch.ts",
   // filler-criteria.tsx left this register in V51f — it grew tests when the era field gained
