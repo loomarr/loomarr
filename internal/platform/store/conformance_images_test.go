@@ -197,6 +197,22 @@ func testImageRefsAndOwnerLookup(t *testing.T, newStore NewStoreFunc) {
 	if got, _ := s.ImagesForOwner(ctx, "channel", "ch_2"); len(got) != 1 {
 		t.Errorf("deleting ch_1's refs also removed ch_2's")
 	}
+
+	// A title holds a poster and a logo; replacing its poster lets go of the poster alone.
+	for _, ref := range []ImageRef{
+		{ImageHash: a.Hash, OwnerKind: "library_item", OwnerID: "title_1", Role: "poster"},
+		{ImageHash: b.Hash, OwnerKind: "library_item", OwnerID: "title_1", Role: "logo"},
+	} {
+		if err := s.PutImageRef(ctx, ref); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.DeleteImageRefsByRole(ctx, "library_item", "title_1", "poster"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.ImagesForOwner(ctx, "library_item", "title_1"); len(got) != 1 || got[0].Hash != b.Hash {
+		t.Errorf("after letting go of the poster, title_1 holds %v; want its logo alone", got)
+	}
 }
 
 // The GC's work list. An image nothing points at is collectable; one with a ref is not.

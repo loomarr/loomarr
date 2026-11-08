@@ -93,6 +93,15 @@ grep -q 'DIAGNOSTICS_DIR=.*LOOMARR_AGENT_DIAGNOSTICS_DIR' "$SCRIPT_DIR/../.air.t
 grep -q 'SERVER_PUBLIC_URL=.*LOOMARR_AGENT_PUBLIC_URL' "$SCRIPT_DIR/../.air.toml"
 grep -q 'LOOMARR_DEV_LOGIN=.*LOOMARR_AGENT_DEV_LOGIN' "$SCRIPT_DIR/../.air.toml"
 grep -q 'LOOMARR_ENCRYPTION_KEY_FILE=.*LOOMARR_AGENT_ENCRYPTION_KEY_FILE' "$SCRIPT_DIR/../.air.toml"
+grep -q 'LOOMARR_TMDB_BASE_URL=.*LOOMARR_AGENT_TMDB_BASE_URL' "$SCRIPT_DIR/../.air.toml"
+# #1941: only a lane with a generated demo library points TMDB at its stand-in; the primary never
+# does, and an explicit empty override sends the demo lane back to the real TMDB.
+printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_TMDB_BASE_URL=''"
+mkdir -p "$TMP-wt/.agent-data/demo-library" "$TMP/.agent-data/demo-library"
+LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" export | grep -q "LOOMARR_AGENT_TMDB_BASE_URL='http://127.0.0.1:22[0-9]*/tmdb/3'"
+LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" export | grep -q "LOOMARR_AGENT_TMDB_BASE_URL=''"
+LOOMARR_REPO_ROOT="$TMP-wt" LOOMARR_AGENT_TMDB_BASE_URL='' "$SCRIPT_DIR/dev-env.sh" export | grep -q "LOOMARR_AGENT_TMDB_BASE_URL=''"
+rm -rf "$TMP-wt/.agent-data/demo-library" "$TMP/.agent-data/demo-library"
 if printf '%s\n' "$secondary" | grep -q 'http://localhost:8080'; then
 	echo 'agent-harness-test: secondary worktree reused the primary backend port' >&2
 	exit 1

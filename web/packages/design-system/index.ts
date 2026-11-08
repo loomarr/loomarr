@@ -15,6 +15,8 @@ export {
   resolveBrandLaunchMinHeight,
 } from "./src/brand";
 export { Card } from "./src/card";
+export type { CompactSelectOption, CompactSelectProps } from "./src/compact-select";
+export { CompactSelect } from "./src/compact-select";
 export type {
   DialogActionProps,
   DialogContentProps,

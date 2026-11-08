@@ -26,6 +26,8 @@ const (
 	DamageDropouts  DefectDamage = "dropouts"  // severity one-line white specks on every frame, as worn tape drops out
 	DamageClipping  DefectDamage = "clipping"  // the tone driven severity times louder, then cut to 16 bits
 	DamageRotated   DefectDamage = "rotated"   // the clean clip flagged to display turned 90 degrees: still clean
+	DamageCutStart  DefectDamage = "cut_start" // the clean clip with its first severity seconds cut off
+	DamageCutEnd    DefectDamage = "cut_end"   // the clean clip with its last severity seconds cut off
 )
 
 // FillerDefectFixtures are the heavy end of each damage, one clip apiece.
@@ -33,7 +35,12 @@ type FillerDefectFixtures struct {
 	Clean, Blocky, Blurred, Upscaled, Windowboxed, Combed, Dropouts, Clipped, Rotated string
 }
 
-const defectTone = "sine=frequency=440:sample_rate=48000:duration=4"
+// defectTone fades in and out over half a second, as a whole advert opens and closes quietly, so
+// only a cut clip is loud at an edge (#2034).
+const (
+	defectSeconds = 4
+	defectTone    = "sine=frequency=440:sample_rate=48000:duration=4,afade=t=in:d=0.5,afade=t=out:st=3.5:d=0.5"
+)
 
 // defectPicture is four seconds panning across one detailed mandelbrot frame at rate fps.
 //
@@ -100,6 +107,18 @@ func FillerDefectClip(t testing.TB, dir string, damage DefectDamage, severity fl
 		clean := FillerDefectClip(t, dir, DamageNone, 0)
 		// A phone clip: the coded frame is 640x480 and a display matrix turns it upright.
 		runDefectFFmpeg(t, ffmpeg, "-nostdin", "-v", "error", "-y", "-display_rotation", sev, "-i", clean, "-c", "copy", out)
+		return out
+	case DamageCutStart, DamageCutEnd:
+		clean := FillerDefectClip(t, dir, DamageNone, 0)
+		// Re-encoded rather than stream-copied, so the cut lands on the exact second and not on the
+		// nearest keyframe.
+		span := []string{"-ss", sev}
+		if damage == DamageCutEnd {
+			span = []string{"-t", strconv.FormatFloat(defectSeconds-severity, 'f', -1, 64)}
+		}
+		args := append([]string{"-nostdin", "-v", "error", "-y", "-i", clean}, span...)
+		args = append(args, "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", out)
+		runDefectFFmpeg(t, ffmpeg, args...)
 		return out
 	default:
 		t.Fatalf("unknown defect damage %q", damage)

@@ -97,6 +97,9 @@ type ImageStore interface {
 
 	PutImageRef(ctx context.Context, ref ImageRef) error
 	DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) error
+	// DeleteImageRefsByRole lets go of what an owner holds in one role (a title's poster), leaving
+	// its other roles (its logo, its backdrop) alone.
+	DeleteImageRefsByRole(ctx context.Context, ownerKind, ownerID, role string) error
 	ImagesForOwner(ctx context.Context, ownerKind, ownerID string) ([]Image, error)
 
 	// ListImagesByOrigin returns images of one origin, oldest first. The rehydrate job's work
@@ -305,6 +308,15 @@ func (s *Store) DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) 
 		`DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ?`), ownerKind, ownerID)
 	if err != nil {
 		return fmt.Errorf("delete image refs %s/%s: %w", ownerKind, ownerID, err)
+	}
+	return nil
+}
+
+func (s *Store) DeleteImageRefsByRole(ctx context.Context, ownerKind, ownerID, role string) error {
+	_, err := s.h.ExecContext(ctx, s.h.Rebind(
+		`DELETE FROM image_refs WHERE owner_kind = ? AND owner_id = ? AND role = ?`), ownerKind, ownerID, role)
+	if err != nil {
+		return fmt.Errorf("delete %s image refs %s/%s: %w", role, ownerKind, ownerID, err)
 	}
 	return nil
 }

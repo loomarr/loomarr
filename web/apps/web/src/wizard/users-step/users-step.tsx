@@ -1,11 +1,10 @@
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Toggle } from "@loomarr/design-system";
+import { Action, Toggle } from "@loomarr/design-system";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 
 // Wizard step 6 — import media-server users (§11, §13). A media-server account grants
 // NO access until an admin explicitly imports it: signing in is not self-provisioning.
@@ -95,18 +94,17 @@ const UsersStep = () => {
 
       {importUsers.error != null && <ErrorState error={importUsers.error} />}
 
-      <Button
-        className="w-fit"
+      <Action
         disabled={selected.size === 0 || importUsers.isPending}
-        onClick={() =>
+        onPress={() =>
           importUsers.mutate({ data: { ids: [...selected] } }, { onSuccess: () => setSelected(new Set()) })
         }
+        style={{ alignSelf: "flex-start" }}
       >
-        {importUsers.isPending && <Loader2 className="animate-spin" aria-hidden />}
         {importUsers.isPending
           ? "Importing…"
           : `Import ${selected.size || ""} ${selected.size === 1 ? "person" : "people"}`.trim()}
-      </Button>
+      </Action>
 
       {importable.length === 0 && (
         <p className="text-muted-foreground text-xs">Everyone on your media server is imported.</p>

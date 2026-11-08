@@ -708,7 +708,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 
 	// An unrecognised level is normalised on the way in — the UI has no colour for it, so
 	// storing it would render an invisible dot.
-	if err := st.RecordActivity(ctx, Activity{Text: "odd", Level: "banana"}); err != nil {
+	if err := st.RecordActivity(ctx, Activity{Text: "odd", Kind: ActivityKindSystem, Level: "banana"}); err != nil {
 		t.Fatalf("record odd level: %v", err)
 	}
 	after, _ := st.ListActivity(ctx, 1)
@@ -991,6 +991,7 @@ func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
 	// Proposals: one of each status, all OLD.
 	for _, p := range []Proposal{
 		{ID: "p-denied", Status: "denied", UpdatedAt: old},
+		{ID: "p-superseded", Status: "superseded", UpdatedAt: old},
 		{ID: "p-approved", Status: "approved", UpdatedAt: old},
 		{ID: "p-submitted", Status: "submitted", UpdatedAt: old},
 		{ID: "p-fresh-denied", Status: "denied", UpdatedAt: recent},
@@ -1000,23 +1001,25 @@ func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
 		}
 	}
 
-	n, err = st.PurgeDeniedProposals(ctx, time.Now().Add(-90*24*time.Hour))
+	n, err = st.PurgeDiscardedProposals(ctx, time.Now().Add(-90*24*time.Hour))
 	if err != nil {
 		t.Fatalf("purge proposals: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("purged %d proposals, want 1 (the old denied one)", n)
+	if n != 2 {
+		t.Errorf("purged %d proposals, want 2 (the old denied and superseded ones)", n)
 	}
 	// ⚠ THE AUDIT TRAIL. An approved proposal is the record that someone authorized spending
 	// real resources (§7); a submitted one is a member still waiting for an answer. Neither
 	// may be aged out.
 	for _, id := range []string{"p-approved", "p-submitted", "p-fresh-denied"} {
 		if _, err := st.GetProposal(ctx, id); err != nil {
-			t.Errorf("proposal %s was purged; only OLD DENIED proposals may go (%v)", id, err)
+			t.Errorf("proposal %s was purged; only OLD DENIED or SUPERSEDED proposals may go (%v)", id, err)
 		}
 	}
-	if _, err := st.GetProposal(ctx, "p-denied"); err == nil {
-		t.Error("the old denied proposal survived a purge that should have removed it")
+	for _, id := range []string{"p-denied", "p-superseded"} {
+		if _, err := st.GetProposal(ctx, id); err == nil {
+			t.Errorf("proposal %s survived a purge that should have removed it", id)
+		}
 	}
 }
 

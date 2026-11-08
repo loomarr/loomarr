@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -419,6 +420,9 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 	// unauthenticated caller request ten thousand distinct sizes and make the box encode ten
 	// thousand renditions — CPU and disk amplification with no login.
 	w := rec.Role.NearestWidth(width)
+	if !slices.Contains(rec.Role.Formats(), f) {
+		return Rendition{}, ErrNotFound // a logo's JPEG would lose its alpha
+	}
 	dst, err := s.blob.DerivativePath(hash, w, f)
 	if err != nil {
 		return Rendition{}, ErrNotFound

@@ -39,7 +39,14 @@ type Windows struct {
 // composite store remains at the composition root; this module can delete only
 // the record classes its interface names.
 type Store interface {
-	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
+	PurgeDiscardedProposals(ctx context.Context, before time.Time) (int, error)
+	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error)
+	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
+	PurgeSupersededDiscoveryFeedback(ctx context.Context) (int, error)
+	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
+	PurgeSpentFillerRecords(ctx context.Context, now time.Time) (int, error)
+	PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error)
+	PurgeSpentCatalog(ctx context.Context, now time.Time) (int, error)
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
@@ -102,7 +109,7 @@ func New(st Store, win Windows, now func() time.Time, log *slog.Logger) *Service
 // The purges below return the rows they deleted so Housekeeping can report one per-run total.
 func (s *Service) PurgeRecords(ctx context.Context) (int, error) {
 	now := s.now()
-	proposals, err := s.store.PurgeDeniedProposals(ctx, now.Add(-s.win.Proposals()))
+	proposals, err := s.store.PurgeDiscardedProposals(ctx, now.Add(-s.win.Proposals()))
 	if err != nil {
 		return 0, err
 	}
@@ -187,6 +194,57 @@ func (s *Service) PurgeDiagnostics(ctx context.Context) (diagnostics.PurgeResult
 	return result, err
 }
 
+// FinishedOperationRetention is how long a finished model download or split detection is kept
+// for a page to pick up again. A fixed product policy, like notifications: nothing reads it after.
+const FinishedOperationRetention = 7 * 24 * time.Hour
+
+// RecipientGrace is how long a requester row may point at a title that isn't written yet:
+// approval records who asked before provisioning writes the title.
+const RecipientGrace = 30 * 24 * time.Hour
+
+// UnusedTitleRetention is how long a settled title no channel or open request names is kept. It
+// outlasts a channel being rebuilt or a request being refined, either of which may name it again.
+const UnusedTitleRetention = 180 * 24 * time.Hour
+
+// PurgeSpent removes rows nothing will read again (#2528): pairing codes past their expiry,
+// finished interactive operations past FinishedOperationRetention, discovery choices a newer one
+// replaced, requesters of a title or channel that is gone, spent filler records, titles nothing
+// has named for UnusedTitleRetention, and the catalog's gone titles, files and caches. Each
+// returns its own count; the total is what the pass reports.
+func (s *Service) PurgeSpent(ctx context.Context) (int, error) {
+	now := s.now()
+	var errs []error
+	total := 0
+	for _, purge := range []struct {
+		what string
+		run  func() (int, error)
+	}{
+		{"expired device pairings", func() (int, error) { return s.store.PurgeExpiredDevicePairings(ctx, now) }},
+		{"finished interactive operations", func() (int, error) {
+			return s.store.PurgeFinishedInteractiveOperations(ctx, now.Add(-FinishedOperationRetention))
+		}},
+		{"superseded discovery feedback", func() (int, error) { return s.store.PurgeSupersededDiscoveryFeedback(ctx) }},
+		{"orphan notification recipients", func() (int, error) {
+			return s.store.PurgeOrphanNotificationReferenceRecipients(ctx, now.Add(-RecipientGrace))
+		}},
+		{"filler records", func() (int, error) { return s.store.PurgeSpentFillerRecords(ctx, now) }},
+		{"unused titles", func() (int, error) { return s.store.PurgeUnusedTitles(ctx, now.Add(-UnusedTitleRetention)) }},
+		// After the titles: a title purged tonight releases its episode list and paths.
+		{"spent catalog", func() (int, error) { return s.store.PurgeSpentCatalog(ctx, now) }},
+	} {
+		n, err := purge.run()
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		total += n
+		if n > 0 && s.log != nil {
+			s.log.Info("spent rows purged", "what", purge.what, "rows", n)
+		}
+	}
+	return total, errors.Join(errs...)
+}
+
 // PurgeClientCrashReports applies the fixed crash-report policy (#1816): 30 days or the newest
 // 1000, whichever is fewer. Like notifications it is deliberately not a setting; the byte budget
 // above does not cover these rows, the row cap bounds them instead.
@@ -224,6 +282,7 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 	diag, err := s.PurgeDiagnostics(ctx)
 	count(diag.Events+diag.ProcessRuns, err)
 	count(s.PurgeClientCrashReports(ctx))
+	count(s.PurgeSpent(ctx))
 	if err := s.store.MaintainQualityLedger(ctx, s.now()); err != nil {
 		errs = append(errs, err)
 	}
@@ -265,7 +324,7 @@ const housekeepingTimeout = 25 * time.Minute
 func (s *Service) Job() jobs.Job {
 	return jobs.Job{
 		Name: "housekeeping", Group: jobs.GroupSystem, Title: "Clean up old data",
-		Description: "Rolls up discovery-quality observations and removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods, then gives the freed space back to the disk.",
+		Description: "Rolls up discovery-quality observations and removes expired sessions and pairing codes, old activity, invitations, password recoveries, diagnostics and notifications, denied and replaced requests, completed jobs and finished downloads after their retention periods, then gives the freed space back to the disk.",
 		DefaultCron: "0 30 4 * * *", ScheduleKey: settings.JobHousekeepingSchedule.Key(),
 		Timeout: housekeepingTimeout,
 		Run:     s.Housekeeping,

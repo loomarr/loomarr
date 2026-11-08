@@ -30,8 +30,24 @@ const HelpPage = () => {
   // as broken, and troubleshooting sorts first by slug in practice.
   const active = page ?? docs[0]?.slug;
 
-  const doc = helpApi.useGetDoc(active ?? "", { query: { enabled: Boolean(active) } });
-  const markdown = unwrap(doc.data, (b) => b.markdown) ?? "";
+  const doc = helpApi.useGetDoc(active ?? "", section ? { section } : undefined, {
+    query: { enabled: Boolean(active) },
+  });
+  const served = unwrap(doc.data, (b) => b);
+  const markdown = served?.markdown ?? "";
+
+  // A link from before the help restructure (#1572) can name a page or section that moved,
+  // sometimes to another page. The server answers with where that content lives now, and the
+  // URL follows it so the right page is open and the heading scroll below lands (#1736).
+  useEffect(() => {
+    if (!page || !served) return;
+    if (served.slug === page && (served.section === section || !section)) return;
+    void navigate({
+      to: "/help",
+      search: { page: served.slug, ...(served.section ? { section: served.section } : {}) },
+      replace: true,
+    });
+  }, [navigate, page, section, served]);
 
   // Scroll to the deep-linked section once its page has rendered (§13: a red check lands
   // on the exact heading, not just the page). Runs when the section OR the rendered

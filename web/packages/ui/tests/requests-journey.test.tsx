@@ -15,10 +15,21 @@ import { RequestsJourney } from "../index";
 const refreshControls = vi.hoisted(
   () => [] as { onRefresh?: () => void; refreshing?: boolean; children?: ReactNode }[],
 );
+// Android hardware Back listeners, oldest first. React Native asks the newest first and stops at the
+// first that returns true.
+const backHandlers = vi.hoisted(() => [] as (() => boolean | null | undefined)[]);
+const pressHardwareBack = () => [...backHandlers].reverse().some((handler) => handler() === true);
 vi.mock("react-native", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-native")>();
   return {
     ...actual,
+    BackHandler: {
+      ...actual.BackHandler,
+      addEventListener: (_event: string, handler: () => boolean | null | undefined) => {
+        backHandlers.push(handler);
+        return { remove: () => backHandlers.splice(backHandlers.indexOf(handler), 1) };
+      },
+    },
     RefreshControl: (props: (typeof refreshControls)[number]) => {
       refreshControls.push(props);
       return props.children;
@@ -112,6 +123,7 @@ const mount = async (controller: RequestsController, channels = guideChannels) =
 };
 afterEach(async () => {
   for (const handle of mounted.splice(0)) await handle.unmount();
+  backHandlers.length = 0;
   refreshControls.length = 0;
   noop.mockClear();
 });
@@ -265,5 +277,62 @@ describe("the composer's refusal banner", () => {
     );
     await click(byLabel("Back to Requests"));
     expect(fake.controller.dismissNotice).not.toHaveBeenCalled();
+  });
+});
+
+// #1880: the phone shell's own Back listener sends Requests to Watching. A request's detail and the
+// composer sit inside Requests, so Android's hardware Back has to land on the list first.
+describe("Android hardware Back", () => {
+  // The phone shell registers its listener after the journey mounts (a parent's effect runs after
+  // its child's), so it stands in for that listener here.
+  const mountInShell = async (controller: RequestsController) => {
+    await mount(controller);
+    const shell = vi.fn(() => true);
+    backHandlers.push(shell);
+    return shell;
+  };
+  const backToRequestsShown = () => all('[aria-label="Back to Requests"]').length > 0;
+
+  it("returns from a request's detail to the list, not to the shell", async () => {
+    const shell = await mountInShell(
+      fakeController(requestsSnapshot({ entries: only("generating") })).controller,
+    );
+    await click(
+      byLabel(`${journeys.generating.intent.description}, ${requestsSnapshot().entries[1]?.status.line}`),
+    );
+    expect(backToRequestsShown()).toBe(true);
+
+    let consumed = false;
+    await act(async () => {
+      consumed = pressHardwareBack();
+    });
+    expect(consumed).toBe(true);
+    expect(shell).not.toHaveBeenCalled();
+    expect(backToRequestsShown()).toBe(false);
+    expect(selectedSection()).toEqual(["In progress, 1"]);
+  });
+
+  it("closes the composer to the list, dropping the refusal it showed", async () => {
+    const fake = fakeController(requestsSnapshot({ notice: "Admins only" }));
+    const shell = await mountInShell(fake.controller);
+    await click(byLabel("Request a channel"));
+    vi.mocked(fake.controller.dismissNotice).mockClear();
+
+    await act(async () => {
+      pressHardwareBack();
+    });
+    expect(shell).not.toHaveBeenCalled();
+    expect(backToRequestsShown()).toBe(false);
+    expect(fake.controller.dismissNotice).toHaveBeenCalledTimes(1);
+  });
+
+  it("is left to the shell on the list", async () => {
+    const shell = await mountInShell(
+      fakeController(requestsSnapshot({ entries: only("generating") })).controller,
+    );
+    await act(async () => {
+      pressHardwareBack();
+    });
+    expect(shell).toHaveBeenCalledTimes(1);
   });
 });

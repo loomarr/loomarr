@@ -3,11 +3,12 @@ import {
   getSystemEncryptionStatusMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { EncryptionSettings } from "./encryption-settings";
 
 const wrapper = ({ children }: { children: ReactNode }) => (

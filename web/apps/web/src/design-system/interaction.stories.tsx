@@ -84,6 +84,14 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
           secureTextEntry
           value="correct horse"
         />
+        <Field
+          density={density}
+          label="Channel brief"
+          multiline
+          numberOfLines={3}
+          onChangeText={() => undefined}
+          value="Saturday-morning cartoons from the late eighties, with the cereal ads between them."
+        />
       </Surface>
 
       <Surface gap="control" padding="section">

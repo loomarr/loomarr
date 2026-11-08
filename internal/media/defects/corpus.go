@@ -10,9 +10,10 @@ import (
 // CorpusVersion names the committed synthetic corpus the bars are scored against (#2034 step 4c).
 // A new corpus is a new file and a new version; an old one is never edited, so a score always
 // names exactly the labels it was taken against.
-const CorpusVersion = "defect-corpus-v1"
+// v2 adds the record-only cut-off start and end cases; v1 stays committed, unedited.
+const CorpusVersion = "defect-corpus-v2"
 
-//go:embed corpus/defect-corpus-v1.json
+//go:embed corpus/defect-corpus-v2.json
 var corpusFiles embed.FS
 
 // Corpus is the committed synthetic corpus: invented clips, each damaged one known way at one
@@ -37,6 +38,9 @@ type CorpusCase struct {
 	Damage   string           `json:"damage"`
 	Severity float64          `json:"severity"`
 	Labels   map[string]Label `json:"labels"`
+	// RecordOnly marks a damage no check judges yet (framing, #2034): it is scored on its recorded
+	// evidence rather than on the floor's outcome, which it must never change.
+	RecordOnly bool `json:"recordOnly,omitempty"`
 }
 
 // LoadCorpus reads the committed corpus and checks that every case is labelled for every era.

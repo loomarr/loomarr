@@ -659,6 +659,12 @@ and stay here.
   neither; boot refuses one alone) make the server a demo site: the unauthenticated
   `GET /v1/setup/state` returns that account so the sign-in screen can offer it, and the app shows
   the demo tour. The password is public by design, so only the demo site sets them.
+- **The TMDB stand-in is bootstrap-tier.** `LOOMARR_TMDB_BASE_URL` (an absolute http(s) URL; boot
+  refuses anything else) points the TMDB client at a stand-in instead of the public API, so a lane
+  or demo backend grounds suggestions over the demo library's invented catalogue without a real key
+  or real titles (#1941). The client's base URL is fixed for its lifetime, and redirecting every
+  grounding lookup is not something an admin session should flip, so it is read at boot. Boot warns
+  while it is set.
 - **`LLM_*` environment values are initial defaults** when no in-app selection exists; an in-app
   provider selection (`llm.provider`, `llm.url`, `llm.model`, `llm.api_key.<provider>`) overrides
   them and hot-swaps the running suggester.

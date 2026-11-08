@@ -49,7 +49,8 @@ func (c *countingCycle) count() int {
 }
 
 // stubChannels serves one mutable channel, so a test can change a lineup or policy mid-run and
-// assert the fingerprint noticed.
+// assert the fingerprint noticed. It returns the row exactly as stored: a channel that has not
+// gone live has a zero PlayoutAnchor, and a test that needs an anchored channel sets one (#1639).
 type stubChannels struct {
 	mu sync.Mutex
 	ch store.Channel
@@ -58,9 +59,6 @@ type stubChannels struct {
 func (s *stubChannels) GetChannel(context.Context, string) (store.Channel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.ch.PlayoutAnchor.IsZero() {
-		s.ch.PlayoutAnchor = time.Unix(1_700_000_000, 0).UTC()
-	}
 	return s.ch, nil
 }
 

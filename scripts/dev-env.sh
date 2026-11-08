@@ -107,6 +107,14 @@ else
 	DEFAULT_DISABLE_LIVETV_TUNER=1
 fi
 
+# A lane that has generated the demo library (`make demo-library`) points TMDB at the stand-in the
+# demo library serves at /tmdb/3, so AI suggestions ground in invented titles only (#1941). Other
+# lanes and the primary worktree keep the real TMDB.
+DEFAULT_TMDB_BASE_URL=
+if [ "$ROOT" != "$PRIMARY" ] && [ -d "${DEMO_DIR:-$ROOT/.agent-data/demo-library}" ]; then
+	DEFAULT_TMDB_BASE_URL="http://${DEMO_LIBRARY_ADDR:-127.0.0.1:$((22000 + SLOT))}/tmdb/3"
+fi
+
 for port in "$BACKEND_PORT" "$FRONTEND_PORT" "$STORYBOOK_PORT" "$TUNARR_PORT" "$PROMETHEUS_PORT" "$GRAFANA_PORT"; do
 	valid_port "$port" || { echo "dev-env: invalid port: $port" >&2; exit 2; }
 done
@@ -122,6 +130,8 @@ PUBLIC_URL_OVERRIDE="${LOOMARR_AGENT_PUBLIC_URL:-$DEFAULT_PUBLIC_URL}"
 DISABLE_LIVETV_TUNER_OVERRIDE="${LOOMARR_AGENT_DISABLE_LIVETV_TUNER:-$DEFAULT_DISABLE_LIVETV_TUNER}"
 DEV_LOGIN_OVERRIDE="${LOOMARR_AGENT_DEV_LOGIN:-$DEFAULT_DEV_LOGIN}"
 ENCRYPTION_KEY_FILE_OVERRIDE="${LOOMARR_AGENT_ENCRYPTION_KEY_FILE:-$DEFAULT_ENCRYPTION_KEY_FILE}"
+# No colon: LOOMARR_AGENT_TMDB_BASE_URL= (empty) sends a demo lane back to the real TMDB.
+TMDB_BASE_URL_OVERRIDE="${LOOMARR_AGENT_TMDB_BASE_URL-$DEFAULT_TMDB_BASE_URL}"
 
 emit_export() {
 	name="$1"
@@ -155,6 +165,7 @@ case "${1:-show}" in
 		emit_export LOOMARR_AGENT_DISABLE_LIVETV_TUNER "$DISABLE_LIVETV_TUNER_OVERRIDE"
 		emit_export LOOMARR_AGENT_DEV_LOGIN "$DEV_LOGIN_OVERRIDE"
 		emit_export LOOMARR_AGENT_ENCRYPTION_KEY_FILE "$ENCRYPTION_KEY_FILE_OVERRIDE"
+		emit_export LOOMARR_AGENT_TMDB_BASE_URL "$TMDB_BASE_URL_OVERRIDE"
 		emit_export FILLER_DROP_DIR "${FILLER_DROP_DIR:-$ROOT/.filler-drop}"
 		;;
 	show)
@@ -177,6 +188,7 @@ case "${1:-show}" in
 			'images override' "${IMAGES_OVERRIDE:-<from .env>}" \
 			'diagnostics override' "${DIAGNOSTICS_OVERRIDE:-<from .env>}" \
 			'public URL override' "${PUBLIC_URL_OVERRIDE:-<from .env>}" \
+			'tmdb override' "${TMDB_BASE_URL_OVERRIDE:-<real TMDB>}" \
 			'livetv tuner publishing' "$livetv_tuner_label"
 		printf '%-22s %s\n' 'dev login' "$dev_login_label"
 		;;

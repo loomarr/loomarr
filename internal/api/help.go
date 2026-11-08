@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -79,23 +80,32 @@ func (s *Server) listDocs(_ context.Context, _ *struct{}) (*listDocsOutput, erro
 }
 
 type getDocInput struct {
-	Slug string `path:"slug" example:"troubleshooting"`
+	Slug    string `path:"slug" example:"troubleshooting"`
+	Section string `query:"section" required:"false" example:"setup-checks" doc:"The heading anchor a link names. A section that was renamed or moved resolves to where its content lives now."`
 }
 type getDocOutput struct {
 	Body struct {
-		Slug     string `json:"slug"`
+		Slug     string `json:"slug" doc:"The canonical slug of the page served, which differs from the requested one when the page moved"`
+		Section  string `json:"section" doc:"The canonical heading anchor for the requested section; empty when none was requested or the content is the page's top"`
 		Title    string `json:"title"`
 		Markdown string `json:"markdown"`
 	}
 }
 
 func (s *Server) getDoc(_ context.Context, in *getDocInput) (*getDocOutput, error) {
-	page, ok := docs.Get(in.Slug)
+	// Resolve the page and section together: a pre-restructure section can have moved to
+	// another page (#1736).
+	href := in.Slug
+	if in.Section != "" {
+		href += "#" + in.Section
+	}
+	slug, section, _ := strings.Cut(docs.Resolve(href), "#")
+	page, ok := docs.Get(slug)
 	if !ok {
 		return nil, errNotFound("Help page not found", "That help page doesn't exist — it may have been moved or renamed.")
 	}
 	out := &getDocOutput{}
-	out.Body.Slug, out.Body.Title, out.Body.Markdown = page.Slug, page.Title, page.Markdown
+	out.Body.Slug, out.Body.Section, out.Body.Title, out.Body.Markdown = page.Slug, section, page.Title, page.Markdown
 	return out, nil
 }
 

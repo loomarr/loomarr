@@ -45,12 +45,17 @@ type ImportStore interface {
 	store.LibraryFileStore
 }
 
-// Posters puts a title's poster in the image service (#2151 step 10). ref is what precedence
-// resolved: an image file beside the media, or a manager's https URL; "" is none. The title owns
-// one poster: the one it had before is let go.
-type Posters interface {
-	Poster(ctx context.Context, itemID, ref string) error
+// Artwork puts a title's artwork in the image service: its poster (#2151 step 10), its fanart as
+// the backdrop and its clear logo (#2567). kind is one of ImportedArt; ref is what precedence
+// resolved for it, an image file beside the media or a provider's https URL, local first; "" is
+// none. The title owns one image per kind: the one it had before is let go.
+type Artwork interface {
+	Art(ctx context.Context, itemID, kind, ref string) error
 }
+
+// ImportedArt is the artwork kinds a title's images are imported for. The rest (banner,
+// landscape, clearart, discart) stay references: nothing shows them yet.
+var ImportedArt = []string{mp.KindPoster, mp.KindFanart, mp.KindClearlogo}
 
 // Importer is the shadow scanner (#2151 step 5). Each pass walks every in-use root, writes each
 // new or changed media file to the inventory as an origin of its root, then reads the headers of
@@ -71,8 +76,8 @@ type Importer struct {
 	// Art lists artwork sidecars; nil lists none. A file's come from the walk's own listing; a
 	// series folder's are listed when the series is written.
 	Art *localart.Provider
-	// Posters imports the poster of each title the pass writes; nil imports none.
-	Posters Posters
+	// Artwork imports the artwork of each title the pass writes; nil imports none.
+	Artwork Artwork
 	// Catalog is the cache of catalog records a title's details come from; nil reads none.
 	Catalog CatalogStore
 	// Answers is the maintainer's Needs you answers; nil reads none.

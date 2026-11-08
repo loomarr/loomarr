@@ -77,9 +77,65 @@ func TestCertificationContextRevisionPreservesQualificationGates(t *testing.T) {
 	}
 }
 
+// v19 (#1557) keeps the v17 prompt and changes only its identity and its base: the v10 base is
+// v9's families, byte for byte as decoded, plus three person-routing families bound to existing
+// fixtures.
+func TestCertificationPersonRoutingRevisionOnlyAddsFamilies(t *testing.T) {
+	var contracts []map[string]any
+	for _, path := range []string{"testdata/planner-certification-v18.json", certificationManifestPath} {
+		blob, err := certificationFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var contract map[string]any
+		if err := json.Unmarshal(blob, &contract); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"version", "base"} {
+			delete(contract, key)
+		}
+		contracts = append(contracts, contract)
+	}
+	if !reflect.DeepEqual(contracts[0], contracts[1]) {
+		t.Fatal("person-routing revision changed qualification answers, fixtures or gates")
+	}
+	var oldBase, newBase CertificationCorpus
+	for path, target := range map[string]*CertificationCorpus{
+		"testdata/planner-certification-v9-base.json":  &oldBase,
+		"testdata/planner-certification-v10-base.json": &newBase,
+	} {
+		blob, err := certificationFiles.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(blob, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	added := map[string]string{"creator-routing": "creator-discovery", "cast-routing": "cast-discovery", "person-word-negative": "genre-discovery"}
+	var kept []CertificationCase
+	for _, c := range newBase.Cases {
+		if fixture, ok := added[c.ID]; ok {
+			if c.FixtureCase != fixture || len(c.Variants) != 5 {
+				t.Errorf("%s binds %q with %d variants, want %q with 5", c.ID, c.FixtureCase, len(c.Variants), fixture)
+			}
+			delete(added, c.ID)
+			continue
+		}
+		kept = append(kept, c)
+	}
+	if len(added) != 0 {
+		t.Fatalf("v10 base is missing %v", added)
+	}
+	newBase.Cases, newBase.Version = kept, oldBase.Version
+	if !reflect.DeepEqual(oldBase, newBase) {
+		t.Fatal("v10 base changed a v9 family or its contract")
+	}
+}
+
 func TestCertificationEpochContractRevisionPreservesQualificationGates(t *testing.T) {
 	var contracts []map[string]any
-	for _, path := range []string{"testdata/planner-certification-v17.json", certificationManifestPath} {
+	for _, path := range []string{"testdata/planner-certification-v17.json", "testdata/planner-certification-v18.json"} {
 		blob, err := certificationFiles.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -103,8 +159,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if corpus.Version != "planner-certification-v18" {
-		t.Fatalf("corpus version = %q, want planner-certification-v18", corpus.Version)
+	if corpus.Version != "planner-certification-v19" {
+		t.Fatalf("corpus version = %q, want planner-certification-v19", corpus.Version)
 	}
 	if corpus.SchemaVersion != 8 {
 		t.Fatalf("corpus schema version = %d, want 8", corpus.SchemaVersion)
@@ -115,8 +171,8 @@ func TestEmbeddedCertificationCorpusIsFrozenHeldOutAndRepresentative(t *testing.
 	if corpus.Split != "certification" {
 		t.Fatalf("corpus split = %q, want certification", corpus.Split)
 	}
-	if len(corpus.Cases) != 35 {
-		t.Fatalf("certification scenario families = %d, want 35", len(corpus.Cases))
+	if len(corpus.Cases) != 38 {
+		t.Fatalf("certification scenario families = %d, want 38", len(corpus.Cases))
 	}
 	if corpus.Fixture.SHA256 == "" {
 		t.Fatal("catalog fixture digest is empty")
@@ -308,7 +364,7 @@ func TestCertificationScorecardCarriesVersionedContractAndHumanSummary(t *testin
 		t.Fatal(err)
 	}
 	card := NewRunner(scriptedGenerator{}, config).Run(context.Background(), []Case{{Name: "safe", NoFabrication: true}})
-	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v18" {
+	if card.Contract == nil || card.Contract.CatalogFixtureSHA256 == "" || card.CorpusVersion != "planner-certification-v19" {
 		t.Fatalf("scorecard certification contract = %+v", card)
 	}
 	summary := HumanSummary(card)
@@ -603,8 +659,8 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 182 {
-		t.Fatalf("executable certification cases = %d, want 182", len(cases))
+	if len(cases) != 200 {
+		t.Fatalf("executable certification cases = %d, want 200", len(cases))
 	}
 	abstentions := 0
 	policyCases := 0
@@ -641,8 +697,8 @@ func TestCertificationCasesAreExecutableAndHaveHardGates(t *testing.T) {
 	if abstentions != 20 {
 		t.Fatalf("abstention cases = %d, want exactly 20 explicit empty/conflict cases", abstentions)
 	}
-	if policyCases != 30 || proposalCases != 182 || recoveryCases != 6 {
-		t.Fatalf("quality answer coverage: policy=%d proposal=%d recovery=%d, want 30/182/6",
+	if policyCases != 30 || proposalCases != 200 || recoveryCases != 6 {
+		t.Fatalf("quality answer coverage: policy=%d proposal=%d recovery=%d, want 30/200/6",
 			policyCases, proposalCases, recoveryCases)
 	}
 }
@@ -652,8 +708,8 @@ func TestCertificationFamilySmokeCasesSelectExactlyOneBaseIntentPerFamily(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 35 {
-		t.Fatalf("family smoke cases = %d, want 35", len(cases))
+	if len(cases) != 38 {
+		t.Fatalf("family smoke cases = %d, want 38", len(cases))
 	}
 	seen := make(map[string]bool, len(cases))
 	for _, c := range cases {

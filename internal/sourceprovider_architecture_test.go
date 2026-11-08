@@ -41,6 +41,7 @@ var providerLiteralAllowlist = map[string]string{
 	"internal/filler/fetch.go":                 "fetch plan excludes scanned kinds; follow-up asks the registry",
 	"internal/filler/research/model.go":        "maps a research model's provider names, which include aliases such as archive.org",
 	"internal/filler/records/fillersources.go": "the store's Fetchable/Scannable split by kind; follow-up asks the registry",
+	"cmd/demo-library/seed.go":                 "an HTTP client of the API that seeds the demo; it reads the wire kind and has no registry",
 }
 
 // kindishName reports whether an expression is named like a source kind or a provider: the final
