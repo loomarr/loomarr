@@ -54,6 +54,12 @@ const DetailRegion = ({ density }: { density: Density }) => {
           1080p · Stereo · Closed captions
         </Text>
       </Disclosure>
+      {/* Uncontrolled, with a status: a connection row that says where it stands while closed. */}
+      <Disclosure density={density} description="needs attention" label="Media server" status="error">
+        <Text density={density} textRole="body">
+          The address did not answer. Check it, then test the connection again.
+        </Text>
+      </Disclosure>
     </Surface>
   );
 };
