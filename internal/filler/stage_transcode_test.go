@@ -126,6 +126,9 @@ func (s *cleanupSyncStore) GetClip(_ context.Context, id string) (StoreClip, boo
 	clip, ok := s.clips[id]
 	return clip, ok, nil
 }
+func (s *cleanupSyncStore) LiveClipPaths(context.Context) (map[string]string, error) {
+	return nil, nil
+}
 func (s *cleanupSyncStore) DeleteClipsNotIn(context.Context, []string) (int, error) { return 0, nil }
 
 func (s *transcodeStore) ReplaceClipIdentity(_ context.Context, oldHash string, c StoreClip) error {

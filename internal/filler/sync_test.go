@@ -3,6 +3,7 @@ package filler_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -20,7 +21,9 @@ import (
 // fakeSource is a Tunarr local filler source returning a fixed set of raw clips.
 // ensures counts EnsureLocalSource calls so the idempotent-setup path is covered.
 type fakeSource struct {
-	clips     []filler.RawClip
+	clips []filler.RawClip
+	// unread are the subtrees the listing could not read, as a real DirSource reports them.
+	unread    []string
 	ensures   int
 	ensureDir string
 	listErr   error
@@ -33,6 +36,9 @@ func (f *fakeSource) EnsureLocalSource(_ context.Context, dir string) error {
 }
 func (f *fakeSource) ListLocalClips(_ context.Context) ([]filler.RawClip, error) {
 	return f.clips, f.listErr
+}
+func (f *fakeSource) ScanLocalClips(_ context.Context) (filler.LocalScan, error) {
+	return filler.LocalScan{Clips: f.clips, Unread: f.unread}, f.listErr
 }
 
 // memStore is an in-memory filler.Store for sync tests.
@@ -69,6 +75,13 @@ func (m *manifestAuthority) UpsertAcquisitionArtifacts(_ context.Context, artifa
 func (m *memStore) GetClip(_ context.Context, id string) (filler.StoreClip, bool, error) {
 	c, ok := m.clips[id]
 	return c, ok, nil
+}
+func (m *memStore) LiveClipPaths(context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(m.clips))
+	for id, c := range m.clips {
+		out[id] = c.Path
+	}
+	return out, nil
 }
 func (m *memStore) DeleteClipsNotIn(_ context.Context, keep []string) (int, error) {
 	keepSet := map[string]bool{}
@@ -252,25 +265,135 @@ func TestSync_LateArtworkIsPersistedOnAReScan(t *testing.T) {
 
 // Prune: a clip removed from the media server's library is removed from the catalog.
 func TestSync_PrunesRemovedClips(t *testing.T) {
-	source := &fakeSource{clips: []filler.RawClip{
-		raw("c1", "keep", filler.Commercial, 30000, 1992),
-		raw("c2", "goes away", filler.Commercial, 30000, 1993),
-	}}
+	// A catalog big enough that one removal is under the removal guard (#2673).
+	catalog := guardCatalog(20)
+	source := &fakeSource{clips: catalog}
 	st := newMemStore()
 	s := newSyncer(source, st)
 	_, _ = s.Sync(context.Background())
 
-	// c2 disappears from the media server.
-	source.clips = []filler.RawClip{raw("c1", "keep", filler.Commercial, 30000, 1992)}
+	// The last clip disappears from the folder.
+	gone := catalog[len(catalog)-1].ID
+	source.clips = catalog[:len(catalog)-1]
 	res, _ := s.Sync(context.Background())
-	if res.Pruned != 1 {
-		t.Errorf("pruned = %d, want 1", res.Pruned)
+	if res.Pruned != 1 || res.PruneHeld != 0 {
+		t.Errorf("pruned = %d, held = %d, want 1 and 0", res.Pruned, res.PruneHeld)
 	}
-	if _, ok := st.clips["c2"]; ok {
+	if _, ok := st.clips[gone]; ok {
 		t.Error("removed clip still in catalog")
 	}
-	if _, ok := st.clips["c1"]; !ok {
-		t.Error("kept clip wrongly pruned")
+	if len(st.clips) != len(catalog)-1 {
+		t.Errorf("catalog holds %d clips, want %d: a kept clip was pruned", len(st.clips), len(catalog)-1)
+	}
+}
+
+// guardCatalog is n clips with invented ids and distinct paths.
+func guardCatalog(n int) []filler.RawClip {
+	out := make([]filler.RawClip, n)
+	for i := range out {
+		id := fmt.Sprintf("9000%04d", i)
+		out[i] = filler.RawClip{ID: id, Path: "ads/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000}
+	}
+	return out
+}
+
+// #2673: a folder that exists but lists nothing (an unmounted share's mount point) is not the
+// household deleting its catalog. The prune is held, with the reason on the result, and the clips
+// keep their review state, counters and placement.
+func TestSync_EmptyListingKeepsTheCatalog(t *testing.T) {
+	catalog := guardCatalog(20)
+	source := &fakeSource{clips: catalog}
+	st := newMemStore()
+	s := newSyncer(source, st)
+	if _, err := s.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	source.clips = nil
+	res, err := s.Sync(context.Background())
+	if err != nil {
+		t.Fatalf("a held prune must not fail the sync: %v", err)
+	}
+	if res.Pruned != 0 || res.PruneHeld != len(catalog) {
+		t.Errorf("pruned = %d, held = %d, want 0 and %d", res.Pruned, res.PruneHeld, len(catalog))
+	}
+	if len(st.clips) != len(catalog) {
+		t.Fatalf("catalog holds %d clips after an empty listing, want all %d", len(st.clips), len(catalog))
+	}
+
+	// The share comes back: the same clips are listed again and nothing was lost or re-added.
+	source.clips = catalog
+	res, err = s.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Added != 0 || res.Pruned != 0 || res.PruneHeld != 0 {
+		t.Errorf("after the share returned: added %d, pruned %d, held %d, want all 0", res.Added, res.Pruned, res.PruneHeld)
+	}
+}
+
+// #2673: a subtree the scan could not read is "don't prune under it". What the scan did read still
+// prunes, and a sibling whose name merely starts with the unread one is not under it.
+func TestSync_UnreadSubtreeKeepsItsClipsAndTheRestStillPrunes(t *testing.T) {
+	var catalog []filler.RawClip
+	for i := range 10 {
+		id := fmt.Sprintf("9000%04d", i)
+		catalog = append(catalog, filler.RawClip{ID: id, Path: "a/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000})
+	}
+	for i := 10; i < 20; i++ {
+		id := fmt.Sprintf("9000%04d", i)
+		catalog = append(catalog, filler.RawClip{ID: id, Path: "b/" + id + ".mp4", Name: id, Role: filler.Commercial, DurationMs: 30_000})
+	}
+	sibling := filler.RawClip{ID: "90000020", Path: "bb/90000020.mp4", Name: "sibling", Role: filler.Commercial, DurationMs: 30_000}
+	catalog = append(catalog, sibling)
+
+	source := &fakeSource{clips: catalog}
+	st := newMemStore()
+	s := newSyncer(source, st)
+	if _, err := s.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// `b` becomes unreadable; `a` loses its first clip and `bb` loses its only one.
+	source.clips = catalog[1:10]
+	source.unread = []string{"b"}
+	res, err := s.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Pruned != 2 || res.PruneHeld != 0 {
+		t.Errorf("pruned = %d, held = %d, want 2 and 0", res.Pruned, res.PruneHeld)
+	}
+	for i := 10; i < 20; i++ {
+		if _, ok := st.clips[fmt.Sprintf("9000%04d", i)]; !ok {
+			t.Errorf("clip %d under the unreadable subtree was pruned", i)
+		}
+	}
+	for _, id := range []string{"90000000", sibling.ID} {
+		if _, ok := st.clips[id]; ok {
+			t.Errorf("clip %s was removed from a readable folder and must be pruned", id)
+		}
+	}
+}
+
+// #2673: a listing that drops more than the shared removal guard allows is held as a whole, even
+// when it is not empty.
+func TestSync_ListingThatDropsMostOfTheCatalogIsHeld(t *testing.T) {
+	catalog := guardCatalog(20)
+	source := &fakeSource{clips: catalog}
+	st := newMemStore()
+	s := newSyncer(source, st)
+	if _, err := s.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	source.clips = catalog[:5]
+	res, err := s.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Pruned != 0 || res.PruneHeld != 15 || len(st.clips) != 20 {
+		t.Errorf("pruned = %d, held = %d, catalog = %d, want 0, 15 and 20", res.Pruned, res.PruneHeld, len(st.clips))
 	}
 }
 

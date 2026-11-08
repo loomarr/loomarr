@@ -2471,6 +2471,9 @@ func TestConfirm_ConcurrentSyncDuringGenerationFailureSeesOnlyBoundHeldChildrenT
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The rollback's removals have to stay under the prune guard's share of the catalog (#2673), as
+	// they do on a real install, so the catalog holds clips the failed generation never touches.
+	bystanders := writeBystanderClips(t, drop, 30)
 	base.clips[parentHash] = filler.StoreClip{Clip: filler.Clip{
 		Hash: parentHash, Path: "parent.mp4", Name: "Parent", DurationMs: 60_000, Held: true,
 	}}
@@ -2505,7 +2508,7 @@ func TestConfirm_ConcurrentSyncDuringGenerationFailureSeesOnlyBoundHeldChildrenT
 	}
 	children := 0
 	for hash, clip := range scanStore.clips {
-		if hash == parentHash {
+		if hash == parentHash || bystanders[hash] {
 			continue
 		}
 		children++
@@ -2525,10 +2528,31 @@ func TestConfirm_ConcurrentSyncDuringGenerationFailureSeesOnlyBoundHeldChildrenT
 		t.Fatal(err)
 	}
 	for hash, clip := range scanStore.clips {
-		if hash != parentHash {
+		if hash != parentHash && !bystanders[hash] {
 			t.Fatalf("failed generation left replacement media scan-visible after rollback: %+v", clip)
 		}
 	}
+}
+
+// writeBystanderClips files n clips with distinct bytes under dir/others and returns their hashes.
+func writeBystanderClips(t *testing.T, dir string, n int) map[string]bool {
+	t.Helper()
+	hashes := make(map[string]bool, n)
+	for i := range n {
+		full := filepath.Join(dir, "others", fmt.Sprintf("bystander-%02d.mp4", i))
+		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, fmt.Appendf(nil, "bystander bytes %d", i), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		hash, err := filler.ClipID(full)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hashes[hash] = true
+	}
+	return hashes
 }
 
 func TestConfirm_LaterCutFailurePublishesNoGeneration(t *testing.T) {
