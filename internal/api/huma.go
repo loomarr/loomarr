@@ -383,6 +383,7 @@ type SettingEntry struct {
 	Value        string              `json:"value,omitempty" doc:"Resolved value (non-secret). Empty for secrets."`
 	Set          bool                `json:"set" doc:"For secrets: whether a value is stored."`
 	Preview      string              `json:"preview,omitempty" doc:"For secrets: masked '…a1b2' tail (§4)."`
+	BuiltIn      bool                `json:"builtIn,omitempty" doc:"For secrets: none is set, and the key Loomarr ships with is in use instead (the bundled TMDB key). Never previewed."`
 	Provenance   string              `json:"provenance" enum:"env,db,default" doc:"env locks the UI field (§3)."`
 	Caution      bool                `json:"caution,omitempty" doc:"A stored value self-healed to default (§3)."`
 	EnvPinnable  bool                `json:"envPinnable,omitempty" doc:"The environment sets this key, so it can be taken back with the unlock (§3.1). Only meaningful together with provenance/envOverride."`

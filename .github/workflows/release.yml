@@ -85,6 +85,10 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
+          # The TMDB key Loomarr ships with (#2151 decision 51). A secret mount, not a build arg,
+          # so neither the image history nor the max-mode provenance records it.
+          secrets: |
+            tmdb_key=${{ secrets.TMDB_BUNDLED_KEY }}
           provenance: mode=max
           sbom: true
           # ⚠ No BuildKit cache, deliberately (#1679). A tag run's cache is scoped to that tag, so

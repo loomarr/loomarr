@@ -11047,6 +11047,9 @@ components:
             - live
             - restart
           type: string
+        builtIn:
+          description: "For secrets: none is set, and the key Loomarr ships with is in use instead (the bundled TMDB key). Never previewed."
+          type: boolean
         caution:
           description: A stored value self-healed to default (§3).
           type: boolean

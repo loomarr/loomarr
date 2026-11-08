@@ -517,6 +517,7 @@ func toAPIEntry(e settings.Entry) api.SettingEntry {
 		UpdatedBy:    e.UpdatedBy,
 		Set:          e.Set,
 		Preview:      e.Preview,
+		BuiltIn:      e.BuiltIn,
 		EnvOverride:  e.EnvOverride,
 		EnvPinnable:  e.EnvPinnable,
 		EnvVar:       e.Setting.EnvVar,

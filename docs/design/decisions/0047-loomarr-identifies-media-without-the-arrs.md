@@ -54,5 +54,6 @@ The full list (decisions 39–61, editions, filmographies, labels, language) is 
   folders.
 - Every feature that filters on resolution, language, rating, people or editions reads columns,
   not JSON. The scheduler moves onto them at cutover.
-- The bundled TMDB key is public in the repository. TMDB rate-limits by address, so households do
-  not share a quota.
+- The bundled TMDB key is never in the repository: the release build stamps it in from a secret.
+  It can still be read out of a released binary; TMDB's terms do not address that either way. TMDB
+  rate-limits by address, so households do not share a quota.

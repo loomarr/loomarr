@@ -19,6 +19,16 @@ The default model is `openai/gpt-5-mini`. To change it without editing the workf
 repository variable `RELEASE_NOTES_MODEL` to an OpenRouter model that supports strict structured
 outputs. The release process is designed for a small classification call, not model-authored prose.
 
+Add the TMDB key Loomarr ships with (#2151 decision 51). Register it as Loomarr's own application at
+TMDB, not a personal key. The release build stamps it into the binary through a BuildKit secret, so it
+never appears in the image history or the provenance. A household's own key, from Settings or
+`TMDB_API_KEY`, always wins over it. Without the secret, a release ships no key, and TMDB features wait
+until the household adds one.
+
+```sh
+gh secret set TMDB_BUNDLED_KEY --repo loomarr/loomarr
+```
+
 ## Preview before tagging
 
 Authenticate `gh`, export the release-specific key locally, and generate a preview for the proposed

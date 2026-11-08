@@ -19,7 +19,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`platform/activity`** · 4 importers · → `platform/store`
   Records what Loomarr did, for the Dashboard's Recent activity feed (§5, §12, V32).
-- **`platform/buildinfo`** · 3 importers
+- **`platform/buildinfo`** · 4 importers
   Carries the version stamped into the binary at build time.
 - **`platform/config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
@@ -51,7 +51,7 @@ One area of the [package map](../package-map.md#start-here).
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
 - **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`platform/settings`** · 7 importers · → `library`, `platform/config`
+- **`platform/settings`** · 7 importers · → `library`, `platform/buildinfo`, `platform/config`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.

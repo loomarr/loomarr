@@ -104,7 +104,7 @@ To replace the installation key, supply the new current key and provide the old 
 
 | Setting (env) | Owner task | Kind | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `tmdb.api_key` (`TMDB_API_KEY`) | Connections | secret | (secret) | A free TMDB API key. Enables TMDB title search, channel icon suggestions, and grounding for AI channel suggestions. _(required for suggestions)_ |
+| `tmdb.api_key` (`TMDB_API_KEY`) | Connections | secret | (secret) | Your own TMDB API key, if you have one. Loomarr comes with its own, so most households can leave this empty. TMDB powers title search, channel icon suggestions, and grounding for AI channel suggestions. _(required for suggestions)_ |
 
 ## AI
 

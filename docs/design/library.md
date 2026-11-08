@@ -301,6 +301,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   its titles' present files (a series' episodes too) and passes over their folders, so they are
   written again with it. A title TMDB does not know is cached empty until the refresh. A failed
   fetch holds that title back for 6 hours, and with no TMDB key nothing is fetched or held back.
+  A release build ships its own key (decision 51), stamped from the `TMDB_BUNDLED_KEY` release
+  secret into `buildinfo` as the `tmdb.api_key` default. A household's own key wins. Settings
+  lists the shipped key as `builtIn`, never as set, and never previews it. Only a dev or source
+  build has no key. TMDB's notice shows on Settings → System → About whatever key is in use.
   The kill switch stops it too. Episodes take their text from Sonarr; TMDB episode records (by
   TVDB episode id) are not fetched yet. The identity digest carries a write version; raising it
   makes every file written once more, keeping its header, so a title written before this names

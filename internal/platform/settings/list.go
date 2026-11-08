@@ -13,10 +13,14 @@ type Entry struct {
 	Value      any // resolved typed value; ZERO for secrets (masked)
 	Provenance Provenance
 	Caution    bool
-	Set        bool      // secrets: whether a value is stored/pinned
-	Preview    string    // secrets: masked "…a1b2" tail
-	UpdatedBy  string    // audit (empty for env/system writes)
-	UpdatedAt  time.Time // audit (zero for env/system writes)
+	Set        bool   // secrets: whether a value is stored/pinned
+	Preview    string // secrets: masked "…a1b2" tail
+	// BuiltIn: a secret nobody gave resolves to the value Loomarr ships with (the bundled
+	// TMDB key). It works, but it is not the household's, so Set stays false and it is
+	// never previewed.
+	BuiltIn   bool
+	UpdatedBy string    // audit (empty for env/system writes)
+	UpdatedAt time.Time // audit (zero for env/system writes)
 	// EnvOverride: taken back from the environment (§3.1).
 	EnvOverride bool
 	// EnvPinnable: the environment actually sets this key, so it is something the unlock
@@ -67,7 +71,11 @@ func (s *Service) List(ctx context.Context, audit AuditLister) []Entry {
 		}
 		if set.IsSecret() {
 			// Never expose the value. Set/Preview convey the masked state (§4).
-			if str, _ := r.Value.(string); str != "" {
+			switch str, _ := r.Value.(string); {
+			case str == "":
+			case r.Provenance == ProvenanceDefault:
+				e.BuiltIn = true
+			default:
 				e.Set = true
 				e.Preview = preview(str)
 			}

@@ -145,6 +145,8 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
+          secrets: |
+            tmdb_key=${{ secrets.TMDB_BUNDLED_KEY }}
           provenance: mode=max
           sbom: true
       - name: Record digest
