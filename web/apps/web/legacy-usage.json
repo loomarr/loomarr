@@ -662,12 +662,11 @@
       "tailwindClasses": 14
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 77,
+      "tailwindClasses": 76,
       "legacyUi": 1
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
-      "tailwindClasses": 34,
-      "legacyUi": 1
+      "tailwindClasses": 34
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
       "tailwindClasses": 157,
@@ -688,8 +687,7 @@
       "tailwindClasses": 44
     },
     "src/settings/settings-page/settings-page.tsx": {
-      "tailwindClasses": 35,
-      "legacyUi": 1
+      "tailwindClasses": 35
     },
     "src/settings/settings-save-bar-host/settings-save-bar-host.tsx": {
       "tailwindClasses": 2
@@ -699,7 +697,7 @@
       "legacyUi": 2
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 164,
+      "tailwindClasses": 159,
       "legacyUi": 1
     },
     "src/suggest/approval-queue/approval-queue.tsx": {
