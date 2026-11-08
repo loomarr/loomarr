@@ -4,7 +4,7 @@ import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificat
 import { NotificationProviderFieldDTOKind } from "@loomarr/api/models/notificationProviderFieldDTOKind";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Card, Field, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Surface, Text, Toggle } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, X } from "lucide-react";
 import { type ComponentProps, useId, useMemo, useState } from "react";
@@ -761,17 +761,31 @@ const NotificationDestinationsPanel = () => {
           aria-labelledby="notification-events-title"
           className="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-sm"
         >
-          <p id="notification-events-title" className="text-foreground font-medium">
-            No notification providers yet
-          </p>
-          <p className="mt-1">Once you add one, you choose which of these it tells you about.</p>
-          {events.length > 0 ? (
-            <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-              {events.map((event) => (
-                <li key={event}>{words(event)}</li>
-              ))}
-            </ul>
-          ) : null}
+          <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} gap="inline">
+            <Text as="p" id="notification-events-title" textRole="label">
+              No notification providers yet
+            </Text>
+            <Text as="p" textRole="body" tone="muted">
+              Once you add one, you choose which of these it tells you about.
+            </Text>
+            {events.length > 0 ? (
+              <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} gap={4} role="list">
+                {events.map((event) => (
+                  <Surface
+                    backgroundColor="transparent"
+                    borderRadius={0}
+                    borderWidth={0}
+                    key={event}
+                    role="listitem"
+                  >
+                    <Text textRole="body" tone="muted">
+                      {words(event)}
+                    </Text>
+                  </Surface>
+                ))}
+              </Surface>
+            ) : null}
+          </Surface>
         </section>
       ) : null}
 

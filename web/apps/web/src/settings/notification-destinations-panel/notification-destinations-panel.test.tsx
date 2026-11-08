@@ -150,7 +150,9 @@ describe("NotificationDestinationsPanel", () => {
     );
     render(<NotificationDestinationsPanel />, { wrapper });
 
-    const empty = (await screen.findByText("No notification providers yet")).closest("section") as HTMLElement;
+    const empty = (await screen.findByText("No notification providers yet")).closest(
+      "section",
+    ) as HTMLElement;
     // Every event any provider offers, each once, in words.
     for (const event of [
       "Proposal Submitted",
