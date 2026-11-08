@@ -118,9 +118,24 @@ func (m *Manager) Resolve(ctx context.Context, token, clientLabel string) (ident
 		// never authenticates.
 		return identitystore.User{}, store.ErrNotFound
 	}
-	// Slide the expiry (§11 sliding TTL) and record the use.
-	_ = m.store.TouchSession(ctx, hashToken(token), identitystore.SessionSeen{At: now, ExpiresAt: now.Add(m.ttl), ClientLabel: clientLabel})
+	// Slide the expiry (§11 sliding TTL) and record the use, at most once per touchGranularity.
+	if touchDue(sess.LastSeenAt, now) || (clientLabel != "" && clientLabel != sess.ClientLabel) {
+		_ = m.store.TouchSession(ctx, hashToken(token), identitystore.SessionSeen{At: now, ExpiresAt: now.Add(m.ttl), ClientLabel: clientLabel})
+	}
 	return u, nil
+}
+
+// touchGranularity is how stale a recorded use may get before a request records a new one (#2446).
+// Every authenticated request used to write the session row (or would have, for a device), and a
+// page load fires dozens of requests: dozens of write transactions, each waiting for SQLite's one
+// write lock. "Last seen" reads "now" or "2h ago", and a sliding expiry measured in weeks loses
+// nothing by moving a minute late, so a minute is plenty — the same granularity the person-level
+// last_seen_at already uses.
+const touchGranularity = time.Minute
+
+// touchDue reports whether a credential last used at lastSeen should record a use at now.
+func touchDue(lastSeen, now time.Time) bool {
+	return now.Sub(lastSeen) >= touchGranularity
 }
 
 // Revoke ends a single session (logout).
