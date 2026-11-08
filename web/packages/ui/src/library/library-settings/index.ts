@@ -1,4 +1,4 @@
-export { LibrarySettings } from "./library-settings";
+export { LibrarySettings, LibraryWizardStep } from "./library-settings";
 export type {
   LibraryAuthority,
   LibraryFolder,
@@ -8,4 +8,5 @@ export type {
   LibraryPathMapping,
   LibraryScan,
   LibrarySettingsProps,
+  LibraryWizardStepProps,
 } from "./library-settings.type";

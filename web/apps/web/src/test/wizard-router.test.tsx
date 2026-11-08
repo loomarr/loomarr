@@ -1,7 +1,10 @@
 import type { SettingEntry, SettingKey } from "@loomarr/api";
 import {
   getBootstrapMockHandler,
+  getLibraryStatusMockHandler,
+  getListLibraryRootsMockHandler,
   getLoginMockHandler,
+  getSetLibraryRootInUseMockHandler,
   getSettingsPatchMockHandler,
   getSetupStatusMockHandler,
   getSetupTestMockHandler,
@@ -9,11 +12,12 @@ import {
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { delay, HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { libraryStatus } from "@/test/fixtures/library";
 import { setting } from "@/test/fixtures/settings";
 import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
@@ -467,14 +471,14 @@ describe("wizard", () => {
 
       expect(await screen.findByRole("heading", { name: /give tunarr your library/i })).toBeInTheDocument();
       const rail = within(screen.getByRole("list", { name: "Setup steps" }));
-      expect(rail.queryByRole("button", { name: /library/i })).not.toBeInTheDocument();
+      expect(rail.queryByRole("button", { name: /tunarr library/i })).not.toBeInTheDocument();
       expect(rail.queryByRole("button", { name: /users/i })).not.toBeInTheDocument();
       expect(rail.queryByRole("button", { name: /first channel/i })).not.toBeInTheDocument();
 
       await user.click(rail.getByRole("button", { name: /connections/i }));
       expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
-      // Library, one step ahead of Connections, is the frontier: reached, so now a button.
-      expect(rail.getByRole("button", { name: /library/i })).toBeInTheDocument();
+      // Tunarr library, past the optional Library step, is the frontier: reached, so now a button.
+      expect(rail.getByRole("button", { name: /tunarr library/i })).toBeInTheDocument();
     });
 
     it("lands somewhere real when a link names a step that no longer exists", async () => {
@@ -579,8 +583,9 @@ describe("wizard", () => {
 
       await screen.findByRole("heading", { name: /connect your services/i });
       const rail = within(screen.getByRole("complementary"));
-      expect(rail.queryByText("Library")).not.toBeInTheDocument();
-      // The playout choice itself IS in the rail, on both paths.
+      expect(rail.queryByText("Tunarr library")).not.toBeInTheDocument();
+      // The media folders step and the playout choice itself ARE in the rail, on both paths.
+      expect(rail.getByText("Library")).toBeInTheDocument();
       expect(rail.getByText("Playout")).toBeInTheDocument();
     });
 
@@ -590,7 +595,42 @@ describe("wizard", () => {
 
       await screen.findByRole("heading", { name: /connect your services/i });
       const rail = within(screen.getByRole("complementary"));
+      expect(rail.getByText("Tunarr library")).toBeInTheDocument();
       expect(rail.getByText("Library")).toBeInTheDocument();
+    });
+
+    // #2151 decision 30: the media folders. Continue waits for a folder Loomarr can open, never
+    // for the import; until the media server's catalog retires, Skip is the way past.
+    it("asks where the media is, and continues once a folder is in use", async () => {
+      stubWizard({ authed: true, setupCompleted: false, backend: "internal" });
+      server.use(
+        getSetLibraryRootInUseMockHandler({ roots: [], pathMap: [] }),
+        getListLibraryRootsMockHandler({
+          roots: [
+            {
+              path: "/media/movies",
+              inUse: false,
+              readable: true,
+              addedByHand: false,
+              foundIn: [{ authority: "radarr", path: "/movies" }],
+            },
+          ],
+          pathMap: [
+            { authority: "radarr", authorityPath: "/movies", localPath: "/media/movies", byHand: false },
+          ],
+        }),
+        getLibraryStatusMockHandler(libraryStatus({ health: "needs_folders", inUse: 0 })),
+      );
+      renderAt("/wizard?step=media");
+
+      expect(await screen.findByRole("heading", { name: /where's your media/i })).toBeInTheDocument();
+      expect(await screen.findByText(/We found these through Radarr/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^continue$/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /skip/i })).toBeInTheDocument();
+
+      server.use(getLibraryStatusMockHandler(libraryStatus({ health: "ok", inUse: 1 })));
+      await userEvent.click(screen.getByRole("button", { name: "Use this folder" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: /^continue$/i })).toBeEnabled());
     });
 
     // Tunarr's own settings live on the Playout step, under the choice that makes them

@@ -3,6 +3,8 @@ import type { CollectionsOutputBody } from "@loomarr/api/models/collectionsOutpu
 import type { CoverageDTO } from "@loomarr/api/models/coverageDTO";
 import type { ExcludedDTO } from "@loomarr/api/models/excludedDTO";
 import type { IconSuggestionsOutputBody } from "@loomarr/api/models/iconSuggestionsOutputBody";
+import type { LibraryRootsBody } from "@loomarr/api/models/libraryRootsBody";
+import type { LibraryStatusOutputBody } from "@loomarr/api/models/libraryStatusOutputBody";
 import type { ListFillerOutputBody } from "@loomarr/api/models/listFillerOutputBody";
 import type { ListTaxonomyOutputBody } from "@loomarr/api/models/listTaxonomyOutputBody";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
@@ -163,6 +165,48 @@ const channelSectionBodies: [RegExp, () => unknown][] = [
   ],
   [/^\/v1\/filler$/, (): ListFillerOutputBody => ({ clips: [], total: 0 })],
   [/^\/v1\/library\/collections$/, (): CollectionsOutputBody => ({ collections: [] })],
+  // The wizard's Library step (#2151 decision 30): one folder found through Emby, none in use yet.
+  [
+    /^\/v1\/library\/roots$/,
+    (): LibraryRootsBody => ({
+      roots: [
+        {
+          path: "/media/movies",
+          inUse: false,
+          readable: true,
+          addedByHand: false,
+          checkedAt: "2026-10-01T19:55:00Z",
+          foundIn: [{ authority: "emby", path: "/data/movies" }],
+        },
+      ],
+      pathMap: [
+        { authority: "emby", authorityPath: "/data/movies", localPath: "/media/movies", byHand: false },
+      ],
+    }),
+  ],
+  [
+    /^\/v1\/library\/status$/,
+    (): LibraryStatusOutputBody => ({
+      health: "needs_folders",
+      inUse: 0,
+      offline: 0,
+      toConfirm: 0,
+      files: 0,
+      headersPending: 0,
+      problems: 0,
+      needsYou: 0,
+      held: [],
+      hooks: [],
+      scan: {
+        enabled: true,
+        stage: "idle",
+        headersDone: 0,
+        headersTotal: 0,
+        paused: false,
+        arrIncomplete: false,
+      },
+    }),
+  ],
   [/^\/v1\/programming\/vocabulary$/, (): Vocabulary => ({ when: [], what: [], how: [] })],
   [/^\/v1\/search$/, (): SearchOutputBody => ({ candidates: [] })],
   [

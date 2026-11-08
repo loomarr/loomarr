@@ -45,9 +45,13 @@ const wizardSteps = (backend: PlayoutBackend): WizardStep[] => {
     { id: "playout", title: "Playout" },
     { id: "location", title: "Location" },
     connections,
+    // "Where's your media?" (#2151 decision 30): the folders Loomarr reads its library from,
+    // on either path. Optional until the media server's catalog is retired (#2151 step 16).
+    { id: "media", title: "Library", optional: true },
     // Wiring Tunarr's library exists only where Tunarr plays: internal playout reads the
-    // library directly, so there is no equivalent to do.
-    ...(backend === PLAYOUT_TUNARR ? [{ id: "library", title: "Library" }] : []),
+    // library directly, so there is no equivalent to do. `library` keeps its id so old
+    // `?step=library` links still land here.
+    ...(backend === PLAYOUT_TUNARR ? [{ id: "library", title: "Tunarr library" }] : []),
     { id: "users", title: "Users", optional: true },
     { id: "channel", title: "First channel" },
   ];
@@ -84,6 +88,9 @@ interface StepContext {
   // publish a tuner until the media server has an absolute Loomarr URL to fetch from.
   publicURL?: string;
   installationCountry?: string;
+  // A media folder is in use and Loomarr can open it (library status health `ok`). The import
+  // itself never holds the wizard (#2151 decision 30).
+  libraryReady?: boolean;
 }
 
 const backendOf = (ctx: StepContext): PlayoutBackend => ctx.backend ?? PLAYOUT_INTERNAL;
@@ -102,6 +109,7 @@ const isStepDone = (id: string, ctx: StepContext): boolean => {
   }
   if (id === "location") return (ctx.installationCountry?.trim() ?? "") !== "";
   if (id === "checklist") return requiredChecks(backendOf(ctx)).every((name) => checkOk(ctx.checks, name));
+  if (id === "media") return ctx.libraryReady === true;
   const wiring = WIRING_CHECK_BY_STEP[id];
   return wiring ? checkOk(ctx.checks, wiring) : false;
 };

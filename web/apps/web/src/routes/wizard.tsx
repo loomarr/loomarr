@@ -1,5 +1,7 @@
+import * as libraryApi from "@loomarr/api/endpoints/library";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
+import { LibraryStatusOutputBodyHealth } from "@loomarr/api/models/libraryStatusOutputBodyHealth";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
@@ -16,6 +18,7 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { BootstrapStep } from "@/wizard/bootstrap-step";
 import { ChecklistStep } from "@/wizard/checklist-step";
 import { FirstChannelStep } from "@/wizard/first-channel-step";
+import { LibraryStep } from "@/wizard/library-step";
 import { PlayoutStep } from "@/wizard/playout-step";
 import {
   deriveStepStatuses,
@@ -69,6 +72,10 @@ const COPY: Record<string, { title: string; description: string }> = {
     title: "Connect your services",
     description: "Loomarr live-tests each dependency. A red check tells you exactly what to fix.",
   },
+  media: {
+    title: "Where's your media?",
+    description: "So Loomarr can put your shows and movies on the air.",
+  },
   library: {
     title: "Give Tunarr your library",
     description: "Without this, Tunarr schedules slots that have no programme to play.",
@@ -94,7 +101,12 @@ const COPY: Record<string, { title: string; description: string }> = {
 // with no programme, and hardest of all on `tunarr`, which an internal-playout install can
 // never turn green. (Live TV is no longer a step, it auto-wires on the Tunarr save, so it
 // can't strand anyone here either.)
-const SKIPPABLE = new Set(["library", "users"]);
+const SKIPPABLE = new Set(["media", "library", "users"]);
+
+// Skippable steps whose Continue still waits for their own work, as the mock draws it: Skip is
+// the way past, Continue says the work is done. The Library step is skippable only until the
+// media server's catalog is retired (#2151 step 16).
+const CONTINUE_WAITS = new Set(["media"]);
 
 const WizardScreen = () => {
   useDocumentTitle("Setup");
@@ -141,12 +153,16 @@ const WizardScreen = () => {
     playoutEntry?.provenance === SettingEntryProvenance.env
       ? (playoutEntry.envVar ?? "An environment variable")
       : undefined;
+  // The Library step is done once a folder is in use and Loomarr can open it; the import never
+  // holds the wizard (#2151 decision 30). Shares its cache with the step's own reads.
+  const library = libraryApi.useLibraryStatus({ query: { enabled: isAuthenticated, retry: false } });
   const stepCtx = {
     checks,
     isAuthenticated,
     backend,
     publicURL: publicURLEntry?.value,
     installationCountry: persistedCountry,
+    libraryReady: unwrap(library.data)?.health === LibraryStatusOutputBodyHealth.ok,
   };
 
   const { step: requestedStep, conn: requestedConn } = Route.useSearch();
@@ -234,6 +250,8 @@ const WizardScreen = () => {
         );
       case "checklist":
         return <ChecklistStep openId={openConn} onToggle={toggleConn} backend={backend} />;
+      case "media":
+        return <LibraryStep />;
       case "library":
         return <TunarrLibraryStep check={checkFor("tunarr_library")} />;
       case "users":
@@ -300,7 +318,7 @@ const WizardScreen = () => {
       // deliberate pass as `skipped` rather than merely unfinished.
       nextDisabled={
         advances &&
-        !SKIPPABLE.has(currentId) &&
+        (!SKIPPABLE.has(currentId) || CONTINUE_WAITS.has(currentId)) &&
         (currentId === "location"
           ? !liveCountry.trim() || locationPatch.isPending
           : !isStepDone(currentId, stepCtx))

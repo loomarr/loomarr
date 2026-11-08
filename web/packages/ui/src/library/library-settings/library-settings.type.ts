@@ -77,6 +77,15 @@ interface LibrarySettingsProps {
   now?: number;
 }
 
+/** The setup wizard's Library step: the folders, each with Use this folder, and Check again. */
+type LibraryWizardStepProps = Pick<
+  LibrarySettingsProps,
+  "folders" | "pathMap" | "scan" | "checking" | "onCheckAgain" | "onUseFolder" | "onAddFolder" | "now"
+> & {
+  /** A Check again finished a moment ago. */
+  checkedJustNow?: boolean;
+};
+
 export type {
   LibraryAuthority,
   LibraryFolder,
@@ -86,4 +95,5 @@ export type {
   LibraryPathMapping,
   LibraryScan,
   LibrarySettingsProps,
+  LibraryWizardStepProps,
 };
