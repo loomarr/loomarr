@@ -7,7 +7,9 @@ import { SuggestionDraftReturn } from "@/suggest/suggestion-draft-return";
 
 const AiSettings = () => {
   const entries = useSettingsEntries();
-  const tmdbConfigured = entries.find((entry) => entry.key === SettingKey.TMDBAPIKey)?.set ?? false;
+  // The key Loomarr ships with grounds suggestions as well as a household's own.
+  const tmdbEntry = entries.find((entry) => entry.key === SettingKey.TMDBAPIKey);
+  const tmdbConfigured = Boolean(tmdbEntry?.set || tmdbEntry?.builtIn);
 
   return (
     <SettingsPage

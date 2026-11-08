@@ -55,12 +55,17 @@ COPY --from=fe /src/internal/platform/web/dist ./internal/platform/web/dist
 ARG VERSION=""
 ARG COMMIT=""
 ARG BUILT_AT=""
-# Static, stripped, reproducible-ish.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+# Static, stripped, reproducible-ish. The TMDB key Loomarr ships with (#2151 decision 51)
+# arrives as a build secret, not an ARG, so it never lands in the image history; a build
+# without the secret has no key and needs the household's own.
+RUN --mount=type=secret,id=tmdb_key,required=false \
+    TMDB_KEY="$(cat /run/secrets/tmdb_key 2>/dev/null || true)" && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w \
       -X github.com/loomarr/loomarr/internal/platform/buildinfo.version=${VERSION} \
       -X github.com/loomarr/loomarr/internal/platform/buildinfo.commit=${COMMIT} \
-      -X github.com/loomarr/loomarr/internal/platform/buildinfo.builtAt=${BUILT_AT}" \
+      -X github.com/loomarr/loomarr/internal/platform/buildinfo.builtAt=${BUILT_AT} \
+      -X github.com/loomarr/loomarr/internal/platform/buildinfo.tmdbKey=${TMDB_KEY}" \
     -o /out/loomarr ./cmd/loomarr
 
 # Required image renderer (§14, §22). Build natively for each Buildx target so the bundled

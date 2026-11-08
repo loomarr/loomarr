@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 )
 
 func recipientHTTPOrigin(value any) error {
@@ -731,8 +733,10 @@ func declared() []Setting {
 		// --- Connections: TMDB (§15, Phase 11) ---
 		{
 			Key: "tmdb.api_key", EnvVar: "TMDB_API_KEY", Group: GroupTMDB,
-			Kind: KindSecret, Default: "", Required: FeatureSuggestions,
-			Doc: "A free TMDB API key. Enables TMDB title search, channel icon suggestions, and grounding for AI channel suggestions.",
+			// The default is the key the release build ships with (decision 51); List reports
+			// it as builtIn, never as set, and never previews it.
+			Kind: KindSecret, Default: buildinfo.TMDBKey(), Required: FeatureSuggestions,
+			Doc: "Your own TMDB API key, if you have one. Loomarr comes with its own, so most households can leave this empty. TMDB powers title search, channel icon suggestions, and grounding for AI channel suggestions.",
 		},
 
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---
