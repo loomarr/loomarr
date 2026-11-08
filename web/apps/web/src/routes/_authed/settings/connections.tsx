@@ -1,6 +1,5 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { createFileRoute } from "@tanstack/react-router";
-import { TmdbAttribution } from "@/components/loomarr/settings/tmdb-attribution";
 import { blockTitle } from "@/settings/provider-title";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -76,25 +75,8 @@ const ConnectionsSettings = () => {
           optional: true,
           description:
             "Required for AI channel suggestions; otherwise optional. Add a TMDB key for grounded title matching and remote artwork.",
-          // TMDB's licence requires this notice (§22, V52 phase 7). It sits INSIDE the TMDB block,
-          // below the API key and the Test row, rather than at the foot of the page — so it reads
-          // as belonging to the connection it is about instead of as a page-level colophon under
-          // four unrelated blocks. Maintainer's call.
-          //
-          // ⚠ Consequence, recorded rather than discovered later: the block collapses when its
-          // check passes, so on a healthy install the notice is behind one click.
-          //
-          // ⚠ The logo is HALF the obligation and shipped a release later than the notice, because
-          // it is TMDB's trademark and had to come from their attribution page rather than be
-          // drawn. `blue_short` is the compact mark; the component caps its height and mutes it,
-          // which is the "less prominent than our own branding" half (§22).
-          //
-          // ⚠ An SVG is fine HERE and nowhere near the image service. §22 refuses SVG on upload
-          // because that serve route is public and an operator-supplied SVG can carry <script> —
-          // stored XSS in Loomarr's own origin. This file is ours, vendored, and served by Vite
-          // from public/ exactly as favicon.svg already is. It was checked for <script>/on*= on
-          // the way in.
-          footer: <TmdbAttribution logo={<img src="/tmdb.svg" alt="TMDB" />} />,
+          // TMDB's notice and logo live on Settings → System → About, with Loomarr's credits
+          // (#2151 decision 51), whatever key is in use. Maintainer's call.
         },
       ]}
     >
