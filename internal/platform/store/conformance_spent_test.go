@@ -62,13 +62,13 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 	mustSaveChannel(t, st, sampleChannel("ch-1", 7, now.Add(time.Hour)))
 	at := func(s int) time.Time { return old.Add(time.Duration(s) * time.Second) }
 	for _, f := range []DiscoveryFeedback{
-		{ID: "a1", Target: "movie:tmdb:1", Action: FeedbackKeep, CreatedAt: at(0)},
-		{ID: "a2", Target: "movie:tmdb:1", Action: FeedbackNever, CreatedAt: at(1)},
-		{ID: "b1", Target: "movie:tmdb:2", Action: FeedbackKeep, CreatedAt: at(0)},
-		{ID: "b2", Target: "movie:tmdb:2", Action: FeedbackClear, CreatedAt: at(1)},
-		{ID: "c1", Target: "movie:tmdb:3", Action: FeedbackLess, CreatedAt: at(0)},
-		{ID: "d1", Target: "movie:tmdb:3", Action: FeedbackClear, CreatedAt: at(2), Scope: FeedbackChannel, ScopeID: "ch-1"},
-		{ID: "e1", Target: "movie:tmdb:4", Action: FeedbackKeep, CreatedAt: at(3), Scope: FeedbackChannel, ScopeID: "ch-1"},
+		{ID: "a1", Target: "movie:tmdb:90000101", Action: FeedbackKeep, CreatedAt: at(0)},
+		{ID: "a2", Target: "movie:tmdb:90000101", Action: FeedbackNever, CreatedAt: at(1)},
+		{ID: "b1", Target: "movie:tmdb:90000102", Action: FeedbackKeep, CreatedAt: at(0)},
+		{ID: "b2", Target: "movie:tmdb:90000102", Action: FeedbackClear, CreatedAt: at(1)},
+		{ID: "c1", Target: "movie:tmdb:90000103", Action: FeedbackLess, CreatedAt: at(0)},
+		{ID: "d1", Target: "movie:tmdb:90000103", Action: FeedbackClear, CreatedAt: at(2), Scope: FeedbackChannel, ScopeID: "ch-1"},
+		{ID: "e1", Target: "movie:tmdb:90000104", Action: FeedbackKeep, CreatedAt: at(3), Scope: FeedbackChannel, ScopeID: "ch-1"},
 	} {
 		f.ActorID = "admin"
 		if f.Scope == "" {
@@ -107,19 +107,19 @@ func testSpentRowPurges(t *testing.T, newStore NewStoreFunc) {
 	if err := st.UpsertUser(ctx, User{ID: "u-1", Name: "Ada", Role: RoleMember, CreatedAt: old, UpdatedAt: old}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertTitle(ctx, sampleRecord(provision.Key("movie:tmdb:5"), provision.Requested, time.Time{})); err != nil {
+	if err := st.UpsertTitle(ctx, sampleRecord(provision.Key("movie:tmdb:90000105"), provision.Requested, time.Time{})); err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range []struct {
 		kind, id, person string
 		at               time.Time
 	}{
-		{"title", "movie:tmdb:5", "u-1", old},    // kept: the title exists
-		{"channel", "ch-1", "u-1", old},          // kept: the channel exists
-		{"title", "movie:tmdb:6", "u-1", recent}, // kept: inside the grace
-		{"title", "movie:tmdb:6", "u-2", old},    // gone: no such title
-		{"channel", "ch-gone", "u-1", old},       // gone: no such channel
-		{"channel", "ch-1", "u-gone", old},       // gone: no such person
+		{"title", "movie:tmdb:90000105", "u-1", old},    // kept: the title exists
+		{"channel", "ch-1", "u-1", old},                 // kept: the channel exists
+		{"title", "movie:tmdb:90000106", "u-1", recent}, // kept: inside the grace
+		{"title", "movie:tmdb:90000106", "u-2", old},    // gone: no such title
+		{"channel", "ch-gone", "u-1", old},              // gone: no such channel
+		{"channel", "ch-1", "u-gone", old},              // gone: no such person
 	} {
 		if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(`INSERT INTO notification_reference_recipients
 			(reference_kind, reference_id, person_id, created_at) VALUES (?, ?, ?, ?)`),
@@ -153,19 +153,19 @@ func testUnusedTitlePurge(t *testing.T, newStore NewStoreFunc) {
 	if _, err := st.SaveChannel(ctx, sampleChannel("ch-1", 7, time.Time{})); err != nil {
 		t.Fatal(err)
 	}
-	picked := proposals.ProposalItem{MediaType: provision.Movie, TMDBID: 777, Name: "Picked"}
+	picked := proposals.ProposalItem{MediaType: provision.Movie, TMDBID: 90000107, Name: "Picked"}
 	if err := st.CreateProposal(ctx, Proposal{ID: "open", Status: "submitted", CreatedAt: before,
 		Body: proposals.Proposal{Alternates: []proposals.ProposalItem{picked}}}); err != nil {
 		t.Fatal(err)
 	}
-	recent := sampleRecord("movie:tmdb:4", provision.Available, time.Time{})
+	recent := sampleRecord("movie:tmdb:90000104", provision.Available, time.Time{})
 	recent.UpdatedAt = before.Add(time.Hour)
 	for _, r := range []provision.Record{
-		sampleRecord("movie:tmdb:90000001", provision.Available, time.Time{}), // kept: in ch-1's lineup
-		sampleRecord("movie:tmdb:777", provision.Available, time.Time{}),      // kept: an open request's pick
-		sampleRecord("movie:tmdb:1", provision.Available, time.Time{}),        // gone
-		sampleRecord("movie:tmdb:2", provision.Unavailable, time.Time{}),      // gone
-		sampleRecord("movie:tmdb:3", provision.Requested, time.Time{}),        // kept: in flight
+		sampleRecord("movie:tmdb:90000001", provision.Available, time.Time{}),   // kept: in ch-1's lineup
+		sampleRecord("movie:tmdb:90000107", provision.Available, time.Time{}),   // kept: an open request's pick
+		sampleRecord("movie:tmdb:90000101", provision.Available, time.Time{}),   // gone
+		sampleRecord("movie:tmdb:90000102", provision.Unavailable, time.Time{}), // gone
+		sampleRecord("movie:tmdb:90000103", provision.Requested, time.Time{}),   // kept: in flight
 		recent, // kept: changed inside the window
 	} {
 		if err := st.UpsertTitle(ctx, r); err != nil {
@@ -176,8 +176,8 @@ func testUnusedTitlePurge(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("purge unused titles = %d, %v; want 2", n, err)
 	}
 	for key, kept := range map[provision.Key]bool{
-		"movie:tmdb:90000001": true, "movie:tmdb:777": true, "movie:tmdb:1": false,
-		"movie:tmdb:2": false, "movie:tmdb:3": true, "movie:tmdb:4": true,
+		"movie:tmdb:90000001": true, "movie:tmdb:90000107": true, "movie:tmdb:90000101": false,
+		"movie:tmdb:90000102": false, "movie:tmdb:90000103": true, "movie:tmdb:90000104": true,
 	} {
 		_, err := st.GetTitle(ctx, key)
 		if kept && err != nil {
