@@ -864,6 +864,7 @@ The household's own collections, each an ordered list of titles. Made in Loomarr
 | `imported_from` | The media server it was brought over from, emby or jellyfin; empty when made in Loomarr. | `TEXT` |
 | `created_at_ms` | When the collection was made, in Unix milliseconds. | `INTEGER` |
 | `updated_at_ms` | When the collection was last changed, in Unix milliseconds. | `INTEGER` |
+| `imported_id` | The media server's id for the collection it was brought over from; empty when made in Loomarr. | `TEXT` |
 
 ### library_collection_members
 

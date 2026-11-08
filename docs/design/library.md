@@ -562,6 +562,23 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is found owned records its library item id. The media server answers only what the Library
   doesn't hold, and a media server that is down no longer holds back what the Library confirms.
   The ids already stored are the rewrite's.
+- **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
+  stored records name at library items: titles, airings, channels' slots, scopes, rules and
+  lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
+  are history and keep theirs). An id the map doesn't pair still maps when its record names a
+  title (a title's key, a proposal pick's) whose TMDB or TVDB id a Library title carries: a media
+  server that re-added its library left every old id dead, but not the titles. The pass runs in
+  one transaction and drops the media server's episode and path caches.
+
+  There is no all-or-nothing gate: every reader takes either kind of id, so what maps is rewritten
+  at once and the rest is logged and waits for a later pass. An airing names an episode with no
+  key, so one the map can't pair keeps its id and its spacing history lapses.
+
+  The media server's collections become household collections (`library_collections.imported_id`
+  names the one each came from): the hand-made ones once, behind the
+  `migration.library.collections_import.v1` marker so one the household deletes stays deleted, and
+  a TMDB-generated one only when a record names it, since the Library's ready-made sets already
+  hold those. Members come over through the id map.
 
 ## Cached series episodes
 
