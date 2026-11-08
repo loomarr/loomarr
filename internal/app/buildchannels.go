@@ -199,17 +199,13 @@ func buildChannels(
 			func() livetvpublish.MediaSourceLibrary { return libraryClient.Snapshot() }, msProg)
 		tunarrConnectSvc = mediaSource
 
-		// Give the scheduler a resolver so program slots carry a real runtime before the Tunarr
-		// push, and an episode resolver so a series entry expands into the Library's episodes (§9).
-		// A library item id's runtime (#2151 step 15) is answered from the Library's tables, any
-		// other id by the media server.
-		meta := itemMetadata{facts: st, lib: lib}
+		// Give the scheduler a resolver so program slots carry the Library's runtime before the
+		// Tunarr push, and an episode resolver so a series entry expands into the Library's
+		// episodes (§9, #2151 step 16).
+		meta := itemMetadata{facts: st}
 		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(st))
-		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
-		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches
-		// by id list — the bulk answer simply was not wired to the scheduler's duration path, so
-		// a 25-movie channel paid 25 sequential round trips on every cold guide request (~375ms
-		// of GET /v1/guide, measured against the dev Emby).
+		// Bulk duration resolution, so a cycle layout costs ONE Library read instead of one per
+		// movie (§9 N+1).
 		avail = channels.WithBulkDurations(avail, bulkDurations(meta))
 		// Tests inject an in-process Tunarr double here; production uses the real
 		// URL-built programmer (prog). Either way the engine is a *channels.Engine.
