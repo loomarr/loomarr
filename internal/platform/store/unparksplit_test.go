@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +22,7 @@ import (
 func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "unpark.db"), true)
+	s, err := Open(ctx, "sqlite://"+migratedSQLiteFile(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
