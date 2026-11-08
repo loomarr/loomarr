@@ -52,6 +52,18 @@ type managerIndex struct {
 	// complete is false when any configured arr failed to list, so the absence of a file from the
 	// index proves nothing.
 	complete bool
+	// unlisted are the local folders of the arrs that failed to list: only what they hold is
+	// unknown.
+	unlisted []string
+}
+
+// knows reports whether the index can say what path is: every arr listed, or none that failed
+// manages a folder holding it.
+func (idx managerIndex) knows(path string) bool {
+	if idx.complete {
+		return true
+	}
+	return !under(path, idx.unlisted)
 }
 
 // indexManagers lists every arr and keys its files by local path through the path map.
@@ -66,6 +78,11 @@ func indexManagers(ctx context.Context, managers []Manager, paths []store.Librar
 		if err != nil {
 			idx.complete = false
 			errs = append(errs, err)
+			for _, p := range paths {
+				if p.Authority == m.Authority && p.RootPath != "" {
+					idx.unlisted = append(idx.unlisted, p.RootPath)
+				}
+			}
 		}
 		local := pathMapper(m.Authority, paths)
 		for i := range records {

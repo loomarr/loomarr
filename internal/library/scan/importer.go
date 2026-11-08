@@ -33,6 +33,11 @@ const (
 // the reader, is the limit: more readers do not read faster.
 const headerConcurrency = 4
 
+// arrRetry is how long a folder pass goes on with an arr's failed listing before asking it again.
+// A change notification arrives every few seconds on a busy share; each used to ask a down arr
+// again, and wait on it.
+const arrRetry = time.Minute
+
 // ImportStore is the store the importer reads roots from and keeps its file table in.
 type ImportStore interface {
 	LibraryRoots(ctx context.Context) (store.LibraryRoots, error)
@@ -101,6 +106,9 @@ type Importer struct {
 	// path map and arr addresses it was built with. Guarded by run.
 	index      *managerIndex
 	indexPaths string
+	// indexedAt is when the index was last listed; an incomplete one is listed again by a folder
+	// pass only after arrRetry.
+	indexedAt time.Time
 
 	mu       sync.Mutex
 	progress Progress
@@ -314,8 +322,14 @@ func (im *Importer) arrIndex(ctx context.Context, paths []store.LibraryRootPath,
 			key += "|" + m.Authority + "=" + m.Address()
 		}
 	}
-	if full || relist || im.index == nil || !im.index.complete || im.indexPaths != key {
+	retry := im.index != nil && !im.index.complete && im.now().Sub(im.indexedAt) >= arrRetry
+	if full || relist || im.index == nil || retry || im.indexPaths != key {
 		return im.listArrs(ctx, managers, paths, key)
+	}
+	if !im.index.complete {
+		// An arr failed a moment ago: asking it again on every folder pass only waits on it
+		// again. Its folders' files wait; the rest pass on what the others listed.
+		return *im.index
 	}
 	for _, item := range changed {
 		if !im.refreshArrItem(ctx, managers, paths, item) {
@@ -346,7 +360,7 @@ func (im *Importer) listArrs(ctx context.Context, managers []Manager, paths []st
 	for _, err := range errs {
 		im.log().Warn("library scan: an arr did not list", "err", err)
 	}
-	im.index, im.indexPaths = &idx, key
+	im.index, im.indexPaths, im.indexedAt = &idx, key, im.now()
 	return idx
 }
 
@@ -578,9 +592,10 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 				queue = append(queue, pending{row: old, file: file, id: id, b: b})
 			}
 			continue
-		case !idx.complete:
-			// An arr is down: what it would say about a new, changed or re-identified file is
-			// unknown, and writing without it would only have to be undone. The file waits.
+		case !idx.knows(file.Path):
+			// An arr that manages this folder is down: what it would say about a new, changed or
+			// re-identified file is unknown, and writing without it would only have to be undone.
+			// The file waits. A folder no failing arr manages carries on.
 			if prev[file.Path].Held {
 				save = append(save, old)
 			}
