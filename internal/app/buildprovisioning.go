@@ -58,7 +58,7 @@ func buildProvisioning(
 	registry.AddAll(libraryScan.Jobs())
 
 	episodeRefresh := provisionbackstop.NewDynamicEpisodeRefresh(st, func() provisionbackstop.EpisodeResolver {
-		return episodeResolver(libraryClient.Snapshot())
+		return episodeResolver(st, libraryClient.Snapshot())
 	}, func() time.Duration {
 		return settings.EpisodesMaxAge.Get(set)
 	}, time.Now, log)

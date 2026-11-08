@@ -12,11 +12,13 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/episodeevidence"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/proposals"
@@ -156,15 +158,20 @@ func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 	return nil
 }
 
-// episodeResolver adapts the library client's ListEpisodes to the scheduler's
-// EpisodeResolver, mapping library.Episode → schedule.ResolvedProgram so a series
-// lineup entry expands into its episodes (§9). Keeps the schedule domain free of
-// a library dependency.
-func episodeResolver(lib *library.Client) channels.EpisodeResolver {
+// episodeResolver expands a series lineup entry into its episodes (§9), mapping each to a
+// schedule.ResolvedProgram so the schedule domain stays free of a library dependency. A library
+// series id reads the Library's own tables (#2151 step 15); any other id lists the media server's
+// episodes, as before the cutover. lib may be nil when no media server is connected.
+func episodeResolver(st store.LibraryEpisodeReader, lib *library.Client) channels.EpisodeResolver {
 	return func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error) {
-		eps, err := lib.ListEpisodes(ctx, showItemID)
+		eps, found, err := libraryEpisodes(ctx, st, showItemID)
 		if err != nil {
 			return nil, err
+		}
+		if !found && lib != nil {
+			if eps, err = lib.ListEpisodes(ctx, showItemID); err != nil {
+				return nil, err
+			}
 		}
 		out := make([]schedule.ResolvedProgram, 0, len(eps))
 		for _, e := range eps {
@@ -187,6 +194,34 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 		}
 		return out, nil
 	}
+}
+
+// libraryEpisodes reads a library series' episodes under the media server's own listing rules:
+// an episode that could not play is dropped, and its editorial evidence is bounded.
+func libraryEpisodes(ctx context.Context, st store.LibraryEpisodeReader, seriesID string) ([]library.Episode, bool, error) {
+	if st == nil {
+		return nil, false, nil
+	}
+	rows, found, err := st.LibraryEpisodes(ctx, seriesID)
+	if err != nil || !found {
+		return nil, found, err
+	}
+	eps := make([]library.Episode, 0, len(rows))
+	for _, r := range rows {
+		if episodeevidence.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
+			continue
+		}
+		evidence := episodeevidence.Sanitize(r.Score, r.Overview, r.Tags)
+		// The catalog's premiere date is a calendar day; anything else is unknown, not an error.
+		airDate, _ := time.Parse(time.DateOnly, r.PremiereDate)
+		eps = append(eps, library.Episode{
+			LibraryItemID: r.ItemID, Name: r.Name, DurationMs: r.DurationMs,
+			Season: r.Season, Episode: r.Episode, EpisodeEnd: r.EpisodeEnd,
+			ProductionYear: r.Year, AirDate: airDate, OfficialRating: r.Rating,
+			CommunityRating: evidence.CommunityRating, Overview: evidence.Overview, Tags: evidence.Tags,
+		})
+	}
+	return eps, true, nil
 }
 
 // bulkDurations adapts the library's BULK metadata call to channels.DurationsResolver.
