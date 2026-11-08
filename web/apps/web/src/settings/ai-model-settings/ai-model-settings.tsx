@@ -4,7 +4,7 @@ import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView"
 import type { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SystemLLMStatus } from "@loomarr/api/models/systemLLMStatus";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action } from "@loomarr/design-system";
+import { Action, RadioGroup, RadioItem, Surface, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -13,7 +13,6 @@ import { ModelDiscover } from "@/components/loomarr/ai/model-discover";
 import { ModelPicker } from "@/components/loomarr/ai/model-picker";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { useModelPull } from "@/settings/use-model-pull";
 import {
   REUSE_LINEUP,
@@ -126,6 +125,8 @@ const TmdbNotice = ({ configured }: { configured: boolean }) => (
 
 type VisionOption = { choice: VisionChoice; label: string; detail: string };
 
+const visionKey = (choice: VisionChoice) => `${choice.provider}:${choice.model}`;
+
 // The first three choices are guided; the rest wait behind "Show all", except the active one,
 // which always shows.
 const VisionPicker = ({
@@ -159,26 +160,42 @@ const VisionPicker = ({
           Reads sampled filler frames. It inherits the lineup model unless you choose a vision-capable model.
         </p>
       </div>
-      <div className="grid gap-2">
-        {shown.map((option) => {
-          const selected = sameVisionChoice(option.choice, active);
-          return (
-            <Button
-              key={`${option.choice.provider}:${option.choice.model}`}
-              type="button"
-              variant={selected ? "secondary" : "outline"}
-              className="h-auto min-h-10 justify-start px-3 py-2 text-left whitespace-normal"
-              onClick={() => onSelect(option.choice)}
-              disabled={selected}
-            >
-              <span>
-                <span className="block font-medium">{option.label}</span>
-                <span className="text-muted-foreground block text-xs font-normal">{option.detail}</span>
-              </span>
-            </Button>
-          );
-        })}
-      </div>
+      {/* One choice of several, so a radio group: the current model reads as checked rather than
+          as a disabled button, and arrow keys move between models. */}
+      <RadioGroup
+        borderWidth={0}
+        gap={8}
+        label="Vision model"
+        onValueChange={(value) => {
+          const option = shown.find((item) => visionKey(item.choice) === value);
+          if (option) onSelect(option.choice);
+        }}
+        value={shown.some((item) => sameVisionChoice(item.choice, active)) ? visionKey(active) : undefined}
+        values={shown.map((item) => visionKey(item.choice))}
+      >
+        {shown.map((option) => (
+          <RadioItem key={visionKey(option.choice)} label={option.label} value={visionKey(option.choice)}>
+            {({ checked }) => (
+              <Surface
+                backgroundColor={checked ? "surfaceFocus" : "surfaceRaised"}
+                borderColor={checked ? "contentPrimary" : "borderControl"}
+                borderRadius="control"
+                borderWidth={checked ? 2 : 1}
+                gap={2}
+                paddingHorizontal={12}
+                paddingVertical={8}
+              >
+                <Text strong={checked} textRole="cardLabel">
+                  {option.label}
+                </Text>
+                <Text textRole="hint" tone="secondary">
+                  {option.detail}
+                </Text>
+              </Surface>
+            )}
+          </RadioItem>
+        ))}
+      </RadioGroup>
       {options.length > 3 && (
         <Action onPress={() => setExpanded(!expanded)} style={{ alignSelf: "flex-start" }} variant="ghost">
           {expanded ? "Show guided choices" : `Show all ${options.length} choices`}
