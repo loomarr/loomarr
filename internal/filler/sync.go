@@ -562,7 +562,6 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			// hand-edited or AI-assigned era/audience. Category is derived from the taxonomy tags.
 			merged.Era = existing.Era
 			merged.Audience = existing.Audience
-			merged.Rating = existing.Rating
 			merged.GeographicScope = existing.GeographicScope
 			merged.Country = existing.Country
 			merged.Network, merged.Station, merged.AirDate, merged.GeoEvidence = existing.Network, existing.Station, existing.AirDate, existing.GeoEvidence

@@ -1212,7 +1212,6 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.Source = clip.Source
 		nc.License = clip.License
 		nc.Quality = clip.Quality
-		nc.Rating = clip.Rating
 		if err := sp.store.UpsertClip(ctx, nc); err != nil {
 			return nil, err
 		}

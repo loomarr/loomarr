@@ -55,7 +55,7 @@ type Artwork interface {
 
 // ImportedArt is the artwork kinds a title's images are imported for. The rest (banner,
 // landscape, clearart, discart) stay references: nothing shows them yet.
-var ImportedArt = []string{localart.KindPoster, localart.KindFanart, localart.KindClearlogo}
+var ImportedArt = []string{mp.KindPoster, mp.KindFanart, mp.KindClearlogo}
 
 // Importer is the shadow scanner (#2151 step 5). Each pass walks every in-use root, writes each
 // new or changed media file to the inventory as an origin of its root, then reads the headers of

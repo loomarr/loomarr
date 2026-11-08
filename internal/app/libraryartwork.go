@@ -13,7 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
+	"github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -31,9 +31,9 @@ type artRefs interface {
 // artRoles is the image role each imported artwork kind takes (#2567): fanart is a title's
 // backdrop, and a clear logo keeps its alpha on the logo ladder.
 var artRoles = map[string]images.Role{
-	localart.KindPoster:    images.RolePoster,
-	localart.KindFanart:    images.RoleBackdrop,
-	localart.KindClearlogo: images.RoleLogo,
+	metadataprovider.KindPoster:    images.RolePoster,
+	metadataprovider.KindFanart:    images.RoleBackdrop,
+	metadataprovider.KindClearlogo: images.RoleLogo,
 }
 
 // libraryArtwork gives the scanner's titles their artwork (#2151 step 10b, #2567). A file beside

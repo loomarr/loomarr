@@ -13,7 +13,8 @@ import (
 //     delete of the parent scans the child table, and so does every lookup of a parent's children.
 //   - check: a state column (state, status, outcome, kind, or a name ending in _state or _status)
 //     lists its values in a CHECK, so a typo'd state can't be written and a reader of the schema
-//     sees the whole set.
+//     sees the whole set. A column holding another system's words as it sent them is listed in
+//     FreeForm instead.
 //   - retention: the table says how long its rows are kept, so nothing grows without anyone
 //     having decided it should.
 //   - unbounded: a table whose retention admits that nothing deletes its rows ("Unbounded: ...")
@@ -29,7 +30,7 @@ func Lint(doc Doc, live []LiveTable) []string {
 			described[t.Name] = t
 		}
 	}
-	found := map[string]bool{}
+	found, freeSeen := map[string]bool{}, map[string]bool{}
 	for _, lt := range live {
 		if LibraryOwned(lt.Name) {
 			continue
@@ -48,7 +49,12 @@ func Lint(doc Doc, live []LiveTable) []string {
 			}
 		}
 		for _, c := range lt.Columns {
-			if stateColumn(c) && !c.Checked {
+			if !stateColumn(c) || c.Checked {
+				continue
+			}
+			if _, free := FreeForm[lt.Name+"."+c.Name]; free {
+				freeSeen[lt.Name+"."+c.Name] = true
+			} else {
 				found["check "+lt.Name+"."+c.Name] = true
 			}
 		}
@@ -62,6 +68,11 @@ func Lint(doc Doc, live []LiveTable) []string {
 	for gap, why := range KnownGaps {
 		if !found[gap] {
 			problems = append(problems, fmt.Sprintf("%s is fixed: remove it from KnownGaps (was: %s)", gap, why))
+		}
+	}
+	for column := range FreeForm {
+		if !freeSeen[column] {
+			problems = append(problems, column+" is listed in FreeForm but is no longer an unchecked state column")
 		}
 	}
 	slices.Sort(problems)
@@ -103,75 +114,40 @@ func lintFix(gap string) string {
 // Unbounded opens the retention of a table nothing prunes yet; Lint reports each one as a gap.
 const Unbounded = "Unbounded:"
 
-const (
-	needsIndex = "#2528: the integrity migration indexes it"
-	needsCheck = "#2528: the integrity migration lists its values in a CHECK"
-	needsPrune = "#2528: nothing prunes it yet"
-)
+const needsPrune = "#2528: nothing prunes it yet"
 
 // KnownGaps are the lint problems the schema had when the lint arrived, each with the work that
 // removes it. Add nothing here: fix the schema instead.
 var KnownGaps = map[string]string{
-	"unbounded device_pairings":                            needsPrune,
-	"unbounded discovery_feedback":                         needsPrune,
-	"unbounded filler_acquisition_artifacts":               needsPrune,
-	"unbounded filler_acquisition_runs":                    needsPrune,
-	"unbounded filler_context_reports":                     needsPrune,
-	"unbounded filler_enrichment_passes":                   needsPrune,
-	"unbounded filler_inference_evaluations":               needsPrune,
-	"unbounded filler_pull_commits":                        needsPrune,
-	"unbounded filler_pulls":                               needsPrune,
-	"unbounded filler_ready_events":                        needsPrune,
-	"unbounded filler_research_web_usage":                  needsPrune,
-	"unbounded filler_split_shadow_decisions":              needsPrune,
-	"unbounded filler_structure_window_call_ledger":        needsPrune,
-	"unbounded interactive_operations":                     needsPrune,
-	"unbounded inventory_item_origins":                     needsPrune,
-	"unbounded inventory_source_origins":                   needsPrune,
-	"unbounded inventory_sources":                          needsPrune,
-	"unbounded library_catalog":                            needsPrune,
-	"unbounded library_item_paths":                         needsPrune,
-	"unbounded library_items":                              needsPrune,
-	"unbounded notification_reference_recipients":          needsPrune,
-	"unbounded proposals":                                  needsPrune,
-	"unbounded series_episodes":                            needsPrune,
-	"unbounded titles":                                     needsPrune,
-	"fk-index client_crash_reports.user_id":                needsIndex,
-	"fk-index device_pairings.user_id":                     needsIndex,
-	"fk-index filler_acquisition_artifacts.acquisition_id": needsIndex,
-	"fk-index inventory_external_ids.item_id":              needsIndex,
-	"fk-index password_recoveries.user_id":                 needsIndex,
-	"fk-index quality_receipts.run_snapshot_id":            needsIndex,
-	"check activity.kind":                                  needsCheck,
-	"check channels.status":                                needsCheck,
-	"check diagnostic_process_runs.status":                 needsCheck,
-	"check filler_acquisition_artifacts.state":             needsCheck,
-	"check filler_acquisition_runs.status":                 needsCheck,
-	"check filler_clip_defects.outcome":                    needsCheck,
-	"check filler_clip_pipeline.status":                    needsCheck,
-	"check filler_curated_offers.local_state":              needsCheck,
-	"check filler_enrichment_axes.state":                   needsCheck,
-	"check filler_inference_evaluations.outcome":           needsCheck,
-	"check filler_inference_evaluations.state":             needsCheck,
-	"check filler_pulls.status":                            needsCheck,
-	"check filler_ready_events.outcome":                    needsCheck,
-	"check filler_sources.kind":                            needsCheck,
-	"check interactive_operations.kind":                    needsCheck,
-	"check interactive_operations.status":                  needsCheck,
-	"check inventory_items.kind":                           needsCheck,
-	"check inventory_sources.kind":                         needsCheck,
-	"check library_answers.kind":                           needsCheck,
-	"check library_art.kind":                               needsCheck,
-	"check library_candidates.kind":                        needsCheck,
-	"check library_catalog.kind":                           needsCheck,
-	"check library_files.kind":                             needsCheck,
-	"check library_filmography.kind":                       needsCheck,
-	"check library_id_map.kind":                            needsCheck,
-	"check library_items.kind":                             needsCheck,
-	"check library_markers.kind":                           needsCheck,
-	"check library_streams.kind":                           needsCheck,
-	"check proposal_jobs.kind":                             needsCheck,
-	"check quality_daily_aggregates.outcome":               needsCheck,
-	"check quality_receipts.outcome":                       needsCheck,
-	"check titles.download_status":                         needsCheck,
+	"unbounded device_pairings":                     needsPrune,
+	"unbounded discovery_feedback":                  needsPrune,
+	"unbounded filler_acquisition_artifacts":        needsPrune,
+	"unbounded filler_acquisition_runs":             needsPrune,
+	"unbounded filler_context_reports":              needsPrune,
+	"unbounded filler_enrichment_passes":            needsPrune,
+	"unbounded filler_inference_evaluations":        needsPrune,
+	"unbounded filler_pull_commits":                 needsPrune,
+	"unbounded filler_pulls":                        needsPrune,
+	"unbounded filler_ready_events":                 needsPrune,
+	"unbounded filler_research_web_usage":           needsPrune,
+	"unbounded filler_split_shadow_decisions":       needsPrune,
+	"unbounded filler_structure_window_call_ledger": needsPrune,
+	"unbounded interactive_operations":              needsPrune,
+	"unbounded inventory_item_origins":              needsPrune,
+	"unbounded inventory_source_origins":            needsPrune,
+	"unbounded inventory_sources":                   needsPrune,
+	"unbounded library_catalog":                     needsPrune,
+	"unbounded library_item_paths":                  needsPrune,
+	"unbounded library_items":                       needsPrune,
+	"unbounded notification_reference_recipients":   needsPrune,
+	"unbounded proposals":                           needsPrune,
+	"unbounded series_episodes":                     needsPrune,
+	"unbounded titles":                              needsPrune,
+}
+
+// FreeForm are state-named columns that hold another system's words as it sent them, so a CHECK
+// would refuse whatever that system adds next. Each says whose words they are.
+var FreeForm = map[string]string{
+	"inventory_items.kind":   "the media server's item type, lower-cased",
+	"titles.download_status": "the download app's queue status text, shown as it is",
 }

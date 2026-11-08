@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -52,7 +53,7 @@ func (h *harness) art(f *fakeArtwork, kind string) map[string]string {
 
 // posters is each listed title's poster, by name.
 func (h *harness) posters(f *fakeArtwork) map[string]string {
-	return h.art(f, localart.KindPoster)
+	return h.art(f, mp.KindPoster)
 }
 
 // A title's fanart and clear logo are imported beside its poster (#2567); the other kinds the
@@ -69,14 +70,14 @@ func TestImportFanartAndLogoBesideThePoster(t *testing.T) {
 	h.run()
 
 	for kind, want := range map[string]string{
-		localart.KindPoster: "poster.jpg", localart.KindFanart: "fanart.jpg", localart.KindClearlogo: "clearlogo.png",
+		mp.KindPoster: "poster.jpg", mp.KindFanart: "fanart.jpg", mp.KindClearlogo: "clearlogo.png",
 	} {
 		if got := h.art(art, kind)["Alpha"]; got != want {
 			t.Errorf("%s = %q, want %q", kind, got, want)
 		}
 	}
-	if len(art.held[localart.KindBanner]) != 0 {
-		t.Errorf("banner imported: %v", art.held[localart.KindBanner])
+	if len(art.held[mp.KindBanner]) != 0 {
+		t.Errorf("banner imported: %v", art.held[mp.KindBanner])
 	}
 }
 

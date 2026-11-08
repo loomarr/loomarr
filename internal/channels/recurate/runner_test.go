@@ -39,7 +39,7 @@ func (f *fakeRefiner) Recurate(_ context.Context, channelID string, intent propo
 func seedJob(t *testing.T, st store.Store, id, description string) {
 	t.Helper()
 	blob, _ := json.Marshal(proposals.Intent{Description: description, Era: "1990s"})
-	if err := st.CreateJob(context.Background(), store.Job{ID: id, IntentJSON: string(blob), IntentHash: "h-" + id, Status: "done"}); err != nil {
+	if err := st.CreateJob(context.Background(), store.Job{ID: id, Kind: "suggest", IntentJSON: string(blob), IntentHash: "h-" + id, Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
 }

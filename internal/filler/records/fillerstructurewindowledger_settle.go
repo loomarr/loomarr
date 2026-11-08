@@ -79,7 +79,7 @@ func (s *sqlStore) SettleStructureWindowCall(ctx context.Context, record window.
 func structureWindowCallSettlement(record window.CallRecord, reservation window.CallReservation) InferenceSettlement {
 	state, outcome := InferenceFailed, ""
 	if record.State == structure.AssessmentRecordAccepted {
-		state, outcome = InferenceCompleted, "window_complete"
+		state, outcome = InferenceCompleted, InferenceWindowComplete
 	}
 	currency := ""
 	if record.ChargeKnown {

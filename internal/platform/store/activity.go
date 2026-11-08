@@ -32,12 +32,12 @@ const (
 	ActivityError = "error"
 )
 
-// ActivityKind values — the domain that wrote the row.
+// ActivityKind values — the domain that wrote the row. A closed set: activity.kind's CHECK lists
+// exactly these, so a write point that invents its own kind fails in its first test.
 const (
 	ActivityKindTitle    = "title"
 	ActivityKindChannel  = "channel"
 	ActivityKindProposal = "proposal"
-	ActivityKindFiller   = "filler"
 	ActivityKindSystem   = "system"
 )
 

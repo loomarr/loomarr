@@ -140,12 +140,23 @@ func artwork(images []image) []mp.ArtworkRef {
 	var out []mp.ArtworkRef
 	for _, img := range images {
 		ref := strings.TrimSpace(img.RemoteURL)
-		if img.CoverType == "" || !strings.HasPrefix(ref, "https://") {
+		kind, ok := coverKinds[strings.ToLower(img.CoverType)]
+		if !ok || !strings.HasPrefix(ref, "https://") {
 			continue
 		}
-		out = append(out, mp.ArtworkRef{Kind: img.CoverType, Ref: ref})
+		out = append(out, mp.ArtworkRef{Kind: kind, Ref: ref})
 	}
 	return out
+}
+
+// coverKinds maps the arrs' coverType onto Loomarr's artwork kinds. A screenshot is an episode's
+// still; a headshot is a person's, and unknown is nothing, so neither is a title's art.
+var coverKinds = map[string]string{
+	"poster":     mp.KindPoster,
+	"fanart":     mp.KindFanart,
+	"banner":     mp.KindBanner,
+	"clearlogo":  mp.KindClearlogo,
+	"screenshot": mp.KindThumb,
 }
 
 // mediaInfo is the arr's summary of a file, read from the file by the arr.

@@ -24,7 +24,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/research"
-	"github.com/loomarr/loomarr/internal/filler/screening"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -106,16 +105,6 @@ type FillerStructureAssessmentStore interface {
 	SettleStructureWindowCall(context.Context, window.CallRecord) error
 	GetStructureWindowCallLedgerEntry(context.Context, string) (window.CallLedgerEntry, error)
 	ListOpenStructureWindowCallLedgerEntries(context.Context, int) ([]window.CallLedgerEntry, error)
-}
-
-// FillerSafetyStore owns the path-free, append-only execution ledger for the
-// spoken-safety shadow cascade. It is distinct from terminal admission policy.
-type FillerSafetyStore interface {
-	screening.SpokenSafetyLedgerRepository
-	screening.SpokenSafetyExecutionRepository
-	ReserveSpokenSafetyInference(context.Context, SpokenSafetyInferenceReservation, InferenceEvaluation, InferenceBudget) (InferenceEvaluation, screening.SpokenSafetyLedgerEvent, error)
-	SettleSpokenSafetyInference(context.Context, SpokenSafetyInferenceSettlement, InferenceSettlement) (InferenceEvaluation, screening.SpokenSafetyLedgerEvent, error)
-	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
 }
 
 // FillerEnrichmentStore owns the accepted per-axis descriptive evidence for clips. Applying a
@@ -293,7 +282,6 @@ type Store interface {
 	store.Store
 	FillerInferenceStore
 	FillerStructureAssessmentStore
-	FillerSafetyStore
 	FillerSourceStore
 	FillerPullStore
 	FillerAcquisitionStore
@@ -354,8 +342,7 @@ type placeholder func(query string) string
 // scannable is the one method *sql.Row and *sql.Rows share.
 type scannable = store.Scannable
 
-// The core's Unix-seconds time-column codec, under the names the moved code already uses. The
-// nanosecond codec the safety ledger uses is this package's own (fillerNanoEpoch).
+// The core's Unix-seconds time-column codec, under the names the moved code already uses.
 var (
 	epoch     = store.Epoch
 	fromEpoch = store.FromEpoch
