@@ -127,7 +127,11 @@ apple-compilation-cache-publisher	.github/workflows/apple-compilation-cache.yml	
 ci-playwright-workflow	.github/workflows/ci-playwright.yml	visual,e2e,policy
 ci-tuner-workflow	.github/workflows/ci-tuner.yml	tuner,policy
 ci-image-workflow	.github/workflows/ci-image.yml	image,policy
-ci-docs-workflow	.github/workflows/ci-docs.yml	docs,policy
+ci-docs-workflow	.github/workflows/ci-docs.yml	docs,policy,diagrams
+diagram-source	docs/diagrams/ci.d2	docs,diagrams
+diagram-generated	docs/diagrams/generated/ci.svg	docs,diagrams
+diagram-darken	docs/diagrams/system/darken.mjs	docs,diagrams
+diagram-generator	scripts/generate-diagrams.sh	contracts,docs,diagrams
 ci-android-workflow	.github/workflows/ci-android.yml	android,policy
 android-tv-compiler-cache	web/scripts/build-shield-play.sh	contracts,android
 android-shared-compiler-cache	web/scripts/android-ccache-env.sh;web/scripts/build-shield-play.test.sh;web/scripts/install-android-ccache.sh;web/scripts/install-android-ccache.test.sh;web/scripts/verify-android-ccache-evidence.sh	contracts,expo_android_mobile,android
@@ -135,8 +139,8 @@ visual-baselines-workflow	.github/workflows/visual-baselines.yml;.github/workflo
 apple-testflight-script	web/scripts/build-apple-testflight.sh;web/scripts/build-apple-testflight.test.sh	contracts
 apple-testflight-config	web/scripts/apple-testflight-config.cjs;web/scripts/apple-testflight-config.test.cjs	clients,apple_mobile,apple_tv
 apple-testflight-workflow	.github/workflows/apple-testflight.yml	policy
-make-root	Makefile	contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench
-make-docs-module	mk/docs.mk	docs,policy
+make-root	Makefile	contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench,diagrams
+make-docs-module	mk/docs.mk	docs,policy,diagrams
 make-eval-module	mk/eval.mk	contracts,go,policy
 make-android-module	mk/android.mk	android,policy
 make-frontend-module	mk/frontend.mk	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android,policy

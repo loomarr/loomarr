@@ -72,8 +72,9 @@ Titles are tasks in guides ("Back up and restore", not "Backups").
 
 A diagram earns its place only when relationships or sequence are clearer than prose or a table.
 D2 sources live in `docs/diagrams/`, generated SVGs in `docs/diagrams/generated/`, and
-`make diagrams` renders both. `make diagrams-verify` fails on drift. Every diagram follows the
-approved system (#1572):
+`make diagrams` renders both. `make diagrams-verify` fails on drift; CI's docs job runs it
+whenever a diagram source, SVG or render helper changes. Every diagram follows the approved
+system (#1572):
 
 - **One question per diagram,** written as the first comment in the source. About 10 nodes;
   the architecture overview, at 12, is the ceiling.

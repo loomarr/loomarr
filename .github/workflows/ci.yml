@@ -94,6 +94,7 @@ jobs:
       impact_agent: ${{ steps.impact.outputs.agent }}
       impact_android: ${{ steps.impact.outputs.android }}
       impact_playout_bench: ${{ steps.impact.outputs.playout_bench }}
+      impact_diagrams: ${{ steps.impact.outputs.diagrams }}
       impact_policy: ${{ steps.impact.outputs.policy }}
       release_candidate: ${{ steps.filter.outputs.release_candidate }}
     steps:
@@ -299,7 +300,7 @@ jobs:
               "$(impact_value apple_tv)" "$(impact_value expo_android_mobile)" \
               "$(impact_value expo_android_tv)"
             printf '| Image | %s | image=%s |\n' "$LEGACY_IMAGE" "$(impact_value image)"
-            printf '| Docs | %s | docs=%s |\n' "$LEGACY_DOCS" "$(impact_value docs)"
+            printf '| Docs | %s | docs=%s, diagrams=%s |\n' "$LEGACY_DOCS" "$(impact_value docs)" "$(impact_value diagrams)"
             printf '| Agent | %s | agent=%s |\n' "$LEGACY_AGENT" "$(impact_value agent)"
             printf '| Android TV | %s | React Native bundle=%s |\n' "$LEGACY_ANDROID" "$(impact_value android)"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -456,6 +457,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.impact_docs == 'true'
     uses: ./.github/workflows/ci-docs.yml
+    with:
+      diagrams: ${{ needs.changes.outputs.impact_diagrams == 'true' }}
 
   playout-bench:
     name: Playout bench — software-only pipeline
