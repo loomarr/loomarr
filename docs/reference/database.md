@@ -91,7 +91,7 @@ One row per browser sign-in. Made at sign-in or when an invitation is redeemed; 
 
 One row per pairing code shown on a TV or other device that is asking to be signed in. A signed-in person types the code to approve it; the device then swaps it for a device token and the row is deleted. Codes expire after 10 minutes.
 
-**Kept:** Unbounded: a code that expires before a device redeems it is never deleted, because nothing runs the expiry sweep.
+**Kept:** Deleted when redeemed; a code that expires first is deleted by the nightly housekeeping task.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -376,9 +376,9 @@ One row each time a worker started a channel suggester job, so a request's histo
 
 ### proposals
 
-A suggested channel lineup produced by a channel suggester job, waiting for an admin to approve or deny it (shown in the app as a request). Approving it creates or changes a channel. Denied proposals are deleted after the `proposals.retention` setting (90 days by default); the others are kept.
+A suggested channel lineup produced by a channel suggester job, waiting for an admin to approve or deny it (shown in the app as a request). Approving it creates or changes a channel.
 
-**Kept:** Unbounded: denied proposals go after `proposals.retention` (90 days by default), but approved ones (kept on purpose as the record of who approved them) and superseded ones are never deleted.
+**Kept:** Denied and superseded proposals are deleted after `proposals.retention` (90 days by default). Approved ones are kept on purpose, one per approval, as the record of who approved each channel; submitted ones wait for an answer.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -399,7 +399,7 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 
 The Keep, Less like this, Never and Surprise me choices people make about titles, for the whole household or for one channel. Each choice is a new row; the newest per title wins, and a channel's choice overrides the household's. The channel suggester and re-curation read them. A channel's rows are deleted with the channel.
 
-**Kept:** Unbounded: every choice adds a row and household-wide rows are never deleted, not even replaced ones; a channel's rows go with the channel.
+**Kept:** One row per title and scope: the nightly housekeeping task deletes a choice once a newer one replaces it, and a clear once nothing is left under it. A channel's rows go with the channel.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1780,9 +1780,9 @@ One row per try at sending a notification to one destination. A failure that may
 
 ### notification_reference_recipients
 
-One row per person who asked for a title or channel, recorded when an admin approves their request, so later news about it (the title arrived, the channel went live) reaches them. Rows are kept.
+One row per person who asked for a title or channel, recorded when an admin approves their request, so later news about it (the title arrived, the channel went live) reaches them.
 
-**Kept:** Unbounded: rows are never deleted, not even when the title or channel they point to is gone.
+**Kept:** Kept while the title, the channel and the person exist. Once one is gone, the nightly housekeeping task deletes the row (after 30 days, since a request is recorded before its title is).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1851,9 +1851,9 @@ The running state of one recurring background task shown on the Tasks page. Whic
 
 ### interactive_operations
 
-Progress of one long action someone started in the app (downloading an AI model, or detecting where a filler reel should be split), so the page can pick it up again after a reconnect. Rows are not deleted; anything still queued or running when Loomarr restarts is marked as an error.
+Progress of one long action someone started in the app (downloading an AI model, or detecting where a filler reel should be split), so the page can pick it up again after a reconnect. Anything still queued or running when Loomarr restarts is marked as an error.
 
-**Kept:** Unbounded: every model download or split detection adds a row, and finished ones are never deleted.
+**Kept:** Finished ones are deleted by the nightly housekeeping task 7 days after they finish; queued and running ones are kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |

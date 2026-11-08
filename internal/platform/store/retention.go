@@ -49,7 +49,9 @@ func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int
 	return int(n), nil
 }
 
-// PurgeDeniedProposals removes `denied` proposals older than `before` and returns the count.
+// PurgeDiscardedProposals removes `denied` and `superseded` proposals older than `before` and
+// returns the count. A superseded proposal was replaced by a newer one from the same job before
+// anyone decided it, so nothing reads it again.
 //
 // ⚠ **`approved` and `submitted` are kept indefinitely**, for two different reasons:
 //   - `approved` is the audit trail behind `decided_by` — the record that someone authorized
@@ -57,11 +59,11 @@ func (s *sqlStore) PurgeFinishedJobs(ctx context.Context, before time.Time) (int
 //   - `submitted` is a member still waiting for an answer. Ageing it out would discard their
 //     request rather than decline it, so it would vanish from "My requests" with nothing
 //     saying why.
-func (s *sqlStore) PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error) {
+func (s *sqlStore) PurgeDiscardedProposals(ctx context.Context, before time.Time) (int, error) {
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`DELETE FROM proposals WHERE status = 'denied' AND updated_at < ?`), epoch(before))
+		`DELETE FROM proposals WHERE status IN ('denied', 'superseded') AND updated_at < ?`), epoch(before))
 	if err != nil {
-		return 0, fmt.Errorf("purge denied proposals: %w", err)
+		return 0, fmt.Errorf("purge discarded proposals: %w", err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {

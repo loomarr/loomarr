@@ -119,8 +119,6 @@ const needsPrune = "#2528: nothing prunes it yet"
 // KnownGaps are the lint problems the schema had when the lint arrived, each with the work that
 // removes it. Add nothing here: fix the schema instead.
 var KnownGaps = map[string]string{
-	"unbounded device_pairings":                     needsPrune,
-	"unbounded discovery_feedback":                  needsPrune,
 	"unbounded filler_acquisition_artifacts":        needsPrune,
 	"unbounded filler_acquisition_runs":             needsPrune,
 	"unbounded filler_context_reports":              needsPrune,
@@ -132,15 +130,12 @@ var KnownGaps = map[string]string{
 	"unbounded filler_research_web_usage":           needsPrune,
 	"unbounded filler_split_shadow_decisions":       needsPrune,
 	"unbounded filler_structure_window_call_ledger": needsPrune,
-	"unbounded interactive_operations":              needsPrune,
 	"unbounded inventory_item_origins":              needsPrune,
 	"unbounded inventory_source_origins":            needsPrune,
 	"unbounded inventory_sources":                   needsPrune,
 	"unbounded library_catalog":                     needsPrune,
 	"unbounded library_item_paths":                  needsPrune,
 	"unbounded library_items":                       needsPrune,
-	"unbounded notification_reference_recipients":   needsPrune,
-	"unbounded proposals":                           needsPrune,
 	"unbounded series_episodes":                     needsPrune,
 	"unbounded titles":                              needsPrune,
 }

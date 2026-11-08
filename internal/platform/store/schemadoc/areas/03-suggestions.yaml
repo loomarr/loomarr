@@ -71,11 +71,11 @@ tables:
     about: >
       A suggested channel lineup produced by a channel suggester job, waiting for an admin to
       approve or deny it (shown in the app as a request). Approving it creates or changes a
-      channel. Denied proposals are deleted after the `proposals.retention` setting (90 days by
-      default); the others are kept.
+      channel.
     retention: >
-      Unbounded: denied proposals go after `proposals.retention` (90 days by default), but approved
-      ones (kept on purpose as the record of who approved them) and superseded ones are never deleted.
+      Denied and superseded proposals are deleted after `proposals.retention` (90 days by default).
+      Approved ones are kept on purpose, one per approval, as the record of who approved each channel;
+      submitted ones wait for an answer.
     columns:
       id: Identifies the proposal.
       job_id: The job that produced it (proposal_jobs.id).
@@ -104,8 +104,8 @@ tables:
       a channel's choice overrides the household's. The channel suggester and re-curation read
       them. A channel's rows are deleted with the channel.
     retention: >
-      Unbounded: every choice adds a row and household-wide rows are never deleted, not even
-      replaced ones; a channel's rows go with the channel.
+      One row per title and scope: the nightly housekeeping task deletes a choice once a newer one
+      replaces it, and a clear once nothing is left under it. A channel's rows go with the channel.
     columns:
       id: Identifies the choice.
       actor_id: The person who made it (users.id).

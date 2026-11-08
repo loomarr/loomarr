@@ -271,10 +271,10 @@ type ProposalRepository interface {
 	// for the same job and the channel must bind to THAT (§7). Indexed on job_id (00037).
 	NewestProposalByStatusForJob(ctx context.Context, jobID, status string) (Proposal, error)
 	ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error)
-	// PurgeDeniedProposals removes denied proposals older than `before` (§5
+	// PurgeDiscardedProposals removes denied and superseded proposals older than `before` (§5
 	// PROPOSALS_RETENTION). Approved proposals are the audit trail and are kept
 	// indefinitely; submitted ones are still awaiting an answer.
-	PurgeDeniedProposals(ctx context.Context, before time.Time) (int, error)
+	PurgeDiscardedProposals(ctx context.Context, before time.Time) (int, error)
 }
 
 // ProposalApprovalReader is the transaction-bound read view available to an
@@ -354,7 +354,7 @@ type UserStore interface {
 	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (DevicePairing, error)
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
 	DeleteDevicePairing(ctx context.Context, codeHash string) error
-	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error
+	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error)
 	CreateDeviceToken(ctx context.Context, t DeviceToken) error
 	GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error)
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
@@ -540,6 +540,7 @@ type InteractiveOperationStore interface {
 	UpsertInteractiveOperation(ctx context.Context, operation InteractiveOperation) error
 	GetInteractiveOperation(ctx context.Context, id string) (InteractiveOperation, error)
 	RecoverInterruptedInteractiveOperations(ctx context.Context, at time.Time) (int, error)
+	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
 }
 
 // AiringStore records what actually went to air — written from playout only.
@@ -615,6 +616,7 @@ type NotificationStore interface {
 	ListNotificationDestinationHealth(context.Context) (map[string]notifications.DestinationHealth, error)
 	DeleteNotificationDestination(context.Context, string) error
 	ListNotificationReferenceRecipients(context.Context, notifications.ReferenceKind, string) ([]string, error)
+	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
 	CreateNotificationIntent(context.Context, notifications.Intent, []notifications.Attempt) (notifications.Intent, bool, error)
 	GetNotificationIntent(context.Context, string) (notifications.Intent, error)
 	ListNotificationIntentsByReference(context.Context, notifications.ReferenceKind, string) ([]notifications.Intent, error)
