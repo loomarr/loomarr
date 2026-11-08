@@ -83,7 +83,13 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 		"fk-index jobs.user_id,shelf": "listed, still a gap",
 	}
 	doc := Doc{Areas: []Area{{Tables: []Table{
-		{Name: "jobs", Retention: "Deleted after a month."},
+		{Name: "jobs", Retention: "Deleted after a month.", Columns: map[string]string{
+			"took_millis":  "How long it took, in milliseconds.",               // a gap: not _ms
+			"ran_at":       "When it ran, in Unix milliseconds.",               // a gap: not _ms
+			"seen_at_ms":   "When it was seen, in Unix seconds.",               // a gap: seconds named _ms
+			"queued_at_ns": "When it was queued, in Unix nanoseconds.",         // named for its unit
+			"plan":         "JSON steps, each with its start in milliseconds.", // text: the unit is inside it
+		}},
 		{Name: "events", Retention: "Unbounded: nothing deletes them."},
 		{Name: "notes"},
 	}}}}
@@ -93,6 +99,11 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 			{Name: "status", Type: "TEXT"},
 			{Name: "kind", Type: "TEXT", Checked: true},
 			{Name: "run_state", Type: "INTEGER"}, // not text: a number, not a named state
+			{Name: "took_millis", Type: "BIGINT"},
+			{Name: "ran_at", Type: "INTEGER"},
+			{Name: "seen_at_ms", Type: "INTEGER"},
+			{Name: "queued_at_ns", Type: "BIGINT"},
+			{Name: "plan", Type: "TEXT"},
 		},
 			ForeignKeys: [][]string{
 				{"user_id"},               // only second in an index: a gap
@@ -113,6 +124,9 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 		"jobs.kind is listed in FreeForm but is no longer an unchecked state column",
 		"retention notes: add a retention line to its table in internal/platform/store/schemadoc/areas/",
 		"unbounded events: delete old rows (housekeeping or a retention setting), then say how long they're kept",
+		"unit jobs.ran_at: " + unitFix,
+		"unit jobs.seen_at_ms: " + unitFix,
+		"unit jobs.took_millis: " + unitFix,
 	}
 	if got := Lint(doc, live); !slices.Equal(got, want) {
 		t.Fatalf("Lint =\n  %s\nwant\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
