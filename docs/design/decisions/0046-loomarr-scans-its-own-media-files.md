@@ -1,7 +1,7 @@
 # 0046. Loomarr scans its own media files; the media server keeps only sign-in and Live TV
 
 - **Date:** 2026-11-03
-- **Status:** accepted
+- **Status:** accepted; two points superseded by [0047](0047-loomarr-identifies-media-without-the-arrs.md)
 - **Supersedes:** the media server as the sole importer into the Media Inventory
   ([0027](0027-loomarr-owned-media-inventory.md) keeps its model and gains these importers)
 
