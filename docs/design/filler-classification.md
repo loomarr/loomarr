@@ -159,7 +159,8 @@ seeded with a default forest.
 - **Rollups are queryable**: "one food advert per break" is a count over `descendants(food)`.
 - **Classifiers return tags from the live, served vocabulary**; each resolves to a slug, maps a
   synonym or retired alias to its canonical taxon, or is dropped. Only an operator adds a taxon.
-  The `category` column is a compatibility shadow of the most specific product tag.
+  A clip's `category` is its most specific product tag, derived on every read and never stored
+  (#2323).
 - **Asserted is not leaf.** `clip_tags.leaf` historically means "asserted"; a broad honest assertion
   such as `food` stays asserted if children are added later. Reads expose asserted tags separately
   from the full set, and editors write only assertions.
@@ -176,7 +177,7 @@ seeded with a default forest.
   playable clips, lineage changes, channel selections and resolver terms, computed by the server.
 - **Rollups are stored denormalised** so `WHERE taxon = 'food'` is one index hit. A `taxa_closure`
   table (rebuilt in Go from the forest) makes the rollup rebuild one dialect-neutral
-  `INSERT … SELECT`. A graph edit, closure, rollups and category shadow commit in one transaction;
+  `INSERT … SELECT`. A graph edit, closure and rollups commit in one transaction;
   startup runs the same rebuild as a backstop. Affected channels reconcile afterwards, with the
   channel sweep as the retry.
 - The taxonomy view leads with per-axis coverage and catalog links for gaps; axis absence is
@@ -190,8 +191,9 @@ signals. Operator exclusions and quotas use the scheduling rules layer.
 
 **Tagging confidence (V38) is retired** (#2323). The 0–100 score never decided anything once
 enrollment became the runtime authority, so the pipeline no longer computes it, the clip DTO no longer
-carries it, and its terminal rung is now `finish`. The former threshold, `auto_filed` state and
-withdrawal route went before it.
+carries it, and its terminal rung is now `finish`. The former threshold, auto-filed state and
+withdrawal route went before it. Migration 00170 drops the retired clip columns (`confidence`,
+the three tagging flags, `suggested_era`, `category`) and the old backfill marker table.
 
 **Provider settings.** Provider connections live on the AI page (the lineup model, an Advanced
 vision override, and one Speech recognition section: built-in or connected), and feature toggles and
