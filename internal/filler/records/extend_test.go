@@ -20,11 +20,12 @@ func TestExtendHidesNoCoreMethod(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
-	// The backup methods are capability probes: callers reach them through helpers that unwrap
-	// the wrapper to the core adapter, never by asserting on the store they hold.
+	// The backup and tidy methods are capability probes: callers reach them through helpers that
+	// unwrap the wrapper to the core adapter, never by asserting on the store they hold.
 	reachedThroughCore := map[string]bool{
 		"StreamBackup": store.SQLiteBackuper(s) != nil,
 		"WriteBackup":  store.BackupWriter(s) != nil,
+		"Tidy":         store.DatabaseTidier(s) != nil,
 	}
 
 	wrapper, core := reflect.TypeOf(s), reflect.TypeOf(s.Core())
