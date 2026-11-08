@@ -43,6 +43,26 @@ describe("Field", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // React Native Web's TextInput stops every keydown at the input, so a dialog listening on the
+  // document never heard Escape from inside a Field and stayed open.
+  it("lets Escape reach a dialog listening on the document", async () => {
+    const onEscape = vi.fn();
+    const listener = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onEscape();
+    };
+    document.addEventListener("keydown", listener);
+    render(
+      <LoomarrProvider theme="dark">
+        <Field label="Server address" />
+      </LoomarrProvider>,
+    );
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Server address" }), "a{Escape}");
+    document.removeEventListener("keydown", listener);
+
+    expect(onEscape).toHaveBeenCalledOnce();
+  });
+
   it("offers no reveal button on a plain field", () => {
     render(
       <LoomarrProvider theme="dark">

@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { IntentForm } from "./intent-form";
 
 // The form's own comment claims the constraints "now actually reach the server". That
