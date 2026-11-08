@@ -1,15 +1,11 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ReactElement, useState } from "react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
-import { render as rtlRender } from "@/test/render";
+import { render } from "@/test/render";
 import { ChannelAutoCurate } from "./channel-auto-curate";
-
-// The opt-in's help is a FieldHelp tooltip, which needs a TooltipProvider ancestor.
-const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 
 const OPT_IN = "Add new titles without asking";
 

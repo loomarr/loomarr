@@ -5,18 +5,11 @@ import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { SettingField } from "./setting-field";
 
-// The field's doc now shows in a FieldHelp (i) tooltip, which needs a TooltipProvider ancestor,
-// and its validation and unavailable lines are design-system FieldHints, which need the theme
-// (the app mounts both at the root). Wrap every render so the field mounts as it does there.
-const render = (ui: ReactElement) =>
-  rtlRender(
-    <LoomarrProvider theme="dark">
-      <TooltipProvider>{ui}</TooltipProvider>
-    </LoomarrProvider>,
-  );
+// The field's validation and unavailable lines are design-system FieldHints, which need the
+// theme the app mounts at the root.
+const render = (ui: ReactElement) => rtlRender(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
 const entry = (over: Partial<SettingEntry> = {}): SettingEntry => ({
   key: "library.url",

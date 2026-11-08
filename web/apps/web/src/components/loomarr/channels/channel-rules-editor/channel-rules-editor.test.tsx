@@ -1,15 +1,9 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { ruleVocabularyFixture } from "@loomarr/fixtures";
-import { render as rtlRender, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { ChannelRulesEditor } from "./channel-rules-editor";
-
-// Rows carry a remove-button tooltip (Radix), which needs a TooltipProvider ancestor —
-// same fix as ChannelLineupEditor's test.
-const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 
 // Each rule's `when`/`what`/`how` are set to the EXACT shape the lowering table produces
 // for its token (presets.ts), so the editor's reverse lookup (tokenForWhen/What/How)

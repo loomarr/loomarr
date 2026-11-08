@@ -18,14 +18,13 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge } from "@loomarr/design-system";
+import { Badge, Tooltip } from "@loomarr/design-system";
 import { GripVertical, Plus, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../shell";
@@ -174,22 +173,17 @@ const SortableLineupRow = ({
 
       {feedback && <div className="col-[2/-1] @md:contents">{feedback}</div>}
 
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon"
-              className="col-[2/-1] size-11 shrink-0 justify-self-end @md:size-7"
-              disabled={disabled}
-              aria-label={`Remove ${entry.name}`}
-              onClick={onRemove}
-            />
-          }
+      <Tooltip content="Remove from lineup">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="col-[2/-1] size-11 shrink-0 justify-self-end @md:size-7"
+          disabled={disabled}
+          aria-label={`Remove ${entry.name}`}
+          onClick={onRemove}
         >
           <X aria-hidden />
-        </TooltipTrigger>
-        <TooltipContent>Remove from lineup</TooltipContent>
+        </Button>
       </Tooltip>
     </li>
   );

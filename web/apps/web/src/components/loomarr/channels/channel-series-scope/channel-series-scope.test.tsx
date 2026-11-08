@@ -4,7 +4,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
 import { render as rtlRender } from "@/test/render";
 import { ChannelSeriesScope } from "./channel-series-scope";
@@ -12,9 +11,7 @@ import { ChannelSeriesScope } from "./channel-series-scope";
 const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>
-      <TooltipProvider>{children}</TooltipProvider>
-    </QueryClientProvider>
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
 };
 

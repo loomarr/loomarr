@@ -2,10 +2,9 @@ import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
 import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import { pluralize } from "@loomarr/core/format";
-import { Badge, type BadgeTone, Card } from "@loomarr/design-system";
+import { Badge, type BadgeTone, Card, Tooltip } from "@loomarr/design-system";
 import { Info } from "lucide-react";
 import { PanelRow } from "@/components/ui/panel-row";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { PlayoutPanelProps } from "./playout-panel.type";
 
@@ -91,24 +90,17 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium">{channelLabel(channel)}</p>
           {/* The raw id lives behind an (i) affordance — noise on the row, useful for a support
-              request. The app-wide Tooltip (TooltipProvider at __root.tsx) gives an instant, styled
+              request. The design-system Tooltip gives a prompt, styled
               reveal on hover/focus, same idiom as FieldHelp; the aria-label keeps it screen-reader
               reachable. (A native `title` also "worked" but its ~1.5s browser delay read as broken.) */}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={`Channel id ${channel.channelId}`}
-                  className="text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
-                />
-              }
+          <Tooltip content={<span className="font-mono text-xs">{channel.channelId}</span>}>
+            <button
+              type="button"
+              aria-label={`Channel id ${channel.channelId}`}
+              className="text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
             >
               <Info className="size-3" aria-hidden />
-            </TooltipTrigger>
-            <TooltipContent>
-              <span className="font-mono text-xs">{channel.channelId}</span>
-            </TooltipContent>
+            </button>
           </Tooltip>
         </div>
         <p className="text-muted-foreground mt-0.5 truncate text-xs">

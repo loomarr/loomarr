@@ -16,11 +16,11 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
+import { Tooltip } from "@loomarr/design-system";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
 import { computeLabel } from "./label";
@@ -179,22 +179,17 @@ const RuleRow = ({
           <GripVertical className="size-4" aria-hidden />
         </button>
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 shrink-0"
-                disabled={disabled}
-                aria-label={`Remove ${label}`}
-                onClick={onRemove}
-              />
-            }
+        <Tooltip content="Remove this rule">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            disabled={disabled}
+            aria-label={`Remove ${label}`}
+            onClick={onRemove}
           >
             <X aria-hidden />
-          </TooltipTrigger>
-          <TooltipContent>Remove this rule</TooltipContent>
+          </Button>
         </Tooltip>
       </div>
 

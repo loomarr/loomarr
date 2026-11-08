@@ -1,13 +1,12 @@
+import { Tooltip } from "@loomarr/design-system";
 import { Info } from "lucide-react";
 import { useId } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { FieldHelpProps } from "./field-help.type";
 
 // FieldHelp — a small (i) icon that shows a field's guidance on hover/focus, instead of a
 // permanent muted paragraph under every control. This is what lets the settings forms breathe:
-// the help is there when you want it, out of the way when you don't. Uses the app-wide Tooltip
-// (TooltipProvider is mounted at the root, __root.tsx) so no local provider is needed.
+// the help is there when you want it, out of the way when you don't.
 //
 // ⚠ THE `sr-only` COPY IS LOAD-BEARING — do not "de-duplicate" it against the tooltip.
 //
@@ -30,21 +29,17 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
   const descriptionId = describedById ?? ownId;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label={`About ${label}`}
-            aria-describedby={descriptionId}
-            // A 16 px glyph: a touch screen gets the 24 px tap area (styles.css, #1785).
-            data-touch-target
-            className={cn(
-              "text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none",
-              className,
-            )}
-          />
-        }
+    <Tooltip content={children}>
+      <button
+        type="button"
+        aria-label={`About ${label}`}
+        aria-describedby={descriptionId}
+        // A 16 px glyph: a touch screen gets the 24 px tap area (styles.css, #1785).
+        data-touch-target
+        className={cn(
+          "text-static-400 hover:text-foreground focus-visible:ring-ring inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none",
+          className,
+        )}
       >
         <Info className="size-3.5" aria-hidden />
         {!describedById && (
@@ -52,8 +47,7 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
             {children}
           </span>
         )}
-      </TooltipTrigger>
-      <TooltipContent>{children}</TooltipContent>
+      </button>
     </Tooltip>
   );
 };

@@ -4,20 +4,12 @@ import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
 import { ChannelPolicyFields } from "./channel-policy-fields";
 
-// Each field's help is a FieldHelp tooltip now, which needs a TooltipProvider ancestor (the
-// app mounts one at the root). Wrap every render so the fields mount without a Radix error.
-// The consequence line under Play order is a design-system Text, so LoomarrProvider mounts too,
-// as main.tsx does.
-const render = (ui: ReactElement) =>
-  rtlRender(
-    <LoomarrProvider theme="dark">
-      <TooltipProvider>{ui}</TooltipProvider>
-    </LoomarrProvider>,
-  );
+// The consequence line under Play order is a design-system Text, so LoomarrProvider mounts, as
+// main.tsx does.
+const render = (ui: ReactElement) => rtlRender(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
 const PolicyHarness = ({
   initial,

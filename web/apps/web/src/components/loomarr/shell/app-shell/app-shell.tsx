@@ -1,3 +1,4 @@
+import { Tooltip } from "@loomarr/design-system";
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   BadgeInfo,
@@ -15,7 +16,6 @@ import {
 } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
@@ -130,6 +130,13 @@ const AppShell = ({
   const { pathname } = useLocation();
   const highlight = channelNavHighlight(pathname);
   const accountInitials = userName.slice(0, 2).toUpperCase();
+  // The footer's version line, inside a link to About for an admin and plain text for a member.
+  const versionLabel = (
+    <>
+      <BadgeInfo className="size-4 shrink-0" aria-hidden />
+      <span className="truncate">{isAdmin ? serverVersion : `Loomarr ${serverVersion}`}</span>
+    </>
+  );
   return (
     // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
     // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
@@ -221,28 +228,20 @@ const AppShell = ({
         </nav>
 
         {serverVersion && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                isAdmin ? (
-                  <Link
-                    to="/settings/system/about"
-                    aria-label={`Loomarr ${serverVersion} — About`}
-                    className="text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors"
-                  />
-                ) : (
-                  <span className="text-static-400 mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-xs" />
-                )
-              }
-            >
-              <BadgeInfo className="size-4 shrink-0" aria-hidden />
-              {isAdmin ? (
-                <span className="truncate">{serverVersion}</span>
-              ) : (
-                <span className="truncate">Loomarr {serverVersion}</span>
-              )}
-            </TooltipTrigger>
-            <TooltipContent side="right">Loomarr {serverVersion}</TooltipContent>
+          <Tooltip content={`Loomarr ${serverVersion}`} side="right">
+            {isAdmin ? (
+              <Link
+                to="/settings/system/about"
+                aria-label={`Loomarr ${serverVersion} — About`}
+                className="text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors"
+              >
+                {versionLabel}
+              </Link>
+            ) : (
+              <span className="text-static-400 mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-xs">
+                {versionLabel}
+              </span>
+            )}
           </Tooltip>
         )}
 
@@ -266,20 +265,15 @@ const AppShell = ({
             <span className="text-muted-foreground truncate">{userName}</span>
           </Link>
           {onLogout && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    onClick={onLogout}
-                    aria-label="Sign out"
-                    className="text-static-400 hover:bg-accent hover:text-foreground shrink-0 cursor-pointer rounded-md p-1.5 transition-colors"
-                  />
-                }
+            <Tooltip content="Sign out">
+              <button
+                type="button"
+                onClick={onLogout}
+                aria-label="Sign out"
+                className="text-static-400 hover:bg-accent hover:text-foreground shrink-0 cursor-pointer rounded-md p-1.5 transition-colors"
               >
                 <LogOut className="size-4" aria-hidden />
-              </TooltipTrigger>
-              <TooltipContent>Sign out</TooltipContent>
+              </button>
             </Tooltip>
           )}
         </div>

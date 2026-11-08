@@ -4,7 +4,7 @@ import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEve
 import { ListDiagnosticEventsOrder } from "@loomarr/api/models/listDiagnosticEventsOrder";
 import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
+import { StatusDot, type StatusTone, Tooltip } from "@loomarr/design-system";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -22,7 +22,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   type ApplicationFilters,
   type EventOrder,
@@ -172,21 +171,16 @@ const EventDetail = ({
             {event.subsystem ? ` · ${event.subsystem}` : ""}
           </p>
         </div>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0"
-                aria-label={copied ? "Copied log details" : "Copy log details"}
-                onClick={copyLog}
-              >
-                {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
-              </Button>
-            }
-          />
-          <TooltipContent>{copied ? "Copied" : "Copy complete log details"}</TooltipContent>
+        <Tooltip content={copied ? "Copied" : "Copy complete log details"}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            aria-label={copied ? "Copied log details" : "Copy log details"}
+            onClick={copyLog}
+          >
+            {copied ? <Check aria-hidden /> : <Clipboard aria-hidden />}
+          </Button>
         </Tooltip>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -524,22 +518,17 @@ const ApplicationDiagnostics = ({
             ["info", counts.info, "text-lock", "bg-lock-tint-15", "info", "Show informational logs"],
           ] as const
         ).map(([level, count, color, fill, label, hint]) => (
-          <Tooltip key={level}>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  className={`cursor-pointer rounded-full border px-3 py-1 font-medium transition-colors ${color} ${filters.level === level ? `border-current ${fill} shadow-sm` : "border-border hover:bg-muted/30 hover:border-current"}`}
-                  aria-pressed={filters.level === level}
-                  onClick={() => updateFilters({ ...filters, level })}
-                >
-                  {label === "All"
-                    ? `${label} ${count}`
-                    : `${count} ${label}${label === "info" || count === 1 ? "" : "s"}`}
-                </button>
-              }
-            />
-            <TooltipContent>{hint}</TooltipContent>
+          <Tooltip key={level} content={hint}>
+            <button
+              type="button"
+              className={`cursor-pointer rounded-full border px-3 py-1 font-medium transition-colors ${color} ${filters.level === level ? `border-current ${fill} shadow-sm` : "border-border hover:bg-muted/30 hover:border-current"}`}
+              aria-pressed={filters.level === level}
+              onClick={() => updateFilters({ ...filters, level })}
+            >
+              {label === "All"
+                ? `${label} ${count}`
+                : `${count} ${label}${label === "info" || count === 1 ? "" : "s"}`}
+            </button>
           </Tooltip>
         ))}
         {counts.debug > 0 && (

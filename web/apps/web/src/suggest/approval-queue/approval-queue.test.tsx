@@ -5,7 +5,6 @@ import { render as rtlRender, screen, waitFor, within } from "@testing-library/r
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { outlook } from "@/test/fixtures/outlook";
 import { ApprovalQueue } from "./approval-queue";
 
@@ -19,9 +18,7 @@ const makeWrapper = () => {
   // the design-system theme the app root provides.
   return ({ children }: { children: ReactNode }) => (
     <LoomarrProvider theme="dark">
-      <QueryClientProvider client={client}>
-        <TooltipProvider>{children}</TooltipProvider>
-      </QueryClientProvider>
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
     </LoomarrProvider>
   );
 };

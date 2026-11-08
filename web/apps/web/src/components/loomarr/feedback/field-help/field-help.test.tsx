@@ -1,6 +1,5 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { FieldHelp } from "./field-help";
 
 // The tooltip content lives in a portal and only renders on hover — not worth asserting in jsdom.
@@ -15,20 +14,12 @@ import { FieldHelp } from "./field-help";
 // none of its documentation. If someone "simplifies" the sr-only span away, this goes red.
 describe("FieldHelp", () => {
   it("renders a labelled help trigger for the field", () => {
-    render(
-      <TooltipProvider>
-        <FieldHelp label="Ordering">How programs are sequenced.</FieldHelp>
-      </TooltipProvider>,
-    );
+    render(<FieldHelp label="Ordering">How programs are sequenced.</FieldHelp>);
     expect(screen.getByRole("button", { name: /about ordering/i })).toBeInTheDocument();
   });
 
   it("exposes the guidance as the trigger's accessible description", () => {
-    render(
-      <TooltipProvider>
-        <FieldHelp label="Ordering">How programs are sequenced.</FieldHelp>
-      </TooltipProvider>,
-    );
+    render(<FieldHelp label="Ordering">How programs are sequenced.</FieldHelp>);
     expect(screen.getByRole("button", { name: /about ordering/i })).toHaveAccessibleDescription(
       "How programs are sequenced.",
     );

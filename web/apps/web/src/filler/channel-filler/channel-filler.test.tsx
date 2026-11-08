@@ -14,7 +14,6 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
 import { DEFAULT_KINDS } from "@/test/fixtures/filler";
@@ -24,24 +23,15 @@ import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { ChannelFiller } from "./channel-filler";
 
-// The section needs three contexts in isolation: a QueryClient (live generated-API hooks),
-// a TooltipProvider (the clip-list remove buttons), and a RouterProvider (the header/empty-
-// state cross-links to /filler use TanStack `Link`, which throws without a router even in a
-// unit). RouterHarness renders `content` AS its route, so the query+tooltip providers wrap
-// the component INSIDE it — all three resolve.
+// The section needs two contexts in isolation: a QueryClient (live generated-API hooks) and a
+// RouterProvider (the header/empty-state cross-links to /filler use TanStack `Link`, which
+// throws without a router even in a unit). RouterHarness renders `content` AS its route, so the
+// query provider wraps the component INSIDE it — both resolve.
 const renderSection = (ui: ReactNode) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
-    <RouterHarness
-      content={
-        <QueryClientProvider client={client}>
-          <TooltipProvider>{ui}</TooltipProvider>
-        </QueryClientProvider>
-      }
-    />,
-  );
+  return render(<RouterHarness content={<QueryClientProvider client={client}>{ui}</QueryClientProvider>} />);
 };
 
 // ⚠ Every coverage payload carries the per-setting breakdown since V51f. Nothing at zero, so the
