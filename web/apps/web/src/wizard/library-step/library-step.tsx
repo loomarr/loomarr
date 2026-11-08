@@ -55,6 +55,10 @@ const LibraryStep = ({ backend }: LibraryStepProps) => {
       <Text textRole="label" tone="secondary">
         Sonarr and Radarr
       </Text>
+      <Text textRole="body" tone="secondary">
+        Recommended: with Sonarr and Radarr, Loomarr knows your files faster and for sure, and new downloads
+        show up right away.
+      </Text>
       {fill.filled.length > 0 ? (
         <Text textRole="body" tone="secondary">
           Filled in from Seerr:{" "}
