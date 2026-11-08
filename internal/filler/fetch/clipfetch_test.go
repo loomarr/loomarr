@@ -392,7 +392,7 @@ func TestRun_MissingProvenanceRemainsInHiddenRepairQuarantine(t *testing.T) {
 // write therefore retains its private bytes and archive for repair without poisoning the retry.
 func TestRun_YtDlpArchiveCommitsOnlyAfterDurableManifest(t *testing.T) {
 	dir := t.TempDir()
-	dsn := "sqlite://" + filepath.Join(t.TempDir(), "acquisitions.db")
+	dsn := testkit.MigratedSQLiteDSN(t)
 	source := fetch.Source{ID: "youtube:current", AcquisitionID: "acq-current", Kind: fetch.YouTube, URL: "https://youtube.com/watch?v=current-id"}
 	ytdlp := testkit.Executable(t, "yt-dlp", `#!/bin/sh
 archive=""; result=""

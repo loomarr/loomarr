@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // #1534: a seeded backend's Proposal Job must be listable through the real
@@ -19,7 +20,7 @@ import (
 // rejected it with ErrInvalidState and the endpoint 500'd.
 func TestSeedProposalJobsAreListableThroughTheProposalWorkflow(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/seed.db", true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestSeedProposalJobsAreListableThroughTheProposalWorkflow(t *testing.T) {
 
 func TestSeedClipsCreatesDistinctTaxonomyReadyCatalog(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/seed.db", true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestSeedClipsCreatesDistinctTaxonomyReadyCatalog(t *testing.T) {
 
 func TestSeedApprovalPreservesPendingAcquisitionsInChannel(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/seed.db", true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
