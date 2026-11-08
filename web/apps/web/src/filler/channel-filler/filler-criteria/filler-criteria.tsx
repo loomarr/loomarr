@@ -4,13 +4,12 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Action, Toggle } from "@loomarr/design-system";
+import { Action, CompactSelect, Toggle } from "@loomarr/design-system";
 import { CommitField, YearField } from "@loomarr/ui";
 import { useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 // FieldLabel — a label + (i) help icon, replacing the permanent helper `<p>` under each
@@ -76,6 +75,11 @@ const AUDIENCE_LABEL: Record<(typeof AUDIENCES)[number], string> = {
   general: "General",
   late_night: "Late night",
 };
+
+const AUDIENCE_OPTIONS = [
+  { label: "Any audience", value: "" },
+  ...AUDIENCES.map((audience) => ({ label: AUDIENCE_LABEL[audience], value: audience })),
+];
 
 // toggle — add/remove a value from a selection list, returning undefined for an empty
 // result so the wire carries "any" (omitted) rather than an empty array. Keeps
@@ -536,7 +540,7 @@ const FillerCriteria = ({
         )}
       </div>
 
-      {/* Audience — "any" is the sentinel (Radix forbids an empty item value). */}
+      {/* Audience — the empty value is "any audience". */}
       <div className="flex flex-col gap-1.5 sm:col-span-2">
         <FieldLabel
           htmlFor="filler-audience"
@@ -544,23 +548,14 @@ const FillerCriteria = ({
         >
           Audience
         </FieldLabel>
-        <Select
-          value={selection.audience || "any"}
+        <CompactSelect
           disabled={disabled}
-          onValueChange={(v) => onChange({ ...selection, audience: v === "any" ? "" : v })}
-        >
-          <SelectTrigger id="filler-audience">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="any">Any audience</SelectItem>
-            {AUDIENCES.map((a) => (
-              <SelectItem key={a} value={a}>
-                {AUDIENCE_LABEL[a]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          id="filler-audience"
+          label="Audience"
+          onValueChange={(audience) => onChange({ ...selection, audience })}
+          options={AUDIENCE_OPTIONS}
+          value={selection.audience ?? ""}
+        />
       </div>
 
       {/* Product/topic tags — a multi-select over the live product-axis hierarchy. No selection

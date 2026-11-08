@@ -132,8 +132,7 @@ describe("the Programming surface's commit model", () => {
     const user = userEvent.setup();
     await open(user, "How it's ordered");
 
-    await user.click(await screen.findByRole("combobox", { name: "Play order" }));
-    await user.click(await screen.findByRole("option", { name: "In order" }));
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Play order" }), "In order");
 
     await waitFor(() => expect(patches.at(-1)?.policy?.ordering).toBe("sequential"));
     expect(screen.queryByRole("button", { name: "Apply rules" })).not.toBeInTheDocument();

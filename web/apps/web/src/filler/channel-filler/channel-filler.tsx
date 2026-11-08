@@ -7,6 +7,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { goDurationMinutes, pluralize } from "@loomarr/core/format";
 import {
   Action,
+  CompactSelect,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -24,7 +25,6 @@ import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
 import { usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraOf } from "@/lib/era-dates";
 import { cn } from "@/lib/utils";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
@@ -145,24 +145,14 @@ const DurationChoiceField = ({
   return (
     <div className="grid gap-2 sm:max-w-md">
       <Label htmlFor={choice.id}>{choice.label}</Label>
-      <Select
-        key={options[0]?.label}
-        value={mode}
-        items={options}
-        onValueChange={changeMode}
+      <CompactSelect
         disabled={disabled}
-      >
-        <SelectTrigger id={choice.id}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        id={choice.id}
+        label={choice.label}
+        onValueChange={changeMode}
+        options={options}
+        value={mode}
+      />
       {mode === "custom" && (
         <div className="flex items-center gap-2">
           <AmountBox
@@ -242,18 +232,14 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
   return (
     <div className="grid gap-2 sm:max-w-md">
       <Label htmlFor="channel-break-frequency">Break frequency</Label>
-      <Select key={defaultLabel} value={mode} items={options} onValueChange={changeMode} disabled={disabled}>
-        <SelectTrigger id="channel-break-frequency">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <CompactSelect
+        disabled={disabled}
+        id="channel-break-frequency"
+        label="Break frequency"
+        onValueChange={changeMode}
+        options={options}
+        value={mode}
+      />
       {mode === "custom" && (
         <div className="flex items-center gap-2">
           <AmountBox
