@@ -415,7 +415,7 @@
       "tailwindClasses": 45
     },
     "src/filler/filler-settings/filler-settings.tsx": {
-      "tailwindClasses": 110,
+      "tailwindClasses": 108,
       "legacyUi": 1
     },
     "src/filler/incoming/incoming-preparation-summary/incoming-preparation-summary.tsx": {
@@ -460,7 +460,7 @@
       "tailwindClasses": 30
     },
     "src/filler/sources-panel/source-storage-card/source-storage-card.tsx": {
-      "tailwindClasses": 40
+      "tailwindClasses": 39
     },
     "src/filler/sources-panel/sources-panel.tsx": {
       "tailwindClasses": 3

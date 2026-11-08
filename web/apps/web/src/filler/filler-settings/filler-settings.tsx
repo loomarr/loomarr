@@ -4,7 +4,7 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Surface, Text } from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -76,13 +76,13 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
       <p className="font-medium">
         {storage.automatic ? "Automatic" : "Custom"} {formatBytes(storage.softBudgetBytes)} allowance
       </p>
-      <p className={allowanceFull ? "text-caution-foreground mt-1" : "text-muted-foreground mt-1"}>
+      <Text as="p" marginTop={4} textRole="body" tone={allowanceFull ? "warning" : "muted"}>
         {formatBytes(storage.managedBytes)} used · {formatBytes(storage.availableBytes)} available to Loomarr.
         Loomarr keeps at least {formatBytes(storage.hardReserveBytes)} free for this device.
-      </p>
+      </Text>
       {pauseMessage ? <p className="text-caution-foreground mt-2">{pauseMessage}</p> : null}
       {allowanceFull ? (
-        <div className="mt-3">
+        <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0} marginTop={12}>
           <Action
             variant="secondary"
             onPress={() =>
@@ -91,7 +91,7 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
           >
             Raise allowance
           </Action>
-        </div>
+        </Surface>
       ) : null}
     </div>
   );

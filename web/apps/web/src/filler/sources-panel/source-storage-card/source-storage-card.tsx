@@ -1,11 +1,12 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { cn } from "@/lib/utils";
 
 // The Storage card at the top of the Sources tab: how much the filler library uses, why new filler
 // is paused (if it is), and — when the host drive's reserve is what paused it — the one-click
@@ -57,11 +58,10 @@ const SourceStorageCard = () => {
   return (
     <section
       aria-labelledby="filler-storage-heading"
-      className={
-        allowanceFull
-          ? "border-caution/40 bg-caution/5 rounded-lg border p-4"
-          : "border-border bg-card rounded-lg border p-4"
-      }
+      className={cn(
+        "rounded-lg border p-4",
+        allowanceFull ? "border-caution/40 bg-caution/5" : "border-border bg-card",
+      )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -72,11 +72,7 @@ const SourceStorageCard = () => {
             {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
             this drive
           </p>
-          <p
-            className={
-              allowanceFull ? "text-caution-foreground mt-1 text-xs" : "text-muted-foreground mt-1 text-xs"
-            }
-          >
+          <Text as="p" marginTop={4} textRole="hint" tone={allowanceFull ? "warning" : "muted"}>
             {storage.pausedBy === "host_reserve"
               ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
               : storage.pausedBy === "library_limit"
@@ -91,7 +87,7 @@ const SourceStorageCard = () => {
             {storage.reservedBytes > 0
               ? ` ${formatBytes(storage.reservedBytes)} is set aside for work in progress.`
               : ""}
-          </p>
+          </Text>
         </div>
         <Action
           accessibilityRole="link"
