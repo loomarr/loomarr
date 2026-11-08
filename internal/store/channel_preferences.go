@@ -52,7 +52,7 @@ func (s *sqlStore) AddFavouriteChannel(ctx context.Context, userID, channelID st
 		return fmt.Errorf("add favourite channel: user, channel and time are required")
 	}
 	return s.writeChannelPreference(ctx, "add favourite channel", channelID, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO user_favourite_channels (user_id, channel_id, added_at)
+		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO user_favourite_channels (user_id, channel_id, added_at_ms)
 			VALUES (?, ?, ?) ON CONFLICT (user_id, channel_id) DO NOTHING`), userID, channelID, at.UnixMilli())
 		return err
 	})
@@ -71,16 +71,16 @@ func (s *sqlStore) RecordChannelTune(ctx context.Context, userID, channelID stri
 		return fmt.Errorf("record channel tune: user, channel and time are required")
 	}
 	return s.writeChannelPreference(ctx, "record channel tune", channelID, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO user_recent_channels (user_id, channel_id, tuned_at)
-			VALUES (?, ?, ?) ON CONFLICT (user_id, channel_id) DO UPDATE SET tuned_at =
-			CASE WHEN excluded.tuned_at > user_recent_channels.tuned_at
-			THEN excluded.tuned_at ELSE user_recent_channels.tuned_at END`),
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO user_recent_channels (user_id, channel_id, tuned_at_ms)
+			VALUES (?, ?, ?) ON CONFLICT (user_id, channel_id) DO UPDATE SET tuned_at_ms =
+			CASE WHEN excluded.tuned_at_ms > user_recent_channels.tuned_at_ms
+			THEN excluded.tuned_at_ms ELSE user_recent_channels.tuned_at_ms END`),
 			userID, channelID, at.UnixMilli()); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, s.ph(`DELETE FROM user_recent_channels WHERE user_id = ?
 			AND channel_id NOT IN (SELECT channel_id FROM user_recent_channels WHERE user_id = ?
-			ORDER BY tuned_at DESC, channel_id LIMIT ?)`), userID, userID, RecentChannelsKept)
+			ORDER BY tuned_at_ms DESC, channel_id LIMIT ?)`), userID, userID, RecentChannelsKept)
 		return err
 	})
 }
@@ -117,8 +117,8 @@ func (s *sqlStore) writeChannelPreference(ctx context.Context, op, channelID str
 
 func (s *sqlStore) UserChannelLists(ctx context.Context, userID string) (UserChannelLists, error) {
 	var out UserChannelLists
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT channel_id, added_at FROM user_favourite_channels
-		WHERE user_id = ? ORDER BY added_at, channel_id`), userID)
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT channel_id, added_at_ms FROM user_favourite_channels
+		WHERE user_id = ? ORDER BY added_at_ms, channel_id`), userID)
 	if err != nil {
 		return out, fmt.Errorf("list favourite channels: %w", err)
 	}
@@ -135,8 +135,8 @@ func (s *sqlStore) UserChannelLists(ctx context.Context, userID string) (UserCha
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return out, fmt.Errorf("list favourite channels: %w", err)
 	}
-	rows, err = s.db.QueryContext(ctx, s.ph(`SELECT channel_id, tuned_at FROM user_recent_channels
-		WHERE user_id = ? ORDER BY tuned_at DESC, channel_id LIMIT ?`), userID, RecentChannelsKept)
+	rows, err = s.db.QueryContext(ctx, s.ph(`SELECT channel_id, tuned_at_ms FROM user_recent_channels
+		WHERE user_id = ? ORDER BY tuned_at_ms DESC, channel_id LIMIT ?`), userID, RecentChannelsKept)
 	if err != nil {
 		return out, fmt.Errorf("list recent channels: %w", err)
 	}

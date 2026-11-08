@@ -21,7 +21,7 @@ func (s *sqlStore) HideIdea(ctx context.Context, userID, ideaID string, at time.
 	if userID == "" || ideaID == "" || at.IsZero() {
 		return fmt.Errorf("hide idea: user, idea and time are required")
 	}
-	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO user_hidden_ideas (user_id, idea_id, hidden_at)
+	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO user_hidden_ideas (user_id, idea_id, hidden_at_ms)
 		VALUES (?, ?, ?) ON CONFLICT (user_id, idea_id) DO NOTHING`), userID, ideaID, at.UnixMilli()); err != nil {
 		return fmt.Errorf("hide idea: %w", err)
 	}

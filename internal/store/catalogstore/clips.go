@@ -1127,8 +1127,8 @@ func (s *Store) RecordClipPlay(ctx context.Context, channelID, id string, at, re
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	res, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO filler_airings (channel_id, clip_hash, aired_at, recorded_at)
-		VALUES (?, ?, ?, ?) ON CONFLICT(channel_id, clip_hash, aired_at) DO NOTHING`),
+	res, err := tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO filler_airings (channel_id, clip_hash, aired_at_ms, recorded_at_ms)
+		VALUES (?, ?, ?, ?) ON CONFLICT(channel_id, clip_hash, aired_at_ms) DO NOTHING`),
 		channelID, id, at.UnixMilli(), recordedAt.UnixMilli())
 	if err != nil {
 		return false, fmt.Errorf("record channel clip play %s/%s: %w", channelID, id, err)
@@ -1146,9 +1146,9 @@ func (s *Store) RecordClipPlay(ctx context.Context, channelID, id string, at, re
 	// With fewer than fillerAiringsKept rows the subquery is NULL and nothing is deleted. Only airings
 	// past the history age go, and never the one just written: a break on air may count any recent airing, and
 	// a deleted row would let the same airing be counted again at its next resolve.
-	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM filler_airings WHERE clip_hash = ? AND aired_at < ?
-		AND NOT (channel_id = ? AND aired_at = ?) AND aired_at <
-		(SELECT aired_at FROM filler_airings WHERE clip_hash = ? ORDER BY aired_at DESC LIMIT 1 OFFSET ?)`),
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`DELETE FROM filler_airings WHERE clip_hash = ? AND aired_at_ms < ?
+		AND NOT (channel_id = ? AND aired_at_ms = ?) AND aired_at_ms <
+		(SELECT aired_at_ms FROM filler_airings WHERE clip_hash = ? ORDER BY aired_at_ms DESC LIMIT 1 OFFSET ?)`),
 		id, recordedAt.Add(-fillerAiringsTrimAge).UnixMilli(), channelID, at.UnixMilli(), id, fillerAiringsKept-1); err != nil {
 		return false, fmt.Errorf("trim clip airings %s: %w", id, err)
 	}
@@ -1174,7 +1174,7 @@ const (
 // FillerAirings returns the household's stored clip airings, every channel's (§10 rotation). The
 // per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
 func (s *Store) FillerAirings(ctx context.Context) ([]clips.Airing, error) {
-	rows, err := s.h.QueryContext(ctx, `SELECT channel_id, clip_hash, aired_at, recorded_at FROM filler_airings`)
+	rows, err := s.h.QueryContext(ctx, `SELECT channel_id, clip_hash, aired_at_ms, recorded_at_ms FROM filler_airings`)
 	if err != nil {
 		return nil, fmt.Errorf("list filler airings: %w", err)
 	}

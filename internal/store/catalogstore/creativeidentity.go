@@ -107,8 +107,8 @@ func identityHistoryMoves(from, to string) []identityStep {
 		return nil
 	}
 	return []identityStep{
-		{`INSERT INTO filler_airings (channel_id, clip_hash, aired_at, recorded_at)
-		  SELECT channel_id, ?, aired_at, recorded_at FROM filler_airings WHERE clip_hash = ?
+		{`INSERT INTO filler_airings (channel_id, clip_hash, aired_at_ms, recorded_at_ms)
+		  SELECT channel_id, ?, aired_at_ms, recorded_at_ms FROM filler_airings WHERE clip_hash = ?
 		  ON CONFLICT DO NOTHING`, []any{to, from}},
 		{`DELETE FROM filler_airings WHERE clip_hash = ?`, []any{from}},
 		{`INSERT INTO filler_clip_variants (a_hash, b_hash)

@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 )
 
-const diagnosticEventColumns = `id, occurred_at, received_at, level, source, subsystem, event,
+const diagnosticEventColumns = `id, occurred_at_ms, received_at_ms, level, source, subsystem, event,
 message, request_id, playback_session_id, channel_id, schedule_block_id, job_id, process_run_id,
 actor_id, instance_id, attributes_json, size_bytes`
 
@@ -64,7 +64,7 @@ func (s *sqlStore) ListDiagnosticEvents(ctx context.Context, limit int) ([]diagn
 		limit = 1000
 	}
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+diagnosticEventColumns+`
-		FROM diagnostic_events ORDER BY occurred_at DESC, id DESC LIMIT ?`), limit)
+		FROM diagnostic_events ORDER BY occurred_at_ms DESC, id DESC LIMIT ?`), limit)
 	if err != nil {
 		return nil, fmt.Errorf("list diagnostic events: %w", err)
 	}
@@ -123,7 +123,7 @@ func diagnosticEventQuery(query diagnostics.EventStoreQuery) (string, []any) {
 	if query.Order == diagnostics.EventOrderOldest {
 		comparison, direction = ">", "ASC"
 	}
-	clauses := []string{"occurred_at >= ?", "occurred_at <= ?"}
+	clauses := []string{"occurred_at_ms >= ?", "occurred_at_ms <= ?"}
 	args := []any{query.From, query.To}
 	addExact := func(column, value string) {
 		if value == "" {
@@ -154,7 +154,7 @@ func diagnosticEventQuery(query diagnostics.EventStoreQuery) (string, []any) {
 	addCorrelation("process_run_id", query.ProcessRunID)
 	addExact("instance_id", query.InstanceID)
 	if query.CursorID != "" {
-		clauses = append(clauses, "(occurred_at "+comparison+" ? OR (occurred_at = ? AND id "+comparison+" ?))")
+		clauses = append(clauses, "(occurred_at_ms "+comparison+" ? OR (occurred_at_ms = ? AND id "+comparison+" ?))")
 		args = append(args, query.CursorOccurredAt, query.CursorOccurredAt, query.CursorID)
 	}
 	if query.Text != "" {
@@ -167,7 +167,7 @@ func diagnosticEventQuery(query diagnostics.EventStoreQuery) (string, []any) {
 	args = append(args, query.Limit)
 	return `SELECT ` + diagnosticEventColumns + `
 		FROM diagnostic_events WHERE ` + strings.Join(clauses, " AND ") + `
-		ORDER BY occurred_at ` + direction + `, id ` + direction + ` LIMIT ?`, args
+		ORDER BY occurred_at_ms ` + direction + `, id ` + direction + ` LIMIT ?`, args
 }
 
 func scanDiagnosticEvent(row interface{ Scan(...any) error }) (diagnostics.Record, error) {
@@ -185,9 +185,9 @@ func scanDiagnosticEvent(row interface{ Scan(...any) error }) (diagnostics.Recor
 }
 
 const diagnosticProcessColumns = `id, purpose, parent_run_id, instance_id, channel_id, target,
-schedule_block_id, job_id, executable, executable_version, command_summary, started_at, ended_at,
+schedule_block_id, job_id, executable, executable_version, command_summary, started_at_ms, ended_at_ms,
 status, exit_code, termination_reason, first_error, last_error, output_ref, output_bytes,
-discarded_lines, updated_at, size_bytes`
+discarded_lines, updated_at_ms, size_bytes`
 
 // UpsertDiagnosticProcessRun inserts a run at start and replaces its bounded lifecycle snapshot as
 // progress/termination arrives. The run id is the identity; status transitions are enforced by the
@@ -222,12 +222,12 @@ func (s *sqlStore) UpsertDiagnosticProcessRun(ctx context.Context, run diagnosti
 			target = excluded.target, schedule_block_id = excluded.schedule_block_id,
 			job_id = excluded.job_id, executable = excluded.executable,
 			executable_version = excluded.executable_version,
-			command_summary = excluded.command_summary, started_at = excluded.started_at,
-			ended_at = excluded.ended_at, status = excluded.status, exit_code = excluded.exit_code,
+			command_summary = excluded.command_summary, started_at_ms = excluded.started_at_ms,
+			ended_at_ms = excluded.ended_at_ms, status = excluded.status, exit_code = excluded.exit_code,
 			termination_reason = excluded.termination_reason, first_error = excluded.first_error,
 			last_error = excluded.last_error, output_ref = excluded.output_ref,
 			output_bytes = excluded.output_bytes, discarded_lines = excluded.discarded_lines,
-			updated_at = excluded.updated_at, size_bytes = excluded.size_bytes`),
+			updated_at_ms = excluded.updated_at_ms, size_bytes = excluded.size_bytes`),
 		run.ID, run.Purpose, run.ParentRunID, run.InstanceID, run.ChannelID, run.Target,
 		run.ScheduleBlockID, run.JobID, run.Executable, run.ExecutableVersion, run.CommandSummary,
 		run.StartedAt, run.EndedAt, run.Status, diagnosticNullableInt(run.ExitCode), run.TerminationReason,
@@ -281,7 +281,7 @@ func (s *sqlStore) QueryDiagnosticProcessRuns(
 	if query.From < 0 || query.To <= query.From || query.Limit < 1 || query.Limit > 201 {
 		return nil, fmt.Errorf("query diagnostic process runs: invalid module query")
 	}
-	clauses := []string{"started_at >= ?", "started_at <= ?"}
+	clauses := []string{"started_at_ms >= ?", "started_at_ms <= ?"}
 	args := []any{query.From, query.To}
 	addExact := func(column, value string) {
 		if value == "" {
@@ -295,13 +295,13 @@ func (s *sqlStore) QueryDiagnosticProcessRuns(
 	addExact("channel_id", query.ChannelID)
 	addExact("job_id", query.JobID)
 	if query.CursorID != "" {
-		clauses = append(clauses, "(started_at < ? OR (started_at = ? AND id < ?))")
+		clauses = append(clauses, "(started_at_ms < ? OR (started_at_ms = ? AND id < ?))")
 		args = append(args, query.CursorStartedAt, query.CursorStartedAt, query.CursorID)
 	}
 	args = append(args, query.Limit)
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+diagnosticProcessColumns+`
 		FROM diagnostic_process_runs WHERE `+strings.Join(clauses, " AND ")+`
-		ORDER BY started_at DESC, id DESC LIMIT ?`), args...)
+		ORDER BY started_at_ms DESC, id DESC LIMIT ?`), args...)
 	if err != nil {
 		return nil, fmt.Errorf("query diagnostic process runs: %w", err)
 	}
@@ -353,27 +353,27 @@ func diagnosticNullableInt(value *int) any {
 // outside, which made SQLite scan and sort every diagnostic_events row to return one 256-row
 // page — on the 2.7M-row household table that is seconds per page holding the only connection,
 // repeated for every page, which is why the nightly purge never finished (#1411). Bounded per
-// branch, each side walks its time index (events: occurred_at; terminal process runs: ended_at)
+// branch, each side walks its time index (events: occurred_at_ms; terminal process runs: ended_at_ms)
 // and stops after `limit`
 // rows; the outer merge sorts at most 2×limit. A zero beforeMS ("everything deletable") is
 // resolved here in Go, not as an `OR ? = 0` in SQL, because that OR defeats the index range.
 func diagnosticRetentionCandidatesQuery(beforeMS int64, limit int) (string, []any) {
-	eventWhere, runWhere := "", "WHERE status <> 'running' AND ended_at > 0"
+	eventWhere, runWhere := "", "WHERE status <> 'running' AND ended_at_ms > 0"
 	var eventArgs, runArgs []any
 	if beforeMS != 0 {
-		eventWhere, runWhere = "WHERE occurred_at < ?", runWhere+" AND ended_at < ?"
+		eventWhere, runWhere = "WHERE occurred_at_ms < ?", runWhere+" AND ended_at_ms < ?"
 		eventArgs, runArgs = []any{beforeMS}, []any{beforeMS}
 	}
 	args := append(append(append(eventArgs, limit), append(runArgs, limit)...), limit)
 	return `SELECT kind, id, at, size_bytes, output_ref FROM (
 		SELECT kind, id, at, size_bytes, output_ref FROM (
-			SELECT 'event' AS kind, id, occurred_at AS at, size_bytes, '' AS output_ref
-			FROM diagnostic_events ` + eventWhere + ` ORDER BY occurred_at, id LIMIT ?
+			SELECT 'event' AS kind, id, occurred_at_ms AS at, size_bytes, '' AS output_ref
+			FROM diagnostic_events ` + eventWhere + ` ORDER BY occurred_at_ms, id LIMIT ?
 		) e
 		UNION ALL
 		SELECT kind, id, at, size_bytes, output_ref FROM (
-			SELECT 'process_run' AS kind, id, ended_at AS at, size_bytes, output_ref
-			FROM diagnostic_process_runs ` + runWhere + ` ORDER BY ended_at, id LIMIT ?
+			SELECT 'process_run' AS kind, id, ended_at_ms AS at, size_bytes, output_ref
+			FROM diagnostic_process_runs ` + runWhere + ` ORDER BY ended_at_ms, id LIMIT ?
 		) r
 	) candidates ORDER BY at, id LIMIT ?`, args
 }
@@ -439,7 +439,7 @@ func (s *sqlStore) ListDiagnosticRetentionCandidates(
 func (s *sqlStore) FinalizeStaleDiagnosticProcessRuns(ctx context.Context, instanceID string, now time.Time) (int, error) {
 	ms := now.UnixMilli()
 	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE diagnostic_process_runs
-		SET status = ?, ended_at = ?, updated_at = ?, termination_reason = ?
+		SET status = ?, ended_at_ms = ?, updated_at_ms = ?, termination_reason = ?
 		WHERE status = ? AND instance_id = ?`),
 		diagnostics.ProcessInterrupted, ms, ms, "process exited without finalizing this run",
 		diagnostics.ProcessRunning, instanceID)
@@ -558,7 +558,7 @@ func (s *sqlStore) PurgeDiagnostics(ctx context.Context, before time.Time, maxBy
 			return result, fmt.Errorf("purge expired diagnostic events: %w", err)
 		}
 		n, err := s.deleteCounted(ctx, retainedEvents, `DELETE FROM diagnostic_events WHERE id IN (
-			SELECT id FROM diagnostic_events WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT ?)`,
+			SELECT id FROM diagnostic_events WHERE occurred_at_ms < ? ORDER BY occurred_at_ms, id LIMIT ?)`,
 			beforeMS, diagnosticPurgeBatch)
 		if err != nil {
 			return result, fmt.Errorf("purge expired diagnostic events: %w", err)
@@ -570,7 +570,7 @@ func (s *sqlStore) PurgeDiagnostics(ctx context.Context, before time.Time, maxBy
 	}
 	var err error
 	result.ProcessRuns, err = s.deleteCounted(ctx, retainedProcessRuns, `DELETE FROM diagnostic_process_runs
-		WHERE status <> 'running' AND ended_at > 0 AND ended_at < ? AND output_ref = ''`, beforeMS)
+		WHERE status <> 'running' AND ended_at_ms > 0 AND ended_at_ms < ? AND output_ref = ''`, beforeMS)
 	if err != nil {
 		return result, fmt.Errorf("purge expired diagnostic process runs: %w", err)
 	}
@@ -626,14 +626,14 @@ type diagnosticBudgetItem struct {
 func (s *sqlStore) diagnosticBudgetPage(ctx context.Context, limit int) ([]diagnosticBudgetItem, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, id, size_bytes FROM (
 		SELECT kind, id, at, size_bytes FROM (
-			SELECT 'event' AS kind, id, occurred_at AS at, size_bytes
-			FROM diagnostic_events ORDER BY occurred_at, id LIMIT ?
+			SELECT 'event' AS kind, id, occurred_at_ms AS at, size_bytes
+			FROM diagnostic_events ORDER BY occurred_at_ms, id LIMIT ?
 		) e
 		UNION ALL
 		SELECT kind, id, at, size_bytes FROM (
-			SELECT 'process' AS kind, id, started_at AS at, size_bytes
+			SELECT 'process' AS kind, id, started_at_ms AS at, size_bytes
 			FROM diagnostic_process_runs WHERE status <> 'running' AND output_ref = ''
-			ORDER BY started_at, id LIMIT ?
+			ORDER BY started_at_ms, id LIMIT ?
 		) r
 	) retained ORDER BY at, id LIMIT ?`), limit, limit, limit)
 	if err != nil {
