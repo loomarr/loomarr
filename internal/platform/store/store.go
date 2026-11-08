@@ -430,8 +430,8 @@ type ClipStore interface {
 	// already applied the grounding rule, so this writes what it is given.
 	SetClipBrand(ctx context.Context, path, brand string, at time.Time) error
 	// ApplyClipVision records a vision pass — the on-screen text it read, a grounded brand/era, and
-	// its asserted taxonomy tags (§10 V44/V55). The ONLY writer of `visible_text`
-	// and `vision_tagged`; `brand` it shares with SetClipBrand above. UpsertClip omits them so a
+	// its asserted taxonomy tags (§10 V44/V55). The pipeline's writer of `visible_text`; `brand`
+	// it shares with SetClipBrand above. UpsertClip omits them so a
 	// re-sync cannot undo a paid vision call. era/category are written only when grounded, leaving
 	// text tags intact.
 	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error
@@ -529,10 +529,11 @@ type ClipStore interface {
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
-	// ClearClipVisionTags drops the vision stamp so the rung looks again (§10 V51b). ⚠ It does NOT
-	// clear brand/era/category — those are shared with the text tagger and nothing records which
-	// tier wrote them. See the implementation for why that asymmetry is the safe one.
-	ClearClipVisionTags(ctx context.Context, path string, at time.Time) error
+	// ClearClipVisibleText forgets the on-screen text vision read, for a Rewind to the vision rung
+	// (§10 V51b). ⚠ It does NOT clear brand/era/category — those are shared with the text tagger
+	// and nothing records which tier wrote them. See the implementation for why that asymmetry is
+	// the safe one.
+	ClearClipVisibleText(ctx context.Context, path string, at time.Time) error
 }
 
 // InteractiveOperationStore is the reconnect truth for request-launched asynchronous work. It

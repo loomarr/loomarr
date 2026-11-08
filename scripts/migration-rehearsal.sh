@@ -55,3 +55,17 @@ until docker exec "$NAME" /loomarr healthcheck >/dev/null 2>&1; do
 	waited=$((waited + 2))
 done
 echo "migration-rehearsal: passed: $IMAGE migrated and served this backup in about ${waited}s"
+
+# RECORD=1 leaves the evidence a final release tag needs (scripts/validate-release-source.sh): a
+# commit status on the commit the image was built from. It says nothing about the backup.
+if [ "${RECORD:-}" = 1 ]; then
+	commit="$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE")"
+	[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || {
+		echo "migration-rehearsal: $IMAGE names no commit, so nothing was recorded" >&2
+		exit 1
+	}
+	gh api -X POST "repos/${GITHUB_REPOSITORY:-loomarr/loomarr}/statuses/$commit" \
+		-f state=success -f context=loomarr/migration-rehearsal \
+		-f description="Migrated a real backup and served it in about ${waited}s" >/dev/null
+	echo "migration-rehearsal: recorded on $commit"
+fi

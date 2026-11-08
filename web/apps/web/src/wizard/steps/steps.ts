@@ -34,8 +34,7 @@ const wizardSteps = (backend: PlayoutBackend): WizardStep[] => {
       // No Tunarr sub-item on either path: its form lives on the Playout step now, under the
       // choice that makes it relevant (design §13).
       { id: "requester", label: "Requester" },
-      { id: "sonarr", label: "Sonarr" },
-      { id: "radarr", label: "Radarr" },
+      // Sonarr and Radarr are on "Where's your media?", beside the folders they name.
       { id: "tmdb", label: "TMDB" },
       { id: "ai", label: "AI" },
     ],

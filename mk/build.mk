@@ -157,8 +157,8 @@ demo-site-down: ## stop the demo site and delete its data
 	@./scripts/demo-site.sh down
 
 .PHONY: migration-rehearsal hardware-gate
-migration-rehearsal: ## boot IMAGE on a copy of the backup in BACKUP, with no network; run it where the backup lives
-	@./scripts/migration-rehearsal.sh "$(BACKUP)" "$(IMAGE)"
+migration-rehearsal: ## boot IMAGE on a copy of the backup in BACKUP, with no network; run it where the backup lives (RECORD=1 records the pass a final tag needs)
+	@RECORD="$(RECORD)" ./scripts/migration-rehearsal.sh "$(BACKUP)" "$(IMAGE)"
 
 hardware-gate: ## has COMMIT passed the playout bench on Intel and NVIDIA?
 	@./scripts/check-hardware-gate.sh "$(COMMIT)"

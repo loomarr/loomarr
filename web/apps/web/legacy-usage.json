@@ -9,7 +9,7 @@
       "legacyUi": 3
     },
     "src/channels/channel-row-menu/channel-row-menu.tsx": {
-      "tailwindClasses": 23,
+      "tailwindClasses": 11,
       "legacyUi": 1
     },
     "src/channels/channel-watch/channel-watch.tsx": {

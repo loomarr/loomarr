@@ -12,6 +12,8 @@ import { type LibraryScan, LibraryShelf, type LibraryShelfProps, type LibraryShe
 type El = {
   click(): void;
   getAttribute(n: string): string | null;
+  hasAttribute(n: string): boolean;
+  querySelector(s: string): El | null;
   textContent: string | null;
 };
 type Host = Parameters<typeof createRoot>[0] & {
@@ -67,38 +69,62 @@ const render = (overrides: Partial<LibraryShelfProps>) => {
     if (!hit) throw new Error(`missing button: ${name}`);
     return hit;
   };
+  // A title's tile is named by what it shows, so it is found by its title.
+  const tile = (title: string) => {
+    const hit = buttons().find((n) => n.textContent?.includes(title));
+    if (!hit) throw new Error(`missing tile: ${title}`);
+    return hit;
+  };
   const cleanup = () => {
     act(() => root.unmount());
     host.remove();
   };
-  return { host, props, button, cleanup };
+  return { host, props, button, tile, cleanup };
 };
 
 describe("LibraryShelf", () => {
   it("lists the titles with their year and kind, and opens one", () => {
-    const { host, props, button, cleanup } = render({});
+    const { host, props, tile, cleanup } = render({});
     expect(host.textContent).toContain("All caught up — every title's ready to air");
     expect(host.textContent).toContain("1999 · Show");
     expect(host.textContent).toContain("1996 · Movie");
     expect(host.textContent).toContain("Undated");
-    act(() => button("Harbour Lights").click());
+    act(() => tile("Harbour Lights").click());
     expect(props.onOpenTitle).toHaveBeenCalledWith("90000801");
     cleanup();
   });
 
+  // WCAG 2.5.3: a tile's name is what it shows. A label of its own ("Harbour Lights") left out the
+  // year and kind beside it, which axe flags and a voice-control user cannot say.
+  it("names a tile by what it shows, with no label of its own", () => {
+    const { tile, cleanup } = render({});
+    expect(tile("Harbour Lights").hasAttribute("aria-label")).toBe(false);
+    expect(tile("Harbour Lights").textContent).toContain("1999 · Show");
+    cleanup();
+  });
+
   it("marks a title that isn't ready yet, in words and to a screen reader", () => {
-    const { host, button, cleanup } = render({});
-    expect(host.textContent).toContain("Getting ready");
-    expect(button("Paper Kites, getting ready")).toBeTruthy();
+    const { tile, cleanup } = render({});
+    expect(tile("Paper Kites").textContent).toContain("Getting ready");
     cleanup();
   });
 
   it("marks a title that needs a look, to a screen reader too", () => {
-    const { host, button, cleanup } = render({
+    const { tile, cleanup } = render({
       titles: [{ id: "90000804", kind: "movie", name: "Night Ferry", ready: true, attention: true }],
     });
-    expect(button("Night Ferry, needs a look")).toBeTruthy();
-    expect(host.querySelectorAll('[aria-label="Needs a look"]').length).toBe(1);
+    expect(tile("Night Ferry").querySelector('[aria-label="Needs a look"]')).toBeTruthy();
+    cleanup();
+  });
+
+  // The name set on an artless poster stands in for artwork and sits over the dimmed frame, at
+  // full contrast; assistive tech hears the title once, from the line under the poster.
+  it("keeps an artless poster's name out of the tile's name", () => {
+    const { tile, cleanup } = render({});
+    const hidden = tile("Paper Kites").querySelector('[aria-hidden="true"]');
+    expect(hidden?.textContent).toBe("Paper Kites");
+    // Nor does the frame caption itself "No artwork" under the name it already shows.
+    expect(tile("Paper Kites").textContent).not.toContain("No artwork");
     cleanup();
   });
 

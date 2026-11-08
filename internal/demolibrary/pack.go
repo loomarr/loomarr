@@ -40,7 +40,10 @@ var Licences = map[string]string{
 
 // Pack is the parsed manifest.
 type Pack struct {
-	Version  int         `json:"version"`
+	Version int `json:"version"`
+	// Mirror is a base URL holding every pinned file under its SHA-256 (a loomarr/loomarr release,
+	// scripts/mirror-demo-pack.sh). The downloader tries it before each file's own URL.
+	Mirror   string      `json:"mirror,omitempty"`
 	Titles   []PackTitle `json:"titles"`
 	Fillers  []PackClip  `json:"fillers"`
 	Channels []Channel   `json:"channels"`
@@ -135,6 +138,10 @@ func (p *Pack) Validate() error {
 	bad := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
 	if p.Version != PackVersion {
 		bad("version %d, want %d", p.Version, PackVersion)
+	}
+	// A file's mirror URL is the base plus its SHA-256.
+	if p.Mirror != "" && (!strings.HasPrefix(p.Mirror, "https://") || !strings.HasSuffix(p.Mirror, "/")) {
+		bad("mirror %q must be an https:// base URL ending in /", p.Mirror)
 	}
 	if len(p.Titles) == 0 || len(p.Fillers) == 0 || len(p.Channels) == 0 {
 		bad("needs titles, fillers and channels")

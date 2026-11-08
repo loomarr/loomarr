@@ -55,7 +55,7 @@ func (m *pipeMemStore) SetClipLanguage(context.Context, string, string, time.Tim
 func (m *pipeMemStore) SetClipTranscript(context.Context, string, string, time.Time) error {
 	return nil
 }
-func (m *pipeMemStore) ClearClipVisionTags(context.Context, string, time.Time) error {
+func (m *pipeMemStore) ClearClipVisibleText(context.Context, string, time.Time) error {
 	return nil
 }
 func (m *pipeMemStore) ListSplitProposals(context.Context) ([]filler.SplitProposal, error) {

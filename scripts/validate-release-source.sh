@@ -54,3 +54,21 @@ for shard in 1/2 2/2; do
 done
 require_job "Rust — repository contracts / Rust — repository contracts"
 require_job "Rust image — runtime certification / Rust image — runtime certification"
+
+# A final tag also needs its migrations rehearsed on a real backup. That runs at home, where the
+# backup lives, and records a commit status: make migration-rehearsal ... RECORD=1.
+case "$GITHUB_REF_NAME" in
+  *-rc.*) ;;
+  *)
+    rehearsal=$(gh api "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/statuses?per_page=100" \
+      --jq '[.[] | select(.context == "loomarr/migration-rehearsal")] | first | .state // ""')
+    if [[ "$rehearsal" != success ]]; then
+      echo "a final tag needs a passed migration rehearsal on this commit (found: ${rehearsal:-none})" >&2
+      echo "run: make migration-rehearsal BACKUP=<backup directory> IMAGE=ghcr.io/loomarr/loomarr-staging:${GITHUB_SHA} RECORD=1" >&2
+      exit 1
+    fi
+
+    # Intel and NVIDIA block a final release too (software is in the CI run above).
+    ./scripts/check-hardware-gate.sh "$GITHUB_SHA"
+    ;;
+esac

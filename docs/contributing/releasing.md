@@ -36,16 +36,20 @@ limitations.
 
 ## Check a candidate on real data and real GPUs
 
-Do both before a final tag. Neither runs by itself yet.
+Do both before a final tag.
 
-**Rehearse the migrations.** Run this where the household backup lives, so the data stays there:
+**Rehearse the migrations.** A final tag (one without `-rc.`) is refused until this has passed on
+its exact commit. Run it where the household backup lives, so the data stays there:
 
 ```bash
-make migration-rehearsal BACKUP=<backup directory> IMAGE=<candidate image>
+make migration-rehearsal BACKUP=<backup directory> IMAGE=ghcr.io/loomarr/loomarr-staging:<full commit id> RECORD=1
 ```
 
 It boots the candidate on a copy of the backup and reports whether it came up. The backup is only
 read, and the container has no network, because the database names the household's real services.
+`RECORD=1` then sets the `loomarr/migration-rehearsal` commit status, which `release.yml` checks.
+The status says how long the migration took and nothing about the backup. Dispatching
+`staging.yml` from a commit builds that commit's image.
 
 **Check the hardware.** Software, Intel and NVIDIA block a release; AMD is best-effort. Software is
 covered by required CI. For the others, dispatch `playout-bench.yml` with `run_arc` and
@@ -55,8 +59,8 @@ covered by required CI. For the others, dispatch `playout-bench.yml` with `run_a
 make hardware-gate COMMIT=<full commit id>
 ```
 
-A skipped leg counts as missing. `release.yml` doesn't enforce this yet, because the Intel and
-NVIDIA runners aren't registered. Wire it in once they are, or every release would stop.
+A skipped leg counts as missing. `release.yml` runs the same check and refuses a final tag until
+both legs have passed on its commit; a `-rc.` tag doesn't need them.
 
 ## Docs pass
 
