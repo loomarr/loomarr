@@ -147,7 +147,7 @@ func (s *sqlStore) commitProposalApproval(
 		// retaining the failed Attempt as honest execution history.
 		if _, err := tx.ExecContext(ctx, s.ph(
 			`UPDATE proposal_jobs
-			    SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
+			    SET status='done', last_error='', failure_code='', failure_trace_json=NULL, updated_at=?
 			  WHERE id=? AND status='failed'`), epoch(p.UpdatedAt), p.JobID); err != nil {
 			return 0, fmt.Errorf("approve proposal %s: resolve failed revision: %w", p.ID, err)
 		}
@@ -388,7 +388,7 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 		// just as approving it does, while the failed Attempt remains in history.
 		if _, err := tx.ExecContext(ctx, s.ph(
 			`UPDATE proposal_jobs
-			    SET status='done', last_error='', failure_code='', failure_trace_json='', updated_at=?
+			    SET status='done', last_error='', failure_code='', failure_trace_json=NULL, updated_at=?
 			  WHERE id=? AND status='failed'`), epoch(p.UpdatedAt), p.JobID); err != nil {
 			return fmt.Errorf("deny proposal %s: resolve failed revision: %w", p.ID, err)
 		}

@@ -12,13 +12,14 @@ import (
 
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestManagerReadsASecretAfterDatabaseAndProcessRestart(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	dsn := "sqlite://" + filepath.Join(t.TempDir(), "secrets.db")
+	dsn := testkit.MigratedSQLiteDSN(t)
 	installationKey := secretprotection.InstallationKey{0xb2, 0x71, 0x18, 0xef, 0x44, 0x95, 0x0a, 0x63}
 	record := secretprotection.Record{Kind: "setting", ID: "library.token", Field: "value"}
 
@@ -67,7 +68,7 @@ func TestManagerReadsASecretAfterDatabaseAndProcessRestart(t *testing.T) {
 func TestManagerRejectsDifferentInstallationKeyBeforeReadingSecrets(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	dsn := "sqlite://" + filepath.Join(t.TempDir(), "wrong-key.db")
+	dsn := testkit.MigratedSQLiteDSN(t)
 	st, err := store.Open(ctx, dsn, true)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +90,7 @@ func TestManagerRejectsDifferentInstallationKeyBeforeReadingSecrets(t *testing.T
 func TestManagerRotatesDataKeysWithoutLosingOldSecrets(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "rotation.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +125,7 @@ func TestManagerRotatesDataKeysWithoutLosingOldSecrets(t *testing.T) {
 func TestManagerRefreshObservesAnotherReplicaRotation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "replica-rotation.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +156,7 @@ func TestManagerRefreshObservesAnotherReplicaRotation(t *testing.T) {
 func TestManagerRewrapsDataKeysWithoutChangingSecretCiphertext(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	dsn := "sqlite://" + filepath.Join(t.TempDir(), "rewrap.db")
+	dsn := testkit.MigratedSQLiteDSN(t)
 	oldKey := secretprotection.InstallationKey{0x51}
 	newKey := secretprotection.InstallationKey{0x61}
 	st, err := store.Open(ctx, dsn, true)
@@ -198,7 +199,7 @@ func TestManagerRewrapsDataKeysWithoutChangingSecretCiphertext(t *testing.T) {
 func TestDatabaseBackupContainsCiphertextAndNeedsInstallationKey(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "source.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // `make demo-seed` must be safe to rerun: the docs capture script runs it before every shoot.
@@ -32,12 +33,17 @@ func TestDemoSeedChannelsAreIdempotent(t *testing.T) {
 
 func seedTwice(t *testing.T, lib *demolibrary.Library) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/demo.db", true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
+	// What scanLibrary returns once the scan wrote every title: its library item id.
+	items := map[string]string{}
+	for _, ti := range lib.Titles {
+		items[ti.ID()] = "lib-" + ti.ID()
+	}
 	run := func() map[int]string {
 		admin, _, err := ensureAdmin(ctx, st)
 		if err != nil {
@@ -46,7 +52,7 @@ func seedTwice(t *testing.T, lib *demolibrary.Library) {
 		approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 		ids := map[int]string{}
 		for _, c := range lib.Channels {
-			id, err := ensureChannel(ctx, st, approver, lib, admin.ID, c)
+			id, err := ensureChannel(ctx, st, approver, lib, items, admin.ID, c)
 			if err != nil {
 				t.Fatalf("channel %d: %v", c.Number, err)
 			}
@@ -92,8 +98,9 @@ func seedTwice(t *testing.T, lib *demolibrary.Library) {
 			if err != nil {
 				t.Fatalf("title %s: %v", ti.Key(), err)
 			}
-			if rec.State != provision.Available || rec.LibraryID != ti.ID() {
-				t.Errorf("title %q = %s in library %q, want available as %s", ti.Name, rec.State, rec.LibraryID, ti.ID())
+			// The demo plays only its scanned files (#2151 step 16): every title names its library item.
+			if rec.State != provision.Available || rec.LibraryID != items[ti.ID()] {
+				t.Errorf("title %q = %s in library %q, want available as %s", ti.Name, rec.State, rec.LibraryID, items[ti.ID()])
 			}
 		}
 	}

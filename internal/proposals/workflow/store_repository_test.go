@@ -3,7 +3,6 @@ package workflow
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -14,13 +13,14 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "submit.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestStoreWorkflowRecordsAGroundedProposalAwaitingApproval(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "record.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "workflow.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestStoreWorkflowPersistsPrivateDiagnosticButProjectsSafeFailure(t *testing
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "failure.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestStoreWorkflowListsCallerJourneysIncludingJobsWithoutProposal(t *testing
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "list.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "poison.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	now := time.Date(2026, time.November, 3, 9, 0, 0, 0, time.UTC)
 	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
 	for _, job := range []store.Job{
-		{ID: "poison", IntentJSON: "{"},
+		{ID: "poison", IntentJSON: "[1]"}, // JSON, as the column demands, but not an Intent
 		{ID: "good", IntentJSON: `{"description":"Noir"}`},
 	} {
 		job.Kind, job.Status, job.CreatedBy, job.WorkflowVersion = "suggest", "queued", "alice", store.ProposalWorkflowVersion
@@ -337,7 +337,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "orphan.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +409,7 @@ func TestStoreWorkflowSubmitForChannelIsFreshAndNeverCached(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "channel-job.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

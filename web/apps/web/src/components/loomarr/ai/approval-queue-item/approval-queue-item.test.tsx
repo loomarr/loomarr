@@ -96,13 +96,19 @@ describe("ApprovalQueueItem", () => {
             reason: "over_ceiling",
           },
         ]}
+        audienceLimit="TV-Y7"
       />,
     );
 
     // ⚠ No click first. The whole point is that this is visible before any interaction.
-    expect(screen.getByText(/1 title won't be included/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 title was left out/i)).toBeInTheDocument();
     expect(screen.getByText("Midnight Toons")).toBeInTheDocument();
-    expect(screen.getByText(/rated TV-MA, above this channel's audience limit/i)).toBeInTheDocument();
+    expect(screen.getByText(/rated TV-MA/i)).toBeInTheDocument();
+    // Why, and how to change it, in plain words naming the limit.
+    expect(
+      screen.getByText(/audience limit is TV-Y7, so anything rated higher is left out/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/raise the audience limit after the channel is created/i)).toBeInTheDocument();
     // The picks list is still collapsed, so the refusal is not merely leaking out of it.
     expect(screen.queryByText("Sunny Toons")).not.toBeInTheDocument();
   });
@@ -111,7 +117,22 @@ describe("ApprovalQueueItem", () => {
   // admin to skip the notice on exactly the rows where it matters.
   it("renders no refusal notice when nothing was refused", () => {
     render(<ApprovalQueueItem title="80s action heroes" refused={[]} />);
-    expect(screen.queryByText(/won't be included/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/left out/i)).not.toBeInTheDocument();
+  });
+
+  it("still explains the refusal when the proposal carries no limit to name", () => {
+    render(
+      <ApprovalQueueItem
+        title="X"
+        refused={[
+          { item: { mediaType: "movie", name: "Midnight Toons", inLibrary: true }, reason: "over_ceiling" },
+        ]}
+      />,
+    );
+    expect(screen.getByText(/rated unknown/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/This channel has an audience limit, so anything rated higher/i),
+    ).toBeInTheDocument();
   });
 
   // #2030 decision 38: a holiday the household's country doesn't keep never comes into season, so

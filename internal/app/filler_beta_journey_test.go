@@ -34,7 +34,7 @@ func TestFillerBetaJourney_QueuedSourceItemResumesAfterRestartAndBecomesPlayable
 	if err != nil {
 		t.Fatal(err)
 	}
-	dsn := "sqlite://" + filepath.Join(root, "loomarr.db")
+	dsn := testkit.MigratedSQLiteDSN(t)
 	st, err := records.Open(ctx, dsn, true)
 	if err != nil {
 		t.Fatal(err)

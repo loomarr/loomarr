@@ -36,31 +36,22 @@ const SEGMENT_FILL: Record<PodEntryDTO["role"], string> = {
   news: "bg-static-700",
 };
 
-const SEGMENT_ABBR: Record<PodEntryDTO["role"], string> = {
-  bumper: "BMP",
-  station_id: "ID",
-  commercial: "AD",
-  trailer: "TRL",
-  psa: "PSA",
-  interstitial: "INT",
-  political: "POL",
-  news: "NEWS",
+// Each segment prints its role in words and its length ("Trailer, 41s"), so no legend is needed.
+// A segment is sized by its duration and may be narrow: the label truncates and the full text is
+// still on the segment's title and in its screen-reader text.
+const SEGMENT_WORD: Record<PodEntryDTO["role"], string> = {
+  bumper: "Bumper",
+  station_id: "Station ID",
+  commercial: "Commercial",
+  trailer: "Trailer",
+  psa: "Public service ad",
+  interstitial: "Interstitial",
+  political: "Political ad",
+  news: "News",
 };
 
-// The full word behind each abbreviation, for the legend. The segments stay abbreviated
-// (they're narrow, sized by duration), but a legend beneath spells out the codes actually
-// present in THIS pod — so "BMP"/"AD" don't read as mystery tokens, without explaining
-// roles the break doesn't contain.
-const SEGMENT_WORD: Record<PodEntryDTO["role"], string> = {
-  bumper: "bumper",
-  station_id: "station ID",
-  commercial: "commercial",
-  trailer: "trailer",
-  psa: "PSA",
-  interstitial: "interstitial",
-  political: "political ad",
-  news: "news",
-};
+const segmentLabel = (entry: PodEntryDTO): string =>
+  `${SEGMENT_WORD[entry.role]}, ${formatClipDuration(entry.durationMs)}`;
 
 const PodTimeline = ({
   entries,
@@ -72,12 +63,6 @@ const PodTimeline = ({
 }: PodTimelineProps) => {
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
-  // The distinct segment roles in THIS pod, in first-appearance order — the legend
-  // explains only the codes on screen.
-  const roles = entries.reduce<PodEntryDTO["role"][]>((acc, e) => {
-    if (!acc.includes(e.role)) acc.push(e.role);
-    return acc;
-  }, []);
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
@@ -122,32 +107,21 @@ const PodTimeline = ({
                 onClick={() => onPreview(entry)}
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text as="span" className="truncate" shout textRole="captionMono" tone="primary">
-                  {SEGMENT_ABBR[entry.role]}
+                <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
+                  {segmentLabel(entry)}
                 </Text>
               </button>
             ) : (
               <span className="flex h-full min-w-0 items-center justify-center px-1">
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text as="span" className="truncate" shout textRole="captionMono" tone="primary">
-                  {SEGMENT_ABBR[entry.role]}
+                <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
+                  {segmentLabel(entry)}
                 </Text>
               </span>
             )}
           </li>
         ))}
       </ul>
-
-      {roles.length > 0 && (
-        <p className="text-muted-foreground text-xs">
-          {roles.map((role, i) => (
-            <span key={role}>
-              {i > 0 && " · "}
-              <span className="font-mono">{SEGMENT_ABBR[role]}</span> = {SEGMENT_WORD[role]}
-            </span>
-          ))}
-        </p>
-      )}
     </div>
   );
 };

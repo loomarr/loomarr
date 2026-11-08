@@ -2,7 +2,6 @@ package app
 
 import (
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,13 +10,14 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // The report reads the real store through the floor's adapter: a label is stamped with the era its
 // record was judged against, and a clip the floor has not measured cannot be labelled.
 func TestFillerDefectReports_LabelThroughTheStore(t *testing.T) {
 	ctx := t.Context()
-	st, err := records.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := records.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

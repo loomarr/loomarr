@@ -1,7 +1,6 @@
 import { loginSchema } from "@loomarr/core/schemas";
-import { FlaskConical, KeyRound, Loader2, LogIn } from "lucide-react";
+import { Action } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import type { LoginFormProps } from "./login-form.type";
@@ -82,10 +81,10 @@ const LoginForm = ({
         Forgot password?
       </a>
 
-      <Button type="submit" disabled={isPending}>
-        {isPending ? <Loader2 className="animate-spin" aria-hidden /> : <LogIn aria-hidden />}
+      {/* A real submit button under Action's look, so Enter in a field still submits. */}
+      <Action disabled={isPending} render={<button disabled={isPending} type="submit" />}>
         {isPending ? "Signing in…" : "Sign in"}
-      </Button>
+      </Action>
 
       {/* Single sign-on (§11, V8), offered only when the server reports a configured
           provider. ⚠ It sits BELOW the password form, not above it: Loomarr's own sign-in
@@ -98,10 +97,9 @@ const LoginForm = ({
               {ssoErrorCopy(ssoError)}
             </p>
           ) : null}
-          <Button type="button" variant="outline" onClick={onSso} disabled={isPending}>
-            <KeyRound aria-hidden />
+          <Action disabled={isPending} onPress={onSso} variant="outline">
             Sign in with your provider
-          </Button>
+          </Action>
         </div>
       )}
 
@@ -112,10 +110,9 @@ const LoginForm = ({
           maintainer using it and for anyone who finds it somewhere it shouldn't be. */}
       {onDevLogin && (
         <div className="border-border flex flex-col items-center gap-1 border-t pt-4">
-          <Button type="button" variant="outline" size="sm" onClick={onDevLogin} disabled={isPending}>
-            <FlaskConical aria-hidden />
+          <Action disabled={isPending} onPress={onDevLogin} variant="outline">
             Skip sign-in (dev)
-          </Button>
+          </Action>
           <p className="text-muted-foreground text-xs">
             <code>LOOMARR_DEV_LOGIN</code> is on. It signs you in as an admin with no password.
           </p>

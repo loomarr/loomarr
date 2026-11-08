@@ -67,14 +67,7 @@ func (s *Server) doSearch(ctx context.Context, in *searchInput) (*searchOutput, 
 	} else {
 		scope, configured := s.configuredSearchScope(request.Scope)
 		if !configured {
-			switch normalizeSearchScope(request.Scope) {
-			case "library":
-				return nil, errNotImplemented("Library search isn't set up", "Connect your media library in Settings to search it.")
-			case "tmdb":
-				return nil, errNotImplemented("TMDB search isn't set up", "Add a TMDB API key in Settings to search TMDB.")
-			default:
-				return nil, errNotImplemented("Search isn't set up", "Connect your media library or add a TMDB API key in Settings to search for titles.")
-			}
+			return nil, errNotImplemented("TMDB search isn't set up", "Add a TMDB API key in Settings to search TMDB.")
 		}
 		request.Scope = scope
 	}
@@ -201,30 +194,23 @@ func normalizeSearchScope(scope string) string {
 }
 
 // configuredSearchScope narrows all/default to the corpora configured for this
-// request. The composition root keeps both adapters alive, so a saved setting
-// changes the next call without rebuilding the server. A nil liveSettings is the
-// established unit-test convention: an explicitly wired fake is usable.
+// request. The Library is Loomarr's own and always searchable (#2151 step 15e): it
+// answers from its tables, and a media server only adds to it. TMDB needs its key,
+// read live so a saved key changes the next call without rebuilding the server.
 func (s *Server) configuredSearchScope(requested string) (string, bool) {
 	scope := normalizeSearchScope(requested)
-	libraryConfigured := !s.libraryUnconfigured()
 	// A nil liveSettings is the established unit-test convention: an explicitly wired
 	// adapter is usable. Production always supplies it, so the current key gates TMDB.
 	tmdbConfigured := s.liveSettings == nil || strings.TrimSpace(settings.TMDBAPIKey.Get(s.liveSettings)) != ""
 	switch scope {
 	case "library":
-		return scope, libraryConfigured
+		return scope, true
 	case "tmdb":
 		return scope, tmdbConfigured
 	default:
-		switch {
-		case libraryConfigured && tmdbConfigured:
+		if tmdbConfigured {
 			return "all", true
-		case libraryConfigured:
-			return "library", true
-		case tmdbConfigured:
-			return "tmdb", true
-		default:
-			return "all", false
 		}
+		return "library", true
 	}
 }

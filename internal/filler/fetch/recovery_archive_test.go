@@ -15,7 +15,7 @@ import (
 
 func TestRecoverAcquisitionArtifacts_ReplaysProviderArchiveBeforePublication(t *testing.T) {
 	watch := t.TempDir()
-	dsn := "sqlite://" + filepath.Join(t.TempDir(), "acquisitions.db")
+	dsn := testkit.MigratedSQLiteDSN(t)
 	failMarker := filepath.Join(watch, ".fail-provider-archive-once")
 	if err := os.WriteFile(failMarker, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ fi
 
 func TestRecoverAcquisitionArtifacts_MissingSidecarRetainsExactArchiveIdentity(t *testing.T) {
 	watch := t.TempDir()
-	dsn := "sqlite://" + filepath.Join(t.TempDir(), "acquisitions.db")
+	dsn := testkit.MigratedSQLiteDSN(t)
 	failMarker := filepath.Join(watch, ".fail-provider-archive-once")
 	if err := os.WriteFile(failMarker, nil, 0o600); err != nil {
 		t.Fatal(err)

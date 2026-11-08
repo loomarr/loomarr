@@ -1,13 +1,12 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
-import { Badge, Field, FieldHint, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Field, FieldHint, Toggle } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { KeyRound, Mail, Server } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { SessionList } from "@/components/loomarr/people/session-list";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import type { PersonDetailProps } from "./person-detail.type";
 
@@ -172,14 +171,14 @@ const PersonDetail = ({
             <p className="text-muted-foreground text-xs">
               The verified address above remains recovery-capable until this replacement is verified.
             </p>
-            <Button
-              variant="ghost"
-              className="self-start"
+            <Action
               disabled={contactSaving}
-              onClick={() => void runContactAction(onCancelContactReplacement)}
+              onPress={() => void runContactAction(onCancelContactReplacement)}
+              style={{ alignSelf: "flex-start" }}
+              variant="ghost"
             >
               Cancel replacement
-            </Button>
+            </Action>
           </div>
         )}
 
@@ -204,36 +203,37 @@ const PersonDetail = ({
               </FieldHint>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={contactSaving}>
+              <Action
+                // A real submit button under Action's look, so Enter in a field still submits.
+                render={<button disabled={contactSaving} type="submit" />}
+              >
                 Save email
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
+              </Action>
+              <Action
+                onPress={() => {
                   setContactOpen(false);
                   contactForm.reset({ email: "" });
                   setContactError("");
                 }}
+                variant="ghost"
               >
                 Cancel
-              </Button>
+              </Action>
             </div>
           </form>
         ) : (
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={openContact} disabled={contactSaving}>
-              <Mail aria-hidden />
+            <Action disabled={contactSaving} onPress={openContact} variant="outline">
               {user.contactAddress ? "Change email" : "Add email"}
-            </Button>
+            </Action>
             {user.contactAddress && (
-              <Button
-                variant="ghost"
+              <Action
                 disabled={contactSaving}
-                onClick={() => void runContactAction(onRemoveContactAddress)}
+                onPress={() => void runContactAction(onRemoveContactAddress)}
+                variant="ghost"
               >
                 Remove email
-              </Button>
+              </Action>
             )}
           </div>
         )}
@@ -367,27 +367,28 @@ const PersonDetail = ({
                 </FieldHint>
               )}
               <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={resetting}>
+                <Action
+                  // A real submit button under Action's look, so Enter in a field still submits.
+                  render={<button disabled={resetting} type="submit" />}
+                >
                   Set new password
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
+                </Action>
+                <Action
+                  onPress={() => {
                     setResetOpen(false);
                     resetForm.reset();
                     setResetError("");
                   }}
+                  variant="ghost"
                 >
                   Cancel
-                </Button>
+                </Action>
               </div>
             </form>
           ) : (
-            <Button variant="outline" className="self-start" onClick={() => setResetOpen(true)}>
-              <KeyRound aria-hidden />
+            <Action onPress={() => setResetOpen(true)} style={{ alignSelf: "flex-start" }} variant="outline">
               Reset password
-            </Button>
+            </Action>
           ))}
       </section>
 
@@ -405,15 +406,14 @@ const PersonDetail = ({
               : "Disable this account and end every active session immediately."}
           </p>
         </div>
-        <Button
-          variant={user.disabled ? "outline" : "destructive"}
-          className="self-start"
+        <Action
           disabled={busy || isSelf}
-          title={isSelf ? "You cannot disable your own account" : undefined}
-          onClick={() => onToggleDisabled?.(!user.disabled)}
+          onPress={() => onToggleDisabled?.(!user.disabled)}
+          style={{ alignSelf: "flex-start" }}
+          variant={user.disabled ? "outline" : "destructive"}
         >
           {user.disabled ? "Enable account" : "Disable account"}
-        </Button>
+        </Action>
         {isSelf && <p className="text-static-400 text-xs">You cannot disable your own account.</p>}
       </section>
     </div>
