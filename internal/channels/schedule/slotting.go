@@ -215,10 +215,6 @@ func (a AudiencePolicy) Admits(raw rating.Rating) (bool, string) {
 //     show whose parent the operator explicitly approved.
 //   - The parent has ALREADY cleared the ceiling as a whole title. Inheriting is not guessing at
 //     unknown content; it is falling back to the very check filterEntries just performed.
-//   - It is what keeps the persisted episode cache safe. store.SeriesEpisodes rows written
-//     before OfficialRating existed decode as "", so fail-closed would have emptied every kids
-//     channel on deploy until the refresh sweep repopulated it — trading a content leak for
-//     dead air, which §9 forbids just as firmly.
 //
 // The asymmetry still holds where it counts: an episode that IS rated is judged on its own
 // rating and can never be lifted by a permissive parent.

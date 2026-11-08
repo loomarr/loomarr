@@ -23,6 +23,19 @@ describe("StatePanel", () => {
     expect(markup.match(/Try again/g)).toHaveLength(1);
   });
 
+  it("leads every settled state with the static colour bars, not an icon", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <StatePanel kind="empty" title="Nothing in progress" />
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain("Nothing in progress");
+    // BrandMark's seven chroma segments, drawn without animation.
+    expect(markup.match(/<rect/g)).toHaveLength(7);
+    expect(markup).not.toContain("animate");
+  });
+
   it("marks loading as a polite busy status without inventing an action", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider theme="light">

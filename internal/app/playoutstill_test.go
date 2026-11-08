@@ -10,7 +10,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -26,14 +25,27 @@ func (r *recordedAirings) RecordAiring(_ context.Context, _ string, _ provision.
 	return nil
 }
 
-func stillResolver(slots []schedule.Slot, now time.Time, airings airingRecorder) *playoutResolver {
+// stillResolver plays slots from now, each programme from its own library file (named for its
+// item id) and no media server.
+func stillResolver(t *testing.T, slots []schedule.Slot, now time.Time, airings airingRecorder) *playoutResolver {
+	t.Helper()
 	accepted := &stubChannels{}
 	accepted.ch.Desired, accepted.ch.PlayoutAnchor = slots, testPlayoutAnchor()
+	dir, files := t.TempDir(), fakeLibraryFiles{}
+	for _, sl := range slots {
+		if sl.LibraryItemID == "" {
+			continue
+		}
+		files[sl.LibraryItemID] = filepath.Join(dir, sl.LibraryItemID+".mkv")
+		if err := os.WriteFile(files[sl.LibraryItemID], []byte("matroska"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return &playoutResolver{
-		channels: accepted,
-		now:      func() time.Time { return now },
-		lib:      library.New(library.Emby, "http://media.test", "token", "test-device"),
-		airings:  airings,
+		channels:    accepted,
+		now:         func() time.Time { return now },
+		libraryFile: files,
+		airings:     airings,
 	}
 }
 
@@ -44,7 +56,7 @@ func TestStillAiring_IsTheProgrammeOnNowAndRecordsNothing(t *testing.T) {
 		{Kind: schedule.SlotProgram, Title: "second", LibraryItemID: "item-2", DurationMs: 60_000},
 	}
 	history := &recordedAirings{}
-	r := stillResolver(slots, testPlayoutAnchor().Add(75*time.Second), history)
+	r := stillResolver(t, slots, testPlayoutAnchor().Add(75*time.Second), history)
 
 	airing, ok, err := r.StillAiring(context.Background(), "ch1")
 	if err != nil || !ok {
@@ -55,13 +67,13 @@ func TestStillAiring_IsTheProgrammeOnNowAndRecordsNothing(t *testing.T) {
 	}
 	source, ok, err := airing.Source(context.Background())
 	if err != nil || !ok || !strings.Contains(source.Input, "item-2") {
-		t.Fatalf("source = %+v ok=%v err=%v, want the second programme's stream", source, ok, err)
+		t.Fatalf("source = %+v ok=%v err=%v, want the second programme's file", source, ok, err)
 	}
 	if history.n != 0 {
 		t.Fatalf("recorded %d airings: showing a still is not airing the programme", history.n)
 	}
 
-	later, _, _ := stillResolver(slots, testPlayoutAnchor().Add(90*time.Second), history).StillAiring(context.Background(), "ch1")
+	later, _, _ := stillResolver(t, slots, testPlayoutAnchor().Add(90*time.Second), history).StillAiring(context.Background(), "ch1")
 	if later.Key != airing.Key {
 		t.Fatal("the key moved within one airing, so the frame would be decoded again")
 	}
@@ -117,7 +129,7 @@ func TestStillAiring_ABreakHasNoStill(t *testing.T) {
 		{Kind: schedule.SlotFiller, DurationMs: 30_000},
 		{Kind: schedule.SlotProgram, LibraryItemID: "item-1", DurationMs: 60_000},
 	}
-	if _, ok, err := stillResolver(slots, testPlayoutAnchor(), nil).StillAiring(context.Background(), "ch1"); ok || err != nil {
+	if _, ok, err := stillResolver(t, slots, testPlayoutAnchor(), nil).StillAiring(context.Background(), "ch1"); ok || err != nil {
 		t.Fatalf("ok=%v err=%v, want a clean miss during a break", ok, err)
 	}
 }

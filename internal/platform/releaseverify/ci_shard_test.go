@@ -664,14 +664,18 @@ echo 'ok  example.invalid/fast  0.001s'
 		return strings.TrimSpace(string(args))
 	}
 
-	if got, want := run("race", "GO_TEST_COMPILE_ONLY=1"), "test -timeout 25m -race -exec true example.invalid/fast"; got != want {
+	// -race turns on checkptr everywhere. modernc's SQLite is C translated to Go, unsafe pointer
+	// arithmetic on nearly every line, and checkptr there doubled every migration under -race (#2716):
+	// the race detector stays on for it, only checkptr is off, and only for modernc.
+	const race = "-race -gcflags=modernc.org/...=-d=checkptr=0"
+	if got, want := run("race", "GO_TEST_COMPILE_ONLY=1"), "test -timeout 25m "+race+" -exec true example.invalid/fast"; got != want {
 		t.Fatalf("compile-only race args = %q, want %q", got, want)
 	}
 	if got, want := run("plain", "GO_TEST_COMPILE_ONLY=1"), "test -timeout 25m -exec true example.invalid/fast"; got != want {
 		t.Fatalf("compile-only plain args = %q, want %q", got, want)
 	}
-	if got := run("race"); strings.Contains(got, "-exec") {
-		t.Fatalf("a real test run must execute its tests: args = %q", got)
+	if got, want := run("race"), "test -timeout 25m "+race+" example.invalid/fast"; got != want {
+		t.Fatalf("a real race run must execute its tests with the lane flags: args = %q, want %q", got, want)
 	}
 }
 
@@ -751,9 +755,10 @@ func readGoRaceWeights(t *testing.T, path string) map[string]int {
 }
 
 // The weight file is regenerated from hosted runs, never hand-kept: the median of each package's
-// `ok` time over successful race-lane jobs, rounded up, with sub-five-second packages left to the
-// sharder's floor. Failed lanes and other Go jobs must not contribute samples.
-func TestGoRaceWeightsRefreshTakesMedianOfSuccessfulLaneJobs(t *testing.T) {
+// `ok` time over every race-lane job that ran, rounded up, with sub-five-second packages left to the
+// sharder's floor. A failed or timed-out lane still counts: each `ok` line is a finished package, and
+// that lane is the one needing re-measurement (#2716). Skipped lanes and other Go jobs contribute nothing.
+func TestGoRaceWeightsRefreshTakesMedianOfRaceLaneJobs(t *testing.T) {
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -769,14 +774,15 @@ func TestGoRaceWeightsRefreshTakesMedianOfSuccessfulLaneJobs(t *testing.T) {
 	}
 	write("11.jobs", "101\tsuccess\t"+lane("1/2")+"\n102\tfailure\t"+lane("2/2")+"\n103\tsuccess\tGo — repository contracts / Go — repository contracts\n")
 	write("22.jobs", "201\tsuccess\t"+lane("certification-1/2")+"\n202\tsuccess\t"+lane("2/2")+"\n")
-	write("33.jobs", "301\tsuccess\t"+lane("1/2")+"\n")
+	write("33.jobs", "301\tsuccess\t"+lane("1/2")+"\n302\tskipped\t"+lane("certification-2/2")+"\n")
 	write("101.log", ok("j", "internal/store", "100.1s")+ok("j", "internal/small", "3.0s")+ok("j", "internal/alpha", "10.000s")+
 		"j\tUNKNOWN STEP\t2026-09-27T16:36:20Z ok  \tgithub.com/loomarr/loomarr/internal/cachedpkg\t(cached)\n")
-	write("102.log", ok("j", "internal/store", "999s"))
+	write("102.log", ok("j", "internal/store", "110s"))
 	write("103.log", ok("j", "internal/store", "999s"))
 	write("201.log", ok("j", "internal/app", "50.2s"))
 	write("202.log", ok("j", "internal/store", "90s"))
 	write("301.log", ok("j", "internal/store", "120.5s")+ok("j", "internal/alpha", "11s"))
+	write("302.log", ok("j", "internal/store", "999s"))
 
 	bin := t.TempDir()
 	fakeGh := "#!/usr/bin/env bash\nset -euo pipefail\n[[ \"$1 $2\" == \"run view\" ]]\n" +
@@ -804,8 +810,8 @@ func TestGoRaceWeightsRefreshTakesMedianOfSuccessfulLaneJobs(t *testing.T) {
 			rows = append(rows, line)
 		}
 	}
-	// store: median(100.1, 90, 120.5) = 100.1 -> 101; alpha: median(10, 11) = 10.5 -> 11.
-	want := []string{"internal/store\t101", "internal/app\t51", "internal/alpha\t11"}
+	// store: median(90, 100.1, 110 from the failed lane, 120.5) = 105.05 -> 106; alpha: median(10, 11) = 10.5 -> 11.
+	want := []string{"internal/store\t106", "internal/app\t51", "internal/alpha\t11"}
 	if strings.Join(rows, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("weights =\n%s\nwant\n%s", strings.Join(rows, "\n"), strings.Join(want, "\n"))
 	}
@@ -816,8 +822,8 @@ func TestGoRaceWeightsRefreshTakesMedianOfSuccessfulLaneJobs(t *testing.T) {
 	if output, err := refresh("33x"); err == nil {
 		t.Fatalf("refresh accepted an invalid run id:\n%s", output)
 	}
-	write("44.jobs", "401\tfailure\t"+lane("1/2")+"\n")
-	if output, err := refresh("44"); err == nil || !strings.Contains(output, "no successful race-policy lane timings") {
-		t.Fatalf("refresh with no successful lane = %v, want a loud failure:\n%s", err, output)
+	write("44.jobs", "401\tskipped\t"+lane("1/2")+"\n")
+	if output, err := refresh("44"); err == nil || !strings.Contains(output, "no race-policy lane timings") {
+		t.Fatalf("refresh with no lane that ran = %v, want a loud failure:\n%s", err, output)
 	}
 }

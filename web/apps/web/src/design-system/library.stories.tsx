@@ -161,8 +161,12 @@ const PROBLEMS: LibraryProblem[] = [
 const answered = () => Promise.resolve();
 const search = () => Promise.resolve([]);
 
+// With Needs you waiting, the status line says only "Up to date" (#2779).
+const NEEDS_WAITING = { ...shelf.status, needsYou: true };
+
 const NeedsStrip: Story = {
   args: {
+    status: NEEDS_WAITING,
     needs: (
       <LibraryNeedsStrip
         needs={NEEDS}
@@ -177,6 +181,7 @@ const NeedsStrip: Story = {
 
 const NeedsCards: Story = {
   args: {
+    status: NEEDS_WAITING,
     showTitles: false,
     needs: (
       <LibraryNeedsCards

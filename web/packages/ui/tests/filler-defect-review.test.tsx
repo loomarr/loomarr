@@ -3,6 +3,7 @@ import type { FillerDefectReportDTO } from "@loomarr/core/filler-defects";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DefectReview } from "../index";
@@ -117,6 +118,26 @@ describe("DefectReview", () => {
     mount(<DefectReview busy onLabel={onLabel} onSkip={onSkip} player={null} report={report()} />);
     act(() => button("Pass").click());
     expect(onLabel).toHaveBeenCalledTimes(1);
+  });
+
+  // #2760: Pass was the filled amber primary beside an outlined Fail, so the eye leaned on Pass.
+  // The colours themselves (success green, danger red) are pinned by the design system's own
+  // Action test (tone success vs danger); here the pair must draw the same tile.
+  it("gives Pass and Fail equal weight: the same outlined tile", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider theme="dark">
+        <DefectReview onLabel={() => {}} onSkip={() => {}} player={null} report={report()} />
+      </LoomarrProvider>,
+    );
+    const before = (label: string) => markup.slice(0, markup.indexOf(`>${label}<`));
+    // The tile's box is inline style on the button; its label colour is an atomic class.
+    const box = (label: string) =>
+      /style="([^"]*)"/.exec(
+        [...before(label).matchAll(/<[a-z]+[^>]*role="button"[^>]*>/g)].at(-1)?.[0] ?? "",
+      )?.[1];
+
+    expect(box("Pass")).toContain("border-top-color");
+    expect(box("Pass")).toBe(box("Fail"));
   });
 
   it("says when nothing is left to label, and when nothing is labelled yet", () => {
