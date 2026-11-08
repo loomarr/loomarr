@@ -15,7 +15,8 @@ const base: SettingEntry = {
   group: "connections.media_server",
   owner: "settings.connections",
   kind: "url",
-  doc: "Base URL of your Emby/Jellyfin server.",
+  doc: "The address of your media server.",
+  detail: "For example http://emby:8096.",
   advanced: false,
   apply: SettingEntryApply.live,
   secret: false,
@@ -24,7 +25,8 @@ const base: SettingEntry = {
 };
 
 // One registry key as a control (config-design §2/§3): the kinds that look different,
-// plus the two provenance/secret states an operator actually has to reason about.
+// plus the two provenance/secret states an operator actually has to reason about. The base entry
+// carries a detail, so its summary sits under the field and the rest behind the (i).
 const meta = {
   title: "Settings/SettingField",
   component: SettingField,

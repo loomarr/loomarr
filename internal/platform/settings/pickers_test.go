@@ -77,7 +77,7 @@ func TestTimezonesGenIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Skipf("no Go tz data: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	var names []string
 	for _, f := range r.File {
 		if !f.FileInfo().IsDir() {

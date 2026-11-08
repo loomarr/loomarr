@@ -343,16 +343,9 @@ const SettingField = ({
     >
       <div className="flex items-center gap-2">
         <Label htmlFor={id}>{label}</Label>
-        {/* The one-line doc (§5 field anatomy) is present but moved into a hover (i) tooltip
-            so the form isn't a wall of helper paragraphs. It stays programmatically associated
-            via the sr-only doc below (aria-describedby), so screen readers still get it. */}
-        {entry.doc && (
-          // `describedById` points at the sr-only doc this component already renders below, so the
-          // help prose lives in the DOM ONCE rather than once per carrier.
-          <FieldHelp label={label} describedById={`${id}-doc`}>
-            {entry.doc}
-          </FieldHelp>
-        )}
+        {/* The registry's one plain sentence sits under the field; the rest of the help (trade-offs,
+            units, edge cases) waits behind this (i), so the form reads at a glance (#2741). */}
+        {entry.detail && <FieldHelp label={label}>{entry.detail}</FieldHelp>}
         {/* THE LOCK IS THE CONTROL (config-design §3.1). The chip already says why the field
             is read-only, so hanging a separate "unlock" button beside it would put the
             explanation and the way out in two places — the operator reads "set via
@@ -474,12 +467,11 @@ const SettingField = ({
         control()
       )}
 
-      {/* The doc, kept in the DOM for `aria-describedby` (screen readers) but visually hidden —
-          the visible affordance is the FieldHelp (i) tooltip in the label row. */}
+      {/* The summary: one sentence, always visible, and the control's description. */}
       {entry.doc && (
-        <p id={`${id}-doc`} className="sr-only">
+        <FieldHint id={`${id}-doc`} className={cn(inlineSwitch && "col-span-2")}>
           {entry.doc}
-        </p>
+        </FieldHint>
       )}
 
       {entry.caution && (

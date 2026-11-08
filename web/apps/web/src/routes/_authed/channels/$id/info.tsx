@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
 import { ChannelOnScreenLogo } from "@/channels/channel-on-screen-logo";
 import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
+import { ChannelHero } from "@/components/loomarr/channels/channel-hero";
 import { ChannelIconField } from "@/components/loomarr/channels/channel-icon-field";
 import { ChannelUpcoming } from "@/components/loomarr/channels/channel-upcoming";
 import { OnAirIndicator } from "@/components/loomarr/channels/on-air-indicator";
@@ -29,6 +30,8 @@ const InfoScreen = () => {
 
   return (
     <>
+      {/* The page opens on a picture (#2753): the title backdrop, else generated channel art. */}
+      <ChannelHero channelId={id} channel={{ name: ch.name, number: ch.number }} />
       <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
         <div className="flex items-center gap-3">
           <span className="font-mono text-3xl leading-none tabular-nums">{channelNumber(ch.number)}</span>

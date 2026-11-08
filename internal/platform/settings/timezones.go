@@ -2,7 +2,7 @@ package settings
 
 import "strings"
 
-//go:generate go run timezones_generate.go
+//go:generate go run ../../../cmd/settings-timezones
 
 // zoneAreas are the IANA regions a place's zone is filed under. Go's tz data also carries the
 // legacy and rule names (`EST5EDT`, `GB-Eire`, `Factory`); a household picks a city, so those stay

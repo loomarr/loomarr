@@ -5,6 +5,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
 import { Action, Badge, Card, FieldHint } from "@loomarr/design-system";
+import { ConfirmStep } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -80,6 +81,8 @@ const AccountScreen = () => {
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't revoke that session"),
     },
   });
+  // Signing a session out can't be taken back, so the first press only asks (one row at a time).
+  const [confirmingSession, setConfirmingSession] = useState<string>();
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -173,30 +176,46 @@ const AccountScreen = () => {
                 key={s.id}
                 className="border-border flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">
-                    {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
-                  </p>
-                  {s.lastSeenAt !== undefined && (
-                    <p className="text-muted-foreground mt-0.5 font-mono text-xs">
-                      {formatRelative(s.lastSeenAt)}
-                    </p>
-                  )}
-                </div>
-                {s.current && (
-                  <Badge shape="square" tone="lock">
-                    This device
-                  </Badge>
-                )}
-                {/* No Sign out on your own session: the shell's Sign out is for that. */}
-                {!s.current && (
-                  <Action
+                {/* The confirm takes the row's place, as Delete channel's replaces its choices. */}
+                {confirmingSession === s.id ? (
+                  <ConfirmStep
+                    confirmLabel="Sign out"
                     disabled={revoke.isPending}
-                    onPress={() => revoke.mutate({ hash: s.id })}
-                    variant="ghost"
-                  >
-                    Sign out
-                  </Action>
+                    message={`Sign out ${s.clientLabel ?? "this session"}? That device has to sign in again.`}
+                    onCancel={() => setConfirmingSession(undefined)}
+                    onConfirm={() => {
+                      setConfirmingSession(undefined);
+                      revoke.mutate({ hash: s.id });
+                    }}
+                  />
+                ) : (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
+                      </p>
+                      {s.lastSeenAt !== undefined && (
+                        <p className="text-muted-foreground mt-0.5 font-mono text-xs">
+                          {formatRelative(s.lastSeenAt)}
+                        </p>
+                      )}
+                    </div>
+                    {s.current && (
+                      <Badge shape="square" tone="lock">
+                        This device
+                      </Badge>
+                    )}
+                    {/* No Sign out on your own session: the shell's Sign out is for that. */}
+                    {!s.current && (
+                      <Action
+                        disabled={revoke.isPending}
+                        onPress={() => setConfirmingSession(s.id)}
+                        variant="destructive"
+                      >
+                        Sign out
+                      </Action>
+                    )}
+                  </>
                 )}
               </li>
             ))}

@@ -231,7 +231,11 @@ type Setting struct {
 	MigrationOnly bool
 	Required      Feature      // RequiredFor: the feature this key gates (§7); FeatureNone = always-optional
 	Validate      ValidateFunc // shape validation; nil = Kind-default only
-	Doc           string       // one-liner: UI help text + generated docs (§2)
+	// Doc is the one plain sentence shown under the field: what the setting does, in a household's
+	// words. Detail is everything else an operator may want — trade-offs, units, edge cases — shown
+	// behind the field's info icon. The generated reference prints both.
+	Doc    string
+	Detail string
 	// ShowWhen makes a field CONDITIONAL (config-design §5): it is shown only when the
 	// current value of a named key is one of the listed values. Empty/nil = always shown.
 	// e.g. llm.api_key: {"llm.provider": {"openai"}} hides the key when Ollama is picked.

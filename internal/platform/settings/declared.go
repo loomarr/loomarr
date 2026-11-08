@@ -382,32 +382,36 @@ func declared() []Setting {
 		{
 			Key: "library.flavor", EnvVar: "LIBRARY_FLAVOR", Group: GroupMediaServer,
 			Kind: KindEnum, Enum: []EnumOption{opt("emby", "Emby"), opt("jellyfin", "Jellyfin")}, Default: "",
-			Doc: "Emby or Jellyfin. They sign in differently, so Loomarr needs to know which one you run.",
+			Doc:    "Which media server you run, Emby or Jellyfin.",
+			Detail: "They sign in differently, so Loomarr needs to know which one you run.",
 		},
 		{
 			Key: "library.url", EnvVar: "LIBRARY_URL", Group: GroupMediaServer,
 			Kind: KindURL, Default: "",
-			Doc: "Media server base URL, e.g. http://emby:8096.",
+			Doc:    "The address of your media server.",
+			Detail: "For example http://emby:8096.",
 		},
 		{
 			Key: "library.token", EnvVar: "LIBRARY_TOKEN", Group: GroupMediaServer,
 			Kind: KindSecret, Default: "",
-			Doc: "An API key from your media server. Lets Loomarr read your library and set up the TV guide.",
+			Doc:    "An API key from your media server.",
+			Detail: "It lets Loomarr read your library and set up the TV guide.",
 		},
 		{
-			// Direct play (§9.1 V47): translate the media server's file paths to where Loomarr can
-			// read them, so playout reads the FILE and copies it instead of transcoding the media
-			// server's HTTP stream. Empty = no mapping, so playout falls back to the HTTP stream —
-			// which is what a media server on another host with no shared mount needs.
+			// Translates the media server's folder paths to where Loomarr reads the same mount, so
+			// folder discovery can offer them as library folders (#2151). Playout never uses it: it
+			// plays the files Loomarr's own scan found (step 16).
 			Key: "library.path_map", EnvVar: "LIBRARY_PATH_MAP", Group: GroupMediaServer,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc: "Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead.",
+			Doc:    "Where your media server's folders are on this machine, so Loomarr can find your media folders.",
+			Detail: "Your media server names each folder by its OWN path (e.g. /data/tv); if the same folder is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty when the paths already match, or add your folders by hand in Settings → Library.",
 		},
 		{
 			// The scanner's kill switch (#2151): passes, folder watches and header reads stop.
 			Key: "library.scanner.enabled", Label: "Scan media folders", EnvVar: "LIBRARY_SCANNER_ENABLED",
 			Group: GroupMediaServer, Kind: KindBool, Default: true, Advanced: true,
-			Doc: "Whether Loomarr reads your media folders itself to learn what each file is. Turn this off to stop it reading them; what it already learned is kept.",
+			Doc:    "Whether Loomarr reads your media folders itself to learn what each file is.",
+			Detail: "Turn this off to stop it reading them; what it already learned is kept.",
 		},
 		// --- Connections: requester (§15, Phase 6) ---
 		// How Loomarr acquires missing titles: through Seerr (default), or Sonarr + Radarr
@@ -420,7 +424,8 @@ func declared() []Setting {
 		{
 			Key: "seerr.url", EnvVar: "SEERR_URL", Group: GroupRequester,
 			Kind: KindURL, Default: "", Required: FeatureAcquisition,
-			Doc:      "Your Seerr address, e.g. http://seerr:5055. This is how Loomarr downloads missing titles.",
+			Doc:      "Your Seerr address, which is how Loomarr downloads missing titles.",
+			Detail:   "For example http://seerr:5055.",
 			ShowWhen: map[string][]string{"requester.provider": {"seerr"}},
 		},
 		{
@@ -434,25 +439,29 @@ func declared() []Setting {
 		{
 			Key: "sonarr.quality_profile", Label: "Sonarr quality profile override", EnvVar: "SONARR_QUALITY_PROFILE", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc:      "Optional Sonarr quality profile (name or id). Blank = Sonarr's first profile.",
+			Doc:      "Which Sonarr quality profile new shows use, or blank for Sonarr's first.",
+			Detail:   "Optional Sonarr quality profile (name or id). Blank = Sonarr's first profile.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
 			Key: "sonarr.root_folder", Label: "Sonarr root folder override", EnvVar: "SONARR_ROOT_FOLDER", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc:      "Optional Sonarr root folder path. Blank = Sonarr's first root folder.",
+			Doc:      "Which Sonarr folder new shows go in, or blank for Sonarr's first.",
+			Detail:   "Optional Sonarr root folder path. Blank = Sonarr's first root folder.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
 			Key: "radarr.quality_profile", Label: "Radarr quality profile override", EnvVar: "RADARR_QUALITY_PROFILE", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc:      "Optional Radarr quality profile (name or id). Blank = Radarr's first profile.",
+			Doc:      "Which Radarr quality profile new movies use, or blank for Radarr's first.",
+			Detail:   "Optional Radarr quality profile (name or id). Blank = Radarr's first profile.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 		{
 			Key: "radarr.root_folder", Label: "Radarr root folder override", EnvVar: "RADARR_ROOT_FOLDER", Group: GroupRequester,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc:      "Optional Radarr root folder path. Blank = Radarr's first root folder.",
+			Doc:      "Which Radarr folder new movies go in, or blank for Radarr's first.",
+			Detail:   "Optional Radarr root folder path. Blank = Radarr's first root folder.",
 			ShowWhen: map[string][]string{"requester.provider": {"arr"}},
 		},
 
@@ -462,7 +471,8 @@ func declared() []Setting {
 		{
 			Key: "sonarr.url", EnvVar: "SONARR_URL", Group: GroupSonarr,
 			Kind: KindURL, Default: "",
-			Doc: "Your Sonarr address, e.g. http://sonarr:8989. Loomarr learns your shows from it and hears about new episodes.",
+			Doc:    "Your Sonarr address.",
+			Detail: "For example http://sonarr:8989. Loomarr learns your shows from it and hears about new episodes.",
 		},
 		{
 			Key: "sonarr.api_key", EnvVar: "SONARR_API_KEY", Group: GroupSonarr,
@@ -472,7 +482,8 @@ func declared() []Setting {
 		{
 			Key: "radarr.url", EnvVar: "RADARR_URL", Group: GroupRadarr,
 			Kind: KindURL, Default: "",
-			Doc: "Your Radarr address, e.g. http://radarr:7878. Loomarr learns your movies from it and hears about new ones.",
+			Doc:    "Your Radarr address.",
+			Detail: "For example http://radarr:7878. Loomarr learns your movies from it and hears about new ones.",
 		},
 		{
 			Key: "radarr.api_key", EnvVar: "RADARR_API_KEY", Group: GroupRadarr,
@@ -484,12 +495,14 @@ func declared() []Setting {
 		{
 			Key: "tunarr.url", EnvVar: "TUNARR_URL", Group: GroupTunarr,
 			Kind: KindURL, Default: "",
-			Doc: "Your Tunarr address, e.g. http://tunarr:8000. This is where Loomarr builds your channels.",
+			Doc:    "Your Tunarr address, where Loomarr builds your channels.",
+			Detail: "For example http://tunarr:8000.",
 		},
 		{
 			Key: "tunarr.transcode_config_id", Label: "Transcode profile override", EnvVar: "TUNARR_TRANSCODE_CONFIG_ID", Group: GroupTunarr,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc: "Which Tunarr transcode profile new channels use. Leave empty to use Tunarr's default.",
+			Doc:    "Which Tunarr transcode profile new channels use.",
+			Detail: "Leave empty to use Tunarr's default.",
 		},
 		{
 			// RE-SCOPED by V4 (§9.1), not duplicated. This was a Tunarr-group, Advanced
@@ -504,23 +517,27 @@ func declared() []Setting {
 			// have to know which one Live TV reads.
 			Key: "server.public_url", Label: "Loomarr address", EnvVar: "SERVER_PUBLIC_URL", Group: GroupPlayout,
 			Kind: KindURL, Default: "",
-			Doc: "Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Your media server and Tunarr fetch every stream URL from this base, so a wrong value means channels appear in the guide there and never play. Loomarr's own in-app playback does not use it (it reaches itself on its listen address), and Current Health flags an address this server cannot reach. Also used for uploaded channel icons.",
+			Doc:    "The address your media server and Tunarr use to reach Loomarr's channel streams.",
+			Detail: "Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Your media server and Tunarr fetch every stream URL from this base, so a wrong value means channels appear in the guide there and never play. Loomarr's own in-app playback does not use it (it reaches itself on its listen address), and Current Health flags an address this server cannot reach. Also used for uploaded channel icons.",
 		},
 
 		{
 			Key: "access.public_url", Label: "Recipient-facing Loomarr address", EnvVar: "ACCESS_PUBLIC_URL", Group: GroupGeneral,
 			Kind: KindURL, Default: "", Validate: recipientHTTPOrigin,
-			Doc: "The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. General suggests the current browser origin when this is empty; save a different address when recipients reach Loomarr elsewhere. The server never infers it from request headers.",
+			Doc:    "The address people open from an invitation or sign-in recovery link.",
+			Detail: "The absolute browser address invitation and recovery recipients can reach, e.g. https://loomarr.example.com. General suggests the current browser origin when this is empty; save a different address when recipients reach Loomarr elsewhere. The server never infers it from request headers.",
 		},
 		{
 			Key: "notifications.email.enabled", Label: "Send email notifications", EnvVar: "NOTIFICATIONS_EMAIL_ENABLED", Group: GroupNotifications,
 			Kind: KindBool, Presentation: PresentationSwitch, Default: false, MigrationOnly: true,
-			Doc: "Deliver account invitations and recovery messages by email. An incomplete setup suppresses email without affecting copied links, QR codes, or direct account creation.",
+			Doc:    "Send account invitations and recovery messages by email.",
+			Detail: "An incomplete setup suppresses email without affecting copied links, QR codes, or direct account creation.",
 		},
 		{
 			Key: "notifications.smtp.host", Label: "SMTP host", EnvVar: "NOTIFICATIONS_SMTP_HOST", Group: GroupNotifications,
 			Kind: KindString, Default: "", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
-			Doc: "Hostname of the SMTP submission server. Required when email delivery is enabled.",
+			Doc:    "The mail server Loomarr sends email through.",
+			Detail: "Hostname of the SMTP submission server. Required when email delivery is enabled.",
 		},
 		{
 			Key: "notifications.smtp.port", Label: "SMTP port", EnvVar: "NOTIFICATIONS_SMTP_PORT", Group: GroupNotifications,
@@ -535,22 +552,26 @@ func declared() []Setting {
 				opt("none", "None (insecure local relay)"),
 			},
 			Default: "starttls", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
-			Doc: "STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled.",
+			Doc:    "How the connection to the mail server is encrypted.",
+			Detail: "STARTTLS requires encryption and never downgrades; TLS connects encrypted immediately. None is only for an explicitly trusted local relay. Certificate verification is always enabled.",
 		},
 		{
 			Key: "notifications.smtp.username", Label: "SMTP username", EnvVar: "NOTIFICATIONS_SMTP_USERNAME", Group: GroupNotifications,
 			Kind: KindString, Default: "", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
-			Doc: "Username for SMTP authentication. Leave empty only for an unauthenticated relay.",
+			Doc:    "The username for signing in to the mail server.",
+			Detail: "Username for SMTP authentication. Leave empty only for an unauthenticated relay.",
 		},
 		{
 			Key: "notifications.smtp.password", Label: "SMTP password", EnvVar: "NOTIFICATIONS_SMTP_PASSWORD", Group: GroupNotifications,
 			Kind: KindSecret, Default: "", MigrationOnly: true, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
-			Doc: "Password for SMTP authentication. It is write-only, masked on read, and must remain empty for an unauthenticated relay.",
+			Doc:    "The password for signing in to the mail server.",
+			Detail: "Password for SMTP authentication. It is write-only, masked on read, and must remain empty for an unauthenticated relay.",
 		},
 		{
 			Key: "notifications.email.from_address", Label: "Sender address", EnvVar: "NOTIFICATIONS_EMAIL_FROM_ADDRESS", Group: GroupNotifications,
 			Kind: KindString, Default: "", MigrationOnly: true, Validate: mailboxAddress, ShowWhen: map[string][]string{"notifications.email.enabled": {"true"}},
-			Doc: "Mailbox Loomarr sends from, such as loomarr@example.com. Required when email delivery is enabled.",
+			Doc:    "The email address Loomarr sends from.",
+			Detail: "Mailbox Loomarr sends from, such as loomarr@example.com. Required when email delivery is enabled.",
 		},
 		{
 			Key: "notifications.email.from_name", Label: "Sender name", EnvVar: "NOTIFICATIONS_EMAIL_FROM_NAME", Group: GroupNotifications,
@@ -572,17 +593,20 @@ func declared() []Setting {
 				opt("tunarr", "Tunarr"),
 			},
 			Default: "internal",
-			Doc:     "Who streams a channel. Internal playout is the default: it supports mid-roll breaks (§10), reports real transcode telemetry, and needs no extra service. Tunarr is an optional backend for an install that already runs Tunarr — not a requirement. An unrecognised value falls back to internal. Overridable per channel.",
+			Doc:     "Whether Loomarr streams your channels itself or hands them to Tunarr.",
+			Detail:  "Who streams a channel. Internal playout is the default: it supports mid-roll breaks, reports real transcode telemetry, and needs no extra service. Tunarr is an optional backend for an install that already runs Tunarr — not a requirement. An unrecognised value falls back to internal. Overridable per channel.",
 		},
 		{
 			Key: "playout.encoder", Label: "Encoder override", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",
+			Doc:    "Forces a particular video encoder instead of the one Loomarr picked.",
+			Detail: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",
 		},
 		{
 			Key: "playout.audio_language", Label: "Preferred audio language", EnvVar: "PLAYOUT_AUDIO_LANGUAGE", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationLanguage, Presets: audioLanguagePresets(), Default: "en",
-			Doc: "Preferred audio language for internal playout. Any ISO 639 code saves (en, eng and fra all work). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Channel info page.",
+			Doc:    "Which audio language channels play when a film has more than one.",
+			Detail: "Preferred audio language for internal playout. Any ISO 639 code saves (en, eng and fra all work). A preference, not a requirement: a film with no track in this language plays its first track rather than failing. Empty = play whichever track comes first in the file, which is how a foreign-language dub ends up playing instead of the original. A channel can override this on its Channel info page.",
 		},
 		{
 			Key: "playout.quality_tier", Label: "Maximum playback quality", EnvVar: "PLAYOUT_QUALITY_TIER", Group: GroupPlayout,
@@ -592,7 +616,8 @@ func declared() []Setting {
 				opt("quality", "Quality — 1080p, best picture"),
 			},
 			Default: "balanced",
-			Doc:     "The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise.",
+			Doc:     "The best picture quality channels aim for, traded against bandwidth.",
+			Detail:  "The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise.",
 		},
 		{
 			// One curve on every family (G11, #1512); playout.ToneCurve maps it to each tone-mapper.
@@ -608,7 +633,8 @@ func declared() []Setting {
 				opt("spline", "Spline — more CPU on Intel"),
 			},
 			Default: "hable",
-			Doc: "How an HDR film is turned into the SDR picture a channel broadcasts. Hable (the default) rolls bright highlights off gently, like film; Mobius and Reinhard keep more of the mid-tones and highlights. These three run on the GPU on Intel and NVIDIA, about 0.1 CPU cores per HDR stream on Intel. " +
+			Doc:     "How HDR films are adjusted to look right on an ordinary screen.",
+			Detail: "How an HDR film is turned into the SDR picture a channel broadcasts. Hable (the default) rolls bright highlights off gently, like film; Mobius and Reinhard keep more of the mid-tones and highlights. These three run on the GPU on Intel and NVIDIA, about 0.1 CPU cores per HDR stream on Intel. " +
 				"BT.2390, BT.2446 Method A and Spline come from libplacebo. On Intel the picture makes a trip through system memory for them, which roughly doubles the CPU cost to about 0.25 cores per HDR stream. Where libplacebo cannot run (no Vulkan GPU, for example an NVIDIA container without NVIDIA's Vulkan driver), those three use the CPU tone-mapper's Mobius curve instead. " +
 				"Without a GPU tone-mapper at all, every curve runs on the CPU after the GPU has scaled the picture down; the picture is correct but costs more CPU. A change applies to streams that start afterwards; a channel already playing keeps its curve until it restarts.",
 		},
@@ -618,7 +644,8 @@ func declared() []Setting {
 			// rendered-bug cache is keyed by opacity, so a change re-renders the bugs.
 			Key: "playout.watermark_opacity_pct", Label: "On-screen logo opacity", EnvVar: "PLAYOUT_WATERMARK_OPACITY_PCT", Group: GroupPlayout,
 			Kind: KindInt, Unit: UnitPercent, Default: "40", Validate: watermarkOpacityRange,
-			Doc: "How solid the on-screen logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own opacity keeps it. A change shows from each channel's next programme.",
+			Doc:    "How solid the on-screen logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque).",
+			Detail: "A channel with its own opacity keeps it. A change shows from each channel's next programme.",
 		},
 		{
 			// The maintainer's four styles (#1617, picked from real-frame previews), Text by default,
@@ -640,7 +667,8 @@ func declared() []Setting {
 				opt("stripe", "Era stripe — the name over a three-colour stripe"),
 			},
 			Default: "text",
-			Doc:     "How the on-screen logo Loomarr draws from a channel's name looks. Coloured styles use each channel's colour (by default, colours from the channel's decade). A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel's next programme.",
+			Doc:     "How the on-screen logo Loomarr draws from a channel's name looks.",
+			Detail:  "Coloured styles use each channel's colour (by default, colours from the channel's decade). A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel's next programme.",
 		},
 		{
 			// ⚠ Still separate from ingest.ffmpeg_path, but NOT for the reason this comment
@@ -654,7 +682,8 @@ func declared() []Setting {
 			// a newer yt-dlp-compatible ffmpeg must not be able to break playout by doing it.
 			Key: "playout.ffmpeg_path", Label: "FFmpeg path", EnvVar: "PLAYOUT_FFMPEG_PATH", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationPath, Default: "ffmpeg", Advanced: true,
-			Doc: "Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual.",
+			Doc:    "Where the ffmpeg program lives.",
+			Detail: "The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual.",
 		},
 		{
 			// Where the in-app HLS player's segments are written (§9.1 Watch, V46). Disk-backed
@@ -666,19 +695,22 @@ func declared() []Setting {
 			// (those never touch this dir).
 			Key: "playout.hls_dir", Label: "Browser playback cache", EnvVar: "PLAYOUT_HLS_DIR", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationPath, DataSubdir: "hls", Advanced: true,
-			Doc: "Directory where in-app browser playback writes its temporary HLS segments (§9.1). Defaults to a directory beside the database (/data/hls in the container). Each channel being watched keeps up to 15 minutes of video here (about 1 GB), deleted when you stop watching, so use a disk, not a RAM-backed tmpfs like /dev/shm. Only affects in-app playback; your media server's streams never use it. Changing it takes effect after restart.",
+			Doc:    "Where watching in the browser keeps a few minutes of temporary video.",
+			Detail: "Directory where in-app browser playback writes its temporary HLS segments. Defaults to a directory beside the database (/data/hls in the container). Each channel being watched keeps up to 15 minutes of video here (about 1 GB), deleted when you stop watching, so use a disk, not a RAM-backed tmpfs like /dev/shm. Only affects in-app playback; your media server's streams never use it. Changing it takes effect after restart.",
 		},
 		{
 			// Host measurements get their own small root: the capability evidence, the per-class cost
 			// table and the synthetic probe clips. Read once at composition.
 			Key: "playout.state_dir", Label: "Playout host measurements", EnvVar: "PLAYOUT_STATE_DIR", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationPath, DataSubdir: "playout-state", Advanced: true,
-			Doc: "Where Loomarr keeps what it measured about this server's transcoding: the chosen encoder, the cost of each kind of stream and a few seconds of generated test video (about 20 MB). Defaults to a directory beside the database (/data in the container). Deleting it makes Loomarr measure again at the next start. Changing it takes effect after restart.",
+			Doc:    "Where Loomarr keeps what it learned about this server's video power.",
+			Detail: "Where Loomarr keeps what it measured about this server's transcoding: the chosen encoder, the cost of each kind of stream and a few seconds of generated test video (about 20 MB). Defaults to a directory beside the database (/data in the container). Deleting it makes Loomarr measure again at the next start. Changing it takes effect after restart.",
 		},
 		{
 			Key: "playout.max_channels", Label: "Live transcode safety cap", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
 			Kind: KindInt, Default: "0", Validate: nonNegativeWholeNumber,
-			Doc: "Optional safety cap for simultaneous internal transcodes. Leave at 0 for Loomarr to use measured capacity automatically. A positive value can lower that measurement but cannot raise it.",
+			Doc:    "The most channels Loomarr may stream at the same time, or 0 to decide for itself.",
+			Detail: "Optional safety cap for simultaneous internal transcodes. Leave at 0 for Loomarr to use measured capacity automatically. A positive value can lower that measurement but cannot raise it.",
 		},
 		{
 			// Host memory is a per-lease gate on hardware encodes, not a capacity term (§9.1): each
@@ -686,24 +718,28 @@ func declared() []Setting {
 			// the ResourceBudget re-reads it on every admission.
 			Key: "playout.memory_reserve_mb", Label: "Host memory reserve for encodes", EnvVar: "PLAYOUT_MEMORY_RESERVE_MB", Group: GroupPlayout,
 			Kind: KindInt, Unit: UnitMiB, Default: "2048", Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "Host memory, in MiB, that hardware encoding must leave available. Loomarr does not start a hardware transcode that would take free memory below this. Set 0 to disable the host-memory check. Changes apply to the next encode without restart.",
+			Doc:    "Memory that channel streaming always leaves free for the rest of the machine.",
+			Detail: "Host memory, in MiB, that hardware encoding must leave available. Loomarr does not start a hardware transcode that would take free memory below this. Set 0 to disable the host-memory check. Changes apply to the next encode without restart.",
 		},
 		{
 			Key: "playout.encode_memory_mb", Label: "Host memory per encode", EnvVar: "PLAYOUT_ENCODE_MEMORY_MB", Group: GroupPlayout,
 			Kind: KindInt, Unit: UnitMiB, Default: "0", Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "Host memory, in MiB, one hardware encode is expected to use. Leave at 0 to use 1024 MiB, or more if the encoder capability check measured more on this machine; set it when real encodes here use more, for example 4K or HDR tone mapping. Changes apply to the next encode without restart.",
+			Doc:    "How much memory one streaming channel is expected to use, or 0 to work it out.",
+			Detail: "Host memory, in MiB, one hardware encode is expected to use. Leave at 0 to use 1024 MiB, or more if the encoder capability check measured more on this machine; set it when real encodes here use more, for example 4K or HDR tone mapping. Changes apply to the next encode without restart.",
 		},
 		{
 			// The ResourceBudget's CPU term (#1512 G5): total playout CPU at full GPU capacity.
 			// Hot-applied because the budget re-reads its facts on every admission.
 			Key: "playout.gpu_cpu_millicores", Label: "Playout CPU on GPU hosts", EnvVar: "PLAYOUT_GPU_CPU_MILLICORES", Group: GroupPlayout,
 			Kind: KindInt, Default: "1000", Advanced: true, Validate: positiveWholeNumber,
-			Doc: "On a host that encodes on its GPU, the CPU all live channels together may use, in thousandths of a core (1000 = one core). Loomarr admits no more channels than fit this allowance at each channel's measured CPU cost. Never more than the container's CPU limit. Changes apply to the next channel start without restart.",
+			Doc:    "How much processor time all channels together may use when a graphics card does the encoding.",
+			Detail: "On a host that encodes on its GPU, the CPU all live channels together may use, in thousandths of a core (1000 = one core). Loomarr admits no more channels than fit this allowance at each channel's measured CPU cost. Never more than the container's CPU limit. Changes apply to the next channel start without restart.",
 		},
 		{
 			Key: "playout.app_reserve_millicores", Label: "CPU kept for the app on software hosts", EnvVar: "PLAYOUT_APP_RESERVE_MILLICORES", Group: GroupPlayout,
 			Kind: KindInt, Default: "1000", Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "On a host with no hardware encoder, the CPU kept free for the rest of Loomarr, in thousandths of a core (1000 = one core). Live channels may use the container's CPU limit (or the CPU count) minus this reserve. Changes apply to the next channel start without restart.",
+			Doc:    "Processor time kept free for the rest of Loomarr when channels are encoded without a graphics card.",
+			Detail: "On a host with no hardware encoder, the CPU kept free for the rest of Loomarr, in thousandths of a core (1000 = one core). Live channels may use the container's CPU limit (or the CPU count) minus this reserve. Changes apply to the next channel start without restart.",
 		},
 
 		{
@@ -719,7 +755,8 @@ func declared() []Setting {
 			// window turns at midnight in this zone. Empty there = the container's own zone.
 			Key: "guide.timezone", Label: "Timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationTimezone, Presets: timezonePresets(), Default: "",
-			Doc: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone.",
+			Doc:    "The timezone the TV guide shows times in and each channel's day starts in.",
+			Detail: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone.",
 		},
 		{
 			// How far back the guide will look (§12, V13b gap 8).
@@ -730,14 +767,16 @@ func declared() []Setting {
 			// history.
 			Key: "guide.retention_hours", Label: "Past listings", EnvVar: "GUIDE_RETENTION_HOURS", Group: GroupPlayout,
 			Kind: KindInt, Unit: UnitHours, Default: "24",
-			Doc: "How far back the TV guide lets you scroll. Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
+			Doc:    "How far back the TV guide lets you scroll.",
+			Detail: "Past listings are recomputed from each channel's current lineup, so going too far back would show a schedule that never actually aired.",
 		},
 
 		// --- Backup (§16, §15 — added by V4) ---
 		{
 			Key: "backup.schedule", Label: "Automatic backup schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 30 3 * * *",
-			Doc: "When to write the nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped data keys, but not the external installation key. It does not contain filler, cached artwork, or operator image uploads.",
+			Doc:    "When Loomarr backs up its settings, channels and people.",
+			Detail: "When to write the nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped data keys, but not the external installation key. It does not contain filler, cached artwork, or operator image uploads.",
 		},
 		{
 			Key: "backup.retain", Label: "Backups to keep", EnvVar: "BACKUP_RETAIN", Group: GroupBackup,
@@ -747,7 +786,8 @@ func declared() []Setting {
 		{
 			Key: "backup.dir", Label: "Backup location", EnvVar: "BACKUP_DIR", Group: GroupBackup,
 			Kind: KindString, Presentation: PresentationPath, DataSubdir: "backups",
-			Doc: "Where backups are written. Defaults to a directory beside the database (/data in the container) so its volume carries them; point it elsewhere to keep backups off the same disk as the database.",
+			Doc:    "Where backups are written.",
+			Detail: "Defaults to a directory beside the database (/data in the container) so its volume carries them; point it elsewhere to keep backups off the same disk as the database.",
 		},
 
 		// --- Images (§15, §22, V52) ---
@@ -760,22 +800,26 @@ func declared() []Setting {
 			// pretending it can repair them.
 			Key: "images.dir", Label: "Image library location", EnvVar: "IMAGES_DIR", Group: GroupImages,
 			Kind: KindString, Presentation: PresentationPath, DataSubdir: "images",
-			Doc: "Where Loomarr stores images — originals and the resized copies it serves. Defaults to a directory beside the database (/data in the container) so its volume carries it. Not covered by the database backup: back up the volume.",
+			Doc:    "Where Loomarr stores images, both originals and the resized copies it serves.",
+			Detail: "Defaults to a directory beside the database (/data in the container) so its volume carries it. Not covered by the database backup: back up the volume.",
 		},
 		{
 			Key: "images.max_upload_bytes", Label: "Maximum image upload", EnvVar: "IMAGES_MAX_UPLOAD_BYTES", Group: GroupImages,
 			Kind: KindInt, Presentation: PresentationBytes, Default: "8388608",
-			Doc: "The largest image someone may upload, in bytes (8 MiB by default). Enforced while reading the upload, not from the size the client declares.",
+			Doc:    "The largest image someone may upload.",
+			Detail: "In bytes (8 MiB by default). Enforced while reading the upload, not from the size the client declares.",
 		},
 		{
 			Key: "images.remote_fetch_enabled", Label: "Download remote artwork", EnvVar: "IMAGES_REMOTE_FETCH_ENABLED", Group: GroupImages,
 			Kind: KindBool, Default: true,
-			Doc: "Whether Loomarr may download artwork from TMDB and your media server. Turn this off to keep to locally-produced images only — no outbound image requests are made.",
+			Doc:    "Whether Loomarr may download artwork from TMDB and your media server.",
+			Detail: "Turn this off to keep to locally-produced images only — no outbound image requests are made.",
 		},
 		{
 			Key: "images.cache_budget_mb", Label: "Resized-image cache", EnvVar: "IMAGES_CACHE_BUDGET_MB", Group: GroupImages,
 			Kind: KindInt, Unit: UnitMiB, Default: "2048", Advanced: true,
-			Doc: "How much disk the resized copies may use before Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image.",
+			Doc:    "How much disk the resized copies of images may use.",
+			Detail: "Past this, Loomarr starts removing the least recently used ones. They are always regenerable, so this costs a little latency, never an image.",
 		},
 
 		// --- Connections: TMDB (§15, Phase 11) ---
@@ -784,26 +828,30 @@ func declared() []Setting {
 			// The default is the key the release build ships with (decision 51); List reports
 			// it as builtIn, never as set, and never previews it.
 			Kind: KindSecret, Default: buildinfo.TMDBKey(), Required: FeatureSuggestions,
-			Doc: "Your own TMDB API key, if you have one. Loomarr comes with its own, so most households can leave this empty. TMDB powers title search, channel icon suggestions, and grounding for AI channel suggestions.",
+			Doc:    "Your own TMDB API key, which most households can leave empty.",
+			Detail: "Your own TMDB API key, if you have one. Loomarr comes with its own, so most households can leave this empty. TMDB powers title search, channel icon suggestions, and grounding for AI channel suggestions.",
 		},
 		{
 			// #2151 decision 21: one installation-wide metadata language and country, defaulting to
 			// the media server's.
 			Key: "metadata.language", Label: "Title language", EnvVar: "METADATA_LANGUAGE", Group: GroupTMDB,
 			Kind: KindString, Default: "", Advanced: true, Validate: optionalMetadataLanguage,
-			Doc: "The language titles, overviews and trailers are shown in, as a language code (en, fr, pt-BR). Empty uses your media server's metadata language, or English. Changing it fetches every title's details again.",
+			Doc:    "The language titles, overviews and trailers are shown in.",
+			Detail: "As a language code (en, fr, pt-BR). Empty uses your media server's metadata language, or English. Changing it fetches every title's details again.",
 		},
 		{
 			Key: "metadata.country", Label: "Ratings country", EnvVar: "METADATA_COUNTRY", Group: GroupTMDB,
 			Kind: KindString, Default: "", Advanced: true, Validate: metadataCountry,
-			Doc: "The country whose content ratings Loomarr uses. Only US ratings are supported for now, so this can be empty or US.",
+			Doc:    "The country whose content ratings Loomarr uses.",
+			Detail: "Only US ratings are supported for now, so this can be empty or US.",
 		},
 
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---
 		{
 			Key: "llm.provider", Label: "Lineup AI provider", EnvVar: "LLM_PROVIDER", Group: GroupAI,
 			Kind: KindEnum, Enum: []EnumOption{opt("ollama", "Ollama"), opt("openai", "OpenAI-compatible")}, Default: "ollama", Required: FeatureSuggestions,
-			Doc: "Which AI to use: a local Ollama, or an OpenAI-compatible service. You can also pick a model in the AI settings.",
+			Doc:    "Which AI to use: a local Ollama, or an OpenAI-compatible service.",
+			Detail: "You can also pick a model in the AI settings.",
 		},
 		{
 			// Both providers need an endpoint: the Ollama host for local AI, or the
@@ -811,7 +859,8 @@ func declared() []Setting {
 			// universal, so hiding this for Ollama made remote Ollama impossible to configure.
 			Key: "llm.url", Label: "AI service address", EnvVar: "LLM_URL", Group: GroupAI,
 			Kind: KindURL, Default: "",
-			Doc: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the exact OpenAI-compatible API base; Loomarr fills this for OpenRouter, while Custom remains editable.",
+			Doc:    "The address of your AI service.",
+			Detail: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the exact OpenAI-compatible API base; Loomarr fills this for OpenRouter, while Custom remains editable.",
 		},
 		{
 			// The normal AI page uses the ranked picker for both provider kinds so two
@@ -819,14 +868,16 @@ func declared() []Setting {
 			// the explicit All Settings escape hatch.
 			Key: "llm.model", Label: "Lineup model", EnvVar: "LLM_MODEL", Group: GroupAI,
 			Kind: KindString, Default: "", Required: FeatureSuggestions,
-			Doc:      "The active model used to build channel lineups. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini).",
+			Doc:      "The AI model that builds channel lineups.",
+			Detail:   "The active model used to build channel lineups. Prefer the guided picker on the AI page; OpenRouter ids use provider/model (for example openai/gpt-4o-mini).",
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
 			// Ollama is local and needs no key — this only applies to a hosted service.
 			Key: "llm.api_key", Label: "Hosted AI API key", EnvVar: "LLM_API_KEY", Group: GroupAI,
 			Kind: KindSecret, Default: "",
-			Doc:      "API key for your hosted AI service. Never shown again after saving.",
+			Doc:      "The API key for your hosted AI service.",
+			Detail:   "Never shown again after saving.",
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
@@ -834,7 +885,8 @@ func declared() []Setting {
 			// is hidden for the openai provider rather than shown as an inert control.
 			Key: "llm.keep_alive", Label: "Keep local model loaded", EnvVar: "LLM_KEEP_ALIVE", Group: GroupAI,
 			Kind: KindDuration, Default: "2m", Advanced: true,
-			Doc:      "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster — but the model shares GPU memory with channel playback, so the default is short (2m) to free that memory for streaming. Raise it if you rarely stream and want faster suggestions; set 0 to free memory as soon as each request finishes.",
+			Doc:      "How long the local AI model stays loaded between requests.",
+			Detail:   "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster — but the model shares GPU memory with channel playback, so the default is short (2m) to free that memory for streaming. Raise it if you rarely stream and want faster suggestions; set 0 to free memory as soon as each request finishes.",
 			ShowWhen: map[string][]string{"llm.provider": {"ollama"}},
 		},
 		{
@@ -843,24 +895,28 @@ func declared() []Setting {
 				opt("whisper", "Built in on this device"), opt("hosted", "Connected speech service"),
 			},
 			Default: "whisper",
-			Doc:     "How Loomarr understands speech in clips. The built-in option stays on this device; a connected service is faster on low-power hardware and can use a separate address and key under Advanced.",
+			Doc:     "How Loomarr understands speech in clips.",
+			Detail:  "The built-in option stays on this device; a connected service is faster on low-power hardware and can use a separate address and key under Advanced.",
 		},
 		{
 			Key: "asr.url", Label: "Speech service address", EnvVar: "ASR_URL", Group: GroupAI,
 			Kind: KindURL, Default: "", Advanced: true,
-			Doc:      "OpenAI-compatible speech-to-text API base, such as http://ai-server:8083/v1. Leave blank to reuse the active hosted AI service.",
+			Doc:      "The address of a separate speech service, or blank to use your AI service.",
+			Detail:   "OpenAI-compatible speech-to-text API base, such as http://ai-server:8083/v1. Leave blank to reuse the active hosted AI service.",
 			ShowWhen: map[string][]string{"asr.provider": {"hosted"}},
 		},
 		{
 			Key: "asr.api_key", Label: "Speech service API key", EnvVar: "ASR_API_KEY", Group: GroupAI,
 			Kind: KindSecret, Default: "", Advanced: true,
-			Doc:      "API key for the separate speech service. It is never shown again after saving and the main AI key is never sent to a custom speech address.",
+			Doc:      "The API key for the separate speech service.",
+			Detail:   "It is never shown again after saving and the main AI key is never sent to a custom speech address.",
 			ShowWhen: map[string][]string{"asr.provider": {"hosted"}},
 		},
 		{
 			Key: "asr.model", Label: "Speech model", EnvVar: "ASR_MODEL", Group: GroupAI,
 			Kind: KindString, Default: "openai/whisper-large-v3", Advanced: true,
-			Doc:      "Speech-to-text model used by the connected service. It is separate from the lineup model because it must return timed transcript segments and the detected language.",
+			Doc:      "The speech model the connected service uses.",
+			Detail:   "Speech-to-text model used by the connected service. It is separate from the lineup model because it must return timed transcript segments and the detected language.",
 			ShowWhen: map[string][]string{"asr.provider": {"hosted"}},
 		},
 		{
@@ -873,43 +929,50 @@ func declared() []Setting {
 		{
 			Key: "job.recurate.schedule", EnvVar: "JOB_RECURATE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 0 4 * * 0", Advanced: true,
-			Doc: "How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent.",
+			Doc:    "How often auto-curate channels look again at what your library offers.",
+			Detail: "How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent.",
 		},
 		{
 			Key: "recurate.min_score_pct", Label: "Auto-curation request threshold", EnvVar: "RECURATE_MIN_SCORE_PCT", Group: GroupAI,
 			Kind: KindInt, Unit: UnitPercent, Default: 60, Advanced: true,
-			Doc: "Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser.",
+			Doc:    "How good a match a title you don't have must be before auto-curate downloads it.",
+			Detail: "Quality bar (0–100) a not-in-library title must clear for auto-curate to REQUEST it. In-library matches are added regardless. A per-channel override may be stricter or looser.",
 		},
 		{
 			Key: "recurate.max_titles", Label: "Auto-curation channel limit", EnvVar: "RECURATE_MAX_TITLES", Group: GroupAI,
 			Kind: KindInt, Default: 40, Advanced: true,
-			Doc: "The most titles an auto-curate channel may grow to. Re-curation won't request net-new titles past this cap. A per-channel override may be stricter or looser.",
+			Doc:    "The most titles an auto-curate channel may grow to.",
+			Detail: "Re-curation won't request net-new titles past this cap. A per-channel override may be stricter or looser.",
 		},
 
 		// --- Channels & playback (§15, Phase 10; policy defaults = programming-design §2) ---
 		{
 			Key: "channel.reconcile_every", Label: "Channel rebuild cooldown", EnvVar: "CHANNEL_RECONCILE_EVERY", Group: GroupChannels,
 			Kind: KindDuration, Default: "10m", Advanced: true,
-			Doc: "Minimum delay after a successful rebuild before that channel is eligible for another scheduled sweep. Change the sweep cadence under System → Tasks.",
+			Doc:    "How long a channel rests after a rebuild before it can be rebuilt again.",
+			Detail: "Minimum delay after a successful rebuild before that channel is eligible for another scheduled sweep. Change the sweep cadence under System → Tasks.",
 		},
 		{
 			Key: "sched.window_hours", Label: "Schedule ahead", EnvVar: "SCHED_WINDOW_HOURS", Group: GroupChannels,
 			Kind: KindDuration, Default: "24h",
-			Doc: "How far ahead each channel schedules — the rolling window it materializes and rolls forward, instead of the whole series run (per-channel/-rule overridable; 0 = schedule everything).",
+			Doc:    "How far ahead each channel plans its schedule.",
+			Detail: "How far ahead each channel schedules — the rolling window it materializes and rolls forward, instead of the whole series run (per-channel/-rule overridable; 0 = schedule everything).",
 		},
 
 		// --- Filler / commercials (§15, Phase 12; §10 redesign — Tunarr-owned) ---
 		{
 			Key: "filler.home_country", Label: "Country", EnvVar: "FILLER_HOME_COUNTRY", Group: GroupFiller,
 			Kind: KindString, Default: "", Validate: optionalCountryCode,
-			Doc: "Where your channels are watched. Loomarr uses this country for channels and filler sources, and keeps its holidays on its dates (Canada's Thanksgiving in October, Britain's Mothering Sunday in spring). Empty, or a country Loomarr has no holidays for yet, keeps the US calendar.",
+			Doc:    "The country your channels are watched in, for holidays and filler.",
+			Detail: "Where your channels are watched. Loomarr uses this country for channels and filler sources, and keeps its holidays on its dates (Canada's Thanksgiving in October, Britain's Mothering Sunday in spring). Empty, or a country Loomarr has no holidays for yet, keeps the US calendar.",
 		},
 		{
 			// #2062: a picked place (an embedded location index id), never a typed name — a name
 			// could not be measured against a broadcast station's community of license.
 			Key: "filler.home_place", Label: "Home city", EnvVar: "FILLER_HOME_PLACE", Group: GroupFiller,
 			Kind: KindString, Default: "", Validate: optionalPlaceID,
-			Doc: "Optional. Pick your city to get local TV material, such as station news and weather, from stations near you. Without it, only national filler airs.",
+			Doc:    "Your city, so local station news and weather can air between programmes.",
+			Detail: "Optional. Pick your city to get local TV material, such as station news and weather, from stations near you. Without it, only national filler airs.",
 		},
 		{
 			Key: "filler.local_radius_km", Label: "Local station radius", EnvVar: "FILLER_LOCAL_RADIUS_KM", Group: GroupFiller,
@@ -919,7 +982,8 @@ func declared() []Setting {
 		{
 			Key: "filler.region_fallback", Label: "Other countries", EnvVar: "FILLER_REGION_FALLBACK", Group: GroupFiller,
 			Kind: KindStringList, Default: "", Validate: countryCodeList,
-			Doc: "Optional, in order of preference: countries whose national commercials may air and whose sources may download after your own country's, such as GB, CA, AU. Your country's commercials always come first within an era; these fill in when its supply for that era runs thin.",
+			Doc:    "Other countries whose commercials may fill in when your own run short.",
+			Detail: "Optional, in order of preference: countries whose national commercials may air and whose sources may download after your own country's, such as GB, CA, AU. Your country's commercials always come first within an era; these fill in when its supply for that era runs thin.",
 		},
 		{
 			// ⚠ Defaults inside /data, like database.url and backup.dir — the documented
@@ -930,7 +994,8 @@ func declared() []Setting {
 			// accident. Still overridable to point at an existing library on another disk.
 			Key: "filler.dir", Label: "Clip library", EnvVar: "FILLER_DIR", Group: GroupFiller,
 			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, DataSubdir: "filler", Required: FeatureFiller, Validate: storagePath(false),
-			Doc: "Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults to a directory beside the database (/data in the container) so its volume carries it; point it elsewhere to use an existing clip library.",
+			Doc:    "Where Loomarr stores clips.",
+			Detail: "Each is filed under its content hash with its metadata beside it. Defaults to a directory beside the database (/data in the container) so its volume carries it; point it elsewhere to use an existing clip library.",
 		},
 		{
 			// The watch folder (§10 V38c, "Two folders, one pipeline"). Clips ARRIVE here —
@@ -950,7 +1015,8 @@ func declared() []Setting {
 			// path (which would then be pruned the moment intake moved it).
 			Key: "filler.watch_dir", Label: "Drop folder", EnvVar: "FILLER_WATCH_DIR", Group: GroupFiller,
 			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "", Validate: storagePath(true),
-			Doc: "Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder.",
+			Doc:    "A folder where any clip you drop in is added to your library.",
+			Detail: "Folder Loomarr watches for new clips. Anything dropped here is filed into your clip folder and then removed. Leave blank to use a '_watch' folder inside the clip folder.",
 		},
 		{
 			Key: "filler.sync_every", Label: "Scan for dropped clips every", EnvVar: "FILLER_SYNC_EVERY", Group: GroupFiller,
@@ -973,7 +1039,8 @@ func declared() []Setting {
 			// nothing. The Sources tab renders that row as provenance, without a switch.
 			Key: "filler.source.folder.enabled", Label: "Watch the drop folder", EnvVar: "FILLER_SOURCE_FOLDER_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: true,
-			Doc: "Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay.",
+			Doc:    "Pick up clips dropped into the drop folder.",
+			Detail: "Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay.",
 		},
 		{
 			// Selective speech details (§10 V44). Enabled by default because it only listens when a
@@ -981,7 +1048,8 @@ func declared() []Setting {
 			// Choosing a connected service remains the explicit egress/cost decision.
 			Key: "filler.transcribe.enabled", Label: "Listen for missing clip details", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: true, Advanced: true,
-			Doc: "When a source provides very little information, listen for spoken brand and product details. Loomarr skips this for clips that already have enough context. Choose the speech service under Settings → AI.",
+			Doc:    "Listen to clips with little description for spoken brand and product names.",
+			Detail: "When a source provides very little information, listen for spoken brand and product details. Loomarr skips this for clips that already have enough context. Choose the speech service under Settings → AI.",
 		},
 		{
 			// Vision tagging (§10 V44). ⚠ OFF by default AND gated on a vision-capable LLM: the
@@ -989,7 +1057,8 @@ func declared() []Setting {
 			// path needs an Ollama vision model. Off, or with no vision model, the job is inert.
 			Key: "filler.vision.enabled", Label: "Inspect unclear clips with vision AI", EnvVar: "FILLER_VISION_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: false, Advanced: true,
-			Doc: "Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model.",
+			Doc:    "Look at clips Loomarr still can't identify to read logos and on-screen text.",
+			Detail: "Look at a few frames of clips Loomarr still can't identify — reading on-screen logos and text — to work out the brand, even for clips with no speech. Needs a vision-capable AI model.",
 		},
 		{
 			// ⚠ Its OWN model knob, exactly like filler.language_model — and the live test that
@@ -1000,7 +1069,8 @@ func declared() []Setting {
 			// main model already sees images needs no second setting.
 			Key: "filler.vision.model", Label: "Vision model", EnvVar: "FILLER_VISION_MODEL", Group: GroupFiller,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc: "Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images.",
+			Doc:    "Which AI model looks at clip pictures, or empty to use your main model.",
+			Detail: "Which AI model reads clip frames (must be vision-capable). Leave empty to reuse your main model — set it only when that model can't see images.",
 		},
 		{
 			// ⚠ **The model knob above was only half a separation, and the half it was missing is
@@ -1023,7 +1093,8 @@ func declared() []Setting {
 				opt("ollama", "Ollama"),
 				opt("openai", "OpenAI-compatible"),
 			},
-			Doc: "Which service reads clip frames. Leave as “same as your main AI” unless your vision model lives somewhere else — a local Ollama, say, while your main AI is a hosted service.",
+			Doc:    "Which AI service looks at clip pictures.",
+			Detail: "Leave as “same as your main AI” unless your vision model lives somewhere else — a local Ollama, say, while your main AI is a hosted service.",
 		},
 		{
 			// Empty + `ollama` resolves to the conventional local host, the same rule `ollamaBase`
@@ -1031,7 +1102,8 @@ func declared() []Setting {
 			// needs the provider knob alone.
 			Key: "filler.vision.url", Label: "Vision service address", EnvVar: "FILLER_VISION_URL", Group: GroupFiller,
 			Kind: KindURL, Default: "", Advanced: true,
-			Doc:      "Where that service lives. Leave empty for a local Ollama on this machine.",
+			Doc:      "The address of that picture service.",
+			Detail:   "Leave empty for a local Ollama on this machine.",
 			ShowWhen: map[string][]string{"filler.vision.provider": {"ollama", "openai"}},
 		},
 		{
@@ -1042,7 +1114,8 @@ func declared() []Setting {
 			// empty and nothing is sent.
 			Key: "filler.vision.api_key", Label: "Vision service API key", EnvVar: "FILLER_VISION_API_KEY", Group: GroupFiller,
 			Kind: KindSecret, Default: "", Advanced: true,
-			Doc:      "API key for that service, if it needs one. Your main AI's key is never reused here. Never shown again after saving.",
+			Doc:      "The API key for that picture service, if it needs one.",
+			Detail:   "Your main AI's key is never reused here. Never shown again after saving.",
 			ShowWhen: map[string][]string{"filler.vision.provider": {"openai"}},
 		},
 		{
@@ -1051,14 +1124,16 @@ func declared() []Setting {
 			// reserves nothing. Whole cents, because a setting has no decimal kind.
 			Key: "filler.defects.judge_look_cents", Label: "Most one picture-quality check may cost (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_LOOK_CENTS", Group: GroupFiller,
 			Kind: KindInt, Default: 2, Advanced: true,
-			Doc: "Ads whose picture is close to the quality limit are shown to the vision model above for a ruling. This is the most one look may cost on a hosted model. 0 stops hosted looks, and those ads wait.",
+			Doc:    "The most one picture-quality check on a paid AI service may cost.",
+			Detail: "Ads whose picture is close to the quality limit are shown to the vision model above for a ruling. This is the most one look may cost on a hosted model. 0 stops hosted looks, and those ads wait.",
 		},
 		{
 			// ⚠ The ledger's day is shared: it sums every metered filler model call that day, not
 			// only the judge's, so the doc says "paid filler AI" rather than "these checks".
 			Key: "filler.defects.judge_daily_cents", Label: "Daily ceiling for picture-quality checks (US cents)", EnvVar: "FILLER_DEFECTS_JUDGE_DAILY_CENTS", Group: GroupFiller,
 			Kind: KindInt, Default: 50, Advanced: true,
-			Doc: "Picture-quality checks on a hosted model stop for the day (UTC) once Loomarr's paid filler AI spend that day would pass this. Ads past the limit wait for the next day.",
+			Doc:    "The most picture-quality checks on a paid AI service may cost in one day.",
+			Detail: "Picture-quality checks on a hosted model stop for the day (UTC) once Loomarr's paid filler AI spend that day would pass this. Ads past the limit wait for the next day.",
 		},
 
 		// Automatic compilation splitting (§10 V43). Detection ran only on a button press and
@@ -1083,7 +1158,8 @@ func declared() []Setting {
 			// click that the design says should be unnecessary.
 			Key: "filler.autosplit.enabled", Label: "Accept confident cuts automatically", EnvVar: "FILLER_AUTOSPLIT_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: true,
-			Doc: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
+			Doc:    "Cut up recordings of several ads without asking when Loomarr is sure of every cut.",
+			Detail: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
 		},
 		{
 			// This threshold governs cut acceptance only; it has no catalog-publication effect.
@@ -1099,18 +1175,21 @@ func declared() []Setting {
 			// considers too long to be an advert must not then auto-confirm as one.
 			Key: "filler.autosplit.max_duration", Label: "Longest expected single clip", EnvVar: "FILLER_AUTOSPLIT_MAX_DURATION",
 			Group: GroupFiller, Kind: KindDuration, Default: "120s",
-			Doc: "The longest a single advert is expected to be. Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about.",
+			Doc:    "The longest a single advert is expected to be.",
+			Detail: "Recordings longer than this are treated as compilations worth splitting, and any piece longer than this is one Loomarr will ask you about.",
 		},
 		{
 			Key: "filler.structure_window_authority_path", Label: "Long-reel authority file", EnvVar: "FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH", Group: GroupFiller,
 			Kind: KindString, Presentation: PresentationPath, Default: "", Validate: storagePath(true), Advanced: true,
-			Doc:      "Optional absolute path to a separately reviewed long-reel materialization authority. Empty or invalid evidence enables no certified slice; a valid authority may create held children but cannot make them airable. A change applies to the next split; a split already running finishes under the files it started with.",
+			Doc:      "A reviewed file that allows certain long recordings to be split, for advanced installs.",
+			Detail:   "Optional absolute path to a separately reviewed long-reel materialization authority. Empty or invalid evidence enables no certified slice; a valid authority may create held children but cannot make them airable. A change applies to the next split; a split already running finishes under the files it started with.",
 			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},
 		{
 			Key: "filler.structure_window_deployment_path", Label: "Long-reel deployment file", EnvVar: "FILLER_STRUCTURE_WINDOW_DEPLOYMENT_PATH", Group: GroupFiller,
 			Kind: KindString, Presentation: PresentationPath, Default: "", Validate: storagePath(true), Advanced: true,
-			Doc:      "Optional absolute path to the reviewed authority's OpenRouter route and spend deployment. Empty, invalid, or mismatched evidence performs no structure inference and enables no certified slice. A change applies to the next split; a split already running finishes under the files it started with.",
+			Doc:      "A reviewed file naming the paid AI route long-recording splits may use, for advanced installs.",
+			Detail:   "Optional absolute path to the reviewed authority's OpenRouter route and spend deployment. Empty, invalid, or mismatched evidence performs no structure inference and enables no certified slice. A change applies to the next split; a split already running finishes under the files it started with.",
 			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},
 		// The ingest pipeline's per-run budget (§10 V51b). Every one of these bounds ONE PASS, not
@@ -1125,7 +1204,8 @@ func declared() []Setting {
 		{
 			Key: "filler.pipeline.max_clips", Label: "Clips prepared per pass", EnvVar: "FILLER_PIPELINE_MAX_CLIPS", Group: GroupFiller,
 			Kind: KindInt, Default: 25, Advanced: true,
-			Doc: "How many clips Loomarr advances through preparation in one pass. A large import drains over several passes rather than occupying the machine in one.",
+			Doc:    "How many new clips Loomarr prepares at a time.",
+			Detail: "How many clips Loomarr advances through preparation in one pass. A large import drains over several passes rather than occupying the machine in one.",
 		},
 		{
 			// ⚠ THREE, the tightest budget here, because a transcode competes with playout for
@@ -1134,17 +1214,20 @@ func declared() []Setting {
 			// hatch that matters, because this is the one rung that rewrites the operator's file.
 			Key: "filler.transcode.max_per_run", Label: "Clips re-encoded per pass", EnvVar: "FILLER_TRANSCODE_MAX_PER_RUN", Group: GroupFiller,
 			Kind: KindInt, Default: 3, Advanced: true,
-			Doc: "How many clips Loomarr re-encodes to its standard format in one pass. Set to 0 to never re-encode — clips then play in whatever format they arrived in.",
+			Doc:    "How many clips Loomarr converts to its standard format at a time.",
+			Detail: "How many clips Loomarr re-encodes to its standard format in one pass. Set to 0 to never re-encode — clips then play in whatever format they arrived in.",
 		},
 		{
 			Key: "filler.pipeline.max_whisper", Label: "Clips transcribed per pass", EnvVar: "FILLER_PIPELINE_MAX_WHISPER", Group: GroupFiller,
 			Kind: KindInt, Default: 10, Advanced: true,
-			Doc: "How many clips Loomarr listens to in one pass, for language and transcription together. Listening is slow — minutes per clip on some machines — so this keeps a pass from running away.",
+			Doc:    "How many clips Loomarr listens to at a time.",
+			Detail: "How many clips Loomarr listens to in one pass, for language and transcription together. Listening is slow — minutes per clip on some machines — so this keeps a pass from running away.",
 		},
 		{
 			Key: "filler.pipeline.max_vision", Label: "Clips inspected visually per pass", EnvVar: "FILLER_PIPELINE_MAX_VISION", Group: GroupFiller,
 			Kind: KindInt, Default: 5, Advanced: true,
-			Doc: "How many clips Loomarr looks at with a vision model in one pass. The smallest budget, because on a hosted model each one is a charge.",
+			Doc:    "How many clips Loomarr looks at with AI at a time.",
+			Detail: "How many clips Loomarr looks at with a vision model in one pass. The smallest budget, because on a hosted model each one is a charge.",
 		},
 		{
 			// ⚠ Counted in SEGMENTS, not clips — the only budget here that is, and §10 V51g is
@@ -1156,12 +1239,14 @@ func declared() []Setting {
 			// Looked per segment, so this is a resource budget rather than a review threshold.
 			Key: "filler.pipeline.max_split_vision", Label: "Compilation segments inspected per pass", EnvVar: "FILLER_PIPELINE_MAX_SPLIT_VISION", Group: GroupFiller,
 			Kind: KindInt, Default: 60, Advanced: true,
-			Doc: "How many segments of one recording Loomarr looks at in a single pass. A longer recording is judged over several passes rather than made to wait for you — this bounds how much looking happens at once, not how big a recording can be.",
+			Doc:    "How many pieces of one long recording Loomarr looks at a time.",
+			Detail: "How many segments of one recording Loomarr looks at in a single pass. A longer recording is judged over several passes rather than made to wait for you — this bounds how much looking happens at once, not how big a recording can be.",
 		},
 		{
 			Key: "filler.pipeline.max_splits", Label: "Compilations split per pass", EnvVar: "FILLER_PIPELINE_MAX_SPLITS", Group: GroupFiller,
 			Kind: KindInt, Default: 3, Advanced: true,
-			Doc: "How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes.",
+			Doc:    "How many long recordings Loomarr looks inside at a time.",
+			Detail: "How many long recordings Loomarr looks inside in one pass. Finding the adverts in one recording takes minutes.",
 		},
 		// Auto-fetch and its limits (§10 V38b). A registered source is polled on a schedule, which
 		// supersedes §15's "there is no unattended crawler" — the superseded rule's concern
@@ -1177,7 +1262,8 @@ func declared() []Setting {
 				preset("0s", "Never"), preset("6h", "Every 6 hours"), preset("12h", "Every 12 hours"),
 				preset("24h", "Daily"), preset("168h", "Weekly"),
 			},
-			Doc: "How often Loomarr checks enabled sources for new clips. Never stops sources that use this default; you can still check one yourself.",
+			Doc:    "How often Loomarr checks enabled sources for new clips.",
+			Detail: "Never stops sources that use this default; you can still check one yourself.",
 		},
 		{
 			Key: "filler.fetch.max_per_run", Label: "Add up to", EnvVar: "FILLER_FETCH_MAX_PER_RUN", Group: GroupFiller,
@@ -1192,7 +1278,8 @@ func declared() []Setting {
 			// probe uses); nothing already downloaded is dropped, and the drop folder is exempt.
 			Key: "filler.acquisition.compilations", Label: "Download compilation reels", EnvVar: "FILLER_ACQUISITION_COMPILATIONS", Group: GroupFiller,
 			Kind: KindBool, Default: false,
-			Doc: "Also download recordings of several adverts in one video. Off until Loomarr can split them without asking you; sources then add single adverts only. Your drop folder is never affected.",
+			Doc:    "Also download recordings of several adverts in one video.",
+			Detail: "Off until Loomarr can split them without asking you; sources then add single adverts only. Your drop folder is never affected.",
 		},
 		{
 			// ⚠ Bounds the UNATTENDED path only. An admin queueing a clip or approving a pull is
@@ -1200,17 +1287,20 @@ func declared() []Setting {
 			// nobody is looking is not a ceiling on what someone chooses to do.
 			Key: "filler.fetch.max_catalog_clips", Label: "Automatic-download catalog limit", EnvVar: "FILLER_FETCH_MAX_CATALOG_CLIPS", Group: GroupFiller,
 			Kind: KindInt, Default: 2000, Advanced: true, Validate: positiveLimit,
-			Doc: "Stop fetching automatically once your catalog reaches this many clips. You can still add more by hand.",
+			Doc:    "Stop fetching automatically once your catalog reaches this many clips.",
+			Detail: "You can still add more by hand.",
 		},
 		{
 			Key: "filler.storage.library_budget_gb", Label: "Filler storage allowance", EnvVar: "FILLER_STORAGE_LIBRARY_BUDGET_GB", Group: GroupFiller,
 			Kind: KindInt, Unit: UnitGiB, Default: 0, Validate: nonNegativeWholeNumber,
-			Doc: "How much space Loomarr may use for filler, in GiB. Leave at 0 to choose a safe allowance automatically. Loomarr always keeps a protected amount of free space for the rest of the system.",
+			Doc:    "How much disk space Loomarr may use for filler, or 0 to choose a safe amount.",
+			Detail: "In GiB. Leave at 0 to choose a safe allowance automatically. Loomarr always keeps a protected amount of free space for the rest of the system.",
 		},
 		{
 			Key: "filler.research.enabled", Label: "Find missing details automatically", EnvVar: "FILLER_RESEARCH_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Presentation: PresentationSwitch, Default: true,
-			Doc: "Look for a clip's likely time period and location using public sources. This does not affect whether the clip can play.",
+			Doc:    "Look up a clip's likely time period and place in public sources.",
+			Detail: "This does not affect whether the clip can play.",
 		},
 		{
 			Key: "filler.research.wikidata_enabled", Label: "Wikidata", EnvVar: "FILLER_RESEARCH_WIKIDATA_ENABLED", Group: GroupFiller,
@@ -1225,7 +1315,8 @@ func declared() []Setting {
 		{
 			Key: "filler.research.archive_enabled", Label: "Archive.org", EnvVar: "FILLER_RESEARCH_ARCHIVE_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
-			Doc: "Search Archive.org's public catalog for related historical items and metadata.",
+			Doc:    "Search the Internet Archive's public catalog for related historical items.",
+			Detail: "Searches Archive.org's public catalog for related historical items and metadata.",
 		},
 		{
 			Key: "filler.research.loc_enabled", Label: "Library of Congress", EnvVar: "FILLER_RESEARCH_LOC_ENABLED", Group: GroupFiller,
@@ -1235,50 +1326,59 @@ func declared() []Setting {
 		{
 			Key: "filler.research.web_provider", Label: "Web search provider", EnvVar: "FILLER_RESEARCH_WEB_PROVIDER", Group: GroupFiller,
 			Kind: KindEnum, Default: "none", Advanced: true,
-			Enum: []EnumOption{opt("none", "Not configured"), opt("brave", "Brave Search"), opt("searxng", "SearXNG (self-hosted)")},
-			Doc:  "Optional last-resort search after trusted public sources cannot identify a clip. Search is automatic and never decides safety, readiness, or scheduling.",
+			Enum:   []EnumOption{opt("none", "Not configured"), opt("brave", "Brave Search"), opt("searxng", "SearXNG (self-hosted)")},
+			Doc:    "A general web search Loomarr may try when public sources can't identify a clip.",
+			Detail: "Optional last-resort search after trusted public sources cannot identify a clip. Search is automatic and never decides safety, readiness, or scheduling.",
 		},
 		{
 			Key: "filler.research.brave_api_key", Label: "Brave Search API key", EnvVar: "FILLER_RESEARCH_BRAVE_API_KEY", Group: GroupFiller,
 			Kind: KindSecret, Default: "", Advanced: true,
 			ShowWhen: map[string][]string{"filler.research.web_provider": {"brave"}},
-			Doc:      "Installation-wide Brave Search key. Loomarr sends the public clip title and search terms, never the media file. The key is encrypted and never shown again.",
+			Doc:      "Your Brave Search API key.",
+			Detail:   "Installation-wide Brave Search key. Loomarr sends the public clip title and search terms, never the media file. The key is encrypted and never shown again.",
 		},
 		{
 			Key: "filler.research.searxng_url", Label: "SearXNG address", EnvVar: "FILLER_RESEARCH_SEARXNG_URL", Group: GroupFiller,
 			Kind: KindURL, Default: "", Advanced: true, Validate: credentialFreeHTTPSEndpoint,
 			ShowWhen: map[string][]string{"filler.research.web_provider": {"searxng"}},
-			Doc:      "HTTPS address of your SearXNG server. Loomarr requests its bounded JSON search API and does not fetch result pages.",
+			Doc:      "The address of your SearXNG search server.",
+			Detail:   "HTTPS address of your SearXNG server. Loomarr requests its bounded JSON search API and does not fetch result pages.",
 		},
 		{
 			Key: "filler.research.monthly_limit", Label: "Monthly web searches", EnvVar: "FILLER_RESEARCH_MONTHLY_LIMIT", Group: GroupFiller,
 			Kind: KindInt, Default: 100, Advanced: true, Validate: positiveWholeNumber,
-			Doc: "Most general-web searches Loomarr may make in one UTC calendar month. Trusted public-source lookups do not count toward this limit.",
+			Doc:    "The most web searches Loomarr may make in a month.",
+			Detail: "Most general-web searches Loomarr may make in one UTC calendar month. Trusted public-source lookups do not count toward this limit.",
 		},
 		{
 			Key: "filler.incoming.ready_window", Label: "Keep ready clips in Incoming", EnvVar: "FILLER_INCOMING_READY_WINDOW", Group: GroupFiller,
 			Kind: KindDuration, Default: "24h", Advanced: true, Validate: fillerIncomingReadyWindow,
-			Doc: "How long clips stay under Ready in Incoming. They remain in your Library after they leave this view.",
+			Doc:    "How long clips stay under Ready in Incoming.",
+			Detail: "They remain in your Library after they leave this view.",
 		},
 		{
 			Key: "filler.breaks_per_hour", Label: "Breaks per program hour", EnvVar: "FILLER_BREAKS_PER_HOUR", Group: GroupFiller,
 			Kind: KindInt, Default: 4, Validate: nonNegativeWholeNumber,
-			Doc: "Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency.",
+			Doc:    "How many commercial breaks an hour of programmes gets, unless a channel sets its own.",
+			Detail: "Default commercial-break frequency for channels that follow it. Set 0 to disable breaks by default; each channel can choose its own frequency.",
 		},
 		{
 			Key: "filler.break_duration", Label: "Length of each break", EnvVar: "FILLER_BREAK_DURATION", Group: GroupFiller,
 			Kind: KindDuration, Default: "2m", Validate: breakDuration,
-			Doc: "How long each commercial break lasts by default, with the commercials rotated so recently shown ones wait their turn. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
+			Doc:    "How long each commercial break lasts, unless a channel sets its own.",
+			Detail: "How long each commercial break lasts by default, with the commercials rotated so recently shown ones wait their turn. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
 		},
 		{
 			Key: "filler.pod_max", Label: "Clips per break", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,
 			Kind: KindInt, Default: 4, Validate: positiveWholeNumber,
-			Doc: "Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length.",
+			Doc:    "How many clips a break usually holds.",
+			Detail: "Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length.",
 		},
 		{
 			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
 			Kind: KindInt, Unit: UnitSeconds, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "Default seconds before a commercial seen on any channel airs again (14400 is 4 hours). Only watched airings count. Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
+			Doc:    "How long before a commercial you've seen can air again on any channel.",
+			Detail: "Default seconds before a commercial seen on any channel airs again (14400 is 4 hours). Only watched airings count. Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
 		},
 		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
 		// `00014_clips_quality` shipped with quality as display-only and warned that a
@@ -1291,7 +1391,8 @@ func declared() []Setting {
 		{
 			Key: "filler.min_quality", Label: "Minimum picture height (px)", EnvVar: "FILLER_MIN_QUALITY", Group: GroupFiller,
 			Kind: KindInt, Default: 0, Advanced: true,
-			Doc: "Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution.",
+			Doc:    "The lowest picture size a commercial may have and still air, or 0 for any.",
+			Detail: "Minimum clip height in pixels for a commercial to be eligible (480 excludes 240p rips). 0 disables the floor, which is the default — era accuracy beats resolution.",
 		},
 		{
 			Key: "filler.weight", Label: "Selection weight", EnvVar: "FILLER_WEIGHT", Group: GroupFiller,
@@ -1307,7 +1408,8 @@ func declared() []Setting {
 			// download passed it and sat filed-and-airable in the dev catalog.
 			Key: "filler.min_duration", Label: "Reject files shorter than", EnvVar: "FILLER_MIN_DURATION", Group: GroupFiller,
 			Kind: KindDuration, Default: "10s", Advanced: true,
-			Doc: "Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration.",
+			Doc:    "Files shorter than this are turned away as broken downloads.",
+			Detail: "Clips shorter than this are rejected on sight and never enter the catalog — a truncated download is not a short commercial. Set to 0s to accept anything with a readable duration.",
 		},
 		{
 			// ⚠ **The only setting in Loomarr that deletes an operator's media**, which is why its
@@ -1325,7 +1427,8 @@ func declared() []Setting {
 			// content, and reaping it would destroy material Loomarr never managed to use.
 			Key: "filler.split.review_window", Label: "Keep unreviewed cuts for", EnvVar: "FILLER_SPLIT_REVIEW_WINDOW", Group: GroupFiller,
 			Kind: KindDuration, Default: "720h", Advanced: true,
-			Doc: "How long cuts you haven't reviewed wait before Loomarr gives up on them. When the time is up it drops the leftover cuts and DELETES the original recording to reclaim the space — but only for recordings that already produced clips, so nothing is lost that was never used. The clips themselves are never touched. Set to 0s to keep everything forever.",
+			Doc:    "How long cuts you haven't reviewed wait before Loomarr gives up on them.",
+			Detail: "When the time is up it drops the leftover cuts and DELETES the original recording to reclaim the space — but only for recordings that already produced clips, so nothing is lost that was never used. The clips themselves are never touched. Set to 0s to keep everything forever.",
 		},
 		{
 			// ⚠ **ELIGIBILITY, not a reject — the pair to `filler.min_duration` above, and the
@@ -1344,12 +1447,14 @@ func declared() []Setting {
 			// Both default to 0 = OFF, so no existing install changes behaviour on upgrade.
 			Key: "filler.min_clip_duration", Label: "Shortest clip used automatically", EnvVar: "FILLER_MIN_CLIP_DURATION", Group: GroupFiller,
 			Kind: KindDuration, Default: "0s", Advanced: true,
-			Doc: "Commercials shorter than this are not drawn into breaks automatically. 0s disables the floor. Unlike the minimum clip length above, this never rejects a clip — it stays in the catalog and can still be pinned to a channel.",
+			Doc:    "Commercials shorter than this are not picked for breaks automatically.",
+			Detail: "0s disables the floor. Unlike the minimum clip length above, this never rejects a clip — it stays in the catalog and can still be pinned to a channel.",
 		},
 		{
 			Key: "filler.max_clip_duration", Label: "Longest clip used automatically", EnvVar: "FILLER_MAX_CLIP_DURATION", Group: GroupFiller,
 			Kind: KindDuration, Default: "0s", Advanced: true,
-			Doc: "Commercials longer than this are not drawn into breaks automatically — the guard against a three-minute infomercial filling a thirty-second gap. 0s disables the ceiling. Never rejects a clip; it stays in the catalog and can still be pinned.",
+			Doc:    "Commercials longer than this are not picked for breaks automatically.",
+			Detail: "This is the guard against a three-minute infomercial filling a thirty-second gap. 0s disables the ceiling. Never rejects a clip; it stays in the catalog and can still be pinned.",
 		},
 		{
 			// ⚠ Applied in the PLAYOUT chain, never written back to the file. The drop-folder
@@ -1360,14 +1465,16 @@ func declared() []Setting {
 			// clip-to-clip jump. -23 is the broadcast target.
 			Key: "filler.target_lufs", Label: "Playback loudness target (LUFS)", EnvVar: "FILLER_TARGET_LUFS", Group: GroupFiller,
 			Kind: KindString, Default: "-23", Advanced: true,
-			Doc: "Loudness every filler clip is normalised to, in LUFS (-23 is the broadcast standard). Clips are measured at ingest; at playout a clip that misses the target gets a small constant gain (never a live filter, so no volume swell at clip starts). Empty disables it and clips play at whatever level they were recorded.",
+			Doc:    "How loud every filler clip plays, so breaks don't jump in volume.",
+			Detail: "Loudness every filler clip is normalised to, in LUFS (-23 is the broadcast standard). Clips are measured at ingest; at playout a clip that misses the target gets a small constant gain (never a live filter, so no volume swell at clip starts). Empty disables it and clips play at whatever level they were recorded.",
 		},
 		{
 			// ⚠ A clip with NO speech is always kept — a wordless visual spot has no language, and
 			// those are often the best filler. Only confident non-target speech rejects (§10 V40).
 			Key: "filler.language", Label: "Commercial language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
 			Kind: KindEnum, Enum: fillerLanguageOptions(), Presentation: PresentationLanguage, Default: "en",
-			Doc: "Every channel's commercial language unless the channel sets its own. New clips are kept when their speech is in a language some channel uses and rejected when it is confidently in none of them; a clip with no speech at all is always kept. A clip whose language could not be determined airs only on channels that use this language.",
+			Doc:    "The language commercials are in, unless a channel sets its own.",
+			Detail: "Every channel's commercial language unless the channel sets its own. New clips are kept when their speech is in a language some channel uses and rejected when it is confidently in none of them; a clip with no speech at all is always kept. A clip whose language could not be determined airs only on channels that use this language.",
 		},
 		// --- Filler ingest (§10, §15) ---
 		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be
@@ -1380,7 +1487,8 @@ func declared() []Setting {
 		{
 			Key: "ingest.ytdlp_path", Label: "yt-dlp executable", EnvVar: "INGEST_YTDLP_PATH", Group: GroupFiller,
 			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
-			Doc: "Where the yt-dlp program lives. The Loomarr image sets this; empty means clip downloading is off.",
+			Doc:    "Where the yt-dlp download program lives.",
+			Detail: "The Loomarr image sets this; empty means clip downloading is off.",
 		},
 		{
 			Key: "ingest.ffmpeg_path", Label: "ffmpeg executable", EnvVar: "INGEST_FFMPEG_PATH", Group: GroupFiller,
@@ -1398,12 +1506,14 @@ func declared() []Setting {
 		{
 			Key: "ingest.whisper_path", Label: "whisper executable", EnvVar: "INGEST_WHISPER_PATH", Group: GroupFiller,
 			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
-			Doc: "Where the whisper-cli program lives. The image sets this; empty means over-long compilation segments can't be transcribed for hidden ad breaks.",
+			Doc:    "Where the whisper-cli speech program lives.",
+			Detail: "The image sets this; empty means over-long compilation segments can't be transcribed for hidden ad breaks.",
 		},
 		{
 			Key: "ingest.whisper_model", Label: "Transcription model file", EnvVar: "INGEST_WHISPER_MODEL", Group: GroupFiller,
 			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
-			Doc: "The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks.",
+			Doc:    "The speech model file used to transcribe long recordings.",
+			Detail: "The whisper model file whisper-cli transcribes with. Size is a correctness property, not a quality preference — too small drops audio and the boundary detector then invents breaks.",
 		},
 		{
 			// ⚠ A SECOND model, and the reason is the `.en` suffix on the one above. An
@@ -1419,7 +1529,8 @@ func declared() []Setting {
 			// sets it, a source build does not.
 			Key: "filler.language_model", Label: "Language detection model file", EnvVar: "FILLER_LANGUAGE_MODEL", Group: GroupFiller,
 			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
-			Doc: "The model file used to work out what language a clip is in. Must be a MULTILINGUAL whisper model — an English-only one reports every clip as English, so the check would never reject anything. The image ships one; leave empty to turn local detection off.",
+			Doc:    "The model file used to work out what language a clip is in.",
+			Detail: "Must be a MULTILINGUAL whisper model — an English-only one reports every clip as English, so the check would never reject anything. The image ships one; leave empty to turn local detection off.",
 		},
 		// --- Users & security (§15, Phase 9) ---
 		{
@@ -1435,7 +1546,8 @@ func declared() []Setting {
 		{
 			Key: "security.trust_proxy", Label: "Trust reverse proxy", EnvVar: "TRUST_PROXY", Group: GroupUsersSecurity,
 			Kind: KindBool, Default: "false", Advanced: true,
-			Doc: "Trust the X-Forwarded-For and X-Forwarded-Proto headers. Turn this on only if a reverse proxy sits in front of Loomarr and sets them. Off by default so a direct client can't forge them to bypass the login rate limit or downgrade its cookie.",
+			Doc:    "Turn on only when a reverse proxy sits in front of Loomarr.",
+			Detail: "Trust the X-Forwarded-For and X-Forwarded-Proto headers. Turn this on only if a reverse proxy sits in front of Loomarr and sets them. Off by default so a direct client can't forge them to bypass the login rate limit or downgrade its cookie.",
 		},
 
 		// --- SSO: a third CREDENTIAL path, never a provisioning one (§11, D-F, V8) ---
@@ -1448,12 +1560,14 @@ func declared() []Setting {
 		{
 			Key: "auth.sso.enabled", Label: "Enable single sign-on", EnvVar: "AUTH_SSO_ENABLED", Group: GroupSSO,
 			Kind: KindBool, Default: "false",
-			Doc: "Let people sign in with your identity provider. They still need an account here — signing in with your provider does not create one.",
+			Doc:    "Let people sign in with your identity provider.",
+			Detail: "They still need an account here — signing in with your provider does not create one.",
 		},
 		{
 			Key: "auth.sso.issuer", Label: "SSO issuer URL", EnvVar: "AUTH_SSO_ISSUER", Group: GroupSSO,
 			Kind: KindURL, Default: "",
-			Doc:      "Your identity provider's address, e.g. https://auth.example.home. Loomarr reads its published configuration from there.",
+			Doc:      "Your identity provider's address.",
+			Detail:   "For example https://auth.example.home. Loomarr reads its published configuration from there.",
 			ShowWhen: map[string][]string{"auth.sso.enabled": {"true"}},
 		},
 		{
@@ -1486,27 +1600,32 @@ func declared() []Setting {
 		{
 			Key: "job.system_health.schedule", EnvVar: "JOB_SYSTEM_HEALTH_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "*/30 * * * * *",
-			Doc: "How often Loomarr checks its database and configured connections for Current Health (cron).",
+			Doc:    "How often Loomarr checks its database and connections for Current Health.",
+			Detail: "A cron schedule.",
 		},
 		{
 			Key: "job.notification_delivery.schedule", EnvVar: "JOB_NOTIFICATION_DELIVERY_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "*/15 * * * * *",
-			Doc: "How often Loomarr claims queued invitation and recovery messages for delivery (cron).",
+			Doc:    "How often Loomarr sends waiting invitation and recovery messages.",
+			Detail: "Claims queued messages for delivery, on a cron schedule.",
 		},
 		{
 			Key: "job.reconcile.schedule", EnvVar: "JOB_RECONCILE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
-			Doc: "How often Loomarr checks on in-progress downloads (cron).",
+			Doc:    "How often Loomarr checks on in-progress downloads.",
+			Detail: "A cron schedule.",
 		},
 		{
 			Key: "job.channel_maintenance.schedule", EnvVar: "JOB_CHANNEL_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */10 * * * *",
-			Doc: "How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron).",
+			Doc:    "How often Loomarr refreshes series episodes and brings live channels up to date.",
+			Detail: "Also reconciles live channels with Tunarr, on a cron schedule.",
 		},
 		{
 			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */15 * * * *",
-			Doc: "How often Loomarr syncs the filler catalog (cron).",
+			Doc:    "How often Loomarr syncs the filler catalog.",
+			Detail: "A cron schedule.",
 		},
 		{
 			// ⚠ Daily and off-peak on purpose. The window this job enforces is measured in WEEKS,
@@ -1514,7 +1633,8 @@ func declared() []Setting {
 			// an operator is mid-review on a reel one hour past its expiry.
 			Key: "job.filler_split_sweep.schedule", EnvVar: "JOB_FILLER_SPLIT_SWEEP_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 45 4 * * *",
-			Doc: "How often Loomarr checks for split suggestions you never reviewed (cron). What it does when it finds them is set by `filler.split.review_window`.",
+			Doc:    "How often Loomarr checks for split suggestions you never reviewed.",
+			Detail: "A cron schedule. What it does when it finds them is set by `filler.split.review_window`.",
 		},
 		{
 			// Hourly at :20, clear of the :00 pipeline-heavy minute: a better copy that becomes
@@ -1522,7 +1642,8 @@ func declared() []Setting {
 			// never fingerprinted (#2033).
 			Key: "job.filler_identity.schedule", EnvVar: "JOB_FILLER_IDENTITY_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 20 * * * *",
-			Doc: "How often Loomarr looks for copies of the same ad, keeps the best one, and links shorter or alternate versions (cron).",
+			Doc:    "How often Loomarr looks for copies of the same ad and keeps the best one.",
+			Detail: "It also links shorter or alternate versions, on a cron schedule.",
 		},
 		{
 			// Every five minutes: a new clip waits at the defects rung for this pass's verdict
@@ -1530,7 +1651,8 @@ func declared() []Setting {
 			// budget, held clips first, and an idle pass reads the records and decodes nothing.
 			Key: "job.filler_defects.schedule", EnvVar: "JOB_FILLER_DEFECTS_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
-			Doc: "How often Loomarr measures ads' picture and sound defects against the standard for their era (cron). A new ad waits for this check before it airs, and an ad that fails is removed and a better copy sought.",
+			Doc:    "How often Loomarr checks ads' picture and sound against the standard for their era.",
+			Detail: "A cron schedule. A new ad waits for this check before it airs, and an ad that fails is removed and a better copy sought.",
 		},
 		{
 			// ⚠ **Every scheduled job needs its ScheduleKey declared here** — `Resolve` PANICS on
@@ -1563,7 +1685,8 @@ func declared() []Setting {
 			// the same change.
 			Key: "job.filler_pipeline.schedule", EnvVar: "JOB_FILLER_PIPELINE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */2 * * * *",
-			Doc: "How often Loomarr advances new filler clips through preparation — measuring, re-encoding, splitting, listening and identifying them (cron).",
+			Doc:    "How often Loomarr prepares new filler clips.",
+			Detail: "A cron schedule. Preparation means measuring, re-encoding, splitting, listening to and identifying them.",
 		},
 		// --- The image service jobs (§22, V52) ---
 		//
@@ -1577,7 +1700,8 @@ func declared() []Setting {
 			// query, so an idle install costs one cheap SELECT.
 			Key: "job.images_fetch.schedule", EnvVar: "JOB_IMAGES_FETCH_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
-			Doc: "How often Loomarr downloads artwork it has recorded but not yet fetched (cron). Until this runs, those images show as placeholders.",
+			Doc:    "How often Loomarr downloads artwork it knows about but hasn't fetched yet.",
+			Detail: "A cron schedule. Until this runs, those images show as placeholders.",
 		},
 		{
 			// ⚠ Every five minutes: this is the step between a clip's artwork being RENDERED and
@@ -1587,7 +1711,8 @@ func declared() []Setting {
 			// healthy install pays one indexed query.
 			Key: "job.images_adopt_artwork.schedule", EnvVar: "JOB_IMAGES_ADOPT_ARTWORK_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
-			Doc: "How often Loomarr copies clip thumbnails and hover previews into the shared image library (cron). Until a clip has been copied over, its older thumbnail is still what you see.",
+			Doc:    "How often Loomarr copies clip thumbnails and previews into the shared image library.",
+			Detail: "Covers thumbnails and hover previews, on a cron schedule. Until a clip has been copied over, its older thumbnail is still what you see.",
 		},
 		{
 			// At :20, clear of the filler media cluster (:15/:30/:45/:50) and of the two 04:xx
@@ -1596,7 +1721,8 @@ func declared() []Setting {
 			// 50 posters cannot launch 50 encodes at once.
 			Key: "job.images_avif.schedule", EnvVar: "JOB_IMAGES_AVIF_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 20 * * * *",
-			Doc: "How often Loomarr encodes the AVIF copies of images that don't have them yet (cron). AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP.",
+			Doc:    "How often Loomarr makes the smallest copies of images in the background.",
+			Detail: "Encodes the AVIF copies of images that don't have them yet, on a cron schedule. AVIF is the smallest format and the most expensive to produce, so it is made in the background; until it exists browsers take WebP.",
 		},
 		{
 			Key: "job.images_maintenance.schedule", EnvVar: "JOB_IMAGES_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
@@ -1606,12 +1732,14 @@ func declared() []Setting {
 		{
 			Key: "job.library_scan.schedule", EnvVar: "JOB_LIBRARY_SCAN_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 */5 * * * *",
-			Doc: "How often Loomarr scans the media server for newly-added titles to mark requested items available (cron).",
+			Doc:    "How often Loomarr looks for new titles on the media server.",
+			Detail: "Scans for newly-added titles to mark requested items available, on a cron schedule.",
 		},
 		{
 			Key: "job.library_full_scan.schedule", EnvVar: "JOB_LIBRARY_FULL_SCAN_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 0 3 * * *",
-			Doc: "How often Loomarr does a full media-server sweep to catch anything the incremental scan missed (cron).",
+			Doc:    "How often Loomarr does a full media-server sweep to catch anything the quick scan missed.",
+			Detail: "The quick scan is the incremental one above. A cron schedule.",
 		},
 		{
 			Key: "job.library_scan.lookback", EnvVar: "JOB_LIBRARY_SCAN_LOOKBACK", Group: GroupAdvanced,
@@ -1619,24 +1747,22 @@ func declared() []Setting {
 			Doc: "How far back the incremental library scan looks for newly-added titles (should exceed the scan interval).",
 		},
 		{
-			Key: "episodes.max_age", EnvVar: "EPISODES_MAX_AGE", Group: GroupAdvanced,
-			Kind: KindDuration, Default: "24h",
-			Doc: "How stale a cached series episode list may be before it is re-read from the media server. A missing or expired entry still falls back to a live read, so this bounds freshness, never correctness.",
-		},
-		{
 			Key: "job.arr_queue_poll.schedule", EnvVar: "JOB_ARR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
-			Doc: "How often Loomarr polls Sonarr/Radarr download progress (cron; direct requester only).",
+			Doc:    "How often Loomarr checks download progress in Sonarr and Radarr.",
+			Detail: "A cron schedule. Only used when titles are requested from Sonarr and Radarr directly.",
 		},
 		{
 			Key: "job.seerr_queue_poll.schedule", EnvVar: "JOB_SEERR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Presets: jobSchedulePresets, Default: "0 * * * * *",
-			Doc: "How often Loomarr polls Seerr for coarse acquisition status (cron; Seerr requester only).",
+			Doc:    "How often Loomarr asks Seerr how downloads are going.",
+			Detail: "Polls Seerr for coarse acquisition status, on a cron schedule. Only used when titles are requested through Seerr.",
 		},
 		{
 			Key: "job.workers", EnvVar: "JOB_WORKERS", Group: GroupAdvanced,
 			Kind: KindInt, Default: 1,
-			Doc: "How many channel suggestions can be worked on at once. One is the appliance-safe default; raise it deliberately for larger or hosted-model deployments.",
+			Doc:    "How many channel suggestions can be worked on at once.",
+			Detail: "One is the appliance-safe default; raise it deliberately for larger or hosted-model deployments.",
 		},
 		{
 			Key: "job.timeout", EnvVar: "JOB_TIMEOUT", Group: GroupAdvanced,
@@ -1662,17 +1788,20 @@ func declared() []Setting {
 			Key: "diagnostics.dir", EnvVar: "DIAGNOSTICS_DIR", Group: GroupAdvanced,
 			Kind: KindString, Presentation: PresentationPath,
 			DataSubdir: "diagnostics", Validate: storagePath(false), Advanced: true,
-			Doc: "Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart. A change applies to the next process; output already written stays where it was.",
+			Doc:    "Where Loomarr keeps the logs of its video and streaming programs.",
+			Detail: "Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart. A change applies to the next process; output already written stays where it was.",
 		},
 		{
 			Key: "diagnostics.retention", EnvVar: "DIAGNOSTICS_RETENTION", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "168h", Validate: positiveDuration,
-			Doc: "How long Diagnostic events and completed Process runs are kept. Active Process runs are never removed by age.",
+			Doc:    "How long diagnostic events and finished process logs are kept.",
+			Detail: "How long Diagnostic events and completed Process runs are kept. Active Process runs are never removed by age.",
 		},
 		{
 			Key: "diagnostics.max_storage_mb", EnvVar: "DIAGNOSTICS_MAX_STORAGE_MB", Group: GroupAdvanced,
 			Kind: KindInt, Unit: UnitMiB, Default: 512, Validate: positiveWholeNumber,
-			Doc: "Soft global storage budget in MiB for retained Diagnostic events and bounded Process output. Active Process runs remain protected.",
+			Doc:    "How much disk diagnostic events and process logs may use.",
+			Detail: "Soft global storage budget in MiB for retained Diagnostic events and bounded Process output. Active Process runs remain protected.",
 		},
 		{
 			Key: "job.housekeeping.schedule", EnvVar: "JOB_HOUSEKEEPING_SCHEDULE", Group: GroupAdvanced,
@@ -1682,7 +1811,8 @@ func declared() []Setting {
 		{
 			Key: "setup.completed", EnvVar: "SETUP_COMPLETED", Group: GroupAdvanced,
 			Kind: KindBool, Default: false, Advanced: true,
-			Doc: "Whether first-run setup is done. Until it is, Loomarr opens the setup wizard.",
+			Doc:    "Whether first-run setup is done.",
+			Detail: "Until it is, Loomarr opens the setup wizard.",
 		},
 	}
 	for i := range settings {

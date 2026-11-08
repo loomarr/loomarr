@@ -18,3 +18,5 @@ export type { GuideGridProps } from "./guide-grid";
 export { GuideGrid } from "./guide-grid";
 export type { GuideJourneyProps } from "./guide-journey";
 export { GuideJourney } from "./guide-journey";
+export type { GuideNowNextProps, GuidePhoneHeaderProps } from "./guide-now-next";
+export { GuideNowNext, GuidePhoneHeader } from "./guide-now-next";
