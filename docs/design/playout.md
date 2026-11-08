@@ -37,7 +37,10 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   `RunAhead` (12 s), enforced by back-pressure. The next item's encoder must be producing `SlateLead`
   (2 s) before its air time. The playlist lists media only up to now + `ListAhead` (6 s), which is also
   its `HOLD-BACK`. The first manifest waits until `FirstManifest` (4 s) of media is listable and a real
-  item has defined the init; the tune-in item gets `FirstItemWait` (10 s). Web clients set
+  item has defined the init; the tune-in item gets `FirstItemWait` (10 s). The wait is bounded by
+  `StartDeadline` (`FirstItemWait` + `SlateRetry` + `FirstManifest`, 24 s), so a tune-in item that fails
+  once still rejoins. Past it, the master fails the start with the item's last failure, such as a source
+  file the server can't read, and the client shows the shared start-failure problem. Web clients set
   `liveSyncDuration` to the same 6 s, so the playhead lands on the wall clock.
 - **Slate and rejoin.** An empty slot, a failed schedule lookup or an item that is not producing by its
   deadline is filled with house-format slate. The slate is shared per (host, output) and starts only
