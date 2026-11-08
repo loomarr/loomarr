@@ -136,7 +136,7 @@ func TestJudge_HardwareThresholds(t *testing.T) {
 
 	red := report("vaapi", func(r *Report) {
 		hardwareGreen(r)
-		r.Set("start_p95_ms/h264-1080p", 496, "ms", Lower) // the 2 s segment miss
+		r.Set("start_p95_ms/h264-1080p", 496, "ms", Lower)     // the 2 s segment miss
 		r.Set("cores_per_stream/hdr-4k", 0.12, "cores", Lower) // a CPU stage crept into the graph
 		r.Set("break/sps_variants", 2, "count", Exact)
 	})
