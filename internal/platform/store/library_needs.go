@@ -84,8 +84,8 @@ type LibraryNeedsStore interface {
 }
 
 func (s *sqlStore) UnnoticedLibraryNeeds(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT DISTINCT i.id FROM library_items i JOIN `+presentFiles+`
-		f ON f.id = i.id WHERE `+needWhere+` AND i.needs_noticed = FALSE ORDER BY i.id`))
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.id FROM library_items i
+		WHERE `+needWhere+` AND `+itemListed+` AND i.needs_noticed = FALSE ORDER BY i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("unnoticed library needs: %w", err)
 	}
@@ -121,8 +121,7 @@ const needWhere = `i.kind IN ('movie', 'series') AND i.grounded = FALSE AND i.or
 
 func (s *sqlStore) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+itemColumns+`, i.origin_authority, i.origin_key, i.searched
-		FROM library_items i JOIN `+presentFiles+` f ON f.id = i.id WHERE `+needWhere+`
-		GROUP BY `+itemGroup+`, i.origin_authority, i.origin_key, i.searched ORDER BY i.sort_name, i.id`))
+		FROM library_items i WHERE `+needWhere+` AND `+itemListed+` ORDER BY i.sort_name, i.id`))
 	if err != nil {
 		return nil, fmt.Errorf("library needs: %w", err)
 	}

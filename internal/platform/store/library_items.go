@@ -227,27 +227,30 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 	return nil
 }
 
-// presentFiles is each present, importable file under the item it counts toward: its own item, and
-// an episode's series too.
-const presentFiles = `(
-	SELECT inventory_item_id AS id, header FROM library_files
-	WHERE inventory_item_id <> '' AND missing_at_ms = 0 AND problem = ''
-	UNION ALL
-	SELECT inventory_series_id AS id, header FROM library_files
-	WHERE inventory_series_id <> '' AND missing_at_ms = 0 AND problem = ''
-)`
+// The files that count toward a title i are its present, importable files: its own, and a series'
+// episodes'. Each is read per title through the inventory_item_id and inventory_series_id indexes,
+// never by aggregating every file: a page needs its own titles' counts only.
 
-// itemColumns is an item, its poster ref and its file counts, read over presentFiles; itemGroup
-// groups by the item.
-const (
+// presentFile is the condition on a library_files row f that it is present and importable.
+const presentFile = `f.missing_at_ms = 0 AND f.problem = ''`
+
+// countFiles is how many of title i's files hold also, a condition on f ("" for all).
+func countFiles(also string) string {
+	return `((SELECT COUNT(*) FROM library_files f WHERE f.inventory_item_id = i.id AND ` + presentFile + also + `) +
+		(SELECT COUNT(*) FROM library_files f WHERE f.inventory_series_id = i.id AND ` + presentFile + also + `))`
+}
+
+var (
+	// itemListed keeps a title with a file that counts toward it: only those are listed.
+	itemListed = `(EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_item_id = i.id AND ` + presentFile + `)
+		OR EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_series_id = i.id AND ` + presentFile + `))`
+	// itemColumns is a title, its poster ref and its file counts.
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
 		COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
 			AND r.owner_id = i.id AND r.role = 'poster'), ''),
-		COUNT(*), COALESCE(SUM(CASE WHEN f.header = 'pending' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN f.header = 'failed' THEN 1 ELSE 0 END), 0)`
-	itemGroup = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key`
-	// itemProblems keeps a group that needs a look.
-	itemProblems = `SUM(CASE WHEN f.header = 'failed' THEN 1 ELSE 0 END) > 0 OR (i.kind = 'movie' AND COUNT(*) > 1)`
+		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`)
+	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
+	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0 OR (i.kind = 'movie' AND ` + countFiles("") + ` > 1))`
 )
 
 func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (LibraryItemPage, error) {
@@ -276,18 +279,16 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 	// A title the maintainer said is not one is left out.
 	where = append(where, `NOT EXISTS (SELECT 1 FROM library_answers a WHERE a.origin_authority = i.origin_authority
 		AND a.origin_key = i.origin_key AND a.ignored = TRUE)`)
-	from := ` FROM library_items i JOIN ` + presentFiles + ` f ON f.id = i.id WHERE ` + strings.Join(where, " AND ")
-
-	group := ` GROUP BY ` + itemGroup
+	where = append(where, itemListed)
 	if q.Problems {
-		group += ` HAVING ` + itemProblems
+		where = append(where, itemProblems)
 	}
+	from := ` FROM library_items i WHERE ` + strings.Join(where, " AND ")
 	var page LibraryItemPage
-	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM (SELECT i.id`+from+group+`) t`), args...).
-		Scan(&page.Total); err != nil {
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*)`+from), args...).Scan(&page.Total); err != nil {
 		return page, fmt.Errorf("count library items: %w", err)
 	}
-	query := `SELECT ` + itemColumns + from + group + ` ORDER BY i.sort_name, i.id`
+	query := `SELECT ` + itemColumns + from + ` ORDER BY i.sort_name, i.id`
 	if q.Limit > 0 {
 		query += ` LIMIT ? OFFSET ?`
 		args = append(args, q.Limit, q.Offset)
@@ -302,8 +303,7 @@ func (s *sqlStore) ListLibraryItems(ctx context.Context, q LibraryItemQuery) (Li
 
 func (s *sqlStore) LibraryItem(ctx context.Context, id string) (LibraryItemSummary, error) {
 	items, err := s.scanLibraryItems(ctx, `SELECT `+itemColumns+`
-		FROM library_items i JOIN `+presentFiles+` f ON f.id = i.id WHERE i.id = ?
-		GROUP BY `+itemGroup, id)
+		FROM library_items i WHERE i.id = ? AND `+itemListed, id)
 	if err != nil {
 		return LibraryItemSummary{}, err
 	}
