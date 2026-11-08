@@ -2196,6 +2196,60 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 	}
 }
 
+// A proposal on a filed clip (not held for split review) cannot be confirmed (#1761). The store
+// must say why, distinctly from a missing proposal, which the API renders as 404.
+func testSplitConfirmationRefusesFiledParent(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_200_000, 0).UTC()
+	parent := sampleClip("filed-parent", "filed-parent.mp4", filler.Commercial, 1994, filler.General, "")
+	child := sampleClip("filed-child", "filed-child.mp4", filler.Commercial, 1994, filler.General, "")
+	child.ParentHash = parent.Hash
+	for _, clip := range []Clip{parent, child} {
+		if err := s.UpsertClip(ctx, clip); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.SetClipsRemoved(ctx, []string{child.Path}, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []filler.ClipPipeline{
+		{ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: child.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
+			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+	} {
+		if err := s.UpsertClipPipeline(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	proposal := filler.SplitProposal{
+		ID: "filed-proposal", ClipHash: parent.Hash, CreatedAt: now,
+		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
+	}
+	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
+		t.Fatal(err)
+	}
+	const claimToken = "filed-owner"
+	if _, err := s.AcquireSplitProposalClaim(ctx, proposal.ID, claimToken, now, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := s.CompleteSplitConfirmation(ctx, filler.SplitCompletion{
+		ProposalID: proposal.ID, ClaimToken: claimToken, ParentHash: parent.Hash,
+		ChildHashes: []string{child.Hash}, ActivateHashes: []string{child.Hash}, At: now,
+	})
+	if !errors.Is(err, filler.ErrSplitParentNotHeld) || errors.Is(err, ErrNotFound) {
+		t.Fatalf("confirm on a filed parent = %v, want ErrSplitParentNotHeld and not ErrNotFound", err)
+	}
+	if got, err := s.GetSplitProposal(ctx, proposal.ID); err != nil || got.ClipHash != parent.Hash {
+		t.Fatalf("refused completion consumed proposal: got %+v, err %v", got, err)
+	}
+	if got, err := s.GetClip(ctx, parent.Hash); err != nil || got.IsComposite || got.Held {
+		t.Fatalf("refused completion changed the filed parent: %+v, %v", got, err)
+	}
+}
+
 func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

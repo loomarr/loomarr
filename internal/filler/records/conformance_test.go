@@ -60,6 +60,9 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("SplitConfirmationRequiresReviewParent", func(t *testing.T) {
 			testSplitConfirmationRequiresReviewParent(t, newStore)
 		})
+		t.Run("SplitConfirmationRefusesFiledParent", func(t *testing.T) {
+			testSplitConfirmationRefusesFiledParent(t, newStore)
+		})
 		t.Run("SplitProposalClaimFencesConfirmers", func(t *testing.T) {
 			testSplitProposalClaimFencesConfirmers(t, newStore)
 		})
