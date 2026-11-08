@@ -107,7 +107,10 @@ func hardwareGreen(r *Report) {
 	r.Set("speed_x/hevc-1080p", 18, "x", Higher)
 	r.Set("speed_x/hdr-4k", 2.5, "x", Higher)
 	r.Set("concurrency/max_streams", 16, "streams", Higher)
-	r.Set("concurrency/total_cores", 0.9, "cores", Lower)
+	r.Set("cores_per_stream/h264-1080p", 0.058, "cores", Lower)
+	r.Set("cores_per_stream/hevc-1080p", 0.065, "cores", Lower)
+	r.Set("cores_per_stream/hdr-4k", 0.082, "cores", Lower)
+	r.Set("concurrency/total_cores", 1.146, "cores", Lower) // 16 streams; reported, not judged
 	r.Set("break/first_packet_ms", 60, "ms", Lower)
 	r.Set("break/pts_gaps", 0, "count", Exact)
 	r.Set("break/audio_off_grid", 0, "count", Exact)
@@ -133,12 +136,12 @@ func TestJudge_HardwareThresholds(t *testing.T) {
 
 	red := report("vaapi", func(r *Report) {
 		hardwareGreen(r)
-		r.Set("start_p95_ms/h264-1080p", 496, "ms", Lower) // the 2 s segment miss
-		r.Set("concurrency/total_cores", 1.41, "cores", Lower)
+		r.Set("start_p95_ms/h264-1080p", 496, "ms", Lower)     // the 2 s segment miss
+		r.Set("cores_per_stream/hdr-4k", 0.12, "cores", Lower) // a CPU stage crept into the graph
 		r.Set("break/sps_variants", 2, "count", Exact)
 	})
 	f := failed(Judge(red, ModeFull))
-	for _, want := range []string{"start_p95_ms/h264-1080p", "concurrency/total_cores", "break/sps_variants"} {
+	for _, want := range []string{"start_p95_ms/h264-1080p", "cores_per_stream/hdr-4k", "break/sps_variants"} {
 		if !contains(f, want) {
 			t.Errorf("%s should fail, failed: %v", want, f)
 		}

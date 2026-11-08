@@ -144,7 +144,9 @@ var (
 		{metric: "break/sps_variants", max: true, limit: 1, correctness: true},
 		{metric: "break/loudness_dev_lu", max: true, limit: 1, correctness: true},
 	}
-	// Hardware families: start latency, speed, and the total CPU allowance at full concurrency.
+	// Hardware families: start latency, speed, and the CPU one stream costs. CPU is judged per
+	// stream, not as the total at max_streams: a stronger GPU runs more channels and would trip a
+	// fixed total (Arc 1.15 cores at 16 streams, 0.06–0.08 each). Total stays reported (#2268).
 	hardwareThresholds = []threshold{
 		{metric: "start_p95_ms/h264-1080p", max: true, limit: 400},
 		{metric: "start_p95_ms/hevc-1080p", max: true, limit: 500},
@@ -152,7 +154,9 @@ var (
 		{metric: "speed_x/h264-1080p", limit: 15},
 		{metric: "speed_x/hevc-1080p", limit: 15},
 		{metric: "speed_x/hdr-4k", limit: 2},
-		{metric: "concurrency/total_cores", max: true, limit: 1},
+		{metric: "cores_per_stream/h264-1080p", max: true, limit: 0.1},
+		{metric: "cores_per_stream/hevc-1080p", max: true, limit: 0.1},
+		{metric: "cores_per_stream/hdr-4k", max: true, limit: 0.1},
 	}
 	// familyLimits replace a hardware limit for one family, with the measurement that justifies it.
 	// NVENC: every new ffmpeg process spends ~460 ms initialising CUDA and the encoder before its
