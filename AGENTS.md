@@ -144,7 +144,8 @@ merge queue provide the protected final evidence. Reserve
 gate/classifier machinery, or diagnosis of a classifier boundary—not merely because a task started.
 Renew a long-running claim with `make agent-renew`; clean abandoned expired entries with
 `make agent-prune`. When finished, run `make agent-stop`; after merge, audit and retire completed
-worktrees with `make agent-gc` and an explicitly reviewed `make agent-gc APPLY=1`.
+worktrees with `make agent-gc` and then `make agent-gc APPLY=1`. The maintainer has authorized every
+agent to run `APPLY=1` without asking; its eligibility checks are the safeguard.
 
 ## Delivery
 

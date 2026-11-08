@@ -403,7 +403,7 @@ make agent-reap ORPHANS=1                # processes left in worktrees already d
 
 `make agent-gc` is read-only by default. It classifies every registered worktree and explains why
 each one is protected or eligible. After reviewing that inventory, one explicit command retires
-every eligible entry:
+every eligible entry. Agents run it without asking the maintainer:
 
 ```sh
 make agent-gc APPLY=1
