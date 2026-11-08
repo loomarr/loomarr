@@ -39,7 +39,8 @@ const (
 const (
 	moviesLibraryID = "demo-lib-movies"
 	showsLibraryID  = "demo-lib-shows"
-	// FillerLibraryName is the stand-in's interstitials library, for filler sources by name.
+	// FillerLibraryName is the stand-in's interstitials library; its folder is the demo's filler
+	// library source.
 	FillerLibraryName = "Demo Filler"
 	fillerLibraryID   = "demo-lib-filler"
 	dateCreated       = "2026-01-01T00:00:00.0000000Z"
@@ -211,10 +212,6 @@ func (s Server) items(r *http.Request) []map[string]any {
 			if item, ok := s.itemByID(id); ok {
 				out = append(out, item)
 			}
-		}
-	case q.Get("ParentId") == fillerLibraryID:
-		for _, f := range s.Library.Fillers {
-			out = append(out, s.fillerJSON(f))
 		}
 	case q.Get("ParentId") != "" && q.Get("ParentId") != moviesLibraryID && q.Get("ParentId") != showsLibraryID:
 		t, ok := s.Library.ByID(q.Get("ParentId"))

@@ -46,6 +46,35 @@ type DiscoveryFeedbackStore interface {
 	// Channels remain persisted, while a purged or unknown identity returns ErrNotFound.
 	AppendDiscoveryFeedback(context.Context, DiscoveryFeedback) error
 	ListDiscoveryFeedback(context.Context, FeedbackFilter) ([]DiscoveryFeedback, error)
+	PurgeSupersededDiscoveryFeedback(context.Context) (int, error)
+}
+
+// PurgeSupersededDiscoveryFeedback deletes the choices EffectiveDiscoveryFeedback can never
+// return: one with a newer choice about the same title in the same scope, then a clear with
+// nothing older left to clear. What every reader sees is unchanged, and a household's rows are
+// bounded by the titles it has an opinion about.
+//
+// The second statement only deletes a clear with no OLDER row, so a choice and its clear that
+// both land between the two statements keep each other: the clear is not the oldest.
+func (s *sqlStore) PurgeSupersededDiscoveryFeedback(ctx context.Context) (int, error) {
+	sameTarget := `n.scope = discovery_feedback.scope AND n.scope_id = discovery_feedback.scope_id
+		AND n.target_key = discovery_feedback.target_key`
+	superseded, err := s.db.ExecContext(ctx, `DELETE FROM discovery_feedback WHERE EXISTS (
+		SELECT 1 FROM discovery_feedback n WHERE `+sameTarget+` AND (n.created_at_ns > discovery_feedback.created_at_ns
+		   OR (n.created_at_ns = discovery_feedback.created_at_ns AND n.id > discovery_feedback.id)))`)
+	if err != nil {
+		return 0, fmt.Errorf("purge superseded discovery feedback: %w", err)
+	}
+	clears, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM discovery_feedback WHERE action = ? AND NOT EXISTS (
+		SELECT 1 FROM discovery_feedback n WHERE `+sameTarget+` AND (n.created_at_ns < discovery_feedback.created_at_ns
+		   OR (n.created_at_ns = discovery_feedback.created_at_ns AND n.id < discovery_feedback.id)))`),
+		string(FeedbackClear))
+	if err != nil {
+		return 0, fmt.Errorf("purge spent discovery feedback clears: %w", err)
+	}
+	a, _ := superseded.RowsAffected()
+	b, _ := clears.RowsAffected()
+	return int(a + b), nil
 }
 
 // EffectiveDiscoveryFeedback resolves newest-event-wins within each scope and

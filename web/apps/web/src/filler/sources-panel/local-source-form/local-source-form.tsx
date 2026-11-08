@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { addFillerSourceSchema } from "@loomarr/core/schemas";
-import { Field, Surface, Text } from "@loomarr/design-system";
+import { Action, Field, Surface, Text } from "@loomarr/design-system";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -8,7 +8,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 // ⚠ No `Card` and no `Label`. The local add flow lives directly inside Your files, and its fields
 // are labelled by the provider's own address label plus `aria-label` — a static visible label above
 // an input whose meaning changes with the kind would contradict it.
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFillerProviders } from "../../use-filler-providers";
 
@@ -91,9 +90,14 @@ const LocalSourceForm = () => {
         </form.Field>
         <form.Subscribe selector={(state) => state.values.uri}>
           {(uri) => (
-            <Button type="submit" variant="outline" disabled={addSource.isPending || !uri.trim()}>
+            // A real submit button under Action's look, so Enter in the address still submits.
+            <Action
+              disabled={addSource.isPending || !uri.trim()}
+              render={<button disabled={addSource.isPending || !uri.trim()} type="submit" />}
+              variant="outline"
+            >
               {addSource.isPending ? "Adding…" : "+ Add source"}
-            </Button>
+            </Action>
           )}
         </form.Subscribe>
       </form>

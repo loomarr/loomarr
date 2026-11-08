@@ -24,12 +24,13 @@ func testDefectiveCopyRetirement(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	verdict := func(hash string, v defects.Verdict, reason string) clipstore.ClipDefectRecord {
+	verdict := func(hash string, o defects.Outcome, v defects.Verdict, reason string) clipstore.ClipDefectRecord {
 		return clipstore.ClipDefectRecord{ClipHash: hash, Readings: defects.Readings{Version: defects.MeasurementVersion},
-			Assessment: defects.Assessment{Version: defects.FloorVersion}, Era: 1988, Verdict: v, VerdictReason: reason, MeasuredAt: at}
+			Assessment: defects.Assessment{Version: defects.FloorVersion, Outcome: o}, Era: 1988, Verdict: v,
+			VerdictReason: reason, MeasuredAt: at}
 	}
-	for _, r := range []clipstore.ClipDefectRecord{verdict(bad.Hash, defects.VerdictFail, "detectors"),
-		verdict(passing.Hash, defects.VerdictPass, "detectors")} {
+	for _, r := range []clipstore.ClipDefectRecord{verdict(bad.Hash, defects.Fail, defects.VerdictFail, "detectors"),
+		verdict(passing.Hash, defects.Pass, defects.VerdictPass, "detectors")} {
 		if err := s.UpsertClipDefects(ctx, r); err != nil {
 			t.Fatal(err)
 		}

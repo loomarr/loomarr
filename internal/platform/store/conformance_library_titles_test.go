@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -70,6 +71,51 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 		if got, ok, err := st.LibraryTitleByProviderID(ctx, probe[0], probe[1], probe[2]); err != nil || ok {
 			t.Errorf("%v = %+v, %v, %v; want none", probe, got, ok, err)
 		}
+	}
+
+	// A title's art by the provider id an airing's key names (#2567): the film's logo and
+	// backdrop, the show's backdrop by either id; a missing film's art, a poster, an id asked as
+	// the wrong kind and an unknown id are not answered.
+	logo, fanart, showFanart, poster, goneLogo := imageAt("film-logo", recent), imageAt("film-fanart", recent),
+		imageAt("show-fanart", recent), imageAt("show-poster", recent), imageAt("gone-logo", recent)
+	for _, img := range []Image{logo, fanart, showFanart, poster, goneLogo} {
+		if err := st.PutImage(ctx, img); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, ref := range []ImageRef{
+		{ImageHash: logo.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "film", Role: "logo"},
+		{ImageHash: fanart.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "film", Role: "backdrop"},
+		{ImageHash: showFanart.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "show", Role: "backdrop"},
+		{ImageHash: poster.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "show", Role: "poster"},
+		{ImageHash: goneLogo.Hash, OwnerKind: LibraryItemImageOwner, OwnerID: "gone", Role: "logo"},
+	} {
+		if err := st.PutImageRef(ctx, ref); err != nil {
+			t.Fatal(err)
+		}
+	}
+	filmID := LibraryProviderID{Kind: "movie", Namespace: "tmdb", Value: "90000001"}
+	showTVDB := LibraryProviderID{Kind: "series", Namespace: "tvdb", Value: "90000002"}
+	showTMDB := LibraryProviderID{Kind: "series", Namespace: "tmdb", Value: "90000003"}
+	art, err := st.LibraryTitleArt(ctx, []LibraryProviderID{
+		filmID, showTVDB, showTMDB,
+		{Kind: "movie", Namespace: "tmdb", Value: "90000004"},  // the missing film
+		{Kind: "movie", Namespace: "tmdb", Value: "90000003"},  // the show's id, asked as a movie
+		{Kind: "series", Namespace: "tvdb", Value: "90000009"}, // nothing
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArt := map[LibraryProviderID]LibraryTitleArt{
+		filmID:   {Backdrop: fanart.Hash, Logo: logo.Hash},
+		showTVDB: {Backdrop: showFanart.Hash},
+		showTMDB: {Backdrop: showFanart.Hash},
+	}
+	if !maps.Equal(art, wantArt) {
+		t.Errorf("title art = %+v, want %+v", art, wantArt)
+	}
+	if none, err := st.LibraryTitleArt(ctx, nil); err != nil || len(none) != 0 {
+		t.Errorf("no ids = %+v, %v; want an empty map", none, err)
 	}
 }
 

@@ -288,55 +288,6 @@ func TestDynamicConnection_SnapshotPinsCollectionIndexAcrossRotation(t *testing.
 	assertJellyfinConnection(t, requests[2], "jellyfin-b.invalid", "token-b")
 }
 
-func TestDynamicConnection_SnapshotPinsFillerResolutionAcrossRotation(t *testing.T) {
-	script := httpfixture.NewScriptedTransport(
-		httpfixture.Step{Response: dynamicResponse(http.StatusOK, `[{"Name":"Commercials","ItemId":"library-a"}]`)},
-		httpfixture.Step{Response: dynamicResponse(http.StatusOK, `{"Items":[]}`)},
-		httpfixture.Step{Response: dynamicResponse(http.StatusOK, `[]`)},
-	)
-	var connection atomic.Value
-	connection.Store(Connection{Flavor: Emby, BaseURL: "https://emby-a.invalid", Token: "token-a"})
-	var providerCalls atomic.Int64
-	transport := httpfixture.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path == "/Library/VirtualFolders" {
-			connection.Store(Connection{Flavor: Jellyfin, BaseURL: "https://jellyfin-b.invalid", Token: "token-b"})
-		}
-		return script.RoundTrip(request)
-	})
-	client := dynamicClient(func() Connection {
-		providerCalls.Add(1)
-		return connection.Load().(Connection)
-	}, transport)
-
-	operation := client.Snapshot()
-	id, err := operation.LibraryIDByName(context.Background(), "Commercials")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if id != "library-a" {
-		t.Fatalf("library id = %q, want library-a", id)
-	}
-	if _, err := operation.ListFillerClips(context.Background(), id); err != nil {
-		t.Fatal(err)
-	}
-	requests := script.Requests()
-	if len(requests) != 2 {
-		t.Fatalf("filler requests = %d, want library lookup + clip list", len(requests))
-	}
-	for _, request := range requests {
-		assertEmbyConnection(t, request, "emby-a.invalid", "token-a")
-	}
-	if got := providerCalls.Load(); got != 1 {
-		t.Errorf("provider calls during filler resolution = %d, want 1", got)
-	}
-
-	if _, err := client.ListUsers(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	requests = script.Requests()
-	assertJellyfinConnection(t, requests[2], "jellyfin-b.invalid", "token-b")
-}
-
 func assertEmbyConnection(t *testing.T, request httpfixture.Request, host, token string) {
 	t.Helper()
 	parsed, err := url.Parse(request.URL)

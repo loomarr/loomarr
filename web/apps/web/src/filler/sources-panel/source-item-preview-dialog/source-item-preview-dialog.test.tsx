@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { SourceItemPreviewDialog } from "./source-item-preview-dialog";
 
 // The player URL is the provider's to build and arrives on the item, so the dialog plays what it is

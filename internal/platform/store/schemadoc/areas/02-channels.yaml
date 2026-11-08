@@ -24,9 +24,6 @@ tables:
       strategy: >
         How programmes are ordered onto the timeline. `sequential` plays them in lineup order,
         `shuffle` rotates them in a shuffled order, and `time_slot` pins them to blocks of the day.
-      filler_ref: >
-        Reserved for a reference to the channel's filler list. Nothing in the current app sets it,
-        so it is empty.
       tunarr_id: >
         The id of the channel's copy in Tunarr, an outside playout server, kept from the first time
         Loomarr pushed the channel there. Empty for a channel that never went to Tunarr.
@@ -100,6 +97,9 @@ tables:
       only what was actually streamed. The schedule reads both, so a channel nobody watches still
       rotates evenly instead of re-airing something it showed hours ago. Pruned and deleted like
       `airings`.
+    retention: >
+      Rows older than 8 days are pruned to the latest one per episode or film on each channel;
+      goes with its channel (deleted when that is).
     columns:
       channel_id: The channel it aired on (channels.id).
       library_item_id: The library item id of the episode or film.

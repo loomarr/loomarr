@@ -121,10 +121,12 @@ type IDMapper struct {
 	// ServerFiles lists the media server's movie and episode files.
 	ServerFiles func(ctx context.Context) ([]library.ServerFile, error)
 	// Enabled is the scanner's kill switch; nil is on.
-	Enabled  func() bool
-	Interval time.Duration
-	Now      func() time.Time
-	Log      *slog.Logger
+	Enabled func() bool
+	// References rewrites stored ids through each new map; nil leaves them.
+	References *ReferenceRewriter
+	Interval   time.Duration
+	Now        func() time.Time
+	Log        *slog.Logger
 }
 
 // Run pairs until ctx ends.
@@ -183,6 +185,11 @@ func (m *IDMapper) Tick(ctx context.Context) error {
 		}
 	}
 	m.log().Info("library id map: pass done", "ids", len(mappings), "unpaired", unpaired)
+	if m.References != nil {
+		if _, err := m.References.Rewrite(ctx); err != nil {
+			return fmt.Errorf("rewrite library references: %w", err)
+		}
+	}
 	return nil
 }
 

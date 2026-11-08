@@ -24,7 +24,7 @@ func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	empty, err := st.CreateLibraryCollection(ctx, LibraryCollection{Name: "autumn", ImportedFrom: "emby"}, at)
+	empty, err := st.CreateLibraryCollection(ctx, LibraryCollection{Name: "autumn", ImportedFrom: "emby", ImportedID: "90000077"}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func testLibraryCollections(t *testing.T, newStore NewStoreFunc) {
 	if len(all) != 2 || all[0].ID != empty || all[1].ID != night {
 		t.Fatalf("listed %+v, want autumn then Night Ferry Nights", all)
 	}
-	if all[0].ImportedFrom != "emby" || len(all[0].Members) != 0 || all[0].Members == nil {
+	if all[0].ImportedFrom != "emby" || all[0].ImportedID != "90000077" || len(all[0].Members) != 0 || all[0].Members == nil {
 		t.Fatalf("empty collection read %+v", all[0])
 	}
 	if got := all[1].Members; !reflect.DeepEqual(got, []string{"c", "a", "b"}) {

@@ -1,11 +1,11 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, pluralize } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 
 // The Storage card at the top of the Sources tab: how much the filler library uses, why new filler
 // is paused (if it is), and — when the host drive's reserve is what paused it — the one-click
@@ -79,21 +79,21 @@ const SourceStorageCard = () => {
               : ""}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
+        <Action
+          accessibilityRole="link"
           render={
             <a
               href={`/filler/settings/${storage.pausedBy === "capacity_unavailable" ? "folders" : "storage"}`}
             />
           }
+          variant="ghost"
         >
           {storage.pausedBy === "capacity_unavailable"
             ? "Choose folder"
             : storage.pausedBy === "library_limit"
               ? "Change allowance"
               : "Storage options"}
-        </Button>
+        </Action>
       </div>
 
       {storage.pausedBy === "host_reserve" ? (
@@ -109,14 +109,9 @@ const SourceStorageCard = () => {
                 {pluralize(cleanupPreview.items, "unfinished download")} is safe to remove. Clips in your
                 library stay untouched.
               </p>
-              <Button
-                type="button"
-                size="sm"
-                disabled={cleanupStorage.isPending}
-                onClick={() => cleanupStorage.mutate()}
-              >
+              <Action disabled={cleanupStorage.isPending} onPress={() => cleanupStorage.mutate()}>
                 {cleanupStorage.isPending ? "Freeing space…" : `Free ${formatBytes(cleanupPreview.bytes)}`}
-              </Button>
+              </Action>
             </div>
           ) : (
             <p className="text-muted-foreground text-sm">

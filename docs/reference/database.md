@@ -23,10 +23,32 @@ Change things in the app, or open an issue if the app can't do what you need.
 On Postgres, these descriptions are also stored as table and column comments, so most SQL
 clients show them beside the data.
 
+## Which table answers "what titles do we have"
+
+`library_items`. A title is in the library when one of its `library_files` rows is present
+(`missing_at_ms` is 0). The other title tables are layers around it, each with one job:
+
+1. **`inventory_*`: what each importer reported.** One item per movie, show or episode, however
+   many importers (a folder scan, an Emby or Jellyfin server) report it, with the files that play
+   it. An item's id is fixed by its first report, so a title that comes back gets the same id.
+2. **`library_*`: the answer.** One `library_items` row per title, with the same id as its
+   inventory item, written in the same transaction as each inventory write, plus its details,
+   files, artwork and collections. When the sources disagree, this is the one answer the app shows.
+3. **`titles`: what channels asked for.** A movie or show a channel wants, tracked from wanted to
+   available through Seerr or the arr apps. Once it arrives, `titles.library_id` says which item it
+   became. Until the switch to Loomarr's own scanner (#2151) that is the media server's id, which
+   the switch rewrites to the library's.
+4. **`series_episodes` and `library_item_paths`: the media server's caches.** Copies of what Emby or
+   Jellyfin says, so channels don't ask it on every request. They exist only until the #2151
+   switch, which moves channels onto `library_*` and deletes them.
+
+Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
+and caches nothing names (each table's retention says when).
+
 ## Reading the values
 
-- **Times** are whole numbers counting from 1 January 1970 UTC. Some columns count seconds and
-  some count milliseconds; each one says which. In SQLite,
+- **Times** are whole numbers counting from 1 January 1970 UTC. The name says the unit: a column
+  ending in `_ms` counts milliseconds, `_ns` nanoseconds, and any other counts seconds. In SQLite,
   `datetime(col, 'unixepoch')` turns seconds into a date and `datetime(col / 1000, 'unixepoch')`
   does the same for milliseconds.
 - **Yes/no** columns hold `1` for yes and `0` for no.
@@ -43,7 +65,7 @@ clients show them beside the data.
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`library_item_paths`](#library_item_paths), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
-- [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_spoken_safety_runs`](#filler_spoken_safety_runs), [`filler_spoken_safety_events`](#filler_spoken_safety_events), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
+- [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
 - [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`notification_reference_recipients`](#notification_reference_recipients)
 - [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports)
 - [Tables other libraries own](#tables-other-libraries-own)
@@ -91,7 +113,7 @@ One row per browser sign-in. Made at sign-in or when an invitation is redeemed; 
 
 One row per pairing code shown on a TV or other device that is asking to be signed in. A signed-in person types the code to approve it; the device then swaps it for a device token and the row is deleted. Codes expire after 10 minutes.
 
-**Kept:** Unbounded: a code that expires before a device redeems it is never deleted, because nothing runs the expiry sweep.
+**Kept:** Deleted when redeemed; a code that expires first is deleted by the nightly housekeeping task.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -257,7 +279,6 @@ One row per channel. A channel is created by approving a channel request or by h
 | `grp` | The group the channel is listed under in the guide. Empty for none. | `TEXT` |
 | `logo` | The channel icon's URL, either one of this Loomarr's own image URLs or an outside link. Empty for no icon. | `TEXT` |
 | `strategy` | How programmes are ordered onto the timeline. `sequential` plays them in lineup order, `shuffle` rotates them in a shuffled order, and `time_slot` pins them to blocks of the day. | `TEXT` |
-| `filler_ref` | Reserved for a reference to the channel's filler list. Nothing in the current app sets it, so it is empty. | `TEXT` |
 | `tunarr_id` | The id of the channel's copy in Tunarr, an outside playout server, kept from the first time Loomarr pushed the channel there. Empty for a channel that never went to Tunarr. | `TEXT` |
 | `status` | The channel's state. `building` (being set up), `live` (ready to play), `drifted` (a scheduled programme left the library and was replaced), `empty` (every lineup entry was filtered out, so nothing can air), `paused` (taken off air by an admin but kept), or `detached` (no longer managed by Loomarr). | `TEXT` |
 | `shuffle_seed` | The number a shuffled channel's order is drawn from, so it repeats the same way. 0 means it is worked out from the channel id. | `BIGINT` |
@@ -290,6 +311,8 @@ What a channel actually broadcast: one row each time an episode or film started 
 ### scheduled_airings
 
 What a channel's schedule put on air: one row each time an episode or film started on a channel's timeline, whether or not anyone watched. Kept apart from `airings`, which records only what was actually streamed. The schedule reads both, so a channel nobody watches still rotates evenly instead of re-airing something it showed hours ago. Pruned and deleted like `airings`.
+
+**Kept:** Rows older than 8 days are pruned to the latest one per episode or film on each channel; goes with its channel (deleted when that is).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -375,9 +398,9 @@ One row each time a worker started a channel suggester job, so a request's histo
 
 ### proposals
 
-A suggested channel lineup produced by a channel suggester job, waiting for an admin to approve or deny it (shown in the app as a request). Approving it creates or changes a channel. Denied proposals are deleted after the `proposals.retention` setting (90 days by default); the others are kept.
+A suggested channel lineup produced by a channel suggester job, waiting for an admin to approve or deny it (shown in the app as a request). Approving it creates or changes a channel.
 
-**Kept:** Unbounded: denied proposals go after `proposals.retention` (90 days by default), but approved ones (kept on purpose as the record of who approved them) and superseded ones are never deleted.
+**Kept:** Denied and superseded proposals are deleted after `proposals.retention` (90 days by default). Approved ones are kept on purpose, one per approval, as the record of who approved each channel; submitted ones wait for an answer.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -398,7 +421,7 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 
 The Keep, Less like this, Never and Surprise me choices people make about titles, for the whole household or for one channel. Each choice is a new row; the newest per title wins, and a channel's choice overrides the household's. The channel suggester and re-curation read them. A channel's rows are deleted with the channel.
 
-**Kept:** Unbounded: every choice adds a row and household-wide rows are never deleted, not even replaced ones; a channel's rows go with the channel.
+**Kept:** One row per title and scope: the nightly housekeeping task deletes a choice once a newer one replaces it, and a clear once nothing is left under it. A channel's rows go with the channel.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -423,7 +446,7 @@ One measured step of the pipeline that suggests and adds titles (retrieval, gene
 | `occurred_at` | When the step happened, in Unix seconds. | `BIGINT` |
 | `stage` | The pipeline step. `retrieval`, `generation`, `grounding`, `approval`, `acquisition` or `scheduling`. | `TEXT` |
 | `outcome` | How it went, from a set fixed per stage. retrieval is succeeded, empty or failed; generation is succeeded, abstained or failed; grounding is accepted or rejected; approval is approved or declined; acquisition is playable or failed; scheduling is scheduled or failed. | `TEXT` |
-| `duration_millis` | How long the step took, in milliseconds. 0 when not measured. | `BIGINT` |
+| `duration_ms` | How long the step took, in milliseconds. 0 when not measured. | `BIGINT` |
 | `tool_calls` | How many tool calls the model made during the step. | `INTEGER` |
 | `candidate_count` | How many candidate titles the step surfaced. | `INTEGER` |
 | `cost_nanos` | What the step cost, in billionths of a US dollar. | `BIGINT` |
@@ -442,7 +465,7 @@ Daily totals of suggestion-quality receipts, one row per day, stage, outcome and
 | `outcome` | How the steps went, with the same values as quality_receipts.outcome. | `TEXT` · key |
 | `run_snapshot_id` | The evaluation run (quality_run_snapshots.id), or empty for ordinary use. | `TEXT` · key |
 | `observation_count` | How many receipts were rolled into the row. | `BIGINT` |
-| `duration_millis` | Total time of those steps, in milliseconds. | `BIGINT` |
+| `duration_ms` | Total time of those steps, in milliseconds. | `BIGINT` |
 | `tool_calls` | Total tool calls. | `BIGINT` |
 | `candidate_count` | Total candidate titles surfaced. | `BIGINT` |
 | `cost_nanos` | Total cost, in billionths of a US dollar. | `BIGINT` |
@@ -504,7 +527,7 @@ The path map. One row per folder a media server or arr reports, saying which loc
 
 One row per media file the scanner found under an in-use folder. A file the scanner no longer finds keeps its row with a missing time; all of a folder's rows go when the folder is forgotten.
 
-**Kept:** Kept while its folder is in use, missing files included, so rows for files deleted from disk pile up; every row of a folder is deleted when the folder stops being in use.
+**Kept:** Kept while its folder is in use. A file a walk stopped finding is deleted by the nightly housekeeping 180 days later, unless its removal is still waiting for a person; every row of a folder is deleted when the folder stops being in use.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -526,7 +549,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 
 One row per movie, show and episode the scanner wrote, with the details shown on the Library pages. Rewritten each time the title is written; a title whose files have gone keeps its row, so it finds its collections and answer again if it comes back. Whether it is present comes from library_files.
 
-**Kept:** Unbounded: nothing deletes these rows; a title that leaves the library keeps its row on purpose, so every title ever scanned stays.
+**Kept:** A title that leaves the library keeps its row, so it finds its details and collections again if it comes back. The nightly housekeeping deletes a row a year after it last changed once nothing is left of it: no importer report, no file, no episode, no collection, and no title, airing, channel or open request naming it. Its candidates and images go with it; a person's answer for it is kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -792,7 +815,7 @@ A title's artwork references, one row each. Replaced whenever the title is writt
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
-| `kind` | What the image is, such as poster, fanart, clearlogo, or season-poster for one season's poster. | `TEXT` · key |
+| `kind` | What the image is: poster, fanart, clearlogo, banner, landscape, clearart, discart, thumb (an episode's still), or season-poster for one season's poster. Each source's own names are mapped onto these. | `TEXT` · key |
 | `season` | For a season-poster, the season it belongs to (0 is the specials); 0 for every other kind. | `INTEGER` · key |
 | `position` | The order among images of the same kind and season, from 0. | `INTEGER` · key |
 | `ref` | Where the image is, a file beside the media or an address. | `TEXT` |
@@ -801,7 +824,7 @@ A title's artwork references, one row each. Replaced whenever the title is writt
 
 What TMDB says about a title or a TMDB collection, cached so a scan never has to ask it. A row is added when a title names it, and refreshed in the background.
 
-**Kept:** Unbounded: nothing deletes these rows; a cached record stays after its title leaves the library or is matched to a different TMDB entry.
+**Kept:** Kept while a library title names it. One no title names is deleted by the nightly housekeeping a year after it was fetched, or after a year of failed fetches; one asked for and not yet tried is kept until it is.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -864,6 +887,7 @@ The household's own collections, each an ordered list of titles. Made in Loomarr
 | `imported_from` | The media server it was brought over from, emby or jellyfin; empty when made in Loomarr. | `TEXT` |
 | `created_at_ms` | When the collection was made, in Unix milliseconds. | `INTEGER` |
 | `updated_at_ms` | When the collection was last changed, in Unix milliseconds. | `INTEGER` |
+| `imported_id` | The media server's id for the collection it was brought over from; empty when made in Loomarr. | `TEXT` |
 
 ### library_collection_members
 
@@ -881,7 +905,7 @@ The titles in a collection, in order. A member whose title has left the library 
 
 The media server's own file path for one of its items, remembered so a channel can play the item without asking the media server at airtime. A stale row is harmless; it is rewritten on the next lookup.
 
-**Kept:** Unbounded: nothing deletes these rows; a stale path is rewritten on its next lookup, but an item the media server drops keeps its row.
+**Kept:** Rewritten on its next lookup. A path no title, airing, channel or open request names is deleted by the nightly housekeeping 30 days after it was written; it is looked up again if it is needed.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -893,7 +917,7 @@ The media server's own file path for one of its items, remembered so a channel c
 
 A cached copy of one show's episode list as the media server reports it, so the guide doesn't ask the media server per show on every request. Replaced whole on each refresh.
 
-**Kept:** Unbounded: nothing deletes these rows; each show's row is refreshed in place, but a show the media server drops keeps its row.
+**Kept:** Refreshed in place. A show no title points at is deleted by the nightly housekeeping once its list is 30 days old; it is fetched again if a title needs it.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -904,9 +928,9 @@ A cached copy of one show's episode list as the media server reports it, so the 
 
 ### titles
 
-One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking it from wanted to in the library (or given up on). Rows are kept.
+One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking it from wanted to in the library (or given up on).
 
-**Kept:** Unbounded: nothing deletes these rows; every title ever requested stays.
+**Kept:** A title in the library or given up on that no channel's lineup and no open request names is deleted by the nightly housekeeping 180 days after it last changed; picked again, it is requested afresh. A title still on its way is kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -938,7 +962,7 @@ One row per piece of artwork (posters, channel icons, clip stills and so on). Th
 | `origin` | Where the bytes came from, which decides whether they can be got back after a restore. One of upload (a person uploaded it; not recoverable), remote (downloaded from TMDB or a media server; recoverable from source_url), extracted (made from local media, such as a clip still or a poster beside a file; recoverable), or generated (made by Loomarr; treated as not recoverable). | `TEXT` |
 | `source_url` | The URL a remote image was downloaded from; empty for every other origin. | `TEXT` |
 | `visibility` | Who may fetch it. public needs no sign-in (a channel icon other apps fetch); member needs a signed-in person. | `TEXT` |
-| `role` | What the image is for, which sets its sizes and shape. One of poster, backdrop, icon, thumb (a clip still) or watermark (a channel's on-screen logo). | `TEXT` |
+| `role` | What the image is for, which sets its sizes and shape. One of poster, backdrop, icon, thumb (a clip still), watermark (a channel's on-screen logo) or logo (a title's clear logo, kept with its transparency, so it has no JPEG size). | `TEXT` |
 | `mime` | The original's file type, such as image/png. | `TEXT` |
 | `width` | The original's width in pixels. | `INTEGER` |
 | `height` | The original's height in pixels. | `INTEGER` |
@@ -966,7 +990,7 @@ What each image is used for. An image can serve several owners (the same poster 
 | `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
 | `owner_kind` | What kind of thing uses it, such as channel, clip, library_item (a title's poster), library_candidate (a Needs you result's poster) or filler_split_proposal. | `TEXT` · key |
 | `owner_id` | The id of the thing that uses it, in that kind's own table. | `TEXT` · key |
-| `role` | What the image is for here, one of poster, backdrop, icon, thumb or watermark. | `TEXT` · key |
+| `role` | What the image is for here, one of poster, backdrop, icon, thumb, watermark or logo. | `TEXT` · key |
 
 ### image_derivatives
 
@@ -992,9 +1016,9 @@ Loomarr's record of every movie, show and episode its importers have reported, a
 
 ### inventory_items
 
-One row per movie, show or episode, however many importers report it. Created by the first report. Items are kept when an importer stops seeing them (the report is marked missing instead); one is deleted only when its last report moves to another item.
+One row per movie, show or episode, however many importers report it. Created by the first report. Items are kept when an importer stops seeing them (the report is marked missing instead).
 
-**Kept:** Deleted only when its last report moves to another item; an item no importer sees any more is kept, so the table grows as files come and go.
+**Kept:** Deleted when its last report moves to another item, or by the nightly housekeeping once its last report was deleted for being missing 180 days.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1007,7 +1031,7 @@ One row per movie, show or episode, however many importers report it. Created by
 
 One importer's latest report of one item. Replaced each time that importer reports the item again. Kept when the importer no longer sees it, with missing_at set.
 
-**Kept:** Unbounded: nothing deletes these rows; a report the importer stops seeing is only marked missing, and its item is never deleted while it has a report.
+**Kept:** Marked missing when the importer stops seeing it, and cleared if it comes back. The nightly housekeeping deletes it 180 days after it went missing, with its source reports.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1037,7 +1061,7 @@ The outside ids one importer's report gives an item, such as its TMDB, TVDB or I
 
 One playable file (or media server version) of an item. Created by the first report that lists it; it moves with its report if the report joins another item.
 
-**Kept:** Unbounded: nothing deletes these rows; a file that disappears keeps its row, because its item is never deleted while the item has a source.
+**Kept:** Goes with its item. A source left with no report is deleted by the nightly housekeeping, with its measurement and analysis, once it is 180 days old.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1052,7 +1076,7 @@ One playable file (or media server version) of an item. Created by the first rep
 
 One importer's latest report of one source of an item. Replaced each time that importer reports it again. Kept when the importer no longer sees it, with missing_at set. Deleted with the source or the item's report.
 
-**Kept:** Unbounded: nothing deletes these rows; a source the importer stops seeing is only marked missing, and neither its source nor its item's report is ever deleted.
+**Kept:** Marked missing when the importer stops seeing it. The nightly housekeeping deletes it 180 days after it went missing; it also goes with its source or its item's report.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1118,7 +1142,6 @@ One row per filler clip, identified by a hash of its bytes. The folder scan and 
 | `era` | The year the clip is from, such as 1994; a year ending in 0 means the decade. 0 means not known. | `INTEGER` |
 | `audience` | Who the clip suits: kids, family, general or late_night. Empty when not yet tagged. | `TEXT` |
 | `duration_ms` | Length of the clip in milliseconds, measured from the file. | `INTEGER` |
-| `rating` | Optional content rating; empty when none. | `TEXT` |
 | `source` | Where the clip came from: the id of the registered filler source that downloaded it (such as archive:<collection>), or filler-dir for a file dropped into the clip folder. | `TEXT` |
 | `quality` | Resolution label such as 1080p or 480p, from the measured video height. Empty for an audio-only clip. Shown only; it does not affect selection by default. | `TEXT` |
 | `license` | The licence URL the source declared for the clip. Empty means unknown, never public domain. | `TEXT` |
@@ -1153,7 +1176,7 @@ One row per filler clip, identified by a hash of its bytes. The folder scan and 
 
 Each tag a clip carries from the taxonomy (taxa). Rows are rewritten whenever a clip is tagged or the taxonomy changes.
 
-**Kept:** Rewritten on each retag and removed with a deleted tag or a merged copy. Tags of a clip the folder scan removes are left behind; nothing tidies them up yet.
+**Kept:** Rewritten on each retag and removed with a deleted tag or a merged copy. Tags of a clip the folder scan removed are deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1253,7 +1276,7 @@ Counts of what source checks found, per source, for the sweep in progress or the
 
 A proposed batch of clips to download, which an operator approves or dismisses. Decided pulls are kept as history of what was agreed to.
 
-**Kept:** Unbounded: nothing deletes these rows yet; every decided pull stays.
+**Kept:** Pending pulls are kept. The nightly housekeeping task deletes a dismissed pull 180 days after it was dismissed, and an approved one with its download run.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1272,7 +1295,7 @@ A proposed batch of clips to download, which an operator approves or dismisses. 
 
 Links an approved pull to the one download run its approval started. Written in the same step as the approval.
 
-**Kept:** Unbounded: nothing deletes these rows yet; one stays per approved pull.
+**Kept:** One per approved pull; deleted with its download run.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1283,7 +1306,7 @@ Links an approved pull to the one download run its approval started. Written in 
 
 One row per download run: a source check, an approved pull or URLs an admin typed in. Shows what was asked for and how the downloads went. Runs left unfinished by a restart are marked as errors.
 
-**Kept:** Unbounded: nothing deletes these rows yet; one stays per download run.
+**Kept:** The nightly housekeeping task deletes a finished run 90 days after it finished once nothing points at it: no downloaded file and no clip pipeline row. A run whose files are kept is kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1306,7 +1329,7 @@ One row per download run: a source check, an approved pull or URLs an admin type
 
 One row per file a download produced, tracking it from download to the clip folder to the catalog. Rows that need repair are kept until someone deals with them.
 
-**Kept:** Unbounded: nothing deletes these rows yet; one stays per downloaded file.
+**Kept:** A file with the provider's id is kept on purpose: it is how the fetcher knows it already has that item, one row per item ever downloaded. One without, catalogued into a clip that has since left, is deleted by the nightly housekeeping task after 90 days. Staged, published and repair files are kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1363,7 +1386,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 
 Pairs of clips that are different versions of the same ad, such as a cut-down or another ending. A break never carries two versions, and airing one rests the others.
 
-**Kept:** Moved to the better copy when a clip is merged; otherwise never deleted, even after a clip leaves the catalog.
+**Kept:** Moved to the better copy when a clip is merged. A pair whose clips have both left the catalog is deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1423,7 +1446,7 @@ Copies of an ad that lost to a better copy of the same ad and were merged into i
 
 A record written when a clip becomes ready to air, at the same moment it joins the playable catalog. One per clip.
 
-**Kept:** Unbounded: nothing deletes these rows yet, even after the clip leaves the catalog.
+**Kept:** One per clip, kept while the clip exists; the nightly housekeeping task deletes it 30 days after it was written once its clip has left the catalog.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1433,7 +1456,6 @@ A record written when a clip becomes ready to air, at the same moment it joins t
 | `enrollment_kind` | What let the clip into filler: acquisition (a download run) or source (a clip folder or source the operator chose). | `TEXT` |
 | `enrollment_ref` | The download run id or source id behind enrollment_kind. | `TEXT` |
 | `placement` | Where it may be scheduled, break_body or bookend. | `TEXT` |
-| `outcome` | The outcome recorded; always ready. | `TEXT` |
 | `created_at` | When the clip became ready, in Unix seconds. | `INTEGER` |
 
 ### filler_curated_offers
@@ -1454,7 +1476,7 @@ Which entries from Loomarr's shipped list of curated sources this install has be
 
 Each time a clip aired on a channel, used to rest clips between airings across the household. Airings from the last eight weeks are kept, plus each clip's newest few beyond that.
 
-**Kept:** Trimmed each time a clip airs to its last eight weeks plus its newest four airings; a clip's airings are not deleted when it leaves the catalog.
+**Kept:** Trimmed each time a clip airs to its last eight weeks plus its newest four airings. Once the clip has left the catalog, its airings older than eight weeks are deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1467,7 +1489,7 @@ Each time a clip aired on a channel, used to rest clips between airings across t
 
 Suggestions about a clip's year, country or station found by researching it online, with the pages cited, plus Loomarr's own uncited era guesses. Only a confident, cited geography finding updates the clip; the rest are shown as suggestions.
 
-**Kept:** Unbounded: nothing deletes these rows yet; each new research round adds rows, and they stay after the clip leaves the catalog.
+**Kept:** The nightly housekeeping task deletes a report once a newer one of the same kind (cited, or a guess) exists for an older revision of the clip, and every report 30 days after it was written once the clip has left the catalog.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1521,13 +1543,13 @@ One row per revision of the shipped station directory that startup has applied. 
 
 ## How filler clips are checked
 
-Filler clips (vintage ads, promos and bumpers between shows) are examined by AI models and other checks before and after they air. These tables remember each model call and what it cost, the descriptive facts the checks filled in, web-research allowances, and the spoken-safety and reel-splitting journals.
+Filler clips (vintage ads, promos and bumpers between shows) are examined by AI models and other checks before and after they air. These tables remember each model call and what it cost, the descriptive facts the checks filled in, web-research allowances, and the reel-splitting journals.
 
 ### filler_inference_evaluations
 
-One row per model call made about a filler clip, written before the call (as a spend reservation) and updated once the call finishes with what it actually used and cost. Callers include the defect judge (a vision model ruling on borderline picture defects) and the long-reel structure check. Rows are kept; nothing purges them.
+One row per model call made about a filler clip, written before the call (as a spend reservation) and updated once the call finishes with what it actually used and cost. Callers include the defect judge (a vision model ruling on borderline picture defects) and the long-reel structure check.
 
-**Kept:** Unbounded: nothing deletes these rows yet; only an unused budget hold is removed so its retry can take its place.
+**Kept:** Settled calls are deleted by the nightly housekeeping task after 180 days, once no structure-window call points at them; reserved ones (in flight) are kept. An unused budget hold is removed at once so its retry can take its place.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1572,7 +1594,7 @@ One row per model call made about a filler clip, written before the call (as a s
 | `admission_policy_version` | Version of the rules that decide what the answer is allowed to unlock. | `TEXT` |
 | `role_policy_version` | Version of the check's own rules. | `TEXT` |
 | `capability_snapshot` | Identity of the model endpoint and its capabilities at the time of the call. | `TEXT` |
-| `outcome` | A short result code once the call succeeds, such as window_complete. Empty when there is none. | `TEXT` |
+| `outcome` | window_complete once a structure-window call has answered; empty for every other call. | `TEXT` |
 | `failure_reason` | Why the call did not complete, for example a spend ceiling or a failure class such as transport. Empty on success. | `TEXT` |
 | `created_at` | When the call was reserved, in Unix seconds. Also decides which day's ceiling it counts against (UTC). | `INTEGER` |
 | `updated_at` | When the row last changed (reserved or settled), in Unix seconds. | `INTEGER` |
@@ -1589,9 +1611,9 @@ One lock row per spend-ceiling scope. Reserving a model call locks the matching 
 
 ### filler_enrichment_axes
 
-The accepted answer for one descriptive fact ("axis") about one filler clip, such as its era, brand or role, with where the answer came from. A stronger or more confident answer replaces a weaker one; no row means the fact is still unknown. Rows are kept and follow the clip if its identity changes.
+The accepted answer for one descriptive fact ("axis") about one filler clip, such as its era, brand or role, with where the answer came from. A stronger or more confident answer replaces a weaker one; no row means the fact is still unknown. Rows follow the clip if its identity changes.
 
-**Kept:** Never deleted; rows stay even after their clip leaves the catalog.
+**Kept:** Kept while the clip exists. Once it has left the catalog, rows not updated for 30 days are deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1613,7 +1635,7 @@ The accepted answer for one descriptive fact ("axis") about one filler clip, suc
 
 Marks that one enrichment producer, at one version, has finished with one clip. It is what stops the same work (and its model spend) being repeated; a clip is picked again when the producer version or taxonomy changes, or, for free passes, when the clip's descriptive inputs change.
 
-**Kept:** Unbounded: nothing deletes these rows yet; each new producer or tag version adds rows, and they stay after the clip leaves the catalog.
+**Kept:** Kept while the clip exists (they stop a paid pass from running twice). The nightly housekeeping task deletes a pass 30 days after it ran once its clip has left the catalog.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1640,9 +1662,9 @@ One row per web search made to research a filler clip, so the same clip at the s
 
 ### filler_research_web_usage
 
-One row per calendar month counting web searches against the monthly limit set in settings. Searches are refused once the count reaches the limit. Old months are kept.
+One row per calendar month counting web searches against the monthly limit set in settings. Searches are refused once the count reaches the limit.
 
-**Kept:** Unbounded: nothing deletes old months yet (one small row per month).
+**Kept:** The last 12 months; the nightly housekeeping task deletes older ones.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1652,47 +1674,11 @@ One row per calendar month counting web searches against the monthly limit set i
 | `last_success_at` | When a search last succeeded that month, in Unix seconds. 0 means none yet. | `INTEGER` |
 | `last_failure_at` | When a search last failed that month, in Unix seconds. 0 means none yet. A failure newer than the last success shows web search as degraded. | `INTEGER` |
 
-### filler_spoken_safety_runs
-
-One attempt at the spoken-safety check, which listens to everything said in a clip to keep filler suitable for a household. Each run is fixed at creation and its steps are logged in filler_spoken_safety_events. At startup Loomarr closes any run left without a final event; no part of the current app starts new runs.
-
-**Kept:** Never deleted, but nothing starts new runs, so the table no longer grows.
-
-| Column | What it holds | Type |
-| --- | --- | --- |
-| `id` | Identifies the run. Its events point here. | `TEXT` · key |
-| `clip_hash` | The filler clip checked (clips.hash). | `TEXT` |
-| `authority_sha256` | SHA-256 fingerprint of the screening authority the run answers to. | `TEXT` |
-| `source_sha256` | SHA-256 of the clip's media file that was checked. | `TEXT` |
-| `source_bytes` | Size of that media file in bytes. | `INTEGER` |
-| `duration_ms` | Length of the media checked, in milliseconds. | `INTEGER` |
-| `certification_sha256` | SHA-256 fingerprint of the certification the check runs under. | `TEXT` |
-| `policy_sha256` | SHA-256 fingerprint of the safety policy applied. | `TEXT` |
-| `proposer_sha256` | SHA-256 fingerprint of the step that picks which spoken passages to examine. | `TEXT` |
-| `implementation` | Name of the implementation that ran the check. | `TEXT` |
-| `created_at` | When the run started, in Unix nanoseconds. | `INTEGER` |
-
-### filler_spoken_safety_events
-
-The append-only step log of one spoken-safety run, numbered from 0. A run plans its source, proposes passages to examine, reserves and settles any model calls, and ends with one terminal event.
-
-**Kept:** Kept with their run, never deleted; no new runs start, so the table no longer grows.
-
-| Column | What it holds | Type |
-| --- | --- | --- |
-| `id` | Identifies the event. | `TEXT` · key |
-| `run_id` | The run it belongs to (filler_spoken_safety_runs.id). | `TEXT` · → `filler_spoken_safety_runs.id` |
-| `ordinal` | Position in the run's log, starting at 0. | `INTEGER` |
-| `kind` | The step. source_planned (the audio and video spans to cover), proposal_completed (the passages picked), inference_reserved (a model call booked), inference_settled (that call finished) or terminal (the final evidence and verdict). | `TEXT` |
-| `inference_id` | The model call this step is about (filler_inference_evaluations.id). Set only for inference_reserved and inference_settled. | `TEXT` · may be empty · → `filler_inference_evaluations.id` |
-| `payload_json` | The step's details as JSON, such as spans, passage IDs, model, cost and the final result. It never holds the spoken words, file paths or raw model output. | `TEXT` |
-| `created_at` | When the step was logged, in Unix nanoseconds. | `INTEGER` |
-
 ### filler_structure_window_call_ledger
 
 One row per model call in the long-reel structure check, which sends a reel to a video model in windows to find where each separate clip starts and ends. The row is booked before the call and completed with the answer; a call that got no answer is retried as a new attempt.
 
-**Kept:** Unbounded: nothing deletes these rows yet; only an attempt held back by the spend ceiling is replaced by its retry.
+**Kept:** Settled calls are deleted by the nightly housekeeping task after 180 days; open and budget-held ones are kept. An attempt held back by the spend ceiling is replaced by its retry.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1729,7 +1715,7 @@ A proposed cut list for a compilation reel waiting for an admin's review, one pe
 
 A side-by-side record, made while a new splitting rule is being trialled, of what the current rule and the new certified rule would each do with one split proposal. Kept after the proposal itself is gone; rows are never changed.
 
-**Kept:** Unbounded: nothing deletes these rows yet; they stay after the proposal is gone.
+**Kept:** Kept while the proposal exists; once it is gone, the nightly housekeeping task deletes the decision 180 days after it was made.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1816,9 +1802,9 @@ One row per try at sending a notification to one destination. A failure that may
 
 ### notification_reference_recipients
 
-One row per person who asked for a title or channel, recorded when an admin approves their request, so later news about it (the title arrived, the channel went live) reaches them. Rows are kept.
+One row per person who asked for a title or channel, recorded when an admin approves their request, so later news about it (the title arrived, the channel went live) reaches them.
 
-**Kept:** Unbounded: rows are never deleted, not even when the title or channel they point to is gone.
+**Kept:** Kept while the title, the channel and the person exist. Once one is gone, the nightly housekeeping task deletes the row (after 30 days, since a request is recorded before its title is).
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1887,9 +1873,9 @@ The running state of one recurring background task shown on the Tasks page. Whic
 
 ### interactive_operations
 
-Progress of one long action someone started in the app (downloading an AI model, or detecting where a filler reel should be split), so the page can pick it up again after a reconnect. Rows are not deleted; anything still queued or running when Loomarr restarts is marked as an error.
+Progress of one long action someone started in the app (downloading an AI model, or detecting where a filler reel should be split), so the page can pick it up again after a reconnect. Anything still queued or running when Loomarr restarts is marked as an error.
 
-**Kept:** Unbounded: every model download or split detection adds a row, and finished ones are never deleted.
+**Kept:** Finished ones are deleted by the nightly housekeeping task 7 days after they finish; queued and running ones are kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1916,7 +1902,7 @@ One line in the Dashboard's Recent activity feed, written when something notable
 | --- | --- | --- |
 | `id` | Identifies the entry. | `TEXT` · key |
 | `at` | When it happened, in Unix seconds. | `BIGINT` |
-| `kind` | Which part of Loomarr wrote it. title, channel, proposal (a suggested lineup), filler, or system. | `TEXT` |
+| `kind` | Which part of Loomarr wrote it: title, channel, proposal (a suggested lineup), or system. | `TEXT` |
 | `level` | How serious it is, which sets the coloured dot. info, warn, or error. | `TEXT` |
 | `text` | The sentence shown in the feed. | `TEXT` |
 | `subject_id` | The id of the channel, title or proposal it concerns, or empty. | `TEXT` |

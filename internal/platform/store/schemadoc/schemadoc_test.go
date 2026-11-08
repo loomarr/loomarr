@@ -74,15 +74,22 @@ func TestShippedAreasLoad(t *testing.T) {
 }
 
 func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
-	saved := KnownGaps
-	t.Cleanup(func() { KnownGaps = saved })
+	savedGaps, savedFree := KnownGaps, FreeForm
+	t.Cleanup(func() { KnownGaps, FreeForm = savedGaps, savedFree })
+	FreeForm = map[string]string{"events.app_status": "another app's words", "jobs.kind": "now checked"}
 	KnownGaps = map[string]string{
 		"check jobs.status":           "listed, still a gap",
 		"fk-index jobs.old_id":        "listed, since fixed",
 		"fk-index jobs.user_id,shelf": "listed, still a gap",
 	}
 	doc := Doc{Areas: []Area{{Tables: []Table{
-		{Name: "jobs", Retention: "Deleted after a month."},
+		{Name: "jobs", Retention: "Deleted after a month.", Columns: map[string]string{
+			"took_millis":  "How long it took, in milliseconds.",               // a gap: not _ms
+			"ran_at":       "When it ran, in Unix milliseconds.",               // a gap: not _ms
+			"seen_at_ms":   "When it was seen, in Unix seconds.",               // a gap: seconds named _ms
+			"queued_at_ns": "When it was queued, in Unix nanoseconds.",         // named for its unit
+			"plan":         "JSON steps, each with its start in milliseconds.", // text: the unit is inside it
+		}},
 		{Name: "events", Retention: "Unbounded: nothing deletes them."},
 		{Name: "notes"},
 	}}}}
@@ -92,6 +99,11 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 			{Name: "status", Type: "TEXT"},
 			{Name: "kind", Type: "TEXT", Checked: true},
 			{Name: "run_state", Type: "INTEGER"}, // not text: a number, not a named state
+			{Name: "took_millis", Type: "BIGINT"},
+			{Name: "ran_at", Type: "INTEGER"},
+			{Name: "seen_at_ms", Type: "INTEGER"},
+			{Name: "queued_at_ns", Type: "BIGINT"},
+			{Name: "plan", Type: "TEXT"},
 		},
 			ForeignKeys: [][]string{
 				{"user_id"},               // only second in an index: a gap
@@ -101,7 +113,7 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 			},
 			Indexes: [][]string{{"position", "parent_id", "id"}, {"old_id", "kind"}, {"shelf", "kind", "user_id"}, {"kind", "user_id"}},
 		},
-		{Name: "events", Columns: []LiveColumn{{Name: "outcome", Type: "text"}}},
+		{Name: "events", Columns: []LiveColumn{{Name: "outcome", Type: "text"}, {Name: "app_status", Type: "TEXT"}}},
 		{Name: "notes"},
 		{Name: "river_job", Columns: []LiveColumn{{Name: "state", Type: "TEXT"}}},
 	}
@@ -109,8 +121,12 @@ func TestLintNamesEachRuleAndHoldsKnownGapsToShrinking(t *testing.T) {
 		"check events.outcome: list the allowed values in a CHECK (column IN (...))",
 		"fk-index jobs.old_id is fixed: remove it from KnownGaps (was: listed, since fixed)",
 		"fk-index jobs.user_id: add an index whose first column is this foreign key",
+		"jobs.kind is listed in FreeForm but is no longer an unchecked state column",
 		"retention notes: add a retention line to its table in internal/platform/store/schemadoc/areas/",
 		"unbounded events: delete old rows (housekeeping or a retention setting), then say how long they're kept",
+		"unit jobs.ran_at: " + unitFix,
+		"unit jobs.seen_at_ms: " + unitFix,
+		"unit jobs.took_millis: " + unitFix,
 	}
 	if got := Lint(doc, live); !slices.Equal(got, want) {
 		t.Fatalf("Lint =\n  %s\nwant\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
