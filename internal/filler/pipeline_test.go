@@ -277,8 +277,8 @@ func TestPipeline_ScreeningPersistenceFailureNeverFallsThroughToReadiness(t *tes
 				t.Fatalf("authority failure = %q/%q disposition=%q attempts=%d",
 					row.Stage, row.Status, row.Disposition, row.Attempts)
 			}
-			if stages[filler.StageScore].runs != 0 {
-				t.Fatalf("score ran %d times without stage %q persistence", stages[filler.StageScore].runs, blockedStage)
+			if stages[filler.StageFinish].runs != 0 {
+				t.Fatalf("score ran %d times without stage %q persistence", stages[filler.StageFinish].runs, blockedStage)
 			}
 		})
 	}
@@ -360,7 +360,7 @@ func TestPipeline_RewindResetsOnlyTheRequestedSuffix(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "stuck")
 	row := st.rows["stuck"]
-	row.Stage = filler.StageScore
+	row.Stage = filler.StageFinish
 	row.Status = filler.StatusDone
 	row.Attempts = 3
 	row.Disposition = filler.DispositionReview
@@ -399,7 +399,7 @@ func TestPipeline_RewindReadyClipHoldsItUntilTheRestartCompletes(t *testing.T) {
 	clip.Placement = filler.PlacementBreakBody
 	st.clips[clip.Hash] = clip
 	row := st.rows[clip.Hash]
-	row.Stage = filler.StageScore
+	row.Stage = filler.StageFinish
 	row.Status = filler.StatusDone
 	row.Disposition = filler.DispositionReady
 	row.PreparationProgress = 100
@@ -409,7 +409,7 @@ func TestPipeline_RewindReadyClipHoldsItUntilTheRestartCompletes(t *testing.T) {
 	st.rows[clip.Hash] = row
 
 	p := newPipe(st, asSlice(allStages()), filler.DefaultBudget()).WithRewind(st, "")
-	if err := p.Rewind(t.Context(), clip.Hash, filler.StageScore, false); err != nil {
+	if err := p.Rewind(t.Context(), clip.Hash, filler.StageFinish, false); err != nil {
 		t.Fatal(err)
 	}
 	if !st.clips[clip.Hash].Held {
@@ -431,14 +431,14 @@ func TestPipeline_RewindDoesNotResetTheConveyorWhenHoldingFails(t *testing.T) {
 	clip.Held = false
 	st.clips[clip.Hash] = clip
 	row := st.rows[clip.Hash]
-	row.Stage = filler.StageScore
+	row.Stage = filler.StageFinish
 	row.Status = filler.StatusDone
 	row.Disposition = filler.DispositionReady
 	st.rows[clip.Hash] = row
 	st.holdErr = errors.New("catalog write failed")
 
 	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
-	if err := p.Rewind(t.Context(), clip.Hash, filler.StageScore, false); !errors.Is(err, st.holdErr) {
+	if err := p.Rewind(t.Context(), clip.Hash, filler.StageFinish, false); !errors.Is(err, st.holdErr) {
 		t.Fatalf("Rewind error = %v, want hold failure", err)
 	}
 	if got := st.rows[clip.Hash]; got.Stage != row.Stage || got.Status != row.Status ||
@@ -451,7 +451,7 @@ func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "already-tagged")
 	row := st.rows["already-tagged"]
-	row.Stage = filler.StageScore
+	row.Stage = filler.StageFinish
 	row.Status = filler.StatusDone
 	row.Disposition = filler.DispositionReview
 	for _, id := range filler.StageOrder {
@@ -462,7 +462,7 @@ func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
 	vision := stage(filler.StageVision)
 	vision.applies = false
 	vision.note = "already inspected"
-	p := newPipe(st, []filler.Stage{vision, stage(filler.StageScore)}, filler.DefaultBudget()).WithRewind(st, "")
+	p := newPipe(st, []filler.Stage{vision, stage(filler.StageFinish)}, filler.DefaultBudget()).WithRewind(st, "")
 	if err := p.Rewind(context.Background(), "already-tagged", filler.StageVision, false); err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +675,7 @@ func TestPipeline_RejectStopsTheClipWithItsReason(t *testing.T) {
 	if row.RejectReason != filler.ReasonTooShort || row.RejectDetail != "8.2s; the floor is 10.0s" {
 		t.Errorf("reject lost its reason/detail: %q / %q", row.RejectReason, row.RejectDetail)
 	}
-	if stages[filler.StageScore].runs != 0 {
+	if stages[filler.StageFinish].runs != 0 {
 		t.Error("a rejected clip carried on through the rest of the pipeline")
 	}
 	assertRowAgreesWithItsLadder(t, row)
@@ -1048,12 +1048,12 @@ func TestPipeline_TerminalClipsAreNotReWorked(t *testing.T) {
 	if _, err := p.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	before := stages[filler.StageScore].runs
+	before := stages[filler.StageFinish].runs
 	if _, err := p.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if stages[filler.StageScore].runs != before {
-		t.Errorf("a finished clip was worked again (%d → %d)", before, stages[filler.StageScore].runs)
+	if stages[filler.StageFinish].runs != before {
+		t.Errorf("a finished clip was worked again (%d → %d)", before, stages[filler.StageFinish].runs)
 	}
 }
 

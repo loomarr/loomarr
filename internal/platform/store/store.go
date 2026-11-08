@@ -422,11 +422,6 @@ type ClipStore interface {
 	// `transcript`, like SetClipLanguage above: UpsertClip omits it so a re-sync cannot blank a
 	// transcribed clip and re-trigger Whisper (~341s per clip under QEMU).
 	SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error
-	// SetClipConfidence records the tagger's grounding-capped score (§10 V38). The ONLY writer of
-	// `confidence` — and until V51a there was none at all, so the column sat at 0 for every clip
-	// ever catalogued while `TagSuggestion.Score` computed a value the tagger then discarded. The
-	// value must be `Score`'s output, never the model's own self-assessment.
-	SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error
 	// SetClipBrand records a GROUNDED advertiser found by the text tagger or confirmed by an operator
 	// (§10 V44) — path-keyed,
 	// writes `brand` and nothing else. It SHARES the `brand` column with ApplyClipVision (text

@@ -125,7 +125,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	pipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, []filler.Stage{
 		filler.NewProbeStage(probe, fillerPipelineClipAdapter{st}, dir, nil,
 			func() time.Duration { return 45 * time.Second }, time.Now), stage,
-		filler.NewScoreStage(fillerTagStoreAdapter{st: st}, func() bool { return false }, time.Now),
+		filler.NewFinishStage(),
 	}, filler.Budget{}, nil, time.Now, nil)
 	var passes []filler.PipelineResult
 	for i := 0; i < 3; i++ {

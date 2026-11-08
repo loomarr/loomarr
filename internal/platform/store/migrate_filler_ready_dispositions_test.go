@@ -46,7 +46,7 @@ func testFillerReadyDispositionsMigration(t *testing.T, s *sqlStore, migrationDi
 			t.Fatal(err)
 		}
 		if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
-			ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone, Progress: 100,
+			ClipHash: hash, Stage: filler.StageID("score"), Status: filler.StatusDone, Progress: 100,
 			Disposition: filler.Disposition("filed"), EnrolledAt: at, UpdatedAt: at,
 		}); err != nil {
 			t.Fatal(err)
@@ -121,7 +121,7 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 		&stage, &status, &disposition, &attempts, &forceRun, &stagesJSON); err != nil {
 		t.Fatal(err)
 	}
-	if filler.StageID(stage) != filler.StageScore || filler.StageStatus(status) != filler.StatusQueued || attempts != 0 ||
+	if filler.StageID(stage) != filler.StageID("score") || filler.StageStatus(status) != filler.StatusQueued || attempts != 0 ||
 		forceRun || filler.Disposition(disposition) != filler.DispositionRunning {
 		t.Fatalf("interrupted legacy row = stage=%s status=%s disposition=%s attempts=%d force=%t", stage, status, disposition, attempts, forceRun)
 	}

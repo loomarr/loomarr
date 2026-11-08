@@ -7,7 +7,10 @@ classification docs; this doc covers how work flows.
 
 ## Readiness stages
 
-`probe → transcode → split → screen → language → transcribe → vision → score`.
+`probe → transcode → split → screen → defects → language → transcribe → vision → finish`.
+
+`finish` does no work of its own: it always applies and always continues, so every published ladder
+ends with a completed terminal rung that the ready commit validates against.
 
 - Each stage answers two questions separately: does it apply to this clip in this install (no exec,
   re-evaluated while the clip is on the conveyor), and then the work. A missing optional capability
@@ -217,7 +220,7 @@ first and yields before optional enrichment starts.
 
 - Offset pagination; `limit` defaults to 100 and caps at 500, with the default in the API, never the
   store (`ClipFilter.Limit == 0` means no limit).
-- Sort by `name | duration | added | plays | confidence`; `added` uses `clips.created_at`.
+- Sort by `name | duration | added | plays`; `added` uses `clips.created_at`.
 - Search covers name, brand, visible text and tags with `LIKE`; there is no full-text engine
   ([0003](decisions/0003-federated-search.md)).
 - Composites list as containers through the opt-in `ClipFilter.TopLevelOnly`; segments stay the

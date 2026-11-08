@@ -871,7 +871,6 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	old := sampleClip("old-content", "Burger Barn 1993", filler.Commercial, 1993, filler.Kids, "fast_food")
 	old.ParentHash = "parent-reel"
 	old.Held = true
-	old.Confidence = 91
 	old.Transcript = "two all beef patties"
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
@@ -944,7 +943,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if got.Name != old.Name || got.Source != old.Source || got.ParentHash != old.ParentHash ||
-		got.Transcript != old.Transcript || !got.Held || got.Confidence != old.Confidence {
+		got.Transcript != old.Transcript || !got.Held {
 		t.Errorf("metadata did not follow identity replacement: %+v", got)
 	}
 	if got.Path != replacement.Path || got.DurationMs != replacement.DurationMs || got.Quality != replacement.Quality {
@@ -1019,7 +1018,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	pipeline := filler.ClipPipeline{
-		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: filler.StageScore,
+		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: filler.StageFinish,
 		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
 		EnrolledAt: at, UpdatedAt: at,
 	}
@@ -1030,7 +1029,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	pipeline.Status, pipeline.Disposition = filler.StatusDone, filler.DispositionReady
-	pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: filler.StageScore, Status: filler.StatusDone, At: at})
+	pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: filler.StageFinish, Status: filler.StatusDone, At: at})
 	if err := s.CommitFillerReady(ctx, filler.ReadyCommit{Pipeline: pipeline, Event: filler.ReadyEvent{
 		ID: "ready:" + old.Hash, ClipHash: old.Hash, AcquisitionID: pipeline.AcquisitionID,
 		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: pipeline.AcquisitionID},
@@ -1136,7 +1135,6 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 
 	source := sampleClip("conditioning-source", "Reviewed child", filler.Commercial, 1993, filler.Kids, "food")
 	source.ParentHash = "retained-parent"
-	source.Confidence = 91
 	source.Transcript = "source-owned transcript"
 	source.UpdatedAt = now
 	if err := s.UpsertClip(ctx, source); err != nil {
@@ -1176,7 +1174,6 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	reconstructed := target
 	reconstructed.Name = "reconstructed from sidecar"
 	reconstructed.Held = true
-	reconstructed.Confidence = 0
 	reconstructed.Transcript = ""
 	if err := s.UpsertClip(ctx, reconstructed); err != nil {
 		t.Fatal(err)
@@ -1195,7 +1192,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != source.Name || got.Transcript != source.Transcript || got.Confidence != source.Confidence || got.Held != source.Held {
+	if got.Name != source.Name || got.Transcript != source.Transcript || got.Held != source.Held {
 		t.Fatalf("adopted target did not inherit source ownership: %+v", got)
 	}
 	if got.Path != target.Path || got.DurationMs != target.DurationMs || got.Quality != target.Quality {
@@ -1427,11 +1424,11 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
 		{ClipHash: "deferred", Stage: filler.StageSplit, Status: filler.StatusQueued,
 			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
-		{ClipHash: "review", Stage: filler.StageScore, Status: filler.StatusDone,
+		{ClipHash: "review", Stage: filler.StageFinish, Status: filler.StatusDone,
 			Disposition: filler.DispositionReview},
-		{ClipHash: "ready", Stage: filler.StageScore, Status: filler.StatusDone,
+		{ClipHash: "ready", Stage: filler.StageFinish, Status: filler.StatusDone,
 			Disposition: filler.DispositionReady},
-		{ClipHash: "complete", Stage: filler.StageScore, Status: filler.StatusDone,
+		{ClipHash: "complete", Stage: filler.StageFinish, Status: filler.StatusDone,
 			Disposition: filler.DispositionComplete},
 		{ClipHash: "rejected", Stage: filler.StageTranscode, Status: filler.StatusFailed,
 			Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable},
@@ -1497,9 +1494,9 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	pipelines := []filler.ClipPipeline{
 		{ClipHash: "preparing", AcquisitionID: newer.ID, Stage: filler.StageVision, Status: filler.StatusRunning,
 			Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "review", AcquisitionID: newer.ID, Stage: filler.StageScore, Status: filler.StatusDone,
+		{ClipHash: "review", AcquisitionID: newer.ID, Stage: filler.StageFinish, Status: filler.StatusDone,
 			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "ready", AcquisitionID: newer.ID, Stage: filler.StageScore, Status: filler.StatusDone,
+		{ClipHash: "ready", AcquisitionID: newer.ID, Stage: filler.StageFinish, Status: filler.StatusDone,
 			Disposition: filler.DispositionReady, EnrolledAt: now, UpdatedAt: now},
 		{ClipHash: "rejected", AcquisitionID: newer.ID, Stage: filler.StageProbe, Status: filler.StatusFailed,
 			Disposition: filler.DispositionRejected, EnrolledAt: now, UpdatedAt: now},
@@ -2889,7 +2886,7 @@ func testClipHeld(t *testing.T, newStore NewStoreFunc) {
 	held := Clip{Clip: filler.Clip{
 		Hash: "held.mp4",
 		Path: "held.mp4", Name: "Held", Kind: filler.Commercial, DurationMs: 30000,
-		Era: 1990, Audience: filler.Kids, Category: "toys", Held: true, Confidence: 40,
+		Era: 1990, Audience: filler.Kids, Category: "toys", Held: true,
 	}, UpdatedAt: at}
 	for _, c := range []Clip{filed, held} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -2920,9 +2917,6 @@ func testClipHeld(t *testing.T, newStore NewStoreFunc) {
 	if len(queue) != 1 || queue[0].Path != "held.mp4" {
 		t.Fatalf("HeldOnly returned %d clips, want just held.mp4", len(queue))
 	}
-	if queue[0].Confidence != 40 {
-		t.Errorf("confidence = %d, want 40 — the score must round-trip", queue[0].Confidence)
-	}
 
 	// ⚠ THE trap this lifecycle has to survive: `clips` is a synced CACHE, so the folder scan
 	// re-upserts every file it finds with held=false. If `held` rode along in UpsertClip's DO
@@ -2930,7 +2924,6 @@ func testClipHeld(t *testing.T, newStore NewStoreFunc) {
 	// channels with no operator action and nothing in the logs.
 	rescan := held
 	rescan.Held = false
-	rescan.Confidence = 0 // a scan knows nothing about tagging
 	if err := s.UpsertClip(ctx, rescan); err != nil {
 		t.Fatal(err)
 	}
@@ -2942,39 +2935,6 @@ func testClipHeld(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal("a re-scan FILED a held clip — UpsertClip must omit `held` from its DO UPDATE " +
 			"list, exactly as it omits the removal tombstone")
 	}
-	if after[0].Confidence != 40 {
-		t.Errorf("a re-scan blanked the confidence score (%d) — it must be omitted too, or a "+
-			"trusted clip starts asking again for no reason", after[0].Confidence)
-	}
-
-	// ⚠ **`SetClipConfidence` is the score's WRITER, and the assertions above cannot see whether
-	// one exists.** They seed the value through `UpsertClip`'s INSERT and prove it round-trips and
-	// survives a re-scan — all true, and all true for two phases while NOTHING in the application
-	// ever wrote a score. `confidence` was 0 in every real catalog. So exercise the writer itself:
-	// it is path-keyed like its `SetClipLanguage`/`SetClipTranscript` neighbours, and its value has
-	// to outlive the folder scan the same way the seeded one does.
-	if err := s.SetClipConfidence(ctx, "held.mp4", 92, at); err != nil {
-		t.Fatal(err)
-	}
-	scored, err := s.ListClips(ctx, ClipFilter{HeldOnly: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(scored) != 1 || scored[0].Confidence != 92 {
-		t.Fatalf("SetClipConfidence did not write the score: %+v", scored)
-	}
-	if err := s.UpsertClip(ctx, rescan); err != nil {
-		t.Fatal(err)
-	}
-	rescored, err := s.ListClips(ctx, ClipFilter{HeldOnly: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rescored) != 1 || rescored[0].Confidence != 92 {
-		t.Errorf("a re-scan blanked a WRITTEN score (%+v) — `confidence` must stay out of "+
-			"UpsertClip's DO UPDATE list for the writer's value, not just the seeded one", rescored)
-	}
-
 	// The ordinary release capability cannot publish a non-composite, even when a caller asks.
 	if n, err := s.ReleaseCompositeHolds(ctx, []string{"held.mp4"}, at); err != nil || n != 0 {
 		t.Fatalf("release non-composite = %d, %v; want 0", n, err)
@@ -4332,32 +4292,30 @@ func testClipPaging(t *testing.T, newStore NewStoreFunc) {
 		name     string
 		duration int64
 		plays    int64
-		conf     int
 		created  int64
 	}
 	rows := []row{
-		{"p1", "apple juice", 30000, 5, 70, 1_700_000_100},
-		{"p2", "Zeppelin Ad", 30000, 5, 70, 1_700_000_200}, // ties p1 on duration/plays/confidence
-		{"p3", "banana split", 15000, 0, 10, 1_700_000_300},
-		{"p4", "Banana bread", 15000, 0, 10, 1_700_000_300}, // ties p3 on EVERYTHING, created included
-		{"p5", "cereal, morning", 60000, 12, 95, 1_700_000_400},
-		{"p6", "Cereal, evening", 45000, 12, 95, 1_700_000_500},
-		{"p7", "zzz last", 5000, 1, 0, 1_700_000_600},
-		{"p8", "AAA first", 90000, 99, 100, 1_700_000_700},
-		{"p9", "middle of the road", 30000, 5, 50, 1_700_000_800},
+		{"p1", "apple juice", 30000, 5, 1_700_000_100},
+		{"p2", "Zeppelin Ad", 30000, 5, 1_700_000_200}, // ties p1 on duration/plays
+		{"p3", "banana split", 15000, 0, 1_700_000_300},
+		{"p4", "Banana bread", 15000, 0, 1_700_000_300}, // ties p3 on EVERYTHING, created included
+		{"p5", "cereal, morning", 60000, 12, 1_700_000_400},
+		{"p6", "Cereal, evening", 45000, 12, 1_700_000_500},
+		{"p7", "zzz last", 5000, 1, 1_700_000_600},
+		{"p8", "AAA first", 90000, 99, 1_700_000_700},
+		{"p9", "middle of the road", 30000, 5, 1_700_000_800},
 	}
 	for _, r := range rows {
 		c := sampleClip(r.id, r.name, filler.Commercial, 1990, filler.Kids, "toys")
 		c.DurationMs = r.duration
 		c.PlayCount = r.plays
-		c.Confidence = r.conf
 		c.CreatedAt = time.Unix(r.created, 0).UTC()
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	sorts := []ClipSort{"", ClipSortName, ClipSortDuration, ClipSortAdded, ClipSortPlays, ClipSortConfidence}
+	sorts := []ClipSort{"", ClipSortName, ClipSortDuration, ClipSortAdded, ClipSortPlays}
 
 	t.Run("PagesConcatenateToTheWholeList", func(t *testing.T) {
 		for _, sort := range sorts {
@@ -5244,7 +5202,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	current := filler.ClipPipeline{
-		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: filler.StageScore,
+		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: filler.StageFinish,
 		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
 		EnrolledAt: at, UpdatedAt: at,
 	}
@@ -5258,7 +5216,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	settled.Status = filler.StatusDone
 	settled.Disposition = filler.DispositionReady
 	settled.NextRun = time.Time{}
-	settled.Stages = append(settled.Stages, filler.StageRecord{Stage: filler.StageScore, Status: filler.StatusDone, At: at})
+	settled.Stages = append(settled.Stages, filler.StageRecord{Stage: filler.StageFinish, Status: filler.StatusDone, At: at})
 	event := filler.ReadyEvent{
 		ID: "ready:" + hash, ClipHash: hash, AcquisitionID: current.AcquisitionID,
 		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: current.AcquisitionID},

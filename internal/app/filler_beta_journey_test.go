@@ -89,7 +89,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		clipStore := fillerPipelineClipAdapter{st: database}
 		return filler.NewPipeline(database, clipStore, []filler.Stage{
 			filler.NewProbeStage(probe, clipStore, layout.ClipDir(), func() int64 { return 10_000 }, nil, func() time.Time { return clock }),
-			filler.NewScoreStage(fillerTagStoreAdapter{st: database}, nil, func() time.Time { return clock }),
+			filler.NewFinishStage(),
 		}, testFillerBudget(), nil, func() time.Time { return clock }, nil).
 			WithRewind(fillerRewindAdapter{st: database}, layout.ClipDir())
 	}

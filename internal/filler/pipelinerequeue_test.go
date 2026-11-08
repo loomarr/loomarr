@@ -103,7 +103,7 @@ func TestRequeue_LeavesAReelParkedAtALaterStageAlone(t *testing.T) {
 	st := newPipeMemStore()
 	seedParkedReel(st, "reel1")
 	row := st.rows["reel1"]
-	row.Stage = filler.StageScore
+	row.Stage = filler.StageFinish
 	st.rows["reel1"] = row
 
 	moved, err := p2(st).Requeue(context.Background(), "reel1")

@@ -236,9 +236,7 @@ type SplitSegment struct {
 	// `0` means never scored — every proposal detected before V54 deserialises that way, and the
 	// review surface must treat "unscored" as "no opinion", never as "doubtful".
 	//
-	// ⚠ **Not `Clip.Confidence`.** That is a TAG confidence ("do we know what this is?"); this is a
-	// BOUNDARY confidence ("did we cut in the right place?"). Confirm must never copy one into the
-	// other — doing so would corrupt both diagnostics and split review.
+	// It answers "did we cut in the right place?", nothing about what the segment is.
 	BoundaryConfidence int `json:"boundaryConfidence,omitempty"`
 	// StartEvidence/EndEvidence say WHY, in the operator's words ("black + silence", "silence only").
 	//

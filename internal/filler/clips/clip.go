@@ -280,11 +280,6 @@ type Clip struct {
 	// the same polarity as RemovedAt and for the same reason: pod assembly loads the catalog
 	// with a zero filter, so the safe state has to be the zero value.
 	Held bool
-	// Confidence (0-100) is the grounding-CAPPED diagnostic tagging score (§10 V38).
-	//
-	// ⚠ NEVER the model's self-assessment — see filler.TagSuggestion.Score. 0 = never scored,
-	// which means the classifier has not measured it.
-	Confidence int
 	// IsComposite marks a clip that is a RECORDED BREAK — many adverts in one file, like
 	// "KCPQ/Fox commercials, 5/28/1996" (§10 V45). A composite is NOT airable: it is excluded from
 	// pod assembly exactly like Held/RemovedAt, because airing a 16-minute block as one "commercial"

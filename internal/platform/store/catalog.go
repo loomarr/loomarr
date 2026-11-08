@@ -62,11 +62,10 @@ type (
 )
 
 const (
-	ClipSortName       = clipstore.ClipSortName
-	ClipSortDuration   = clipstore.ClipSortDuration
-	ClipSortAdded      = clipstore.ClipSortAdded
-	ClipSortPlays      = clipstore.ClipSortPlays
-	ClipSortConfidence = clipstore.ClipSortConfidence
+	ClipSortName     = clipstore.ClipSortName
+	ClipSortDuration = clipstore.ClipSortDuration
+	ClipSortAdded    = clipstore.ClipSortAdded
+	ClipSortPlays    = clipstore.ClipSortPlays
 )
 
 // Sentinels the catalog returns, re-declared as the same values so errors.Is matches either name.

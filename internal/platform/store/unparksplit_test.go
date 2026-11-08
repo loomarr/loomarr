@@ -37,10 +37,10 @@ func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
 		// Mid-detection. Already claimable; the migration must not reset its attempts or clock.
 		{ClipHash: "h:detecting", Stage: filler.StageSplit, Status: filler.StatusQueued,
 			Disposition: filler.DispositionRunning, Attempts: 1, NextRun: now.Add(time.Hour), UpdatedAt: now},
-		// ⚠ A GENUINE operator decision, at a different rung. `score`+`review` means a human was
+		// ⚠ A GENUINE operator decision, at a different rung. `finish`+`review` means a human was
 		// asked to judge a clip and has not answered. Un-parking it would silently retract the
 		// question — the failure mode that makes a repair migration dangerous.
-		{ClipHash: "h:awaiting-human", Stage: filler.StageScore, Status: filler.StatusDone,
+		{ClipHash: "h:awaiting-human", Stage: filler.StageFinish, Status: filler.StatusDone,
 			Disposition: filler.DispositionReview, Attempts: 2, NextRun: now.Add(time.Hour), UpdatedAt: now},
 		// A rejected reel stays rejected: `rejected` is a fact about the file, not a lost gate.
 		{ClipHash: "h:rejected-reel", Stage: filler.StageSplit, Status: filler.StatusDone,

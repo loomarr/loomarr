@@ -57,6 +57,15 @@ func TestPostgresIndexNamesFollowConvention(t *testing.T) {
 	testIndexNamesFollowConvention(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresFinishRungMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testFinishRungMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresInvitationMigrationPreservesExistingContactAddresses(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {

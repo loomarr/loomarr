@@ -132,156 +132,26 @@ func TestProbeStage_OverlongClipBecomesCompositeFromDuration(t *testing.T) {
 	}
 }
 
-// --- score -------------------------------------------------------------------
+// --- finish ------------------------------------------------------------------
 
-type scoreMemStore struct {
-	confidence map[string]int
-}
-
-func newScoreMemStore() *scoreMemStore {
-	return &scoreMemStore{confidence: map[string]int{}}
-}
-
-func (m *scoreMemStore) SetClipConfidence(_ context.Context, path string, c int, _ time.Time) error {
-	m.confidence[path] = c
-	return nil
-}
-
-func heldClipWith(mut func(*filler.Clip)) filler.StoreClip {
-	c := filler.Clip{Hash: "c1", Path: "a3/f9/c1.mp4", Name: "Toy ad", Kind: filler.Commercial, Held: true}
-	mut(&c)
-	return filler.StoreClip{Clip: c}
-}
-
-// A missing classifier cannot create a household task or reject enrolled content.
-func TestScoreStage_NeverRejectsAClipNothingHasLookedAt(t *testing.T) {
-	st := newScoreMemStore()
-	rejectOn := func() bool { return true }
-	s := filler.NewScoreStage(st, rejectOn, nil)
-
-	// Untagged AND untouched.
-	out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) {}))
-	if err != nil {
-		t.Fatal(err)
+// The finish rung is the ready commit's anchor: it applies to every clip and always continues,
+// whatever the optional classifiers did or did not ground. Enrollment is the runtime authority, so
+// a clip nothing has looked at is never rejected here.
+func TestFinishStage_AlwaysAppliesAndContinues(t *testing.T) {
+	s := filler.NewFinishStage()
+	if s.ID() != filler.StageFinish || filler.StageOrder[len(filler.StageOrder)-1] != filler.StageFinish {
+		t.Fatalf("finish is not the terminal rung: id=%s order=%v", s.ID(), filler.StageOrder)
 	}
-	if out.Verdict == filler.VerdictReject {
-		t.Fatal("a clip the tagger has never seen was REJECTED as unidentified — on a fresh install " +
-			"or one with no LLM this tombstones the entire catalog")
-	}
-	if out.Verdict != filler.VerdictContinue {
-		t.Errorf("verdict = %v, want continue", out.Verdict)
-	}
-}
-
-// Even when every optional classifier looked and abstained, enrollment remains the runtime
-// authority. The old reject setting is accepted by the constructor only while settings migrate.
-func TestScoreStage_UnidentifiedRemainsDescriptive(t *testing.T) {
-	looked := func(c *filler.Clip) {} // the classifiers ran and grounded nothing
-
-	for _, tc := range []struct {
-		name   string
-		reject bool
-	}{
-		{"old reject setting on", true},
-		{"old reject setting off", false},
+	for _, clip := range []filler.Clip{
+		{Hash: "c1", Path: "a3/f9/c1.mp4", Kind: filler.Commercial, Held: true},
+		{Hash: "c2", Path: "b4/e8/c2.mp4", Kind: filler.Unclassified, Held: true, Transcript: filler.TranscriptNone},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			st := newScoreMemStore()
-			s := filler.NewScoreStage(st, func() bool { return tc.reject }, nil)
-
-			out, err := s.Run(context.Background(), heldClipWith(looked))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if out.Verdict != filler.VerdictContinue || out.Reason != "" {
-				t.Errorf("result = %+v, want descriptive continue", out)
-			}
-		})
-	}
-}
-
-// ANY grounded signal is enough to be "identified" — including one that is not a match tag.
-//
-// ⚠ A wordless station ident grounded only by its on-screen text is exactly the clip §10 calls
-// some of the best filler there is, so the test for "did we learn anything" has to be wider than
-// "does it have era + audience + category".
-func TestScoreStage_AnyGroundedSignalCountsAsIdentified(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		mut  func(*filler.Clip)
-	}{
-		{"era", func(c *filler.Clip) { c.Era = 1987 }},
-		{"audience", func(c *filler.Clip) { c.Audience = filler.Kids }},
-		{"a taxonomy tag", func(c *filler.Clip) { c.Tags = []string{"toys"} }},
-		{"an advertiser", func(c *filler.Clip) { c.Brand = "Brightfield's" }},
-		{"on-screen text", func(c *filler.Clip) { c.VisibleText = "SPARKRA-COLA" }},
-		{"speech", func(c *filler.Clip) { c.Transcript = "the bright thing" }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			st := newScoreMemStore()
-			s := filler.NewScoreStage(st, func() bool { return true }, nil)
-
-			out, err := s.Run(context.Background(), heldClipWith(tc.mut))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if out.Verdict == filler.VerdictReject {
-				t.Errorf("a clip grounded by %s was rejected as unidentified", tc.name)
-			}
-		})
-	}
-}
-
-// ⚠ A transcript of "[no speech]" is the CHECKED-AND-WORDLESS sentinel, not content. Counting it
-// as grounding would make every silent clip look identified and defeat the check.
-func TestScoreStage_TheNoSpeechSentinelIsNotGrounding(t *testing.T) {
-	st := newScoreMemStore()
-	s := filler.NewScoreStage(st, func() bool { return true }, nil)
-
-	out, err := s.Run(context.Background(), heldClipWith(func(c *filler.Clip) {
-		c.Transcript = filler.TranscriptNone
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Verdict != filler.VerdictContinue {
-		t.Errorf("verdict = %v, want descriptive continue for a wordless clip", out.Verdict)
-	}
-}
-
-// The score is persisted for diagnosis; terminal readiness owns publication after this rung.
-func TestScoreStage_ScoresWithoutPublishing(t *testing.T) {
-	st := newScoreMemStore()
-	s := filler.NewScoreStage(st, func() bool { return false }, nil)
-
-	clip := heldClipWith(func(c *filler.Clip) {
-		c.Kind = filler.Unclassified
-		c.Era, c.Audience, c.Category = 1987, filler.Kids, "toys"
-	})
-	out, err := s.Run(context.Background(), clip)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if st.confidence[clip.Path] != 100 {
-		t.Errorf("confidence = %d, want 100 (everything grounded)", st.confidence[clip.Path])
-	}
-	if out.Verdict != filler.VerdictContinue {
-		t.Errorf("verdict = %v, want continue to terminal readiness", out.Verdict)
-	}
-}
-
-func TestScoreStage_AnUngroundedEraRemainsDiagnostic(t *testing.T) {
-	st := newScoreMemStore()
-	s := filler.NewScoreStage(st, func() bool { return false }, nil)
-	clip := heldClipWith(func(c *filler.Clip) {
-		c.Audience, c.Category = filler.Kids, "toys"
-		c.SuggestedEra = 1985
-	})
-	out, err := s.Run(context.Background(), clip)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if st.confidence[clip.Path] != 40 || out.Verdict != filler.VerdictContinue {
-		t.Fatalf("score/verdict = %d/%v, want diagnostic 40/continue", st.confidence[clip.Path], out.Verdict)
+		if ok, why := s.Applies(context.Background(), filler.StoreClip{Clip: clip}); !ok {
+			t.Fatalf("finish skipped %s (%s) — the ready commit would never validate", clip.Hash, why)
+		}
+		out, err := s.Run(context.Background(), filler.StoreClip{Clip: clip})
+		if err != nil || out.Verdict != filler.VerdictContinue || out.Reason != "" {
+			t.Fatalf("finish on %s = %+v, %v; want a plain continue", clip.Hash, out, err)
+		}
 	}
 }

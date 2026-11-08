@@ -21,7 +21,7 @@ func legacyScoreRow(hash string) filler.ClipPipeline {
 		stages = append(stages, filler.StageRecord{Stage: id, Status: filler.StatusDone, At: at})
 	}
 	return filler.ClipPipeline{
-		ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusRunning,
+		ClipHash: hash, Stage: filler.StageFinish, Status: filler.StatusRunning,
 		Disposition: filler.DispositionRunning, Attempts: 2075, Stages: stages,
 		EnrolledAt: at, UpdatedAt: at, StageQueuedAt: at,
 		PreparationAttempt: 1, PreparationStartedAt: at,
@@ -88,7 +88,7 @@ func TestPipeline_ReadyCommitFailureBacksOffAndYieldsItsSlot(t *testing.T) {
 	for _, id := range filler.StageOrder {
 		poison.Stages = append(poison.Stages, filler.StageRecord{Stage: id, Status: filler.StatusDone})
 	}
-	poison.Stage, poison.Status = filler.StageScore, filler.StatusQueued
+	poison.Stage, poison.Status = filler.StageFinish, filler.StatusQueued
 	st.rows["poison"] = poison
 
 	p := newPipe(st, asSlice(allStages()), filler.DefaultBudget())
@@ -126,7 +126,7 @@ func TestPipeline_ReadyCommitFailingOnceRecoversToReadyAfterBackoff(t *testing.T
 	for _, id := range filler.StageOrder {
 		row.Stages = append(row.Stages, filler.StageRecord{Stage: id, Status: filler.StatusDone})
 	}
-	row.Stage, row.Status = filler.StageScore, filler.StatusQueued
+	row.Stage, row.Status = filler.StageFinish, filler.StatusQueued
 	st.rows["once"] = row
 
 	now := time.Unix(1_800_000_000, 0).UTC()
@@ -156,7 +156,7 @@ func TestPipeline_ReadyCommitFailingOnceRecoversToReadyAfterBackoff(t *testing.T
 			t.Fatalf("ladder[%d] = %+v, want %s complete", i, got.Stages[i], id)
 		}
 	}
-	if score := got.Stages[filler.StageIndex(filler.StageScore)]; score.Status != filler.StatusDone || got.Attempts > filler.MaxAttempts {
+	if score := got.Stages[filler.StageIndex(filler.StageFinish)]; score.Status != filler.StatusDone || got.Attempts > filler.MaxAttempts {
 		t.Fatalf("score=%+v attempts=%d, want score done and attempts within MaxAttempts", score, got.Attempts)
 	}
 }

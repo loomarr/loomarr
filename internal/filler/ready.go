@@ -87,7 +87,7 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 	}
 	p := c.Pipeline
 	if current.ClipHash != p.ClipHash || current.AcquisitionID != p.AcquisitionID ||
-		current.Stage != p.Stage || current.Stage != StageScore || current.Status != StatusRunning ||
+		current.Stage != p.Stage || current.Stage != StageFinish || current.Status != StatusRunning ||
 		current.Disposition != DispositionRunning || current.Attempts != p.Attempts ||
 		p.ForceRun || current.RejectReason != p.RejectReason ||
 		current.RejectDetail != p.RejectDetail || !current.EnrolledAt.Equal(p.EnrolledAt) ||
@@ -108,8 +108,8 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 		}
 	}
 	last := p.Stages[len(p.Stages)-1]
-	if last.Stage != StageScore || last.Status != StatusDone {
-		return fmt.Errorf("%w: final score record is not complete", ErrReadyStale)
+	if last.Stage != StageFinish || last.Status != StatusDone {
+		return fmt.Errorf("%w: final finish record is not complete", ErrReadyStale)
 	}
 	return nil
 }
@@ -200,7 +200,7 @@ func (t *TerminalReady) Commit(ctx context.Context, clip StoreClip, row ClipPipe
 
 // validateCompletedReadyLadder keeps publication tied to the real conveyor rather than merely to
 // a caller holding a ClipPipeline value. Every configured rung must have reached a terminal
-// per-stage result, the final score rung must have completed (it is never optional), and the row
+// per-stage result, the final finish rung must have completed (it is never optional), and the row
 // itself must describe that same final state. Skipped optional/non-applicable work is evidence too;
 // a missing, queued, running, or failed record is not.
 func validateCompletedReadyLadder(row ClipPipeline) error {
@@ -215,8 +215,8 @@ func validateCompletedReadyLadder(row ClipPipeline) error {
 		}
 	}
 	if row.Stages[StageIndex(StageProbe)].Status != StatusDone ||
-		row.Stages[StageIndex(StageScore)].Status != StatusDone {
-		return fmt.Errorf("%w: required probe and score checks did not run", ErrReadyStale)
+		row.Stages[StageIndex(StageFinish)].Status != StatusDone {
+		return fmt.Errorf("%w: required probe and finish rungs did not run", ErrReadyStale)
 	}
 	return nil
 }

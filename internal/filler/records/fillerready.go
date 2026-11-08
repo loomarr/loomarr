@@ -85,7 +85,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 	// sides still describe that published result. The immutable event alone is insufficient: a
 	// deliberate restart keeps it while putting the clip on hold and the conveyor back in motion.
 	if readyEventExists && !clip.Held && !clip.Removed && !clip.Composite && clip.Placement == string(e.Placement) &&
-		current.Disposition == filler.DispositionReady && current.Stage == filler.StageScore &&
+		current.Disposition == filler.DispositionReady && current.Stage == filler.StageFinish &&
 		current.Status == filler.StatusDone {
 		return nil
 	}

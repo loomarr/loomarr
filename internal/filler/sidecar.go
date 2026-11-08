@@ -158,9 +158,6 @@ type SidecarTags struct {
 	// Whisper (~341s per clip under QEMU) over the whole folder. omitempty keeps a wordless or
 	// not-yet-transcribed clip's sidecar unchanged.
 	Transcript string `json:"transcript,omitempty"`
-	// Confidence is the grounding-capped score (§10 V38). Carried so a restored catalog does not
-	// have to re-run the tagger to know what it already worked out.
-	Confidence int `json:"confidence,omitempty"`
 	// SuggestedEra is an UNGROUNDED guess awaiting confirmation — never a tag. Carried
 	// separately for the same reason the column is separate: restoring it as `Era` would
 	// launder a guess into a fact, which is the §8 failure the grounding rule exists to prevent.

@@ -67,7 +67,7 @@ func TestWriteSidecarTags_RoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := filler.SidecarTags{SourceID: "archive:classic", AcquisitionID: "acq-17", Kind: "commercial", Era: 1992, Audience: "kids", Category: "toys", Confidence: 88}
+	want := filler.SidecarTags{SourceID: "archive:classic", AcquisitionID: "acq-17", Kind: "commercial", Era: 1992, Audience: "kids", Category: "toys"}
 	if err := filler.WriteSidecarTags(media, want, false); err != nil {
 		t.Fatal(err)
 	}

@@ -91,9 +91,9 @@ func TestFillerIncoming_SeparatesMachineWorkAndReadyClipsWithoutInventingHumanWo
 	for _, row := range []filler.ClipPipeline{
 		{ClipHash: "preparing", Stage: filler.StageTranscode, Status: filler.StatusRunning, Disposition: filler.DispositionRunning, UpdatedAt: now,
 			Stages: []filler.StageRecord{{Stage: filler.StageProbe, Status: filler.StatusDone, At: now.Add(-time.Minute)}}},
-		{ClipHash: "ready", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-time.Hour)},
-		{ClipHash: "old-ready", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-25 * time.Hour)},
-		{ClipHash: "audit-review", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReview, UpdatedAt: now.Add(-2 * time.Hour)},
+		{ClipHash: "ready", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-time.Hour)},
+		{ClipHash: "old-ready", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-25 * time.Hour)},
+		{ClipHash: "audit-review", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReview, UpdatedAt: now.Add(-2 * time.Hour)},
 	} {
 		if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
 			t.Fatal(err)
@@ -235,8 +235,8 @@ func TestFillerIncoming_UsesTheLiveReadyWindowForRowsAndTotals(t *testing.T) {
 				putClip(t, st, clip)
 			}
 			for _, row := range []filler.ClipPipeline{
-				{ClipHash: "at-cutoff", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-tc.window)},
-				{ClipHash: "before-cutoff", Stage: filler.StageScore, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-tc.window - time.Second)},
+				{ClipHash: "at-cutoff", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-tc.window)},
+				{ClipHash: "before-cutoff", Stage: filler.StageFinish, Status: filler.StatusDone, Disposition: filler.DispositionReady, UpdatedAt: now.Add(-tc.window - time.Second)},
 			} {
 				if err := st.UpsertClipPipeline(t.Context(), row); err != nil {
 					t.Fatal(err)

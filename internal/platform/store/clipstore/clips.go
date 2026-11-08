@@ -35,7 +35,7 @@ type Clip struct {
 	// ⚠ A separate column rather than a reading of UpdatedAt, because a folder re-sync bumps
 	// UpdatedAt on every clip it touches: an "added" order backed by it would reshuffle the whole
 	// catalog after a routine scan. Written ONCE, at insert — `UpsertClip` omits it from the
-	// DO UPDATE list for the same reason it omits held/removed_at/confidence and the counters.
+	// DO UPDATE list for the same reason it omits held/removed_at and the counters.
 	//
 	// ⚠ A catalog fact, so it lives HERE beside UpdatedAt rather than on clipcatalog.Clip. Nothing in
 	// pod assembly, matching or playout reads it; the domain has no opinion about when a row
@@ -158,11 +158,10 @@ type ClipFilter struct {
 type ClipSort string
 
 const (
-	ClipSortName       ClipSort = "name"
-	ClipSortDuration   ClipSort = "duration"
-	ClipSortAdded      ClipSort = "added"
-	ClipSortPlays      ClipSort = "plays"
-	ClipSortConfidence ClipSort = "confidence"
+	ClipSortName     ClipSort = "name"
+	ClipSortDuration ClipSort = "duration"
+	ClipSortAdded    ClipSort = "added"
+	ClipSortPlays    ClipSort = "plays"
 )
 
 // ErrUnknownClipSort is returned by ListClips for a Sort value outside the closed set above. The
@@ -174,7 +173,7 @@ var ErrUnknownClipSort = errors.New("unknown clip sort")
 // ⚠ **Every ordering appends `hash` as a tie-break, and that is a correctness requirement, not
 // tidiness.** Without a total order, `ORDER BY duration_ms` under LIMIT/OFFSET may return the same
 // row on two pages and skip another entirely — SQL promises nothing about the relative order of
-// tied rows between statements, and duration/plays/confidence tie constantly.
+// tied rows between statements, and duration/plays tie constantly.
 //
 // ⚠ **`name` sorts as `LOWER(name)` on BOTH dialects.** SQLite's default BINARY collation puts
 // 'Z' before 'a'; Postgres's locale collation typically does not. Without the LOWER() this one
@@ -196,8 +195,6 @@ func clipOrderBy(f ClipFilter) (string, error) {
 		col = "created_at"
 	case ClipSortPlays:
 		col = "play_count"
-	case ClipSortConfidence:
-		col = "confidence"
 	default:
 		return "", fmt.Errorf("%w: %q", ErrUnknownClipSort, f.Sort)
 	}
@@ -227,12 +224,6 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// review queue and putting untagged, unreviewed clips straight into channels, with no
 		// operator action and nothing in the logs. Enrollment holds new clips; only the atomic
 		// terminal-ready transaction may lift one after the pipeline completes.
-		//
-		// `confidence` is omitted too. A scan knows nothing about tagging, and the Clip it builds
-		// carries a zero score — so leaving it in the update list would blank a tagged clip's
-		// confidence on the next pass, and a clip that had been trusted would start asking again
-		// for no reason. `sync.go` also preserves it explicitly: belt and braces, exactly as that
-		// file's own comment argues for the play counters.
 		//
 		// excluded.play_count would reset every counter to the scan's zero on each pass —
 		// silently, and only noticeable as "usage never goes up". Tags survive re-sync because
@@ -268,8 +259,8 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, confidence, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(hash) DO UPDATE SET
 		   enrichment_revision=CASE
 		     WHEN clips.name <> excluded.name OR clips.kind <> excluded.kind OR clips.source <> excluded.source
@@ -300,7 +291,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		c.Transcript, c.Brand, c.VisibleText, c.VisionTagged,
 		c.IsComposite, c.ParentHash,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
-		c.Held, c.Confidence, epoch(c.UpdatedAt), epoch(clipCreatedAt(c)))
+		c.Held, epoch(c.UpdatedAt), epoch(clipCreatedAt(c)))
 	if err != nil {
 		return fmt.Errorf("upsert clip %s: %w", c.Hash, err)
 	}
@@ -632,12 +623,12 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 			(name, name_source, kind, era, audience, category, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
-			 last_played_at, suggested_era, removed_at, held, confidence,
+			 last_played_at, suggested_era, removed_at, held,
 			 created_at, reaped_at) =
 			(SELECT name, name_source, kind, era, audience, category, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
-			 last_played_at, suggested_era, removed_at, held, confidence,
+			 last_played_at, suggested_era, removed_at, held,
 			 created_at, reaped_at FROM clips WHERE hash = ?),
 			path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
 			WHERE hash = ? AND path = ? AND parent_hash = ? AND held = ? AND removed_at = ? AND is_composite = ?`),
@@ -784,7 +775,7 @@ const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kin
 	rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
 	is_composite, parent_hash,
 	play_count, last_played_at, suggested_era,
-		removed_at, held, confidence, updated_at, created_at FROM clips`
+		removed_at, held, updated_at, created_at FROM clips`
 
 func (s *Store) GetClip(ctx context.Context, id string) (Clip, error) {
 	c, err := scanClip(s.h.QueryRowContext(ctx, s.h.Rebind(clipSelect+` WHERE hash = ?`), id))
@@ -1410,7 +1401,7 @@ func scanClip(sc scannable) (Clip, error) {
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
 		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
 		&isComposite, &c.ParentHash,
-		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &c.Confidence, &updatedAt, &createdAt)
+		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &updatedAt, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Clip{}, ErrNotFound
 	}
@@ -1737,33 +1728,6 @@ func (s *Store) SetClipLanguage(ctx context.Context, path, language string, at t
 		language, epoch(at), path)
 	if err != nil {
 		return fmt.Errorf("set clip language %s: %w", path, err)
-	}
-	return nil
-}
-
-// SetClipConfidence records the tagger's grounding-capped score (§10 V38, migration 00030).
-//
-// ⚠ **The ONLY writer of `confidence`, and until V51a there was NO writer at all.**
-// `TagSuggestion.Score` computed the number and the historical tagger then threw it away after its
-// one comparison. `UpsertClip` inserts a literal 0 and correctly omits the
-// column from its DO UPDATE, so nothing ever put a score in the database: `confidence` was 0 for
-// every clip that had ever existed, the Incoming tab's meter never rendered, and the field's own
-// doc string ("0 = never scored") was true of the entire catalog. The store's conformance case
-// passed throughout because it wrote a value by hand and asserted the round trip — a column can
-// round-trip perfectly and still have no producer.
-//
-// ⚠ The value must come from `TagSuggestion.Score`, never from the model directly. The score is a
-// ceiling set by what could be verified in the clip's own text, which the model may only lower; a
-// caller passing the model's self-assessment would defeat the grounding signal.
-//
-// Keyed by PATH, like SetClipLanguage and SetClipTranscript beside it — that is what the job
-// carries.
-func (s *Store) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
-	_, err := s.h.ExecContext(ctx,
-		s.h.Rebind(`UPDATE clips SET confidence = ?, updated_at = ? WHERE path = ?`),
-		confidence, epoch(at), path)
-	if err != nil {
-		return fmt.Errorf("set clip confidence %s: %w", path, err)
 	}
 	return nil
 }

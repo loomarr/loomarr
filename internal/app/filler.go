@@ -384,25 +384,6 @@ func (w *fillerChannelWake) Run(ctx context.Context, snapshots []filler.Clip) {
 	}
 }
 
-// fillerTagStoreAdapter bridges the store → the score stage and the taxonomy readers.
-type fillerTagStoreAdapter struct{ st store.Store }
-
-func (a fillerTagStoreAdapter) SetClipConfidence(ctx context.Context, path string, confidence int, at time.Time) error {
-	return a.st.SetClipConfidence(ctx, path, confidence, at)
-}
-
-// The taxonomy path (§10 V45a): the tagger serves the vocabulary, grounds against it, and persists
-// the grounded leaf set. All three forward straight to the store — the taxonomy is store-owned.
-func (a fillerTagStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
-	return a.st.ListTaxa(ctx)
-}
-func (a fillerTagStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
-	return a.st.GetClipTags(ctx, clipHash, leavesOnly)
-}
-func (a fillerTagStoreAdapter) SetClipTags(ctx context.Context, clipHash string, leaves []string) error {
-	return a.st.SetClipTags(ctx, clipHash, leaves)
-}
-
 // fillerLanguageStoreAdapter bridges the store → filler.LanguageStore (the language gate, V40).
 type fillerLanguageStoreAdapter struct{ st store.Store }
 

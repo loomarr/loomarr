@@ -2061,10 +2061,6 @@ components:
         category:
           description: Derived primary product-leaf tag; the full set is in tags (§10 V45a)
           type: string
-        confidence:
-          description: Tagging confidence 0-100; 0 = never scored (§10 V38), which is distinct from a low score
-          format: int64
-          type: integer
         contextSuggestion:
           $ref: "#/components/schemas/ClipContextSuggestionDTO"
           description: Cited likely era/geography context. It is not verified metadata and never affects scheduling. Available on exact single-hash reads only.
@@ -10214,7 +10210,7 @@ components:
             - language
             - transcribe
             - vision
-            - score
+            - finish
           type: string
         hash:
           minLength: 1
@@ -16145,7 +16141,6 @@ paths:
               - duration
               - added
               - plays
-              - confidence
             type: string
         - description: Sort direction; default ascending.
           explode: false
