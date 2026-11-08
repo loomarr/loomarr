@@ -4,11 +4,12 @@ import {
   getSettingsPatchMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { ClipDetailsSettings } from "./clip-details-settings";
 
 const entries = [

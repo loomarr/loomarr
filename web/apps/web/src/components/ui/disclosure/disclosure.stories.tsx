@@ -1,7 +1,13 @@
+import { Toggle } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 import { Button } from "../button";
-import { Switch } from "../switch";
 import { Disclosure } from "./disclosure";
+
+const EnableToggle = () => {
+  const [on, setOn] = useState(true);
+  return <Toggle kind="switch" label="Enable Archive.org" labelHidden checked={on} onCheckedChange={setOn} />;
+};
 
 // Disclosure — a reveal whose trigger is a discrete chevron rather than the whole header, so the
 // row can hold its own controls. CollapsibleSection wraps its entire header in one <button>,
@@ -26,7 +32,7 @@ const RowWithItsOwnControls: Story = {
         <Disclosure.Trigger label="Show Archive.org collections" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">Archive.org</span>
         <span className="text-static-400 text-xs">3 collections · 214 clips</span>
-        <Switch aria-label="Enable Archive.org" defaultChecked />
+        <EnableToggle />
         <Button size="sm" variant="ghost">
           Scan
         </Button>

@@ -576,10 +576,17 @@ const boxFocusRing = (focused: boolean, density: Density) =>
     : {};
 
 type ToggleProps = {
+  /**
+   * Ids of the help, unavailable and validation lines the control is read with, for a toggle whose
+   * explanation lives outside it (a settings row's FieldHints).
+   */
+  "aria-describedby"?: string;
   checked: boolean;
   density?: Density;
   description?: string;
   disabled?: boolean;
+  /** The control's own id, for a row label or test that addresses it. */
+  id?: string;
   kind?: "checkbox" | "switch";
   label: string;
   /**
@@ -591,10 +598,12 @@ type ToggleProps = {
 };
 
 const Toggle = ({
+  "aria-describedby": describedBy,
   checked,
   density = "pointer",
   description,
   disabled = false,
+  id,
   kind = "checkbox",
   label,
   labelHidden = false,
@@ -609,6 +618,8 @@ const Toggle = ({
       accessibilityRole={kind}
       accessibilityState={{ checked, disabled }}
       aria-checked={checked}
+      aria-describedby={describedBy}
+      id={id}
       aria-disabled={disabled || undefined}
       disabled={disabled}
       {...focusHandlers}

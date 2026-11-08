@@ -1,12 +1,11 @@
 import { FieldHint, LoomarrProvider, semanticColors } from "@loomarr/design-system";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import * as React from "react";
+import type * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Checkbox } from "./checkbox";
 import { Input } from "./input";
 import { Label } from "./label";
-import { Switch } from "./switch";
 
 // The form controls moved onto the shared design-system tokens and FieldHint (#970 step 45). What
 // must not move with them is the browser's own form behaviour: these cross the same interface a
@@ -117,31 +116,6 @@ describe("form field anatomy on the shared design system", () => {
 
     expect(screen.getByRole("checkbox", { name: "I have a backup" })).toBeRequired();
     expect(form.checkValidity()).toBe(false);
-  });
-
-  it("names a switch through aria-labelledby and submits its state", async () => {
-    const SwitchField = () => {
-      const [on, setOn] = React.useState(false);
-      return (
-        <>
-          <span id="source-label">Use this source</span>
-          <Switch
-            name="enabled"
-            checked={on}
-            onChange={(event) => setOn(event.target.checked)}
-            aria-labelledby="source-label"
-          />
-        </>
-      );
-    };
-    const { onSubmit } = renderForm(<SwitchField />);
-    const toggle = screen.getByRole("switch", { name: "Use this source" });
-
-    toggle.focus();
-    await userEvent.keyboard(" ");
-    expect(toggle).toBeChecked();
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(submitted(onSubmit).get("enabled")).toBe("on");
   });
 
   // The values are the design system's, not copies of them: a token change reaches the forms.
