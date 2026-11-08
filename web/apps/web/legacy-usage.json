@@ -184,8 +184,7 @@
       "tailwindClasses": 63
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 178,
-      "legacyUi": 1
+      "tailwindClasses": 178
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "tailwindClasses": 14
