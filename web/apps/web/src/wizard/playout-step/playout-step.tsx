@@ -4,13 +4,12 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Badge } from "@loomarr/design-system";
+import { Action, Badge } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useState } from "react";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, PLAYOUT_TUNARR, type PlayoutBackend } from "../steps";
@@ -209,9 +208,9 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           </p>
           {publicURLDirty && (
             <div className="mt-3">
-              <Button onClick={() => void savePublicURL()} disabled={patch.isPending}>
+              <Action disabled={patch.isPending} onPress={() => void savePublicURL()}>
                 {patch.isPending ? "Saving…" : "Save address"}
-              </Button>
+              </Action>
             </div>
           )}
         </div>
@@ -233,9 +232,9 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           open={open}
           onToggle={() => setOpen((o) => !o)}
           action={
-            <Button variant="outline" onClick={test} disabled={testing}>
+            <Action disabled={testing} onPress={test} variant="outline">
               {testing ? "Testing…" : "Test connection"}
-            </Button>
+            </Action>
           }
         >
           <SettingsFields
@@ -246,9 +245,9 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           />
           {tunarrDirty && (
             <div className="mt-3">
-              <Button onClick={() => void saveTunarr()} disabled={patch.isPending}>
+              <Action disabled={patch.isPending} onPress={() => void saveTunarr()}>
                 {patch.isPending ? "Saving…" : "Save"}
-              </Button>
+              </Action>
             </div>
           )}
         </ConnectionBlock>

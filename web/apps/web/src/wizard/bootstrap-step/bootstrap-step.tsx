@@ -2,12 +2,12 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { ApiError } from "@loomarr/api/mutator";
 import { bootstrapSchema } from "@loomarr/core/schemas";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import type { BootstrapStepProps } from "./bootstrap-step.type";
 
@@ -132,10 +132,13 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
         )}
       </form.AppField>
 
-      <Button type="submit" disabled={busy} className="w-fit">
-        {busy && <Loader2 className="animate-spin" aria-hidden />}
+      {/* A real submit button under Action's look, so Enter in a field still submits. */}
+      <Action
+        disabled={busy}
+        render={<button disabled={busy} style={{ alignSelf: "flex-start" }} type="submit" />}
+      >
         {busy ? "Creating…" : "Create admin"}
-      </Button>
+      </Action>
     </form>
   );
 };

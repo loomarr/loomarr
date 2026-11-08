@@ -1,8 +1,8 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { fillerSourceCountrySchema } from "@loomarr/core/schemas";
+import { Action } from "@loomarr/design-system";
 import { useForm, useStore } from "@tanstack/react-form";
 import { LocationPicker } from "@/components/loomarr/settings/installation-location";
-import { Button } from "@/components/ui/button";
 import type { SourceActions } from "../use-source-actions";
 
 interface SourceLocationFormProps {
@@ -36,20 +36,18 @@ const SourceLocationForm = ({ source, actions }: SourceLocationFormProps) => {
         onChange={(location) => form.setFieldValue("country", location.country)}
       />
       <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="outline"
+        <Action
           disabled={actions.updating || !country.trim()}
-          onClick={() => void form.handleSubmit()}
+          onPress={() => void form.handleSubmit()}
+          variant="outline"
         >
           Save different area
-        </Button>
+        </Action>
         {(country.trim() || source.locationSource === "source") && (
-          <Button
-            type="button"
-            variant="ghost"
+          <Action
             disabled={actions.updating}
-            onClick={() => {
+            variant="ghost"
+            onPress={() => {
               if (source.locationSource !== "source") {
                 clear();
                 return;
@@ -62,7 +60,7 @@ const SourceLocationForm = ({ source, actions }: SourceLocationFormProps) => {
             }}
           >
             Use my location
-          </Button>
+          </Action>
         )}
       </div>
     </div>

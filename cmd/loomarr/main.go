@@ -220,6 +220,12 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	if cfg.Pprof {
 		log.Warn("LOOMARR_PPROF is set — /debug/pprof/* is exposed UNAUTHENTICATED. Development only; never leave this on.")
 	}
+	// Every grounding lookup goes to the stand-in instead of TMDB, so suggestions only ever see
+	// the stand-in's catalogue. Right for a lane or demo backend, wrong anywhere else.
+	if cfg.TMDBBaseURL != "" {
+		log.Warn("LOOMARR_TMDB_BASE_URL is set — TMDB lookups go to a stand-in, not the public API. Development and demo only.",
+			"url", cfg.TMDBBaseURL)
+	}
 
 	// /metrics is refused without a scrape token (§7, #1408). Say so once at boot, naming the
 	// setting, so an operator whose Prometheus target just went `down` after an upgrade finds
@@ -251,6 +257,7 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 		MetricsToken:            cfg.MetricsToken,
 		DemoUsername:            cfg.DemoUsername,
 		DemoPassword:            cfg.DemoPassword,
+		TMDBBaseURL:             cfg.TMDBBaseURL,
 		Restart:                 lifecycle.RequestRestart,
 		DatabaseMigration:       lifecycle.RequestMigration,
 		DatabaseMigrationError:  databaseMigration.lastError,
@@ -301,7 +308,11 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 		log.Warn("LAN discovery: host name unavailable", "err", hostnameErr)
 		hostname = ""
 	}
-	if advertisement, advertiseErr := landiscovery.Start(listener.Addr(), hostname); advertiseErr != nil {
+	if landiscovery.LocalOnlyURL(application.ServerPublicURL()) {
+		// A loopback or link-local public URL (an isolated dev lane's localhost) reaches nothing
+		// from a phone or TV, so this server does not offer itself on the network (#1892).
+		log.Info("LAN discovery: off, the public URL is reachable only from this machine")
+	} else if advertisement, advertiseErr := landiscovery.Start(listener.Addr(), hostname); advertiseErr != nil {
 		// Discovery failure cannot make the HTTP service unready. The TV reports the missing
 		// automatic path and retains manual address recovery when multicast is unavailable.
 		log.Warn("LAN discovery: advertisement unavailable", "err", advertiseErr)

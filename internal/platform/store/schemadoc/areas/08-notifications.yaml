@@ -9,6 +9,7 @@ tables:
       One row per place notifications can be sent, such as a Discord webhook, an ntfy topic or one person's
       browser for Browser Push. Admins set up household-wide destinations; a person can add their own. A row
       lasts until it is deleted.
+    retention: Kept until an admin, or the person who added it, deletes it.
     columns:
       id: Identifies the destination. Delivery attempts refer to it by this id.
       means: >
@@ -45,6 +46,9 @@ tables:
       One row per notification Loomarr decided to send, such as "your request was approved" or "a media
       folder went offline". Its delivery attempts hang off it. Deleted, with its attempts, 30 days after
       its last attempt finished.
+    retention: >
+      The nightly housekeeping task deletes a notification 30 days after its last attempt finished;
+      ones still sending are kept.
     columns:
       id: Identifies the notification. notification_delivery_attempts point here.
       topic: >
@@ -82,6 +86,7 @@ tables:
     about: >
       One row per try at sending a notification to one destination. A failure that may succeed later queues
       a new row for the next try, up to 5 tries. Deleted with its notification.
+    retention: Goes with its notification (deleted when that is).
     columns:
       id: Identifies the attempt.
       intent_id: The notification being sent, from notification_intents.
@@ -118,7 +123,10 @@ tables:
   - name: notification_reference_recipients
     about: >
       One row per person who asked for a title or channel, recorded when an admin approves their request, so
-      later news about it (the title arrived, the channel went live) reaches them. Rows are kept.
+      later news about it (the title arrived, the channel went live) reaches them.
+    retention: >
+      Kept while the title, the channel and the person exist. Once one is gone, the nightly
+      housekeeping task deletes the row (after 30 days, since a request is recorded before its title is).
     columns:
       reference_kind: What was asked for. title or channel.
       reference_id: The title's key or the channel's id.

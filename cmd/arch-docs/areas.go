@@ -221,7 +221,8 @@ var areas = []area{
 		Name:  "test",
 		Title: "Test support",
 		Description: "Code that exists for tests and never ships in the server: the shared test doubles " +
-			"and fixtures, the store's SQLite and Postgres test databases, the invented demo library, the " +
+			"and fixtures, the store's SQLite and Postgres test databases, the invented demo library and the " +
+			"TMDB stand-in it and the tests share, the " +
 			"end-to-end integration journeys, and the evaluation harness that runs only under its own " +
 			"build tag.",
 		Packages: []string{
@@ -229,7 +230,7 @@ var areas = []area{
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
 			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "platform/store/storetest",
-			"demolibrary", "integration", "eval",
+			"demolibrary", "tmdb/tmdbstandin", "integration", "eval",
 		},
 		ImportsAnyArea: true,
 	},

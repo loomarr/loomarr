@@ -204,9 +204,6 @@ func TestSegmentedBroadcasts_CurrentWindowUsesThePersistedAcceptedCycle(t *testi
 // only when the first playable deck goes live. The guide read it as corrupt state and logged a
 // warning for that channel on every guide read. It has no timeline yet, and that is an honest
 // empty row, not an error. A live channel with no anchor is still refused.
-//
-// ⚠ Not stubChannels: that stub stamps an anchor onto any row that lacks one, so it can never
-// present the state this test is about.
 func TestSegmentedBroadcasts_UnanchoredUntilFirstLive(t *testing.T) {
 	t.Parallel()
 	from := time.Now().Truncate(time.Hour)
@@ -239,9 +236,7 @@ func TestSegmentedBroadcasts_UnanchoredUntilFirstLive(t *testing.T) {
 	}
 }
 
-// unanchoredChannel reads back one channel row exactly as stored, with no playout anchor.
-type unanchoredChannel schedule.ChannelStatus
-
-func (s unanchoredChannel) GetChannel(_ context.Context, id string) (store.Channel, error) {
-	return store.Channel{Channel: schedule.Channel{ID: id, Status: schedule.ChannelStatus(s)}}, nil
+// unanchoredChannel is a channel row in the given status that has no playout anchor.
+func unanchoredChannel(status schedule.ChannelStatus) *stubChannels {
+	return &stubChannels{ch: store.Channel{Channel: schedule.Channel{ID: "ch1", Status: status}}}
 }

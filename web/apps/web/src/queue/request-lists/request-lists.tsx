@@ -3,7 +3,7 @@ import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
-import type { StatusTone } from "@loomarr/design-system";
+import { Action, type StatusTone } from "@loomarr/design-system";
 import { ListGroup, ListRow } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -11,7 +11,6 @@ import { useAuth } from "@/auth/use-auth";
 import { RequestCard } from "@/components/loomarr/ai/request-card";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { buttonVariants } from "@/components/ui/button";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
 
@@ -252,13 +251,13 @@ const NeedsYouList = () => {
               return cardFor(e, {
                 hint: requestFailureHint(e.status.detail, e.journey.failure?.guidance),
                 action: fix && (
-                  <Link
-                    to="/guide"
-                    search={{ job: e.journey.jobId }}
-                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                  <Action
+                    accessibilityRole="link"
+                    render={<Link to="/guide" search={{ job: e.journey.jobId }} />}
+                    variant="outline"
                   >
                     {fix}
-                  </Link>
+                  </Action>
                 ),
               });
             })}

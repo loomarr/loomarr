@@ -202,7 +202,7 @@ func parseRendition(s string) (int, images.Format, bool) {
 // ImageDTO is one image as the frontend sees it.
 type ImageDTO struct {
 	Hash string `json:"hash" doc:"Content hash — the image's identity and its ETag"`
-	Role string `json:"role" doc:"poster | backdrop | icon | thumb — decides the width ladder"`
+	Role string `json:"role" doc:"poster | backdrop | icon | thumb | logo — decides the width ladder"`
 	// Width/Height are the ORIGINAL's. ⚠ Served so an <img> can carry real width/height
 	// attributes: browsers derive aspect-ratio from them, which takes cumulative layout shift to
 	// zero without the frontend guessing a shape per surface.
@@ -217,7 +217,7 @@ type ImageDTO struct {
 	// error, and the frontend omits the <source> rather than waiting.
 	SrcSetAVIF string `json:"srcSetAvif" doc:"Same-origin srcset for AVIF; empty until the AVIF job has run"`
 	SrcSetWebP string `json:"srcSetWebp" doc:"Same-origin srcset for WebP"`
-	Src        string `json:"src" doc:"A same-origin JPEG path for the <img> fallback"`
+	Src        string `json:"src" doc:"A same-origin path for the <img> fallback: JPEG, or WebP for a logo so its transparency survives"`
 }
 
 type getImageInput struct {
@@ -272,7 +272,7 @@ func (s *Server) imageToDTO(ctx context.Context, rec images.Image) ImageDTO {
 		Animated:    rec.Animated,
 		SrcSetAVIF:  avif,
 		SrcSetWebP:  webp,
-		Src:         s.images.PathFor(rec.Hash, rec.Role.NearestWidth(rec.Width), images.FormatJPEG),
+		Src:         s.images.PathFor(rec.Hash, rec.Role.NearestWidth(rec.Width), rec.Role.Fallback()),
 	}
 }
 

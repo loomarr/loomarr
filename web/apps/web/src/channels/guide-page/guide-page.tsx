@@ -11,11 +11,11 @@ import {
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
-import { Text } from "@loomarr/design-system";
+import { Action, Text } from "@loomarr/design-system";
 import { GuideCompact, type GuideFilter, GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -300,14 +300,14 @@ const GuidePage = ({ search }: GuidePageProps) => {
             opened it: hiding it there would leave the panel with no way out. So the door
             reappears the moment it becomes the exit. */
           (!isEmpty || adding) && (
-            <Button
-              variant={adding ? "outline" : "suggest"}
-              onClick={adding ? flow.close : flow.openPanel}
+            <Action
               aria-expanded={adding}
+              icon={adding ? "close" : "suggest"}
+              onPress={adding ? flow.close : flow.openPanel}
+              variant={adding ? "outline" : "suggest"}
             >
-              {adding ? <X aria-hidden /> : <Sparkles aria-hidden />}
               {adding ? "Close" : isAdmin ? "Add a channel" : "Request a channel"}
-            </Button>
+            </Action>
           )
         }
       />

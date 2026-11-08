@@ -2,12 +2,12 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
+import { Field } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 // The pairing screen a TV sends someone to (§11, Shield P1) — the address the device puts on
 // screen, so it must be SHORT and memorable: `<your-server>/pair`.
@@ -117,23 +117,27 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
       >
         <form.Field name="userCode">
           {(field) => (
-            <Input
-              aria-label="Code shown on the device"
+            <Field
+              accessibilityLabel="Code shown on the device"
               // ⚠ The mobile keyboard hints are not polish. This page is opened on a phone almost
               // every time, and without them iOS offers autocorrect and a lowercase keyboard for a
               // code that is always uppercase — producing "wrong code" errors that are really
               // keyboard errors, on a value the user copied correctly.
               autoCapitalize="characters"
               autoComplete="one-time-code"
-              autoCorrect="off"
+              autoCorrect={false}
               autoFocus
-              className="h-20 w-full text-center font-mono text-3xl tracking-[0.35em] uppercase"
-              inputMode="text"
               maxLength={9}
-              name={field.name}
-              onChange={(event) => field.handleChange(event.target.value)}
+              onChangeText={field.handleChange}
               placeholder="BCDF-GHJK"
               spellCheck={false}
+              style={{
+                fontSize: 30,
+                height: 80,
+                letterSpacing: 10,
+                textAlign: "center",
+                textTransform: "uppercase",
+              }}
               value={field.state.value}
             />
           )}

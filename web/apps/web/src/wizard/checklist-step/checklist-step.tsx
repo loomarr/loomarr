@@ -4,12 +4,12 @@ import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
-import { Button } from "@/components/ui/button";
 import { blockTitle } from "@/settings/provider-title";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, requiredChecks } from "../steps";
@@ -179,9 +179,9 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
               // so it gets no shared Test button.
               action={
                 custom ? undefined : (
-                  <Button variant="outline" onClick={() => test(block.id)} disabled={testing !== undefined}>
+                  <Action disabled={testing !== undefined} onPress={() => test(block.id)} variant="outline">
                     {testing === block.id ? "Testing…" : "Test connection"}
-                  </Button>
+                  </Action>
                 )
               }
             >
@@ -220,12 +220,12 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
           are sent — a stored secret reads back empty and an empty PATCH would clear it. */}
       {dirty && (
         <div className="flex items-center gap-3">
-          <Button onClick={save} disabled={patch.isPending}>
+          <Action disabled={patch.isPending} onPress={save}>
             {patch.isPending ? "Saving…" : "Save changes"}
-          </Button>
-          <Button variant="ghost" onClick={() => setEdits({})} disabled={patch.isPending}>
+          </Action>
+          <Action disabled={patch.isPending} onPress={() => setEdits({})} variant="ghost">
             Discard
-          </Button>
+          </Action>
         </div>
       )}
     </div>

@@ -70,6 +70,33 @@ type Readings struct {
 	PeakCount  float64 `json:"peakCount"`
 	// NoiseFloorDB is recorded for calibration only: tonal content reads as a high floor.
 	NoiseFloorDB float64 `json:"noiseFloorDb"`
+	// Framing is the cut-off start and end evidence, absent from readings taken before it existed.
+	// RECORD-ONLY: Assess never reads it (see FramingEvidence).
+	Framing *FramingEvidence `json:"framing,omitempty"`
+}
+
+// FramingVersion versions the framing evidence on its own, so recording it did not need a new
+// MeasurementVersion: a new one re-measures every clip and re-judges it under the enforced bars.
+const FramingVersion = "framing-v1"
+
+// FramingEvidence is what a clip shows and sounds like at its two edges (#2034): a clip cut out of
+// a break too tightly starts or ends mid-scene and mid-sound, where a whole advert opens and closes
+// on black or quiet.
+//
+// ⚠ RECORD-ONLY until the household labels calibrate it (maintainer decision, 2026-11-08). The
+// floor retires and deletes clear fails (#2036), and the synthetic corpus alone cannot set a bar
+// that a real advert opening on a music sting or a bright card would pass. No check reads this,
+// so it never fails, holds, retires or deletes a clip.
+type FramingEvidence struct {
+	Version string `json:"version"`
+	// FirstLuma and LastLuma are the mean luma (8-bit, 0-255) of the first and last sampled frames
+	// inside the active picture. Near black (about 16) is a clean open or close.
+	FirstLuma float64 `json:"firstLuma"`
+	LastLuma  float64 `json:"lastLuma"`
+	// LeadDB and TailDB are the RMS level in dBFS of the first and last 100 ms of sound; -200 is
+	// digital silence. Both are 0 for a clip with no sound (Readings.HasAudio is false).
+	LeadDB float64 `json:"leadDb"`
+	TailDB float64 `json:"tailDb"`
 }
 
 // Band is the era bar a clip is held to.

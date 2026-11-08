@@ -1,8 +1,8 @@
 import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { formatRelative } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 
 const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutputBody) => {
   const limit = ` This check could add up to ${result.maxPerCheck} ${result.maxPerCheck === 1 ? "clip" : "clips"}.`;
@@ -90,17 +90,16 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
       </div>
 
       {source.actions.includes("fetch") && (
-        <Button
-          type="button"
-          className="self-start"
+        <Action
           disabled={fetching}
-          onClick={() => {
+          onPress={() => {
             setCheckResult(undefined);
             onFetch(source.id, setCheckResult);
           }}
+          style={{ alignSelf: "flex-start" }}
         >
           {fetching ? `Looking in ${source.target}…` : "Look for new clips"}
-        </Button>
+        </Action>
       )}
 
       {checkResult && checkResult.sourceId === source.id && (

@@ -20,13 +20,17 @@ type Collection struct {
 	ID         string // media-server item id — opaque, server-local
 	Name       string // display label for the picker
 	ChildCount int    // members as the server counts them; 0 when the field is absent
+	// TMDBID is the TMDB collection a tool generated this one from (one per franchise); "" for a
+	// collection someone made by hand.
+	TMDBID string
 }
 
 // collectionItem mirrors the slice of an /Items BoxSet entry we read.
 type collectionItem struct {
-	ID         string `json:"Id"`
-	Name       string `json:"Name"`
-	ChildCount int    `json:"ChildCount"`
+	ID          string            `json:"Id"`
+	Name        string            `json:"Name"`
+	ChildCount  int               `json:"ChildCount"`
+	ProviderIDs map[string]string `json:"ProviderIds"`
 }
 
 type collectionsResponse struct {
@@ -47,7 +51,7 @@ func (c *Client) Collections(ctx context.Context) ([]Collection, error) {
 	q := url.Values{}
 	q.Set("IncludeItemTypes", "BoxSet")
 	q.Set("Recursive", "true")
-	q.Set("Fields", "ChildCount")
+	q.Set("Fields", "ChildCount,ProviderIds")
 	q.Set("SortBy", "SortName")
 
 	req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
@@ -62,9 +66,9 @@ func (c *Client) Collections(ctx context.Context) ([]Collection, error) {
 	}
 	results := make([]Collection, 0, len(out.Items))
 	for _, it := range out.Items {
-		// Field-identical to Collection by construction; the wire struct exists to carry the
-		// json tags, so a conversion keeps the two from drifting silently.
-		results = append(results, Collection(it))
+		results = append(results, Collection{
+			ID: it.ID, Name: it.Name, ChildCount: it.ChildCount, TMDBID: it.ProviderIDs["Tmdb"],
+		})
 	}
 	return results, nil
 }
