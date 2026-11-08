@@ -1,6 +1,5 @@
-import { Copy, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { Action } from "@loomarr/design-system";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { useCopied } from "@/lib/use-copied";
 import { cn } from "@/lib/utils";
 import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
@@ -32,20 +31,18 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
               <code className="border-input bg-static-800 flex-1 truncate rounded-md border px-3 py-1.5 font-mono text-sm">
                 {value ?? "••••••••••••••••"}
               </code>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onReveal(secret.name)}
+              <Action
                 disabled={busy === secret.name}
+                icon={value ? "conceal" : "reveal"}
+                onPress={() => onReveal(secret.name)}
+                variant="outline"
               >
-                {value ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
                 {value ? "Hide" : "Reveal"}
-              </Button>
+              </Action>
               {value && (
-                <Button variant="outline" size="sm" onClick={() => copy(value, secret.name)}>
-                  <Copy className="size-4" aria-hidden />
+                <Action icon="copy" onPress={() => copy(value, secret.name)} variant="outline">
                   {copied === secret.name ? "Copied" : "Copy"}
-                </Button>
+                </Action>
               )}
             </div>
 
@@ -53,33 +50,30 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
               <div className="border-onair-tint-30 bg-onair-tint-8 flex flex-col gap-2 rounded-md border p-3">
                 <p className="text-onair-300 text-sm">{secret.consequence}</p>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="destructive"
-                    size="sm"
+                  <Action
                     disabled={busy === secret.name}
-                    onClick={() => {
+                    onPress={() => {
                       onRegenerate(secret.name);
                       setConfirming(undefined);
                     }}
+                    variant="destructive"
                   >
-                    {busy === secret.name && <Loader2 className="animate-spin" aria-hidden />}
                     Regenerate anyway
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setConfirming(undefined)}>
+                  </Action>
+                  <Action onPress={() => setConfirming(undefined)} variant="ghost">
                     Cancel
-                  </Button>
+                  </Action>
                 </div>
               </div>
             ) : (
-              <Button
+              <Action
+                icon="refresh"
+                onPress={() => setConfirming(secret.name)}
+                style={{ alignSelf: "flex-start" }}
                 variant="outline"
-                size="sm"
-                className="w-fit"
-                onClick={() => setConfirming(secret.name)}
               >
-                <RefreshCw className="size-4" aria-hidden />
                 Regenerate
-              </Button>
+              </Action>
             )}
           </li>
         );
