@@ -22,7 +22,9 @@ STUB
 cat > "$test_root/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$*" == *'/jobs?per_page=100'* ]]; then
+if [[ "$*" == *'/statuses?per_page=100'* ]]; then
+  printf '%s\n' "$RELEASE_TEST_REHEARSAL"
+elif [[ "$*" == *'/jobs?per_page=100'* ]]; then
   printf '%b\n' "$RELEASE_TEST_JOBS"
 else
   printf '%b\n' "$RELEASE_TEST_RUN"
@@ -34,7 +36,7 @@ common_jobs=$'CI\tsuccess\nImage — release build / Image — release build (li
 candidate_jobs=$'Release candidate — exact main scope\tsuccess\nGo — repository contracts / Go — repository contracts (1/2)\tsuccess\nGo — repository contracts / Go — repository contracts (2/2)\tsuccess\nRust — repository contracts / Rust — repository contracts\tsuccess\nRust image — runtime certification / Rust image — runtime certification\tsuccess'
 
 run_case() {
-  local name=$1 event=$2 jobs=$3 expected=$4
+  local name=$1 event=$2 jobs=$3 expected=$4 tag=${5:-v1.2.3} rehearsal=${6-success}
   local output status
   set +e
   output=$(cd "$root" && \
@@ -42,7 +44,8 @@ run_case() {
     RELEASE_TEST_SHA="$sha" \
     RELEASE_TEST_RUN=$'42\tsuccess\t'"$event" \
     RELEASE_TEST_JOBS="$jobs" \
-    GITHUB_REF_NAME=v1.2.3 \
+    RELEASE_TEST_REHEARSAL="$rehearsal" \
+    GITHUB_REF_NAME="$tag" \
     GITHUB_REPOSITORY=loomarr/loomarr \
     GITHUB_SHA="$sha" \
     ./scripts/validate-release-source.sh 2>&1)
@@ -59,6 +62,9 @@ run_case() {
 }
 
 run_case push-evidence push "$common_jobs" fail
+run_case final-without-rehearsal workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" fail v1.2.3 ''
+run_case final-with-failed-rehearsal workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" fail v1.2.3 failure
+run_case rc-without-rehearsal workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass v1.2.3-rc.1 ''
 run_case candidate-evidence workflow_dispatch "$common_jobs"$'\n'"$candidate_jobs" pass
 run_case full-evidence workflow_dispatch "$common_jobs"$'\nManual CI — full scope\tsuccess' fail
 run_case candidate-missing-contract workflow_dispatch \
