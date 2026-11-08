@@ -645,6 +645,26 @@ describe("feature-gated panels mount when their flag is on", () => {
     expect(within(sectionBar).getByRole("link", { name: label })).toHaveAttribute("aria-current", "page");
   });
 
+  // #2744: the sections share one scroller, so without a reset a tab opened at the previous tab's
+  // offset, Programming past its own heading.
+  it("/channels/ch-1 opens each section at its top", async () => {
+    stubReachable();
+    renderAt("/channels/ch-1/info");
+    const sectionBar = await screen.findByRole("navigation", { name: /channel sections/i });
+    const scroller = screen.getByTestId("channel-section-scroller");
+    scroller.scrollTop = 600;
+
+    await userEvent.click(within(sectionBar).getByRole("link", { name: "Programming" }));
+
+    await waitFor(() =>
+      expect(within(sectionBar).getByRole("link", { name: "Programming" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      ),
+    );
+    expect(scroller.scrollTop).toBe(0);
+  });
+
   // ⚠ And the section must be reachable FROM the channel page, or the deep-link test above only
   // proves a URL works for someone who already knows it. This is the V1/V17a/V23 failure in tab
   // form — a panel that exists at an address nobody can navigate to.
