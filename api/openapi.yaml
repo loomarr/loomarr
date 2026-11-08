@@ -11671,6 +11671,9 @@ components:
           examples:
             - livetv
           type: string
+        notSetUp:
+          description: True when not OK only because none of this service's connection settings are set yet
+          type: boolean
         ok:
           type: boolean
         target:
