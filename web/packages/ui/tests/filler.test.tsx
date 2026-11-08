@@ -63,7 +63,8 @@ describe("ClipSelect", () => {
   // checkbox is a 24px box in a 40px-tall pressable at pointer density.
   it("gives the select box a target of at least 24px", () => {
     const box = mount(<ClipSelect clipName="Sunbeam Juice" onSelectedChange={() => {}} selected={false} />);
-    const style = box.getAttribute("style") ?? "";
+    // On the web the press target is the <label> around the box, which carries the row's height.
+    const style = (box.closest("label") ?? box).getAttribute("style") ?? "";
     const minHeight = Number(/min-height:\s*(\d+)px/.exec(style)?.[1]);
     expect(minHeight).toBeGreaterThanOrEqual(24);
   });

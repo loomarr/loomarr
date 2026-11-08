@@ -575,108 +575,6 @@ const boxFocusRing = (focused: boolean, density: Density) =>
       } as const)
     : {};
 
-type ToggleProps = {
-  /**
-   * Ids of the help, unavailable and validation lines the control is read with, for a toggle whose
-   * explanation lives outside it (a settings row's FieldHints).
-   */
-  "aria-describedby"?: string;
-  checked: boolean;
-  density?: Density;
-  description?: string;
-  disabled?: boolean;
-  /** The control's own id, for a row label or test that addresses it. */
-  id?: string;
-  kind?: "checkbox" | "switch";
-  label: string;
-  /**
-   * Announce the label without printing it, for a control beside content that already shows the
-   * same words (a row's select box next to the row's own title). The accessible name stays `label`.
-   */
-  labelHidden?: boolean;
-  onCheckedChange: (checked: boolean) => void;
-};
-
-const Toggle = ({
-  "aria-describedby": describedBy,
-  checked,
-  density = "pointer",
-  description,
-  disabled = false,
-  id,
-  kind = "checkbox",
-  label,
-  labelHidden = false,
-  onCheckedChange,
-}: ToggleProps) => {
-  const switchWidth = density === "tv" ? 72 : density === "touch" ? 56 : 48;
-  const controlSize = density === "tv" ? 36 : density === "touch" ? 28 : 24;
-  const { focused, ...focusHandlers } = useFocusLook();
-  return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole={kind}
-      accessibilityState={{ checked, disabled }}
-      aria-checked={checked}
-      aria-describedby={describedBy}
-      id={id}
-      aria-disabled={disabled || undefined}
-      disabled={disabled}
-      {...focusHandlers}
-      onPress={() => onCheckedChange(!checked)}
-      style={{
-        alignItems: "center",
-        flexDirection: "row",
-        gap: semanticSpace.control,
-        minHeight: semanticTargets[density],
-        opacity: disabled ? 0.55 : 1,
-      }}
-    >
-      {/* Checked is a selection, so it is neutral-pressed (#1909): elevated fill with a foreground
-          border and mark. Amber is the focus ring around the box, outside a gap. */}
-      <Surface
-        alignItems={kind === "switch" ? (checked ? "flex-end" : "flex-start") : "center"}
-        backgroundColor={checked ? "surfaceElevated" : "surfaceCanvas"}
-        borderColor={checked ? "contentPrimary" : "borderControl"}
-        borderRadius={kind === "switch" ? "round" : "control"}
-        height={controlSize}
-        justifyContent="center"
-        padding={kind === "switch" ? 3 : 0}
-        width={kind === "switch" ? switchWidth : controlSize}
-        {...boxFocusRing(focused, density)}
-      >
-        {kind === "switch" ? (
-          <View
-            backgroundColor={checked ? "contentPrimary" : "contentSecondary"}
-            borderRadius="round"
-            height={controlSize - 8}
-            width={controlSize - 8}
-          />
-        ) : checked ? (
-          <Icon
-            decorative
-            glyph={icons.success}
-            size={density === "tv" ? "control" : "compact"}
-            tone="content"
-          />
-        ) : null}
-      </Surface>
-      {labelHidden ? null : (
-        <View flex={1} gap={2}>
-          <Text density={density} textRole="label">
-            {label}
-          </Text>
-          {description ? (
-            <Text density={density} textRole="hint">
-              {description}
-            </Text>
-          ) : null}
-        </View>
-      )}
-    </Pressable>
-  );
-};
-
 type ChoiceOption<Value extends string> = {
   description?: string;
   disabled?: boolean;
@@ -774,13 +672,6 @@ const ChoiceGroup = <Value extends string>({
   </View>
 );
 
-export type {
-  ActionProps,
-  ActionVariant,
-  ChoiceGroupProps,
-  ChoiceOption,
-  FieldHintProps,
-  FieldProps,
-  ToggleProps,
-};
-export { Action, ChoiceGroup, Field, FieldHint, Toggle };
+export type { ActionProps, ActionVariant, ChoiceGroupProps, ChoiceOption, FieldHintProps, FieldProps };
+// boxFocusRing is shared with the native Toggle adapter, not part of the package interface.
+export { Action, boxFocusRing, ChoiceGroup, Field, FieldHint };

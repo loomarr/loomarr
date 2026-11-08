@@ -42,9 +42,8 @@ export type {
   ChoiceOption,
   FieldHintProps,
   FieldProps,
-  ToggleProps,
 } from "./src/interaction";
-export { Action, ChoiceGroup, Field, FieldHint, Toggle } from "./src/interaction";
+export { Action, ChoiceGroup, Field, FieldHint } from "./src/interaction";
 export type {
   AdaptiveDirection,
   AdaptiveSplitProps,
@@ -119,6 +118,8 @@ export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
 export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
 export { TabBar } from "./src/tab-bar";
+export type { ToggleProps } from "./src/toggle";
+export { Toggle } from "./src/toggle";
 export type { Density, FontFamilyRole, TextRole } from "./src/tokens";
 export {
   brandChroma,
