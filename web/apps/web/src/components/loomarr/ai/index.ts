@@ -7,4 +7,3 @@ export * from "./proposal-edit";
 export * from "./proposal-review";
 export * from "./refine-panel";
 export * from "./refine-review";
-export * from "./request-card";

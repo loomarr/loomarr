@@ -38,8 +38,9 @@ describe("PeopleRoster", () => {
         now={now}
       />,
     );
-    expect(screen.getByRole("button", { name: /^Manage Greta Finch/ })).toHaveTextContent("2h ago");
-    expect(screen.getByRole("button", { name: /^Manage Alder Wren/ })).toHaveTextContent("Never");
+    const row = (name: string) => screen.getByText(name).closest('[role="listitem"]') as HTMLElement;
+    expect(row("Greta Finch")).toHaveTextContent("seen 2h ago");
+    expect(row("Alder Wren")).toHaveTextContent("Never seen");
   });
 
   it("searches and filters the loaded roster with an explicit no-results state", async () => {
