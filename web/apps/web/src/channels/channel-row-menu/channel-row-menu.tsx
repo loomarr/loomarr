@@ -54,6 +54,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+  const DetailsGlyph = isAdmin ? Pencil : Info;
   const { confirming, arm, reset: resetConfirm } = useDeleteConfirm();
   const paused = channel.status === "paused";
 
@@ -130,13 +131,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
               options are Pause and Delete reads as a destructive-actions menu. A member gets the
               same page read-only, so their item names it for what it is (#2732). */}
           <MenuAction
-            icon={
-              isAdmin ? (
-                <Pencil className="text-static-400 size-4" aria-hidden />
-              ) : (
-                <Info className="text-static-400 size-4" aria-hidden />
-              )
-            }
+            icon={<DetailsGlyph className="text-static-400 size-4" aria-hidden />}
             onSelect={() => void navigate({ to: "/channels/$id", params: { id: channel.id } })}
           >
             {isAdmin ? "Edit channel" : "Channel details"}
