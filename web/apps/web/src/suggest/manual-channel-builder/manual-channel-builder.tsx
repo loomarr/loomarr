@@ -10,9 +10,8 @@ import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { Action, Badge, Field } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../components/loomarr/shell";
 import { useAiReconnect } from "../use-ai-reconnect";
@@ -327,14 +326,14 @@ const ManualChannelBuilder = ({
                     {item.name} <span className="text-muted-foreground">{item.year}</span>
                   </span>
                   {lineupBadge(item)}
-                  <Button
+                  <Action
+                    icon="close"
+                    layout="icon"
+                    onPress={() => removeItem(provisionKey(item))}
                     variant="ghost"
-                    size="sm"
-                    aria-label={`Remove ${item.name}`}
-                    onClick={() => removeItem(provisionKey(item))}
                   >
-                    <X aria-hidden />
-                  </Button>
+                    {`Remove ${item.name}`}
+                  </Action>
                 </li>
               );
             })

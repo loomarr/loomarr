@@ -23,6 +23,12 @@ describe("PeopleRoster", () => {
     expect(onSelect).toHaveBeenCalledWith(people.importedMember);
   });
 
+  it("says the requests column is a quota (#2751)", () => {
+    render(<PeopleRoster users={[people.importedMember]} onSelect={() => {}} />);
+    expect(screen.getAllByText("Request quota").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Requests")).not.toBeInTheDocument();
+  });
+
   it("shows when each person was last seen, and Never for someone who hasn't signed in", () => {
     const now = Date.parse("2026-07-19T12:00:00Z");
     render(

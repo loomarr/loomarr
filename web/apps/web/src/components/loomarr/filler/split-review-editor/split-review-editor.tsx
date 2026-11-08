@@ -11,8 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  Tooltip,
 } from "@loomarr/design-system";
-import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
@@ -529,15 +530,17 @@ const SegmentInspector = ({
         </div>
         <div className="flex flex-wrap justify-end gap-1">
           {!last && (
-            <Button variant="ghost" size="sm" onClick={onMergeWithNext} title="Join this clip and the next">
-              <Merge aria-hidden />
-              Join next
-            </Button>
+            <Tooltip content="Join this clip and the next">
+              <Action onPress={onMergeWithNext} variant="ghost">
+                Join next
+              </Action>
+            </Tooltip>
           )}
-          <Button variant="ghost" size="sm" onClick={onDrop} title="Do not keep this clip">
-            <Trash2 aria-hidden />
-            Remove
-          </Button>
+          <Tooltip content="Do not keep this clip">
+            <Action icon="delete" onPress={onDrop} variant="ghost">
+              Remove
+            </Action>
+          </Tooltip>
         </div>
       </div>
 

@@ -316,6 +316,32 @@ describe("Guide", () => {
     );
   });
 
+  it("opens the channel's page from its name, not the player (#2745)", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt("/guide");
+    await view.findByRole("button", { name: /actions for saturday cartoons/i });
+
+    await user.click(view.getByRole("button", { name: /^\d+\s*Saturday Cartoons$/ }));
+
+    await waitFor(() => expect(view.router.state.location.pathname).toMatch(/^\/channels\//));
+  });
+
+  it("closes the View panel on Escape (#2745)", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt("/guide");
+    expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+
+    const viewTrigger = view.getByRole("button", { name: "View options" });
+    await user.click(viewTrigger);
+    expect(view.getByLabelText("Start hour")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(view.queryByLabelText("Start hour")).not.toBeInTheDocument();
+    expect(viewTrigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("opens contextual details on intent and keeps them through pointer transfer until Escape", async () => {
     const user = userEvent.setup();
     stubGuide();

@@ -33,6 +33,8 @@ const hourMs = 3_600_000;
 const LABEL_MIN_PX = 48;
 const LABEL_STRIDES = [1, 2, 3, 4, 6] as const;
 const BADGE_CLEAR_PX = 56;
+// A cell narrower than this draws no title: past its padding there is room for a letter, not a word.
+const LABEL_MIN_CELL_PX = 36;
 
 const selectionOf = (airing: GuideAiringLayout): GuideSelection => ({
   anchorMs: airing.source.startMs + (airing.source.stopMs - airing.source.startMs) / 2,
@@ -59,17 +61,23 @@ const programmeLine = (airing: GuideAiringLayout) =>
 
 // The sheet's time line (5d): "8:50–9:39 PM · in 24m · TV-G". A programme on now counts down as
 // Watching's rows do ("34m left"); one that has ended says nothing more.
+// A programme that hasn't started says when it does ("Starts 10:13 PM · in 34m") rather than a range.
 const sheetTimeLine = (airing: GuideAiringLayout, nowMs: number, timezone?: string) => {
   const { rating, startMs, stopMs } = airing.source;
   const minutes = (ms: number) => `${Math.max(1, Math.ceil(ms / 60_000))}m`;
-  const when =
-    nowMs < startMs
-      ? `in ${minutes(startMs - nowMs)}`
-      : nowMs < stopMs
-        ? `${minutes(stopMs - nowMs)} left`
-        : undefined;
+  if (nowMs < startMs) {
+    return [startsLabel(startMs, timezone), `in ${minutes(startMs - nowMs)}`, rating]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  const when = nowMs < stopMs ? `${minutes(stopMs - nowMs)} left` : undefined;
   return [formatGuideTimeRange(startMs, stopMs, timezone), when, rating].filter(Boolean).join(" · ");
 };
+
+const startsLabel = (startMs: number, timezone?: string) => `Starts ${formatGuideTime(startMs, timezone)}`;
+
+// The picture the programme has; without one the dock draws no empty frame (#2745).
+const hasArtwork = (airing: GuideAiringLayout) => Boolean(airing.source.thumbImage || airing.source.thumbUrl);
 
 const GuideCompact = ({
   density = "touch",
@@ -118,6 +126,8 @@ const GuideCompact = ({
     (a) => a.scheduleBlockId === selection?.scheduleBlockId,
   );
   const Dock = dock === "strip" ? undefined : dock;
+  // Nothing to watch yet: the dock says when it starts, and Watch belongs to what is on now.
+  const notStarted = selectedAiring ? nowMs < selectedAiring.source.startMs : false;
 
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
@@ -276,16 +286,20 @@ const GuideCompact = ({
                             paddingHorizontal={6}
                           >
                             {/* 5d sets a native cell's title in Geist 13/500. The web phone keeps the
-                                web grid's mono label until it is checked against the web mock. */}
-                            <Text
-                              density={density}
-                              numberOfLines={1}
-                              textAlign="left"
-                              textRole={Platform.OS === "web" ? "guideLabel" : "guideCell"}
-                              tone={selected || airing.isOnNow ? "primary" : "secondary"}
-                            >
-                              {label}
-                            </Text>
+                                web grid's mono label until it is checked against the web mock.
+                                A cell too narrow for a word has none: it would print one letter and
+                                an ellipsis (#2745). Its accessible name and the dock say what it is. */}
+                            {drawnWidth >= LABEL_MIN_CELL_PX ? (
+                              <Text
+                                density={density}
+                                numberOfLines={1}
+                                textAlign="left"
+                                textRole={Platform.OS === "web" ? "guideLabel" : "guideCell"}
+                                tone={selected || airing.isOnNow ? "primary" : "secondary"}
+                              >
+                                {label}
+                              </Text>
+                            ) : null}
                           </Surface>
                         </View>
                       </Pressable>
@@ -322,7 +336,7 @@ const GuideCompact = ({
             onDismiss={() => setDismissedBlockId(selectedAiring.scheduleBlockId)}
           >
             <View style={{ flexDirection: "row", gap: 12 }}>
-              {renderArtwork ? (
+              {renderArtwork && hasArtwork(selectedAiring) ? (
                 <Surface
                   backgroundColor="surfaceElevated"
                   borderRadius={6}
@@ -350,14 +364,16 @@ const GuideCompact = ({
                 </Text>
               </View>
             </View>
-            <Action
-              accessibilityLabel={`Watch ${selectedChannel.source.number} ${selectedChannel.source.name} now`}
-              density={density}
-              onPress={() => onWatch(selectedChannel.source.channelId)}
-              tone="primary"
-            >
-              {`Watch ${selectedChannel.source.number} now`}
-            </Action>
+            {notStarted ? null : (
+              <Action
+                accessibilityLabel={`Watch ${selectedChannel.source.number} ${selectedChannel.source.name} now`}
+                density={density}
+                onPress={() => onWatch(selectedChannel.source.channelId)}
+                tone="primary"
+              >
+                {`Watch ${selectedChannel.source.number} now`}
+              </Action>
+            )}
           </Dock>
         )
       ) : selectedChannel && selectedAiring ? (
@@ -374,7 +390,7 @@ const GuideCompact = ({
           role="region"
           aria-label="Selected programme"
         >
-          {renderArtwork ? (
+          {renderArtwork && hasArtwork(selectedAiring) ? (
             <Surface
               backgroundColor="surfaceElevated"
               borderRadius={4}
@@ -391,20 +407,30 @@ const GuideCompact = ({
               <Text density={density} textRole="cardTime" tone="primary">
                 {String(selectedChannel.source.number)}
               </Text>
-              {` · ${formatGuideTimeRange(selectedAiring.source.startMs, selectedAiring.source.stopMs, layout.timezone)}`}
+              {` · ${
+                notStarted
+                  ? startsLabel(selectedAiring.source.startMs, layout.timezone)
+                  : formatGuideTimeRange(
+                      selectedAiring.source.startMs,
+                      selectedAiring.source.stopMs,
+                      layout.timezone,
+                    )
+              }`}
             </Text>
             <Text density={density} numberOfLines={1} textRole="cardTitle">
               {programmeLine(selectedAiring)}
             </Text>
           </View>
-          <Action
-            accessibilityLabel={`Watch ${selectedChannel.source.number} ${selectedChannel.source.name}`}
-            density={density}
-            onPress={() => onWatch(selectedChannel.source.channelId)}
-            tone="primary"
-          >
-            Watch
-          </Action>
+          {notStarted ? null : (
+            <Action
+              accessibilityLabel={`Watch ${selectedChannel.source.number} ${selectedChannel.source.name}`}
+              density={density}
+              onPress={() => onWatch(selectedChannel.source.channelId)}
+              tone="primary"
+            >
+              Watch
+            </Action>
+          )}
         </Surface>
       ) : null}
     </View>

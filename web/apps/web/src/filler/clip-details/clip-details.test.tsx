@@ -50,6 +50,21 @@ describe("ClipDetails", () => {
     expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
   });
 
+  it("prints topics and the country in words, not slugs and codes", () => {
+    render(
+      <ClipDetails
+        clip={{
+          ...clip,
+          assertedTags: ["family-cue", "fast_food"],
+          country: "CA",
+          geographicScope: "national",
+        }}
+      />,
+    );
+    expect(screen.getByText("Family cue, Fast food")).toBeInTheDocument();
+    expect(screen.getByText("Canada · National")).toBeInTheDocument();
+  });
+
   it("shows the registered source label instead of its canonical storage key", () => {
     render(
       <ClipDetails

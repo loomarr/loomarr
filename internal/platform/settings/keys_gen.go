@@ -150,7 +150,6 @@ var (
 	JobLibraryScanSchedule              = StringKey{"job.library_scan.schedule"}
 	JobLibraryFullScanSchedule          = StringKey{"job.library_full_scan.schedule"}
 	JobLibraryScanLookback              = DurationKey{"job.library_scan.lookback"}
-	EpisodesMaxAge                      = DurationKey{"episodes.max_age"}
 	JobArrQueuePollSchedule             = StringKey{"job.arr_queue_poll.schedule"}
 	JobSeerrQueuePollSchedule           = StringKey{"job.seerr_queue_poll.schedule"}
 	JobWorkers                          = IntKey{"job.workers"}

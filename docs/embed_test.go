@@ -33,6 +33,23 @@ var docHrefs = []string{
 	"troubleshooting#tunarr-library",
 }
 
+// #2751: Help's nav follows the order a household reads in, so Get started is first, not sixth in
+// slug order. Everything off that path follows, by slug.
+func TestPagesFollowTheReadingPath(t *testing.T) {
+	var slugs []string
+	for _, p := range docs.Pages() {
+		slugs = append(slugs, p.Slug)
+	}
+	want := []string{"get-started", "install-docker", "connect-services", "add-a-channel"}
+	if len(slugs) < len(want) || !slices.Equal(slugs[:len(want)], want) {
+		t.Fatalf("Help starts %v, want it to start %v", slugs, want)
+	}
+	rest := slugs[len(want):]
+	if !slices.IsSorted(rest) {
+		t.Fatalf("pages after the reading path are not by slug: %v", rest)
+	}
+}
+
 // §13: "every red check in the wizard deep-links to its section here." The backend has
 // been emitting these anchors since phase 8 with nothing to receive them. A dangling
 // deep-link is worse than none — it promises help and delivers a blank page, at the exact

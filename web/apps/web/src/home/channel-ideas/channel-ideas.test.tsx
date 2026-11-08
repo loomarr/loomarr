@@ -177,16 +177,20 @@ describe("Channel ideas on a member's Home (#1659)", () => {
     );
   });
 
-  it("offers ideas on an empty Home, and says when there are none left", async () => {
+  // #2763: an empty "Channel ideas" section showed on Home with nothing in it.
+  it("leaves Home without the section when there is no idea", async () => {
     stub({ me: MEMBER });
-    serve([]);
+    let asked = false;
+    server.use(
+      http.get("*/v1/discovery/ideas", () => {
+        asked = true;
+        return HttpResponse.json({ ideas: [] });
+      }),
+    );
     renderAt("/dashboard");
 
-    expect(
-      await screen.findByText("Nothing’s on yet. Start with one of these, built from your library."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("That’s every idea for now. New ones appear as your library grows."),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(asked).toBe(true));
+    await screen.findByRole("heading", { name: "Home" });
+    expect(screen.queryByRole("heading", { name: "Channel ideas" })).not.toBeInTheDocument();
   });
 });
