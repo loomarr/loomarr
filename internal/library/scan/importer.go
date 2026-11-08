@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,6 +56,11 @@ type Importer struct {
 	Disk      Disk
 	// Managers are the configured arrs, asked on each pass.
 	Managers func() []Manager
+	// Discover asks every source for its folders again, as Settings → Library's "Check again"
+	// does. A full pass calls it first when a connected arr has none of its folders recorded: an
+	// arr connected after the folders were set up, whose files would otherwise never meet its
+	// records. Nil never asks.
+	Discover func(ctx context.Context) error
 	// NFO reads sidecars; nil reads none.
 	NFO mp.Provider
 	// Art lists artwork sidecars; nil lists none. A file's come from the walk's own listing; a
@@ -198,6 +204,13 @@ func (im *Importer) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if im.Discover != nil && im.arrWithoutFolders(all.Paths) {
+		if err := im.Discover(ctx); err != nil {
+			im.log().Warn("library scan: could not ask for a newly connected arr's folders", "err", err)
+		} else if all, err = im.Store.LibraryRoots(ctx); err != nil {
+			return err
+		}
+	}
 	idx := im.arrIndex(ctx, all.Paths, true)
 	im.setProgress(func(p *Progress) { p.ArrIncomplete = !idx.complete })
 	roots := scannedRoots(all.Roots)
@@ -307,6 +320,22 @@ func (im *Importer) arrIndex(ctx context.Context, paths []store.LibraryRootPath,
 		}
 	}
 	return *im.index
+}
+
+// arrWithoutFolders reports whether a connected arr has no folder in the path map.
+func (im *Importer) arrWithoutFolders(paths []store.LibraryRootPath) bool {
+	if im.Managers == nil {
+		return false
+	}
+	for _, m := range im.Managers() {
+		if m.Address == nil || m.Address() == "" {
+			continue
+		}
+		if !slices.ContainsFunc(paths, func(p store.LibraryRootPath) bool { return p.Authority == m.Authority }) {
+			return true
+		}
+	}
+	return false
 }
 
 func (im *Importer) listArrs(ctx context.Context, managers []Manager, paths []store.LibraryRootPath, key string) managerIndex {
