@@ -674,12 +674,12 @@
       "legacyUi": 2
     },
     "src/settings/pair-device/pair-device.tsx": {
-      "tailwindClasses": 70,
-      "legacyUi": 2
+      "tailwindClasses": 63,
+      "legacyUi": 1
     },
     "src/settings/paired-devices/paired-devices.tsx": {
-      "tailwindClasses": 56,
-      "legacyUi": 2
+      "tailwindClasses": 53,
+      "legacyUi": 1
     },
     "src/settings/secrets-settings/secrets-settings.tsx": {
       "tailwindClasses": 3
