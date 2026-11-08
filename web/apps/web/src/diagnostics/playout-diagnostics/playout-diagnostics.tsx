@@ -2,11 +2,11 @@ import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { ListDiagnosticProcessesParams } from "@loomarr/api/models/listDiagnosticProcessesParams";
 import { ListDiagnosticProcessesStatus } from "@loomarr/api/models/listDiagnosticProcessesStatus";
 import type { ProcessRunView } from "@loomarr/api/models/processRunView";
-import { Field, StatusDot, type StatusTone, Surface, Tooltip } from "@loomarr/design-system";
+import { Action, Field, StatusDot, type StatusTone, Surface, Tooltip } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, Check, Clipboard, Download, ExternalLink } from "lucide-react";
+import { AlertTriangle, Check, Clipboard, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
@@ -187,9 +187,9 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
         >
           Timestamps
         </Button>
-        <Button variant="outline" size="sm" onClick={() => void download()}>
-          <Download aria-hidden /> Download output
-        </Button>
+        <Action icon="download" onPress={() => void download()} variant="outline">
+          Download output
+        </Action>
       </div>
       {(query.data.truncated || query.data.discarded > 0) && (
         <p className="text-caution flex items-center gap-1 text-xs">

@@ -40,7 +40,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
         {children.isFetching ? (
           <span className="text-muted-foreground text-xs">Loading segments…</span>
         ) : (
-          <div>
+          <div className="flex">
             <Action onPress={onManage} variant="outline">
               {`Manage ${pluralize(total, "segment")}`}
             </Action>

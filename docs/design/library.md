@@ -568,30 +568,32 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Writers name library items** (step 15c). The availability scan, discovery's presence and the
   channel engine's rating heal ask the Library first (`LibraryTitles`, `LibraryTitleByProviderID`:
   movies and series with a present file, by their TMDB and TVDB ids), so a title that confirms or
-  is found owned records its library item id. The media server answers only what the Library
-  doesn't hold, and a media server that is down no longer holds back what the Library confirms.
-  The ids already stored are the rewrite's.
-- **Collection scopes read the household's collections first** (step 15e). The scope.collections
-  picker lists the household's collections, then only the media server's that were never imported
-  (`imported_id`); the reconcile's membership index does the same, so an imported collection is
-  known only by the household's id the rewrite pointed scopes at. With no media server, the
-  household's alone, without an error.
-- **Title search asks the Library first** (step 15e). Library-scope search, which `/v1/search`
-  and the suggester's tools share, answers with the Library's movies and series by name
-  (`SearchLibraryTitles`: an exact name, then one starting with the term, then the rest), under
-  their library item ids and with their facts. The media server adds only titles the Library
-  didn't answer, while it is short of the limit; with none connected, a term the Library has no
-  title for is no results rather than an error.
-- **The provisioning backstop asks the Library first** (step 15e). Its last look before a title is
-  given up as unavailable confirms one the Library holds, under its library item id; the media
-  server answers only what the Library doesn't hold.
+  is found owned records its library item id. Since step 16, all three ask the Library alone. The
+  ids already stored are the rewrite's.
+- **Collection scopes read the household's collections** (step 15e, household-only since step
+  16). The scope.collections picker and the reconcile's membership index list the household's
+  collections alone, so an imported collection is known only by the household's id the rewrite
+  pointed scopes at. The media server's hand-made collections were imported by the rewrite and its
+  TMDB ones are the Library's ready-made sets, so it is never asked.
+- **Title search reads the Library** (step 15e, Library-only since step 16). Like the collections
+  picker and channel ideas, it needs no media server: only TMDB search waits on its key.
+  Library-scope search, which `/v1/search` and the suggester's tools share, answers with the
+  Library's movies and series by name (`SearchLibraryTitles`: an exact name, then one starting with
+  the term, then the rest), under their library item ids and with their facts. A term the Library
+  has no title for is no results rather than an error.
+- **The provisioning backstop reads the Library** (step 15e, Library-only since step 16). Its last
+  look before a title is given up as unavailable confirms one the Library holds, under its library
+  item id.
+- **Channel ideas read the Library** (step 15e, Library-only since step 16). Home's channel ideas
+  draw from the Library's movies and series with their year and genres (`LibraryTitles`,
+  `LibraryItemFacts`).
 - **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
   stored records name at library items: titles, airings, channels' slots, scopes, rules and
   lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
   are history and keep theirs). An id the map doesn't pair still maps when its record names a
   title (a title's key, a proposal pick's) whose TMDB or TVDB id a Library title carries: a media
   server that re-added its library left every old id dead, but not the titles. The pass runs in
-  one transaction and drops the media server's episode and path caches.
+  one transaction.
 
   There is no all-or-nothing gate: every reader takes either kind of id, so what maps is rewritten
   at once and the rest is logged and waits for a later pass. An airing names an episode with no
@@ -609,22 +611,37 @@ step 5). Nothing reads the scanner's origins until the cutover.
   still names a media-server library is rewritten on the next filler sync to its folder: the
   library's folders as the media server reports them, through the path map, with a row for each
   extra folder. A name with no mapped folder is logged once and does no work.
-
-## Cached series episodes
-
-Expanding a series into episodes costs one media-server call per show, which used to dominate guide
-latency. `series_episodes` caches one row per show (episodes plus `fetched_at`); the library stays the
-source of truth.
-
-- **Read:** a miss or a stale row falls back to the live call and writes the result back.
-- **Refresh:** the `channel-maintenance` job re-enumerates aged rows, only for shows referenced by
-  lineups. It is deliberately not hung off `library-scan`, which only visits in-flight acquisitions and
-  would never refresh a show that is already available.
-- **Playable contract:** every cached episode needs a non-blank library item id, a positive duration and
-  valid season and episode numbers. A write that breaks it is rejected whole; a cache row that breaks
-  it fails the read, and duplicate identity members are an error, not last-one-wins.
-- **Editorial evidence** (rating in `(0,10]`, an overview up to 2,048 code points, up to 16 tags) is
-  repaired tolerantly: an invalid or ambiguous field becomes unavailable without discarding the episode.
+- **Playout reads only the Library's files** (step 16). A programme, its still, its first-play
+  measurement and its channel's codec vote all read the library item's playing file
+  (`LibraryPlayingFile`). An item whose file is gone airs the offline card. The media server's
+  stream URL, its per-item path lookup and the `library_item_paths` cache are deleted (migration
+  194). `library.path_map` now only helps folder discovery.
+- **A series expands only from the Library** (step 16). A lineup's series reads the Library's
+  episodes (`LibraryEpisodes`) and nothing else: an id that is no library series expands to nothing,
+  with no media-server call. An episode needs a non-blank library item id, a positive duration and
+  valid season and episode numbers, or it is dropped. Its editorial evidence (rating in `(0,10]`,
+  an overview up to 2,048 code points, up to 16 tags) is repaired tolerantly: an invalid field
+  becomes unavailable without discarding the episode. The read is three indexed queries: the
+  household library's largest show (948 episodes) answers in under 10ms, so the media server's
+  episode cache (`series_episodes`, its `channel-maintenance` refresh and `episodes.max_age`) is
+  deleted (migration 195). The engine's five-second memo still collapses the repeats within one
+  layout.
+- **Item metadata reads only the Library** (step 16). The guide's descriptions, a lineup's
+  durations and a proposal's outlook read `LibraryItemFacts` and nothing else; an id that is no
+  library item has none. The guide's descriptions no longer wait on a media server being
+  connected.
+- **Titles read only the Library** (step 16). Title search, discovery's and movie collections'
+  in-library marking, approval additions, the proposal outlook, the rating heal and the backstop's
+  last look all answer from `SearchLibraryTitles` and `LibraryTitleByProviderID`; the media server
+  is never asked. Approval additions and the proposal outlook no longer need one connected. The
+  availability scan (`LibraryTitles`), channel ideas and the collection picker and index read only
+  the Library and the household's collections too.
+- **Stream facts read only the Library** (step 16). A channel's derived format, a still's tone
+  mapping and audio selection read the playing file's header as the scanner read it
+  (`LibraryPlayingVideo`, `LibraryAudioTracks`). The media-server importer that filled the
+  inventory from an item's media information, with its 24-hour re-import, is deleted: an id that
+  is no library item is unknown, which is SDR and the first audio track. A local file the Library
+  has not read is probed once and the measurement kept under its stat revision, as before.
 
 ## Search
 

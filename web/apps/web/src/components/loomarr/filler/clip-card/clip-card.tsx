@@ -1,11 +1,10 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Badge, Card } from "@loomarr/design-system";
+import { Action, Badge, Card, Tooltip } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
-import { Play, Scissors } from "lucide-react";
+import { Play } from "lucide-react";
 import { useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
@@ -208,22 +207,20 @@ const ClipFrame = ({
           never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
       {onPlay && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          {/* The app's `Button` primitive, not a hand-rolled <button>: the pointer cursor (which
-              Tailwind v4's Preflight stopped giving <button>), the focus ring and the disabled
-              handling all live there once. Only the disc SHAPE is local. */}
-          <Button
-            variant="ghost"
-            size="icon"
+          {/* A plain <button>, not a DS Action: the target is the whole preview frame with no
+              control box of its own, which no Action layout draws. So the pointer cursor (which
+              Tailwind v4's Preflight stopped giving <button>) and the focus ring are set here.
+              Only the disc is visible. */}
+          <button
+            type="button"
             onClick={onPlay}
             // The name says WHICH clip: a grid of buttons all called "Play" is unusable by voice
             // control and meaningless in a screen reader's element list.
             aria-label={`Preview ${clip.name}`}
-            title={`Preview ${clip.name}`}
             className={cn(
-              "text-static-950 pointer-events-auto h-full w-full rounded-none bg-transparent hover:bg-transparent",
-              "group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100",
+              "text-static-950 pointer-events-auto flex h-full w-full cursor-pointer items-center justify-center",
               // Visible focus ring against arbitrary video underneath.
-              "focus-visible:ring-static-100 focus-visible:ring-offset-0",
+              "focus-visible:ring-static-100 outline-none focus-visible:ring-2 focus-visible:ring-inset",
             )}
           >
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
@@ -232,7 +229,7 @@ const ClipFrame = ({
             <span className="bg-signal/90 flex size-11 items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
               <Play className="ml-0.5 size-5 fill-current" aria-hidden />
             </span>
-          </Button>
+          </button>
         </div>
       )}
     </div>
@@ -348,16 +345,17 @@ const ClipCard = ({
         </>
       )}
       {onSplit ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={splitPending}
-          onClick={onSplit}
-          title="Detect commercials inside this compilation and review the cuts"
-        >
-          <Scissors aria-hidden />
-          {splitPending ? "Splitting…" : "Split into clips"}
-        </Button>
+        <Tooltip content="Detect commercials inside this compilation and review the cuts">
+          <Action
+            disabled={splitPending}
+            icon="split"
+            onPress={onSplit}
+            style={{ alignSelf: "flex-start" }}
+            variant="ghost"
+          >
+            {splitPending ? "Splitting…" : "Split into clips"}
+          </Action>
+        </Tooltip>
       ) : null}
     </Card>
   );

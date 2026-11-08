@@ -39,6 +39,11 @@ func seedTwice(t *testing.T, lib *demolibrary.Library) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
+	// What scanLibrary returns once the scan wrote every title: its library item id.
+	items := map[string]string{}
+	for _, ti := range lib.Titles {
+		items[ti.ID()] = "lib-" + ti.ID()
+	}
 	run := func() map[int]string {
 		admin, _, err := ensureAdmin(ctx, st)
 		if err != nil {
@@ -47,7 +52,7 @@ func seedTwice(t *testing.T, lib *demolibrary.Library) {
 		approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 		ids := map[int]string{}
 		for _, c := range lib.Channels {
-			id, err := ensureChannel(ctx, st, approver, lib, admin.ID, c)
+			id, err := ensureChannel(ctx, st, approver, lib, items, admin.ID, c)
 			if err != nil {
 				t.Fatalf("channel %d: %v", c.Number, err)
 			}
@@ -93,8 +98,9 @@ func seedTwice(t *testing.T, lib *demolibrary.Library) {
 			if err != nil {
 				t.Fatalf("title %s: %v", ti.Key(), err)
 			}
-			if rec.State != provision.Available || rec.LibraryID != ti.ID() {
-				t.Errorf("title %q = %s in library %q, want available as %s", ti.Name, rec.State, rec.LibraryID, ti.ID())
+			// The demo plays only its scanned files (#2151 step 16): every title names its library item.
+			if rec.State != provision.Available || rec.LibraryID != items[ti.ID()] {
+				t.Errorf("title %q = %s in library %q, want available as %s", ti.Name, rec.State, rec.LibraryID, items[ti.ID()])
 			}
 		}
 	}

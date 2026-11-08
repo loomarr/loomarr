@@ -1443,6 +1443,39 @@ func TestSuggest_ToolFreeNameGroundingIsBoundedAndDeduplicated(t *testing.T) {
 	}
 }
 
+// A title the household said never to stays out when the model names it without searching: the
+// name fallback ranks it against the feedback like any surfaced candidate, and keeps the verdict.
+func TestSuggest_ToolFreeNameGroundingHonoursNever(t *testing.T) {
+	ms := testkit.NewMediaServer(t)
+	ms.SetSearchItems(
+		testkit.SearchStub{Terms: []string{"grand oak hotel"}, LibraryItemID: "1", Name: "Grand Oak Hotel", Type: "Series", TVDBID: 90000761},
+		testkit.SearchStub{Terms: []string{"crumb street bakery"}, LibraryItemID: "2", Name: "Crumb Street Bakery", Type: "Series", TVDBID: 90000762},
+	)
+	feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
+		"": {{Target: "series:tvdb:90000762", Action: suggest.FeedbackNever}},
+	}}
+	s := suggest.New(
+		testkit.NewLLM(finalResponseWithNone(`{
+			"channelName":"Friday Night",
+			"picks":[
+				{"mediaType":"series","key":"series:tmdb:90090001","name":"Grand Oak Hotel"},
+				{"mediaType":"series","key":"series:tmdb:90090002","name":"Crumb Street Bakery"}
+			]
+		}`)),
+		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil),
+		nil,
+		10,
+	).WithFeedback(feedback)
+
+	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "nostalgic family sitcoms"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prop.Lineup) != 1 || prop.Lineup[0].TVDBID != 90000761 {
+		t.Fatalf("lineup = %+v, want only Grand Oak Hotel: Crumb Street Bakery is never", prop.Lineup)
+	}
+}
+
 func TestSuggest_ToolFreeNameGroundingPropagatesCallerDeadline(t *testing.T) {
 	lib := &concurrentTitleLibrary{ready: make(chan struct{})}
 	s := suggest.New(
