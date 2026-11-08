@@ -9,11 +9,12 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func openRecoveryStore(t *testing.T) records.Store {
 	t.Helper()
-	db, err := records.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "recovery.db"), true)
+	db, err := records.Open(t.Context(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

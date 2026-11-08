@@ -13,6 +13,7 @@ import (
 	"github.com/riverqueue/river/rivertype"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type historyNotifier chan string
@@ -210,7 +211,7 @@ func TestSummarizeJobHistoryCountsOnlyTrustworthyRunsInTheWindow(t *testing.T) {
 }
 
 func TestRiverHistoryRecordsTheLoomarrOutcome(t *testing.T) {
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/history.db", true)
+	st, err := store.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

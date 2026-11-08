@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // `make demo-seed` must be safe to rerun: the docs capture script runs it before every shoot.
@@ -32,7 +33,7 @@ func TestDemoSeedChannelsAreIdempotent(t *testing.T) {
 
 func seedTwice(t *testing.T, lib *demolibrary.Library) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/demo.db", true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
