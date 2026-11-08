@@ -34,10 +34,12 @@ type guideBody struct {
 	ToMs     int64  `json:"toMs"`
 	Timezone string `json:"timezone"`
 	Channels []struct {
-		ChannelID string `json:"channelId"`
-		Name      string `json:"name"`
-		Number    int    `json:"number"`
-		Airings   []struct {
+		ChannelID    string `json:"channelId"`
+		Name         string `json:"name"`
+		Number       int    `json:"number"`
+		ProgramCount int    `json:"programCount"`
+		PendingCount int    `json:"pendingCount"`
+		Airings      []struct {
 			Kind          string        `json:"kind"`
 			Title         string        `json:"title"`
 			Series        string        `json:"series"`
@@ -230,6 +232,32 @@ func TestGuide_PendingAndFillerAreDistinguishable(t *testing.T) {
 			t.Errorf("no %q block in the timeline; got kinds %v — the grid cannot draw what "+
 				"the API will not distinguish", want, kinds)
 		}
+	}
+}
+
+// #2727: a channel still downloading its titles reads "3 of 12 downloaded" in the guide and on
+// Home, so its row carries the ready count beside the pending one, from the same lineup.
+func TestGuide_RowCarriesReadyAndPendingTitleCounts(t *testing.T) {
+	harness := newGuideHarness(t, guideHarnessConfig{Guide: &fakeXMLTVGuide{}})
+	srv, st := harness.Server, harness.Store
+	if _, err := st.SaveChannel(context.Background(), store.Channel{
+		Channel: schedule.Channel{ID: "ch1", Name: "ch1", Number: 1, Strategy: "sequential", Status: schedule.StatusLive},
+		Desired: []schedule.Slot{
+			{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", Title: "Ready"},
+			{Kind: schedule.SlotPending, Key: "movie:tmdb:2", Title: "Coming"},
+			{Kind: schedule.SlotPending, Key: "movie:tmdb:3", Title: "Also coming"},
+			{Kind: schedule.SlotFiller, Title: "Break"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	body := getGuide(t, srv, "")
+	if len(body.Channels) != 1 {
+		t.Fatalf("got %d channels, want 1", len(body.Channels))
+	}
+	if got := body.Channels[0]; got.ProgramCount != 1 || got.PendingCount != 2 {
+		t.Fatalf("counts = %d ready, %d pending; want 1 and 2", got.ProgramCount, got.PendingCount)
 	}
 }
 

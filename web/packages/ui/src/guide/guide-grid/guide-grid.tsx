@@ -10,6 +10,7 @@ import {
   guideChannelForTypeahead,
   guideChannelState,
   guideSelectionForChannel,
+  guideWaitingForTitles,
 } from "@loomarr/core/guide";
 import {
   brandChroma,
@@ -259,6 +260,74 @@ const Block = ({
   );
 };
 
+type WaitingBlockProps = Omit<BlockProps, "airing" | "offAir" | "preview" | "px" | "timezone"> & {
+  airings: GuideAiringLayout[];
+  label: string;
+};
+
+// A channel still downloading its titles, with nothing but breaks in the window, is ONE labelled
+// block (#2727) instead of hours of unlabelled pod slivers. It stands for every airing in the row,
+// so the keyboard model is unchanged: it is selected whenever one of them is.
+const WaitingBlock = ({
+  airings,
+  focusPending,
+  focusable,
+  label,
+  onOpen,
+  onSelect,
+  selected,
+}: WaitingBlockProps) => {
+  const ref = useRef<ComponentRef<typeof View>>(null);
+  const first = airings[0];
+  const last = airings.at(-1);
+  const { focused, ...focusHandlers } = useFocusLook({
+    onFocus: () => {
+      if (!selected && first) onSelect?.(selectionOf(first));
+    },
+  });
+
+  useEffect(() => {
+    if (selected && focusPending?.current) {
+      focusPending.current = false;
+      ref.current?.focus();
+    }
+  }, [focusPending, selected]);
+
+  if (!first || !last) return null;
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      tabIndex={focusable ? 0 : -1}
+      {...focusHandlers}
+      onPress={onOpen}
+      ref={ref}
+      style={{
+        bottom: 6,
+        left: `${first.startRatio * 100}%`,
+        position: "absolute",
+        top: 6,
+        width: `${(last.startRatio + last.widthRatio - first.startRatio) * 100}%`,
+      }}
+    >
+      <Surface
+        backgroundColor="guideBreakFill"
+        borderColor={focused ? "actionFocus" : "borderDecorative"}
+        borderRadius={4}
+        borderWidth={1}
+        flex={1}
+        justifyContent="center"
+        overflow="hidden"
+        paddingHorizontal={8}
+      >
+        <Text numberOfLines={1} textAlign="left" textRole="cardLabel" tone="muted">
+          {label}
+        </Text>
+      </Surface>
+    </Pressable>
+  );
+};
+
 const nowLine = (ratio: number) => (
   <View
     pointerEvents="none"
@@ -302,6 +371,8 @@ const Row = memo(
   }) => {
     const { broadcast, health } = guideChannelState(channel.source);
     const chip = health ? healthChip[health] : undefined;
+    const waiting = guideWaitingForTitles(channel.source);
+    const inRow = channel.airings.some((airing) => airing.scheduleBlockId === tabStop);
     return (
       <Surface
         backgroundColor="transparent"
@@ -369,21 +440,33 @@ const Row = memo(
           <View style={{ alignItems: "center", width: 28 }}>{renderRowMenu?.(channel.source)}</View>
         </Surface>
         <View style={{ flex: 1, height: ROW, overflow: "hidden", position: "relative" }}>
-          {channel.airings.map((airing) => (
-            <Block
-              airing={airing}
-              focusable={airing.scheduleBlockId === tabStop}
+          {waiting ? (
+            <WaitingBlock
+              airings={channel.airings}
+              focusable={inRow}
               focusPending={focusPending}
-              key={airing.scheduleBlockId}
-              offAir={health === "paused"}
+              label={waiting}
               onOpen={() => onOpenChannel?.(channel.source.channelId)}
               onSelect={onSelect}
-              preview={renderPreview?.(selectionOf(airing))}
-              px={airing.widthRatio * timelineWidth}
-              selected={airing.scheduleBlockId === tabStop}
-              timezone={timezone}
+              selected={inRow}
             />
-          ))}
+          ) : (
+            channel.airings.map((airing) => (
+              <Block
+                airing={airing}
+                focusable={airing.scheduleBlockId === tabStop}
+                focusPending={focusPending}
+                key={airing.scheduleBlockId}
+                offAir={health === "paused"}
+                onOpen={() => onOpenChannel?.(channel.source.channelId)}
+                onSelect={onSelect}
+                preview={renderPreview?.(selectionOf(airing))}
+                px={airing.widthRatio * timelineWidth}
+                selected={airing.scheduleBlockId === tabStop}
+                timezone={timezone}
+              />
+            ))
+          )}
           {nowRatio === undefined ? null : nowLine(nowRatio)}
         </View>
       </Surface>

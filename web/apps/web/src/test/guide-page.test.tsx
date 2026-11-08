@@ -178,6 +178,44 @@ describe("Guide", () => {
     expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
   });
 
+  // #2727: a channel with no programme yet filled its row with unlabelled pod slivers. It is one
+  // labelled block that says what it is waiting for.
+  it("draws a channel still downloading its titles as one labelled block", async () => {
+    stubGuide();
+    const pod = {
+      entries: [{ name: "Fizzbolt", role: "commercial" as const, durationMs: 60_000, isFallbackCard: false }],
+      matchLevel: "exact" as const,
+      totalMs: 60_000,
+    };
+    server.use(
+      getChannelGuideMockHandler({
+        ...GUIDE,
+        channels: [
+          {
+            channelId: "ch-part",
+            name: "Late Night",
+            number: 43,
+            status: "live" as const,
+            pendingCount: 9,
+            programCount: 3,
+            airings: [0, 1, 2].map((i) => ({
+              kind: "filler" as const,
+              scheduleBlockId: `break-${i}`,
+              title: "",
+              startMs: NOW + i * 60_000,
+              stopMs: NOW + (i + 1) * 60_000,
+              pod,
+            })),
+          },
+        ],
+      }),
+    );
+    renderAt("/guide");
+    const label = "Commercials until titles arrive · 3 of 12 downloaded";
+    expect(await screen.findByRole("button", { name: label })).toBeInTheDocument();
+    expect(screen.queryByText("Fizzbolt")).not.toBeInTheDocument();
+  });
+
   // The span picker replaced zoom (#1659): the grid always fits its width, so seeing more or less
   // time means asking the server for a longer or shorter window.
   it("changes how much time the guide shows with the span picker, not zoom", async () => {

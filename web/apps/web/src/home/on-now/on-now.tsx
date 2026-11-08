@@ -1,7 +1,15 @@
-import type { GuideChannelState } from "@loomarr/core/guide";
-import { guideChannelState } from "@loomarr/core/guide";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
+import type { GuideChannelLayout, GuideChannelState } from "@loomarr/core/guide";
+import {
+  formatGuideEpisode,
+  formatGuideTimeRange,
+  guideAiringLabel,
+  guideBreakProgramme,
+  guideChannelState,
+  guideWaitingForTitles,
+} from "@loomarr/core/guide";
 import type { StatusTone } from "@loomarr/design-system";
-import { Action, SectionHeader } from "@loomarr/design-system";
+import { Action, Badge, SectionHeader } from "@loomarr/design-system";
 import { ListGroup, ListRow, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -40,6 +48,57 @@ const lifecycle = (state: GuideChannelState): { label: string; tone: StatusTone 
   return { label: "No programme scheduled now", tone: "off" };
 };
 
+type OnNowCard = {
+  channel: GuideChannelLayout;
+  channelName: string;
+  channelLogoUri?: string;
+  /** The airing whose picture fills the card. */
+  airing: GuideAiring;
+  /** The card's title: always a programme, never filler (#2761). */
+  title?: string;
+  episodeLabel?: string;
+  timeLabel?: string;
+  /** The channel is in a break: the title is the programme it leads back to. */
+  inBreak?: boolean;
+  /** The channel is all breaks while its titles download: one plain sentence instead (#2727). */
+  waiting?: string;
+};
+
+// What a channel's On now card says. Titles mean programmes, never filler: during a break the card
+// names the programme the break leads back to with an Ad break badge (#2761), and a channel that
+// is all breaks while its titles download says so in one sentence (#2727). A break with no
+// programme after it has nothing to title, so that channel gets no card.
+const onNowCard = (channel: GuideChannelLayout, nowMs: number, timezone?: string): OnNowCard | undefined => {
+  const data = surfChannelData(channel, nowMs, timezone);
+  const airing = channel.airings.find((a) => a.source.startMs <= nowMs && a.source.stopMs > nowMs)?.source;
+  if (!data.now || !airing) return undefined;
+  const identity = { channel, channelName: data.channelName, channelLogoUri: data.channelLogoUri };
+  const waiting = guideWaitingForTitles(channel.source);
+  if (waiting) return { ...identity, airing, waiting };
+  if (airing.kind === "filler") {
+    const programme = guideBreakProgramme(
+      channel.airings.map((a) => a.source),
+      airing,
+    );
+    if (!programme) return undefined;
+    return {
+      ...identity,
+      airing: programme,
+      title: programme.series ?? guideAiringLabel(programme),
+      episodeLabel: formatGuideEpisode(programme.season, programme.episode),
+      timeLabel: formatGuideTimeRange(programme.startMs, programme.stopMs, timezone),
+      inBreak: true,
+    };
+  }
+  return {
+    ...identity,
+    airing,
+    title: data.now.seriesTitle ?? data.now.title,
+    episodeLabel: data.now.episodeLabel,
+    timeLabel: data.now.timeLabel,
+  };
+};
+
 // OnNow — Home's "On now" (#1822 evidence): up to six currently scheduled live channels in
 // channel-number order, from the same guide facts the Guide reads. A household with channels but
 // nothing playing right now gets "Your channels" instead: actual lifecycle or schedule-gap
@@ -47,19 +106,8 @@ const lifecycle = (state: GuideChannelState): { label: string; tone: StatusTone 
 const OnNow = ({ layout, nowMs }: OnNowProps) => {
   const ordered = [...layout.channels].sort((a, b) => a.source.number - b.source.number);
   const onNow = ordered
-    .map((channel) => ({
-      channel,
-      data: surfChannelData(channel, nowMs, layout.timezone),
-      airing: channel.airings.find((a) => a.source.startMs <= nowMs && a.source.stopMs > nowMs)?.source,
-    }))
-    .filter(
-      (
-        c,
-      ): c is typeof c & {
-        data: { now: NonNullable<(typeof c)["data"]["now"]> };
-        airing: NonNullable<(typeof c)["airing"]>;
-      } => Boolean(c.data.now && c.airing),
-    )
+    .map((channel) => onNowCard(channel, nowMs, layout.timezone))
+    .filter((card): card is OnNowCard => card !== undefined)
     .slice(0, MAX_CHANNELS);
 
   if (onNow.length === 0) {
@@ -107,49 +155,72 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
         </Action>
       </SectionHeader>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {onNow.map(({ channel, data, airing }) => (
-          <Link
-            key={channel.source.channelId}
-            to="/watch/$id"
-            params={{ id: channel.source.channelId }}
-            // No aria-label: the whole card is the link, and WCAG 2.5.3 needs its name to contain
-            // everything it shows, so the name is the card's own text, ending in "Watch live".
-            className="border-static-700 bg-static-900 hover:border-static-500 focus-visible:ring-ring block min-w-0 overflow-hidden rounded-lg border focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <div className="bg-static-800 relative aspect-video w-full overflow-hidden">
-              <AiringArtwork
-                airing={airing}
-                channel={{ name: data.channelName, number: channel.source.number }}
-                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5 p-3.5">
-              <div className="flex items-center gap-2">
-                <ChannelIdent
-                  name={data.channelName}
-                  number={channel.source.number}
-                  logo={data.channelLogoUri}
-                  size={28}
-                />
-                <span className="text-foreground font-mono text-sm">
-                  {String(channel.source.number).padStart(2, "0")}
-                </span>
-                <span className="text-static-400 truncate text-xs">{data.channelName}</span>
+        {onNow.map(
+          ({
+            channel,
+            channelName,
+            channelLogoUri,
+            airing,
+            title,
+            episodeLabel,
+            timeLabel,
+            inBreak,
+            waiting,
+          }) => (
+            <Link
+              key={channel.source.channelId}
+              to="/watch/$id"
+              params={{ id: channel.source.channelId }}
+              // No aria-label: the whole card is the link, and WCAG 2.5.3 needs its name to contain
+              // everything it shows, so the name is the card's own text, ending in "Watch live".
+              className="border-static-700 bg-static-900 hover:border-static-500 focus-visible:ring-ring block min-w-0 overflow-hidden rounded-lg border focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <div className="bg-static-800 relative aspect-video w-full overflow-hidden">
+                {waiting ? (
+                  <ArtworkFallback channel={{ name: channelName, number: channel.source.number }} />
+                ) : (
+                  <AiringArtwork
+                    airing={airing}
+                    channel={{ name: channelName, number: channel.source.number }}
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                  />
+                )}
               </div>
-              <h3 className="m-0 text-base font-semibold break-words">
-                {data.now.seriesTitle ?? data.now.title}
-              </h3>
-              {data.now.episodeLabel && (
-                <p className="text-static-400 m-0 text-xs">{data.now.episodeLabel}</p>
-              )}
-              <p className="text-static-400 m-0 font-mono text-xs">{data.now.timeLabel}</p>
-              {/* The whole card is the link, so its trailing affordance is foreground (#1909 Q4). */}
-              <span className="text-foreground text-sm font-medium">
-                Watch live <span aria-hidden="true">→</span>
-              </span>
-            </div>
-          </Link>
-        ))}
+              <div className="flex flex-col gap-1.5 p-3.5">
+                <div className="flex items-center gap-2">
+                  <ChannelIdent
+                    name={channelName}
+                    number={channel.source.number}
+                    logo={channelLogoUri}
+                    size={28}
+                  />
+                  <span className="text-foreground font-mono text-sm">
+                    {String(channel.source.number).padStart(2, "0")}
+                  </span>
+                  <span className="text-static-400 truncate text-xs">{channelName}</span>
+                  {inBreak && (
+                    <Badge shape="square" tone="info" marginLeft="auto" flexShrink={0}>
+                      Ad break
+                    </Badge>
+                  )}
+                </div>
+                {waiting ? (
+                  <p className="text-static-400 m-0 text-sm break-words">{waiting}</p>
+                ) : (
+                  <>
+                    <h3 className="m-0 text-base font-semibold break-words">{title}</h3>
+                    {episodeLabel && <p className="text-static-400 m-0 text-xs">{episodeLabel}</p>}
+                    <p className="text-static-400 m-0 font-mono text-xs">{timeLabel}</p>
+                  </>
+                )}
+                {/* The whole card is the link, so its trailing affordance is foreground (#1909 Q4). */}
+                <span className="text-foreground text-sm font-medium">
+                  Watch live <span aria-hidden="true">→</span>
+                </span>
+              </div>
+            </Link>
+          ),
+        )}
       </div>
     </section>
   );

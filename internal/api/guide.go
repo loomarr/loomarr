@@ -129,7 +129,11 @@ type GuideChannelTimeline struct {
 	Status string `json:"status" enum:"building,live,empty,drifted,detached,paused"`
 	// PendingCount is how many titles are still being acquired. Drives the "Filling in" chip:
 	// a live channel with acquisitions in flight is on air but not yet what was asked for.
-	PendingCount int           `json:"pendingCount"`
+	PendingCount int `json:"pendingCount"`
+	// ProgramCount is how many lineup titles are ready, the ChannelDTO's own derivation, so a
+	// downloading channel can say "3 of 12 downloaded" in the guide and on Home (#2727). Absent
+	// means none ready yet.
+	ProgramCount int           `json:"programCount,omitempty"`
 	Airings      []GuideAiring `json:"airings" doc:"In airtime order. Contiguous for airable blocks; pending placeholders may overlap the block that follows them"`
 }
 
@@ -264,6 +268,7 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			// The SAME derivation the channel list uses (DesiredLineup.PendingCount), so a
 			// channel cannot read "Filling in" on one surface and healthy on the other.
 			PendingCount: schedule.DesiredLineup{Slots: ch.Desired}.PendingCount(),
+			ProgramCount: schedule.DesiredLineup{Slots: ch.Desired}.ProgramCount(),
 			Airings:      []GuideAiring{},
 		}
 
