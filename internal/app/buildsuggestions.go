@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -63,6 +64,7 @@ func buildSuggestions(
 	owner *generationLifecycle,
 	metricRecorder *metrics.Recorder,
 	holidays holidayvocab.Source,
+	interactiveLLM *llm.InteractiveGate,
 ) (suggestionBuild, error) {
 	var result suggestionBuild
 	if st == nil {
@@ -115,6 +117,7 @@ func buildSuggestions(
 	}
 	suggester := suggest.New(provider, catalogService, tmdbClient, settings.SuggestMaxAcquisitions.Get(set))
 	suggester.WithRatings(tmdbClient).
+		WithInteractiveGate(interactiveLLM).
 		WithCalendar(householdCalendar(set, holidays, log)).
 		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
