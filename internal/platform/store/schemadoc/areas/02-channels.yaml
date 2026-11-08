@@ -89,6 +89,22 @@ tables:
         The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a
         show. Kept for diagnosis.
 
+  - name: scheduled_airings
+    about: >
+      What a channel's schedule put on air: one row each time an episode or film started on a
+      channel's timeline, whether or not anyone watched. Kept apart from `airings`, which records
+      only what was actually streamed. The schedule reads both, so a channel nobody watches still
+      rotates evenly instead of re-airing something it showed hours ago. Pruned and deleted like
+      `airings`.
+    columns:
+      channel_id: The channel it aired on (channels.id).
+      library_item_id: The library item id of the episode or film.
+      aired_at: When the programme started, in Unix seconds.
+      recorded_at: When Loomarr first recorded the airing, in Unix seconds.
+      key: >
+        The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a
+        show. Kept for diagnosis.
+
   - name: holidays
     about: >
       One row per holiday: when each country keeps it and the words that show a title or clip is
