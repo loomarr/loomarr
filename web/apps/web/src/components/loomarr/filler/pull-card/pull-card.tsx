@@ -1,9 +1,8 @@
 import { pluralize } from "@loomarr/core/format";
-import { Badge, Card } from "@loomarr/design-system";
+import { Badge, Card, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Caption } from "@/components/ui/caption";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { PullCardProps } from "./pull-card.type";
@@ -83,7 +82,11 @@ const PullCard = ({
           {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
               requester is — proposedBy itself is a raw user id (or a scheduled job's name) and
               must never reach the screen. */}
-          {pull.proposedByName && <Caption>proposed by {pull.proposedByName}</Caption>}
+          {pull.proposedByName && (
+            <Text as="span" textRole="captionMono">
+              proposed by {pull.proposedByName}
+            </Text>
+          )}
         </div>
 
         <div className="flex shrink-0 gap-2">
@@ -123,13 +126,19 @@ const PullCard = ({
               </Badge>
               <div className="min-w-0 flex-1">
                 <p className={cn("truncate text-sm", isDropped && "line-through")}>{row.name}</p>
-                {row.why && <Caption>{row.why}</Caption>}
+                {row.why && (
+                  <Text as="span" textRole="captionMono">
+                    {row.why}
+                  </Text>
+                )}
               </div>
               {/* ⚠ An estimate, rendered as one. What a source yields depends on what is still
                   there, what deduplicates, and what the splitter makes of a compilation — a
                   number presented as exact becomes "Loomarr said 40 and downloaded 12". */}
               {row.estimateClips > 0 && (
-                <Caption className="tabular-nums">~{row.estimateClips} clips</Caption>
+                <Text as="span" className="tabular-nums" textRole="captionMono">
+                  ~{row.estimateClips} clips
+                </Text>
               )}
               <Button
                 variant="ghost"
@@ -154,9 +163,9 @@ const PullCard = ({
             {(pull.rejected ?? []).map((candidate) => (
               <li key={candidate.candidateId} className="flex flex-wrap gap-2">
                 <span>{candidate.name}</span>
-                <Caption>
+                <Text as="span" textRole="captionMono">
                   {candidate.disposition.replaceAll("_", " ")}: {candidate.detail}
-                </Caption>
+                </Text>
               </li>
             ))}
           </ul>
@@ -172,9 +181,9 @@ const PullCard = ({
             {skippedSources.map((source) => (
               <li key={source.sourceId} className="flex flex-wrap gap-2">
                 <span>{source.label || source.sourceId}</span>
-                <Caption>
+                <Text as="span" textRole="captionMono">
                   {source.disposition.replaceAll("_", " ")}: {source.detail}
-                </Caption>
+                </Text>
               </li>
             ))}
           </ul>
@@ -189,13 +198,15 @@ const PullCard = ({
         disabled={deciding}
       />
 
-      <Caption>Optional annotation for your records. This does not change what is downloaded.</Caption>
+      <Text as="span" textRole="captionMono">
+        Optional annotation for your records. This does not change what is downloaded.
+      </Text>
 
-      <Caption>
+      <Text as="span" textRole="captionMono">
         {kept.length === 0
           ? "Every candidate is left out, so there's nothing to fetch. Dismiss it instead."
           : `${pluralize(kept.length, "candidate")} will be fetched. Nothing downloads until you approve.`}
-      </Caption>
+      </Text>
     </Card>
   );
 };

@@ -1,8 +1,7 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
+import { StatusDot, type StatusTone, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { Caption } from "@/components/ui/caption";
 import { cn } from "@/lib/utils";
 import type { CoverageMeterProps } from "./coverage-meter.type";
 
@@ -137,7 +136,9 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                   />
                 </span>
                 {/* tabular-nums so the counts do not jitter as the catalog changes. */}
-                <Caption className="w-10 shrink-0 text-right tabular-nums">{rung.clips}</Caption>
+                <Text as="span" className="w-10 shrink-0 text-right tabular-nums" textRole="captionMono">
+                  {rung.clips}
+                </Text>
               </li>
             );
           })}
@@ -153,26 +154,29 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           could not answer the question this list exists to answer. */}
       {isThin && emptyCriteria.length > 0 && (
         <div className="border-border/60 flex flex-col gap-1.5 border-t pt-3">
-          <Caption>
+          <Text as="span" textRole="captionMono">
             {emptyCriteria.length === 1
               ? "One setting is ruling out every commercial:"
               : "These settings are ruling out every commercial:"}
-          </Caption>
+          </Text>
           <ul className="flex flex-col gap-1">
             {criteria.map((c) => (
               <li key={c.criterion} className="flex items-center gap-2 text-xs">
                 <span className="w-44 min-w-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
-                <Caption
+                <Text
+                  as="span"
+                  className="shrink-0 tabular-nums"
                   // ⚠ `danger` is this palette's "a human is needed" red; a zero here IS the
-                  // thing to act on. The non-zero rows stay muted so the eye lands on the
-                  // one row that matters rather than scanning six equal-weight numbers. A tone,
-                  // not a `text-*` class: Caption's colour is inline style since #1850, which
-                  // silently turned a `text-onair-300` class here grey (#1956).
-                  tone={c.clips === 0 ? "danger" : "muted"}
-                  className={cn("shrink-0 tabular-nums", c.clips === 0 && "font-medium")}
+                  // thing to act on. The non-zero rows keep the role's quiet colour so the eye
+                  // lands on the one row that matters rather than scanning six equal-weight
+                  // numbers. A tone and `strong`, not `text-*`/`font-*` classes: the colour and
+                  // weight are inline style, which a class cannot override (#1956).
+                  strong={c.clips === 0}
+                  textRole="captionMono"
+                  {...(c.clips === 0 ? { tone: "danger" as const } : {})}
                 >
                   {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
-                </Caption>
+                </Text>
               </li>
             ))}
           </ul>
@@ -180,11 +184,11 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Caption>
+        <Text as="span" textRole="captionMono">
           {widest === 0
             ? "No eligible commercials for this channel."
             : `${widest} eligible ${widest === 1 ? "commercial" : "commercials"}`}
-        </Caption>
+        </Text>
 
         {/* Gap flagging (F4, V17d) — shown only when the catalog is actually thin for THIS
             channel, because a CTA on a healthy channel is noise that teaches an operator to

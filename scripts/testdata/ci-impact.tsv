@@ -46,7 +46,7 @@ web-testcard-fixtures	web/packages/fixtures/src/testcard/testcard.ts	contracts,w
 demo-titles-seed	cmd/seed/library.go	contracts,go,postgres,image
 demo-titles-demo-seed	cmd/demo-library/seed.go	contracts,go,postgres,image
 demo-titles-catalogue	internal/demolibrary/catalog.go	contracts,go,postgres,image
-demo-titles-web-story	web/apps/web/src/components/ui/caption/caption.stories.tsx	contracts,web,visual,image
+demo-titles-web-story	web/apps/web/src/components/loomarr/channels/channel-card/channel-card.stories.tsx	contracts,web,visual,image
 demo-titles-native-story	web/native-stories/identity.stories.tsx	contracts,web,visual,image
 demo-titles-migrated-test	web/apps/web/src/suggest/use-suggestion-run/use-suggestion-run.test.tsx	contracts,web,image
 demo-titles-web-fixture	web/packages/fixtures/src/client-platform/surf/surf.ts	contracts,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android

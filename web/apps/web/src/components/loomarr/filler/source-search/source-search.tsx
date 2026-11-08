@@ -1,10 +1,10 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
+import { Text } from "@loomarr/design-system";
 import { Check, Loader2, Play, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Caption } from "@/components/ui/caption";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { SourceSearchProps } from "./source-search.type";
@@ -148,11 +148,11 @@ const SourceSearch = ({
 
       {results.length > 0 && (
         <>
-          <Caption>
+          <Text as="span" textRole="captionMono">
             {total != null && total > visibleResults.length
               ? `Showing ${visibleResults.length} of ${total} matches`
               : pluralize(visibleResults.length, "match", "matches")}
-          </Caption>
+          </Text>
 
           <ul ref={listRef} className="flex flex-col gap-2">
             {visibleResults.map((clip) => {
@@ -194,9 +194,9 @@ const SourceSearch = ({
                         spinner would promise a value that is never coming, and "0:00" would
                         claim the clip is empty. */}
                     {(parts.length > 0 || loadingSet.has(clip.id)) && (
-                      <Caption className="mt-0.5 block">
+                      <Text as="span" className="mt-0.5 block" textRole="captionMono">
                         {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
-                      </Caption>
+                      </Text>
                     )}
                   </div>
 
@@ -265,7 +265,7 @@ const SourceSearch = ({
         </>
       )}
 
-      {/* This is prose, not machine metadata, so it must not use the monospace Caption component. */}
+      {/* This is prose, not machine metadata, so it must not use the monospace caption role. */}
       <p className="text-muted-foreground text-xs">
         Searching doesn’t download anything. Choose Queue download when you find a clip you want.
       </p>

@@ -2,8 +2,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge, type BadgeTone } from "@loomarr/design-system";
-import { Caption } from "@/components/ui/caption";
+import { Badge, type BadgeTone, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
@@ -123,16 +122,16 @@ const PodTimeline = ({
                 onClick={() => onPreview(entry)}
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Caption tone="strong" shout className="truncate">
+                <Text as="span" className="truncate" shout textRole="captionMono" tone="primary">
                   {SEGMENT_ABBR[entry.kind]}
-                </Caption>
+                </Text>
               </button>
             ) : (
               <span className="flex h-full min-w-0 items-center justify-center px-1">
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Caption tone="strong" shout className="truncate">
+                <Text as="span" className="truncate" shout textRole="captionMono" tone="primary">
                   {SEGMENT_ABBR[entry.kind]}
-                </Caption>
+                </Text>
               </span>
             )}
           </li>

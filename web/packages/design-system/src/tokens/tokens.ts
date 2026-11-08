@@ -298,6 +298,9 @@ const typography = {
     cardChannelNumber: { size: 12, lineHeight: 16, weight: "600" },
     cardTime: { size: 12, lineHeight: 16, weight: "400" },
     cardInitials: { size: 11, lineHeight: 14, weight: "500" },
+    // Machine metadata beside content: a duration, a clock time, an id (the web Caption, §2.2).
+    // Touch and TV take guideMeta's sizes, its nearest role.
+    captionMono: { size: 11, lineHeight: 14, weight: "400" },
     // The web mock's time grid (#1659). Touch and TV take the nearest existing role's size
     // (meta, label and clip → metadata; number → headline), as the card roles do.
     guideMeta: { size: 11, lineHeight: 14, weight: "400" },
@@ -334,6 +337,7 @@ const typography = {
     cardChannelNumber: { size: 13, lineHeight: 18, weight: "600" },
     cardTime: { size: 13, lineHeight: 18, weight: "400" },
     cardInitials: { size: 13, lineHeight: 18, weight: "500" },
+    captionMono: { size: 13, lineHeight: 18, weight: "400" },
     guideMeta: { size: 13, lineHeight: 18, weight: "400" },
     guideLabel: { size: 13, lineHeight: 18, weight: "400" },
     guideNumber: { size: 22, lineHeight: 22, weight: "600" },
@@ -366,6 +370,7 @@ const typography = {
     cardChannelNumber: { size: 16, lineHeight: 22, weight: "600" },
     cardTime: { size: 16, lineHeight: 22, weight: "400" },
     cardInitials: { size: 16, lineHeight: 22, weight: "500" },
+    captionMono: { size: 16, lineHeight: 22, weight: "400" },
     guideMeta: { size: 16, lineHeight: 22, weight: "400" },
     guideLabel: { size: 16, lineHeight: 22, weight: "400" },
     guideNumber: { size: 30, lineHeight: 30, weight: "600" },

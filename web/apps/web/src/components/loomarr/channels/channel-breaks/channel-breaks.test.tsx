@@ -1,10 +1,11 @@
 import { getPreviewChannelPodsMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { ChannelBreaks } from "./channel-breaks";
 
 const renderBreaks = (ui: ReactElement) => {
@@ -58,7 +59,8 @@ describe("ChannelBreaks", () => {
     server.use(getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "bumper_card" }));
     const { container } = renderBreaks(<ChannelBreaks channelId="ch-1" />);
 
-    await waitFor(() => expect(container).toBeEmptyDOMElement());
+    // The theme provider's wrapper spans stay; the component itself renders nothing.
+    await waitFor(() => expect(container.textContent).toBe(""));
   });
 
   // ⚠ An install without filler configured answers 501. Same treatment: absence, not an error —
@@ -71,6 +73,6 @@ describe("ChannelBreaks", () => {
     );
     const { container } = renderBreaks(<ChannelBreaks channelId="ch-1" />);
 
-    await waitFor(() => expect(container).toBeEmptyDOMElement());
+    await waitFor(() => expect(container.textContent).toBe(""));
   });
 });

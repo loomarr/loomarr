@@ -1,8 +1,8 @@
 import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import { pluralize } from "@loomarr/core/format";
+import { Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Caption } from "@/components/ui/caption";
 import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
 
@@ -37,7 +37,9 @@ const Stat = ({
   tone?: "warn";
 }) => (
   <div className="flex min-w-0 flex-col gap-0.5">
-    <Caption className="tracking-wide uppercase">{label}</Caption>
+    <Text as="span" shout textRole="captionMono">
+      {label}
+    </Text>
     {/* A warning is caution-yellow. It was `text-lock`, the green that means "good" (#1659). */}
     <span className={cn("text-lg font-semibold tabular-nums", tone === "warn" && "text-caution")}>
       {value}
