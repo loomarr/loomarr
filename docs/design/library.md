@@ -618,7 +618,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   measurement and its channel's codec vote all read the library item's playing file
   (`LibraryPlayingFile`). An item whose file is gone airs the offline card. The media server's
   stream URL, its per-item path lookup and the `library_item_paths` cache are deleted (migration
-  193). `library.path_map` now only helps folder discovery.
+  194). `library.path_map` now only helps folder discovery.
 
 ## Cached series episodes
 
