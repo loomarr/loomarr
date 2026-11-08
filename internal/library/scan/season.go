@@ -34,7 +34,7 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
 		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(n.Value.Season),
 	}
-	season, ok := b.im.catalogRecord(ctx, res.catalog)
+	season, ok := b.season(ctx, s, res.catalog)
 	if !ok {
 		return res
 	}
@@ -50,6 +50,26 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 		return res
 	}
 	return res
+}
+
+// season is a series' cached season record, read once a pass however many of its episodes ask.
+func (b *builder) season(ctx context.Context, s *seriesSeen, key store.LibraryCatalogKey) (mp.Record, bool) {
+	s.seasonsMu.Lock()
+	defer s.seasonsMu.Unlock()
+	if got, ok := s.seasons[key.ExternalID]; ok {
+		return got.record, got.ok
+	}
+	rec, ok := b.im.catalogRecord(ctx, key)
+	if s.seasons == nil {
+		s.seasons = map[string]cachedSeason{}
+	}
+	s.seasons[key.ExternalID] = cachedSeason{record: rec, ok: ok}
+	return rec, ok
+}
+
+type cachedSeason struct {
+	record mp.Record
+	ok     bool
 }
 
 // numberedLikeDisk reports whether a series' catalog numbers its episodes as last, the highest

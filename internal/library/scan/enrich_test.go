@@ -280,7 +280,8 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			h := newHarness(t)
-			h.im.Catalog = h.st
+			reads := &countingCatalog{CatalogStore: h.st, reads: map[string]int{}}
+			h.im.Catalog = reads
 			for n := 1; n <= 3; n++ {
 				h.file(fmt.Sprintf("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E0%d.mkv", n), 10)
 			}
@@ -309,6 +310,22 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 			if facts.Name != tc.want || facts.SeasonNumber != 1 || facts.EpisodeNumber != 2 {
 				t.Fatalf("episode = %q S%dE%d, want %q S1E2", facts.Name, facts.SeasonNumber, facts.EpisodeNumber, tc.want)
 			}
+			// Each pass that wrote the episodes read their season once, not once an episode: before
+			// it was fetched, and again after.
+			if got := reads.reads["tmdb:season:90000701/1"]; askedSeason && got != 2 {
+				t.Errorf("the season record was read %d times over two passes of three episodes, want once a pass", got)
+			}
 		})
 	}
+}
+
+// countingCatalog counts the cached records the walk reads, by key.
+type countingCatalog struct {
+	CatalogStore
+	reads map[string]int
+}
+
+func (c *countingCatalog) LibraryCatalogRecord(ctx context.Context, key store.LibraryCatalogKey) (string, bool, error) {
+	c.reads[key.String()]++
+	return c.CatalogStore.LibraryCatalogRecord(ctx, key)
 }
