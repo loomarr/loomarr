@@ -72,6 +72,18 @@
       }
     ]
   },
+  "credits": {
+    "cast": [
+      { "id": 90003002, "name": "Second Billed", "character": "The Archivist", "order": 1, "profile_path": null },
+      { "id": 90003001, "name": "Top Billed", "character": "Night Clerk", "order": 0, "profile_path": "/person-90003001.jpg" }
+    ],
+    "crew": [
+      { "id": 90003101, "name": "Lamp Director", "job": "Director", "department": "Directing", "profile_path": null },
+      { "id": 90003101, "name": "Lamp Director", "job": "Director", "department": "Directing", "profile_path": null },
+      { "id": 90003102, "name": "Ledger Writer", "job": "Screenplay", "department": "Writing", "profile_path": null },
+      { "id": 90003103, "name": "Film Editor", "job": "Editor", "department": "Editing", "profile_path": null }
+    ]
+  },
   "keywords": {
     "id": 90000601,
     "keywords": [

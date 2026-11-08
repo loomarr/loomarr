@@ -152,7 +152,7 @@ move whole.
 | --- | --- |
 | Technical | measured, header, manager |
 | Identity and numbering | manager, id in a name, sidecar, confirmed link |
-| Descriptive (text, genres, keywords, studios or networks, countries, tagline, trailer, community rating, collection) | a service (catalog or manager) whose text comes from TMDB for movies and series, or TVDB for episodes; then other services; then sidecars, which never outrank a service |
+| Descriptive (text, genres, keywords, studios or networks, countries, tagline, trailer, people, community rating, collection) | a service (catalog or manager) whose text comes from TMDB for movies and series, or TVDB for episodes; then other services; then sidecars, which never outrank a service |
 | Certification | the strictest grounded rating on the US ladder |
 | Artwork | sidecar, catalog, manager, per artwork kind |
 
@@ -160,6 +160,13 @@ Certification uses the audience ladder that enforcement uses. Ratings in another
 unrated values ground nothing, and a resolver for a country other than the US is refused. An episode
 that no grounded source rates inherits its series' strictest rating. One that a source rates keeps
 that rating, whether it is stricter or not.
+
+People (decision 49) are a title's main cast in billing order (TMDB's top 20), then its key crew:
+a series' creators, then directors and writers. Each is a `library_people` row keyed by TMDB person
+id wherever they are credited. A person an NFO or the media server names without an id is kept by
+name, unlinked. An episode's cast is its show's. The household's metadata language
+(`metadata.language`, decision 21) defaults to the media server's; changing it fetches every
+catalog record again.
 
 ## Media folders
 

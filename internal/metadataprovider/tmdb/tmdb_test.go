@@ -139,7 +139,7 @@ func TestFetchMovie(t *testing.T) {
 	}
 
 	q := f.last(t).URL.Query()
-	if got := q.Get("append_to_response"); got != "external_ids,release_dates,keywords,images,videos" {
+	if got := q.Get("append_to_response"); got != "external_ids,release_dates,keywords,images,videos,credits" {
 		t.Errorf("append_to_response = %q: the detail call must carry everything the record stores", got)
 	}
 	if q.Get("language") != "en-US" || q.Get("include_image_language") != "en,null" {
@@ -168,6 +168,17 @@ func TestFetchMovie(t *testing.T) {
 	// The official YouTube trailer wins over a fan cut listed first, a teaser and another site's.
 	if d.Trailer != "https://www.youtube.com/watch?v=official900" {
 		t.Errorf("trailer = %q", d.Trailer)
+	}
+	// The cast in billing order, then the key crew once each; an editor is not key crew.
+	wantPeople := []mp.Person{
+		{Name: "Top Billed", Role: mp.PersonActor, Character: "Night Clerk", TMDB: "90003001",
+			Photo: "https://image.tmdb.org/t/p/original/person-90003001.jpg"},
+		{Name: "Second Billed", Role: mp.PersonActor, Character: "The Archivist", TMDB: "90003002"},
+		{Name: "Lamp Director", Role: mp.PersonDirector, TMDB: "90003101"},
+		{Name: "Ledger Writer", Role: mp.PersonWriter, TMDB: "90003102"},
+	}
+	if !reflect.DeepEqual(d.People, wantPeople) {
+		t.Errorf("people = %+v\nwant     %+v", d.People, wantPeople)
 	}
 	if !reflect.DeepEqual(d.Keywords, []string{"night shift", "small town", "ledger"}) {
 		t.Errorf("keywords = %v", d.Keywords)
@@ -245,6 +256,13 @@ func TestFetchSeries(t *testing.T) {
 	if d.Title != "Tidewater Station" || !reflect.DeepEqual(d.Studios, []string{"Northlight Network"}) ||
 		d.Runtime != 42*time.Minute || d.Tagline != "" || d.Trailer != "" {
 		t.Errorf("descriptive = %+v", d)
+	}
+	if want := []mp.Person{
+		{Name: "Station Lead", Role: mp.PersonActor, Character: "Keeper", TMDB: "90003202"},
+		{Name: "Station Creator", Role: mp.PersonCreator, TMDB: "90003201",
+			Photo: "https://image.tmdb.org/t/p/original/person-90003201.jpg"},
+	}; !reflect.DeepEqual(d.People, want) {
+		t.Errorf("series people = %+v", d.People)
 	}
 	if d.Status != "continuing" {
 		t.Errorf("status = %q, want Sonarr's spelling of a returning series", d.Status)

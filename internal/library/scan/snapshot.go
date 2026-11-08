@@ -75,7 +75,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	20: a file notes its external subtitle and audio files and its .edl markers, and lists its
 //	    chapters and its tracks' commentary, SDH and descriptive flags (decisions 45, 46, 61).
 //	21: a title lists every studio or network, and its tagline, countries and trailer (decision 46).
-const writeVersion = 21
+//	22: a title lists its people with their role, character, TMDB id and photo (decision 49).
+const writeVersion = 22
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -228,9 +229,13 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 			Runtime: string(ext.From.Runtime),
 		},
 	}
-	// An episode's genres, studios and countries are its show's (decision 42).
+	// An episode's genres, studios, countries and cast are its show's (decision 42).
 	if item.Kind != kindEpisode {
 		it.Genres, it.Studios, it.Countries = facts.Genres, facts.Studios, facts.Countries
+		for _, p := range facts.People {
+			it.Credits = append(it.Credits, store.LibraryCredit{Name: p.Name, Role: p.Role, Character: p.Character,
+				TMDB: p.TMDB, Photo: p.Photo})
+		}
 	}
 	for _, id := range item.ExternalIDs {
 		it.IDs = append(it.IDs, store.LibraryID{Namespace: id.Namespace, Value: id.Value})
@@ -356,13 +361,9 @@ func itemFacts(r precedence.Resolved) (inventory.ItemFacts, map[string]inventory
 		RuntimeMillis: r.Runtime.Value.Milliseconds(), Tags: r.Keywords.Value,
 		CommunityScore: r.CommunityRating.Value,
 	}
-	// A person's role reads as the media server's does: an actor's character, else their job.
 	for _, p := range r.People.Value {
-		role := p.Character
-		if role == "" {
-			role = string(p.Role)
-		}
-		f.People = append(f.People, inventory.Person{Name: p.Name, Role: role})
+		f.People = append(f.People, inventory.Person{Name: p.Name, Role: string(p.Role), Character: p.Character,
+			TMDB: p.TMDB, Photo: p.Photo})
 	}
 	f.Studios, f.Countries, f.Tagline, f.Trailer = r.Studios.Value, r.Countries.Value, r.Tagline.Value, r.Trailer.Value
 	if r.Numbering.Known() {

@@ -98,6 +98,10 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	present.Observation.Facts.Countries = []string{"Canada"}
 	present.Observation.Facts.Tagline = "Kept, at last."
 	present.Observation.Facts.Trailer = "https://www.youtube.com/watch?v=kept9000"
+	present.Observation.Facts.People = []inventory.Person{
+		{Name: "Kept Lead", Role: "actor", Character: "Keeper", TMDB: "90003301", Photo: "https://img.invalid/kept.jpg"},
+		{Name: "Kept Director", Role: "director"},
+	}
 	gone := origin(authorityPrefix+"a", "file:2", "Gone Film", at.Add(time.Hour), true, listed("https://radarr.invalid/2"))
 	other := origin("emby", "90000802", "Server Film", at.Add(2*time.Hour), false, nil)
 
@@ -111,7 +115,11 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 		Origin:  store.LibraryOrigin{Authority: authorityPrefix + "a", Key: "file:1"},
 		Match:   store.LibraryMatch{Basis: "manager", App: "radarr", Page: "https://radarr.invalid/1"},
 		Studios: []string{"Ironbell Pictures", "Second Shift Films"}, Countries: []string{"Canada"},
-		Tagline: "Kept, at last.", Trailer: "https://www.youtube.com/watch?v=kept9000"}
+		Tagline: "Kept, at last.", Trailer: "https://www.youtube.com/watch?v=kept9000",
+		Credits: []store.LibraryCredit{
+			{Name: "Kept Lead", Role: "actor", Character: "Keeper", TMDB: "90003301", Photo: "https://img.invalid/kept.jpg"},
+			{Name: "Kept Director", Role: "director"},
+		}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("listed = %+v\nwant     %+v", got, want)
 	}
@@ -131,9 +139,10 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	ep.Observation.Facts.SeasonNumber, ep.Observation.Facts.EpisodeNumber = 1, 1
 	ep.Observation.Facts.Genres, ep.Observation.Facts.Studios = []string{"Drama"}, []string{"Network"}
 	ep.Observation.Facts.Countries = []string{"Canada"}
+	ep.Observation.Facts.People = []inventory.Person{{Name: "Guest", Role: "actor"}}
 	got, ok = ProjectLibraryItem(inventory.Item{ID: "e1", Kind: kindEpisode, Origins: []inventory.ItemOrigin{ep}})
 	if !ok || got.Season != 1 || got.Episode != 1 || got.Series.Key != "series:dir:1" ||
-		got.Genres != nil || got.Studios != nil || got.Countries != nil {
-		t.Errorf("episode = %+v, %v; want it listed under its series with no genres, studios or countries", got, ok)
+		got.Genres != nil || got.Studios != nil || got.Countries != nil || got.Credits != nil {
+		t.Errorf("episode = %+v, %v; want it listed under its series with no genres, studios, countries or cast", got, ok)
 	}
 }

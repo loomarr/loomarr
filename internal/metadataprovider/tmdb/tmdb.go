@@ -17,11 +17,13 @@
 package tmdb
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +46,8 @@ const (
 	// maxKeywords bounds the keywords kept per item. TMDB returns every tag, and a long tail of
 	// them says little.
 	maxKeywords = 40
+	// maxCast bounds the actors kept per title, in billing order (#2151 decision 46: main cast).
+	maxCast = 20
 	// maxChangePages is TMDB's own page ceiling for a list endpoint.
 	maxChangePages = 500
 	// usCountry is the one certification country with a ladder.
@@ -221,6 +225,69 @@ type wireImages struct {
 	Logos     []wireImage `json:"logos"`
 }
 
+// wireCredits are a title's credits (append_to_response=credits); cast in billing order.
+type wireCredits struct {
+	Cast []wireCast `json:"cast"`
+	Crew []wireCrew `json:"crew"`
+}
+
+type wireCast struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Character   string `json:"character"`
+	Order       int    `json:"order"`
+	ProfilePath string `json:"profile_path"`
+}
+
+type wireCrew struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Job         string `json:"job"`
+	ProfilePath string `json:"profile_path"`
+}
+
+// crewRoles are the jobs kept as key crew, by TMDB's job name.
+var crewRoles = map[string]mp.PersonRole{
+	"Director": mp.PersonDirector, "Screenplay": mp.PersonWriter, "Writer": mp.PersonWriter,
+}
+
+// people is a title's main cast in billing order (at most maxCast), then its creators, then its
+// directors and writers, each person once a role.
+func people(credits wireCredits, creators []wireCrew) []mp.Person {
+	cast := slices.Clone(credits.Cast)
+	slices.SortStableFunc(cast, func(a, b wireCast) int { return cmp.Compare(a.Order, b.Order) })
+	var out []mp.Person
+	seen := map[string]bool{}
+	add := func(id int, name string, role mp.PersonRole, character, profile string) {
+		name = strings.TrimSpace(name)
+		key := strconv.Itoa(id) + "\x00" + name + "\x00" + string(role)
+		if name == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		p := mp.Person{Name: name, Role: role, Character: strings.TrimSpace(character), Photo: tmdbclient.ImageURL(profile)}
+		if id > 0 {
+			p.TMDB = strconv.Itoa(id)
+		}
+		out = append(out, p)
+	}
+	for i, c := range cast {
+		if i == maxCast {
+			break
+		}
+		add(c.ID, c.Name, mp.PersonActor, c.Character, c.ProfilePath)
+	}
+	for _, c := range creators {
+		add(c.ID, c.Name, mp.PersonCreator, "", c.ProfilePath)
+	}
+	for _, c := range credits.Crew {
+		if role, ok := crewRoles[c.Job]; ok {
+			add(c.ID, c.Name, role, "", c.ProfilePath)
+		}
+	}
+	return out
+}
+
 // wireVideos are a title's videos (append_to_response=videos).
 type wireVideos struct {
 	Results []struct {
@@ -253,6 +320,7 @@ type wireMovie struct {
 	Companies     []idName        `json:"production_companies"`
 	Countries     []idName        `json:"production_countries"`
 	Videos        wireVideos      `json:"videos"`
+	Credits       wireCredits     `json:"credits"`
 	PosterPath    string          `json:"poster_path"`
 	BackdropPath  string          `json:"backdrop_path"`
 	Collection    *wireCollection `json:"belongs_to_collection"`
@@ -278,7 +346,7 @@ type wireCollection struct {
 
 func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, error) {
 	var m wireMovie
-	path := "/movie/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,release_dates,keywords,images,videos")
+	path := "/movie/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,release_dates,keywords,images,videos,credits")
 	if err := p.get(ctx, path, &m); err != nil {
 		return mp.Record{}, err
 	}
@@ -306,6 +374,7 @@ func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, er
 			Tagline:         strings.TrimSpace(m.Tagline),
 			Countries:       names(m.Countries),
 			Trailer:         trailer(m.Videos),
+			People:          people(m.Credits, nil),
 		},
 		Artwork: artwork(loc, m.Images, m.PosterPath, m.BackdropPath),
 	}
@@ -405,6 +474,8 @@ type wireSeries struct {
 	Networks       []idName        `json:"networks"`
 	Countries      []idName        `json:"production_countries"`
 	Videos         wireVideos      `json:"videos"`
+	Credits        wireCredits     `json:"credits"`
+	CreatedBy      []wireCrew      `json:"created_by"`
 	PosterPath     string          `json:"poster_path"`
 	BackdropPath   string          `json:"backdrop_path"`
 	ExternalIDs    wireExternalIDs `json:"external_ids"`
@@ -433,7 +504,7 @@ type wireSeries struct {
 
 func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, error) {
 	var s wireSeries
-	path := "/tv/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,content_ratings,keywords,images,episode_groups,videos")
+	path := "/tv/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,content_ratings,keywords,images,episode_groups,videos,credits")
 	if err := p.get(ctx, path, &s); err != nil {
 		return mp.Record{}, err
 	}
@@ -466,6 +537,7 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 			Tagline:         strings.TrimSpace(s.Tagline),
 			Countries:       names(s.Countries),
 			Trailer:         trailer(s.Videos),
+			People:          people(s.Credits, s.CreatedBy),
 		},
 		Artwork: artwork(loc, s.Images, s.PosterPath, s.BackdropPath),
 	}

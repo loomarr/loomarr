@@ -52,6 +52,15 @@
       { "descriptors": [], "iso_3166_1": "US", "rating": "TV-14" }
     ]
   },
+  "created_by": [
+    { "id": 90003201, "name": "Station Creator", "profile_path": "/person-90003201.jpg" }
+  ],
+  "credits": {
+    "cast": [
+      { "id": 90003202, "name": "Station Lead", "character": "Keeper", "order": 0, "profile_path": null }
+    ],
+    "crew": []
+  },
   "keywords": {
     "results": [
       { "id": 90001101, "name": "lighthouse" },

@@ -51,9 +51,16 @@ type ExternalID struct {
 	Value     string `json:"value"`
 }
 
+// Person is someone credited on a title (#2151 decision 49). Role is what they did, lower case
+// (actor, director, writer, creator, or what the source calls it); Character is an actor's part.
+// TMDB is their TMDB person id when the source knows it; one without is kept by name, unlinked.
 type Person struct {
-	Name string `json:"name"`
-	Role string `json:"role,omitempty"`
+	Name      string `json:"name"`
+	Role      string `json:"role,omitempty"`
+	Character string `json:"character,omitempty"`
+	TMDB      string `json:"tmdb,omitempty"`
+	// Photo is an http(s) URL of their headshot.
+	Photo string `json:"photo,omitempty"`
 }
 
 type Rating struct {

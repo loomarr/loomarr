@@ -150,6 +150,8 @@ const (
 	PersonActor    PersonRole = "actor"
 	PersonDirector PersonRole = "director"
 	PersonWriter   PersonRole = "writer"
+	// PersonCreator created a series.
+	PersonCreator PersonRole = "creator"
 )
 
 // Person is someone credited on a title (decision 49). TMDB is their TMDB person id when the

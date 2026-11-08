@@ -204,7 +204,8 @@ func validateItemFacts(facts *ItemFacts) error {
 		}
 	}
 	for _, person := range facts.People {
-		if !bounded(person.Name) || !bounded(person.Role) {
+		if !bounded(person.Name) || !bounded(person.Role) || !bounded(person.Character) ||
+			!bounded(person.TMDB) || !bounded(person.Photo) {
 			return ErrInvalid
 		}
 	}

@@ -172,6 +172,30 @@ tables:
       name: The country.
       position: Where it came in the source's list, from 0.
 
+  - name: library_people
+    about: >
+      Everyone credited on a title in the library. A person with a TMDB id is one row wherever they
+      are credited; one a source names without it is kept by name, unlinked. A person's name and photo
+      are the latest any title gave. A row outlives the titles that credited it.
+    columns:
+      id: >
+        The person: tmdb:<id> for a person TMDB knows, name:<name> for one kept by name.
+      name: Their name.
+      tmdb_id: Their TMDB person id; empty when unlinked.
+      photo: The web address of their headshot; empty when no source had one.
+
+  - name: library_credits
+    about: >
+      A title's credits: its cast in billing order, then its key crew (creators, directors, writers).
+      Replaced whenever the title is written; deleted with the title. An episode has none of its own;
+      its show's apply.
+    columns:
+      item_id: The title (a library_items id).
+      position: Where the credit came in the list, from 0.
+      person_id: The person (a library_people id).
+      role: What they did, one of actor, creator, director or writer (or what a media server calls it).
+      character_name: An actor's part; empty for crew or when unknown.
+
   - name: library_tags
     about: >
       A title's tags (the source's keywords), in the order the source gave them. Replaced whenever the
