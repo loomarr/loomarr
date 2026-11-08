@@ -672,7 +672,7 @@ ordinary test-time spread still failed acceptance. The run therefore did not mer
 material weight from that exact tree with uniform 10% headroom produced checked-in aggregate loads
 of 533/533/532/532 seconds and bounded-worker makespans of 267/267/267/266 seconds. The next
 authoritative run, 35507559795, proved why more shard tuning was the wrong fix: lane 2 reported only
-about four minutes of longest-worker package execution (`internal/store` at 239.922 seconds), yet
+about four minutes of longest-worker package execution (`internal/platform/store` at 239.922 seconds), yet
 spent 9m37s in the test step. Its cache log showed a complete miss followed by repeated module
 downloads, a 40.94-second Rust build, and a 55-second eval-contract invocation before the lane even
 started its ordinary package phase. Those prerequisites ran identically in all six jobs.
@@ -689,7 +689,7 @@ was still insufficient. Both certification jobs passed in 5m57s and 7m15s from q
 ordinary test steps took 10m23s and 10m41s and completed 11m18s and 11m35s after queue creation.
 Their 18-second spread ruled out shard imbalance. The executable package order was the real defect:
 the sharder modeled longest-processing-time workers, then restored `go list` order, and the race
-policy sorted that order lexically again. `internal/store` and `internal/channels/recurate` consequently
+policy sorted that order lexically again. `internal/platform/store` and `internal/channels/recurate` consequently
 started about 6m21s and 6m34s into their test steps. Four large, fixture-isolated packages also ran
 all top-level tests serially. The runner now emits and preserves descending measured-cost order,
 and `research/internal/fillerreview`, `internal/playout/backendtransition`'s non-integration tests,
@@ -714,7 +714,7 @@ The weights are now regenerated, never hand-kept: `make go-race-weights RUNS="..
 (`scripts/go-race-weights-refresh.sh`) takes the median `ok` time of every package across the
 successful race-lane jobs of the given merge-group runs, rounded up. Regenerated from runs
 36330002206, 36330402570, 36330935829, 36331908558 and 36333318208 (#1570), the real costs were
-about 2.4× the earlier weights (`internal/store` 516s against 242), and the old unitless budgets
+about 2.4× the earlier weights (`internal/platform/store` 516s against 242), and the old unitless budgets
 had been passing on those stale inputs.
 
 The budgets derive from #1570's target, a Go-only merge-queue run in at most ten minutes
@@ -725,9 +725,9 @@ workers in that step (1,876s). Its bounded-worker makespan, and each serial cert
 must fit the step itself. No single package may exceed that step either: a package is the
 sharder's indivisible unit, so an oversized one must run its tests in parallel, move to a serial
 lane of its own, or be split, never be given a larger budget. (Until #1650 a temporary cap of
-567s, `internal/store`'s measured time plus 10%, stood in for that rule.)
+567s, `internal/platform/store`'s measured time plus 10%, stood in for that rule.)
 
-Pull request #1631 made the 21 heaviest `internal/store` tests (88% of its time) run in parallel. Pinned to four
+Pull request #1631 made the 21 heaviest `internal/platform/store` tests (88% of its time) run in parallel. Pinned to four
 cores locally, that cut the package from 146.9s to 110.1s, but merge-group run 36359955148 measured
 it at 542s in ordinary lane 1/2: beside three other `-p=4` packages on a four-vCPU runner, its
 parallel tests only competed for the same cores. So the store package (now `internal/platform/store`) runs alone in the second
@@ -782,7 +782,7 @@ authority for the merge-queue budget.
 
 PostgreSQL conformance also uses an isolated template, but through PostgreSQL's own database-clone
 interface rather than file copying. Seven successful merge-queue samples put the real-Postgres step
-between 8m20s and 14m18s; `internal/store` dominated every sample at 366–722 package-seconds while
+between 8m20s and 14m18s; `internal/platform/store` dominated every sample at 366–722 package-seconds while
 backend transition and app ran concurrently. The local race profile measured 124.43s for the full
 integration-tagged store package and 46.23s for Postgres conformance. Its factory had dropped and
 recreated `public`, then replayed all 86 migrations for every assertion. Migrating and boot-seeding
