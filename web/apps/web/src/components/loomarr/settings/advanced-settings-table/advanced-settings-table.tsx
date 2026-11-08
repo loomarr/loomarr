@@ -1,9 +1,8 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
-import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { destinationForOwner } from "@/settings/settings-destinations";
 import { SettingField } from "../setting-field";
@@ -67,16 +66,12 @@ const AdvancedSettingsTable = ({
     <div className={cn("flex flex-col gap-3", className)}>
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-64 flex-1">
-          <Search
-            className="text-static-400 pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-            aria-hidden
-          />
-          <Input
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
+          <SearchField
+            label="Search settings"
+            labelHidden
+            onChangeText={onQueryChange}
             placeholder="Search by key, group, or value…"
-            aria-label="Search settings"
-            className="pl-8"
+            value={query}
           />
         </div>
         {/* The count is the feedback that a search DID something — without it, a query that

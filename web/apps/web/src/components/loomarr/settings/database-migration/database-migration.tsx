@@ -1,9 +1,7 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Badge, FieldHint } from "@loomarr/design-system";
+import { Badge, Field, FieldHint } from "@loomarr/design-system";
 import { AlertTriangle, Check, Database, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
@@ -138,13 +136,17 @@ const DatabaseMigration = ({
             {step === "connect" && (
               <div className="flex max-w-xl flex-col gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="migration-dsn">PostgreSQL connection string</Label>
-                  <Input
-                    id="migration-dsn"
-                    value={dsn}
-                    onChange={(e) => onDsnChange(e.target.value)}
-                    placeholder="postgres://loomarr:password@postgres:5432/loomarr"
+                  <Field
                     aria-describedby="migration-dsn-doc"
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    autoCorrect={false}
+                    id="migration-dsn"
+                    keyboardType="url"
+                    label="PostgreSQL connection string"
+                    onChangeText={onDsnChange}
+                    placeholder="postgres://loomarr:password@postgres:5432/loomarr"
+                    value={dsn}
                   />
                   <FieldHint id="migration-dsn-doc">
                     sslmode=prefer negotiates TLS and falls back, which is right for a docker network. Use

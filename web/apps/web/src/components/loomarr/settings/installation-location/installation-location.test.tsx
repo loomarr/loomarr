@@ -1,9 +1,10 @@
 import type { LocationDTO, SettingEntry } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import type { SettingKey } from "@loomarr/api/models/settingKey";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { InstallationLocation } from "./installation-location";
 
 const mocks = vi.hoisted(() => ({
@@ -121,7 +122,7 @@ describe("InstallationLocation", () => {
 
     expect(screen.getByRole("combobox", { name: "Location" })).toHaveValue("New York City, United States");
     const radius = screen.getByLabelText("Local station radius");
-    expect(radius).toHaveValue(100);
+    expect(radius).toHaveValue("100");
     await userEvent.type(radius, "5");
     expect(onChange).toHaveBeenCalledWith("filler.local_radius_km", "1005");
   });

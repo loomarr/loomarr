@@ -3,10 +3,9 @@ import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
-import { Badge, FieldHint, Toggle } from "@loomarr/design-system";
+import { Badge, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { Input } from "@/components/ui/input";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -19,10 +18,10 @@ import type { SettingFieldProps } from "./setting-field.type";
 // options, `doc` is the help text, `provenance: env` LOCKS the field with a "set via
 // environment" chip (env > database > default, visible provenance), and a secret shows
 // its masked tail with replace-only editing (§4 — a stored secret is never echoed).
-const inputTypeFor = (kind: SettingKind): string => {
-  if (kind === SettingKind.int) return "number";
+const keyboardFor = (kind: SettingKind): ComponentProps<typeof Field>["keyboardType"] => {
+  if (kind === SettingKind.int) return "number-pad";
   if (kind === SettingKind.url) return "url";
-  return "text";
+  return "default";
 };
 
 type DurationUnit = "days" | "hours" | "minutes" | "seconds";
@@ -59,11 +58,42 @@ const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
   return { amount: Number((bytes / 1024 ** 2).toFixed(2)), unit: "MiB" };
 };
 
+type NumberBoxProps = Omit<ComponentProps<typeof Field>, "onChangeText" | "value"> & {
+  amount: number;
+  onAmount: (amount: number) => void;
+};
+
+// A number in a design-system Field. While the operator types, the box shows their text, not the
+// parsed number: "1." re-rendered from Number("1.") would come back as "1" and eat the point. The
+// text is kept only while it still reads as the amount shown: a duration re-expresses 1.5 days as
+// 36 hours, and the box must then say 36 beside its new unit.
+// The flexible Surface lets the box shrink beside its unit; a web View does not shrink by default.
+const NumberBox = ({ amount, onAmount, onBlur, ...field }: NumberBoxProps) => {
+  const [draft, setDraft] = useState<string>();
+  return (
+    <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
+      <Field
+        {...field}
+        keyboardType="decimal-pad"
+        onBlur={(event) => {
+          setDraft(undefined);
+          onBlur?.(event);
+        }}
+        onChangeText={(text) => {
+          setDraft(text);
+          onAmount(Number(text));
+        }}
+        value={draft !== undefined && Number(draft) === amount ? draft : String(amount)}
+      />
+    </Surface>
+  );
+};
+
 // A number box with its unit beside it: the bytes editor's MiB, or a registry-declared unit.
 const WithUnit = ({ unit, children }: { unit: string; children: ReactNode }) => (
   <div className="flex gap-2">
     {children}
-    <span className="border-input text-muted-foreground flex h-9 w-16 shrink-0 items-center justify-center rounded-md border text-sm">
+    <span className="border-input text-muted-foreground flex h-10 w-16 shrink-0 items-center justify-center rounded-md border text-sm">
       {unit}
     </span>
   </div>
@@ -205,15 +235,11 @@ const SettingField = ({
           </Select>
           {preset === CUSTOM_PRESET && (
             <div className="flex gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={current.unit === "days" ? 7 : current.unit === "hours" ? 168 : 10080}
-                step="any"
-                value={current.amount}
+              <NumberBox
+                accessibilityLabel="Custom check interval"
+                amount={current.amount}
                 disabled={pinned || disabledReason !== undefined}
-                aria-label="Custom check interval"
-                onChange={(event) => onChange(durationRaw(Number(event.target.value), current.unit))}
+                onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
               />
               <Select
                 value={current.unit}
@@ -240,17 +266,14 @@ const SettingField = ({
       const current = durationParts(value);
       return (
         <div className="flex gap-2">
-          <Input
-            id={id}
-            type="number"
-            min={0}
-            step="any"
-            value={current.amount}
-            disabled={pinned || disabledReason !== undefined}
+          <NumberBox
+            amount={current.amount}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
-            aria-invalid={invalid ? "true" : undefined}
-            onChange={(e) => onChange(durationRaw(Number(e.target.value), current.unit))}
+            disabled={pinned || disabledReason !== undefined}
+            id={id}
+            invalid={invalid}
+            onAmount={(amount) => onChange(durationRaw(amount, current.unit))}
           />
           <Select
             value={current.unit}
@@ -275,36 +298,36 @@ const SettingField = ({
       const current = byteParts(value);
       return (
         <WithUnit unit={current.unit}>
-          <Input
-            id={id}
-            type="number"
-            min={0}
-            step="any"
-            value={current.amount}
-            disabled={pinned || disabledReason !== undefined}
+          <NumberBox
+            amount={current.amount}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
-            aria-invalid={invalid ? "true" : undefined}
-            onChange={(e) => {
-              onChange(String(Math.round(Number(e.target.value) * 1024 ** 2)));
-            }}
+            disabled={pinned || disabledReason !== undefined}
+            id={id}
+            invalid={invalid}
+            onAmount={(amount) => onChange(String(Math.round(amount * 1024 ** 2)))}
           />
         </WithUnit>
       );
     }
     const input = (
-      <Input
-        id={id}
-        type={entry.secret ? "password" : inputTypeFor(entry.kind)}
-        value={value}
-        disabled={pinned || disabledReason !== undefined}
-        autoComplete={entry.secret ? "new-password" : "off"}
-        placeholder={entry.secret && entry.set ? "Enter a new value to replace" : undefined}
-        aria-describedby={describedBy}
-        aria-labelledby={labelledBy}
-        aria-invalid={invalid ? "true" : undefined}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
+        <Field
+          aria-describedby={describedBy}
+          aria-labelledby={labelledBy}
+          autoCapitalize="none"
+          autoComplete={entry.secret ? "new-password" : "off"}
+          autoCorrect={false}
+          disabled={pinned || disabledReason !== undefined}
+          id={id}
+          invalid={invalid}
+          keyboardType={keyboardFor(entry.kind)}
+          onChangeText={onChange}
+          placeholder={entry.secret && entry.set ? "Enter a new value to replace" : undefined}
+          secureTextEntry={entry.secret}
+          value={value}
+        />
+      </Surface>
     );
     // The registry declares what a plain number counts; "50" alone does not say GiB.
     return entry.unit ? <WithUnit unit={entry.unit}>{input}</WithUnit> : input;

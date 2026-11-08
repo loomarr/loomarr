@@ -261,8 +261,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
-      "tailwindClasses": 109,
-      "legacyUi": 1
+      "tailwindClasses": 101
     },
     "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
       "tailwindClasses": 83,
@@ -270,7 +269,7 @@
     },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
       "tailwindClasses": 146,
-      "legacyUi": 3
+      "legacyUi": 1
     },
     "src/components/loomarr/settings/installation-location/installation-location.tsx": {
       "tailwindClasses": 16
@@ -289,7 +288,7 @@
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "tailwindClasses": 130,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
       "tailwindClasses": 14
@@ -672,8 +671,8 @@
       "legacyUi": 1
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
-      "tailwindClasses": 174,
-      "legacyUi": 3
+      "tailwindClasses": 166,
+      "legacyUi": 2
     },
     "src/settings/pair-device/pair-device.tsx": {
       "tailwindClasses": 70,
@@ -697,8 +696,8 @@
       "tailwindClasses": 2
     },
     "src/settings/tasks-page/job-edit-modal/job-edit-modal.tsx": {
-      "tailwindClasses": 15,
-      "legacyUi": 3
+      "tailwindClasses": 13,
+      "legacyUi": 2
     },
     "src/settings/tasks-page/tasks-page.tsx": {
       "tailwindClasses": 164,

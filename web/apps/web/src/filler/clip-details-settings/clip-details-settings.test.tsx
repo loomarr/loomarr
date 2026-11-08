@@ -195,10 +195,10 @@ describe("ClipDetailsSettings", () => {
     expect(await screen.findByText("Web search ready")).toBeInTheDocument();
     expect(screen.getByText(/Brave Search · 3 of 100 searches this month/)).toBeInTheDocument();
     expect(
-      screen.getByRole("spinbutton", { name: "Monthly web searches" }).closest("details"),
+      screen.getByRole("textbox", { name: "Monthly web searches" }).closest("details"),
     ).not.toHaveAttribute("open");
     await userEvent.click(screen.getByText("Where Loomarr looks", { exact: true }));
-    expect(screen.getByRole("spinbutton", { name: "Monthly web searches" })).toHaveValue(100);
+    expect(screen.getByRole("textbox", { name: "Monthly web searches" })).toHaveValue("100");
     await userEvent.click(screen.getByRole("button", { name: "Test connection" }));
     expect(tested).toEqual([{ provider: "brave" }]);
     expect(await screen.findByText("Web search is ready.")).toBeInTheDocument();
