@@ -16,7 +16,7 @@ import (
 func TestCheckReplacement_JudgesTheStagedBytesAndSavesNothing(t *testing.T) {
 	t0 := time.Unix(1_800_000_000, 0).UTC()
 	const staged = "/clips/.transcode/replacement.mp4"
-	clip := filler.StoreClip{Clip: filler.Clip{Hash: "airing", Path: "ai/ri/airing.mp4", Era: 1988, Kind: filler.Commercial}}
+	clip := filler.StoreClip{Clip: filler.Clip{Hash: "airing", Path: "ai/ri/airing.mp4", Era: 1988, Role: filler.Commercial}}
 	readings := func(blur float64) defects.Readings {
 		return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
 	}

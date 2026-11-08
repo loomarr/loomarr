@@ -13,7 +13,7 @@ const render = (ui: ReactNode) => rtlRender(ui, { wrapper: Theme });
 
 const base: ClipDTO = {
   name: "Fizzbolt — Dude!",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30000,
   era: 1990,
   audience: "kids",
@@ -56,7 +56,7 @@ describe("ClipCard", () => {
   it("keeps missing optional details quiet for a ready clip", () => {
     render(
       <ClipCard
-        clip={{ ...base, kind: "unclassified", tagged: false, era: undefined, audience: undefined }}
+        clip={{ ...base, role: "unclassified", tagged: false, era: undefined, audience: undefined }}
         onOpen={() => {}}
       />,
     );

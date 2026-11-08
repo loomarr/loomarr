@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
 
-// ClipCard — a filler clip with its match tags (§3, §10): kind/era/audience/category
+// ClipCard — a filler clip with its match tags (§3, §10): role/era/audience/category
 // chips + a mono, sub-minute-aware duration. tagged clips are pod-ready; untagged
 // clips flag caution with a "Tag" action.
-const KIND_LABEL: Record<ClipDTO["kind"], string> = {
+const ROLE_LABEL: Record<ClipDTO["role"], string> = {
   unclassified: "Unclassified",
   commercial: "Commercial",
   bumper: "Bumper",
@@ -317,9 +317,9 @@ const ClipCard = ({
           {clip.brand ? <p className="text-muted-foreground truncate text-xs">{clip.brand}</p> : null}
           <div className="flex flex-wrap gap-1.5">
             {exceptionChip}
-            {clip.kind !== "unclassified" ? (
+            {clip.role !== "unclassified" ? (
               <Badge shape="square" tone="neutral">
-                {KIND_LABEL[clip.kind]}
+                {ROLE_LABEL[clip.role]}
               </Badge>
             ) : null}
             {clip.era ? (
@@ -363,4 +363,4 @@ const ClipCard = ({
   );
 };
 
-export { AUDIENCE_LABEL, ClipCard, KIND_LABEL, playsLine };
+export { AUDIENCE_LABEL, ClipCard, playsLine, ROLE_LABEL };

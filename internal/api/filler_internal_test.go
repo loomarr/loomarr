@@ -17,10 +17,10 @@ func TestClipToDTONeedsDetailsFollowsThePredicate(t *testing.T) {
 		clip filler.Clip
 		want bool
 	}{
-		{"tagged commercial", filler.Clip{Kind: filler.Commercial, Era: 1991, Audience: filler.Kids, Category: "toys"}, false},
-		{"commercial missing category", filler.Clip{Kind: filler.Commercial, Era: 1991, Audience: filler.Kids}, true},
-		{"bare commercial", filler.Clip{Kind: filler.Commercial}, true},
-		{"bare bumper", filler.Clip{Kind: filler.Bumper}, false},
+		{"tagged commercial", filler.Clip{Role: filler.Commercial, Era: 1991, Audience: filler.Kids, Category: "toys"}, false},
+		{"commercial missing category", filler.Clip{Role: filler.Commercial, Era: 1991, Audience: filler.Kids}, true},
+		{"bare commercial", filler.Clip{Role: filler.Commercial}, true},
+		{"bare bumper", filler.Clip{Role: filler.Bumper}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -21,12 +21,12 @@ func supplyCatalog(grounded, untagged int) []filler.Clip {
 	var out []filler.Clip
 	for i := 0; i < grounded; i++ {
 		id := fmt.Sprintf("grounded-%02d", i)
-		out = append(out, filler.Clip{Hash: id, Path: id + ".mp4", Kind: filler.Commercial,
+		out = append(out, filler.Clip{Hash: id, Path: id + ".mp4", Role: filler.Commercial,
 			Era: 1994, Audience: filler.General, DurationMs: 30_000})
 	}
 	for i := 0; i < untagged; i++ {
 		id := fmt.Sprintf("untagged-%02d", i)
-		out = append(out, filler.Clip{Hash: id, Path: id + ".mp4", Kind: filler.Commercial,
+		out = append(out, filler.Clip{Hash: id, Path: id + ".mp4", Role: filler.Commercial,
 			Era: 1994, DurationMs: 30_000})
 	}
 	return out

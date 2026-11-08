@@ -31,8 +31,8 @@ func guideBenchBody() any {
 			if a%10 == 0 {
 				airings[a].Kind = "filler"
 				airings[a].Pod = &PodPoolDTO{MatchLevel: "exact", TotalMs: 60_000, Entries: []PodEntryDTO{
-					{Hash: "h1", Name: "Cereal", Kind: "commercial", DurationMs: 30_000},
-					{Hash: "h2", Name: "Cars", Kind: "commercial", DurationMs: 30_000},
+					{Hash: "h1", Name: "Cereal", Role: "commercial", DurationMs: 30_000},
+					{Hash: "h2", Name: "Cars", Role: "commercial", DurationMs: 30_000},
 				}}
 			}
 		}

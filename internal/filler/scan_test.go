@@ -387,10 +387,10 @@ func TestScanDir_InfersKindAndEraFromTheFilename(t *testing.T) {
 	if got := byPath["1994-toys-ad.mp4"]; got.Era != 1994 {
 		t.Errorf("era not inferred from the filename: %+v", got)
 	}
-	if got := byPath["bumper-back-soon.mp4"]; got.Kind != filler.Bumper {
+	if got := byPath["bumper-back-soon.mp4"]; got.Role != filler.Bumper {
 		t.Errorf("kind not inferred from the filename: %+v", got)
 	}
-	if got := byPath["mystery-1994.mp4"]; got.Kind != filler.Unclassified || got.Era != 1994 {
+	if got := byPath["mystery-1994.mp4"]; got.Role != filler.Unclassified || got.Era != 1994 {
 		t.Errorf("unknown role did not remain unclassified with independent era evidence: %+v", got)
 	}
 }
@@ -409,7 +409,7 @@ func TestScanDir_RestoresCatalogKindFromPortableSidecar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(clips) != 1 || clips[0].Kind != filler.PSA {
+	if len(clips) != 1 || clips[0].Role != filler.PSA {
 		t.Fatalf("rebuilt clips=%+v, want portable PSA kind", clips)
 	}
 }

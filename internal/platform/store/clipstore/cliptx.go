@@ -53,27 +53,27 @@ func (c ClipTx) EnrichmentRevision(ctx context.Context, hash string) (int64, err
 	return revision, err
 }
 
-// ClassifyKind sets the kind of a clip that is still unclassified; a classified clip keeps its kind.
-// The opt-in kinds are the exception (#2037). Sources file campaign ads and weather reports as
+// ClassifyRole sets the role of a clip that is still unclassified; a classified clip keeps its role.
+// The opt-in roles are the exception (#2037). Sources file campaign ads and weather reports as
 // commercials, so commercial, interstitial, political and news replace one another: an accepted
 // answer can relabel a campaign ad, and a corrected rule can take a wrong label back. Enrichment's
 // precedence has already decided the answer wins, so an operator's choice is never overwritten. A
-// specific role, such as a PSA, keeps its kind.
-func (c ClipTx) ClassifyKind(ctx context.Context, hash string, kind clips.Kind, at time.Time) error {
+// specific role, such as a PSA, is kept.
+func (c ClipTx) ClassifyRole(ctx context.Context, hash string, role clips.Role, at time.Time) error {
 	replaceable := []any{string(clips.Unclassified)}
-	if optInGroup[kind] {
-		for k := range optInGroup {
-			replaceable = append(replaceable, string(k))
+	if optInGroup[role] {
+		for r := range optInGroup {
+			replaceable = append(replaceable, string(r))
 		}
 	}
-	args := append([]any{string(kind), epoch(at), hash}, replaceable...)
-	_, err := c.tx.ExecContext(ctx, c.s.h.Rebind(`UPDATE clips SET kind = ?, updated_at = ? WHERE hash = ? AND kind IN (`+
+	args := append([]any{string(role), epoch(at), hash}, replaceable...)
+	_, err := c.tx.ExecContext(ctx, c.s.h.Rebind(`UPDATE clips SET role = ?, updated_at = ? WHERE hash = ? AND role IN (`+
 		strings.TrimSuffix(strings.Repeat("?, ", len(replaceable)), ", ")+`)`), args...)
 	return err
 }
 
-// optInGroup is the generic break-body kinds and the opt-in kinds they are filed as (#2037).
-var optInGroup = map[clips.Kind]bool{
+// optInGroup is the generic break-body roles and the opt-in roles they are filed as (#2037).
+var optInGroup = map[clips.Role]bool{
 	clips.Commercial: true, clips.Interstitial: true, clips.Political: true, clips.News: true,
 }
 
@@ -180,7 +180,7 @@ func (c ClipTx) RecordVision(ctx context.Context, hash, visibleText string, at t
 // Admit files a held, present, classified clip into the playable catalog.
 func (c ClipTx) Admit(ctx context.Context, hash string, at time.Time) (bool, error) {
 	return c.affectedOne(ctx, `UPDATE clips SET held = ?, updated_at = ?
-		WHERE hash = ? AND held = ? AND removed_at = 0 AND kind <> ?`,
+		WHERE hash = ? AND held = ? AND removed_at = 0 AND role <> ?`,
 		false, epoch(at), hash, true, string(clips.Unclassified))
 }
 

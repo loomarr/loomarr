@@ -121,7 +121,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			now := time.Unix(1_900_634_000, 0).UTC()
 			for _, clip := range []filler.Clip{
 				{Hash: parentHash, Path: filepath.Base(parentFull), Name: "Retained parent", IsComposite: true},
-				{Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child", Kind: filler.Commercial, ParentHash: parentHash},
+				{Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child", Role: filler.Commercial, ParentHash: parentHash},
 			} {
 				if err := st.UpsertClip(ctx, clipstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
 					t.Fatal(err)
@@ -160,7 +160,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 			first := newStage(crashStore)
 			out, err := first.Run(ctx, filler.StoreClip{Clip: filler.Clip{
 				Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child",
-				Kind: filler.Commercial, ParentHash: parentHash,
+				Role: filler.Commercial, ParentHash: parentHash,
 			}})
 			if err == nil || crashStore.target.Hash == "" {
 				t.Fatalf("crash result = %+v, target=%+v, err=%v; want retryable infrastructure error", out, crashStore.target, err)
@@ -233,7 +233,7 @@ func TestFillerConditioningJourney_ConfirmedChildBecomesAdmissionReady(t *testin
 		t.Fatal(err)
 	}
 	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{
-		Hash: compHash, Path: compPath, Name: "Compilation", Kind: filler.Commercial,
+		Hash: compHash, Path: compPath, Name: "Compilation", Role: filler.Commercial,
 		Source: "test-folder",
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)

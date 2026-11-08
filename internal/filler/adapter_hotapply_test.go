@@ -20,8 +20,8 @@ import (
 // again on every call, so whatever the boundary reads from settings is what assembly uses.
 func TestPodAdapter_ResolvesPolicyPerCall(t *testing.T) {
 	catalog := []filler.Clip{
-		{Hash: "short", Path: "short", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000},
-		{Hash: "long", Path: "long", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 64_000},
+		{Hash: "short", Path: "short", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000},
+		{Hash: "long", Path: "long", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 64_000},
 	}
 
 	// The live policy, as a boundary that reads settings would supply it.
@@ -84,7 +84,7 @@ func TestPodAdapter_BreakDurationRaisesSoftPodLimit(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		clips = append(clips, filler.Clip{
 			Hash: string(rune('a' + i)), Path: string(rune('a'+i)) + ".mp4",
-			Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
+			Role: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
 		})
 	}
 	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
@@ -107,7 +107,7 @@ func TestPodAdapter_ChannelBreakDurationOverridesGlobal(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		clips = append(clips, filler.Clip{
 			Hash: string(rune('a' + i)), Path: string(rune('a'+i)) + ".mp4",
-			Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
+			Role: filler.Commercial, Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
 		})
 	}
 	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
@@ -127,8 +127,8 @@ func TestPodAdapter_ChannelBreakDurationOverridesGlobal(t *testing.T) {
 
 func TestPodAdapter_PlayableDurationIsOnlyRealClipMedia(t *testing.T) {
 	clips := []filler.Clip{
-		{Hash: "a", Path: "a.mp4", Kind: filler.Commercial, DurationMs: 18_000},
-		{Hash: "b", Path: "b.mp4", Kind: filler.Commercial, DurationMs: 22_000},
+		{Hash: "a", Path: "a.mp4", Role: filler.Commercial, DurationMs: 18_000},
+		{Hash: "b", Path: "b.mp4", Role: filler.Commercial, DurationMs: 22_000},
 	}
 	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
 		return filler.Policy{BreakDurationMs: 5 * 60_000}

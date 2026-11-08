@@ -30,7 +30,7 @@ func releasedClipRunningRow(t *testing.T, st records.Store, hash string) {
 	ctx := context.Background()
 	at := time.Now().UTC().Add(-time.Hour)
 	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{
-		Hash: hash, Path: "ab/" + hash + ".mp4", Name: hash + ".mp4", Kind: filler.Commercial,
+		Hash: hash, Path: "ab/" + hash + ".mp4", Name: hash + ".mp4", Role: filler.Commercial,
 		DurationMs: 30_000, Source: "archive", Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestPipeline_RunningRowForAlreadyReleasedClipSettlesWithoutRepublishing(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Held || after.Kind != before.Kind || after.Placement != before.Placement {
+	if after.Held || after.Role != before.Role || after.Placement != before.Placement {
 		t.Fatalf("settling changed the clip: before=%+v after=%+v", before, after)
 	}
 	if _, ok, err := st.GetFillerReadyEvent(ctx, "released"); err != nil || ok {

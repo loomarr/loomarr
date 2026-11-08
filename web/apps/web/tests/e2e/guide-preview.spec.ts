@@ -127,8 +127,8 @@ const installGuide = async (page: Page) => {
             stopMs: fromMs + 32 * minute,
             pod: {
               entries: [
-                { name: "Moonlight station ident", kind: "station_id", durationMs: 30_000 },
-                { name: "Garden safety message", kind: "psa", durationMs: 90_000 },
+                { name: "Moonlight station ident", role: "station_id", durationMs: 30_000 },
+                { name: "Garden safety message", role: "psa", durationMs: 90_000 },
               ],
             },
           },

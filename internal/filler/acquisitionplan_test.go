@@ -52,7 +52,7 @@ func TestPlanAcquisition_UnknownNeverSatisfiesHardConstraints(t *testing.T) {
 		{"era", filler.AcquisitionIntent{EraStart: 1980, EraEnd: 1989}, filler.CandidateEraUnknown},
 		{"duration", filler.AcquisitionIntent{MaxDurationMS: 120_000}, filler.CandidateDurationUnknown},
 		{"quality", filler.AcquisitionIntent{MinHeight: 480}, filler.CandidateQualityUnknown},
-		{"role", filler.AcquisitionIntent{Roles: []filler.Kind{filler.Commercial}}, filler.CandidateRoleUnknown},
+		{"role", filler.AcquisitionIntent{Roles: []filler.Role{filler.Commercial}}, filler.CandidateRoleUnknown},
 		{"audience", filler.AcquisitionIntent{Audiences: []filler.Audience{filler.Kids}}, filler.CandidateAudienceUnknown},
 		{"taxonomy", filler.AcquisitionIntent{TaxonomyGaps: []string{"toys"}}, filler.CandidateTaxonomyUnknown},
 	}
@@ -134,7 +134,7 @@ func TestPlanAcquisition_RejectsConstraintsOutsideTheClosedVocabulary(t *testing
 		{EraStart: 1799},
 		{EraEnd: 2201},
 		{MinHeight: 4321},
-		{Roles: []filler.Kind{filler.Unclassified}},
+		{Roles: []filler.Role{filler.Unclassified}},
 	} {
 		if _, err := filler.PlanAcquisition(intent, nil, nil); err == nil {
 			t.Errorf("PlanAcquisition(%+v) succeeded, want validation error", intent)

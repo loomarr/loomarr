@@ -200,7 +200,7 @@ const stubReachable = () => {
         {
           hash: "hash-comp",
           name: "80s compilation",
-          kind: "commercial",
+          role: "commercial",
           durationMs: 900000,
           // ⚠ The fixture was named "80s compilation" and ran 15 minutes but never set this, so
           // the DATA did not claim to be what the name said. Since §10 V54 A8 the split action
@@ -215,7 +215,7 @@ const stubReachable = () => {
         {
           hash: "hash-ad",
           name: "80s cereal advert",
-          kind: "commercial",
+          role: "commercial",
           durationMs: 30000,
           isComposite: false,
           tagged: true,

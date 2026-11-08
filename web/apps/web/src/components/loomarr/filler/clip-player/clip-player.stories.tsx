@@ -33,7 +33,7 @@ type Story = StoryObj<typeof meta>;
 // 404.
 const clip: ClipDTO = {
   name: "TPH-TidepoolHour.mkv — Tidepool Hour",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30_000,
   era: 1990,
   audience: "kids",

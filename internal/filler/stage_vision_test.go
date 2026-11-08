@@ -148,7 +148,7 @@ var oneFrame = [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}
 // path rather than equal to it, so a hash-keyed call and a path-keyed one stay distinguishable.
 func visionClip(path string) filler.StoreClip {
 	return filler.StoreClip{Clip: filler.Clip{
-		Hash: path + "-hash", Path: path, Name: path, Kind: filler.Commercial, DurationMs: 30_000,
+		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial, DurationMs: 30_000,
 	}}
 }
 

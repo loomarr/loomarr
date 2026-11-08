@@ -16,9 +16,9 @@ func TestFillerExactClipSourceProvenance(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
 	now := time.Now().UTC()
-	putClip(t, st, filler.Clip{Hash: "source-reel", Path: "reel.mp4", Name: "Source recording", Kind: filler.Commercial, IsComposite: true})
-	putClip(t, st, filler.Clip{Hash: "source-child", Path: "child.mp4", Name: "Rendered child", Kind: filler.Commercial, ParentHash: "source-reel"})
-	putClip(t, st, filler.Clip{Hash: "unrelated", Path: "reel.mp4", Name: "Reused filename", Kind: filler.Commercial})
+	putClip(t, st, filler.Clip{Hash: "source-reel", Path: "reel.mp4", Name: "Source recording", Role: filler.Commercial, IsComposite: true})
+	putClip(t, st, filler.Clip{Hash: "source-child", Path: "child.mp4", Name: "Rendered child", Role: filler.Commercial, ParentHash: "source-reel"})
+	putClip(t, st, filler.Clip{Hash: "unrelated", Path: "reel.mp4", Name: "Reused filename", Role: filler.Commercial})
 	if err := st.UpsertAcquisitionRun(ctx, filler.AcquisitionRun{ID: "source-run", Trigger: filler.AcquisitionManual, Status: filler.AcquisitionSuccess, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}

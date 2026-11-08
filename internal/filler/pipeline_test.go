@@ -310,7 +310,7 @@ func seedEnrolled(st *pipeMemStore, hash string) {
 	at := time.Unix(1_799_999_000, 0).UTC()
 	st.put(filler.StoreClip{Clip: filler.Clip{
 		Hash: hash, Path: "a/b/" + hash + ".mp4", Name: hash,
-		Kind: filler.Unclassified, Source: "test-source", Held: true,
+		Role: filler.Unclassified, Source: "test-source", Held: true,
 	}})
 	st.rows[hash] = filler.ClipPipeline{
 		ClipHash: hash, Stage: filler.StageProbe, Status: filler.StatusQueued,

@@ -33,7 +33,7 @@ func TestBulkRemoveFiller_DismissalTakesTheClipOffTheBelt(t *testing.T) {
 	const hash = "hash-dismissed"
 	seedForDecision(t, st, func() {
 		putClip(t, st, filler.Clip{
-			Hash: hash, Path: "1985/dismissed.mp4", Name: "Dismissed", Kind: filler.Commercial,
+			Hash: hash, Path: "1985/dismissed.mp4", Name: "Dismissed", Role: filler.Commercial,
 			DurationMs: 30_000, Held: true,
 		})
 	}, hash, filler.DispositionReview)
@@ -59,7 +59,7 @@ func TestBulkRemoveFiller_RestoreUndoesADismissal(t *testing.T) {
 	const hash = "hash-restored"
 	seedForDecision(t, st, func() {
 		putClip(t, st, filler.Clip{
-			Hash: hash, Path: "1985/restored.mp4", Name: "Restored", Kind: filler.Commercial,
+			Hash: hash, Path: "1985/restored.mp4", Name: "Restored", Role: filler.Commercial,
 			DurationMs: 30_000, Held: true,
 		})
 	}, hash, filler.DispositionDismissed)

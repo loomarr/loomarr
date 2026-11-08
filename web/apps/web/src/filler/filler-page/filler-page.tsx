@@ -39,7 +39,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   const search = useSearch({ strict: false }) as Partial<FillerSearch>;
   const catalogSearch = {
     ...(search.q ? { q: search.q } : {}),
-    ...(search.kind ? { kind: search.kind } : {}),
+    ...(search.role ? { role: search.role } : {}),
     ...(search.audience ? { audience: search.audience } : {}),
     ...(search.taxon ? { taxon: search.taxon } : {}),
     ...(search.unclassified ? { unclassified: true } : {}),

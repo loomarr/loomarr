@@ -18,7 +18,7 @@ func untaggedCatalog() []Clip {
 	return []Clip{
 		commercial("grounded-kids", 1992, Kids),
 		commercial("grounded-general", 1992, General),
-		{Hash: "untagged", Path: "untagged", Kind: Commercial, Era: 1992, DurationMs: 30_000},
+		{Hash: "untagged", Path: "untagged", Role: Commercial, Era: 1992, DurationMs: 30_000},
 	}
 }
 
@@ -66,7 +66,7 @@ func TestLadder_UngroundedNeverOutranksAGroundedMatch(t *testing.T) {
 	w := Window{Era: Year(1992), Audience: LateNight, GapMs: 120_000, PodMax: 4}
 	cat := []Clip{
 		commercial("grounded", 1992, LateNight),
-		{Hash: "untagged", Path: "untagged", Kind: Commercial, Era: 1992, DurationMs: 30_000},
+		{Hash: "untagged", Path: "untagged", Role: Commercial, Era: 1992, DurationMs: 30_000},
 	}
 
 	// Room for one clip: the grounded match takes it.
@@ -88,8 +88,8 @@ func TestLadder_UngroundedNeverOutranksAGroundedMatch(t *testing.T) {
 // bumper card. It now fills. This is the test that would have caught the original bug.
 func TestLadder_AnEntirelyUntaggedCatalogStillFillsABreak(t *testing.T) {
 	cat := []Clip{
-		{Hash: "u1", Path: "u1", Kind: Commercial, Era: 1992, DurationMs: 30_000},
-		{Hash: "u2", Path: "u2", Kind: Commercial, Era: 1992, DurationMs: 30_000},
+		{Hash: "u1", Path: "u1", Role: Commercial, Era: 1992, DurationMs: 30_000},
+		{Hash: "u2", Path: "u2", Role: Commercial, Era: 1992, DurationMs: 30_000},
 	}
 	w := Window{Era: Year(1992), Audience: LateNight, GapMs: 120_000, PodMax: 4}
 
@@ -107,7 +107,7 @@ func TestLadder_AnEntirelyUntaggedCatalogStillFillsABreak(t *testing.T) {
 // front of children.
 func TestLadder_AKidsChannelWithAnUntaggedCatalogFallsToTheCard(t *testing.T) {
 	cat := []Clip{
-		{Hash: "u1", Path: "u1", Kind: Commercial, Era: 1992, DurationMs: 30_000},
+		{Hash: "u1", Path: "u1", Role: Commercial, Era: 1992, DurationMs: 30_000},
 	}
 	w := Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4}
 
@@ -127,7 +127,7 @@ func TestAssemble_UngroundedAudienceNeverAirsOnKidsOrFamilyChannels(t *testing.T
 		var cat []Clip
 		for i := 0; i < 1+rng.Intn(12); i++ {
 			cat = append(cat, Clip{
-				Hash: fmt.Sprintf("c%d-%d", trial, i), Path: fmt.Sprintf("c%d-%d", trial, i), Kind: Commercial,
+				Hash: fmt.Sprintf("c%d-%d", trial, i), Path: fmt.Sprintf("c%d-%d", trial, i), Role: Commercial,
 				Era: []int{0, 1985, 1992, 2005}[rng.Intn(4)], Audience: audiences[rng.Intn(len(audiences))],
 				DurationMs: 30_000,
 			})
@@ -152,7 +152,7 @@ func TestAssemble_KidsChannelWithOnlyNonKidsClipsGetsTheBumperCard(t *testing.T)
 	cat := []Clip{
 		commercial("late", 1992, LateNight),
 		commercial("general", 1992, General),
-		{Hash: "untagged", Path: "untagged", Kind: Commercial, Era: 1992, DurationMs: 30_000},
+		{Hash: "untagged", Path: "untagged", Role: Commercial, Era: 1992, DurationMs: 30_000},
 	}
 	pod := Assemble(cat, Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
 	if pod.MatchLevel != MatchBumperCard || len(pod.Entries) != 1 || !pod.Entries[0].IsFallbackCard {

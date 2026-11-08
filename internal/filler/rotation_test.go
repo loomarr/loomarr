@@ -10,9 +10,9 @@ import (
 
 func rotationCatalog() []filler.Clip {
 	return []filler.Clip{
-		{Hash: "a", Path: "a.mp4", Name: "A", Kind: filler.Commercial, Era: 1994, Audience: filler.Kids, Category: "a", DurationMs: 30_000},
-		{Hash: "b", Path: "b.mp4", Name: "B", Kind: filler.Commercial, Era: 1994, Audience: filler.Kids, Category: "b", DurationMs: 30_000},
-		{Hash: "c", Path: "c.mp4", Name: "C", Kind: filler.Commercial, Era: 1994, Audience: filler.Kids, Category: "c", DurationMs: 30_000},
+		{Hash: "a", Path: "a.mp4", Name: "A", Role: filler.Commercial, Era: 1994, Audience: filler.Kids, Category: "a", DurationMs: 30_000},
+		{Hash: "b", Path: "b.mp4", Name: "B", Role: filler.Commercial, Era: 1994, Audience: filler.Kids, Category: "b", DurationMs: 30_000},
+		{Hash: "c", Path: "c.mp4", Name: "C", Role: filler.Commercial, Era: 1994, Audience: filler.Kids, Category: "c", DurationMs: 30_000},
 	}
 }
 
@@ -26,7 +26,7 @@ func rotationWindow(at time.Time, max int) filler.Window {
 func commercialIDs(p filler.Pod) []string {
 	var ids []string
 	for _, e := range p.Entries {
-		if e.Kind == filler.Commercial {
+		if e.Role == filler.Commercial {
 			ids = append(ids, e.Hash)
 		}
 	}

@@ -117,7 +117,7 @@ const installIncoming = async (page: Parameters<typeof installMockBackend>[0]) =
           {
             hash: match.clipHash,
             name: match.name,
-            kind: "commercial",
+            role: "commercial",
             durationMs: match.durationMs,
             source: match.from,
             held: match.statusLabel !== "Ready",

@@ -45,7 +45,7 @@ func seedFilenameNamedClip(t *testing.T, st records.Store) {
 	t.Helper()
 	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
 		Hash: "h-widgetmax", Path: "Widgetmax Ad 1991.mp4", Name: "Widgetmax Ad 1991",
-		NameSource: clips.NameFromFilename, Kind: filler.Commercial, DurationMs: 30_000,
+		NameSource: clips.NameFromFilename, Role: filler.Commercial, DurationMs: 30_000,
 	}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func (p *storePods) pod(ctx context.Context) (filler.Pod, error) {
 			return filler.Pod{}, err
 		}
 		pod.Entries = append(pod.Entries, filler.PodEntry{Hash: c.Hash, Name: c.Name, NameSource: c.NameSource,
-			Kind: c.Kind, DurationMs: c.DurationMs})
+			Role: c.Role, DurationMs: c.DurationMs})
 		pod.TotalMs += c.DurationMs
 	}
 	return pod, nil

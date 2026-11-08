@@ -31,7 +31,7 @@ type PodEntryDTO struct {
 	Path            string `json:"path,omitempty" doc:"The clip's server-side location relative to FILLER_DIR. Empty for the embedded fallback bumper card and always on member-readable routes (#1980); clients address real clips by hash."`
 	TunarrProgramID string `json:"tunarrProgramId,omitempty" doc:"Tunarr's program id for this clip, when Tunarr knows it. Empty for the fallback bumper card and on installs without Tunarr; clients address real clips by hash."`
 	Name            string `json:"name" doc:"The clip's display name. On member-readable routes (the Guide, a channel's pods) it is viewer copy, and empty when the catalogue name came from the filename, however it reads (#1980, #1988). Clients then show the break's own label. The admin draft preview keeps the filename."`
-	Kind            string `json:"kind" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
+	Role            string `json:"role" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news"`
 	DurationMs      int64  `json:"durationMs"`
 	IsFallbackCard  bool   `json:"isFallbackCard" doc:"The embedded default bumper card — the bottom of the fallback ladder"`
 	// Era and Quality are DISPLAY context for the guide's pod hover card (§12): they explain
@@ -469,7 +469,7 @@ func podToPoolDTO(pod filler.Pod) PodPoolDTO {
 			Path:            e.Path,
 			TunarrProgramID: e.TunarrProgramID,
 			Name:            e.Name,
-			Kind:            string(e.Kind),
+			Role:            string(e.Role),
 			DurationMs:      e.DurationMs,
 			IsFallbackCard:  e.IsFallbackCard,
 			Era:             e.Era,

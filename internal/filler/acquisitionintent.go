@@ -25,7 +25,7 @@ var (
 // candidate metadata satisfies it.
 type AcquisitionIntent struct {
 	Version         string     `json:"version"`
-	Roles           []Kind     `json:"roles,omitempty"`
+	Roles           []Role     `json:"roles,omitempty"`
 	EraStart        int        `json:"eraStart,omitempty"`
 	EraEnd          int        `json:"eraEnd,omitempty"`
 	Audiences       []Audience `json:"audiences,omitempty"`
@@ -49,7 +49,7 @@ func (i AcquisitionIntent) Normalize() AcquisitionIntent {
 	}
 	i.Geography = i.Geography.Normalize()
 	i.CatalogReason = strings.TrimSpace(i.CatalogReason)
-	i.Roles = uniqueKinds(i.Roles)
+	i.Roles = uniqueRoles(i.Roles)
 	i.Audiences = uniqueAudiences(i.Audiences)
 	i.TaxonomyGaps = uniqueStrings(i.TaxonomyGaps)
 	i.SourceAllowlist = uniqueStrings(i.SourceAllowlist)
@@ -76,7 +76,7 @@ func (i AcquisitionIntent) Validate() error {
 		return fmt.Errorf("acquisition geography: %w", err)
 	}
 	for _, role := range i.Roles {
-		if !validConcreteKind(role) {
+		if !validConcreteRole(role) {
 			return fmt.Errorf("unknown content role %q", role)
 		}
 	}
@@ -137,7 +137,7 @@ type AcquisitionCandidate struct {
 	DurationMS    int            `json:"durationMs,omitempty"`
 	Height        int            `json:"height,omitempty"`
 	Geography     Geography      `json:"geography,omitempty"`
-	ObservedRoles []Kind         `json:"observedRoles,omitempty"`
+	ObservedRoles []Role         `json:"observedRoles,omitempty"`
 	Audiences     []Audience     `json:"audiences,omitempty"`
 	Taxonomy      []string       `json:"taxonomy,omitempty"`
 	// StationSearch is the call sign whose station search found this item (#2059 decision 9). The
@@ -237,9 +237,9 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
-func uniqueKinds(in []Kind) []Kind {
-	out := make([]Kind, 0, len(in))
-	seen := map[Kind]bool{}
+func uniqueRoles(in []Role) []Role {
+	out := make([]Role, 0, len(in))
+	seen := map[Role]bool{}
 	for _, value := range in {
 		if value != "" && !seen[value] {
 			seen[value] = true
@@ -263,7 +263,7 @@ func uniqueAudiences(in []Audience) []Audience {
 	return out
 }
 
-func validKind(value Kind) bool {
+func validRole(value Role) bool {
 	switch value {
 	case Unclassified, Commercial, Bumper, StationID, PSA, Trailer, Interstitial, Political, News:
 		return true
@@ -272,8 +272,8 @@ func validKind(value Kind) bool {
 	}
 }
 
-func validConcreteKind(value Kind) bool {
-	return value != Unclassified && validKind(value)
+func validConcreteRole(value Role) bool {
+	return value != Unclassified && validRole(value)
 }
 
 func validAudience(value Audience) bool {

@@ -16,18 +16,18 @@ func TestFillerNeverBecomesAProgram(t *testing.T) {
 	// A PodEntry has no TunarrProgramID→program bridge: its Kind is always a filler
 	// Kind, never a program. Assert the domain offers no way to make a program slot
 	// from a clip — the only slot constructor filler feeds is SlotFiller.
-	clip := filler.Clip{Path: "c1", Kind: filler.Commercial, DurationMs: 30000}
+	clip := filler.Clip{Path: "c1", Role: filler.Commercial, DurationMs: 30000}
 
 	slot := schedule.Slot{Kind: schedule.SlotFiller, LibraryItemID: clip.Path, DurationMs: clip.DurationMs}
 	if slot.IsProgram() {
 		t.Fatal("a filler clip must never map to a program slot")
 	}
 	// And a clip's Kind is always in the filler kind set — never "program".
-	switch clip.Kind {
+	switch clip.Role {
 	case filler.Commercial, filler.Bumper, filler.StationID, filler.PSA, filler.Trailer, filler.Interstitial:
 		// ok — all filler kinds
 	default:
-		t.Fatalf("clip has a non-filler kind %q", clip.Kind)
+		t.Fatalf("clip has a non-filler kind %q", clip.Role)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestClip_Tagged(t *testing.T) {
 
 // KindFromName records explicit filename conventions without inventing a playable role.
 func TestKindFromName(t *testing.T) {
-	cases := map[string]filler.Kind{
+	cases := map[string]filler.Role{
 		"2002 Pellham Drugs Commercial": filler.Commercial,
 		"Saturday Morning Bumper":       filler.Bumper,
 		"WLMR Station Ident":            filler.StationID,
@@ -62,7 +62,7 @@ func TestKindFromName(t *testing.T) {
 		"Station tour":                  filler.Unclassified,
 	}
 	for name, want := range cases {
-		if got := filler.KindFromName(name); got != want {
+		if got := filler.RoleFromName(name); got != want {
 			t.Errorf("KindFromName(%q) = %s, want %s", name, got, want)
 		}
 	}

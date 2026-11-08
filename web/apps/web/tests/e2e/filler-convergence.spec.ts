@@ -5,7 +5,7 @@ const clip = {
   hash: "trusted-toy-spot",
   path: "trusted-toy-spot.mp4",
   name: "Trusted Toy Spot",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30000,
   era: 1990,
   audience: "kids",

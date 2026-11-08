@@ -5,10 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
 import { PodTimeline } from "./pod-timeline";
 
-const entry = (name: string, kind: PodEntryDTO["kind"], durationMs: number): PodEntryDTO => ({
+const entry = (name: string, role: PodEntryDTO["role"], durationMs: number): PodEntryDTO => ({
   hash: `${name}-hash`,
   name,
-  kind,
+  role,
   durationMs,
   isFallbackCard: false,
   path: name,
@@ -33,7 +33,7 @@ describe("PodTimeline", () => {
     expect(screen.getByText("Fizzbolt, 30s")).toHaveClass("sr-only");
     expect(screen.getByText("1990s")).toBeInTheDocument();
     // A legend spells out the codes actually present (bumper + commercial here), so BMP/AD
-    // don't read as mystery tokens — and only those two, not every possible kind. The legend
+    // don't read as mystery tokens — and only those two, not every possible role. The legend
     // text is split across <span>s (CODE = word), so match on the container's text content.
     const legend = screen.getByText((_, el) => el?.textContent === "BMP = bumper · AD = commercial");
     expect(legend).toBeInTheDocument();
@@ -62,7 +62,7 @@ describe("PodTimeline", () => {
     render(
       <PodTimeline
         matchLevel="bumper_card"
-        entries={[{ name: "We'll be right back", kind: "bumper", durationMs: 5000, isFallbackCard: true }]}
+        entries={[{ name: "We'll be right back", role: "bumper", durationMs: 5000, isFallbackCard: true }]}
       />,
     );
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
@@ -75,7 +75,7 @@ describe("PodTimeline", () => {
       <PodTimeline
         entries={[
           ad,
-          { name: "We'll be right back", kind: "bumper", durationMs: 5000, isFallbackCard: true },
+          { name: "We'll be right back", role: "bumper", durationMs: 5000, isFallbackCard: true },
         ]}
         onPreview={onPreview}
       />,
@@ -85,7 +85,7 @@ describe("PodTimeline", () => {
     expect(screen.queryByRole("button", { name: /Preview We'll be right back/i })).not.toBeInTheDocument();
   });
 
-  it("names a clip the server withheld by its kind, never a blank (#1980)", () => {
+  it("names a clip the server withheld by its role, never a blank (#1980)", () => {
     render(<PodTimeline entries={[entry("", "commercial", 30000)]} />);
     const segment = screen.getByRole("listitem");
     expect(segment).toHaveAttribute("title", expect.stringMatching(/^Commercial · /));

@@ -217,11 +217,11 @@ func (r *rig) awaitProposal(t *testing.T, jobID string) (string, proposals.Propo
 func seedFillerClips(t *testing.T, st store.Store) {
 	t.Helper()
 	clips := []filler.Clip{
-		{Hash: strings.Repeat("1", 64), TunarrProgramID: "bump-1", Name: "Bumper", Kind: filler.Bumper, Era: 1992, Audience: filler.Kids, DurationMs: 5000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("2", 64), TunarrProgramID: "ad-1", Name: "Cereal ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("3", 64), TunarrProgramID: "ad-2", Name: "Toy ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("4", 64), TunarrProgramID: "ad-3", Name: "Snack ad", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
-		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("1", 64), TunarrProgramID: "bump-1", Name: "Bumper", Role: filler.Bumper, Era: 1992, Audience: filler.Kids, DurationMs: 5000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("2", 64), TunarrProgramID: "ad-1", Name: "Cereal ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("3", 64), TunarrProgramID: "ad-2", Name: "Toy ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("4", 64), TunarrProgramID: "ad-3", Name: "Snack ad", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "snacks", DurationMs: 30000, Source: "tunarr-local"},
+		{Hash: strings.Repeat("5", 64), TunarrProgramID: "ad-adult", Name: "Late-night ad", Role: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "alcohol", DurationMs: 30000, Source: "tunarr-local"},
 	}
 	for _, c := range clips {
 		if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: c, UpdatedAt: time.Unix(1_800_000_000, 0)}); err != nil {

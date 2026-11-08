@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { ClipDTOAudience } from "@loomarr/api/models/clipDTOAudience";
-import { ClipDTOKind } from "@loomarr/api/models/clipDTOKind";
+import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
@@ -55,8 +55,8 @@ const useProductCategories = (): { slug: string; label: string }[] => {
 // is the Select's own placeholder value, not a listed option (Radix forbids an empty item
 // value). Unclassified is a held lifecycle state rather than a selectable pod role.
 const AUDIENCES = Object.values(ClipDTOAudience).filter((a): a is Exclude<typeof a, ""> => a !== "");
-const KINDS = Object.values(ClipDTOKind).filter((kind) => kind !== "unclassified") as Exclude<
-  (typeof ClipDTOKind)[keyof typeof ClipDTOKind],
+const KINDS = Object.values(ClipDTORole).filter((kind) => kind !== "unclassified") as Exclude<
+  (typeof ClipDTORole)[keyof typeof ClipDTORole],
   "unclassified"
 >[];
 

@@ -478,11 +478,11 @@ type ClipStore interface {
 	// UpdateClipClassification edits the non-taxonomy classifier facts — the tag editor (§10).
 	// Taxonomy writes exclusively own category. Returns ErrNotFound if absent.
 	UpdateClipClassification(ctx context.Context, libraryItemID string, era int, audience string, updatedAt time.Time) error
-	// UpdateClipKind corrects a clip's kind (§10). Separate from UpdateClipClassification because
-	// the AI tagging job never sets kind — it classifies era/audience/category from text
-	// signals, while kind is detected at sync and only a human corrects it (a trailer
-	// scanned as a commercial being the likely case).
-	UpdateClipKind(ctx context.Context, tunarrProgramID, kind string, updatedAt time.Time) error
+	// UpdateClipRole corrects a clip's role (§10). Separate from UpdateClipClassification because
+	// the AI tagging job never sets the role — it classifies era/audience from text signals,
+	// while the role is detected at sync and only a human corrects it (a trailer scanned as a
+	// commercial being the likely case).
+	UpdateClipRole(ctx context.Context, tunarrProgramID, role string, updatedAt time.Time) error
 	// RenameClip records a name an operator gave a clip, with its provenance (#1990). Hash-keyed;
 	// the caller validates the name and writes the sidecar so a rescan keeps it. Returns ErrNotFound
 	// if absent.

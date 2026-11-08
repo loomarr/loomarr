@@ -160,8 +160,9 @@ the application persists it before the file is eligible for intake.
 
 Each clip carries the metadata that lets the scheduler place it:
 
-- `kind`: `unclassified`, `commercial`, `bumper`, `station_id`, `psa`, `trailer`,
-  `interstitial`, `political` or `news`. `unclassified` means no exact role is established; it is
+- `role`: `unclassified`, `commercial`, `bumper`, `station_id`, `psa`, `trailer`,
+  `interstitial`, `political` or `news` (the column, the Go field and the wire all say `role`
+  since #2323). `unclassified` means no exact role is established; it is
   descriptive, not a lifecycle state, and an unknown filename defaults to it, never to `commercial`.
 - **Political ads and news are opt-in** (#2037). `political` is a campaign or issue ad; `news` is a
   news or weather segment, whose format tag sits under `interstitial`. Both download and pass the

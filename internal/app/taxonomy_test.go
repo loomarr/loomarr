@@ -42,7 +42,7 @@ func TestTaxonomyEditor_PreviewsSavedSelectionsAndConvergesCommittedEligibility(
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
 	clip := filler.Clip{
-		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Kind: filler.Commercial,
+		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: filler.Commercial,
 		DurationMs: 30_000, Era: 1994, Audience: filler.General,
 	}
 	if err := st.UpsertClip(t.Context(), clipstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {
@@ -112,7 +112,7 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
 	clip := filler.Clip{
-		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Kind: filler.Commercial,
+		Hash: "beer-clip", Path: "beer-clip.mp4", Name: "Beer clip", Role: filler.Commercial,
 		DurationMs: 30_000, Era: 1994, Audience: filler.General,
 	}
 	if err := st.UpsertClip(t.Context(), clipstore.Clip{Clip: clip, UpdatedAt: now}); err != nil {

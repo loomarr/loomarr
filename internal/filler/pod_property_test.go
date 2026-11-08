@@ -30,7 +30,7 @@ var (
 	propEras      = []int{1975, 1982, 1985, 1990, 1992, 1994, 1999, 2003}
 	propAudiences = []filler.Audience{filler.Kids, filler.Family, filler.General, filler.LateNight}
 	propCategs    = []string{"toys", "cereal", "cars", "tech", "fast_food", "movie_trailer", ""}
-	propKinds     = []filler.Kind{filler.Commercial, filler.Bumper, filler.StationID}
+	propKinds     = []filler.Role{filler.Commercial, filler.Bumper, filler.StationID}
 	propDurations = []int64{5000, 10000, 15000, 20000, 30000, 45000, 60000}
 )
 
@@ -48,7 +48,7 @@ func randomCatalog(rng *rand.Rand, maxN int) []filler.Clip {
 			Hash:       "h" + strconv.Itoa(i),
 			Path:       "p" + strconv.Itoa(i),
 			Name:       "clip-" + strconv.Itoa(i),
-			Kind:       propKinds[rng.Intn(len(propKinds))],
+			Role:       propKinds[rng.Intn(len(propKinds))],
 			Era:        propEras[rng.Intn(len(propEras))],
 			Audience:   propAudiences[rng.Intn(len(propAudiences))],
 			Category:   propCategs[rng.Intn(len(propCategs))],
@@ -106,7 +106,7 @@ func randomPolicy(rng *rand.Rand) filler.Policy {
 func commercialCount(p filler.Pod) int {
 	n := 0
 	for _, e := range p.Entries {
-		if e.Kind == filler.Commercial {
+		if e.Role == filler.Commercial {
 			n++
 		}
 	}
@@ -255,12 +255,12 @@ func TestProp_Density(t *testing.T) {
 // exact-match catalog so the cap, not scarcity, is what bounds the count.
 func TestProp_DensityDefaultPodMax(t *testing.T) {
 	var cat []filler.Clip
-	cat = append(cat, filler.Clip{Hash: "hbump", Path: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
+	cat = append(cat, filler.Clip{Hash: "hbump", Path: "bump", Role: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
 	for i := 0; i < 12; i++ {
 		cat = append(cat, filler.Clip{
 			// Hash distinct from Path — the identity pod assembly keys on (§10 V45a).
 			Hash: "had" + strconv.Itoa(i),
-			Path: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
+			Path: "ad" + strconv.Itoa(i), Role: filler.Commercial, Era: 1992,
 			Audience: filler.Kids, Category: "c" + strconv.Itoa(i), DurationMs: 20000,
 		})
 	}

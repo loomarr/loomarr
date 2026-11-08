@@ -46,7 +46,7 @@ type Clip struct {
 // ClipFilter narrows a ListClips query. Any zero-value field is a wildcard, so a
 // zero ClipFilter lists everything (the pod-assembly catalog load).
 type ClipFilter struct {
-	Kind            clips.Kind
+	Role            clips.Role
 	Era             int
 	Audience        clips.Audience
 	Category        string
@@ -258,16 +258,16 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, removed_at, held, updated_at, created_at)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, role, placement, era, audience, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, removed_at, held, updated_at, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(hash) DO UPDATE SET
 		   enrichment_revision=CASE
-		     WHEN clips.name <> excluded.name OR clips.kind <> excluded.kind OR clips.source <> excluded.source
+		     WHEN clips.name <> excluded.name OR clips.role <> excluded.role OR clips.source <> excluded.source
 		     THEN clips.enrichment_revision + 1 ELSE clips.enrichment_revision END,
 		   path=excluded.path,
 		   tunarr_program_id=excluded.tunarr_program_id,
 		   -- name_source travels with name: every writer of a name says where it came from (#1988).
-		   name=excluded.name, name_source=excluded.name_source, kind=excluded.kind,
+		   name=excluded.name, name_source=excluded.name_source, role=excluded.role,
 		   era=excluded.era, audience=excluded.audience,
 		   duration_ms=excluded.duration_ms, rating=excluded.rating,
 		   source=excluded.source, quality=excluded.quality,
@@ -281,7 +281,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		   -- every re-sync, which is the same class as is_composite/parent_hash above.
 		   language=excluded.language,
 		   updated_at=excluded.updated_at`),
-		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, clipNameSource(c), string(c.Kind), string(clipPlacement(c)), c.Era, string(c.Audience),
+		c.Hash, c.Path, nullIfEmpty(c.TunarrProgramID), c.Name, clipNameSource(c), string(c.Role), string(clipPlacement(c)), c.Era, string(c.Audience),
 		clipGeographicScope(c), c.Country, c.Network, c.Station, c.AirDate, c.GeoEvidence,
 		c.DurationMs, c.Rating, c.Source,
 		// ⚠ Flags are bound as real bools: they are BOOLEAN on Postgres (storage.md).
@@ -618,12 +618,12 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 			return ErrConditionedClipMismatch
 		}
 		res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips SET
-			(name, name_source, kind, era, audience, rating, source, license,
+			(name, name_source, role, era, audience, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, removed_at, held,
 			 created_at, reaped_at) =
-			(SELECT name, name_source, kind, era, audience, rating, source, license,
+			(SELECT name, name_source, role, era, audience, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
 			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, removed_at, held,
@@ -779,7 +779,7 @@ const clipCategoryExpr = `COALESCE((SELECT ct.taxon ` + clipProductLeafFrom + `
 	ORDER BY (SELECT COUNT(*) FROM taxa_closure tc WHERE tc.descendant = ct.taxon) DESC, ct.taxon ASC
 	LIMIT 1), '')`
 
-const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, ` + clipCategoryExpr + `, duration_ms,
+const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, role, placement, era, audience, ` + clipCategoryExpr + `, duration_ms,
 	geographic_scope, country, network, station, air_date, geo_evidence,
 	rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text,
 	is_composite, parent_hash,
@@ -923,9 +923,9 @@ func (s *Store) CountClipsBySource(ctx context.Context, f ClipFilter) (map[strin
 func clipWhere(f ClipFilter) ([]string, []any) {
 	var where []string
 	var args []any
-	if f.Kind != "" {
-		where = append(where, "kind = ?")
-		args = append(args, string(f.Kind))
+	if f.Role != "" {
+		where = append(where, "role = ?")
+		args = append(args, string(f.Role))
 	}
 	if f.Era > 0 {
 		where = append(where, "era = ?")
@@ -1057,7 +1057,7 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 // (the negation of Tagged: era > 0, audience and category set). The kind is bound, never a literal,
 // so it is the same constant the Go predicate reads. testClipNeedsDetailsAgreesWithSQL pins the two
 // to the same clips on both backends; the wire's ClipDTO.needsDetails comes from the Go side.
-const needsDetailsWhere = "kind = ? AND (era = 0 OR audience = '' OR NOT EXISTS (SELECT 1 " + clipProductLeafFrom + "))"
+const needsDetailsWhere = "role = ? AND (era = 0 OR audience = '' OR NOT EXISTS (SELECT 1 " + clipProductLeafFrom + "))"
 
 func (s *Store) UpdateClipClassification(ctx context.Context, id string, era int, audience string, updatedAt time.Time) error {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(
@@ -1182,15 +1182,15 @@ func exposureTime(ms int64) time.Time {
 	return time.UnixMilli(ms).UTC()
 }
 
-// UpdateClipKind corrects a clip's kind (§10). Kind drives pod ROLE — a bumper bookends
-// a pod while a commercial fills it — so a mis-detected kind produces structurally wrong
-// pods, not merely a mis-tagged clip.
-func (s *Store) UpdateClipKind(ctx context.Context, id, kind string, updatedAt time.Time) error {
+// UpdateClipRole corrects a clip's role (§10). The role decides where a clip sits in a pod — a
+// bumper bookends a pod while a commercial fills it — so a mis-detected role produces
+// structurally wrong pods, not merely a mis-tagged clip.
+func (s *Store) UpdateClipRole(ctx context.Context, id, role string, updatedAt time.Time) error {
 	res, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`UPDATE clips SET kind = ?, updated_at = ? WHERE hash = ?`),
-		kind, epoch(updatedAt), id)
+		`UPDATE clips SET role = ?, updated_at = ? WHERE hash = ?`),
+		role, epoch(updatedAt), id)
 	if err != nil {
-		return fmt.Errorf("update clip kind %s: %w", id, err)
+		return fmt.Errorf("update clip role %s: %w", id, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -1409,7 +1409,7 @@ func scanClip(sc scannable) (Clip, error) {
 	if err != nil {
 		return Clip{}, err
 	}
-	c.Kind = clips.Kind(kind)
+	c.Role = clips.Role(kind)
 	c.Audience = clips.Audience(audience)
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
 	c.IsComposite = isComposite

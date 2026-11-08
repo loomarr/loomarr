@@ -20,14 +20,14 @@ const programme = (id: string, from: number, to: number, fields: Partial<Airing>
   ...fields,
 });
 
-const spot = (kind: "commercial" | "station_id", name: string, seconds: number, brand?: string) => ({
+const spot = (role: "commercial" | "station_id", name: string, seconds: number, brand?: string) => ({
   brand,
   durationMs: seconds * 1000,
-  era: kind === "commercial" ? 1996 : undefined,
-  hash: `${kind}-${name}`,
+  era: role === "commercial" ? 1996 : undefined,
+  hash: `${role}-${name}`,
   isFallbackCard: false,
-  kind,
   name,
+  role,
 });
 
 const breakAt = (id: string, from: number, entries: ReturnType<typeof spot>[]): Airing => {

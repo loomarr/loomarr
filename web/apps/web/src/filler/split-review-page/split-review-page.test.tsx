@@ -91,7 +91,7 @@ const stubSplit = (me: MeBody = ADMIN, current: string[] = ["en"]) => {
   const composite = {
     hash: PROPOSAL.clipHash,
     name: "Classic Toy Commercial Compilation 1989",
-    kind: "commercial" as const,
+    role: "commercial" as const,
     durationMs: 61_000,
     playCount: 0,
     playsCounted: true,

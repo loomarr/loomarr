@@ -2,7 +2,7 @@ import { formatClipDuration } from "@loomarr/core/format";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
-import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
+import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";
 
 // ClipRow — the catalog's dense LIST view (V35b, the mock's `catListView`). The mock's column
@@ -93,7 +93,7 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
     </div>
 
     <span className="text-static-400 hidden font-mono text-xs md:inline">
-      {clip.kind === "unclassified" ? "" : KIND_LABEL[clip.kind]}
+      {clip.role === "unclassified" ? "" : ROLE_LABEL[clip.role]}
     </span>
     <span className="text-static-400 hidden font-mono text-xs tabular-nums md:inline">
       {clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : "—"}

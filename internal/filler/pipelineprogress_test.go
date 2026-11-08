@@ -32,7 +32,7 @@ func newProgMemStore(hash string) *progMemStore {
 	return &progMemStore{
 		clips: map[string]StoreClip{hash: {Clip: Clip{
 			Hash: hash, Path: "a/" + hash + ".mp4", Name: hash,
-			Kind: Unclassified, Source: "test-source", Held: true,
+			Role: Unclassified, Source: "test-source", Held: true,
 		}}},
 		rows: map[string]ClipPipeline{hash: {
 			ClipHash: hash, Stage: StageProbe, Status: StatusQueued, Disposition: DispositionRunning,

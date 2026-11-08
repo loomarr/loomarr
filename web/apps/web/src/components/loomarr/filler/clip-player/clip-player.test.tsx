@@ -10,7 +10,7 @@ import { ClipPlayer } from "./clip-player";
 
 const clip: ClipDTO = {
   name: "Crunchlings",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30_000,
   era: 1990,
   audience: "kids",

@@ -17,7 +17,7 @@ var (
 )
 
 func seasonAd(id string, era int, tags ...string) filler.Clip {
-	return filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Kind: filler.Commercial, Era: era,
+	return filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Role: filler.Commercial, Era: era,
 		Audience: filler.General, DurationMs: 15_000, Tags: tags, AssertedTags: tags}
 }
 
@@ -32,9 +32,9 @@ func seasonCatalog(plain, christmas int) []filler.Clip {
 		cat = append(cat, seasonAd(fmt.Sprintf("xmas%02d", i), 1994, "christmas"))
 	}
 	cat = append(cat,
-		filler.Clip{Hash: "xmas-ident", Path: "xmas-ident.mp4", Name: "xmas-ident", Kind: filler.StationID,
+		filler.Clip{Hash: "xmas-ident", Path: "xmas-ident.mp4", Name: "xmas-ident", Role: filler.StationID,
 			Era: 1994, Audience: filler.General, DurationMs: 5_000, Tags: []string{"christmas"}, AssertedTags: []string{"christmas"}},
-		filler.Clip{Hash: "ident", Path: "ident.mp4", Name: "ident", Kind: filler.StationID,
+		filler.Clip{Hash: "ident", Path: "ident.mp4", Name: "ident", Role: filler.StationID,
 			Era: 1994, Audience: filler.General, DurationMs: 5_000})
 	return cat
 }
@@ -49,7 +49,7 @@ var seasonSel = filler.Selection{Era: filler.EraRange{From: 1990, To: 1999}, Aud
 
 func inSeasonCount(p filler.Pod, tagged map[string]bool) (in, body int) {
 	for _, e := range p.Entries {
-		if e.Kind != filler.Commercial {
+		if e.Role != filler.Commercial {
 			continue
 		}
 		body++
@@ -205,7 +205,7 @@ func TestSeason_TheGuaranteedAdMovesAroundTheBreak(t *testing.T) {
 		at := -1
 		n := 0
 		for _, e := range pod.Entries {
-			if e.Kind != filler.Commercial {
+			if e.Role != filler.Commercial {
 				continue
 			}
 			if xmas[e.Hash] {
@@ -329,7 +329,7 @@ func TestSeason_TheGuaranteedAdKeepsCategoryVariety(t *testing.T) {
 		}
 		var ads []filler.PodEntry
 		for _, e := range pod.Entries {
-			if e.Kind == filler.Commercial {
+			if e.Role == filler.Commercial {
 				ads = append(ads, e)
 			}
 		}
@@ -358,7 +358,7 @@ func TestSeason_StationIDsFillTheTailBeforeTheHalfYields(t *testing.T) {
 		x.DurationMs = 7_000
 		cat = append(cat, x)
 		cat = append(cat, filler.Clip{Hash: fmt.Sprintf("ident%02d", i), Path: fmt.Sprintf("ident%02d.mp4", i),
-			Kind: filler.StationID, Era: 1994, Audience: filler.General, DurationMs: 5_000})
+			Role: filler.StationID, Era: 1994, Audience: filler.General, DurationMs: 5_000})
 	}
 	a := seasonAdapter(cat, nil, schedule.Calendar{Country: "US"}, seasonDec20)
 	for seed := range int64(100) {
@@ -371,7 +371,7 @@ func TestSeason_StationIDsFillTheTailBeforeTheHalfYields(t *testing.T) {
 		}
 		idents := 0
 		for _, e := range pod.Entries {
-			if e.Kind == filler.StationID {
+			if e.Role == filler.StationID {
 				idents++
 			}
 		}
@@ -387,7 +387,7 @@ func TestSeason_InSeasonBookendsDoNotCountTowardTheHalf(t *testing.T) {
 		seasonAd("xmas00", 1994, "christmas"), seasonAd("xmas01", 1994, "christmas")}
 	for i := range 4 {
 		id := fmt.Sprintf("xmas-ident%d", i)
-		cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Kind: filler.StationID, Era: 1994,
+		cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Role: filler.StationID, Era: 1994,
 			Audience: filler.General, DurationMs: 5_000, Tags: []string{"christmas"}, AssertedTags: []string{"christmas"}})
 	}
 	xmas := christmasHashes(cat)
@@ -405,7 +405,7 @@ func TestSeason_InSeasonBookendsDoNotCountTowardTheHalf(t *testing.T) {
 		// Christmas idents the bookends left, though the commercials already hold their half.
 		idents := 0
 		for _, e := range pod.Entries {
-			if e.Kind == filler.StationID {
+			if e.Role == filler.StationID {
 				idents++
 			}
 		}

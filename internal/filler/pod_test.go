@@ -13,16 +13,16 @@ import (
 // era/audience/category cycle, plus two bumpers.
 func sampleCatalog() []filler.Clip {
 	c := []filler.Clip{
-		{Hash: "b1.mp4", Path: "b1.mp4", TunarrProgramID: "tun-b1", Name: "We'll be right back", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
-		{Hash: "b2.mp4", Path: "b2.mp4", TunarrProgramID: "tun-b2", Name: "Back to the show", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
+		{Hash: "b1.mp4", Path: "b1.mp4", TunarrProgramID: "tun-b1", Name: "We'll be right back", Role: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
+		{Hash: "b2.mp4", Path: "b2.mp4", TunarrProgramID: "tun-b2", Name: "Back to the show", Role: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000},
 		// 1992 kids commercials across categories.
-		{Hash: "c1.mp4", Path: "c1.mp4", TunarrProgramID: "tun-c1", Name: "Crunchlings", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000},
-		{Hash: "c2.mp4", Path: "c2.mp4", TunarrProgramID: "tun-c2", Name: "Shell Squad figures", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{Hash: "c3.mp4", Path: "c3.mp4", TunarrProgramID: "tun-c3", Name: "Orbitron Nova", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000},
-		{Hash: "c4.mp4", Path: "c4.mp4", TunarrProgramID: "tun-c4", Name: "Sunpouch", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "fast_food", DurationMs: 15000},
+		{Hash: "c1.mp4", Path: "c1.mp4", TunarrProgramID: "tun-c1", Name: "Crunchlings", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "cereal", DurationMs: 30000},
+		{Hash: "c2.mp4", Path: "c2.mp4", TunarrProgramID: "tun-c2", Name: "Shell Squad figures", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{Hash: "c3.mp4", Path: "c3.mp4", TunarrProgramID: "tun-c3", Name: "Orbitron Nova", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "tech", DurationMs: 30000},
+		{Hash: "c4.mp4", Path: "c4.mp4", TunarrProgramID: "tun-c4", Name: "Sunpouch", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "fast_food", DurationMs: 15000},
 		// A 1985 (different decade) kids ad + a late-night ad (wrong audience).
-		{Hash: "c5.mp4", Path: "c5.mp4", TunarrProgramID: "tun-c5", Name: "80s toy", Kind: filler.Commercial, Era: 1985, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{Hash: "c6.mp4", Path: "c6.mp4", TunarrProgramID: "tun-c6", Name: "Beer ad", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
+		{Hash: "c5.mp4", Path: "c5.mp4", TunarrProgramID: "tun-c5", Name: "80s toy", Role: filler.Commercial, Era: 1985, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{Hash: "c6.mp4", Path: "c6.mp4", TunarrProgramID: "tun-c6", Name: "Beer ad", Role: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
 	}
 	return c
 }
@@ -92,7 +92,7 @@ func TestAssemble_CategoryVariety(t *testing.T) {
 	}
 	lastCat := ""
 	for _, e := range p.Entries {
-		if e.Kind != filler.Commercial {
+		if e.Role != filler.Commercial {
 			continue
 		}
 		c := catByID[e.Path]
@@ -168,10 +168,10 @@ func TestAssemble_FallbackLadder(t *testing.T) {
 func TestAssemble_RespectsPodMax(t *testing.T) {
 	// Many eligible clips, PodMax=2 → at most 2 commercials.
 	var cat []filler.Clip
-	cat = append(cat, filler.Clip{Path: "bump", Kind: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
+	cat = append(cat, filler.Clip{Path: "bump", Role: filler.Bumper, Era: 1992, Audience: filler.General, DurationMs: 5000})
 	for i := 0; i < 10; i++ {
 		cat = append(cat, filler.Clip{
-			Path: "ad" + strconv.Itoa(i), Kind: filler.Commercial, Era: 1992,
+			Path: "ad" + strconv.Itoa(i), Role: filler.Commercial, Era: 1992,
 			Audience: filler.Kids, Category: "cat" + strconv.Itoa(i), DurationMs: 30000,
 		})
 	}
@@ -179,7 +179,7 @@ func TestAssemble_RespectsPodMax(t *testing.T) {
 	p := filler.Assemble(cat, w, filler.Policy{}, nil)
 	commercials := 0
 	for _, e := range p.Entries {
-		if e.Kind == filler.Commercial {
+		if e.Role == filler.Commercial {
 			commercials++
 		}
 	}
@@ -208,7 +208,7 @@ func TestAssemble_CategorySelectionNarrowsPool(t *testing.T) {
 	w.PodMax = 8
 	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
 	for _, e := range p.Entries {
-		if e.Kind != filler.Commercial {
+		if e.Role != filler.Commercial {
 			continue
 		}
 		if e.Path != "c1.mp4" && e.Path != "c2.mp4" { // cereal, toys
@@ -228,7 +228,7 @@ func TestAssemble_KindsSelectionBumpersOnly(t *testing.T) {
 	w.Kinds = []string{"bumper"}
 	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
 	for _, e := range p.Entries {
-		if e.Kind == filler.Commercial {
+		if e.Role == filler.Commercial {
 			t.Errorf("a bumpers-only selection still placed a commercial: %q", e.Path)
 		}
 	}
@@ -239,8 +239,8 @@ func TestAssemble_KindsSelectionBumpersOnly(t *testing.T) {
 func TestAssemble_NoAdsFillsWithStationMaterialBeforeTheCard(t *testing.T) {
 	at := time.Date(2026, 10, 27, 20, 0, 0, 0, time.UTC)
 	idents := []filler.Clip{
-		{Hash: "id1", Path: "id1.mp4", Kind: filler.StationID, Era: 1992, Audience: filler.Kids, DurationMs: 10_000},
-		{Hash: "id2", Path: "id2.mp4", Kind: filler.StationID, Era: 1992, Audience: filler.Kids, DurationMs: 10_000},
+		{Hash: "id1", Path: "id1.mp4", Role: filler.StationID, Era: 1992, Audience: filler.Kids, DurationMs: 10_000},
+		{Hash: "id2", Path: "id2.mp4", Role: filler.StationID, Era: 1992, Audience: filler.Kids, DurationMs: 10_000},
 	}
 	w := kidsWindow(7)
 	w.GapMs = 25_000
@@ -264,7 +264,7 @@ func TestAssemble_NoAdsFillsWithStationMaterialBeforeTheCard(t *testing.T) {
 		t.Errorf("station break = %v, want both resting idents, the one aired longest ago first", got)
 	}
 
-	if p := filler.Assemble([]filler.Clip{{Hash: "long", Path: "long.mp4", Kind: filler.StationID,
+	if p := filler.Assemble([]filler.Clip{{Hash: "long", Path: "long.mp4", Role: filler.StationID,
 		Era: 1992, Audience: filler.Kids, DurationMs: 60_000}}, w, filler.Policy{}, nil); !hasFallbackCard(p) {
 		t.Errorf("with no station clip that fits, the break = %+v, want the card", p.Entries)
 	}
@@ -303,7 +303,7 @@ func TestAssemble_PinForcesInOffLadderClip(t *testing.T) {
 func TestAssemble_UnclassifiedCannotBeForcedIntoAPod(t *testing.T) {
 	unknown := filler.Clip{
 		Hash: "unknown", Path: "unknown.mp4", TunarrProgramID: "tun-unknown",
-		Name: "Mystery clip", Kind: filler.Unclassified, Era: 1992, Audience: filler.Kids,
+		Name: "Mystery clip", Role: filler.Unclassified, Era: 1992, Audience: filler.Kids,
 		DurationMs: 30_000, Held: false,
 	}
 	w := kidsWindow(7)
@@ -332,7 +332,7 @@ func TestAssemble_PinRespectsPodMax(t *testing.T) {
 	var cat []filler.Clip
 	for i := 0; i < 6; i++ {
 		cat = append(cat, filler.Clip{
-			TunarrProgramID: "pin" + strconv.Itoa(i), Kind: filler.Commercial,
+			TunarrProgramID: "pin" + strconv.Itoa(i), Role: filler.Commercial,
 			Era: 1992, Audience: filler.Kids, Category: "cat" + strconv.Itoa(i), DurationMs: 30000,
 		})
 	}
@@ -341,7 +341,7 @@ func TestAssemble_PinRespectsPodMax(t *testing.T) {
 	p := filler.Assemble(cat, w, filler.Policy{}, nil)
 	commercials := 0
 	for _, e := range p.Entries {
-		if e.Kind == filler.Commercial {
+		if e.Role == filler.Commercial {
 			commercials++
 		}
 	}
@@ -359,7 +359,7 @@ func TestAssemble_EmptySelectionUnchanged(t *testing.T) {
 	// selection. Assert it still produces a real (non-fallback) pod with commercials.
 	got := 0
 	for _, e := range base.Entries {
-		if e.Kind == filler.Commercial {
+		if e.Role == filler.Commercial {
 			got++
 		}
 	}
@@ -382,7 +382,7 @@ func ids(p filler.Pod) []string {
 // late_night), so a Family window finds nothing and hits the bumper card.
 func catNoFamily() []filler.Clip {
 	return []filler.Clip{
-		{Path: "k1", Kind: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
-		{Path: "l1", Kind: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
+		{Path: "k1", Role: filler.Commercial, Era: 1992, Audience: filler.Kids, Category: "toys", DurationMs: 30000},
+		{Path: "l1", Role: filler.Commercial, Era: 1992, Audience: filler.LateNight, Category: "cars", DurationMs: 30000},
 	}
 }

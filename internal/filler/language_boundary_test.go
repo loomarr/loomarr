@@ -7,8 +7,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 )
 
-func spokenClip(id string, kind filler.Kind, lang string) filler.Clip {
-	return filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Kind: kind, Era: 1994,
+func spokenClip(id string, kind filler.Role, lang string) filler.Clip {
+	return filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Role: kind, Era: 1994,
 		Audience: filler.General, DurationMs: 15_000, Language: lang}
 }
 

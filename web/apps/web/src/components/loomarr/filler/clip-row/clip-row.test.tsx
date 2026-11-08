@@ -13,7 +13,7 @@ const render = (ui: ReactNode) => rtlRender(ui, { wrapper: Theme });
 
 const base: ClipDTO = {
   name: "Fizzbolt — Dude!",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30000,
   era: 1990,
   audience: "kids",

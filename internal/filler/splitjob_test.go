@@ -730,7 +730,7 @@ func seedCompilation(st *splitMemStore, path string, durationMs int64) string {
 	c.Hash = splitFixtureIdentity(path)
 	c.Path = path
 	c.Name = filepath.Base(path)
-	c.Kind = filler.Commercial
+	c.Role = filler.Commercial
 	c.DurationMs = durationMs
 	c.Source = "archive"
 	c.License = "https://creativecommons.org/licenses/by/4.0/"
@@ -1888,7 +1888,7 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		if c.IsComposite {
 			continue // the kept parent, not a segment
 		}
-		if c.DurationMs <= 0 || c.Kind != filler.Commercial || c.License == "" || c.Source != "archive" {
+		if c.DurationMs <= 0 || c.Role != filler.Commercial || c.License == "" || c.Source != "archive" {
 			t.Errorf("clip %s missing duration/kind/provenance: %+v", path, c.Clip)
 		}
 		if c.ParentHash != comp.Hash {
@@ -2337,7 +2337,7 @@ func TestConfirm_ConcurrentScanNeverObservesAnUnboundChild(t *testing.T) {
 	parentHash := parentFileHash
 	st.clips[parentHash] = filler.StoreClip{Clip: filler.Clip{
 		Hash: parentHash, Path: filepath.ToSlash(filler.ClipRelPath(parentHash, ".mp4")),
-		Name: "Compilation", Kind: filler.Commercial, DurationMs: 30_000,
+		Name: "Compilation", Role: filler.Commercial, DurationMs: 30_000,
 	}}
 	stageParentForSplitReview(st, parentHash)
 	// The large reviewed display name makes the historical media-first then sidecar-write window

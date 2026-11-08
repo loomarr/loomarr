@@ -1,7 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ClipGeographyDTO } from "@loomarr/api/models/clipGeographyDTO";
-import type { PatchClipInputBodyKind } from "@loomarr/api/models/patchClipInputBodyKind";
+import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -45,16 +45,16 @@ const flattenAxis = (taxa: TaxonDTO[], axis: string): Array<{ taxon: TaxonDTO; d
 // scheduler place a clip, so getting them right is the difference between a matched pod
 // and the fallback ladder.
 //
-// `kind` is editable here too: detection at sync mis-reads a trailer as a commercial
-// often enough to matter, and kind drives pod ROLE — a bumper bookends a pod while a
-// commercial fills it — so a wrong kind yields structurally wrong pods.
+// `role` is editable here too: detection at sync mis-reads a trailer as a commercial
+// often enough to matter, and the role decides where a clip sits in a pod — a bumper
+// bookends a pod while a commercial fills it — so a wrong one yields structurally wrong pods.
 const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) => {
   const editorRef = useRef<HTMLElement>(null);
   useEffect(() => {
     editorRef.current?.focus();
   }, []);
   const [name, setName] = useState(clip?.name ?? "");
-  const [kind, setKind] = useState(clip?.kind ?? "commercial");
+  const [role, setRole] = useState(clip?.role ?? "commercial");
   const [era, setEra] = useState(clip?.era ? String(clip.era) : "");
   // ClipDTO's audience is optional AND includes "" for unset, so the state is widened to
   // the select's own domain rather than the DTO's — "" is a real option here.
@@ -95,8 +95,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
         // detail must not vouch for a filename. An emptied name is sent so the server refuses it.
         ...(name.trim() === clip.name.trim() ? {} : { name: name.trim() }),
         // Unclassified means the optional role is unknown, not that this Ready clip needs approval.
-        // Omit kind rather than asserting a role the operator has not selected.
-        ...(kind === "unclassified" ? {} : { kind: kind as PatchClipInputBodyKind }),
+        // Omit the role rather than asserting one the operator has not selected.
+        ...(role === "unclassified" ? {} : { role: role as PatchClipInputBodyRole }),
         // An empty era means "unset", which the API takes as 0 — not "leave alone".
         era: era ? Number(era) : 0,
         audience: audience as ClipDTO["audience"],
@@ -154,7 +154,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
         </div>
         <div>
           <Label htmlFor="tag-kind">Type</Label>
-          <Select value={kind} onValueChange={(v) => setKind(v as ClipDTO["kind"])}>
+          <Select value={role} onValueChange={(v) => setRole(v as ClipDTO["role"])}>
             <SelectTrigger id="tag-kind">
               <SelectValue />
             </SelectTrigger>

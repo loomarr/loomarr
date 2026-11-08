@@ -128,10 +128,10 @@ const guideFillerNowLabel = (entry?: Pick<PodEntryDTO, "name">): string => {
 };
 
 /** One clip in a break's composition: "Fizzbolt · commercial", or just "Commercial" when unnamed. */
-const guideFillerEntryLabel = (entry: Pick<PodEntryDTO, "kind" | "name">): string => {
-  const kind = entry.kind.replaceAll("_", " ");
+const guideFillerEntryLabel = (entry: Pick<PodEntryDTO, "role" | "name">): string => {
+  const role = entry.role.replaceAll("_", " ");
   const name = entry.name.trim();
-  return name ? `${name} · ${kind}` : kind.charAt(0).toUpperCase() + kind.slice(1);
+  return name ? `${name} · ${role}` : role.charAt(0).toUpperCase() + role.slice(1);
 };
 
 /** Broadcast and health answer different questions and must not collapse into one status. */

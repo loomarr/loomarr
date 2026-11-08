@@ -11,7 +11,7 @@ import (
 // unrelated ads. Everything matches the kids window so only identity decides.
 func variantCatalog() []filler.Clip {
 	ad := func(hash, category string, durationMs int64, variants ...string) filler.Clip {
-		return filler.Clip{Hash: hash, Path: hash, Name: hash, Kind: filler.Commercial, Era: 1992,
+		return filler.Clip{Hash: hash, Path: hash, Name: hash, Role: filler.Commercial, Era: 1992,
 			Audience: filler.Kids, Category: category, DurationMs: durationMs, Variants: variants}
 	}
 	return []filler.Clip{

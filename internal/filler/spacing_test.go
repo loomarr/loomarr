@@ -30,8 +30,8 @@ func spacingPod(t *testing.T, adapter *filler.PodAdapter, sel filler.Selection, 
 func TestPodAdapter_ChannelSpacingPrefersWidenedEraOverARepeat(t *testing.T) {
 	at := time.Date(2026, 10, 12, 20, 0, 0, 0, time.UTC)
 	clips := []filler.Clip{
-		{Hash: "exact", Path: "exact.mp4", Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000},
-		{Hash: "widened", Path: "widened.mp4", Kind: filler.Commercial, Era: 1984, Audience: filler.General, DurationMs: 30_000},
+		{Hash: "exact", Path: "exact.mp4", Role: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000},
+		{Hash: "widened", Path: "widened.mp4", Role: filler.Commercial, Era: 1984, Audience: filler.General, DurationMs: 30_000},
 	}
 	adapter := spacingAdapter(clips, []filler.Airing{aired("exact", at.Add(-70*time.Minute))})
 	sel := filler.Selection{Era: filler.EraRange{From: 1989, To: 1999}, Audience: filler.General}
@@ -61,7 +61,7 @@ func TestPodAdapter_ChannelSpacingPrefersWidenedEraOverARepeat(t *testing.T) {
 func TestPodAdapter_ChannelSpacingNeverEmptiesABreak(t *testing.T) {
 	at := time.Date(2026, 10, 12, 20, 0, 0, 0, time.UTC)
 	clips := []filler.Clip{
-		{Hash: "only", Path: "only.mp4", Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000},
+		{Hash: "only", Path: "only.mp4", Role: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000},
 	}
 	adapter := spacingAdapter(clips, []filler.Airing{aired("only", at.Add(-10*time.Minute))})
 	day := 24 * time.Hour
@@ -74,9 +74,9 @@ func TestPodAdapter_ChannelSpacingNeverEmptiesABreak(t *testing.T) {
 // The channel page names the pool's location limit from coverage, never from its own copy.
 func TestCoverage_ReportsTheLocationBoundaryItCounted(t *testing.T) {
 	clips := []filler.Clip{
-		{Hash: "us", Path: "us.mp4", Kind: filler.Commercial, GeographicScope: filler.GeographicNational, Country: "US", DurationMs: 30_000},
-		{Hash: "gb", Path: "gb.mp4", Kind: filler.Commercial, GeographicScope: filler.GeographicNational, Country: "GB", DurationMs: 30_000},
-		{Hash: "unknown", Path: "unknown.mp4", Kind: filler.Commercial, DurationMs: 30_000},
+		{Hash: "us", Path: "us.mp4", Role: filler.Commercial, GeographicScope: filler.GeographicNational, Country: "US", DurationMs: 30_000},
+		{Hash: "gb", Path: "gb.mp4", Role: filler.Commercial, GeographicScope: filler.GeographicNational, Country: "GB", DurationMs: 30_000},
+		{Hash: "unknown", Path: "unknown.mp4", Role: filler.Commercial, DurationMs: 30_000},
 	}
 	w := filler.Window{ChannelID: "ch-1", GapMs: 600_000, PodMax: 4}
 	report := filler.Coverage(clips, w, filler.Policy{Geography: filler.Geography{Country: "us"}})
@@ -93,7 +93,7 @@ func TestPodAdapter_DefaultBreakWithoutBumpersIsFourThirtySecondAds(t *testing.T
 	clips := make([]filler.Clip, 0, 8)
 	for i := 0; i < 8; i++ {
 		clips = append(clips, filler.Clip{Hash: string(rune('a' + i)), Path: string(rune('a'+i)) + ".mp4",
-			Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000})
+			Role: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000})
 	}
 	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
 		return filler.Policy{PodMax: 4}
@@ -116,16 +116,16 @@ func TestPodAdapter_DefaultBreakFitsBumpersAndWholeAdsInTheSlot(t *testing.T) {
 	clips := make([]filler.Clip, 0, 12)
 	for i := 0; i < 8; i++ {
 		clips = append(clips, filler.Clip{Hash: string(rune('a' + i)), Path: string(rune('a'+i)) + ".mp4",
-			Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000})
+			Role: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000})
 	}
 	// Short whole clips to finish the remainder the 30 second ads leave, so no ad is ever cut.
 	for i := 0; i < 2; i++ {
 		clips = append(clips, filler.Clip{Hash: string(rune('s' + i)), Path: string(rune('s'+i)) + ".mp4",
-			Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 15_000})
+			Role: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 15_000})
 	}
 	for i := 0; i < 2; i++ {
 		clips = append(clips, filler.Clip{Hash: "bumper-" + string(rune('a'+i)), Path: "bumper-" + string(rune('a'+i)) + ".mp4",
-			Kind: filler.Bumper, Era: 1994, Audience: filler.General, DurationMs: 6_000})
+			Role: filler.Bumper, Era: 1994, Audience: filler.General, DurationMs: 6_000})
 	}
 	// The DEFAULT setting: no per-channel or install break duration, so the 2 minute default applies.
 	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
@@ -140,7 +140,7 @@ func TestPodAdapter_DefaultBreakFitsBumpersAndWholeAdsInTheSlot(t *testing.T) {
 			t.Fatalf("seed %d: pod is %dms, longer than the %dms slot — the tail would be cut", seed, pod.TotalMs, slotMs)
 		}
 		n := len(pod.Entries)
-		if n < 3 || pod.Entries[0].Kind != filler.Bumper || pod.Entries[n-1].Kind != filler.Bumper {
+		if n < 3 || pod.Entries[0].Role != filler.Bumper || pod.Entries[n-1].Role != filler.Bumper {
 			t.Fatalf("seed %d: pod %v must open and close with a bumper", seed, pod.Entries)
 		}
 		if len(commercialIDs(pod)) == 0 {

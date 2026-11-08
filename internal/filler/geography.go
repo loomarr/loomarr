@@ -206,7 +206,7 @@ func UsableIn(c Clip, areas []Area) bool {
 // isStationSegment reports a station's own material: its news, weather, ID or promo. A local
 // advertiser's commercial is an ordinary ad (#2059 decision 12).
 func isStationSegment(c Clip) bool {
-	return c.GeographicScope == GeographicLocal && c.Kind != Commercial
+	return c.GeographicScope == GeographicLocal && c.Role != Commercial
 }
 
 // stationSegmentKey marks a break's reservation set once it holds its one station segment. No clip

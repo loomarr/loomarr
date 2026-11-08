@@ -159,7 +159,7 @@ const intentTemplates = [
 
 const bumperClip: ClipDTO = {
   name: "Channel bumper",
-  kind: "bumper",
+  role: "bumper",
   durationMs: 5000,
   era: 1990,
   audience: "kids",
@@ -178,7 +178,7 @@ const bumperClip: ClipDTO = {
 const podEntries: PodEntryDTO[] = [
   {
     name: "Channel bumper",
-    kind: "bumper",
+    role: "bumper",
     durationMs: 5000,
     isFallbackCard: false,
     path: "clip-bumper-open.mp4",
@@ -186,7 +186,7 @@ const podEntries: PodEntryDTO[] = [
   },
   {
     name: "Fizzbolt — Dude!",
-    kind: "commercial",
+    role: "commercial",
     durationMs: 30000,
     isFallbackCard: false,
     path: "clip-fizzbolt.mp4",
@@ -194,7 +194,7 @@ const podEntries: PodEntryDTO[] = [
   },
   {
     name: "Gloopers — Snack Attack!",
-    kind: "commercial",
+    role: "commercial",
     durationMs: 30000,
     isFallbackCard: false,
     path: "clip-gloopers.mp4",
@@ -202,7 +202,7 @@ const podEntries: PodEntryDTO[] = [
   },
   {
     name: "Back after these",
-    kind: "bumper",
+    role: "bumper",
     durationMs: 5000,
     isFallbackCard: false,
     path: "clip-bumper-close.mp4",
@@ -214,7 +214,7 @@ const podEntries: PodEntryDTO[] = [
 // rather than dead air. It has no program id because it is not a Tunarr program.
 const fallbackCardEntry: PodEntryDTO = {
   name: "Loomarr — We'll be right back",
-  kind: "bumper",
+  role: "bumper",
   durationMs: 5000,
   isFallbackCard: true,
 };
@@ -223,7 +223,7 @@ const podClips: ClipDTO[] = [
   bumperClip,
   {
     name: "Fizzbolt — Dude!",
-    kind: "commercial",
+    role: "commercial",
     durationMs: 30000,
     era: 1990,
     audience: "kids",
@@ -236,7 +236,7 @@ const podClips: ClipDTO[] = [
   },
   {
     name: "Gloopers — Snack Attack!",
-    kind: "commercial",
+    role: "commercial",
     durationMs: 30000,
     era: 1990,
     audience: "kids",
@@ -249,7 +249,7 @@ const podClips: ClipDTO[] = [
   },
   {
     name: "Back after these",
-    kind: "bumper",
+    role: "bumper",
     durationMs: 5000,
     era: 1990,
     audience: "kids",
@@ -264,7 +264,7 @@ const podClips: ClipDTO[] = [
 
 const taggedClip: ClipDTO = {
   name: "Fizzbolt — Dude!",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30000,
   era: 1990,
   audience: "kids",
@@ -310,7 +310,7 @@ const thumbnailedClip: ClipDTO = {
 
 const untaggedClip: ClipDTO = {
   name: "Unlabeled 30s spot",
-  kind: "commercial",
+  role: "commercial",
   durationMs: 30000,
   tagged: false,
   // A commercial with no match tags: the Library's one exception on a ready clip (#1817).
@@ -474,7 +474,7 @@ const guidePod: PodPoolDTO = {
   entries: [
     {
       name: "Channel bumper",
-      kind: "bumper",
+      role: "bumper",
       durationMs: 5_000,
       era: 1994,
       quality: "480p",
@@ -482,7 +482,7 @@ const guidePod: PodPoolDTO = {
     },
     {
       name: "Fizzbolt — Dude!",
-      kind: "commercial",
+      role: "commercial",
       durationMs: 30_000,
       era: 1994,
       quality: "480p",
@@ -490,7 +490,7 @@ const guidePod: PodPoolDTO = {
     },
     {
       name: "Gloopers",
-      kind: "commercial",
+      role: "commercial",
       durationMs: 30_000,
       era: 1993,
       quality: "360p",
@@ -498,7 +498,7 @@ const guidePod: PodPoolDTO = {
     },
     {
       name: "Back after these",
-      kind: "bumper",
+      role: "bumper",
       durationMs: 5_000,
       era: 1994,
       quality: "480p",

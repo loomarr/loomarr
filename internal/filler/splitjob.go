@@ -1064,11 +1064,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	// the catalog), so the operator can fix and retry rather than losing cuts.
 	publication := splitPublication{token: claimToken}
 	for i, seg := range segments {
-		childKind := clip.Kind
+		childKind := clip.Role
 		structureAuthority, hasStructureAuthority := structureDecisionAuthorityForInterval(p, seg)
 		if hasStructureAuthority {
 			var mapped bool
-			childKind, mapped = catalogKindForStructureRole(structureAuthority.role)
+			childKind, mapped = catalogRoleForStructureRole(structureAuthority.role)
 			if !mapped {
 				return nil, fmt.Errorf("split confirm: certified segment %d has no catalog kind", i)
 			}
@@ -1178,7 +1178,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.Hash = c.hash
 		nc.Path = c.path
 		nc.Name, nc.NameSource = c.segment.Name, segmentNameSource(c.segment.NameOrigin)
-		nc.Kind = c.kind
+		nc.Role = c.kind
 		nc.DurationMs = c.segment.EndMs - c.segment.StartMs
 		nc.Era = c.segment.Era
 		nc.Audience = c.segment.Audience

@@ -715,7 +715,7 @@ func (s *TranscodeStage) replacementSidecar(tags SidecarTags, c StoreClip, mezza
 	if seeded || c.NameSource.ShownToViewers() {
 		carryNameProvenance(&tags, c.Name, c.NameSource)
 	}
-	tags.Kind = string(c.Kind)
+	tags.Kind = string(c.Role)
 	tags.Era = c.Era
 	tags.Audience = string(c.Audience)
 	tags.Brand = c.Brand

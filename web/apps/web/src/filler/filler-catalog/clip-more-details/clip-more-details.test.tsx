@@ -13,7 +13,7 @@ import {
 const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   hash: "catalog-hash",
   name: "Local soda commercial",
-  kind: "commercial",
+  role: "commercial",
   era: 1990,
   audience: "general",
   category: "drinks",

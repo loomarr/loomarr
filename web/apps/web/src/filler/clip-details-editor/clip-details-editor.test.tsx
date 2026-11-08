@@ -12,7 +12,7 @@ import { ClipDetailsEditor } from "./clip-details-editor";
 const clip: ClipDTO = {
   hash: "correction-clip",
   name: "Ready clip",
-  kind: "unclassified",
+  role: "unclassified",
   durationMs: 30000,
   tagged: false,
   needsDetails: false,
@@ -65,7 +65,7 @@ describe("optional clip detail correction", () => {
     expect(writes).toBe(0);
   });
 
-  it("saves direct tags and existing facts without asserting unknown kind or derived rollups", async () => {
+  it("saves direct tags and existing facts without asserting an unknown role or derived rollups", async () => {
     let payload: unknown;
     const onSaved = vi.fn();
     server.use(
@@ -88,7 +88,7 @@ describe("optional clip detail correction", () => {
       tags: ["candy"],
       geography: { scope: "national", country: "US" },
     });
-    expect(payload).not.toHaveProperty("kind");
+    expect(payload).not.toHaveProperty("role");
     // An unchanged name is not sent: saving another detail must not record it as curated (#1990).
     expect(payload).not.toHaveProperty("name");
   });

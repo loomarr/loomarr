@@ -26,7 +26,7 @@ const fillerRefinementKnownClip: ClipDTO = {
 };
 const fillerRefinementUnknownClip: ClipDTO = {
   ...untaggedClip,
-  kind: "unclassified",
+  role: "unclassified",
   source: "filler-dir",
   enrichment: { state: "details_limited" },
 };

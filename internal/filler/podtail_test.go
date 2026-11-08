@@ -13,11 +13,11 @@ import (
 func TestFillTail_NeverUsesAClipInsideItsCooldown(t *testing.T) {
 	now := time.Date(2026, 10, 13, 20, 0, 0, 0, time.UTC)
 	cat := []filler.Clip{
-		{Hash: "ad", Path: "ad", Name: "ad", Kind: filler.Commercial, Era: 1992, Audience: filler.General, Category: "cars", DurationMs: 45_000},
-		{Hash: "id1", Path: "id1", Name: "id1", Kind: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
-		{Hash: "id2", Path: "id2", Name: "id2", Kind: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
-		{Hash: "id3", Path: "id3", Name: "id3", Kind: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
-		{Hash: "id4", Path: "id4", Name: "id4", Kind: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
+		{Hash: "ad", Path: "ad", Name: "ad", Role: filler.Commercial, Era: 1992, Audience: filler.General, Category: "cars", DurationMs: 45_000},
+		{Hash: "id1", Path: "id1", Name: "id1", Role: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
+		{Hash: "id2", Path: "id2", Name: "id2", Role: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
+		{Hash: "id3", Path: "id3", Name: "id3", Role: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
+		{Hash: "id4", Path: "id4", Name: "id4", Role: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
 	}
 	policy := filler.Policy{Cooldown: time.Hour}
 	build := func(lastPlayed time.Time) (pod filler.Pod, idents int) {
@@ -33,7 +33,7 @@ func TestFillTail_NeverUsesAClipInsideItsCooldown(t *testing.T) {
 		}
 		pod = filler.Assemble(cat, w, policy, map[string]bool{})
 		for _, e := range pod.Entries {
-			if e.Kind == filler.StationID {
+			if e.Role == filler.StationID {
 				idents++
 			}
 		}
@@ -62,11 +62,11 @@ func TestFillTail_NeverUsesAClipInsideItsCooldown(t *testing.T) {
 func TestFillTail_PrefersAClipNeverSeenOverALongerOneSeenBefore(t *testing.T) {
 	now := time.Date(2026, 10, 25, 21, 0, 0, 0, time.UTC)
 	cat := []filler.Clip{
-		{Hash: "ad", Path: "ad", Name: "ad", Kind: filler.Commercial, Era: 1992, Audience: filler.General, DurationMs: 45_000},
-		{Hash: "new1", Path: "new1", Name: "new1", Kind: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
-		{Hash: "new2", Path: "new2", Name: "new2", Kind: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
-		{Hash: "new3", Path: "new3", Name: "new3", Kind: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
-		{Hash: "seen", Path: "seen", Name: "seen", Kind: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 14_000},
+		{Hash: "ad", Path: "ad", Name: "ad", Role: filler.Commercial, Era: 1992, Audience: filler.General, DurationMs: 45_000},
+		{Hash: "new1", Path: "new1", Name: "new1", Role: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
+		{Hash: "new2", Path: "new2", Name: "new2", Role: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
+		{Hash: "new3", Path: "new3", Name: "new3", Role: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 10_000},
+		{Hash: "seen", Path: "seen", Name: "seen", Role: filler.StationID, Era: 1992, Audience: filler.General, DurationMs: 14_000},
 	}
 	for seed := int64(1); seed <= 8; seed++ {
 		w := filler.Window{
@@ -77,7 +77,7 @@ func TestFillTail_PrefersAClipNeverSeenOverALongerOneSeenBefore(t *testing.T) {
 		pod := filler.Assemble(cat, w, filler.Policy{Cooldown: 4 * time.Hour}, map[string]bool{})
 		var got []string
 		for _, e := range pod.Entries {
-			if e.Kind == filler.StationID {
+			if e.Role == filler.StationID {
 				got = append(got, e.Hash)
 			}
 		}

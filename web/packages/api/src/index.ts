@@ -33,7 +33,7 @@ export * as titlesApi from "../generated/endpoints/titles/titles";
 export * as usersApi from "../generated/endpoints/users/users";
 export type * from "../generated/model";
 export { ClipDTOAudience } from "../generated/model/clipDTOAudience";
-export { ClipDTOKind } from "../generated/model/clipDTOKind";
+export { ClipDTORole } from "../generated/model/clipDTORole";
 export { ExcludedItemDTOReason } from "../generated/model/excludedItemDTOReason";
 export { SettingEntryProvenance } from "../generated/model/settingEntryProvenance";
 export { SettingResultStatus } from "../generated/model/settingResultStatus";

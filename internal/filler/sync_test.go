@@ -119,8 +119,8 @@ func TestSync_RegistersTheConfiguredSharedVolumePath(t *testing.T) {
 // raw builds a scanned clip. ⚠ ID and Path are set SEPARATELY — id is the content hash, path is
 // where the file sits. The fixtures below pass the same string for both where the distinction
 // does not matter; the tests that turn on it (see the two-folder case) pass different ones.
-func raw(id, name string, kind filler.Kind, dur int64, era int) filler.RawClip {
-	return filler.RawClip{ID: id, Path: id, Name: name, Kind: kind, DurationMs: dur, Era: era}
+func raw(id, name string, kind filler.Role, dur int64, era int) filler.RawClip {
+	return filler.RawClip{ID: id, Path: id, Name: name, Role: kind, DurationMs: dur, Era: era}
 }
 
 func newSyncer(source *fakeSource, st *memStore) *filler.Syncer {
@@ -477,9 +477,9 @@ func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 	source := &fakeSource{clips: []filler.RawClip{raw("clip", "Mystery", filler.Unclassified, 31_000, 0)}}
 	for _, tc := range []struct {
 		name     string
-		kind     filler.Kind
+		kind     filler.Role
 		held     bool
-		wantKind filler.Kind
+		wantKind filler.Role
 		wantHeld bool
 	}{
 		{name: "ready role survives rescan", kind: filler.Commercial, wantKind: filler.Commercial},
@@ -489,15 +489,15 @@ func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			st := newMemStore()
 			st.clips["clip"] = filler.StoreClip{Clip: filler.Clip{
-				Hash: "clip", Path: "clip", Name: "Old name", Kind: tc.kind,
+				Hash: "clip", Path: "clip", Name: "Old name", Role: tc.kind,
 				DurationMs: 30_000, Held: tc.held,
 			}}
 			if _, err := newSyncer(source, st).Sync(t.Context()); err != nil {
 				t.Fatal(err)
 			}
 			got := st.clips["clip"]
-			if got.Kind != tc.wantKind || got.Held != tc.wantHeld || got.DurationMs != 31_000 {
-				t.Fatalf("rescanned clip = kind %q held %t duration %d, want %q/%t/31000", got.Kind, got.Held, got.DurationMs, tc.wantKind, tc.wantHeld)
+			if got.Role != tc.wantKind || got.Held != tc.wantHeld || got.DurationMs != 31_000 {
+				t.Fatalf("rescanned clip = kind %q held %t duration %d, want %q/%t/31000", got.Role, got.Held, got.DurationMs, tc.wantKind, tc.wantHeld)
 			}
 		})
 	}
@@ -514,9 +514,9 @@ func TestSync_UnknownNamePreservesReadyStateAndDescriptiveKind(t *testing.T) {
 func TestSync_TwoFoldersSharingAPathAreTwoClips(t *testing.T) {
 	source := &fakeSource{clips: []filler.RawClip{
 		{ID: "hash-sparkra-1985", Path: "ads/sparkra.mp4", Name: "Sparkra 1985",
-			Kind: filler.Commercial, DurationMs: 30000},
+			Role: filler.Commercial, DurationMs: 30000},
 		{ID: "hash-sparkra-1992", Path: "ads/sparkra.mp4", Name: "Sparkra 1992",
-			Kind: filler.Commercial, DurationMs: 15000},
+			Role: filler.Commercial, DurationMs: 15000},
 	}}
 	st := newMemStore()
 
@@ -1220,11 +1220,11 @@ func TestSync_RepairsLegacyStaleHashPathAndPreservesTitle(t *testing.T) {
 	}
 
 	source := &fakeSource{clips: []filler.RawClip{{
-		ID: actual, Path: oldRel, Name: stale, Kind: filler.Commercial, DurationMs: 30_000,
+		ID: actual, Path: oldRel, Name: stale, Role: filler.Commercial, DurationMs: 30_000,
 	}}}
 	st := newMemStore()
 	st.clips[actual] = filler.StoreClip{Clip: filler.Clip{
-		Hash: actual, Path: oldRel, Name: stale, Kind: filler.Commercial,
+		Hash: actual, Path: oldRel, Name: stale, Role: filler.Commercial,
 		Brand: "Sparkra-Cola", Era: 1992, Audience: filler.Family,
 	}}
 	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
@@ -1293,7 +1293,7 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 	}
 	legacyTitle := "299bceca4e5635c05ea454255105152f0b999119"
 	source := &fakeSource{clips: []filler.RawClip{{
-		ID: actual, Path: rel, Name: legacyTitle, Kind: filler.Commercial, DurationMs: 30_000,
+		ID: actual, Path: rel, Name: legacyTitle, Role: filler.Commercial, DurationMs: 30_000,
 	}}}
 	st := newMemStore()
 	sync := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog())
@@ -1353,18 +1353,18 @@ func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
 	})
 	source := &fakeSource{clips: []filler.RawClip{
 		{ID: untitled, Path: untitledRel, Name: "Untitled commercial", NameSource: clips.NameFromFilename,
-			Kind: filler.Commercial, DurationMs: 30_000},
-		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Kind: filler.Commercial, DurationMs: 30_000},
+			Role: filler.Commercial, DurationMs: 30_000},
+		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Role: filler.Commercial, DurationMs: 30_000},
 		{ID: segment, Path: segmentRel, Name: "Untitled commercial", NameSource: clips.NameFromCurated,
-			Kind: filler.Commercial, DurationMs: 30_000},
+			Role: filler.Commercial, DurationMs: 30_000},
 	}}
 	st := newMemStore()
 	st.clips[untitled] = filler.StoreClip{Clip: filler.Clip{Hash: untitled, Path: untitledRel,
-		Name: "Untitled commercial", Kind: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
+		Name: "Untitled commercial", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
 	st.clips[named] = filler.StoreClip{Clip: filler.Clip{Hash: named, Path: namedRel,
-		Name: "Summer Sale Spot", Kind: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
+		Name: "Summer Sale Spot", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
 	st.clips[segment] = filler.StoreClip{Clip: filler.Clip{Hash: segment, Path: segmentRel,
-		Name: "Untitled commercial", Kind: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
+		Name: "Untitled commercial", Role: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
 
 	if _, err := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
 		t.Fatal(err)

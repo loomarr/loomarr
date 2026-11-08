@@ -9,7 +9,7 @@ import (
 )
 
 func geoCommercial(id string, scope filler.GeographicScope, country, station string) filler.Clip {
-	return filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Kind: filler.Commercial,
+	return filler.Clip{Hash: id, Path: id + ".mp4", Name: id, Role: filler.Commercial,
 		Era: 1992, Audience: filler.Kids, DurationMs: 30_000,
 		GeographicScope: scope, Country: country, Station: station}
 }
@@ -332,13 +332,13 @@ func TestAssemble_ChannelPlaceOverridesOrInherits(t *testing.T) {
 // A break holds at most one station segment, last before the programme returns; local ads are
 // ordinary ads and a local station ID never opens a break (#2065).
 func TestBreakHoldsOneStationSegmentLast(t *testing.T) {
-	segment := func(id string, kind filler.Kind) filler.Clip {
+	segment := func(id string, kind filler.Role) filler.Clip {
 		c := geoCommercial(id, filler.GeographicLocal, "US", "fcc:1")
-		c.Kind, c.DurationMs = kind, 15_000
+		c.Role, c.DurationMs = kind, 15_000
 		return c
 	}
 	bumper := geoCommercial("bumper-us", filler.GeographicNational, "US", "")
-	bumper.Kind, bumper.DurationMs = filler.Bumper, 5_000
+	bumper.Role, bumper.DurationMs = filler.Bumper, 5_000
 	catalog := []filler.Clip{
 		segment("segment-news", filler.Interstitial), segment("segment-weather", filler.Interstitial),
 		segment("segment-promo", filler.Interstitial), bumper,

@@ -18,7 +18,7 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	for hash, kind := range map[string]filler.Kind{
+	for hash, kind := range map[string]filler.Role{
 		"campaign": filler.Commercial, "forecast": filler.Interstitial, "safety": filler.PSA, "spot": filler.Commercial,
 	} {
 		clip := sampleClip(hash, hash, kind, 0, "", "")
@@ -38,15 +38,15 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("%s: %v", hash, err)
 		}
 	}
-	for hash, want := range map[string]filler.Kind{
+	for hash, want := range map[string]filler.Role{
 		"campaign": filler.Political, "forecast": filler.News, "safety": filler.PSA, "spot": filler.Commercial,
 	} {
 		clip, err := s.GetClip(ctx, hash)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if clip.Kind != want {
-			t.Errorf("%s kind = %q, want %q", hash, clip.Kind, want)
+		if clip.Role != want {
+			t.Errorf("%s kind = %q, want %q", hash, clip.Role, want)
 		}
 	}
 
@@ -72,8 +72,8 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if clip.Kind != filler.Kind(answer.kind) {
-			t.Errorf("after v%s the row says %q, want %q", answer.version, clip.Kind, answer.kind)
+		if clip.Role != filler.Role(answer.kind) {
+			t.Errorf("after v%s the row says %q, want %q", answer.version, clip.Role, answer.kind)
 		}
 	}
 }
