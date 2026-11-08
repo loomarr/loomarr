@@ -546,7 +546,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   lineup's series expands from the tables too (`LibraryEpisodes`): the episodes with a present file
   to play, in season and episode order, under the media server's listing rules (an episode that
   could not play is dropped, editorial evidence is bounded). A library series with nothing to play
-  expands to nothing; it never falls back to the media server.
+  expands to nothing; it never falls back to the media server. A channel's derived format (4K,
+  HDR) and a still's tone mapping read a library item's video from its playing file's header as
+  the scanner read it (`LibraryPlayingVideo`), with no media server or inventory import.
 
   `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
   pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`

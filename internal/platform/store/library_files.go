@@ -70,6 +70,11 @@ type LibraryFileStore interface {
 	// scanner sees it present. ok is false for an id that is not a library item, or one with no
 	// present file.
 	LibraryPlayingFile(ctx context.Context, itemID string) (path string, ok bool, err error)
+	// LibraryPlayingVideo is the first video stream of the file a library item plays, as the
+	// scanner last read its header: Index, Codec, Width, Height, FrameRate, PixelFormat and
+	// ColorTransfer. ok is false when LibraryPlayingFile has no answer, or the file's header has
+	// not been read with a video stream.
+	LibraryPlayingVideo(ctx context.Context, itemID string) (video LibraryStream, ok bool, err error)
 	// LibraryFiles reads every file row of one root, missing ones included, in path order.
 	LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error)
 	// SaveLibraryFiles writes rows whole, in one transaction.
@@ -97,6 +102,24 @@ func (s *sqlStore) LibraryPlayingFile(ctx context.Context, itemID string) (strin
 		return "", false, fmt.Errorf("library playing file: %w", err)
 	}
 	return path, true, nil
+}
+
+func (s *sqlStore) LibraryPlayingVideo(ctx context.Context, itemID string) (LibraryStream, bool, error) {
+	v := LibraryStream{Kind: "video"}
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT st.stream_index, st.codec, st.width, st.height, st.frame_rate,
+		st.pixel_format, st.color_transfer FROM library_sources s
+		JOIN library_files f ON f.path = s.path
+		JOIN library_streams st ON st.item_id = s.item_id AND st.path = s.path AND st.kind = 'video' AND st.external_ref = ''
+		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = '' AND f.header = ?
+		ORDER BY s.path, st.stream_index LIMIT 1`), itemID, LibraryHeaderRead).Scan(
+		&v.Index, &v.Codec, &v.Width, &v.Height, &v.FrameRate, &v.PixelFormat, &v.ColorTransfer)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return LibraryStream{}, false, nil
+	case err != nil:
+		return LibraryStream{}, false, fmt.Errorf("library playing video: %w", err)
+	}
+	return v, true, nil
 }
 
 func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {

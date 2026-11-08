@@ -65,6 +65,12 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 	if _, ok, err := st.LibraryPlayingFile(ctx, "90000001"); err != nil || ok {
 		t.Errorf("a media-server id: ok = %v, %v; want no answer", ok, err)
 	}
+	if v, ok, err := st.LibraryPlayingVideo(ctx, "m1"); err != nil || !ok || v.Codec != "h264" || v.Index != 0 {
+		t.Errorf("playing video = %+v, %v, %v; want the file's h264 stream", v, ok, err)
+	}
+	if _, ok, err := st.LibraryPlayingVideo(ctx, "90000001"); err != nil || ok {
+		t.Errorf("a media-server id's video: ok = %v, %v; want no answer", ok, err)
+	}
 	gone := file("/media/film/a.mkv", LibraryHeaderRead)
 	gone.MissingAt = at
 	if err := st.SaveLibraryFiles(ctx, []LibraryFile{gone}); err != nil {
@@ -72,6 +78,9 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, ok, err := st.LibraryPlayingFile(ctx, "m1"); err != nil || ok {
 		t.Errorf("a title whose file went missing: ok = %v, %v; want no answer", ok, err)
+	}
+	if _, ok, err := st.LibraryPlayingVideo(ctx, "m1"); err != nil || ok {
+		t.Errorf("the video of a file gone missing: ok = %v, %v; want no answer", ok, err)
 	}
 	if err := st.SaveLibraryFiles(ctx, []LibraryFile{file("/media/film/a.mkv", LibraryHeaderPending)}); err != nil {
 		t.Fatal(err)
