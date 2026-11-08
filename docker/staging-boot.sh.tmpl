@@ -99,11 +99,16 @@ if [ "$STAGING_GPU" = nvidia ]; then
 	driver="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)"
 	if [ "${driver%%.*}" -lt 610 ]; then
 		dpkg -l | grep -E '^ii +(nvidia|libnvidia)' | awk '{print $2, $3}'
-		# The image holds its driver at the 580 branch, so apt will not upgrade it: release the hold
-		# and remove that branch first. The container toolkit is not part of the driver and stays.
-		apt-mark showhold
-		grep -rl -i nvidia /etc/apt/preferences.d 2>/dev/null | tee /dev/stderr | xargs -r rm -f
-		apt-mark showhold | grep -i nvidia | xargs -r apt-mark unhold
+		# The image pins its driver to the 580 branch (vultr-nvidia-driver-pin), so apt will not
+		# upgrade it: drop that pin and remove the branch first. The container toolkit is not part
+		# of the driver and stays.
+		for pin in /etc/apt/preferences.d/*; do
+			if [ -f "$pin" ] && grep -q 580 "$pin"; then
+				cat "$pin"
+				rm -f "$pin"
+			fi
+		done
+		apt-mark showhold | { grep -i nvidia || true; } | xargs -r apt-mark unhold
 		systemctl stop nvidia-persistenced nvidia-fabricmanager 2>/dev/null || true
 		dpkg-query -W -f='${Package}\n' |
 			grep -E -e '-580(-open)?$' -e '^nvidia-(fabricmanager|modprobe|persistenced)$' |
