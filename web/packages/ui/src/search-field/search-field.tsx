@@ -5,7 +5,8 @@ import type { SearchFieldProps } from "./search-field.type";
 // SearchField — a list filter's text box with the magnifier inside its leading edge (People,
 // import, Settings, the filler catalog). The design-system Field, with its left padding opened up so
 // the glyph sits in front of the text rather than over it. The glyph is decoration: the label names
-// it, printed above the box or, with `labelHidden`, only announced.
+// it, printed above the box or, with `labelHidden`, only announced. `inputMode="search"` makes the
+// web input `type="search"`, so assistive tech announces a search box, and gives phones a Search key.
 const SearchField = ({
   autoFocus,
   disabled,
@@ -22,6 +23,7 @@ const SearchField = ({
       autoCorrect={false}
       autoFocus={autoFocus}
       disabled={disabled}
+      inputMode="search"
       label={labelHidden ? undefined : label}
       onChangeText={onChangeText}
       placeholder={placeholder}
