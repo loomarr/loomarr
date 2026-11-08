@@ -125,23 +125,25 @@ describe("Help page", () => {
     const router = renderAt("/help?page=quickstart&section=upgrading");
     await waitFor(() => expect(router.state.location.search).toEqual({ page: "upgrade" }));
     expect(await screen.findByText("Pull the new image.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Upgrade", current: "page" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Upgrade", current: "page" })).toBeInTheDocument();
   });
 
   it("filters the page list", async () => {
     stubHelp();
     renderAt("/help");
-    await screen.findByRole("button", { name: "Troubleshooting" });
+    await screen.findByRole("link", { name: "Troubleshooting" });
 
     await userEvent.type(screen.getByLabelText("Search"), "quick");
-    expect(screen.getByRole("button", { name: "Quickstart" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Troubleshooting" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Quickstart" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Troubleshooting" })).not.toBeInTheDocument();
   });
 
-  it("switches pages from the nav", async () => {
+  it("switches pages from the nav, whose items are links with their own URL (#2751)", async () => {
     stubHelp();
     renderAt("/help");
-    await userEvent.click(await screen.findByRole("button", { name: "Troubleshooting" }));
+    const link = await screen.findByRole("link", { name: "Troubleshooting" });
+    expect(link).toHaveAttribute("href", expect.stringContaining("page=troubleshooting"));
+    await userEvent.click(link);
     expect(await screen.findByRole("heading", { name: "Tunarr" })).toBeInTheDocument();
   });
 });
@@ -153,7 +155,7 @@ describe("Command palette", () => {
   it("opens from the shell's Search button", async () => {
     stubHelp();
     renderAt("/help");
-    await screen.findByRole("button", { name: "Troubleshooting" });
+    await screen.findByRole("link", { name: "Troubleshooting" });
 
     await userEvent.click(screen.getByRole("button", { name: /search/i }));
     expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();
@@ -162,7 +164,7 @@ describe("Command palette", () => {
   it("opens and closes on the keyboard shortcut", async () => {
     stubHelp();
     renderAt("/help");
-    await screen.findByRole("button", { name: "Troubleshooting" });
+    await screen.findByRole("link", { name: "Troubleshooting" });
 
     await userEvent.keyboard("{Meta>}k{/Meta}");
     expect(await screen.findByRole("dialog", { name: /search loomarr/i })).toBeInTheDocument();

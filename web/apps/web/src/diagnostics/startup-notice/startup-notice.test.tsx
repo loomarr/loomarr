@@ -85,6 +85,19 @@ describe("HealthNotice", () => {
     expect(localStorage.getItem(key)).toBe("1");
   });
 
+  // #2734: View health opened Logs, the Diagnostics default view, instead of Current Health.
+  it("opens Current Health from the notice's View health action", async () => {
+    server.use(getGetCurrentHealthMockHandler(report("degraded")));
+    renderNotice();
+    await waitFor(() => expect(mocks.warning).toHaveBeenCalledOnce());
+    const options = mocks.warning.mock.calls[0]?.[1] as unknown as { action: { onClick: () => void } };
+    act(() => options.action.onClick());
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/settings/system/diagnostics",
+      search: { view: "health" },
+    });
+  });
+
   it("lets a degraded notice close by itself on a phone, where it covered the page (#1785)", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("max-width"), media: query }));
     try {

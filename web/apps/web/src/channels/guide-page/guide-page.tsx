@@ -1,6 +1,9 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
+import { pluralize } from "@loomarr/core/format";
 import {
+  formatGuideTime,
+  formatGuideTimeRange,
   type GuideAiringLayout,
   type GuideChannelLayout,
   type GuideLayout,
@@ -11,8 +14,15 @@ import {
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
-import { Action, CompactSelect, Text } from "@loomarr/design-system";
-import { GuideCompact, type GuideFilter, GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
+import { Action, CompactSelect, SegmentedControl, Text } from "@loomarr/design-system";
+import {
+  GuideCompact,
+  type GuideFilter,
+  GuideGrid,
+  GuideNowNext,
+  GuidePhoneHeader,
+  GuideProgrammeDetail,
+} from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -20,7 +30,6 @@ import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { ColorBars } from "@/components/loomarr/shell/color-bars";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { TvStatic } from "@/components/loomarr/shell/tv-static";
 import { usePhoneWidth } from "@/lib/use-phone-width";
@@ -86,6 +95,13 @@ const START_HOUR_OPTIONS = [
   ...START_HOURS.map((h) => ({ label: hourLabel(h), value: String(h) })),
 ];
 
+// A phone's two views of the guide (#2766): a Now/Next list, or the full grid.
+const PHONE_VIEWS = [
+  { label: "Now & next", value: "list" },
+  { label: "Full grid", value: "grid" },
+] as const;
+type PhoneView = (typeof PHONE_VIEWS)[number]["value"];
+
 // The selection survives a new window or a refetch: the same channel, at the block nearest the
 // same time, as the shared guide controller does. Otherwise the block airing now on the first
 // channel.
@@ -136,7 +152,12 @@ const GuidePage = ({ search }: GuidePageProps) => {
   // `nowMs` drives the now-line and moves on its own timer. `anchorMs` pins TODAY's window so the
   // grid does not slide under the reader while they look at it: it advances only when the clock
   // nears the window's end (see `useGuideWindow`). The now-line moves; the axis stays put.
-  const { nowMs, anchorMs } = useGuideWindow(windowMinutes);
+  // A phone opens on the Now/Next list. It always asks about now, and about a few hours so that
+  // "next" is usually listed; the day, hour and span controls belong to the grid.
+  const [phoneView, setPhoneView] = useState<PhoneView>("list");
+  const nowNextView = phoneWidth && phoneView === "list";
+  const queryMinutes = nowNextView ? DEFAULT_WINDOW_MINUTES : windowMinutes;
+  const { nowMs, anchorMs } = useGuideWindow(queryMinutes);
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
   // from `startHour` so stepping away from a chosen start hour is still relative to it.
   const [hourShift, setHourShift] = useState<number>(0);
@@ -148,6 +169,18 @@ const GuidePage = ({ search }: GuidePageProps) => {
   // remains active, so progressive disclosure never turns into invisible state.
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
   const hasCustomView = startHour !== null;
+  // Escape closes the panel, wherever focus is. An Escape that belongs to the open Start-hour list
+  // (it is a portal, so its events reach here too) closes that list only.
+  useEffect(() => {
+    if (!viewOptionsOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest('[role="listbox"]')) return;
+      setViewOptionsOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [viewOptionsOpen]);
   // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
   // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
   // dialog. Its state is the route's search params (useOriginationFlow); the header names its
@@ -168,8 +201,17 @@ const GuidePage = ({ search }: GuidePageProps) => {
   // react-query key. An unquantised window recomputes `from` between the two and warms an entry
   // the page never reads — a prefetch that costs a request and saves nothing.
   const { from, to } = useMemo(
-    () => guideWindow({ at: anchorMs, dayOffset, windowMinutes, hourShift, startHour }),
-    [dayOffset, windowMinutes, anchorMs, hourShift, startHour],
+    () =>
+      nowNextView
+        ? guideWindow({
+            at: anchorMs,
+            dayOffset: 0,
+            windowMinutes: queryMinutes,
+            hourShift: 0,
+            startHour: null,
+          })
+        : guideWindow({ at: anchorMs, dayOffset, windowMinutes, hourShift, startHour }),
+    [nowNextView, dayOffset, queryMinutes, windowMinutes, anchorMs, hourShift, startHour],
   );
 
   // "Are we looking at the present?" — drives the NOW button's tone. Any of the three
@@ -192,7 +234,7 @@ const GuidePage = ({ search }: GuidePageProps) => {
   // settling on the same window twice does not refetch.
   const settled = guide.isSuccess && !guide.isPlaceholderData;
   useEffect(() => {
-    if (!settled) return;
+    if (!settled || nowNextView) return;
     const neighbours = [
       { hourShift: hourShift - 1, dayOffset },
       { hourShift: hourShift + 1, dayOffset },
@@ -202,7 +244,7 @@ const GuidePage = ({ search }: GuidePageProps) => {
       const w = guideWindow({ at: anchorMs, windowMinutes, startHour, ...n });
       void queryClient.prefetchQuery(channelsApi.getChannelGuideQueryOptions(w));
     }
-  }, [settled, queryClient, anchorMs, dayOffset, hourShift, windowMinutes, startHour]);
+  }, [settled, nowNextView, queryClient, anchorMs, dayOffset, hourShift, windowMinutes, startHour]);
 
   // Live update needs no listener here: a `channel` frame means a lineup actually changed (a
   // reconcile completed), and the SSE bus invalidates every cached `/v1/guide` window —
@@ -251,6 +293,11 @@ const GuidePage = ({ search }: GuidePageProps) => {
   // A guide row or block tunes its channel (#2088): the channel page now opens on Info, not Watch.
   const onOpenChannel = useCallback(
     (id: string) => void navigate({ to: "/watch/$id", params: { id } }),
+    [navigate],
+  );
+  // A channel's name opens its page, where the row menu's other actions are one step away (#2745).
+  const onOpenChannelInfo = useCallback(
+    (id: string) => void navigate({ to: "/channels/$id", params: { id } }),
     [navigate],
   );
   const renderRowMenu = useCallback(
@@ -326,7 +373,25 @@ const GuidePage = ({ search }: GuidePageProps) => {
 
       {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
           much time is on screen. Precise planning controls live in the secondary View row. */}
-      {!adding && channels.length > 0 && (
+      {!adding && channels.length > 0 && phoneWidth && (
+        <GuidePhoneHeader
+          title={phoneView === "list" ? "What's on" : "Guide"}
+          subtitle={
+            phoneView === "list"
+              ? `${formatGuideTime(nowMs, body?.timezone)} · ${pluralize(channels.length, "channel")}`
+              : formatGuideTimeRange(from, to, body?.timezone)
+          }
+        >
+          <SegmentedControl
+            accessibilityLabel="Guide view"
+            onValueChange={setPhoneView}
+            options={PHONE_VIEWS}
+            value={phoneView}
+          />
+        </GuidePhoneHeader>
+      )}
+
+      {!adding && channels.length > 0 && !nowNextView && (
         <>
           <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
             <div className="flex items-center gap-1.75">
@@ -480,29 +545,9 @@ const GuidePage = ({ search }: GuidePageProps) => {
             <TvStatic className="z-0" />
             <EmptyState
               className="relative z-10"
-              // SMPTE bars over "Dead air": a test card is literally what a set showed when
-              // nothing was broadcasting, so the motif IS the state rather than decoration
-              // applied to it. Reuses the shell's ColorBars (aria-hidden, purely decorative)
-              // rather than a new asset — it is the design's namesake strip, in the same
-              // tokens the rest of the UI uses for state.
-              //
-              // The scanline drifts down it on a slow loop: a sign of life on the one screen
-              // whose message is that nothing is on. `overflow-hidden` clips the sweep to the
-              // strip, and `motion-safe:` means a reduced-motion visitor simply gets the bars.
-              // The whole thing is aria-hidden, so none of it reaches assistive tech.
-              // ⚠ STILL, deliberately — the motion is the ambient layer behind this, never the
-              // card. A test card that jitters reads as a fault; one that holds while snow
-              // drifts behind it reads as standing by, which is what "Dead air" means.
-              //
-              // A test-card BLOCK rather than the sidebar's thin 200×14 strip: presence comes
-              // from size here, not movement. `h-16` on the wrapper with the bars told to fill
-              // it — ColorBars fixes its own height, and `cn` puts className last so the
-              // override wins.
-              icon={
-                <div className="h-16 w-50 overflow-hidden rounded-sm" aria-hidden>
-                  <ColorBars size="lg" breathe className="h-full w-full" />
-                </div>
-              }
+              // The state family's own static colour bars lead the panel (#2783): a test card is
+              // what a set showed when nothing was broadcasting. STILL, deliberately — the motion
+              // is the ambient snow behind it, so the card reads as standing by.
               title="Dead air"
               description="No channels yet. Describe the channel you want and Loomarr builds the lineup."
               action={{
@@ -523,8 +568,16 @@ const GuidePage = ({ search }: GuidePageProps) => {
                 className="bg-signal pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse"
               />
             )}
-            {layout && phoneWidth ? (
-              // A phone gets the native compact grid (#1785, mocks 5d/5f, decision N6): the number
+            {layout && nowNextView ? (
+              // A phone opens on the Now/Next list (#2766, the Direction mock): one row per channel,
+              // no time grid. A row tunes its channel; the full grid is one tap away.
+              <GuideNowNext
+                layout={layout}
+                nowMs={nowMs}
+                onWatch={(id) => void navigate({ to: "/watch/$id", params: { id } })}
+              />
+            ) : layout && phoneWidth ? (
+              // The phone's Full grid view: the native compact grid (#1785, mocks 5d/5f, decision N6): the number
               // column, the filter chips, and the tapped programme docked with Watch.
               <GuideCompact
                 layout={layout}
@@ -543,6 +596,7 @@ const GuidePage = ({ search }: GuidePageProps) => {
                 nowMs={nowMs}
                 onMove={onMove}
                 onOpenChannel={onOpenChannel}
+                onOpenChannelInfo={onOpenChannelInfo}
                 onSelect={setSelection}
                 renderRowMenu={renderRowMenu}
                 selection={selected}
