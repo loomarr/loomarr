@@ -8,7 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClipSelect, NeedsDetailsChip } from "../index";
 
 // The package type-checks without the DOM lib, so the test names only the node surface it reads.
-type BoxNode = { click(): void; getAttribute(name: string): string | null };
+type BoxNode = {
+  click(): void;
+  closest(selector: string): BoxNode | null;
+  getAttribute(name: string): string | null;
+};
 type Host = Parameters<typeof createRoot>[0] & {
   querySelector(selector: string): BoxNode | null;
   remove(): void;
@@ -63,7 +67,8 @@ describe("ClipSelect", () => {
   // checkbox is a 24px box in a 40px-tall pressable at pointer density.
   it("gives the select box a target of at least 24px", () => {
     const box = mount(<ClipSelect clipName="Sunbeam Juice" onSelectedChange={() => {}} selected={false} />);
-    const style = box.getAttribute("style") ?? "";
+    // On the web the press target is the <label> around the box, which carries the row's height.
+    const style = (box.closest("label") ?? box).getAttribute("style") ?? "";
     const minHeight = Number(/min-height:\s*(\d+)px/.exec(style)?.[1]);
     expect(minHeight).toBeGreaterThanOrEqual(24);
   });
