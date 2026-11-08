@@ -17,10 +17,9 @@ interface ListRowProps {
   title: ReactNode;
   sub?: ReactNode;
   progress?: ListRowProgress;
-  // One trailing control, usually `<Button size="sm" variant="outline">`. Kept OUTSIDE any
-  // clickable region: the row itself is never a button, so the action never nests in one.
+  // One trailing control. Kept OUTSIDE any clickable region: the row itself is never a button, so
+  // the action never nests in one.
   action?: ReactNode;
-  className?: string;
 }
 
 interface ListGroupProps {
@@ -28,7 +27,6 @@ interface ListGroupProps {
   // Names the list for assistive tech when no heading labels it.
   "aria-label"?: string;
   "aria-labelledby"?: string;
-  className?: string;
 }
 
 export type { ListGroupProps, ListRowProgress, ListRowProps };

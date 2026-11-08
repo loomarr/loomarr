@@ -51,6 +51,8 @@ export {
   GuideProgrammeDetail,
   GuideSurface,
 } from "./src/guide";
+export type { HighlightRowProps } from "./src/highlight-row";
+export { HighlightRow } from "./src/highlight-row";
 export type {
   ChannelIdentityData,
   ChannelIdentityProps,
@@ -105,6 +107,8 @@ export {
   LibraryTitle,
   LibraryWizardStep,
 } from "./src/library";
+export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-row";
+export { ListGroup, ListRow } from "./src/list-row";
 export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,

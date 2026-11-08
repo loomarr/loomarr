@@ -1,5 +1,4 @@
-import type { useRender } from "@base-ui/react/use-render";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 interface HighlightRowProps {
   // When it airs, already formatted for the viewer's locale ("9:04 PM").
@@ -11,10 +10,9 @@ interface HighlightRowProps {
   detail?: ReactNode;
   // Why it is a highlight, worded by the client from a typed server reason ("Season 4 premiere").
   reason?: ReactNode;
-  // The row's one destination. Pass the router's `<Link to=… />`; the default is a `<button>`.
-  render?: useRender.RenderProp;
+  // Web only: the row's one destination, as the router's `<Link to=… />`; the default is a button.
+  render?: ReactElement<Record<string, unknown>>;
   onClick?: () => void;
-  className?: string;
 }
 
 export type { HighlightRowProps };

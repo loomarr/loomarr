@@ -72,8 +72,10 @@ describe("Primitive coverage", () => {
     .filter((e) => e.isDirectory())
     .map((e) => e.name);
 
+  // Not a count floor: this layer shrinks as primitives move into the design system (#2147), and
+  // the block goes with its last folder. Non-empty only proves the scan found the directory.
   it("sees the primitive layer", () => {
-    expect(primitiveFolders.length).toBeGreaterThanOrEqual(9);
+    expect(primitiveFolders.length).toBeGreaterThan(0);
     expect(uiComponents.length).toBeGreaterThan(0);
   });
 

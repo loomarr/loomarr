@@ -3,10 +3,10 @@ import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Action, SectionHeader } from "@loomarr/design-system";
+import { ListGroup, ListRow, type ListRowProps } from "@loomarr/ui";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { ListGroup, ListRow, type ListRowProps } from "@/components/ui/list-row";
 import { REQUEST_ROW_TONE } from "@/queue/request-lists";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 

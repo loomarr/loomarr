@@ -365,24 +365,14 @@
     "src/components/ui/button/button.type.ts": {
       "baseUi": 1
     },
-    "src/components/ui/highlight-row/highlight-row.tsx": {
-      "tailwindClasses": 40,
-      "baseUi": 1
-    },
-    "src/components/ui/highlight-row/highlight-row.type.ts": {
-      "baseUi": 1
-    },
     "src/components/ui/index.ts": {
-      "legacyUi": 9
+      "legacyUi": 7
     },
     "src/components/ui/input/input.tsx": {
       "tailwindClasses": 12
     },
     "src/components/ui/label/label.tsx": {
       "tailwindClasses": 4
-    },
-    "src/components/ui/list-row/list-row.tsx": {
-      "tailwindClasses": 34
     },
     "src/components/ui/nav-tabs/nav-tabs.tsx": {
       "tailwindClasses": 52
@@ -614,18 +604,14 @@
       "tailwindClasses": 68
     },
     "src/home/on-now/on-now.tsx": {
-      "tailwindClasses": 58,
-      "legacyUi": 1
+      "tailwindClasses": 58
     },
     "src/home/on-the-way/on-the-way.tsx": {
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/home/recently-tuned/recently-tuned.tsx": {
       "tailwindClasses": 34,
       "legacyUi": 1
-    },
-    "src/home/tonight/tonight.tsx": {
-      "legacyUi": 2
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
@@ -651,7 +637,7 @@
     },
     "src/queue/request-lists/request-lists.tsx": {
       "tailwindClasses": 27,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/routes/_authed/account.tsx": {
       "tailwindClasses": 73,
