@@ -371,7 +371,7 @@ type BadgeProps = Omit<ComponentProps<typeof View>, "children"> & {
   icon?: ReactNode;
   /**
    * `pill` is the rounded state chip (danger/info/live/neutral/success/warning). `square` is the
-   * machine-data tag (#970 legacy Badge): mono, uppercase, a hairline-free tinted-15% background,
+   * machine-data tag (#970 legacy Badge): mono, sentence case (#2778), a hairline-free tinted-15% background,
    * no border. The two shapes intentionally do not share a tone vocabulary below.
    */
   shape?: BadgeShape;
@@ -484,9 +484,7 @@ const Badge = ({
           fontFamily="data"
           fontSize={11}
           fontWeight="500"
-          letterSpacing={0.275}
           lineHeight={lineHeightPx(14)}
-          textTransform="uppercase"
           whiteSpace={isWeb ? "inherit" : undefined}
         >
           {children}

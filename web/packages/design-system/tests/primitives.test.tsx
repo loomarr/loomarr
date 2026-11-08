@@ -133,6 +133,19 @@ describe("Badge", () => {
     expect(label("neutral")).toContain("COLOR:#8B93A3");
   });
 
+  // Caps are reserved for channel numbers, clocks and provenance (#2778): a status or tag chip
+  // reads in sentence case, as written.
+  it("keeps a square tag's label in sentence case", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Badge shape="square">Needs attention</Badge>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain(">Needs attention<");
+    // Tamagui emits the transform as an atomic `_tt-` class on the label's own span.
+    expect(markup).not.toMatch(/<span class="is_Text[^"]* _tt-\d+/);
+  });
+
   it("carries a tooltip on the tag itself", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

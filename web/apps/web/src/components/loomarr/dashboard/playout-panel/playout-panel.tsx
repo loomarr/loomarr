@@ -57,7 +57,7 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
   return (
     <div className="border-border bg-static-900/40 flex items-center justify-between gap-3 border-b px-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-2xs text-muted-foreground font-mono tracking-wide uppercase">Encoder</p>
+        <p className="text-2xs text-muted-foreground">Encoder</p>
         <p className="text-muted-foreground mt-0.5 text-sm">{summary}</p>
         {!!gpu.vramGiB && (
           <p className="text-muted-foreground mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">

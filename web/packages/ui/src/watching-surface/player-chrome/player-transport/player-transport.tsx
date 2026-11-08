@@ -239,7 +239,7 @@ const LiveState = ({
     </View>
   ) : (
     <View style={{ alignItems: "center", flexDirection: "row", gap: 10, paddingLeft: 12 }}>
-      <Text accessibilityLiveRegion="polite" density={density} shout textRole="guideMeta" tone="secondary">
+      <Text accessibilityLiveRegion="polite" density={density} textRole="guideMeta" tone="secondary">
         {`${live.mode === "paused" ? "Paused · " : ""}${formatClipDuration(live.lagSeconds * 1000)} behind`}
       </Text>
       <Pressable
@@ -257,7 +257,7 @@ const LiveState = ({
         }}
       >
         <View style={{ backgroundColor: playerChrome.live, borderRadius: 4, height: 7, width: 7 }} />
-        <Text density={density} shout strong textRole="guideIdent" tone="live">
+        <Text density={density} strong textRole="guideIdent" tone="live">
           Go live
         </Text>
       </Pressable>

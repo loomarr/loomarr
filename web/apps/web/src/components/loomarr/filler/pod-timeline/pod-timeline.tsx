@@ -81,9 +81,7 @@ const PodTimeline = ({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-static-400 font-mono text-xs tracking-wide uppercase">
-          {`Pod · ${formatClipDuration(total)}`}
-        </span>
+        <span className="text-static-400 text-xs">{`Pod · ${formatClipDuration(total)}`}</span>
         {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}
         {audience ? (
           <Badge shape="square" tone="neutral">
@@ -122,14 +120,14 @@ const PodTimeline = ({
                 onClick={() => onPreview(entry)}
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text as="span" className="truncate" shout textRole="captionMono" tone="primary">
+                <Text as="span" className="truncate" textRole="captionMono" tone="primary">
                   {SEGMENT_ABBR[entry.role]}
                 </Text>
               </button>
             ) : (
               <span className="flex h-full min-w-0 items-center justify-center px-1">
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text as="span" className="truncate" shout textRole="captionMono" tone="primary">
+                <Text as="span" className="truncate" textRole="captionMono" tone="primary">
                   {SEGMENT_ABBR[entry.role]}
                 </Text>
               </span>

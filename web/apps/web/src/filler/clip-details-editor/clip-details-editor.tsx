@@ -289,9 +289,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               if (inAxis.length === 0) return null;
               return (
                 <div key={axis} className="flex flex-col gap-1.5">
-                  <span className="text-muted-foreground text-xs tracking-wide uppercase">
-                    {AXIS_LABEL[axis]}
-                  </span>
+                  <span className="text-muted-foreground text-xs">{AXIS_LABEL[axis]}</span>
                   <div className="flex flex-wrap gap-1.5">
                     {inAxis.map(({ taxon: t, depth }) => {
                       const on = tags.includes(t.slug);

@@ -10,7 +10,7 @@ const Placeholder = ({ title, hint }: PlaceholderProps) => (
     </header>
     <div className="flex flex-1 items-center justify-center p-6">
       <div className="max-w-sm text-center">
-        <p className="text-static-400 font-mono text-sm tracking-wide uppercase">Dead air</p>
+        <p className="text-static-400 text-sm">Dead air</p>
         <p className="text-muted-foreground mt-2">{hint}</p>
       </div>
     </div>

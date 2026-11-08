@@ -67,7 +67,7 @@ const InvitationJoin = ({
         <div className="flex items-start gap-3">
           <UserRound className="text-signal mt-0.5 size-5 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-muted-foreground text-xs tracking-wide uppercase">Invited identity</p>
+            <p className="text-muted-foreground text-xs">Invited identity</p>
             <p className="font-medium break-words">{identity}</p>
           </div>
           <Badge

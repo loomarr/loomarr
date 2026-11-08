@@ -92,7 +92,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
       ) : (
         <div className="border-border bg-card overflow-hidden rounded-lg border">
           <div
-            className="border-static-800 text-static-400 hidden grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] gap-4 border-b px-4 py-2 font-mono text-xs tracking-wide uppercase md:grid"
+            className="border-static-800 text-static-400 hidden grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] gap-4 border-b px-4 py-2 text-xs md:grid"
             aria-hidden
           >
             <span>Person</span>
