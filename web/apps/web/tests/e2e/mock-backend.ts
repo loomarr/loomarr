@@ -487,6 +487,10 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       state.checks.tunarr_library = true;
       return json(route, { ok: true });
     }
+    // Seerr knows no arrs in this install, so the Library step fills nothing in.
+    if (path === "/v1/setup/arrs-from-requester" && method === "POST") {
+      return json(route, { arrs: [] });
+    }
 
     // --- operator-facing generated credentials (§4) ------------------------------
     if (path.startsWith("/v1/settings/secrets/")) {

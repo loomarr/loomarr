@@ -102,14 +102,10 @@ const subtitle = (title: LibraryShelfTitle) => {
 const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void }) => {
   const [focused, setFocused] = useState(false);
   return (
+    // ⚠ Named by what it shows (the badge or dot, the title, its year and kind), not a label of its
+    // own: a label that leaves out visible words fails WCAG 2.5.3, and voice control users say
+    // what they see.
     <Pressable
-      accessibilityLabel={
-        !title.ready
-          ? `${title.name}, getting ready`
-          : title.attention
-            ? `${title.name}, needs a look`
-            : title.name
-      }
       accessibilityRole="button"
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}

@@ -7,13 +7,12 @@ import (
 )
 
 type Candidate struct {
-	ClipHash     string
-	Path         string
-	Name         string
-	Kind         string
-	Transcript   string
-	VisibleText  string
-	VisionTagged bool
+	ClipHash    string
+	Path        string
+	Name        string
+	Kind        string
+	Transcript  string
+	VisibleText string
 }
 
 type Repository interface {

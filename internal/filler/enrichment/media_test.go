@@ -24,7 +24,7 @@ func TestPlanMediaWork_OnlyRequestsCapabilitiesThatCanCloseAnUnresolvedAxis(t *t
 			Confidence: 100, Producer: "metadata", ProducerVersion: "1", ObservedAt: now},
 	}
 	work := enrichment.PlanMediaWork(
-		enrichment.Candidate{ClipHash: "clip", Transcript: "an older transcript", VisionTagged: true},
+		enrichment.Candidate{ClipHash: "clip", Transcript: "an older transcript"},
 		[]enrichment.State{operatorEmpty, product},
 		enrichment.MediaCapabilities{Transcript: true, Vision: true},
 	)

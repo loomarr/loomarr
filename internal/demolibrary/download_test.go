@@ -150,3 +150,43 @@ func TestFetchRetriesAFlakyOriginAndReplacesACorruptFile(t *testing.T) {
 		t.Fatal("the corrupt file was not replaced with the pinned bytes")
 	}
 }
+
+func TestFetchPrefersTheMirrorAndLeavesTheOriginAlone(t *testing.T) {
+	body := bytes.Repeat([]byte("mirror"), 4000)
+	mirror, origin := &fakeOrigin{body: body}, &fakeOrigin{body: body}
+	ms, os2 := httptest.NewServer(mirror), httptest.NewServer(origin)
+	t.Cleanup(ms.Close)
+	t.Cleanup(os2.Close)
+	d := testDownloader()
+	d.mirror = ms.URL + "/"
+	dest := filepath.Join(t.TempDir(), "clip.mp4")
+
+	if err := d.fetch(context.Background(), pinFor(t, os2.URL+"/clip.mp4", body), dest); err != nil {
+		t.Fatal(err)
+	}
+	if mirror.requests.Load() != 1 || origin.requests.Load() != 0 {
+		t.Fatalf("mirror %d, origin %d requests; want 1 and 0", mirror.requests.Load(), origin.requests.Load())
+	}
+}
+
+func TestFetchFallsBackToTheOriginWhenTheMirrorFails(t *testing.T) {
+	body := bytes.Repeat([]byte("origin"), 4000)
+	mirror := &fakeOrigin{body: body, failFirst: 1000}
+	origin := &fakeOrigin{body: body}
+	ms, os2 := httptest.NewServer(mirror), httptest.NewServer(origin)
+	t.Cleanup(ms.Close)
+	t.Cleanup(os2.Close)
+	d := testDownloader()
+	d.mirror = ms.URL + "/"
+	dest := filepath.Join(t.TempDir(), "clip.mp4")
+
+	if err := d.fetch(context.Background(), pinFor(t, os2.URL+"/clip.mp4", body), dest); err != nil {
+		t.Fatal(err)
+	}
+	if got := mirror.requests.Load(); got != mirrorAttempts {
+		t.Fatalf("the mirror was tried %d times, want %d before falling back", got, mirrorAttempts)
+	}
+	if got, _ := os.ReadFile(dest); !bytes.Equal(got, body) {
+		t.Fatal("the fallback did not deliver the pinned bytes")
+	}
+}

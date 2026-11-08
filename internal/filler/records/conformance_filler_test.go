@@ -772,9 +772,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// SetClipBrand is the TEXT tagger's grounded brand writer (§10 V44) — path-keyed like the
-	// transcript writer, and it must write `brand` WITHOUT stamping `vision_tagged`: a brand grounded
-	// in the transcript is not a brand a vision pass read off a frame, and conflating the two would
-	// make a re-run skip the vision it never actually ran.
+	// transcript writer, and it writes `brand` and nothing else.
 	if err := s.SetClipBrand(ctx, c.Path, "Post", now); err != nil {
 		t.Fatal(err)
 	}
@@ -782,8 +780,8 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	if got.Brand != "Post" {
 		t.Errorf("brand = %q, want %q — SetClipBrand is keyed WHERE path = ?", got.Brand, "Post")
 	}
-	if got.VisionTagged {
-		t.Errorf("vision_tagged set by a TEXT brand write — SetClipBrand must not masquerade as a vision pass")
+	if got.VisibleText != "" {
+		t.Errorf("visible text = %q after a TEXT brand write — SetClipBrand must not masquerade as a vision pass", got.VisibleText)
 	}
 
 	// ApplyClipVision records the on-screen text, a grounded brand, and (here) a taxonomy tag. era is
@@ -794,8 +792,8 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
-	if got.Brand != "Brightfield's" || got.VisibleText != "BRIGHTFIELD'S CRUNCHLINGS" || !got.VisionTagged {
-		t.Errorf("vision tags = {brand:%q visible:%q tagged:%v}, want them recorded", got.Brand, got.VisibleText, got.VisionTagged)
+	if got.Brand != "Brightfield's" || got.VisibleText != "BRIGHTFIELD'S CRUNCHLINGS" {
+		t.Errorf("vision facts = {brand:%q visible:%q}, want them recorded", got.Brand, got.VisibleText)
 	}
 	if got.Era != 1994 {
 		t.Errorf("era = %d after a vision write with era=0, want 1994 preserved — the CASE guard must not blank an existing era", got.Era)
@@ -845,7 +843,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	// / a paid vision call on the next pass. This is the same discipline the language/held/counter
 	// columns already pin; without it a green suite would hide the exact regression 00038 guards.
 	resync := c
-	resync.Transcript, resync.Brand, resync.VisibleText, resync.VisionTagged = "", "", "", false
+	resync.Transcript, resync.Brand, resync.VisibleText = "", "", ""
 	if err := s.UpsertClip(ctx, resync); err != nil {
 		t.Fatal(err)
 	}
@@ -853,8 +851,8 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	if got.Transcript != "buy our cereal today" {
 		t.Errorf("transcript = %q after a re-sync, want it PRESERVED — UpsertClip must omit transcript from DO UPDATE", got.Transcript)
 	}
-	if got.Brand != "Brightfield's" || got.VisibleText != "BRIGHTFIELD'S CRUNCHLINGS" || !got.VisionTagged {
-		t.Errorf("vision tags lost on re-sync {brand:%q visible:%q tagged:%v} — UpsertClip must omit them from DO UPDATE", got.Brand, got.VisibleText, got.VisionTagged)
+	if got.Brand != "Brightfield's" || got.VisibleText != "BRIGHTFIELD'S CRUNCHLINGS" {
+		t.Errorf("vision facts lost on re-sync {brand:%q visible:%q} — UpsertClip must omit them from DO UPDATE", got.Brand, got.VisibleText)
 	}
 }
 

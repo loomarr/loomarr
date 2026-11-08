@@ -384,6 +384,47 @@ components:
         - enqueued
         - channelId
       type: object
+    ArrFromRequesterDTO:
+      additionalProperties: false
+      properties:
+        app:
+          enum:
+            - sonarr
+            - radarr
+          type: string
+        filled:
+          description: Loomarr saved this connection now; false when one was already set
+          type: boolean
+        reachable:
+          description: Loomarr reached it at URL with the key
+          type: boolean
+        url:
+          description: The address Loomarr now uses for it
+          type: string
+      required:
+        - app
+        - url
+        - filled
+        - reachable
+      type: object
+    ArrsFromRequesterOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ArrsFromRequesterOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        arrs:
+          description: One per arr the requester knows; empty when it knows none
+          items:
+            $ref: "#/components/schemas/ArrFromRequesterDTO"
+          type: array
+      required:
+        - arrs
+      type: object
     Assessment:
       additionalProperties: false
       properties:
@@ -2180,9 +2221,6 @@ components:
           description: Image-service record for the still; absent until the adoption job has run, or when no frame was extracted
         tunarrProgramId:
           type: string
-        visionTagged:
-          description: A vision pass over keyframes contributed tags (§10 V44)
-          type: boolean
       required:
         - hash
         - name
@@ -19913,6 +19951,26 @@ paths:
       summary: Take a setting back from the environment
       tags:
         - settings
+  /v1/setup/arrs-from-requester:
+    post:
+      description: Admin only. Reads the Sonarr and Radarr Seerr already uses and saves each one's address and key where Loomarr has none yet, trying Seerr's own address first and the one it shows people second. A connection already set is never changed (#2151).
+      operationId: arrs-from-requester
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArrsFromRequesterOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Fill in Sonarr and Radarr from the requester
+      tags:
+        - setup
   /v1/setup/bootstrap:
     post:
       description: "First-run only: creates the owning local admin. Succeeds exactly once (409 once an admin exists). Unauthenticated by design — it is functional only while no admin exists (§11)."
