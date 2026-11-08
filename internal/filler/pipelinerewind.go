@@ -43,12 +43,12 @@ type RewindStore interface {
 	// SetClipTranscript with "" — `TranscriptNone` is the "heard, wordless" sentinel, so it is a
 	// FINAL answer and must not be used to mean "not yet".
 	SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error
-	// ClearClipVisionTags removes the `vision_tagged` stamp and the text it read.
+	// ClearClipVisibleText forgets the on-screen text vision read.
 	//
-	// ⚠ A separate narrow method rather than widening `ApplyClipVision`, whose doc pins it as
-	// the ONLY writer of visible_text/vision_tagged and which writes what it is GIVEN. Passing it
-	// empty strings would work by accident today and break the first time it learns to gap-fill.
-	ClearClipVisionTags(ctx context.Context, path string, at time.Time) error
+	// ⚠ A separate narrow method rather than widening `ApplyClipVision`, which writes what it is
+	// GIVEN. Passing it empty strings would work by accident today and break the first time it
+	// learns to gap-fill.
+	ClearClipVisibleText(ctx context.Context, path string, at time.Time) error
 	ListSplitProposals(ctx context.Context) ([]SplitProposal, error)
 	DeleteSplitProposal(ctx context.Context, id string) error
 }
@@ -317,7 +317,7 @@ func (p *Pipeline) invalidate(ctx context.Context, clip StoreClip, idx int) erro
 		}
 	}
 	if at(StageVision) {
-		if err := p.rewind.ClearClipVisionTags(ctx, clip.Path, now); err != nil {
+		if err := p.rewind.ClearClipVisibleText(ctx, clip.Path, now); err != nil {
 			return err
 		}
 	}

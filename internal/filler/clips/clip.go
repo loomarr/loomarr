@@ -250,9 +250,6 @@ type Clip struct {
 	// it can SEE here — reading "KELLOGG'S" off a box grounds the brand exactly as a year in the
 	// filename grounds the era. A vision-proposed tag with no VisibleText backing does not persist.
 	VisibleText string
-	// VisionTagged records that a VISION pass (keyframes → multimodal model) read this clip, so a
-	// re-run does not pay for vision twice.
-	VisionTagged bool
 	// SuggestedEra is an AI-proposed era whose year did NOT appear in the clip's
 	// text signals (§10 era grounding, V34) — demoted from Era by validateTags so
 	// an inferred-from-tone year is never persisted as fact.

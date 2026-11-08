@@ -347,8 +347,6 @@ type ClipDTO struct {
 	// "none" = CHECKED and there is no speech to judge (a wordless visual spot, always kept),
 	// "en"/… = CHECKED, and this is what was heard.
 	Language string `json:"language,omitempty" doc:"Absent = not yet checked; 'none' = checked and wordless; otherwise the detected language (§10 V40). The first two are different facts."`
-	// VisionTagged records that a VISION pass contributed to this clip's tags.
-	VisionTagged bool `json:"visionTagged,omitempty" doc:"A vision pass over keyframes contributed tags (§10 V44)"`
 	// License is the licence URL the SOURCE declared.
 	//
 	// ⚠ **"" means UNKNOWN, never "public domain".** About 92% of archive.org items declare no
@@ -505,7 +503,7 @@ func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *ImageDTO) 
 		Tagged: c.Tagged(), NeedsDetails: c.NeedsDetails(), SuggestedEra: c.SuggestedEra,
 		IsComposite: c.IsComposite, ParentHash: c.ParentHash,
 		Brand: c.Brand, Held: c.Held, Language: c.Language,
-		VisionTagged: c.VisionTagged, License: c.License,
+		License: c.License,
 		// ⚠ The PRESENCE of the transcript, not the transcript. See the field's own warning.
 		HasTranscript: c.Transcript != "",
 	}

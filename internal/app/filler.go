@@ -192,8 +192,8 @@ func (a fillerRewindAdapter) SetClipLanguage(ctx context.Context, path, language
 func (a fillerRewindAdapter) SetClipTranscript(ctx context.Context, path, transcript string, at time.Time) error {
 	return a.st.SetClipTranscript(ctx, path, transcript, at)
 }
-func (a fillerRewindAdapter) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
-	return a.st.ClearClipVisionTags(ctx, path, at)
+func (a fillerRewindAdapter) ClearClipVisibleText(ctx context.Context, path string, at time.Time) error {
+	return a.st.ClearClipVisibleText(ctx, path, at)
 }
 func (a fillerRewindAdapter) ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error) {
 	return a.st.ListSplitProposals(ctx)

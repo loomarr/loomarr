@@ -206,8 +206,7 @@ func fillerEnrichmentCandidates(clips []clipstore.Clip, err error) ([]enrichment
 	out := make([]enrichment.Candidate, len(clips))
 	for i, clip := range clips {
 		out[i] = enrichment.Candidate{ClipHash: clip.Hash, Path: clip.Path, Name: clip.Name,
-			Kind: string(clip.Kind), Transcript: clip.Transcript, VisibleText: clip.VisibleText,
-			VisionTagged: clip.VisionTagged}
+			Kind: string(clip.Kind), Transcript: clip.Transcript, VisibleText: clip.VisibleText}
 	}
 	return out, nil
 }

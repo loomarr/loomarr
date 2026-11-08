@@ -447,7 +447,7 @@ func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error
 //
 // ⚠ **Enrolled at `probe/queued`, with NO derived backfill**, and that is the deliberate
 // simplification. The obvious alternative — infer each stage's state from what the clip already
-// carries (`Language != ""` ⇒ language done, `VisionTagged` ⇒ vision done, …) — is guesswork about
+// carries (`Language != ""` ⇒ language done, `VisibleText != ""` ⇒ vision done, …) — is guesswork about
 // work done by code that no longer exists, cannot be tested against a fresh install, and has one
 // silent failure mode per row.
 //

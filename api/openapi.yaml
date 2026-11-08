@@ -2180,9 +2180,6 @@ components:
           description: Image-service record for the still; absent until the adoption job has run, or when no frame was extracted
         tunarrProgramId:
           type: string
-        visionTagged:
-          description: A vision pass over keyframes contributed tags (§10 V44)
-          type: boolean
       required:
         - hash
         - name

@@ -171,7 +171,7 @@ func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAns
 		t.Fatal(err)
 	}
 	if got.Brand != "Operator Brand" || got.Era != 1987 || len(got.AssertedTags) != 0 ||
-		!got.VisionTagged || got.VisibleText != "MODEL BRAND 1999 CANDY" {
+		got.VisibleText != "MODEL BRAND 1999 CANDY" {
 		t.Fatalf("vision catch-up projection = %+v", got)
 	}
 	second, err := runner.Run(t.Context())
