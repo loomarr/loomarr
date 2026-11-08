@@ -63,6 +63,9 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 				integrityParentChecksMigration, child)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	if err := rows.Close(); err != nil {
 		t.Fatal(err)
 	}
