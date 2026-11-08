@@ -74,7 +74,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	19: a file notes the trickplay files beside it (decision 61).
 //	20: a file notes its external subtitle and audio files and its .edl markers, and lists its
 //	    chapters and its tracks' commentary, SDH and descriptive flags (decisions 45, 46, 61).
-const writeVersion = 20
+//	21: a title lists every studio or network, and its tagline, countries and trailer (decision 46).
+const writeVersion = 21
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -220,16 +221,16 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 		OriginalTitle: facts.OriginalTitle, Overview: facts.Overview, PremiereDate: facts.PremiereDate,
 		Rating: facts.OfficialRating, Score: facts.CommunityScore, RuntimeMs: facts.RuntimeMillis,
 		Season: facts.SeasonNumber, Episode: facts.EpisodeNumber, EpisodeEnd: facts.EpisodeEnd,
-		Series: listed.Series, Tags: facts.Tags,
+		Series: listed.Series, Tags: facts.Tags, Tagline: facts.Tagline, Trailer: facts.Trailer,
 		From: store.LibraryFrom{
 			Name: string(ext.From.Name), Year: string(ext.From.Year), Overview: string(ext.From.Description),
 			Premiere: string(ext.From.Premiere), Rating: string(ext.From.Rating), Score: string(ext.From.Score),
 			Runtime: string(ext.From.Runtime),
 		},
 	}
-	// An episode's genres and studios are its show's (decision 42).
+	// An episode's genres, studios and countries are its show's (decision 42).
 	if item.Kind != kindEpisode {
-		it.Genres, it.Studios = facts.Genres, facts.Studios
+		it.Genres, it.Studios, it.Countries = facts.Genres, facts.Studios, facts.Countries
 	}
 	for _, id := range item.ExternalIDs {
 		it.IDs = append(it.IDs, store.LibraryID{Namespace: id.Namespace, Value: id.Value})
@@ -363,9 +364,7 @@ func itemFacts(r precedence.Resolved) (inventory.ItemFacts, map[string]inventory
 		}
 		f.People = append(f.People, inventory.Person{Name: p.Name, Role: role})
 	}
-	if r.Network.Value != "" {
-		f.Studios = []string{r.Network.Value}
-	}
+	f.Studios, f.Countries, f.Tagline, f.Trailer = r.Studios.Value, r.Countries.Value, r.Tagline.Value, r.Trailer.Value
 	if r.Numbering.Known() {
 		f.SeasonNumber, f.EpisodeNumber, f.EpisodeEnd = r.Numbering.Value.Season, r.Numbering.Value.Episode, r.Numbering.Value.EpisodeEnd
 	}

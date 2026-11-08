@@ -278,6 +278,14 @@ func intID(ns mp.Namespace, n int) mp.ExternalID {
 	return mp.ExternalID{Namespace: ns, Value: strconv.Itoa(n)}
 }
 
+// named is a one-name list, or nil when the name is blank.
+func named(name string) []string {
+	if name = strings.TrimSpace(name); name == "" {
+		return nil
+	}
+	return []string{name}
+}
+
 func minutes(n int) time.Duration {
 	if n <= 0 {
 		return 0

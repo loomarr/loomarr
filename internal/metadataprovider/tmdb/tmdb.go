@@ -205,6 +205,16 @@ type wireImages struct {
 	Logos     []wireImage `json:"logos"`
 }
 
+// wireVideos are a title's videos (append_to_response=videos).
+type wireVideos struct {
+	Results []struct {
+		Key      string `json:"key"`
+		Site     string `json:"site"`
+		Type     string `json:"type"`
+		Official bool   `json:"official"`
+	} `json:"results"`
+}
+
 type wireExternalIDs struct {
 	IMDB string `json:"imdb_id"`
 	TVDB int    `json:"tvdb_id"`
@@ -220,10 +230,13 @@ type wireMovie struct {
 	Overview      string          `json:"overview"`
 	ReleaseDate   string          `json:"release_date"`
 	Runtime       int             `json:"runtime"`
+	Tagline       string          `json:"tagline"`
 	VoteAverage   float64         `json:"vote_average"`
 	VoteCount     int             `json:"vote_count"`
 	Genres        []idName        `json:"genres"`
 	Companies     []idName        `json:"production_companies"`
+	Countries     []idName        `json:"production_countries"`
+	Videos        wireVideos      `json:"videos"`
 	PosterPath    string          `json:"poster_path"`
 	BackdropPath  string          `json:"backdrop_path"`
 	Collection    *wireCollection `json:"belongs_to_collection"`
@@ -249,7 +262,7 @@ type wireCollection struct {
 
 func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, error) {
 	var m wireMovie
-	path := "/movie/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,release_dates,keywords,images")
+	path := "/movie/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,release_dates,keywords,images,videos")
 	if err := p.get(ctx, path, &m); err != nil {
 		return mp.Record{}, err
 	}
@@ -272,8 +285,11 @@ func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, er
 			Genres:          names(m.Genres),
 			Keywords:        keywords(m.Keywords.Keywords),
 			CommunityRating: communityRating(m.VoteAverage, m.VoteCount),
-			Network:         firstName(m.Companies),
+			Studios:         names(m.Companies),
 			Runtime:         time.Duration(m.Runtime) * time.Minute,
+			Tagline:         strings.TrimSpace(m.Tagline),
+			Countries:       names(m.Countries),
+			Trailer:         trailer(m.Videos),
 		},
 		Artwork: artwork(loc, m.Images, m.PosterPath, m.BackdropPath),
 	}
@@ -368,8 +384,11 @@ type wireSeries struct {
 	EpisodeRuntime []int           `json:"episode_run_time"`
 	VoteAverage    float64         `json:"vote_average"`
 	VoteCount      int             `json:"vote_count"`
+	Tagline        string          `json:"tagline"`
 	Genres         []idName        `json:"genres"`
 	Networks       []idName        `json:"networks"`
+	Countries      []idName        `json:"production_countries"`
+	Videos         wireVideos      `json:"videos"`
 	PosterPath     string          `json:"poster_path"`
 	BackdropPath   string          `json:"backdrop_path"`
 	ExternalIDs    wireExternalIDs `json:"external_ids"`
@@ -398,7 +417,7 @@ type wireSeries struct {
 
 func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, error) {
 	var s wireSeries
-	path := "/tv/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,content_ratings,keywords,images,episode_groups")
+	path := "/tv/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,content_ratings,keywords,images,episode_groups,videos")
 	if err := p.get(ctx, path, &s); err != nil {
 		return mp.Record{}, err
 	}
@@ -426,8 +445,11 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 			Genres:          names(s.Genres),
 			Keywords:        keywords(s.Keywords.Results),
 			CommunityRating: communityRating(s.VoteAverage, s.VoteCount),
-			Network:         firstName(s.Networks),
+			Studios:         names(s.Networks),
 			Status:          seriesStatus(s.Status),
+			Tagline:         strings.TrimSpace(s.Tagline),
+			Countries:       names(s.Countries),
+			Trailer:         trailer(s.Videos),
 		},
 		Artwork: artwork(loc, s.Images, s.PosterPath, s.BackdropPath),
 	}
@@ -691,11 +713,22 @@ func names(list []idName) []string {
 	return out
 }
 
-func firstName(list []idName) string {
-	if n := names(list); len(n) > 0 {
-		return n[0]
+// trailer is the web page of a title's trailer: an official YouTube trailer first, then any
+// YouTube trailer; "" when it has none.
+func trailer(videos wireVideos) string {
+	best := -1
+	for i, v := range videos.Results {
+		if v.Site != "YouTube" || v.Type != "Trailer" || strings.TrimSpace(v.Key) == "" {
+			continue
+		}
+		if best < 0 || (v.Official && !videos.Results[best].Official) {
+			best = i
+		}
 	}
-	return ""
+	if best < 0 {
+		return ""
+	}
+	return "https://www.youtube.com/watch?v=" + url.QueryEscape(videos.Results[best].Key)
 }
 
 func keywords(list []idName) []string {

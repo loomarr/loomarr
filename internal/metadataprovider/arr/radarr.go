@@ -115,7 +115,7 @@ func movieRecord(m radarrMovie, country, base string) mp.Record {
 			PremiereDate:  firstDate(m.InCinemas, m.DigitalRelease, m.PhysicalRelease),
 			Year:          m.Year,
 			Genres:        m.Genres,
-			Network:       strings.TrimSpace(m.Studio),
+			Studios:       named(m.Studio),
 			Runtime:       minutes(m.Runtime),
 		},
 		Artwork: artwork(m.Images),

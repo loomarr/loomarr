@@ -65,7 +65,7 @@ func TestSonarr_FetchReturnsTheSeriesWithItsEpisodes(t *testing.T) {
 		Title: "The Lantern Office", SortTitle: "lantern office",
 		Overview:     "A night clerk at a seaside lighthouse registry keeps the lamps of a town that no longer has ships.",
 		PremiereDate: "2019-09-12", Year: 2019, Genres: []string{"Drama", "Mystery"},
-		Network: "Harbor Light Network", Status: "continuing", Runtime: 44 * time.Minute,
+		Studios: []string{"Harbor Light Network"}, Status: "continuing", Runtime: 44 * time.Minute,
 	}
 	if !reflect.DeepEqual(*rec.Descriptive, wantDesc) {
 		t.Errorf("series descriptive = %+v, want %+v", *rec.Descriptive, wantDesc)
@@ -209,7 +209,7 @@ func TestRadarr_FetchReturnsTheMovie(t *testing.T) {
 		Title: "The Copper Orchard", OriginalTitle: "Le Verger de Cuivre", SortTitle: "copper orchard",
 		Overview:     "A clockmaker inherits an orchard whose trees keep perfect time.",
 		PremiereDate: "2016-05-20", Year: 2016, Genres: []string{"Drama", "Fantasy"},
-		Network: "Ironbell Pictures", Runtime: 112 * time.Minute,
+		Studios: []string{"Ironbell Pictures"}, Runtime: 112 * time.Minute,
 		Edition: "Extended Cut", // the current file's
 	}
 	if !reflect.DeepEqual(*rec.Descriptive, wantDesc) {

@@ -31,7 +31,8 @@ const (
 //
 //	series 1: a series counts its other episode orderings (decision 53).
 //	series 2: a series carries each season's poster.
-var catalogVersions = map[string]int{string(mp.KindSeries): 2}
+//	movie 1, series 3: every studio or network, the tagline, countries and trailer (decision 46).
+var catalogVersions = map[string]int{string(mp.KindMovie): 1, string(mp.KindSeries): 3}
 
 // EnrichStore is the cache the Enricher fills.
 type EnrichStore interface {

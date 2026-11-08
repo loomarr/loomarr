@@ -76,13 +76,17 @@ type Relationship struct {
 // ItemFacts intentionally retains more than today's consumers need. Typed fields are the stable
 // projection Loomarr understands; Observation.Extension preserves bounded safe importer fields.
 type ItemFacts struct {
-	Name           string         `json:"name,omitempty"`
-	OriginalTitle  string         `json:"originalTitle,omitempty"`
-	SortTitle      string         `json:"sortTitle,omitempty"`
-	Overview       string         `json:"overview,omitempty"`
-	Genres         []string       `json:"genres,omitempty"`
-	Tags           []string       `json:"tags,omitempty"`
-	Studios        []string       `json:"studios,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	OriginalTitle string   `json:"originalTitle,omitempty"`
+	SortTitle     string   `json:"sortTitle,omitempty"`
+	Overview      string   `json:"overview,omitempty"`
+	Genres        []string `json:"genres,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	Studios       []string `json:"studios,omitempty"`
+	Countries     []string `json:"countries,omitempty"`
+	Tagline       string   `json:"tagline,omitempty"`
+	// Trailer is a web page that plays the trailer.
+	Trailer        string         `json:"trailer,omitempty"`
 	People         []Person       `json:"people,omitempty"`
 	ProductionYear int            `json:"productionYear,omitempty"`
 	SeasonNumber   int            `json:"seasonNumber,omitempty"`

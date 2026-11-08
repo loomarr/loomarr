@@ -50,10 +50,14 @@ type LibraryItem struct {
 	From     LibraryFrom
 	// IDs are the item's external ids; Genres, Studios and Tags in the source's order. An episode
 	// has no genres or studios of its own: they are its show's (decision 42).
-	IDs     []LibraryID
-	Genres  []string
-	Studios []string
-	Tags    []string
+	IDs       []LibraryID
+	Genres    []string
+	Studios   []string
+	Countries []string
+	Tags      []string
+	// Tagline is the one-line pitch; Trailer a web page that plays the trailer.
+	Tagline string
+	Trailer string
 	// Sources are its present files (decision 41), one marked Plays; Art its artwork references.
 	Sources []LibrarySource
 	Art     []LibraryArt

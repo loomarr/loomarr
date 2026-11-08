@@ -76,8 +76,9 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 		origin_authority, origin_key, grounded, match_basis, match_app, match_page, set_key, updated_at_ms,
 		original_title, overview, premiere_date, rating, score, runtime_ms, season, episode, episode_end,
 		series_authority, series_key, series_id,
-		name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		name_from, year_from, overview_from, premiere_from, rating_from, score_from, runtime_from,
+		tagline, trailer)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, name = excluded.name,
 		sort_name = excluded.sort_name, year = excluded.year, catalog = excluded.catalog,
 		origin_authority = excluded.origin_authority, origin_key = excluded.origin_key,
@@ -91,13 +92,13 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 		name_from = excluded.name_from, year_from = excluded.year_from,
 		overview_from = excluded.overview_from, premiere_from = excluded.premiere_from,
 		rating_from = excluded.rating_from, score_from = excluded.score_from,
-		runtime_from = excluded.runtime_from`),
+		runtime_from = excluded.runtime_from, tagline = excluded.tagline, trailer = excluded.trailer`),
 		it.ID, it.Kind, it.Name, sortName, it.Year, it.Catalog.String(), it.Origin.Authority, it.Origin.Key,
 		it.Match.Grounded(), it.Match.Basis, it.Match.App, it.Match.Page, it.Set.String(), at.UnixMilli(),
 		it.OriginalTitle, it.Overview, it.PremiereDate, it.Rating, it.Score, it.RuntimeMs,
 		it.Season, it.Episode, it.EpisodeEnd, it.Series.Authority, it.Series.Key, it.SeriesID,
 		it.From.Name, it.From.Year, it.From.Overview, it.From.Premiere, it.From.Rating, it.From.Score,
-		it.From.Runtime); err != nil {
+		it.From.Runtime, it.Tagline, it.Trailer); err != nil {
 		return fmt.Errorf("save library item: %w", err)
 	}
 	if err := s.saveLibraryItemRows(ctx, tx, it); err != nil {
@@ -113,7 +114,7 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
 	for _, table := range []string{"library_trickplay", "library_chapters", "library_markers", "library_streams",
 		"library_sources", "library_art",
-		"library_ids", "library_genres", "library_studios", "library_tags"} {
+		"library_ids", "library_genres", "library_studios", "library_countries", "library_tags"} {
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE item_id = ?`), it.ID); err != nil {
 			return fmt.Errorf("replace %s: %w", table, err)
 		}
@@ -129,7 +130,8 @@ func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it Libra
 			return fmt.Errorf("save library id: %w", err)
 		}
 	}
-	for table, names := range map[string][]string{"library_genres": it.Genres, "library_studios": it.Studios, "library_tags": it.Tags} {
+	for table, names := range map[string][]string{"library_genres": it.Genres, "library_studios": it.Studios,
+		"library_countries": it.Countries, "library_tags": it.Tags} {
 		seenName := map[string]bool{}
 		for i, name := range names {
 			if name == "" || seenName[name] {

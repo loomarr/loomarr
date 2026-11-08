@@ -107,8 +107,8 @@ type Descriptive struct {
 	CommunityRating float64
 	// Collection is the franchise a movie belongs to in the source's catalog, or nil.
 	Collection *CollectionRef
-	// Network is a series' network or a movie's studio.
-	Network string
+	// Studios are a series' networks or a movie's studios, in the source's order.
+	Studios []string
 	// Status is a series' status as its source reports it, such as "continuing" or "ended".
 	Status string
 	// Runtime is the nominal running time, not a measurement of a file.

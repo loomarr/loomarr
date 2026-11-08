@@ -139,7 +139,7 @@ func TestFetchMovie(t *testing.T) {
 	}
 
 	q := f.last(t).URL.Query()
-	if got := q.Get("append_to_response"); got != "external_ids,release_dates,keywords,images" {
+	if got := q.Get("append_to_response"); got != "external_ids,release_dates,keywords,images,videos" {
 		t.Errorf("append_to_response = %q: the detail call must carry everything the record stores", got)
 	}
 	if q.Get("language") != "en-US" || q.Get("include_image_language") != "en,null" {
@@ -157,8 +157,17 @@ func TestFetchMovie(t *testing.T) {
 	if d.Title != "The Lantern Archive" || d.Year != 2019 || d.PremiereDate != "2019-06-14" || d.Runtime != 112*time.Minute {
 		t.Errorf("descriptive = %+v", d)
 	}
-	if d.Network != "Harbor Lamp Pictures" || !reflect.DeepEqual(d.Genres, []string{"Adventure", "Fantasy"}) {
-		t.Errorf("network = %q, genres = %v", d.Network, d.Genres)
+	if !reflect.DeepEqual(d.Studios, []string{"Harbor Lamp Pictures", "Second Shift Films"}) ||
+		!reflect.DeepEqual(d.Genres, []string{"Adventure", "Fantasy"}) {
+		t.Errorf("studios = %q, genres = %v", d.Studios, d.Genres)
+	}
+	if d.Tagline != "Every light is accounted for." ||
+		!reflect.DeepEqual(d.Countries, []string{"United States of America", "Canada"}) {
+		t.Errorf("tagline = %q, countries = %v", d.Tagline, d.Countries)
+	}
+	// The official YouTube trailer wins over a fan cut listed first, a teaser and another site's.
+	if d.Trailer != "https://www.youtube.com/watch?v=official900" {
+		t.Errorf("trailer = %q", d.Trailer)
 	}
 	if !reflect.DeepEqual(d.Keywords, []string{"night shift", "small town", "ledger"}) {
 		t.Errorf("keywords = %v", d.Keywords)
@@ -233,7 +242,8 @@ func TestFetchSeries(t *testing.T) {
 		t.Errorf("ids = %+v, want %+v", rec.IDs, wantIDs)
 	}
 	d := rec.Descriptive
-	if d.Title != "Tidewater Station" || d.Network != "Northlight Network" || d.Runtime != 42*time.Minute {
+	if d.Title != "Tidewater Station" || !reflect.DeepEqual(d.Studios, []string{"Northlight Network"}) ||
+		d.Runtime != 42*time.Minute || d.Tagline != "" || d.Trailer != "" {
 		t.Errorf("descriptive = %+v", d)
 	}
 	if d.Status != "continuing" {
