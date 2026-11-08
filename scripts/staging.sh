@@ -32,7 +32,8 @@ REGION=ewr
 GPU_REGION=ord
 OS_ID=2284 # Ubuntu 24.04 LTS x64
 MAX_HOURS=24
-REPLACE_TIMEOUT_SECONDS="${STAGING_REPLACE_TIMEOUT:-2700}" # first boot to seeded is about 25 minutes
+# First boot to public: about 25 minutes, and up to an hour while the open content pack downloads.
+REPLACE_TIMEOUT_SECONDS="${STAGING_REPLACE_TIMEOUT:-4800}"
 REPLACE_SETTLE_SECONDS="${STAGING_REPLACE_SETTLE:-30}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
