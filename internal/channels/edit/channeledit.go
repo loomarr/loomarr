@@ -1,4 +1,4 @@
-// Package channeledit is the one write path for an operator's channel changes (§7): creating a
+// Package edit is the one write path for an operator's channel changes (§7): creating a
 // hand-made channel, and every edit after it — the PATCH form, an icon or
 // watermark upload, a detach. Each change is a function over the channel; the service wraps it in
 // the rules every edit must share, so a route cannot forget one: the `building` tuner-list

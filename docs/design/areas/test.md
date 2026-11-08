@@ -30,8 +30,6 @@ One area of the [package map](../package-map.md#start-here).
   No-network adapters for library-facing tests.
 - **`testkit/moviecollectionsfixture`** · → `moviecollections`
   The shared deterministic source for movie-collection resolver tests.
-- **`testkit/operationfixture`**
-  Cycle-free function-backed recordings for testing durable operations without importing an application package.
 - **`testkit/outlookfixture`** · → `channels/schedule`, `library`
   Shared read-only library observations for tests.
 - **`testkit/playoutstreamfixture`**
