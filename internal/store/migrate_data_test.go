@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -106,10 +106,10 @@ func seedForMigration(t *testing.T, s Store) {
 		t.Fatalf("seed notification: created=%t err=%v", created, err)
 	}
 
-	invited := invitation.Invitation{
-		ID: "migration-invitation", Kind: invitation.KindLocal, Username: "Ada",
-		IdentityKey: "ada", Role: invitation.RoleMember, Status: invitation.StatusPending,
-		CreatedAt: intent.CreatedAt, ExpiresAt: intent.CreatedAt.Add(invitation.Expiry),
+	invited := access.Invitation{
+		ID: "migration-invitation", Kind: access.KindLocal, Username: "Ada",
+		IdentityKey: "ada", Role: access.RoleMember, Status: access.StatusPending,
+		CreatedAt: intent.CreatedAt, ExpiresAt: intent.CreatedAt.Add(access.Expiry),
 	}
 	address := &contact.Address{
 		OwnerKind: contact.OwnerInvitation, OwnerID: invited.ID, Email: "Ada@Example.com",
@@ -119,9 +119,9 @@ func seedForMigration(t *testing.T, s Store) {
 	if err := s.CreateInvitation(ctx, invited, address); err != nil {
 		t.Fatalf("seed invitation: %v", err)
 	}
-	grant := invitation.Grant{
-		TokenHash: invitation.HashGrant("migration-bearer"), InvitationID: invited.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceEmail,
+	grant := access.Grant{
+		TokenHash: access.HashGrant("migration-bearer"), InvitationID: invited.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceEmail,
 		CreatedAt: intent.CreatedAt, ExpiresAt: invited.ExpiresAt,
 	}
 	if err := s.ReplaceInvitationGrant(ctx, invited.ID, grant, grant.CreatedAt); err != nil {
@@ -209,7 +209,7 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 		t.Errorf("migrated notification attempts = %+v, err %v", migratedAttempts, err)
 	}
 	migratedInvitation, err := dst.GetInvitation(ctx, "migration-invitation", time.Unix(1_700_000_000, 0).UTC())
-	if err != nil || migratedInvitation.Username != "Ada" || migratedInvitation.Role != invitation.RoleMember {
+	if err != nil || migratedInvitation.Username != "Ada" || migratedInvitation.Role != access.RoleMember {
 		t.Errorf("migrated invitation = %+v, err %v", migratedInvitation, err)
 	}
 	migratedContact, err := dst.GetInvitationContactAddress(ctx, "migration-invitation")
@@ -217,7 +217,7 @@ func TestMigrateSQLiteToPostgres(t *testing.T) {
 		t.Errorf("migrated invitation contact = %+v, err %v", migratedContact, err)
 	}
 	migratedGrants, err := dst.ListInvitationGrants(ctx, "migration-invitation")
-	if err != nil || len(migratedGrants) != 1 || migratedGrants[0].TokenHash != invitation.HashGrant("migration-bearer") {
+	if err != nil || len(migratedGrants) != 1 || migratedGrants[0].TokenHash != access.HashGrant("migration-bearer") {
 		t.Errorf("migrated invitation grants = %+v, err %v", migratedGrants, err)
 	}
 }

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
@@ -19,18 +19,18 @@ var ErrInvalidPasswordRecovery = errors.New("auth: password recovery is invalid 
 type PasswordRecoveryStore interface {
 	GetUserByName(context.Context, string) (identitystore.User, error)
 	GetContactAddresses(context.Context, string) (contact.Set, error)
-	CreatePasswordRecovery(context.Context, recovery.Record) error
-	GetPasswordRecovery(context.Context, string, time.Time) (recovery.Record, error)
-	GetPasswordRecoveryByGrant(context.Context, string, time.Time) (recovery.Record, error)
-	AddPasswordRecoveryGrant(context.Context, string, recovery.Grant, time.Time) error
+	CreatePasswordRecovery(context.Context, access.RecoveryRecord) error
+	GetPasswordRecovery(context.Context, string, time.Time) (access.RecoveryRecord, error)
+	GetPasswordRecoveryByGrant(context.Context, string, time.Time) (access.RecoveryRecord, error)
+	AddPasswordRecoveryGrant(context.Context, string, access.RecoveryGrant, time.Time) error
 	RevokePasswordRecoveryGrant(context.Context, string, time.Time) error
-	RedeemPasswordRecovery(context.Context, string, string, time.Time) (recovery.Record, error)
+	RedeemPasswordRecovery(context.Context, string, string, time.Time) (access.RecoveryRecord, error)
 }
 
 // PasswordRecoveryRequest is returned only inside the composition root. Public callers always
 // receive the same accepted response and never learn whether this value existed.
 type PasswordRecoveryRequest struct {
-	Recovery      recovery.Record
+	Recovery      access.RecoveryRecord
 	RecipientName string
 }
 
@@ -86,9 +86,9 @@ func (s *PasswordRecoveryService) Request(
 		return nil, nil
 	}
 	now := s.now().UTC().Truncate(time.Second)
-	value := recovery.Record{
-		ID: s.newID(), UserID: user.ID, Status: recovery.StatusPending,
-		CreatedAt: now, ExpiresAt: now.Add(recovery.Expiry),
+	value := access.RecoveryRecord{
+		ID: s.newID(), UserID: user.ID, Status: access.RecoveryPending,
+		CreatedAt: now, ExpiresAt: now.Add(access.RecoveryExpiry),
 	}
 	if err := s.store.CreatePasswordRecovery(ctx, value); err != nil {
 		// Eligibility can change between the reads and atomic create. Preserve the public no-op
@@ -118,7 +118,7 @@ func (s *PasswordRecoveryService) IssueGrant(
 ) (IssuedRecoveryGrant, error) {
 	now := s.now().UTC().Truncate(time.Second)
 	value, err := s.store.GetPasswordRecovery(ctx, recoveryID, now)
-	if err != nil || value.Status != recovery.StatusPending {
+	if err != nil || value.Status != access.RecoveryPending {
 		return IssuedRecoveryGrant{}, ErrInvalidPasswordRecovery
 	}
 	plaintext, err := s.newToken()
@@ -128,8 +128,8 @@ func (s *PasswordRecoveryService) IssueGrant(
 	if _, err := recoveryGrantHash(plaintext); err != nil {
 		return IssuedRecoveryGrant{}, err
 	}
-	grant := recovery.Grant{
-		TokenHash: recovery.HashGrant(plaintext), RecoveryID: value.ID,
+	grant := access.RecoveryGrant{
+		TokenHash: access.HashGrant(plaintext), RecoveryID: value.ID,
 		CreatedAt: now, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.store.AddPasswordRecoveryGrant(ctx, value.ID, grant, now); err != nil {
@@ -148,14 +148,14 @@ func (s *PasswordRecoveryService) RevokeIssuedGrant(ctx context.Context, plainte
 	)
 }
 
-func (s *PasswordRecoveryService) Preview(ctx context.Context, plaintext string) (recovery.Record, error) {
+func (s *PasswordRecoveryService) Preview(ctx context.Context, plaintext string) (access.RecoveryRecord, error) {
 	hash, err := recoveryGrantHash(plaintext)
 	if err != nil {
-		return recovery.Record{}, err
+		return access.RecoveryRecord{}, err
 	}
 	value, err := s.store.GetPasswordRecoveryByGrant(ctx, hash, s.now())
 	if errors.Is(err, store.ErrNotFound) {
-		return recovery.Record{}, ErrInvalidPasswordRecovery
+		return access.RecoveryRecord{}, ErrInvalidPasswordRecovery
 	}
 	return value, err
 }
@@ -190,7 +190,7 @@ func recoveryGrantHash(plaintext string) (string, error) {
 	if err != nil || len(decoded) != 32 {
 		return "", ErrInvalidPasswordRecovery
 	}
-	return recovery.HashGrant(plaintext), nil
+	return access.HashGrant(plaintext), nil
 }
 
 func recoveryGrantToken() (string, error) {

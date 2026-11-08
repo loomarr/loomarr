@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/people/recovery"
+	"github.com/loomarr/loomarr/internal/people/access"
 )
 
 func testPasswordRecoveryPreviewDoesNotConsume(t *testing.T, newStore NewStoreFunc) {
@@ -22,15 +22,15 @@ func testPasswordRecoveryPreviewDoesNotConsume(t *testing.T, newStore NewStoreFu
 	}); err != nil {
 		t.Fatal(err)
 	}
-	value := recovery.Record{
-		ID: "recovery-preview", UserID: "recover-local", Status: recovery.StatusPending,
-		CreatedAt: now, ExpiresAt: now.Add(recovery.Expiry),
+	value := access.RecoveryRecord{
+		ID: "recovery-preview", UserID: "recover-local", Status: access.RecoveryPending,
+		CreatedAt: now, ExpiresAt: now.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, value); err != nil {
 		t.Fatal(err)
 	}
-	grant := recovery.Grant{
-		TokenHash: recovery.HashGrant("preview-plaintext"), RecoveryID: value.ID,
+	grant := access.RecoveryGrant{
+		TokenHash: access.HashGrant("preview-plaintext"), RecoveryID: value.ID,
 		CreatedAt: now, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.AddPasswordRecoveryGrant(ctx, value.ID, grant, now); err != nil {
@@ -66,19 +66,19 @@ func testPasswordRecoveryRedemptionIsAtomic(t *testing.T, newStore NewStoreFunc)
 			t.Fatal(err)
 		}
 	}
-	value := recovery.Record{
-		ID: "recovery-atomic", UserID: user.ID, Status: recovery.StatusPending,
-		CreatedAt: now, ExpiresAt: now.Add(recovery.Expiry),
+	value := access.RecoveryRecord{
+		ID: "recovery-atomic", UserID: user.ID, Status: access.RecoveryPending,
+		CreatedAt: now, ExpiresAt: now.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, value); err != nil {
 		t.Fatal(err)
 	}
-	winning := recovery.Grant{
-		TokenHash: recovery.HashGrant("winning-plaintext"), RecoveryID: value.ID,
+	winning := access.RecoveryGrant{
+		TokenHash: access.HashGrant("winning-plaintext"), RecoveryID: value.ID,
 		CreatedAt: now, ExpiresAt: value.ExpiresAt,
 	}
-	sibling := recovery.Grant{
-		TokenHash: recovery.HashGrant("sibling-plaintext"), RecoveryID: value.ID,
+	sibling := access.RecoveryGrant{
+		TokenHash: access.HashGrant("sibling-plaintext"), RecoveryID: value.ID,
 		CreatedAt: now.Add(time.Second), ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.AddPasswordRecoveryGrant(ctx, value.ID, winning, now); err != nil {
@@ -91,7 +91,7 @@ func testPasswordRecoveryRedemptionIsAtomic(t *testing.T, newStore NewStoreFunc)
 	redeemAt := now.Add(time.Minute)
 	newHash := "$argon2id$v=19$m=65536,t=3,p=4$new$safeverifier"
 	got, err := s.RedeemPasswordRecovery(ctx, winning.TokenHash, newHash, redeemAt)
-	if err != nil || got.Status != recovery.StatusRedeemed || !got.TerminalAt.Equal(redeemAt) {
+	if err != nil || got.Status != access.RecoveryRedeemed || !got.TerminalAt.Equal(redeemAt) {
 		t.Fatalf("redeem recovery = %+v, %v", got, err)
 	}
 	stored, err := s.GetUser(ctx, user.ID)
@@ -126,15 +126,15 @@ func testPasswordRecoveryNewRequestSupersedesOld(t *testing.T, newStore NewStore
 	}); err != nil {
 		t.Fatal(err)
 	}
-	first := recovery.Record{
-		ID: "recovery-first", UserID: "recover-replace", Status: recovery.StatusPending,
-		CreatedAt: now, ExpiresAt: now.Add(recovery.Expiry),
+	first := access.RecoveryRecord{
+		ID: "recovery-first", UserID: "recover-replace", Status: access.RecoveryPending,
+		CreatedAt: now, ExpiresAt: now.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, first); err != nil {
 		t.Fatal(err)
 	}
-	firstGrant := recovery.Grant{
-		TokenHash: recovery.HashGrant("first-plaintext"), RecoveryID: first.ID,
+	firstGrant := access.RecoveryGrant{
+		TokenHash: access.HashGrant("first-plaintext"), RecoveryID: first.ID,
 		CreatedAt: now, ExpiresAt: first.ExpiresAt,
 	}
 	if err := s.AddPasswordRecoveryGrant(ctx, first.ID, firstGrant, now); err != nil {
@@ -142,15 +142,15 @@ func testPasswordRecoveryNewRequestSupersedesOld(t *testing.T, newStore NewStore
 	}
 
 	secondAt := now.Add(time.Minute)
-	second := recovery.Record{
-		ID: "recovery-second", UserID: first.UserID, Status: recovery.StatusPending,
-		CreatedAt: secondAt, ExpiresAt: secondAt.Add(recovery.Expiry),
+	second := access.RecoveryRecord{
+		ID: "recovery-second", UserID: first.UserID, Status: access.RecoveryPending,
+		CreatedAt: secondAt, ExpiresAt: secondAt.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, second); err != nil {
 		t.Fatal(err)
 	}
 	old, err := s.GetPasswordRecovery(ctx, first.ID, secondAt)
-	if err != nil || old.Status != recovery.StatusRevoked || !old.TerminalAt.Equal(secondAt) {
+	if err != nil || old.Status != access.RecoveryRevoked || !old.TerminalAt.Equal(secondAt) {
 		t.Fatalf("superseded recovery = %+v, %v", old, err)
 	}
 	if _, err := s.GetPasswordRecoveryByGrant(ctx, firstGrant.TokenHash, secondAt); !errors.Is(err, ErrNotFound) {
@@ -179,40 +179,40 @@ func testPasswordRecoveryRetention(t *testing.T, newStore NewStoreFunc) {
 	seed("retention-expired")
 	seed("retention-revoked")
 	seed("retention-recent")
-	oldCreated := now.Add(-recovery.Retention - recovery.Expiry - time.Hour)
-	oldExpired := recovery.Record{
-		ID: "recovery-old-expired", UserID: "retention-expired", Status: recovery.StatusPending,
-		CreatedAt: oldCreated, ExpiresAt: oldCreated.Add(recovery.Expiry),
+	oldCreated := now.Add(-access.RecoveryRetention - access.RecoveryExpiry - time.Hour)
+	oldExpired := access.RecoveryRecord{
+		ID: "recovery-old-expired", UserID: "retention-expired", Status: access.RecoveryPending,
+		CreatedAt: oldCreated, ExpiresAt: oldCreated.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, oldExpired); err != nil {
 		t.Fatal(err)
 	}
-	oldRevoked := recovery.Record{
-		ID: "recovery-old-revoked", UserID: "retention-revoked", Status: recovery.StatusPending,
-		CreatedAt: oldCreated, ExpiresAt: oldCreated.Add(recovery.Expiry),
+	oldRevoked := access.RecoveryRecord{
+		ID: "recovery-old-revoked", UserID: "retention-revoked", Status: access.RecoveryPending,
+		CreatedAt: oldCreated, ExpiresAt: oldCreated.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, oldRevoked); err != nil {
 		t.Fatal(err)
 	}
 	// Revoke the old row just before the retention horizon while leaving the replacement's
 	// thirty-minute expiry just inside it. This pins terminal_at and expires_at independently.
-	replacementAt := now.Add(-recovery.Retention - 15*time.Minute)
-	replacement := recovery.Record{
-		ID: "recovery-replacement", UserID: oldRevoked.UserID, Status: recovery.StatusPending,
-		CreatedAt: replacementAt, ExpiresAt: replacementAt.Add(recovery.Expiry),
+	replacementAt := now.Add(-access.RecoveryRetention - 15*time.Minute)
+	replacement := access.RecoveryRecord{
+		ID: "recovery-replacement", UserID: oldRevoked.UserID, Status: access.RecoveryPending,
+		CreatedAt: replacementAt, ExpiresAt: replacementAt.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, replacement); err != nil {
 		t.Fatal(err)
 	}
-	recent := recovery.Record{
-		ID: "recovery-recent", UserID: "retention-recent", Status: recovery.StatusPending,
-		CreatedAt: now.Add(-recovery.Expiry), ExpiresAt: now,
+	recent := access.RecoveryRecord{
+		ID: "recovery-recent", UserID: "retention-recent", Status: access.RecoveryPending,
+		CreatedAt: now.Add(-access.RecoveryExpiry), ExpiresAt: now,
 	}
 	if err := s.CreatePasswordRecovery(ctx, recent); err != nil {
 		t.Fatal(err)
 	}
 
-	purged, err := s.PurgeTerminalPasswordRecoveries(ctx, now.Add(-recovery.Retention))
+	purged, err := s.PurgeTerminalPasswordRecoveries(ctx, now.Add(-access.RecoveryRetention))
 	if err != nil || purged != 2 {
 		t.Fatalf("purge password recoveries = %d, %v; want two old records", purged, err)
 	}
@@ -240,15 +240,15 @@ func testPasswordRecoveryDisabledAfterIssueIsUnusable(t *testing.T, newStore New
 	if err := s.UpsertUser(ctx, user); err != nil {
 		t.Fatal(err)
 	}
-	value := recovery.Record{
-		ID: "recovery-disabled", UserID: user.ID, Status: recovery.StatusPending,
-		CreatedAt: now, ExpiresAt: now.Add(recovery.Expiry),
+	value := access.RecoveryRecord{
+		ID: "recovery-disabled", UserID: user.ID, Status: access.RecoveryPending,
+		CreatedAt: now, ExpiresAt: now.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, value); err != nil {
 		t.Fatal(err)
 	}
-	grant := recovery.Grant{
-		TokenHash: recovery.HashGrant("disabled-plaintext"), RecoveryID: value.ID,
+	grant := access.RecoveryGrant{
+		TokenHash: access.HashGrant("disabled-plaintext"), RecoveryID: value.ID,
 		CreatedAt: now, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.AddPasswordRecoveryGrant(ctx, value.ID, grant, now); err != nil {
@@ -283,15 +283,15 @@ func testPasswordRecoveryConcurrentRedemption(t *testing.T, newStore NewStoreFun
 	if err := s.UpsertUser(ctx, user); err != nil {
 		t.Fatal(err)
 	}
-	value := recovery.Record{
-		ID: "recovery-concurrent", UserID: user.ID, Status: recovery.StatusPending,
-		CreatedAt: now, ExpiresAt: now.Add(recovery.Expiry),
+	value := access.RecoveryRecord{
+		ID: "recovery-concurrent", UserID: user.ID, Status: access.RecoveryPending,
+		CreatedAt: now, ExpiresAt: now.Add(access.RecoveryExpiry),
 	}
 	if err := s.CreatePasswordRecovery(ctx, value); err != nil {
 		t.Fatal(err)
 	}
-	grant := recovery.Grant{
-		TokenHash: recovery.HashGrant("concurrent-plaintext"), RecoveryID: value.ID,
+	grant := access.RecoveryGrant{
+		TokenHash: access.HashGrant("concurrent-plaintext"), RecoveryID: value.ID,
 		CreatedAt: now, ExpiresAt: value.ExpiresAt,
 	}
 	if err := s.AddPasswordRecoveryGrant(ctx, value.ID, grant, now); err != nil {

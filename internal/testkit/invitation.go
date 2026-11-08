@@ -4,25 +4,25 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 )
 
 // LibraryAccountResolver is the shared in-memory adapter for Invitation account selection.
 type LibraryAccountResolver struct {
-	Accounts map[string]invitation.LibraryAccount
+	Accounts map[string]access.LibraryAccount
 	Err      error
 }
 
 func (r LibraryAccountResolver) ResolveLibraryAccount(
 	_ context.Context,
 	id string,
-) (invitation.LibraryAccount, error) {
+) (access.LibraryAccount, error) {
 	if r.Err != nil {
-		return invitation.LibraryAccount{}, r.Err
+		return access.LibraryAccount{}, r.Err
 	}
 	account, ok := r.Accounts[id]
 	if !ok {
-		return invitation.LibraryAccount{}, fmt.Errorf("library account not found")
+		return access.LibraryAccount{}, fmt.Errorf("library account not found")
 	}
 	return account, nil
 }

@@ -8,11 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -23,7 +22,7 @@ func TestInvitationEmailMintsBearerOnlyInsideClaimedAttemptsAndRotatesItBeforeRe
 	now := time.Unix(1_900_000_000, 0).UTC()
 	tokens := []string{strings.Repeat("a", 64), strings.Repeat("b", 64)}
 	tokenIndex := 0
-	invitationService := invitation.NewService(
+	invitationService := access.NewService(
 		st, nil, func() string { return "invitation-1" },
 		func() (string, error) {
 			token := tokens[tokenIndex]
@@ -32,8 +31,8 @@ func TestInvitationEmailMintsBearerOnlyInsideClaimedAttemptsAndRotatesItBeforeRe
 		},
 		func() time.Time { return now },
 	)
-	if _, err := invitationService.Create(ctx, invitation.CreateCommand{
-		Kind: invitation.KindLocal, Username: "Ada", ContactEmail: "ada@example.com",
+	if _, err := invitationService.Create(ctx, access.CreateCommand{
+		Kind: access.KindLocal, Username: "Ada", ContactEmail: "ada@example.com",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +76,7 @@ func TestInvitationEmailMintsBearerOnlyInsideClaimedAttemptsAndRotatesItBeforeRe
 	}
 	grants, err = st.ListInvitationGrants(ctx, "invitation-1")
 	if err != nil || len(grants) != 1 || grants[0].RevokedAt.IsZero() ||
-		grants[0].TokenHash != invitation.HashGrant(tokens[0]) {
+		grants[0].TokenHash != access.HashGrant(tokens[0]) {
 		t.Fatalf("pre-acceptance grant = %+v, %v", grants, err)
 	}
 	attempts, err := st.ListNotificationAttempts(ctx, intents[0].ID)
@@ -89,7 +88,7 @@ func TestInvitationEmailMintsBearerOnlyInsideClaimedAttemptsAndRotatesItBeforeRe
 		t.Fatalf("second run = %t, %v", ran, err)
 	}
 	grants, err = st.ListInvitationGrants(ctx, "invitation-1")
-	if err != nil || len(grants) != 2 || grants[1].TokenHash != invitation.HashGrant(tokens[1]) ||
+	if err != nil || len(grants) != 2 || grants[1].TokenHash != access.HashGrant(tokens[1]) ||
 		!grants[1].RevokedAt.IsZero() {
 		t.Fatalf("accepted grant = %+v, %v", grants, err)
 	}
@@ -209,7 +208,7 @@ func TestPasswordRecoveryEmailUsesSharedWorkerAndKeepsBearerEphemeral(t *testing
 		t.Fatalf("recovery delivery = %t, %v", ran, err)
 	}
 	grants, err = st.ListPasswordRecoveryGrants(ctx, "recovery-1")
-	if err != nil || len(grants) != 1 || grants[0].TokenHash != recovery.HashGrant(bearer) {
+	if err != nil || len(grants) != 1 || grants[0].TokenHash != access.HashGrant(bearer) {
 		t.Fatalf("recovery grants = %+v, %v", grants, err)
 	}
 	if len(sender.messages) != 1 || !strings.Contains(sender.messages[0].TextBody,

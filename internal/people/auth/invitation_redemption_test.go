@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/people/invitation"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -18,18 +18,18 @@ func TestInvitationRedemption_LocalCreatesArgon2idUserAndSession(t *testing.T) {
 	st := newStore(t)
 	ctx := context.Background()
 	at := time.Date(2030, 3, 17, 12, 0, 0, 0, time.UTC)
-	invited := invitation.Invitation{
-		ID: "invitation-local", Kind: invitation.KindLocal, Username: "Greta Finch",
-		IdentityKey: invitation.NormalizeLocalIdentity("Greta Finch"), Role: invitation.RoleAdmin,
-		Status: invitation.StatusPending, CreatedAt: at, ExpiresAt: at.Add(invitation.Expiry),
+	invited := access.Invitation{
+		ID: "invitation-local", Kind: access.KindLocal, Username: "Greta Finch",
+		IdentityKey: access.NormalizeLocalIdentity("Greta Finch"), Role: access.RoleAdmin,
+		Status: access.StatusPending, CreatedAt: at, ExpiresAt: at.Add(access.Expiry),
 	}
 	if err := st.CreateInvitation(ctx, invited, nil); err != nil {
 		t.Fatal(err)
 	}
 	const bearer = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := st.ReplaceInvitationGrant(ctx, invited.ID, invitation.Grant{
-		TokenHash: invitation.HashGrant(bearer), InvitationID: invited.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceCopy,
+	if err := st.ReplaceInvitationGrant(ctx, invited.ID, access.Grant{
+		TokenHash: access.HashGrant(bearer), InvitationID: invited.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceCopy,
 		CreatedAt: at, ExpiresAt: invited.ExpiresAt,
 	}, at); err != nil {
 		t.Fatal(err)
@@ -68,18 +68,18 @@ func TestInvitationRedemption_LibraryFailuresNeverFallbackOrConsumeInvitation(t 
 	st := newStore(t)
 	ctx := context.Background()
 	at := time.Date(2030, 3, 17, 12, 0, 0, 0, time.UTC)
-	invited := invitation.Invitation{
-		ID: "invitation-library-failures", Kind: invitation.KindLibrary, LibraryUserID: "selected-id",
-		DisplayName: "Selected", IdentityKey: "selected-id", Role: invitation.RoleMember,
-		Status: invitation.StatusPending, CreatedAt: at, ExpiresAt: at.Add(invitation.Expiry),
+	invited := access.Invitation{
+		ID: "invitation-library-failures", Kind: access.KindLibrary, LibraryUserID: "selected-id",
+		DisplayName: "Selected", IdentityKey: "selected-id", Role: access.RoleMember,
+		Status: access.StatusPending, CreatedAt: at, ExpiresAt: at.Add(access.Expiry),
 	}
 	if err := st.CreateInvitation(ctx, invited, nil); err != nil {
 		t.Fatal(err)
 	}
 	const bearer = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-	if err := st.ReplaceInvitationGrant(ctx, invited.ID, invitation.Grant{
-		TokenHash: invitation.HashGrant(bearer), InvitationID: invited.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceEmail,
+	if err := st.ReplaceInvitationGrant(ctx, invited.ID, access.Grant{
+		TokenHash: access.HashGrant(bearer), InvitationID: invited.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceEmail,
 		CreatedAt: at, ExpiresAt: invited.ExpiresAt,
 	}, at); err != nil {
 		t.Fatal(err)
@@ -120,18 +120,18 @@ func TestInvitationRedemption_LibraryProvesPinnedIdentityAndStoresOfflineVerifie
 	st := newStore(t)
 	ctx := context.Background()
 	at := time.Date(2030, 3, 17, 12, 0, 0, 0, time.UTC)
-	invited := invitation.Invitation{
-		ID: "invitation-library", Kind: invitation.KindLibrary, LibraryUserID: "emby-grace",
-		DisplayName: "Grace", IdentityKey: "emby-grace", Role: invitation.RoleMember,
-		Status: invitation.StatusPending, CreatedAt: at, ExpiresAt: at.Add(invitation.Expiry),
+	invited := access.Invitation{
+		ID: "invitation-library", Kind: access.KindLibrary, LibraryUserID: "emby-grace",
+		DisplayName: "Grace", IdentityKey: "emby-grace", Role: access.RoleMember,
+		Status: access.StatusPending, CreatedAt: at, ExpiresAt: at.Add(access.Expiry),
 	}
 	if err := st.CreateInvitation(ctx, invited, nil); err != nil {
 		t.Fatal(err)
 	}
 	const bearer = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	if err := st.ReplaceInvitationGrant(ctx, invited.ID, invitation.Grant{
-		TokenHash: invitation.HashGrant(bearer), InvitationID: invited.ID,
-		Kind: invitation.GrantActivation, Conveyance: invitation.ConveyanceQR,
+	if err := st.ReplaceInvitationGrant(ctx, invited.ID, access.Grant{
+		TokenHash: access.HashGrant(bearer), InvitationID: invited.ID,
+		Kind: access.GrantActivation, Conveyance: access.ConveyanceQR,
 		CreatedAt: at, ExpiresAt: invited.ExpiresAt,
 	}, at); err != nil {
 		t.Fatal(err)

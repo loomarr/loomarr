@@ -1,4 +1,4 @@
-package invitation_test
+package access_test
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -16,19 +16,19 @@ func TestServiceCreatesLocalInvitationAndReturnsBearerOnlyFromRegeneration(t *te
 	repository := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	bearer := strings.Repeat("a", 64)
-	service := invitation.NewService(
+	service := access.NewService(
 		repository, nil, sequentialIDs(), func() (string, error) { return bearer, nil },
 		func() time.Time { return now },
 	)
 
-	created, err := service.Create(ctx, invitation.CreateCommand{
-		Kind: invitation.KindLocal, Username: "  Ada  ", ContactEmail: "Ada@Example.com",
+	created, err := service.Create(ctx, access.CreateCommand{
+		Kind: access.KindLocal, Username: "  Ada  ", ContactEmail: "Ada@Example.com",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Username != "Ada" || created.IdentityKey != "ada" || created.Role != invitation.RoleMember ||
-		created.Status != invitation.StatusPending || !created.ExpiresAt.Equal(now.Add(invitation.Expiry)) {
+	if created.Username != "Ada" || created.IdentityKey != "ada" || created.Role != access.RoleMember ||
+		created.Status != access.StatusPending || !created.ExpiresAt.Equal(now.Add(access.Expiry)) {
 		t.Fatalf("created invitation = %+v", created)
 	}
 	address, err := repository.GetInvitationContactAddress(ctx, created.ID)
@@ -37,7 +37,7 @@ func TestServiceCreatesLocalInvitationAndReturnsBearerOnlyFromRegeneration(t *te
 		t.Fatalf("created contact = %+v, %v", address, err)
 	}
 
-	issued, err := service.Regenerate(ctx, created.ID, invitation.ConveyanceQR)
+	issued, err := service.Regenerate(ctx, created.ID, access.ConveyanceQR)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestServiceCreatesLocalInvitationAndReturnsBearerOnlyFromRegeneration(t *te
 		t.Fatalf("issued grant = %+v", issued)
 	}
 	grants, err := repository.ListInvitationGrants(ctx, created.ID)
-	if err != nil || len(grants) != 1 || grants[0].TokenHash != invitation.HashGrant(bearer) {
+	if err != nil || len(grants) != 1 || grants[0].TokenHash != access.HashGrant(bearer) {
 		t.Fatalf("durable grants = %+v, %v", grants, err)
 	}
 	if grants[0].TokenHash == issued.Plaintext {
@@ -58,30 +58,30 @@ func TestServicePinsAnExplicitEnabledLibraryAccount(t *testing.T) {
 	ctx := context.Background()
 	repository := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	resolver := testkit.LibraryAccountResolver{Accounts: map[string]invitation.LibraryAccount{
+	resolver := testkit.LibraryAccountResolver{Accounts: map[string]access.LibraryAccount{
 		"library-42": {ID: "library-42", Name: "Grace"},
 		"disabled":   {ID: "disabled", Name: "Disabled", Disabled: true},
 	}}
-	service := invitation.NewService(
+	service := access.NewService(
 		repository, resolver, sequentialIDs(), nil, func() time.Time { return now },
 	)
-	created, err := service.Create(ctx, invitation.CreateCommand{
-		Kind: invitation.KindLibrary, LibraryUserID: "library-42", Role: invitation.RoleAdmin,
+	created, err := service.Create(ctx, access.CreateCommand{
+		Kind: access.KindLibrary, LibraryUserID: "library-42", Role: access.RoleAdmin,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.LibraryUserID != "library-42" || created.IdentityKey != "library-42" ||
-		created.DisplayName != "Grace" || created.Role != invitation.RoleAdmin {
+		created.DisplayName != "Grace" || created.Role != access.RoleAdmin {
 		t.Fatalf("created Library invitation = %+v", created)
 	}
-	if _, err := service.Create(ctx, invitation.CreateCommand{
-		Kind: invitation.KindLibrary, LibraryUserID: "unknown",
+	if _, err := service.Create(ctx, access.CreateCommand{
+		Kind: access.KindLibrary, LibraryUserID: "unknown",
 	}); err == nil {
 		t.Fatal("an account absent from the Library was invited")
 	}
-	if _, err := service.Create(ctx, invitation.CreateCommand{
-		Kind: invitation.KindLibrary, LibraryUserID: "disabled",
+	if _, err := service.Create(ctx, access.CreateCommand{
+		Kind: access.KindLibrary, LibraryUserID: "disabled",
 	}); err == nil {
 		t.Fatal("a disabled Library account was invited")
 	}
@@ -96,22 +96,22 @@ func TestServiceAddsSiblingDeliveryGrantAndRevokesTheAdmissionDecision(t *testin
 	repository := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
 	tokens := []string{strings.Repeat("a", 64), strings.Repeat("b", 64)}
-	service := invitation.NewService(
+	service := access.NewService(
 		repository, nil, sequentialIDs(), func() (string, error) {
 			token := tokens[0]
 			tokens = tokens[1:]
 			return token, nil
 		}, func() time.Time { return now },
 	)
-	created, err := service.Create(ctx, invitation.CreateCommand{Kind: invitation.KindLocal, Username: "Alan"})
+	created, err := service.Create(ctx, access.CreateCommand{Kind: access.KindLocal, Username: "Alan"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Regenerate(ctx, created.ID, invitation.ConveyanceCopy); err != nil {
+	if _, err := service.Regenerate(ctx, created.ID, access.ConveyanceCopy); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Minute)
-	if _, err := service.IssueSibling(ctx, created.ID, invitation.ConveyanceEmail); err != nil {
+	if _, err := service.IssueSibling(ctx, created.ID, access.ConveyanceEmail); err != nil {
 		t.Fatal(err)
 	}
 	grants, err := repository.ListInvitationGrants(ctx, created.ID)
@@ -124,10 +124,10 @@ func TestServiceAddsSiblingDeliveryGrantAndRevokesTheAdmissionDecision(t *testin
 		t.Fatal(err)
 	}
 	listed, err := service.List(ctx)
-	if err != nil || len(listed) != 1 || listed[0].Status != invitation.StatusRevoked {
+	if err != nil || len(listed) != 1 || listed[0].Status != access.StatusRevoked {
 		t.Fatalf("listed revoked invitation = %+v, %v", listed, err)
 	}
-	if _, err := service.Regenerate(ctx, created.ID, invitation.ConveyanceQR); err == nil {
+	if _, err := service.Regenerate(ctx, created.ID, access.ConveyanceQR); err == nil {
 		t.Fatal("revoked invitation issued another grant")
 	}
 }
@@ -135,13 +135,13 @@ func TestServiceAddsSiblingDeliveryGrantAndRevokesTheAdmissionDecision(t *testin
 func TestServiceRevokesOneIssuedGrantAfterDefiniteDeliveryFailure(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0)
 	repository := testkit.MigratedSQLiteStore(t)
-	service := invitation.NewService(repository, nil, sequentialIDs(),
+	service := access.NewService(repository, nil, sequentialIDs(),
 		func() (string, error) { return strings.Repeat("ab", 32), nil }, func() time.Time { return now })
-	created, err := service.Create(t.Context(), invitation.CreateCommand{Kind: invitation.KindLocal, Username: "Ada"})
+	created, err := service.Create(t.Context(), access.CreateCommand{Kind: access.KindLocal, Username: "Ada"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	issued, err := service.IssueSibling(t.Context(), created.ID, invitation.ConveyanceEmail)
+	issued, err := service.IssueSibling(t.Context(), created.ID, access.ConveyanceEmail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestServiceRevokesOneIssuedGrantAfterDefiniteDeliveryFailure(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(grants) != 1 || grants[0].RevokedAt.IsZero() || grants[0].TokenHash != invitation.HashGrant(issued.Plaintext) {
+	if len(grants) != 1 || grants[0].RevokedAt.IsZero() || grants[0].TokenHash != access.HashGrant(issued.Plaintext) {
 		t.Fatalf("revoked grant = %+v", grants)
 	}
 }

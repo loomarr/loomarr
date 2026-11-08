@@ -8,8 +8,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
@@ -55,7 +55,7 @@ func (s *Server) previewInvitation(ctx context.Context, in *invitationBearerInpu
 	out.Body.DisplayName = value.DisplayName
 	out.Body.Role = string(value.Role)
 	out.Body.ExpiresAt = value.ExpiresAt.UnixMilli()
-	if value.Kind == invitation.KindLibrary {
+	if value.Kind == access.KindLibrary {
 		out.Body.CredentialPath = "library_password"
 	} else {
 		out.Body.CredentialPath = "local_password"
@@ -79,7 +79,7 @@ func (s *Server) redeemInvitation(ctx context.Context, in *redeemInvitationInput
 	var token string
 	var expires time.Time
 	var user identitystore.User
-	if preview.Kind == invitation.KindLibrary {
+	if preview.Kind == access.KindLibrary {
 		token, expires, user, err = s.invitationRedemption.RedeemLibrary(
 			ctx, in.Body.Grant, in.Body.Username, in.Body.Password)
 	} else {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
@@ -46,7 +46,7 @@ func TestPasswordRecoveryRequest_OnlyEligibleLocalPersonCreatesRecord(t *testing
 	}
 	result, err := svc.Request(ctx, "Ada")
 	if err != nil || result == nil || result.Recovery.UserID != "local" ||
-		!result.Recovery.ExpiresAt.Equal(now.Add(recovery.Expiry)) {
+		!result.Recovery.ExpiresAt.Equal(now.Add(access.RecoveryExpiry)) {
 		t.Fatalf("eligible Request = %+v, %v", result, err)
 	}
 	if n != 1 {

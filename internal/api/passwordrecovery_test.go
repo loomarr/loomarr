@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 )
 
 type fakePasswordRecovery struct {
 	requestErr error
-	preview    recovery.Record
+	preview    access.RecoveryRecord
 	previewErr error
 	redeemErr  error
 	requests   []string
@@ -26,7 +26,7 @@ func (f *fakePasswordRecovery) Request(_ context.Context, username, _ string) er
 	return f.requestErr
 }
 
-func (f *fakePasswordRecovery) Preview(context.Context, string, string) (recovery.Record, error) {
+func (f *fakePasswordRecovery) Preview(context.Context, string, string) (access.RecoveryRecord, error) {
 	return f.preview, f.previewErr
 }
 
@@ -75,7 +75,7 @@ func TestPasswordRecoveryBearerEndpointsAreSafeAndBodyOnly(t *testing.T) {
 	}
 
 	service.previewErr = nil
-	service.preview = recovery.Record{ExpiresAt: time.Unix(1_900_000_000, 0)}
+	service.preview = access.RecoveryRecord{ExpiresAt: time.Unix(1_900_000_000, 0)}
 	preview := do(t, server, http.MethodPost, "/v1/auth/password-recovery/preview", "",
 		`{"grant":"`+bearer+`"}`)
 	if preview.StatusCode != http.StatusOK {

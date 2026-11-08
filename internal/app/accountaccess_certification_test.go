@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/people/recovery"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -33,7 +32,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 		recoveredPassword = "a new correct horse battery staple"
 	)
 
-	invitationService := invitation.NewService(
+	invitationService := access.NewService(
 		st,
 		nil,
 		func() string { return "certification-invitation" },
@@ -72,9 +71,9 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 		recovery: recoveryService, notifications: notificationService,
 	}
 
-	invited, err := invitationService.Create(ctx, invitation.CreateCommand{
-		Kind: invitation.KindLocal, Username: "Ada", ContactEmail: "ada@example.com",
-		Role: invitation.RoleAdmin,
+	invited, err := invitationService.Create(ctx, access.CreateCommand{
+		Kind: access.KindLocal, Username: "Ada", ContactEmail: "ada@example.com",
+		Role: access.RoleAdmin,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +159,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 		!strings.Contains(sender.messages[1].TextBody, "/reset-password#grant="+recoveryBearer) {
 		t.Fatalf("deterministic account messages = %+v", sender.messages)
 	}
-	if recoveryGrants[0].TokenHash != recovery.HashGrant(recoveryBearer) {
+	if recoveryGrants[0].TokenHash != access.HashGrant(recoveryBearer) {
 		t.Fatalf("recovery persisted anything other than the expected one-way hash: %+v", recoveryGrants[0])
 	}
 }

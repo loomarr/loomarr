@@ -11,8 +11,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -283,10 +283,10 @@ func TestImport_RejectsAccountReservedByInvitation(t *testing.T) {
 	}}})
 	srv, st := harness.Server, harness.Store
 	now := time.Unix(1_900_000_000, 0).UTC()
-	if err := st.CreateInvitation(context.Background(), invitation.Invitation{
-		ID: "pending-import", Kind: invitation.KindLibrary, LibraryUserID: accountID,
-		DisplayName: "Invited", IdentityKey: accountID, Role: invitation.RoleMember,
-		Status: invitation.StatusPending, CreatedAt: now, ExpiresAt: now.Add(invitation.Expiry),
+	if err := st.CreateInvitation(context.Background(), access.Invitation{
+		ID: "pending-import", Kind: access.KindLibrary, LibraryUserID: accountID,
+		DisplayName: "Invited", IdentityKey: accountID, Role: access.RoleMember,
+		Status: access.StatusPending, CreatedAt: now, ExpiresAt: now.Add(access.Expiry),
 	}, nil); err != nil {
 		t.Fatal(err)
 	}

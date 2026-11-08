@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
-	"github.com/loomarr/loomarr/internal/people/invitation"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
 
@@ -20,13 +20,13 @@ const invitationGrantSelect = `SELECT token_hash, invitation_id, grant_kind, con
 
 func (s *Store) CreateInvitation(
 	ctx context.Context,
-	value invitation.Invitation,
+	value access.Invitation,
 	address *contact.Address,
 ) error {
 	if err := value.Validate(); err != nil {
 		return fmt.Errorf("validate invitation: %w", err)
 	}
-	if value.Status != invitation.StatusPending || !value.TerminalAt.IsZero() || value.RedeemedBy != "" {
+	if value.Status != access.StatusPending || !value.TerminalAt.IsZero() || value.RedeemedBy != "" {
 		return fmt.Errorf("new invitation must be pending")
 	}
 	if address != nil {
@@ -43,7 +43,7 @@ func (s *Store) CreateInvitation(
 
 func (s *Store) createInvitation(
 	ctx context.Context,
-	value invitation.Invitation,
+	value access.Invitation,
 	address *contact.Address,
 ) error {
 	tx, err := s.h.Begin(ctx)
@@ -59,7 +59,7 @@ func (s *Store) createInvitation(
 	}
 
 	var exists int
-	if value.Kind == invitation.KindLocal {
+	if value.Kind == access.KindLocal {
 		err = tx.QueryRowContext(ctx, s.h.Rebind(
 			`SELECT 1 FROM users WHERE lower(trim(name)) = ? LIMIT 1`), value.IdentityKey).Scan(&exists)
 	} else {
@@ -106,7 +106,7 @@ func (s *Store) createInvitation(
 
 func (s *Store) withInvitationIdentityLock(
 	ctx context.Context,
-	kind invitation.Kind,
+	kind access.Kind,
 	identityKey string,
 	fn func(context.Context) error,
 ) error {
@@ -125,7 +125,7 @@ func (s *Store) GetInvitationContactAddress(
 func (s *Store) ReplaceInvitationGrant(
 	ctx context.Context,
 	invitationID string,
-	grant invitation.Grant,
+	grant access.Grant,
 	at time.Time,
 ) error {
 	if err := grant.Validate(); err != nil {
@@ -169,7 +169,7 @@ func (s *Store) ReplaceInvitationGrant(
 func (s *Store) AddInvitationGrant(
 	ctx context.Context,
 	invitationID string,
-	grant invitation.Grant,
+	grant access.Grant,
 	at time.Time,
 ) error {
 	if err := grant.Validate(); err != nil {
@@ -220,14 +220,14 @@ func (s *Store) RevokeInvitationGrant(ctx context.Context, tokenHash string, at 
 func (s *Store) ListInvitationGrants(
 	ctx context.Context,
 	invitationID string,
-) ([]invitation.Grant, error) {
+) ([]access.Grant, error) {
 	rows, err := s.h.QueryContext(ctx, s.h.Rebind(invitationGrantSelect+
 		` WHERE invitation_id = ? ORDER BY created_at, token_hash`), invitationID)
 	if err != nil {
 		return nil, fmt.Errorf("list invitation grants: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var grants []invitation.Grant
+	var grants []access.Grant
 	for rows.Next() {
 		grant, err := scanInvitationGrant(rows)
 		if err != nil {
@@ -297,15 +297,15 @@ func (s *Store) RedeemInvitation(
 	user User,
 	session Session,
 	at time.Time,
-) (invitation.Invitation, error) {
+) (access.Invitation, error) {
 	if grantHash == "" || user.ID == "" || user.Name == "" || user.PasswordHash == "" || at.IsZero() ||
 		session.TokenHash == "" || session.UserID != user.ID || session.CreatedAt.IsZero() ||
 		!session.ExpiresAt.After(session.CreatedAt) {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation requires prepared user and session credentials")
+		return access.Invitation{}, fmt.Errorf("redeem invitation requires prepared user and session credentials")
 	}
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: begin: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -316,7 +316,7 @@ func (s *Store) RedeemInvitation(
 		WHERE g.token_hash = ? AND g.consumed_at = 0 AND g.revoked_at = 0 AND g.expires_at > ?
 		  AND i.status = 'pending' AND i.expires_at > ?`
 	query = storedb.LockRowsOf(s.h.Dialect(), query, `i, g`)
-	var value invitation.Invitation
+	var value access.Invitation
 	var kind, role, status, conveyance string
 	var createdAt, expiresAt, terminalAt int64
 	err = tx.QueryRowContext(ctx, s.h.Rebind(query), grantHash, epoch(at), epoch(at)).Scan(
@@ -324,17 +324,17 @@ func (s *Store) RedeemInvitation(
 		&value.IdentityKey, &role, &status, &createdAt, &expiresAt, &terminalAt,
 		&value.RedeemedBy, &conveyance)
 	if errors.Is(err, sql.ErrNoRows) {
-		return invitation.Invitation{}, ErrNotFound
+		return access.Invitation{}, ErrNotFound
 	}
 	if err != nil {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: load grant: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: load grant: %w", err)
 	}
-	value.Kind = invitation.Kind(kind)
-	value.Role = invitation.Role(role)
-	value.Status = invitation.Status(status)
+	value.Kind = access.Kind(kind)
+	value.Role = access.Role(role)
+	value.Status = access.Status(status)
 	value.CreatedAt, value.ExpiresAt = fromEpoch(createdAt), fromEpoch(expiresAt)
 	if !redemptionIdentityMatches(value, user) {
-		return invitation.Invitation{}, ErrNotFound
+		return access.Invitation{}, ErrNotFound
 	}
 
 	result, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitations
@@ -342,24 +342,24 @@ func (s *Store) RedeemInvitation(
 		WHERE id = ? AND status = 'pending' AND expires_at > ?`),
 		epoch(at), user.ID, value.ID, epoch(at))
 	if err != nil {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: claim: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: claim: %w", err)
 	}
 	if count, _ := result.RowsAffected(); count != 1 {
-		return invitation.Invitation{}, ErrNotFound
+		return access.Invitation{}, ErrNotFound
 	}
 
 	var exists int
-	if value.Kind == invitation.KindLocal {
+	if value.Kind == access.KindLocal {
 		err = tx.QueryRowContext(ctx, s.h.Rebind(
 			`SELECT 1 FROM users WHERE lower(trim(name)) = ? LIMIT 1`), value.IdentityKey).Scan(&exists)
 	} else {
 		err = tx.QueryRowContext(ctx, s.h.Rebind(`SELECT 1 FROM users WHERE id = ? LIMIT 1`), value.IdentityKey).Scan(&exists)
 	}
 	if err == nil {
-		return invitation.Invitation{}, ErrInvitationIdentityConflict
+		return access.Invitation{}, ErrInvitationIdentityConflict
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: check allowlist: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: check allowlist: %w", err)
 	}
 	user.Role = Role(value.Role)
 	user.Disabled = false
@@ -369,54 +369,54 @@ func (s *Store) RedeemInvitation(
 		user.Quota, user.AutoApprove, user.MediaServerLinked, user.PasswordHash,
 		epoch(user.CreatedAt), epoch(user.UpdatedAt)); err != nil {
 		if isConstraintViolation(err) {
-			return invitation.Invitation{}, ErrInvitationIdentityConflict
+			return access.Invitation{}, ErrInvitationIdentityConflict
 		}
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: create allowlist row: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: create allowlist row: %w", err)
 	}
 
 	result, err = tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitation_grants SET consumed_at = ?
 		WHERE token_hash = ? AND consumed_at = 0 AND revoked_at = 0`), epoch(at), grantHash)
 	if err != nil {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: consume grant: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: consume grant: %w", err)
 	}
 	if count, _ := result.RowsAffected(); count != 1 {
-		return invitation.Invitation{}, ErrNotFound
+		return access.Invitation{}, ErrNotFound
 	}
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitation_grants SET revoked_at = ?
 		WHERE invitation_id = ? AND token_hash <> ? AND consumed_at = 0 AND revoked_at = 0`),
 		epoch(at), value.ID, grantHash); err != nil {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: revoke sibling grants: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: revoke sibling grants: %w", err)
 	}
 
 	contactUpdate := `UPDATE contact_addresses SET owner_kind = 'user', owner_id = ?
 		WHERE owner_kind = 'invitation' AND owner_id = ?`
 	args := []any{user.ID, value.ID}
-	if invitation.Conveyance(conveyance) == invitation.ConveyanceEmail {
+	if access.Conveyance(conveyance) == access.ConveyanceEmail {
 		contactUpdate = `UPDATE contact_addresses
 			SET owner_kind = 'user', owner_id = ?, status = 'verified', verified_at = ?
 			WHERE owner_kind = 'invitation' AND owner_id = ?`
 		args = []any{user.ID, epoch(at), value.ID}
 	}
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(contactUpdate), args...); err != nil {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: transfer contact: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: transfer contact: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`),
 		session.TokenHash, session.UserID, epoch(session.CreatedAt), epoch(session.ExpiresAt)); err != nil {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: create session: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: create session: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return invitation.Invitation{}, fmt.Errorf("redeem invitation: commit: %w", err)
+		return access.Invitation{}, fmt.Errorf("redeem invitation: commit: %w", err)
 	}
-	value.Status = invitation.StatusRedeemed
+	value.Status = access.StatusRedeemed
 	value.TerminalAt = at
 	value.RedeemedBy = user.ID
 	return value, nil
 }
 
-func redemptionIdentityMatches(value invitation.Invitation, user User) bool {
-	if value.Kind == invitation.KindLocal {
-		return !user.MediaServerLinked && invitation.NormalizeLocalIdentity(user.Name) == value.IdentityKey
+func redemptionIdentityMatches(value access.Invitation, user User) bool {
+	if value.Kind == access.KindLocal {
+		return !user.MediaServerLinked && access.NormalizeLocalIdentity(user.Name) == value.IdentityKey
 	}
 	return user.MediaServerLinked && user.ID == value.LibraryUserID
 }
@@ -425,10 +425,10 @@ func (s *Store) GetInvitation(
 	ctx context.Context,
 	id string,
 	now time.Time,
-) (invitation.Invitation, error) {
+) (access.Invitation, error) {
 	value, err := scanInvitation(s.h.QueryRowContext(ctx, s.h.Rebind(invitationSelect+` WHERE id = ?`), id))
 	if err != nil {
-		return invitation.Invitation{}, err
+		return access.Invitation{}, err
 	}
 	return effectiveInvitation(value, now), nil
 }
@@ -440,7 +440,7 @@ func (s *Store) GetInvitationByGrant(
 	ctx context.Context,
 	tokenHash string,
 	now time.Time,
-) (invitation.Invitation, error) {
+) (access.Invitation, error) {
 	const selectByGrant = `SELECT invitations.id, invitations.kind, invitations.username,
 		invitations.library_user_id, invitations.display_name, invitations.identity_key,
 		invitations.role, invitations.status, invitations.created_at, invitations.expires_at,
@@ -453,13 +453,13 @@ func (s *Store) GetInvitationByGrant(
 		tokenHash, epoch(now), epoch(now)))
 }
 
-func (s *Store) ListInvitations(ctx context.Context, now time.Time) ([]invitation.Invitation, error) {
+func (s *Store) ListInvitations(ctx context.Context, now time.Time) ([]access.Invitation, error) {
 	rows, err := s.h.QueryContext(ctx, invitationSelect+` ORDER BY created_at DESC, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list invitations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var values []invitation.Invitation
+	var values []access.Invitation
 	for rows.Next() {
 		value, err := scanInvitation(rows)
 		if err != nil {
@@ -470,21 +470,21 @@ func (s *Store) ListInvitations(ctx context.Context, now time.Time) ([]invitatio
 	return values, rows.Err()
 }
 
-func scanInvitation(sc scannable) (invitation.Invitation, error) {
-	var value invitation.Invitation
+func scanInvitation(sc scannable) (access.Invitation, error) {
+	var value access.Invitation
 	var kind, role, status string
 	var createdAt, expiresAt, terminalAt int64
 	err := sc.Scan(&value.ID, &kind, &value.Username, &value.LibraryUserID, &value.DisplayName,
 		&value.IdentityKey, &role, &status, &createdAt, &expiresAt, &terminalAt, &value.RedeemedBy)
 	if errors.Is(err, sql.ErrNoRows) {
-		return invitation.Invitation{}, ErrNotFound
+		return access.Invitation{}, ErrNotFound
 	}
 	if err != nil {
-		return invitation.Invitation{}, err
+		return access.Invitation{}, err
 	}
-	value.Kind = invitation.Kind(kind)
-	value.Role = invitation.Role(role)
-	value.Status = invitation.Status(status)
+	value.Kind = access.Kind(kind)
+	value.Role = access.Role(role)
+	value.Status = access.Status(status)
 	value.CreatedAt = fromEpoch(createdAt)
 	value.ExpiresAt = fromEpoch(expiresAt)
 	if terminalAt > 0 {
@@ -493,9 +493,9 @@ func scanInvitation(sc scannable) (invitation.Invitation, error) {
 	return value, nil
 }
 
-func effectiveInvitation(value invitation.Invitation, now time.Time) invitation.Invitation {
-	if value.EffectiveStatus(now) == invitation.StatusExpired {
-		value.Status = invitation.StatusExpired
+func effectiveInvitation(value access.Invitation, now time.Time) access.Invitation {
+	if value.EffectiveStatus(now) == access.StatusExpired {
+		value.Status = access.StatusExpired
 		value.TerminalAt = value.ExpiresAt
 	}
 	return value
@@ -505,7 +505,7 @@ func insertInvitationGrant(
 	ctx context.Context,
 	tx storedb.Querier,
 	placeholder func(string) string,
-	grant invitation.Grant,
+	grant access.Grant,
 ) error {
 	_, err := tx.ExecContext(ctx, placeholder(`INSERT INTO invitation_grants
 		(token_hash, invitation_id, grant_kind, conveyance, created_at, expires_at, consumed_at, revoked_at)
@@ -515,20 +515,20 @@ func insertInvitationGrant(
 	return err
 }
 
-func scanInvitationGrant(sc scannable) (invitation.Grant, error) {
-	var grant invitation.Grant
+func scanInvitationGrant(sc scannable) (access.Grant, error) {
+	var grant access.Grant
 	var kind, conveyance string
 	var createdAt, expiresAt, consumedAt, revokedAt int64
 	err := sc.Scan(&grant.TokenHash, &grant.InvitationID, &kind, &conveyance,
 		&createdAt, &expiresAt, &consumedAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return invitation.Grant{}, ErrNotFound
+		return access.Grant{}, ErrNotFound
 	}
 	if err != nil {
-		return invitation.Grant{}, err
+		return access.Grant{}, err
 	}
-	grant.Kind = invitation.GrantKind(kind)
-	grant.Conveyance = invitation.Conveyance(conveyance)
+	grant.Kind = access.GrantKind(kind)
+	grant.Conveyance = access.Conveyance(conveyance)
 	grant.CreatedAt = fromEpoch(createdAt)
 	grant.ExpiresAt = fromEpoch(expiresAt)
 	if consumedAt > 0 {
