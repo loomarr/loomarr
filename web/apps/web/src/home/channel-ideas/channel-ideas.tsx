@@ -132,6 +132,9 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
 
   if (!list.isSuccess) return null;
   const ideas = unwrap(list.data, (b) => b.ideas) ?? [];
+  // Home shows the section only when it has an idea (#2763). The one exception is the idea just
+  // hidden: its Undo has to stay reachable until the member is done with it.
+  if (ideas.length === 0 && !hidden) return null;
   const start = ideas.length > 0 ? (page * PAGE) % ideas.length : 0;
   const shown = [...ideas.slice(start), ...ideas.slice(0, start)].slice(0, PAGE);
 

@@ -66,6 +66,25 @@ describe("New this week — rendering (#1822 evidence)", () => {
     expect(row.className).not.toContain("grid");
   });
 
+  // #2763: the header said "3 new channels" and listed one.
+  it("lists every new channel the header counts", async () => {
+    const now = Date.now();
+    await renderNewThisWeek({
+      channels: [
+        { id: "c1", name: "Field Notes", number: 19, createdAtMs: now - 3000 } as never,
+        { id: "c2", name: "Late Horror", number: 7, createdAtMs: now - 1000 } as never,
+        { id: "c3", name: "Cartoon Club", number: 3, createdAtMs: now - 2000 } as never,
+      ],
+    });
+    expect(screen.getByText("3 new channels")).toBeInTheDocument();
+    const rows = screen.getAllByRole("link", { name: /New channel/ });
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Late Horror"),
+      expect.stringContaining("Cartoon Club"),
+      expect.stringContaining("Field Notes"),
+    ]);
+  });
+
   it("shows few recent titles without a lead channel", async () => {
     await renderNewThisWeek({ titles: [title("t1"), title("t2")] });
     expect(screen.getByText("t1")).toBeInTheDocument();
