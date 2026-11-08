@@ -66,23 +66,17 @@ func librarySearchResult(t store.LibraryTitle) library.SearchResult {
 }
 
 // libraryLookup is the provisioning backstop's last look before it gives a title up
-// (provisionbackstop.LibraryLookup), asking the Library first (#2151 step 15e): a title it holds is
-// confirmed with its library item id. The media server answers only what the Library doesn't hold.
+// (provisionbackstop.LibraryLookup): a title the Library holds is confirmed with its library item
+// id (#2151 step 16).
 type libraryLookup struct {
 	titles store.LibraryTitleReader
-	lib    *library.Client
 }
 
 func (l libraryLookup) Lookup(
 	ctx context.Context, kind library.ProviderKind, id string, mt library.MediaType,
 ) (string, bool, error) {
-	if t, ok, err := libraryTitle(ctx, l.titles, kind, id, mt); err != nil || ok {
-		return t.ID, ok, err
-	}
-	if l.lib == nil {
-		return "", false, nil
-	}
-	return l.lib.Lookup(ctx, kind, id, mt)
+	t, ok, err := libraryTitle(ctx, l.titles, kind, id, mt)
+	return t.ID, ok, err
 }
 
 // libraryTitle is the Library's movie or series a provider id names, when titles is wired.
