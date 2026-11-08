@@ -332,5 +332,13 @@ func (s *Server) guideHighlights(ctx context.Context, in *guideHighlightsInput) 
 		}
 		out.Body.Highlights = append(out.Body.Highlights, dto)
 	}
+	picked := make([]GuideAiring, len(out.Body.Highlights))
+	for i := range out.Body.Highlights {
+		picked[i] = out.Body.Highlights[i].Airing
+	}
+	s.attachTitleArt(ctx, picked)
+	for i := range out.Body.Highlights {
+		out.Body.Highlights[i].Airing = picked[i]
+	}
 	return out, nil
 }

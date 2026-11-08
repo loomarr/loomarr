@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+import { render } from "@/test/render";
 
 // A member's Home (#1659, Q-H1/Q-H2). It replaced V16's lockout: members get Home now, because
 // it carries no machine state. What V16 guarded still holds, and is what this file proves: a

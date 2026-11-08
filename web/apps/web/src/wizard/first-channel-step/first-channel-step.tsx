@@ -1,8 +1,8 @@
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
+import { Action } from "@loomarr/design-system";
 import { Loader2, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { useCompleteSetup } from "../use-complete-setup";
 
 interface FirstChannelStepProps {
@@ -69,14 +69,14 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
         ))}
       </ul>
 
-      <Button
-        variant="ghost"
-        className="w-fit"
+      <Action
         disabled={complete.isPending}
-        onClick={() => complete.finish({ to: "/guide" })}
+        onPress={() => complete.finish({ to: "/guide" })}
+        style={{ alignSelf: "flex-start" }}
+        variant="ghost"
       >
         Finish setup without a channel
-      </Button>
+      </Action>
     </div>
   );
 };

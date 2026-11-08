@@ -228,7 +228,10 @@ the reply's `server.public_url`. A phone that paired to the LAN address it resol
 working off Wi-Fi. Android still lists a Bonjour hit as its resolved address, so the Android phone
 does not use discovery until it adopts the same probe (#1894). Clients drop a reply whose URL names a loopback or
 link-local host (`localhost`, `127.0.0.0/8`, `169.254.0.0/16`, `::1`, `fe80::/10`): a responder
-configured with `http://localhost:<port>` is unreachable from any other device. Neither transport carries a
+configured with `http://localhost:<port>` is unreachable from any other device. The server does not
+send one in the first place (#1892): while `server.public_url` names such a host (as an isolated dev
+lane's does), the responder stays silent and the DNS-SD record is not registered. The client filter
+remains as defence in depth. Neither transport carries a
 credential or pairing state; the responder stays silent while `server.public_url` is empty, and a
 discovery failure never blocks readiness. The client browses only while the connection screen is in
 the foreground, for at most thirty seconds per visit, then leaves manual entry. Discovery grants no

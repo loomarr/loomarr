@@ -10,6 +10,7 @@ tables:
       One row per person allowed into Loomarr. Rows are made by the first-admin setup, by an admin
       creating a local account, by importing a media-server account, or by someone redeeming an
       invitation. Accounts are never deleted; an admin disables them instead.
+    retention: "Kept forever: accounts are never deleted, only disabled."
     columns:
       id: >
         Identifies the person. For a media-server account it is that server's user id; for a local
@@ -43,6 +44,9 @@ tables:
       One row per browser sign-in. Made at sign-in or when an invitation is redeemed; deleted at sign-out,
       when an admin revokes it, when the password is reset or the account disabled, and by a regular
       sweep once it has expired.
+    retention: >
+      Kept until sign-out, revocation or a password reset; the nightly housekeeping task deletes
+      expired ones.
     columns:
       token_hash: >
         SHA-256 hash of the sign-in cookie. Only the browser holds the cookie itself; the hash can't be
@@ -64,6 +68,8 @@ tables:
       One row per pairing code shown on a TV or other device that is asking to be signed in. A signed-in
       person types the code to approve it; the device then swaps it for a device token and the row is
       deleted. Codes expire after 10 minutes.
+    retention: >
+      Deleted when redeemed; a code that expires first is deleted by the nightly housekeeping task.
     columns:
       device_code: >
         SHA-256 hash of the secret the device uses while it waits for approval. The device keeps the
@@ -80,6 +86,7 @@ tables:
       One row per paired device, such as a TV app. The device acts as the person who approved it, with
       that person's current role. A row lasts until the person removes the device or the account is
       disabled; it has no expiry.
+    retention: Kept until the person removes the device or the account is disabled.
     columns:
       token_hash: >
         SHA-256 hash of the device's token. Only the device holds the token; the hash can't be turned
@@ -94,6 +101,9 @@ tables:
       One row per invitation an admin sends to let a new person in. It reserves a username or a
       media-server account for 7 days. Finished invitations (redeemed, expired or revoked) are deleted
       30 days after they finished.
+    retention: >
+      The nightly housekeeping task deletes redeemed, expired or revoked invitations 30 days after
+      they finished.
     columns:
       id: Identifies the invitation. invitation_grants and contact_addresses point here.
       kind: >
@@ -119,6 +129,7 @@ tables:
     about: >
       One row per invitation link or QR code handed out for an invitation. When an admin makes a new link,
       the earlier ones are cancelled; an emailed link is added alongside them. Deleted with their invitation.
+    retention: Goes with its invitation (deleted when that is).
     columns:
       token_hash: >
         SHA-256 hash (64 hex characters) of the secret in the link. The link itself is never stored; the
@@ -139,6 +150,9 @@ tables:
     about: >
       One row per "forgot password" request for a local account. Each lasts 30 minutes, and a new request
       cancels the person's earlier pending one. Finished requests are deleted 30 days after they finished.
+    retention: >
+      The nightly housekeeping task deletes used, cancelled or expired requests 30 days after they
+      finished.
     columns:
       id: Identifies the request. password_recovery_grants point here.
       user_id: The local account being recovered, from users.
@@ -153,6 +167,7 @@ tables:
     about: >
       One row per password-reset link emailed for a recovery request. Using one sets the new password,
       signs the person out everywhere and cancels the request's other links. Deleted with their request.
+    retention: Goes with its password reset request (deleted when that is).
     columns:
       token_hash: >
         SHA-256 hash (64 hex characters) of the secret in the reset link. The link itself is never stored;
@@ -168,6 +183,9 @@ tables:
       Email addresses for people and pending invitations. A person has at most one verified address (the
       one password recovery goes to) and one pending replacement. An invitation's address moves to the
       new account when it is redeemed.
+    retention: >
+      Kept while its person or invitation exists (at most two per person); an invitation's address
+      is deleted with the invitation.
     columns:
       owner_kind: Whose address it is. user for a person in users; invitation for a pending invitation.
       owner_id: The person's id in users, or the invitation's id in invitations.
@@ -186,6 +204,7 @@ tables:
     about: >
       One row per channel a person starred as a favourite, used for the guide's Favourites filter. Deleted
       when the person un-stars it or the channel or person is deleted.
+    retention: Kept until un-starred; goes with its channel or person (deleted when that is).
     columns:
       user_id: The person, from users.
       channel_id: The starred channel, from channels.
@@ -195,6 +214,8 @@ tables:
     about: >
       One row per channel a person recently tuned to, for the guide's Recent filter. Only each person's 20
       most recent channels are kept.
+    retention: >
+      Each person's 20 most recent channels are kept; rows go with their channel or person.
     columns:
       user_id: The person, from users.
       channel_id: The channel tuned to, from channels.
@@ -203,6 +224,7 @@ tables:
   - name: user_hidden_ideas
     about: >
       One row per channel idea a person hid on Home. Deleted when they undo the hide or the person is deleted.
+    retention: Kept until the person undoes the hide; goes with the person.
     columns:
       user_id: The person, from users.
       idea_id: >

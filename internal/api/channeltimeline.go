@@ -201,6 +201,7 @@ func (s *Server) channelTimeline(ctx context.Context, in *upcomingInput) (*timel
 			}
 		}
 	}
+	s.attachTitleArt(ctx, airings)
 
 	out.Body.Airings = airings
 	return out, nil

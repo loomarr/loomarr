@@ -1,5 +1,5 @@
+import { Action } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { buttonVariants } from "@/components/ui/button";
 import { readSuggestionDraft } from "../suggestion-draft";
 
 const SuggestionDraftReturn = () => {
@@ -12,9 +12,9 @@ const SuggestionDraftReturn = () => {
         <p className="text-sm font-medium">Your channel draft is saved</p>
         <p className="text-muted-foreground text-sm">Finish setup, then return without retyping it.</p>
       </div>
-      <Link to="/guide" className={buttonVariants({ variant: "outline", size: "sm" })}>
+      <Action accessibilityRole="link" render={<Link to="/guide" />} variant="outline">
         Return to channel
-      </Link>
+      </Action>
     </aside>
   );
 };

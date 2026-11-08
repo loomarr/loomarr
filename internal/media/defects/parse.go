@@ -58,8 +58,9 @@ func ParseActiveArea(metadata string, width, height int) ActiveArea {
 
 // Parse reads one MeasureDefects pass: the filters' closing summaries from ffmpeg's log, and the
 // per-frame values the metadata filter wrote. width and height are the decoded frame size; active
-// is the picture inside it that the pass measured.
-func Parse(log, metadata string, width, height int, active ActiveArea, hasAudio bool) Readings {
+// is the picture inside it that the pass measured. audioEdges is the sound's per-window levels, the
+// record-only framing evidence's audio half (empty without sound).
+func Parse(log, metadata, audioEdges string, width, height int, active ActiveArea, hasAudio bool) Readings {
 	r := Readings{Version: MeasurementVersion, Width: width, Height: height, HasAudio: hasAudio,
 		ActiveWidth: active.Width, ActiveHeight: active.Height}
 	r.BlockMean = lastFloat(blockMeanLine, log)
@@ -107,6 +108,7 @@ func Parse(log, metadata string, width, height int, active ActiveArea, hasAudio 
 	}
 
 	var tout, vrep float64
+	var lumas []float64
 	sc := bufio.NewScanner(strings.NewReader(metadata))
 	for sc.Scan() {
 		line := sc.Text()
@@ -123,13 +125,37 @@ func Parse(log, metadata string, width, height int, active ActiveArea, hasAudio 
 			tout += finite(value)
 		case "lavfi.signalstats.VREP":
 			vrep += finite(value)
+		case "lavfi.signalstats.YAVG":
+			lumas = append(lumas, finite(value))
 		}
 	}
 	if r.Frames > 0 {
 		r.OutlierShare = tout / float64(r.Frames)
 		r.RepeatedLineShare = vrep / float64(r.Frames)
 	}
+	if len(lumas) > 0 {
+		r.Framing = &FramingEvidence{Version: FramingVersion, FirstLuma: lumas[0], LastLuma: lumas[len(lumas)-1]}
+		if hasAudio {
+			r.Framing.LeadDB, r.Framing.TailDB = parseAudioEdges(audioEdges)
+		}
+	}
 	return r
+}
+
+// parseAudioEdges reads the per-window RMS levels the edge branch printed (one 100 ms window per
+// audio frame) and returns the first and the last.
+func parseAudioEdges(metadata string) (lead, tail float64) {
+	var levels []float64
+	sc := bufio.NewScanner(strings.NewReader(metadata))
+	for sc.Scan() {
+		if key, value, ok := strings.Cut(sc.Text(), "="); ok && key == "lavfi.astats.Overall.RMS_level" {
+			levels = append(levels, finite(value))
+		}
+	}
+	if len(levels) == 0 {
+		return 0, 0
+	}
+	return levels[0], levels[len(levels)-1]
 }
 
 func lastFloat(re *regexp.Regexp, log string) float64 {

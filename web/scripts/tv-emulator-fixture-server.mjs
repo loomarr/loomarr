@@ -36,16 +36,26 @@ const state = {
   pairPolls: 0,
   pairStarts: 0,
   playUrlChannels: [],
+  // Channels whose stream the player opened, oldest first (#1888). A play-url request can't say: a
+  // neighbour warm mints exactly like a tune, and a tune can reuse a warmed source without minting.
+  // A warm reads the stream with mode=warm; the tune itself reads it plain.
+  tunedChannels: [],
   revocations: 0,
   channelLoads: 0,
   guideEpochMs: null,
   schedulePhase: "programme-before",
 };
 
+// Classic Animation's break, measured from the first Guide read. The Guide reads the device's wall
+// clock, so the break sits an hour out: the emulator journey runs for minutes, and a break that
+// reached the live window partway through would move every later Guide checkpoint (#1888).
+const BREAK_START_MS = 60 * 60_000;
+const BREAK_STOP_MS = BREAK_START_MS + 5 * 60_000;
+
 const phaseServerTime = () => {
   const epoch = state.guideEpochMs ?? Date.now();
-  if (state.schedulePhase === "filler") return epoch + 5 * 60_000 + 10_000;
-  if (state.schedulePhase === "programme-after") return epoch + 10 * 60_000 + 10_000;
+  if (state.schedulePhase === "filler") return epoch + BREAK_START_MS + 10_000;
+  if (state.schedulePhase === "programme-after") return epoch + BREAK_STOP_MS + 10_000;
   return epoch;
 };
 
@@ -93,8 +103,8 @@ const guide = (requestedFromMs, requestedToMs) => {
     stopMs,
     title,
   });
-  const fillerStartMs = state.guideEpochMs + 5 * 60_000;
-  const fillerStopMs = state.guideEpochMs + 10 * 60_000;
+  const fillerStartMs = state.guideEpochMs + BREAK_START_MS;
+  const fillerStopMs = state.guideEpochMs + BREAK_STOP_MS;
   const halfMs = fromMs + (toMs - fromMs) / 2;
   // A window paged past the break holds two whole programmes, so ◀ from the first can page back.
   const laterAirings = [
@@ -158,10 +168,16 @@ const guide = (requestedFromMs, requestedToMs) => {
 
 const authorized = (request) => request.headers.authorization === `Bearer ${deviceToken}`;
 
-const serveMedia = (pathname, response) => {
-  const relative = pathname.slice("/journey/".length);
-  const file = normalize(join(mediaDirectory, relative));
+// Every Channel plays the one generated stream, under its own /journey/<channel>/ prefix so the
+// stream's reads say which Channel they are for.
+const serveMedia = (url, response) => {
+  const [channelId, ...rest] = url.pathname.slice("/journey/".length).split("/");
+  if (!channels.some(({ id }) => id === decodeURIComponent(channelId))) return false;
+  const file = normalize(join(mediaDirectory, ...rest));
   if (!file.startsWith(`${normalize(mediaDirectory)}/`) || !existsSync(file)) return false;
+  if (extname(file) === ".m3u8" && url.searchParams.get("mode") !== "warm") {
+    state.tunedChannels.push(decodeURIComponent(channelId));
+  }
   const contentType =
     extname(file) === ".m3u8"
       ? "application/vnd.apple.mpegurl"
@@ -188,7 +204,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.method === "GET" && pathname.startsWith("/journey/")) {
-    if (!serveMedia(pathname, response)) writeJson(response, 404, { title: "Fixture media not found" });
+    if (!serveMedia(url, response)) writeJson(response, 404, { title: "Fixture media not found" });
     return;
   }
   if (request.method === "POST" && pathname === "/v1/auth/device/start") {
@@ -271,7 +287,7 @@ const server = createServer((request, response) => {
       200,
       {
         expiresAt: new Date(serverTime + 60_000).toISOString(),
-        relativeUrl: "/journey/media.m3u8",
+        relativeUrl: `/journey/${encodeURIComponent(channelId)}/media.m3u8`,
         serverTimeMs: serverTime,
         url: "",
       },

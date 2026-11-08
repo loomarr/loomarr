@@ -10,6 +10,9 @@ tables:
       One row per local folder Loomarr may walk for media. A folder is added when a media server or arr
       reports it or when someone types it in. A folder that is not in use, not typed by hand and named by
       no path mapping is dropped.
+    retention: >
+      Kept while the folder is in use, typed by hand or named by a path mapping; dropped otherwise,
+      when discovery runs or someone stops using a hand-typed folder.
     columns:
       path: The folder as Loomarr opens it, an absolute path.
       in_use: >
@@ -26,6 +29,9 @@ tables:
       The path map. One row per folder a media server or arr reports, saying which local folder it is.
       Discovery rewrites rows unless someone set them by hand; a row the app stops reporting is dropped
       once that app answers without it.
+    retention: >
+      Kept while the app keeps reporting the folder or someone set it by hand; dropped when a full
+      discovery from that app no longer lists it.
     columns:
       authority: The app that reported the folder, one of emby, jellyfin, sonarr or radarr.
       authority_path: The folder as that app names it.
@@ -39,6 +45,10 @@ tables:
     about: >
       One row per media file the scanner found under an in-use folder. A file the scanner no longer
       finds keeps its row with a missing time; all of a folder's rows go when the folder is forgotten.
+    retention: >
+      Kept while its folder is in use. A file a walk stopped finding is deleted by the nightly
+      housekeeping 180 days later, unless its removal is still waiting for a person; every row of a
+      folder is deleted when the folder stops being in use.
     columns:
       path: The file as Loomarr opens it, an absolute path.
       root: The folder it was found under (a library_roots path).
@@ -71,6 +81,12 @@ tables:
       pages. Rewritten each time the title is written; a title whose files have gone keeps its row, so
       it finds its collections and answer again if it comes back. Whether it is present comes from
       library_files.
+    retention: >
+      A title that leaves the library keeps its row, so it finds its details and collections again
+      if it comes back. The nightly housekeeping deletes a row a year after it last changed once
+      nothing is left of it: no importer report, no file, no episode, no collection, and no title,
+      airing, channel or open request naming it. Its candidates and images go with it; a person's
+      answer for it is kept.
     columns:
       id: Identifies the title. library_files, collections and the rows below point here.
       kind: One of movie, series or episode.
@@ -139,6 +155,7 @@ tables:
     about: >
       A title's external ids, one row each. Replaced whenever the title is written; deleted with the
       title.
+    retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
       namespace: Which id it is, such as tmdb, tvdb or imdb.
@@ -148,6 +165,7 @@ tables:
     about: >
       A title's genres, in the order the source gave them. Replaced whenever the title is written;
       deleted with the title. An episode has none of its own; its show's apply.
+    retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
       name: The genre.
@@ -157,6 +175,7 @@ tables:
     about: >
       A title's studio or network, in the order the source gave them. Replaced whenever the title is
       written; deleted with the title. An episode has none of its own; its show's apply.
+    retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
       name: The studio or network.
@@ -167,6 +186,7 @@ tables:
       A title's production countries, as the source names them, in the order it gave them. Replaced
       whenever the title is written; deleted with the title. An episode has none of its own; its
       show's apply.
+    retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
       name: The country.
@@ -177,6 +197,9 @@ tables:
       Everyone credited on a title in the library. A person with a TMDB id is one row wherever they
       are credited; one a source names without it is kept by name, unlinked. A person's name and photo
       are the latest any title gave. A row outlives the titles that credited it.
+    retention: >
+      Kept while some title credits the person; people no title credits are deleted on the next
+      filmography pass.
     columns:
       id: >
         The person: tmdb:<id> for a person TMDB knows, name:<name> for one kept by name.
@@ -194,6 +217,9 @@ tables:
       top-billed actors, or are credited on three or more titles, as TMDB lists them, newest first.
       Fetched when a person first qualifies and monthly after; deleted with the person. A title the
       library owns is found by its TMDB id in library_ids, with library_items.kind matching kind.
+    retention: >
+      Replaced whenever the person's filmography is fetched again; goes with its person (deleted
+      once no title credits them).
     columns:
       person_id: The person (a library_people id).
       position: Where the title comes in their filmography, newest first, from 0.
@@ -210,6 +236,7 @@ tables:
       it names. Movies and episodes pair by file path through the derived path map; a series pairs
       through its episodes. Replaced whole on each pass while the media server still lists the
       catalog, and read once by the cutover's rewrite.
+    retention: The whole table is replaced on each mapping pass; only the last pass is kept.
     columns:
       media_id: The media server's item id.
       kind: movie, episode or series.
@@ -222,6 +249,7 @@ tables:
       A title's credits: its cast in billing order, then its key crew (creators, directors, writers).
       Replaced whenever the title is written; deleted with the title. An episode has none of its own;
       its show's apply.
+    retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
       position: Where the credit came in the list, from 0.
@@ -233,6 +261,7 @@ tables:
     about: >
       A title's tags (the source's keywords), in the order the source gave them. Replaced whenever the
       title is written; deleted with the title.
+    retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
       name: The tag.
@@ -242,6 +271,7 @@ tables:
     about: >
       A title's present files, one row each, with the copy that plays marked. Replaced whenever the
       title is written; deleted with the title.
+    retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
       path: The file's full path.
@@ -257,6 +287,7 @@ tables:
       Each track of a title's files (video, audio, subtitles), one row each: those inside the file and
       the subtitle and audio files beside it. Labels are worked out once so every reader uses the same
       words. Replaced whenever the title is written.
+    retention: Replaced whenever the title is rescanned; goes with its file in library_sources.
     columns:
       item_id: The title (a library_items id).
       path: The file the track belongs to (a library_sources path).
@@ -289,6 +320,7 @@ tables:
     about: >
       A file's chapter marks, as its container lists them, one row each in order. Replaced whenever
       the title is written.
+    retention: Replaced whenever the title is rescanned; goes with its file in library_sources.
     columns:
       item_id: The title (a library_items id).
       path: The file the chapters are in (a library_sources path).
@@ -301,6 +333,7 @@ tables:
     about: >
       The spans an .edl file beside a title's file marks, one row each in order. Replaced whenever the
       title is written.
+    retention: Replaced whenever the title is rescanned; goes with its file in library_sources.
     columns:
       item_id: The title (a library_items id).
       path: The file the markers are for (a library_sources path).
@@ -313,6 +346,7 @@ tables:
     about: >
       The trickplay files beside a title's file, one row each: seek thumbnails another media server
       made, such as Emby's .bif. Only referenced, never imported. Replaced whenever the title is written.
+    retention: Replaced whenever the title is rescanned; goes with its file in library_sources.
     columns:
       item_id: The title (a library_items id).
       path: The file the thumbnails are for (a library_sources path).
@@ -323,9 +357,13 @@ tables:
     about: >
       A title's artwork references, one row each. Replaced whenever the title is written; deleted with
       the title.
+    retention: Replaced whenever the title is rescanned; goes with its title.
     columns:
       item_id: The title (a library_items id).
-      kind: What the image is, such as poster, fanart, clearlogo, or season-poster for one season's poster.
+      kind: >
+        What the image is: poster, fanart, clearlogo, banner, landscape, clearart, discart, thumb (an
+        episode's still), or season-poster for one season's poster. Each source's own names are mapped
+        onto these.
       season: For a season-poster, the season it belongs to (0 is the specials); 0 for every other kind.
       position: The order among images of the same kind and season, from 0.
       ref: Where the image is, a file beside the media or an address.
@@ -334,6 +372,10 @@ tables:
     about: >
       What TMDB says about a title or a TMDB collection, cached so a scan never has to ask it. A row is
       added when a title names it, and refreshed in the background.
+    retention: >
+      Kept while a library title names it. One no title names is deleted by the nightly housekeeping
+      a year after it was fetched, or after a year of failed fetches; one asked for and not yet
+      tried is kept until it is.
     columns:
       provider: The catalog, tmdb for a movie or show, tmdb_collection for a collection.
       kind: What the record is fetched as, one of movie, series or collection.
@@ -354,6 +396,7 @@ tables:
     about: >
       The TMDB search results for a movie or show Loomarr can't identify, offered in Needs you. A
       title's rows are replaced each time it is searched.
+    retention: Replaced each time the title is searched again; a title's last results are kept.
     columns:
       inventory_item_id: The title searched for (a library_items id).
       rank: The result's place in the list, from 0 for the best.
@@ -374,6 +417,7 @@ tables:
       The answer for a movie or show nothing else identifies, either the TMDB title it is or "not a
       title". Kept against the title's scan origin, so it outlives the title being rewritten; deleted
       when the answer is taken back.
+    retention: Kept until someone takes the answer back, even after the title leaves the library.
     columns:
       origin_authority: The scanned folder of the title's scan origin, as in library_items.
       origin_key: Where in that folder the title is, as in library_items.
@@ -390,11 +434,13 @@ tables:
     about: >
       The household's own collections, each an ordered list of titles. Made in Loomarr or brought over
       from a media server; deleted when someone deletes the collection.
+    retention: Kept until someone deletes the collection.
     columns:
       id: Identifies the collection. library_collection_members points here.
       name: The collection's name.
       description: The collection's description, or empty.
       imported_from: The media server it was brought over from, emby or jellyfin; empty when made in Loomarr.
+      imported_id: The media server's id for the collection it was brought over from; empty when made in Loomarr.
       created_at_ms: When the collection was made, in Unix milliseconds.
       updated_at_ms: When the collection was last changed, in Unix milliseconds.
 
@@ -402,6 +448,9 @@ tables:
     about: >
       The titles in a collection, in order. A member whose title has left the library is skipped when
       shown but kept, so the title returns to its place if it comes back.
+    retention: >
+      Replaced whenever the collection is edited; goes with its collection (deleted when someone
+      deletes it).
     columns:
       collection_id: The collection (a library_collections id).
       inventory_item_id: The title (a library_items id).
@@ -412,6 +461,10 @@ tables:
       The media server's own file path for one of its items, remembered so a channel can play the item
       without asking the media server at airtime. A stale row is harmless; it is rewritten on the next
       lookup.
+    retention: >
+      Rewritten on its next lookup. A path no title, airing, channel or open request names is
+      deleted by the nightly housekeeping 30 days after it was written; it is looked up again if
+      it is needed.
     columns:
       item_id: The media server's id for the item.
       server_path: >
@@ -423,6 +476,9 @@ tables:
     about: >
       A cached copy of one show's episode list as the media server reports it, so the guide doesn't
       ask the media server per show on every request. Replaced whole on each refresh.
+    retention: >
+      Refreshed in place. A show no title points at is deleted by the nightly housekeeping once its
+      list is 30 days old; it is fetched again if a title needs it.
     columns:
       library_id: The media server's id for the show.
       episodes_json: >
@@ -434,7 +490,11 @@ tables:
   - name: titles
     about: >
       One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking
-      it from wanted to in the library (or given up on). Rows are kept.
+      it from wanted to in the library (or given up on).
+    retention: >
+      A title in the library or given up on that no channel's lineup and no open request names is
+      deleted by the nightly housekeeping 180 days after it last changed; picked again, it is
+      requested afresh. A title still on its way is kept.
     columns:
       key: >
         Identifies the title, as series:tvdb:id for a show with a TVDB id, otherwise movie:tmdb:id or
@@ -466,8 +526,11 @@ tables:
   - name: images
     about: >
       One row per piece of artwork (posters, channel icons, clip stills and so on). The image bytes are
-      files on disk named by their hash, never in the database. An image nothing refers to is deleted,
-      and TMDB artwork is deleted six months after it was fetched, as TMDB's terms require.
+      files on disk named by their hash, never in the database. TMDB artwork's files are deleted six
+      months after it was fetched, as TMDB's terms require, and the row waits to be fetched again.
+    retention: >
+      Kept while something uses the image; the daily image clean-up deletes images nothing refers
+      to, and a re-fetched image with new bytes replaces its old row.
     columns:
       hash: >
         The SHA-256 of the original bytes, in hex. Its identity and file name. Artwork not yet
@@ -483,7 +546,8 @@ tables:
         signed-in person.
       role: >
         What the image is for, which sets its sizes and shape. One of poster, backdrop, icon, thumb
-        (a clip still) or watermark (a channel's on-screen logo).
+        (a clip still), watermark (a channel's on-screen logo) or logo (a title's clear logo, kept
+        with its transparency, so it has no JPEG size).
       mime: The original's file type, such as image/png.
       width: The original's width in pixels.
       height: The original's height in pixels.
@@ -509,19 +573,25 @@ tables:
     about: >
       What each image is used for. An image can serve several owners (the same poster as a title's art
       and a channel's icon). Deleted with the image; an image left with no rows here is cleaned up.
+    retention: >
+      Kept while the thing using the image keeps it; removed when that thing drops or replaces its
+      images, and goes with its image.
     columns:
       image_hash: The image (an images hash).
       owner_kind: >
         What kind of thing uses it, such as channel, clip, library_item (a title's poster),
         library_candidate (a Needs you result's poster) or filler_split_proposal.
       owner_id: The id of the thing that uses it, in that kind's own table.
-      role: What the image is for here, one of poster, backdrop, icon, thumb or watermark.
+      role: What the image is for here, one of poster, backdrop, icon, thumb, watermark or logo.
 
   - name: image_derivatives
     about: >
       One resized copy of an image in one format, stored as a file on disk. Made on demand or in the
       background; any row can be deleted to free space and costs only a re-encode. Deleted with the
       image.
+    retention: >
+      Goes with its image; the least recently used copies are deleted when the image cache is over
+      its size budget, and all of an image's copies when its bytes expire.
     columns:
       image_hash: The original image (an images hash).
       recipe: >

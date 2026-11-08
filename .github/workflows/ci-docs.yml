@@ -2,6 +2,12 @@ name: CI / Docs — links + structure + prose
 
 on:
   workflow_call:
+    inputs:
+      # ci-impact's `diagrams` gate: a D2 source, generated SVG or render helper moved. The default
+      # runs the check, so a caller that forgets to pass it fails closed.
+      diagrams:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -63,3 +69,9 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
           pnpm build
+
+      # Re-render every D2 diagram in the pinned image (`--network none`), add the dark map with
+      # Node, and fail if the committed sources or SVGs differ (#1622). Same target as local.
+      - name: Diagrams
+        if: inputs.diagrams
+        run: make diagrams-verify

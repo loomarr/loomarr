@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -89,6 +90,71 @@ func (s *sqlStore) LibraryTitleByProviderID(ctx context.Context, kind, namespace
 	}
 	t.Genres = genres
 	return t, true, nil
+}
+
+// LibraryProviderID names a movie or series (Kind) by one provider id (Namespace tmdb or tvdb):
+// how an airing's provisioning key names the title it plays.
+type LibraryProviderID struct {
+	Kind      string
+	Namespace string
+	Value     string
+}
+
+// LibraryTitleArt is a title's backdrop and clear logo, as image hashes; "" for one it lacks.
+type LibraryTitleArt struct {
+	Backdrop string
+	Logo     string
+}
+
+// LibraryArtReader reads the art of the titles a guide's airings play (#2567).
+type LibraryArtReader interface {
+	// LibraryTitleArt is the backdrop and logo of each named movie or series the Library holds
+	// with a file to play. An id the Library doesn't hold, or whose title has neither image, is
+	// absent from the map.
+	LibraryTitleArt(ctx context.Context, ids []LibraryProviderID) (map[LibraryProviderID]LibraryTitleArt, error)
+}
+
+func (s *sqlStore) LibraryTitleArt(ctx context.Context, ids []LibraryProviderID) (map[LibraryProviderID]LibraryTitleArt, error) {
+	out := map[LibraryProviderID]LibraryTitleArt{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	match := make([]string, 0, len(ids))
+	args := make([]any, 0, 3*len(ids))
+	for _, id := range ids {
+		match = append(match, `(i.kind = ? AND d.namespace = ? AND d.value = ?)`)
+		args = append(args, id.Kind, id.Namespace, id.Value)
+	}
+	// Ordered by item id so two titles sharing a provider id resolve as LibraryTitleByProviderID
+	// does: the first one wins.
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT i.kind, d.namespace, d.value,
+		`+itemImage("backdrop")+`, `+itemImage("logo")+`
+		FROM library_items i JOIN library_ids d ON d.item_id = i.id
+		WHERE (`+strings.Join(match, ` OR `)+`) AND `+itemListed+`
+		ORDER BY i.id`), args...)
+	if err != nil {
+		return nil, fmt.Errorf("library title art: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	seen := map[LibraryProviderID]bool{}
+	for rows.Next() {
+		var id LibraryProviderID
+		var art LibraryTitleArt
+		if err := rows.Scan(&id.Kind, &id.Namespace, &id.Value, &art.Backdrop, &art.Logo); err != nil {
+			return nil, fmt.Errorf("library title art: %w", err)
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if art != (LibraryTitleArt{}) {
+			out[id] = art
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("library title art: %w", err)
+	}
+	return out, nil
 }
 
 func (s *sqlStore) libraryGenres(ctx context.Context, itemID string) ([]string, error) {

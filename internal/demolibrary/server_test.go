@@ -93,16 +93,12 @@ func TestStandInAnswersSearchPresenceEpisodesAndPaths(t *testing.T) {
 		t.Fatalf("episode path = %q, want the per-item file %q", path, want)
 	}
 
-	folder, err := c.LibraryIDByName(ctx, demolibrary.FillerLibraryName)
-	if err != nil || folder == "" {
-		t.Fatalf("filler library by name = %q, %v", folder, err)
+	folders, err := c.LibraryFolders(ctx, demolibrary.FillerLibraryName)
+	if err != nil || len(folders) != 1 {
+		t.Fatalf("filler library folders = %v, %v", folders, err)
 	}
-	clips, err := c.ListFillerClips(ctx, folder)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(clips) != len(demolibrary.Fillers) {
-		t.Fatalf("filler clips = %d, want %d", len(clips), len(demolibrary.Fillers))
+	if want, _ := filepath.Abs(filepath.Dir(l.Filler(demolibrary.Fillers[0].ID))); folders[0] != want {
+		t.Fatalf("filler folder = %q, want the generated fillers' folder %q", folders[0], want)
 	}
 }
 
@@ -202,19 +198,12 @@ func TestStandInServesTheOpenPack(t *testing.T) {
 		}
 	}
 
-	folder, err := c.LibraryIDByName(ctx, demolibrary.FillerLibraryName)
-	if err != nil {
-		t.Fatal(err)
+	folders, err := c.LibraryFolders(ctx, demolibrary.FillerLibraryName)
+	if err != nil || len(folders) != 1 {
+		t.Fatalf("filler library folders = %v, %v", folders, err)
 	}
-	clips, err := c.ListFillerClips(ctx, folder)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(clips) != len(lib.Fillers) {
-		t.Fatalf("filler clips = %d, want %d", len(clips), len(lib.Fillers))
-	}
-	if wantPath, _ := filepath.Abs(l.PackFiller(clips[0].LibraryItemID)); clips[0].Path != wantPath {
-		t.Fatalf("filler path = %q, want the pack download %q", clips[0].Path, wantPath)
+	if want, _ := filepath.Abs(filepath.Dir(l.PackFiller(lib.Fillers[0].ID))); folders[0] != want {
+		t.Fatalf("filler folder = %q, want the pack download folder %q", folders[0], want)
 	}
 }
 

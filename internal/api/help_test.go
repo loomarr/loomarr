@@ -69,6 +69,33 @@ func TestHelp_ListsEmbeddedPages(t *testing.T) {
 	}
 }
 
+// A pre-restructure link (#1572) names an old page and section. The endpoint resolves the pair
+// together and answers with the canonical slug and section, so Help opens the page that holds
+// that content now and scrolls to the renamed heading (#1736).
+func TestHelp_ResolvesMovedSections(t *testing.T) {
+	srv := newHelpServer(t, nil)
+	for _, tc := range []struct{ path, slug, section string }{
+		{"/v1/docs/quickstart?section=1-start-it", "get-started", "1-start-loomarr"},
+		{"/v1/docs/quickstart?section=upgrading", "upgrade", ""},
+		{"/v1/docs/concepts?section=private-local-quality-measurements", "privacy", "quality-measurements-stay-local"},
+		{"/v1/docs/quickstart", "get-started", ""},
+		{"/v1/docs/troubleshooting?section=some-heading", "troubleshooting", "some-heading"},
+	} {
+		resp := do(t, srv, http.MethodGet, tc.path, adminToken, "")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s → %d, want 200", tc.path, resp.StatusCode)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if body["slug"] != tc.slug || body["section"] != tc.section {
+			t.Errorf("GET %s → slug %v section %v, want %q %q", tc.path, body["slug"], body["section"], tc.slug, tc.section)
+		}
+	}
+}
+
 // Markdown, not HTML: the FE renders it AND searches it client-side (§7.2), which needs
 // the source rather than a pre-rendered blob.
 func TestHelp_ServesMarkdownSource(t *testing.T) {

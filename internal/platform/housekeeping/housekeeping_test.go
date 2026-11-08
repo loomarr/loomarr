@@ -28,6 +28,11 @@ type retentionStore struct {
 	sessionsCalled     bool
 	crashBefore        time.Time
 	crashKeep          int
+	pairingsAt         time.Time
+	operationsBefore   time.Time
+	recipientsBefore   time.Time
+	titlesBefore       time.Time
+	catalogAt          time.Time
 }
 
 type retentionDiagnostics struct {
@@ -40,9 +45,35 @@ func (d *retentionDiagnostics) Purge(_ context.Context, before time.Time, max in
 	return diagnostics.PurgeResult{ProcessRuns: 2, RetainedBytes: 77}, nil
 }
 
-func (*retentionStore) PurgeDeniedProposals(context.Context, time.Time) (int, error) { return 0, nil }
-func (*retentionStore) PurgeFinishedJobs(context.Context, time.Time) (int, error)    { return 0, nil }
-func (*retentionStore) PurgeActivity(context.Context, time.Time) (int, error)        { return 0, nil }
+func (*retentionStore) PurgeDiscardedProposals(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
+func (*retentionStore) PurgeFinishedJobs(context.Context, time.Time) (int, error) { return 0, nil }
+func (*retentionStore) PurgeActivity(context.Context, time.Time) (int, error)     { return 0, nil }
+func (s *retentionStore) PurgeExpiredDevicePairings(_ context.Context, now time.Time) (int, error) {
+	s.pairingsAt = now
+	return 4, nil
+}
+func (s *retentionStore) PurgeFinishedInteractiveOperations(_ context.Context, before time.Time) (int, error) {
+	s.operationsBefore = before
+	return 0, nil
+}
+func (*retentionStore) PurgeSupersededDiscoveryFeedback(context.Context) (int, error) { return 0, nil }
+func (*retentionStore) PurgeSpentFillerRecords(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
+func (s *retentionStore) PurgeSpentCatalog(_ context.Context, now time.Time) (int, error) {
+	s.catalogAt = now
+	return 0, nil
+}
+func (s *retentionStore) PurgeUnusedTitles(_ context.Context, before time.Time) (int, error) {
+	s.titlesBefore = before
+	return 0, nil
+}
+func (s *retentionStore) PurgeOrphanNotificationReferenceRecipients(_ context.Context, before time.Time) (int, error) {
+	s.recipientsBefore = before
+	return 0, nil
+}
 func (s *retentionStore) PurgeTerminalInvitations(_ context.Context, before time.Time) (int, error) {
 	s.invitationBefore = before
 	return 3, s.invitationErr
@@ -110,6 +141,22 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	// Crash reports (#1816) keep their own fixed policy, not the 7-day diagnostics window.
 	if want := now.Add(-30 * 24 * time.Hour); !store.crashBefore.Equal(want) || store.crashKeep != 1000 {
 		t.Fatalf("crash report horizon = %v keep %d, want %v keep 1000", store.crashBefore, store.crashKeep, want)
+	}
+	// Spent rows (#2528): codes expire at their own time, the rest after a fixed window.
+	if !store.pairingsAt.Equal(now) {
+		t.Fatalf("pairing expiry time = %v, want %v", store.pairingsAt, now)
+	}
+	if want := now.Add(-7 * 24 * time.Hour); !store.operationsBefore.Equal(want) {
+		t.Fatalf("finished operation horizon = %v, want %v", store.operationsBefore, want)
+	}
+	if want := now.Add(-30 * 24 * time.Hour); !store.recipientsBefore.Equal(want) {
+		t.Fatalf("orphan recipient grace = %v, want %v", store.recipientsBefore, want)
+	}
+	if want := now.Add(-180 * 24 * time.Hour); !store.titlesBefore.Equal(want) {
+		t.Fatalf("unused title horizon = %v, want %v", store.titlesBefore, want)
+	}
+	if !store.catalogAt.Equal(now) {
+		t.Fatalf("catalog purge time = %v, want %v", store.catalogAt, now)
 	}
 }
 
@@ -284,8 +331,8 @@ func TestHousekeepingLogsOneInfoLinePerRunWithRowsAndDuration(t *testing.T) {
 	if summary["diagnostic_events"] != float64(2) || summary["diagnostic_process_runs"] != float64(1) {
 		t.Fatalf("diagnostic counts = %v / %v", summary["diagnostic_events"], summary["diagnostic_process_runs"])
 	}
-	if summary["rows_deleted"] != float64(9) {
-		t.Fatalf("rows_deleted = %v, want 9 (3+2+1+2+1)", summary["rows_deleted"])
+	if summary["rows_deleted"] != float64(13) {
+		t.Fatalf("rows_deleted = %v, want 13 (3+2+1+2+1, and 4 expired pairing codes)", summary["rows_deleted"])
 	}
 	if _, ok := summary["duration_ms"]; !ok {
 		t.Fatal("no duration_ms")

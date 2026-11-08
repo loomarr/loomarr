@@ -2,15 +2,18 @@ area: How filler clips are checked
 about: >
   Filler clips (vintage ads, promos and bumpers between shows) are examined by AI models and other
   checks before and after they air. These tables remember each model call and what it cost, the
-  descriptive facts the checks filled in, web-research allowances, and the spoken-safety and
-  reel-splitting journals.
+  descriptive facts the checks filled in, web-research allowances, and the reel-splitting journals.
 tables:
   - name: filler_inference_evaluations
     about: >
       One row per model call made about a filler clip, written before the call (as a spend reservation)
       and updated once the call finishes with what it actually used and cost. Callers include the
       defect judge (a vision model ruling on borderline picture defects) and the long-reel structure
-      check. Rows are kept; nothing purges them.
+      check.
+    retention: >
+      Settled calls are deleted by the nightly housekeeping task after 180 days, once no
+      structure-window call points at them; reserved ones (in flight) are kept. An unused budget
+      hold is removed at once so its retry can take its place.
     columns:
       id: Identifies the call. Spoken-safety events and the structure call journal point here.
       cache_key: >
@@ -68,7 +71,7 @@ tables:
       role_policy_version: Version of the check's own rules.
       capability_snapshot: Identity of the model endpoint and its capabilities at the time of the call.
       outcome: >
-        A short result code once the call succeeds, such as window_complete. Empty when there is none.
+        window_complete once a structure-window call has answered; empty for every other call.
       failure_reason: >
         Why the call did not complete, for example a spend ceiling or a failure class such as transport.
         Empty on success.
@@ -79,6 +82,7 @@ tables:
     about: >
       One lock row per spend-ceiling scope. Reserving a model call locks the matching rows first, so two
       calls cannot both slip under the same ceiling at once. Rows are created on first use and never removed.
+    retention: Kept forever; there is one small lock row per spend-ceiling scope.
     columns:
       scope: >
         The ceiling being guarded, written as clip:<clip hash>, day:<YYYY-MM-DD in UTC> or run:<run id>.
@@ -87,8 +91,11 @@ tables:
     about: >
       The accepted answer for one descriptive fact ("axis") about one filler clip, such as its era,
       brand or role, with where the answer came from. A stronger or more confident answer replaces a
-      weaker one; no row means the fact is still unknown. Rows are kept and follow the clip if its
-      identity changes.
+      weaker one; no row means the fact is still unknown. Rows follow the clip if its identity
+      changes.
+    retention: >
+      Kept while the clip exists. Once it has left the catalog, rows not updated for 30 days are
+      deleted by the nightly housekeeping, unless the catalog is empty (an unmounted drive).
     columns:
       clip_hash: The filler clip described (clips.hash).
       axis: >
@@ -121,6 +128,9 @@ tables:
       Marks that one enrichment producer, at one version, has finished with one clip. It is what stops
       the same work (and its model spend) being repeated; a clip is picked again when the producer
       version or taxonomy changes, or, for free passes, when the clip's descriptive inputs change.
+    retention: >
+      Kept while the clip exists (they stop a paid pass from running twice). The nightly
+      housekeeping task deletes a pass 30 days after it ran once its clip has left the catalog.
     columns:
       clip_hash: The filler clip the pass ran on (clips.hash).
       producer: The pass that ran, for example deterministic-metadata or a text-model pass.
@@ -135,6 +145,7 @@ tables:
     about: >
       One row per web search made to research a filler clip, so the same clip at the same description
       revision is never searched twice with the same search setup. Rows go when the clip is deleted.
+    retention: Goes with its clip (deleted when that is).
     columns:
       clip_hash: The filler clip researched (clips.hash).
       input_revision: The clip's enrichment revision the search was made for.
@@ -147,7 +158,8 @@ tables:
   - name: filler_research_web_usage
     about: >
       One row per calendar month counting web searches against the monthly limit set in settings.
-      Searches are refused once the count reaches the limit. Old months are kept.
+      Searches are refused once the count reaches the limit.
+    retention: "The last 12 months; the nightly housekeeping task deletes older ones."
     columns:
       month: The month counted, as YYYY-MM in UTC.
       request_count: >
@@ -158,50 +170,14 @@ tables:
         When a search last failed that month, in Unix seconds. 0 means none yet. A failure newer than the
         last success shows web search as degraded.
 
-  - name: filler_spoken_safety_runs
-    about: >
-      One attempt at the spoken-safety check, which listens to everything said in a clip to keep filler
-      suitable for a household. Each run is fixed at creation and its steps are logged in
-      filler_spoken_safety_events. At startup Loomarr closes any run left without a final event; no
-      part of the current app starts new runs.
-    columns:
-      id: Identifies the run. Its events point here.
-      clip_hash: The filler clip checked (clips.hash).
-      authority_sha256: SHA-256 fingerprint of the screening authority the run answers to.
-      source_sha256: SHA-256 of the clip's media file that was checked.
-      source_bytes: Size of that media file in bytes.
-      duration_ms: Length of the media checked, in milliseconds.
-      certification_sha256: SHA-256 fingerprint of the certification the check runs under.
-      policy_sha256: SHA-256 fingerprint of the safety policy applied.
-      proposer_sha256: SHA-256 fingerprint of the step that picks which spoken passages to examine.
-      implementation: Name of the implementation that ran the check.
-      created_at: When the run started, in Unix nanoseconds.
-
-  - name: filler_spoken_safety_events
-    about: >
-      The append-only step log of one spoken-safety run, numbered from 0. A run plans its source,
-      proposes passages to examine, reserves and settles any model calls, and ends with one terminal event.
-    columns:
-      id: Identifies the event.
-      run_id: The run it belongs to (filler_spoken_safety_runs.id).
-      ordinal: Position in the run's log, starting at 0.
-      kind: >
-        The step. source_planned (the audio and video spans to cover), proposal_completed (the passages
-        picked), inference_reserved (a model call booked), inference_settled (that call finished) or
-        terminal (the final evidence and verdict).
-      inference_id: >
-        The model call this step is about (filler_inference_evaluations.id). Set only for
-        inference_reserved and inference_settled.
-      payload_json: >
-        The step's details as JSON, such as spans, passage IDs, model, cost and the final result. It never
-        holds the spoken words, file paths or raw model output.
-      created_at: When the step was logged, in Unix nanoseconds.
-
   - name: filler_structure_window_call_ledger
     about: >
       One row per model call in the long-reel structure check, which sends a reel to a video model in
       windows to find where each separate clip starts and ends. The row is booked before the call and
       completed with the answer; a call that got no answer is retried as a new attempt.
+    retention: >
+      Settled calls are deleted by the nightly housekeeping task after 180 days; open and
+      budget-held ones are kept. An attempt held back by the spend ceiling is replaced by its retry.
     columns:
       request_sha256: SHA-256 of the exact request. With attempt, identifies the row.
       attempt: >
@@ -231,6 +207,7 @@ tables:
       A proposed cut list for a compilation reel waiting for an admin's review, one per reel. Confirming
       it turns the segments into separate clips and removes the proposal; dismissing it also removes it,
       and it goes when the reel leaves the catalog.
+    retention: Kept until an admin confirms or dismisses it, or its reel leaves the catalog.
     columns:
       id: Identifies the proposal.
       clip_hash: The compilation reel being split (clips.hash).
@@ -248,6 +225,9 @@ tables:
       A side-by-side record, made while a new splitting rule is being trialled, of what the current rule
       and the new certified rule would each do with one split proposal. Kept after the proposal itself is
       gone; rows are never changed.
+    retention: >
+      Kept while the proposal exists; once it is gone, the nightly housekeeping task deletes the
+      decision 180 days after it was made.
     columns:
       id: Identifies the decision, derived from its content.
       proposal_id: The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed.

@@ -1,9 +1,9 @@
 import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { formatClipDuration } from "@loomarr/core/format";
-import { ExternalLink, Loader2, Play } from "lucide-react";
+import { Action } from "@loomarr/design-system";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 
 interface SourceContentPreviewProps {
@@ -70,16 +70,9 @@ const SourceContentPreview = ({
                         {formatClipDuration(item.durationMs)}
                       </span>
                     ) : null}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 shrink-0 px-2"
-                      onClick={() => setPreviewing(item)}
-                    >
-                      <Play aria-hidden />
+                    <Action icon="play" onPress={() => setPreviewing(item)} variant="ghost">
                       Preview
-                    </Button>
+                    </Action>
                   </li>
                 ))}
               </ul>

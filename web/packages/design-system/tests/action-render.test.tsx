@@ -437,6 +437,26 @@ describe("Action render composition", () => {
     expect(link?.hasAttribute("accessibilityrole")).toBe(false);
   });
 
+  it("names a composed link by `aria-label`, never the RN-only `accessibilityLabel` attribute", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action
+            accessibilityLabel="Open Quality"
+            accessibilityRole="link"
+            render={<a href="/filler/quality" />}
+          >
+            Open
+          </Action>
+        </LoomarrProvider>,
+      );
+    });
+
+    const link = host.querySelector("a");
+    expect(link?.getAttribute("aria-label")).toBe("Open Quality");
+    expect(link?.hasAttribute("accessibilitylabel")).toBe(false);
+  });
+
   it("pads a composed link as CSS, the same inset a Pressable gets", () => {
     act(() => {
       root.render(

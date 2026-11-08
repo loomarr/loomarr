@@ -34,9 +34,9 @@ type Overrides struct {
 	// NotificationHTTP redirects provider requests to a hermetic transport in composition tests.
 	// nil uses the bounded production HTTP client owned by notifications.
 	NotificationHTTP notifications.HTTPDoer
-	// TMDBBaseURL redirects the real dynamic TMDB adapter to an in-process external
-	// service double. The credential still comes from live settings; accepting a
-	// prebuilt client here used to freeze its key at boot and bypass composition.
+	// TMDBBaseURL redirects the real dynamic TMDB adapter to a stand-in: the integration
+	// harness's in-process double, or the demo library's via LOOMARR_TMDB_BASE_URL (#1941).
+	// The credential still comes from live settings, so composition stays the same.
 	TMDBBaseURL string // empty ⇒ https://api.themoviedb.org/3
 	// DevLogin mounts POST /v1/auth/dev-login (§11). run() sets it from
 	// LOOMARR_DEV_LOGIN; it rides Overrides so the §19 negative tests can build a
@@ -187,10 +187,12 @@ func buildHandler(
 	approval := buildApproval(st, channelSvc, playoutRes, activityRec, chanNumbers, emitter, libraryClient, foundation.holidays, log)
 	proposalApprover := approval.approver
 
+	// One count of interactive LLM work (suggestions) that background filler vision yields to (#1508).
+	interactiveLLM := &llm.InteractiveGate{}
 	suggestions, err := buildSuggestions(
 		rootCtx, st, set, ov, eventBus, emitter, jobReg, fillerLayout, activityRec, log,
 		libraryClient, tmdbClient, channelSvc, proposalApprover, owner,
-		foundation.metrics, foundation.holidays,
+		foundation.metrics, foundation.holidays, interactiveLLM,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -200,6 +202,7 @@ func buildHandler(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,
 		playbackHeadroomFor(channelsBuilt.resourceBudget), owner, foundation.reloadHolidays, calendar,
+		interactiveLLM,
 	)
 	offerCuratedSources(rootCtx, st, log)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
