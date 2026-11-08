@@ -711,6 +711,9 @@ const NotificationDestinationsPanel = () => {
     [typesQuery.data],
   );
   const providers = providersQuery.data?.status === 200 ? providersQuery.data.data.providers : [];
+  // Everything any provider type can be told about, once each: the empty state's answer to
+  // "what would I be notified about?".
+  const events = useMemo(() => [...new Set(definitions.flatMap((item) => item.events))], [definitions]);
   const definition = definitions.find((item) => item.type === selectedType) ?? definitions[0];
   const create = notificationsApi.useNotificationProvidersCreate({
     mutation: {
@@ -754,9 +757,22 @@ const NotificationDestinationsPanel = () => {
         </p>
       ) : null}
       {!providersQuery.isLoading && providers.length === 0 ? (
-        <p className="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          No notification providers yet.
-        </p>
+        <section
+          aria-labelledby="notification-events-title"
+          className="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-sm"
+        >
+          <p id="notification-events-title" className="text-foreground font-medium">
+            No notification providers yet
+          </p>
+          <p className="mt-1">Once you add one, you choose which of these it tells you about.</p>
+          {events.length > 0 ? (
+            <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+              {events.map((event) => (
+                <li key={event}>{words(event)}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
       ) : null}
 
       <ul className="grid gap-3">
