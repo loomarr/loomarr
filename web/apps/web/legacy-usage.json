@@ -134,10 +134,6 @@
     "src/components/loomarr/dashboard/services-panel/services-panel.tsx": {
       "tailwindClasses": 49
     },
-    "src/components/loomarr/feedback/collapsible-section/collapsible-section.tsx": {
-      "tailwindClasses": 50,
-      "baseUi": 1
-    },
     "src/components/loomarr/feedback/error-details/error-details.tsx": {
       "tailwindClasses": 22
     },
@@ -250,8 +246,7 @@
       "tailwindClasses": 37
     },
     "src/components/loomarr/setup/connection-block/connection-block.tsx": {
-      "tailwindClasses": 76,
-      "baseUi": 1
+      "tailwindClasses": 24
     },
     "src/components/loomarr/setup/login-form/login-form.tsx": {
       "tailwindClasses": 27
@@ -577,7 +572,7 @@
       "tailwindClasses": 14
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 53
+      "tailwindClasses": 50
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
       "tailwindClasses": 34

@@ -1,15 +1,18 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { ConnectionBlock } from "./connection-block";
 
-// The `.reveal` grid trick keeps the body in the DOM even when collapsed (clipped, not
-// unmounted), so open/closed is asserted via aria-expanded + the reveal state attribute — the
-// same convention CollapsibleSection uses. A failing block's "Fix" is a routed Link, so the
-// tree renders inside RouterHarness (which mounts async — hence findBy* on first query).
+// The Disclosure keeps the body mounted even when collapsed, so open/closed is asserted via
+// aria-expanded and the `hidden` state of the panel the header controls. A failing block's
+// "Fix" is a routed Link, so the tree renders inside RouterHarness (which mounts async — hence
+// findBy* on first query).
 const withRouter = (ui: ReactElement) => render(<RouterHarness content={ui} initialPath="/settings" />);
+
+const panelOf = (header: HTMLElement) => document.getElementById(header.getAttribute("aria-controls") ?? "");
 
 const bodyText = "the connection fields";
 
@@ -25,7 +28,7 @@ describe("ConnectionBlock", () => {
 
     const header = await screen.findByRole("button", { name: /media server/i });
     expect(header).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-closed");
+    expect(panelOf(header)).toHaveAttribute("hidden", "until-found");
 
     await user.click(header);
     expect(onToggle).toHaveBeenCalledOnce();
@@ -41,11 +44,10 @@ describe("ConnectionBlock", () => {
         initialPath="/settings"
       />,
     );
-    expect(await screen.findByRole("button", { name: /media server/i })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-open", "");
+    const opened = await screen.findByRole("button", { name: /media server/i });
+    expect(opened).toHaveAttribute("aria-expanded", "true");
+    expect(panelOf(opened)).not.toHaveAttribute("hidden");
+    expect(panelOf(opened)).toContainElement(screen.getByText(bodyText));
   });
 
   // ⚠ THE BUG V50d FIXED, and it is asserted here because nothing else can see it: this component
@@ -70,9 +72,9 @@ describe("ConnectionBlock", () => {
       </ConnectionBlock>,
     );
 
-    await screen.findByRole("button", { name: /media server/i });
-    const panel = screen.getByText(bodyText).closest(".reveal");
+    const panel = panelOf(await screen.findByRole("button", { name: /media server/i }));
     expect(panel).toHaveAttribute("hidden", "until-found");
+    expect(panel).toContainElement(screen.getByText(bodyText));
     // Still MOUNTED — the fix must not unmount the body, or a half-filled connection form would
     // lose its state every time the block collapsed.
     expect(panel).toBeInTheDocument();
@@ -117,7 +119,7 @@ describe("ConnectionBlock", () => {
         <p>{bodyText}</p>
       </ConnectionBlock>,
     );
-    expect(await screen.findByText("optional")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /requester/i })).toHaveTextContent(/optional/);
   });
 
   // The v2 mock's `bk.summary`. It exists so a COLLAPSED block still says where it stands:

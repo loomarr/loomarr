@@ -1,7 +1,7 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Disclosure } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { InstallationLocation } from "@/components/loomarr/settings/installation-location";
 import { EncryptionSettings } from "@/settings/encryption-settings";
 import { PairedDevices } from "@/settings/paired-devices";
@@ -85,15 +85,15 @@ const AccessSettings = () => {
         <>
           <SsoNote />
           <PairedDevices />
-          <CollapsibleSection
-            title="Advanced access controls"
+          <Disclosure
             description="Generated credentials and database encryption for unusual administration work."
+            label="Advanced access controls"
           >
             <div className="flex flex-col gap-4">
               <SecretsSettings />
               <EncryptionSettings />
             </div>
-          </CollapsibleSection>
+          </Disclosure>
         </>
       }
     >

@@ -60,7 +60,7 @@ const ChannelAdvanced = ({
 
   return (
     // Just the body content — the container (border + padding) is provided by the
-    // CollapsibleSection this renders inside on the channel page. The web mock draws it as a
+    // Disclosure this renders inside on the channel page. The web mock draws it as a
     // label | value grid. Its "Last updated · took" row has no field on ChannelDTO yet, so it
     // isn't drawn rather than faked.
     <div className="grid grid-cols-[180px_1fr] gap-x-4 gap-y-2 text-sm">
