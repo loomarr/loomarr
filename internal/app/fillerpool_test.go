@@ -26,6 +26,12 @@ func newPoolAdapter(t *testing.T, clips []filler.Clip, chans []store.Channel) (p
 		if err := st.UpsertClip(ctx, clipstore.Clip{Clip: c, UpdatedAt: time.Now().UTC()}); err != nil {
 			t.Fatal(err)
 		}
+		// Category is derived from the taxonomy tags on read (#2323).
+		if c.Category != "" {
+			if err := st.SetClipTags(ctx, c.Hash, []string{c.Category}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	for _, ch := range chans {
 		if _, err := st.SaveChannel(ctx, ch); err != nil {

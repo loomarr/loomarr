@@ -92,6 +92,21 @@ func sampleClip(id, name string, kind filler.Kind, era int, aud filler.Audience,
 	return c
 }
 
+// putClip upserts a sample clip and asserts its category as a taxonomy leaf. Category is derived
+// from the tags on read (#2323), so a fixture's category exists only once it is tagged.
+func putClip(t *testing.T, s Store, c Clip) {
+	t.Helper()
+	ctx := context.Background()
+	if err := s.UpsertClip(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if c.Category != "" {
+		if err := s.SetClipTags(ctx, c.Hash, []string{c.Category}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // cachedClipFingerprint reads one clip's cached video frames under an algorithm.
 func cachedClipFingerprint(ctx context.Context, s Store, clipHash, algorithm string) ([]uint64, bool, error) {
 	all, err := s.ListClipFingerprints(ctx, algorithm)
@@ -162,10 +177,10 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	c1 := sampleClip("c1", "Crunchlings", filler.Commercial, 1992, filler.Kids, "cereal")
 	c1.GeographicScope, c1.Country = filler.GeographicLocal, "US"
 	c1.Network, c1.Station, c1.AirDate, c1.GeoEvidence = "Kestrel One", "fcc:900001", "1992-04-03", "filename: WKTL 1992-04-03"
-	_ = s.UpsertClip(ctx, c1)
-	_ = s.UpsertClip(ctx, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
-	_ = s.UpsertClip(ctx, sampleClip("b1", "Bumper", filler.Bumper, 1992, filler.General, ""))
-	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", "")) // untagged
+	putClip(t, s, c1)
+	putClip(t, s, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
+	putClip(t, s, sampleClip("b1", "Bumper", filler.Bumper, 1992, filler.General, ""))
+	putClip(t, s, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", "")) // untagged
 
 	// Round-trip.
 	got, err := s.GetClip(ctx, "c1")
@@ -241,9 +256,7 @@ func testClipNeedsDetailsAgreesWithSQL(t *testing.T, newStore NewStoreFunc) {
 		sampleClip("psa", "psa.mp4", filler.PSA, 1991, "", ""),
 	}
 	for _, c := range fixtures {
-		if err := s.UpsertClip(ctx, c); err != nil {
-			t.Fatal(err)
-		}
+		putClip(t, s, c)
 	}
 	stored, err := s.ListClips(ctx, ClipFilter{})
 	if err != nil {
@@ -329,9 +342,9 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	_ = s.UpsertClip(ctx, sampleClip("c1", "Brightfield Crunchlings", filler.Commercial, 1992, filler.Kids, "cereal"))
-	_ = s.UpsertClip(ctx, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
-	_ = s.UpsertClip(ctx, sampleClip("c3", "100% Juice", filler.Commercial, 1993, filler.Kids, "drinks"))
+	putClip(t, s, sampleClip("c1", "Brightfield Crunchlings", filler.Commercial, 1992, filler.Kids, "cereal"))
+	putClip(t, s, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
+	putClip(t, s, sampleClip("c3", "100% Juice", filler.Commercial, 1993, filler.Kids, "drinks"))
 
 	names := func(f ClipFilter) []string {
 		t.Helper()

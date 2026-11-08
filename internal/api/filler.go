@@ -800,8 +800,8 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 	// Resolve the operator's tag edit against the LIVE taxonomy (§10 V45a). Tags nil ⇒ leave the
 	// clip's tags alone (an era/audience/kind-only edit); an explicit [] ⇒ clear them. Each slug is
 	// grounded exactly as the tagger grounds the model — an unknown slug is a 422, never silently
-	// persisted. The store derives `category` from the accepted set in the same transaction, against
-	// its current graph; the client never supplies that compatibility shadow.
+	// persisted. The store derives `category` from the accepted set on read, against its current
+	// graph; the client never supplies it.
 	if in.Body.Tags != nil {
 		if operatorLeaves, operatorForest, err = s.groundOperatorTags(ctx, *in.Body.Tags); err != nil {
 			return nil, err

@@ -1383,7 +1383,7 @@ func TestTranscodeStage_RekeysBytesAndPreservesHumanMetadata(t *testing.T) {
 	if tags.OriginalName != in.Name {
 		t.Errorf("originalName = %q, want display name %q — a split child must not rescan as a hash", tags.OriginalName, in.Name)
 	}
-	if tags.Mezzanine != tools.DefaultMezzanine().ID() || tags.Era != in.Era || tags.Category != in.Category {
+	if tags.Mezzanine != tools.DefaultMezzanine().ID() || tags.Era != in.Era {
 		t.Errorf("sidecar did not carry the transform metadata: %+v", tags)
 	}
 	if tags.MediaAssets == nil || tags.MediaAssets.SourceMaster.ClipHash != oldHash {

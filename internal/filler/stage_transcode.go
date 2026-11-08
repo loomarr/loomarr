@@ -718,7 +718,6 @@ func (s *TranscodeStage) replacementSidecar(tags SidecarTags, c StoreClip, mezza
 	tags.Kind = string(c.Kind)
 	tags.Era = c.Era
 	tags.Audience = string(c.Audience)
-	tags.Category = c.Category
 	tags.Brand = c.Brand
 	tags.Transcript = c.Transcript
 	tags.Mezzanine = mezzanine
