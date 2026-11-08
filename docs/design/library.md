@@ -309,7 +309,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   without it and its key noted as wanted, and `library_items.catalog` names the row each title's
   details come from. `scan.Enricher` fetches every minute: titles never fetched first (up to 200
   a tick), then a share of the oldest, so the whole cache is fetched again within 90 days, spread
-  out. It keeps to the provider's rate hint. A record that changed forgets the identity digest of
+  out. It keeps to the provider's rate hint. Each row notes the shape of record it was fetched in
+  (`version`, per kind, `scan.catalogVersions`). When the scanner starts reading something older
+  records lack, that kind's version goes up, and its older records are fetched again with the
+  titles never fetched, not at the refresh. Series are at version 1, which counts their episode
+  orderings (decision 53). A record that changed forgets the identity digest of
   its titles' present files (a series' episodes too) and passes over their folders, so they are
   written again with it. A title TMDB does not know is cached empty until the refresh. A failed
   fetch holds that title back for 6 hours, and with no TMDB key nothing is fetched or held back.

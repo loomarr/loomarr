@@ -235,6 +235,9 @@ tables:
         and empty after the catalog said it has no such title.
       fetched_at_ms: When the record was last fetched, in Unix milliseconds; 0 means never.
       retry_at_ms: After a failed fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none.
+      version: >
+        The shape of record it was fetched in. A record of an older shape than its kind is read in now
+        is fetched again first, as if it had never been fetched.
 
   - name: library_candidates
     about: >

@@ -608,6 +608,7 @@ What TMDB says about a title or a TMDB collection, cached so a scan never has to
 | `record` | The catalog's record as JSON (names, description, ids, artwork and so on). Empty until fetched, and empty after the catalog said it has no such title. | `TEXT` |
 | `fetched_at_ms` | When the record was last fetched, in Unix milliseconds; 0 means never. | `INTEGER` |
 | `retry_at_ms` | After a failed fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none. | `INTEGER` |
+| `version` | The shape of record it was fetched in. A record of an older shape than its kind is read in now is fetched again first, as if it had never been fetched. | `INTEGER` |
 
 ### library_candidates
 
