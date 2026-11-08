@@ -22,6 +22,9 @@ code path is shared through `database/sql`.
   (#2319). An id names what it
   identifies: `inventory_item_id` is Loomarr's inventory item, while `item_id` and `library_id` on the
   media-server tables are the media server's (#2320).
+- **A state column lists its states in a `CHECK`.** `titles.state`, `proposals.status` and
+  `proposal_jobs.status` refuse a value the code does not know, so a misspelt state fails at the write.
+  A new state needs a migration that widens the `CHECK` (a table rebuild on SQLite).
 - **A yes/no column is BOOLEAN on PostgreSQL** (SQLite stores it as INTEGER 0/1), and SQL writes
   `TRUE`/`FALSE`, never `1`/`0`, which both dialects read. A time column is `BIGINT`; a 32-bit
   `INTEGER` of unix seconds runs out in 2038.
