@@ -8,7 +8,7 @@ import type {
   RefAttributes,
 } from "react";
 import { cloneElement, forwardRef, isValidElement, useId, useState } from "react";
-import { Platform, Pressable, TextInput } from "react-native";
+import { type GestureResponderEvent, Platform, Pressable, TextInput } from "react-native";
 
 import { useFocusLook } from "../focus-look";
 import { Icon, type IconTone } from "../icon";
@@ -318,12 +318,16 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       // unchanged, which would silently never fire. `accessibilityRole` and `accessibilityLabel`
       // are RN's too: they reach the host as `role` and `aria-label`, and spread raw they are
       // unknown DOM attributes that leave the element unnamed.
+      // A composing parent's `onClick` (Base UI's DialogTrigger, which hands its props to the
+      // Action it renders) is chained with `onPress`, not overwritten by it.
       const {
         accessibilityLabel,
         accessibilityRole: _role,
+        onClick: parentClick,
         onPress,
         ...restProps
       } = props as typeof props & {
+        onClick?: (event: unknown) => void;
         onPress?: (event: unknown) => void;
       };
       // The host's `style` is CSS, which has no paddingHorizontal/paddingVertical: spell them out.
@@ -337,7 +341,13 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             "aria-disabled": isDisabled || undefined,
             "aria-pressed": ariaPressed,
             onBlur: focusLook.onBlur,
-            onClick: onPress,
+            onClick:
+              parentClick && onPress
+                ? (event: unknown) => {
+                    parentClick(event);
+                    onPress(event);
+                  }
+                : (parentClick ?? onPress),
             onFocus: focusLook.onFocus,
             ref,
             role,
@@ -357,10 +367,26 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       ) as ReactElement;
     }
 
+    // react-native-web's Pressable answers clicks through its own press responder and never calls
+    // an `onClick` prop, so a composing parent's (see the render branch) runs from onPress here.
+    const {
+      onClick: parentClick,
+      onPress,
+      ...pressableProps
+    } = props as typeof props & { onClick?: (event: GestureResponderEvent) => void };
+    const press =
+      parentClick && isWeb
+        ? (event: GestureResponderEvent) => {
+            parentClick(event);
+            onPress?.(event);
+          }
+        : onPress;
+
     return (
       <Pressable
         accessibilityLabel={iconLabel}
-        {...props}
+        {...pressableProps}
+        onPress={press}
         accessibilityState={{ ...accessibilityState, disabled: isDisabled, selected }}
         accessibilityRole={role}
         aria-disabled={isDisabled || undefined}
