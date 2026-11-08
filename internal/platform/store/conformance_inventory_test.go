@@ -279,6 +279,21 @@ func testInventoryExplicitMissing(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !ok || !item.Origins[0].MissingAt.IsZero() {
 		t.Fatalf("seen item = (%+v, %v, %v), want present", item, ok, err)
 	}
+
+	// A later walk that still doesn't see it leaves it marked from when it first went (#2446),
+	// for the item origin and its sources alike, rather than rewriting every tombstone.
+	firstMissing := at.Add(time.Hour)
+	if err := st.MarkInventoryUnseen(ctx, "library-a", at.Add(2*time.Hour), []inventory.OriginKey{seen.Origin}); err != nil {
+		t.Fatal(err)
+	}
+	item, ok, err = st.InventoryItem(ctx, inventory.ItemRef{Origin: &missing.Origin})
+	if err != nil || !ok {
+		t.Fatalf("missing item = (%v, %v)", ok, err)
+	}
+	if !item.Origins[0].MissingAt.Equal(firstMissing) || !item.Sources[0].Origins[0].MissingAt.Equal(firstMissing) {
+		t.Fatalf("second walk moved missing_at: origin %s, source %s; want both still %s",
+			item.Origins[0].MissingAt, item.Sources[0].Origins[0].MissingAt, firstMissing)
+	}
 }
 
 func testInventoryMalformedRejected(t *testing.T, newStore NewStoreFunc) {
