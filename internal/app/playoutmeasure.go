@@ -7,7 +7,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/playout"
 )
@@ -94,9 +93,9 @@ func (r *playoutResolver) submitAnalysis(id inventory.SourceID, revision, input 
 }
 
 // canAnalyseItems reports whether this install can find, and read the analysis of, a library
-// item's local file: inventory, an analysis store, and a library to resolve the item's file.
+// item's local file: inventory, an analysis store, and the Library to resolve the item's file.
 func (r *playoutResolver) canAnalyseItems() bool {
-	return r != nil && r.inventory != nil && r.analyses != nil && (r.lib != nil || r.libraryFile != nil)
+	return r != nil && r.inventory != nil && r.analyses != nil && r.libraryFile != nil
 }
 
 // naturalBreakSource binds mid-roll candidate lookups (§10) to one reconcile or preview pass.
@@ -140,14 +139,13 @@ func (r *playoutResolver) premeasure(ctx context.Context, libraryItemIDs []strin
 
 // itemAnalysis is the stored analysis of a library item's local file at its current revision.
 // When there is none, the file is queued for measurement (one low-priority worker, G7) and
-// measured is false. A streamed (non-file) item has none: measurement reads files directly,
-// never through the media server.
+// measured is false. An item with no readable file has none.
 func (r *playoutResolver) itemAnalysis(ctx context.Context, libraryItemID string) (inventory.Analysis, bool) {
-	input := r.itemInput(ctx, r.lib, libraryItemID)
-	if input.Kind != library.InputFile {
+	input := r.itemInput(ctx, libraryItemID)
+	if input == "" {
 		return inventory.Analysis{}, false
 	}
-	origin, ok := r.ensureLocalInventorySource(ctx, input.URL)
+	origin, ok := r.ensureLocalInventorySource(ctx, input)
 	if !ok {
 		return inventory.Analysis{}, false
 	}
@@ -163,7 +161,7 @@ func (r *playoutResolver) itemAnalysis(ctx context.Context, libraryItemID string
 		return inventory.Analysis{}, false
 	}
 	if !measured || analysis.Revision != source.Revision {
-		r.submitAnalysis(source.ID, source.Revision, input.URL, source.Observation.Facts)
+		r.submitAnalysis(source.ID, source.Revision, input, source.Observation.Facts)
 		return inventory.Analysis{}, false
 	}
 	return analysis, true
