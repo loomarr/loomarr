@@ -104,7 +104,7 @@
       "tailwindClasses": 28
     },
     "src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
-      "tailwindClasses": 29
+      "tailwindClasses": 26
     },
     "src/components/loomarr/channels/now-next-strip/now-next-strip.tsx": {
       "tailwindClasses": 16
@@ -164,7 +164,7 @@
       "tailwindClasses": 102
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
-      "tailwindClasses": 49
+      "tailwindClasses": 46
     },
     "src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "tailwindClasses": 31

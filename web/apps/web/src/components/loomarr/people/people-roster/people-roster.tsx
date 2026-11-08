@@ -111,6 +111,8 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
                   ),
                   user.role === UserBodyRole.admin ? "Admin" : "Member",
                   credentialLabel(user.local, user.offlineLogin),
+                  // Named a quota, not "requests" (#2751): it is a cap, not a count of what they asked for.
+                  `Request quota ${user.pendingAcquisitions} / ${user.effectiveQuota}`,
                   // The API leaves last seen out for someone who has never signed in (#1667).
                   user.lastSeenAt === undefined
                     ? "Never seen"
