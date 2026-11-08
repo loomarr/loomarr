@@ -917,7 +917,7 @@ type ProposalApprover interface {
 // ProposalDecisionQuality receives a denial only after its submitted-to-denied
 // compare-and-swap commits. It cannot affect the HTTP decision outcome.
 type ProposalDecisionQuality interface {
-	ProposalDeclined(context.Context, string, time.Time)
+	ProposalDenied(context.Context, string, time.Time)
 }
 
 // ChannelBinder shares channel-number occupancy with manually typed channel numbers.

@@ -95,7 +95,7 @@ rendering, retries, retention, and one adapter per **Delivery means**.
 
 - **Two policy classes.** Mandatory account delivery (`account_invitation`,
   `local_password_recovery`) is email-only and ignores preferences. Configurable product delivery
-  (`proposal_submitted`, `proposal_approved`, `proposal_declined`, `acquisition_available`,
+  (`proposal_submitted`, `proposal_approved`, `proposal_denied`, `acquisition_available`,
   `acquisition_gave_up`, `channel_live`, `channel_degraded`, and the library scanner's
   `library_folder_offline`, `library_folder_back`, `library_changes_degraded` and
   `library_needs_you`) goes to one

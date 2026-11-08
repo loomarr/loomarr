@@ -56,7 +56,7 @@ const providerTypes = [
     type: "web_push",
     name: "Browser Push",
     memberOwned: true,
-    events: ["proposal_approved", "proposal_declined", "channel_live"],
+    events: ["proposal_approved", "proposal_denied", "channel_live"],
     fields: [
       { key: "endpoint", label: "Push endpoint", kind: "password", required: true, sensitive: true },
       { key: "p256dh", label: "Browser public key", kind: "password", required: true, sensitive: true },

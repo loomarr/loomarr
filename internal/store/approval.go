@@ -130,7 +130,7 @@ func (s *sqlStore) commitProposalApproval(
 		return 0, err
 	}
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE proposals SET job_id=?, status=?, created_by=?, approved_by=?, deny_reason=?,
+		`UPDATE proposals SET job_id=?, status=?, created_by=?, decided_by=?, deny_reason=?,
 		   mod_summary=?, note=?, proposal_json=?, approved_at=?, updated_at=?
 		 WHERE id=? AND status='submitted'`),
 		p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
@@ -374,7 +374,7 @@ func (s *sqlStore) CommitProposalDenial(ctx context.Context, p Proposal) error {
 		return fmt.Errorf("deny proposal %s: read job status: %w", p.ID, err)
 	}
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE proposals SET status='denied', approved_by=?, deny_reason=?, updated_at=?
+		`UPDATE proposals SET status='denied', decided_by=?, deny_reason=?, updated_at=?
 		 WHERE id=? AND status='submitted'`),
 		p.ApprovedBy, p.DenyReason, epoch(p.UpdatedAt), p.ID)
 	if err != nil {

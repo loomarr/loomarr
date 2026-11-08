@@ -359,7 +359,7 @@ type submittedNotifier struct{ submitted chan store.Proposal }
 
 func (n submittedNotifier) ProposalSubmitted(_ context.Context, p store.Proposal)  { n.submitted <- p }
 func (submittedNotifier) ProposalApproved(context.Context, store.Proposal, string) {}
-func (submittedNotifier) ProposalDeclined(context.Context, store.Proposal)         {}
+func (submittedNotifier) ProposalDenied(context.Context, store.Proposal)           {}
 
 // A generated proposal reaching the approval queue tells the approvers a request is waiting,
 // exactly as a built one does.

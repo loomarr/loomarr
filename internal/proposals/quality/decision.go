@@ -32,7 +32,7 @@ func (r *ProposalDecisionRecorder) ProposalApproved(ctx context.Context, proposa
 	r.record(ctx, proposalID, at, OutcomeApproved)
 }
 
-func (r *ProposalDecisionRecorder) ProposalDeclined(ctx context.Context, proposalID string, at time.Time) {
+func (r *ProposalDecisionRecorder) ProposalDenied(ctx context.Context, proposalID string, at time.Time) {
 	r.record(ctx, proposalID, at, OutcomeDeclined)
 }
 

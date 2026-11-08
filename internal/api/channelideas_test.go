@@ -86,7 +86,7 @@ func (n *recordingNotifier) ProposalSubmitted(_ context.Context, p store.Proposa
 	n.submitted = append(n.submitted, p)
 }
 func (n *recordingNotifier) ProposalApproved(context.Context, store.Proposal, string) {}
-func (n *recordingNotifier) ProposalDeclined(context.Context, store.Proposal)         {}
+func (n *recordingNotifier) ProposalDenied(context.Context, store.Proposal)           {}
 
 func (n *recordingNotifier) count() int {
 	n.mu.Lock()

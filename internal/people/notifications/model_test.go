@@ -48,7 +48,7 @@ func TestConfigurableProductIntentValidationPinsAudienceAndReference(t *testing.
 			RecipientID: "user-1", ReferenceKind: ReferenceProposal, ReferenceID: "proposal-1",
 			Policy: PolicyConfigurable, Template: TemplateData{SubjectName: "Saturday Cartoons"},
 			IdempotencyKey: "proposal-1:approved:user-1", CreatedAt: now},
-		{ID: "intent-declined", Topic: TopicProposalDeclined, RecipientKind: RecipientPerson,
+		{ID: "intent-declined", Topic: TopicProposalDenied, RecipientKind: RecipientPerson,
 			RecipientID: "user-1", ReferenceKind: ReferenceProposal, ReferenceID: "proposal-1",
 			Policy: PolicyConfigurable, Template: TemplateData{SubjectName: "Saturday Cartoons", Summary: "Needs a narrower audience"},
 			IdempotencyKey: "proposal-1:declined:user-1", CreatedAt: now},

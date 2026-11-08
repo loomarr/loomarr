@@ -18,7 +18,7 @@ const (
 	TopicLocalPasswordRecovery Topic = "local_password_recovery"
 	TopicProposalSubmitted     Topic = "proposal_submitted"
 	TopicProposalApproved      Topic = "proposal_approved"
-	TopicProposalDeclined      Topic = "proposal_declined"
+	TopicProposalDenied        Topic = "proposal_denied"
 	TopicAcquisitionAvailable  Topic = "acquisition_available"
 	TopicAcquisitionGaveUp     Topic = "acquisition_gave_up"
 	TopicChannelLive           Topic = "channel_live"
@@ -257,7 +257,7 @@ func (i Intent) Validate() error {
 		if err := i.validateProduct(RecipientApprovers, ReferenceProposal); err != nil {
 			return err
 		}
-	case TopicProposalApproved, TopicProposalDeclined:
+	case TopicProposalApproved, TopicProposalDenied:
 		if err := i.validateProduct(RecipientPerson, ReferenceProposal); err != nil {
 			return err
 		}

@@ -87,7 +87,7 @@ func New(st Store, win Windows, now func() time.Time, log *slog.Logger) *Service
 // manufactures one on every run makes the data harder to reason about for no gain.
 //
 // ⚠ What it must NOT remove is the substance: `approved` proposals are the audit trail
-// behind `approved_by`, `submitted` ones are members still waiting for an answer, and
+// behind `decided_by`, `submitted` ones are members still waiting for an answer, and
 // `queued`/`running` jobs are not finished (age is not evidence work completed). Those
 // exemptions live in the store's WHERE clauses and are pinned by the conformance suite.
 //

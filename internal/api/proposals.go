@@ -22,7 +22,7 @@ import (
 )
 
 // userIDFromHuma returns the authenticated user's id, or "" for a token
-// (break-glass) caller with no user record. Used to stamp created_by/approved_by.
+// (break-glass) caller with no user record. Used to stamp created_by/decided_by.
 func userIDFromHuma(ctx context.Context) string {
 	if u, ok := userFrom(ctx); ok {
 		return u.ID
@@ -233,7 +233,7 @@ func (s *Server) personNames(ctx context.Context) (personNames, error) {
 	return names, nil
 }
 
-// name maps a stored created_by/approved_by to something a person can read. An unknown id
+// name maps a stored created_by/decided_by to something a person can read. An unknown id
 // yields "" rather than the id itself: the raw id is exactly what this exists to keep off screen.
 func (n personNames) name(id string) string {
 	if id == suggest.AutoApprovedBy {
@@ -600,10 +600,10 @@ func (s *Server) denyProposal(ctx context.Context, in *denyInput) (*denyOutput, 
 		}
 	}
 	if s.decisionQuality != nil {
-		s.decisionQuality.ProposalDeclined(ctx, p.ID, p.UpdatedAt)
+		s.decisionQuality.ProposalDenied(ctx, p.ID, p.UpdatedAt)
 	}
 	if s.proposalNotifications != nil {
-		s.proposalNotifications.ProposalDeclined(ctx, p)
+		s.proposalNotifications.ProposalDenied(ctx, p)
 	}
 	out := &denyOutput{}
 	out.Body.Status = "denied"

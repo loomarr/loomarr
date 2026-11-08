@@ -975,7 +975,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 	if len(aliceProps) != 2 {
 		t.Errorf("alice's proposals = %d, want 2", len(aliceProps))
 	}
-	// Approve p1: status + approved_by persist (survives restart — it's in the store).
+	// Approve p1: status + decided_by persist (survives restart — it's in the store).
 	p1, _ := s.GetProposal(ctx, "p1")
 	p1.Status = "approved"
 	p1.ApprovedBy = "admin"

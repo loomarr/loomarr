@@ -206,8 +206,8 @@ func topicLabel(topic Topic) string {
 		return "Proposal submitted"
 	case TopicProposalApproved:
 		return "Proposal approved"
-	case TopicProposalDeclined:
-		return "Proposal declined"
+	case TopicProposalDenied:
+		return "Proposal denied"
 	case TopicAcquisitionAvailable:
 		return "Title available"
 	case TopicAcquisitionGaveUp:
@@ -233,7 +233,7 @@ func topicLabel(topic Topic) string {
 
 func topicSeverity(topic Topic) string {
 	switch topic {
-	case TopicProposalDeclined, TopicAcquisitionGaveUp, TopicChannelDegraded,
+	case TopicProposalDenied, TopicAcquisitionGaveUp, TopicChannelDegraded,
 		TopicLibraryFolderOffline, TopicLibraryChangesDegraded:
 		return "warning"
 	}

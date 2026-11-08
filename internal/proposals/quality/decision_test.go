@@ -18,7 +18,7 @@ func TestProposalDecisionRecorderEmitsClosedOpaqueObservations(t *testing.T) {
 	declinedAt := approvedAt.Add(time.Minute)
 
 	recorder.ProposalApproved(context.Background(), "proposal-private-a", approvedAt)
-	recorder.ProposalDeclined(context.Background(), "proposal-private-b", declinedAt)
+	recorder.ProposalDenied(context.Background(), "proposal-private-b", declinedAt)
 
 	got := sink.Observations()
 	if len(got) != 2 {
