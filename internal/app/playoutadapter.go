@@ -162,6 +162,9 @@ type playoutResolver struct {
 	// inventory is Loomarr's durable provider-neutral source observation (§5 V66). Audio selection
 	// reads it before Library or ffprobe I/O; nil preserves the safe direct-probe fallback.
 	inventory inventory.Service
+	// libraryAudio is the Library's tracks for a file the scanner read (#2151 decision 47). Audio
+	// selection reads it first, while the file is as the scanner read it; nil skips it.
+	libraryAudio libraryAudioReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
@@ -1252,10 +1255,39 @@ func (r *playoutResolver) preferredAudioLanguage(ctx context.Context, channelID 
 	return prefer
 }
 
+// libraryAudioReader is the store's one Library read audio selection makes.
+type libraryAudioReader interface {
+	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]store.LibraryStream, bool, error)
+}
+
+// libraryAudioTracks is a local file's audio tracks as the Library lists them, when the scanner
+// read the file as it is now (#2151 decision 47).
+func (r *playoutResolver) libraryAudioTracks(ctx context.Context, streamURL string) ([]playout.AudioTrack, bool) {
+	if r.libraryAudio == nil {
+		return nil, false
+	}
+	_, info, ok := localInventoryOrigin(streamURL)
+	if !ok {
+		return nil, false
+	}
+	streams, ok, err := r.libraryAudio.LibraryAudioTracks(ctx, streamURL, info.Size(), info.ModTime().UnixNano())
+	if err != nil || !ok {
+		return nil, false
+	}
+	tracks := make([]playout.AudioTrack, 0, len(streams))
+	for _, s := range streams {
+		tracks = append(tracks, playout.AudioTrack{SourceIndex: s.Index, Language: s.Language})
+	}
+	return tracks, true
+}
+
 func (r *playoutResolver) inventoryAudioTracks(
 	ctx context.Context,
 	libraryItemID, streamURL string,
 ) ([]playout.AudioTrack, bool) {
+	if tracks, ok := r.libraryAudioTracks(ctx, streamURL); ok {
+		return tracks, true
+	}
 	if r.inventory == nil {
 		return nil, false
 	}

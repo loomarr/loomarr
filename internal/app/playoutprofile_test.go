@@ -135,6 +135,52 @@ func TestPlayoutResolver_AudioTrackHonoursChannelOverride(t *testing.T) {
 	}
 }
 
+// A file the scanner read takes its tracks from the Library, whose "en" matches the preferred
+// "eng", with no probe; once the file changes on disk the Library's read of it is stale, so
+// playout probes it as before.
+func TestPlayoutResolver_AudioTrackReadsTheLibraryForAScannedFile(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	path := filepath.Join(t.TempDir(), "film.mkv")
+	if err := os.WriteFile(path, []byte("matroska"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	if err := st.SaveLibraryItems(t.Context(), []store.LibraryItem{{ID: "m1", Kind: "movie", Name: "Film",
+		Sources: []store.LibrarySource{{Path: path, Plays: true, Streams: []store.LibraryStream{
+			{Index: 0, Kind: "video"}, {Index: 1, Kind: "audio", Language: "ru"}, {Index: 2, Kind: "audio", Language: "en"},
+		}}}}}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryFiles(t.Context(), []store.LibraryFile{{Path: path, Root: filepath.Dir(path),
+		Size: info.Size(), ModifiedNs: info.ModTime().UnixNano(), Identity: "digest", Kind: "movie",
+		Header: store.LibraryHeaderRead, SeenAt: at, ItemID: "m1"}}); err != nil {
+		t.Fatal(err)
+	}
+	probeCalls := 0
+	r := &playoutResolver{
+		libraryAudio: st, audioLanguage: func() string { return "eng" },
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
+			probeCalls++
+			return playout.SourceObservation{Streams: []playout.ObservedStream{
+				{Index: 1, Kind: "audio", Language: "eng"}, {Index: 2, Kind: "audio", Language: "rus"},
+			}}, nil
+		},
+	}
+	if got := r.AudioTrackFor(t.Context(), "channel-1", "", path); got != 1 || probeCalls != 0 {
+		t.Fatalf("AudioTrackFor = %d with %d probes; want the Library's en track (ordinal 1) and no probe", got, probeCalls)
+	}
+	if err := os.WriteFile(path, []byte("matroska, remuxed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.AudioTrackFor(t.Context(), "channel-1", "", path); got != 0 || probeCalls != 1 {
+		t.Fatalf("after the file changed, AudioTrackFor = %d with %d probes; want the probe's eng track (ordinal 0)", got, probeCalls)
+	}
+}
+
 func TestPlayoutResolver_AudioTrackWarmsInventoryThenPerformsNoIO(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	server := testkit.NewMediaServer(t)
