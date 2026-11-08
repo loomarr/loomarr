@@ -1,6 +1,7 @@
 import type { MeBody } from "@loomarr/api";
 import {
   getChannelUpcomingMockHandler,
+  getListChannelsMockHandler,
   getLoginMockHandler,
   getPreviewChannelPodsMockHandler,
   getPreviewInvitationMockHandler,
@@ -19,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearAccountActionGrant } from "@/auth/account-action-grant";
 import { RouteError } from "@/components/loomarr/feedback/route-error";
 import { routeTree } from "@/routeTree.gen";
+import { channel } from "@/test/fixtures/channels";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 
@@ -423,6 +425,40 @@ describe("legacy tab links redirect to their new paths", () => {
     stubAuth(true);
     const router = renderApp("/channels/ch-1?section=filler");
     await waitFor(() => expect(at(router)).toBe("/channels/ch-1/filler"));
+  });
+
+  // URLs a person reaches by trimming a nav path must never be Dead air (#2730).
+  it("/notifications lands on the Notifications settings page", async () => {
+    stubAuth(true);
+    const router = renderApp("/notifications");
+    await waitFor(() => expect(at(router)).toBe("/settings/notifications"));
+  });
+
+  it("/channels/ch-1/advanced lands on the channel's info page", async () => {
+    stubAuth(true);
+    const router = renderApp("/channels/ch-1/advanced");
+    await waitFor(() => expect(at(router)).toBe("/channels/ch-1/info"));
+  });
+
+  it("/watch tunes the lowest-numbered playable channel", async () => {
+    stubAuth(true);
+    server.use(
+      getListChannelsMockHandler({
+        channels: [
+          channel({ id: "ch-7", number: 7 }),
+          channel({ id: "ch-3", number: 3 }),
+          channel({ id: "ch-1", number: 1, inAppPlayable: false }),
+        ],
+      }),
+    );
+    const router = renderApp("/watch");
+    await waitFor(() => expect(at(router)).toBe("/watch/ch-3"));
+  });
+
+  it("/watch with no channels lands on the Guide", async () => {
+    stubAuth(true);
+    const router = renderApp("/watch");
+    await waitFor(() => expect(at(router)).toBe("/guide"));
   });
 
   // The page was Queue until #1405: a bookmark to it, or to one of its old tabs, must land on the
