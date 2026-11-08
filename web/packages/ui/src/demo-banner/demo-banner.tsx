@@ -51,9 +51,7 @@ const DemoBanner = ({ step, stepCount, next, onDismiss }: DemoBannerProps) => (
           Demo
         </Badge>
         <Text flexShrink={1} textRole="compact" tone="primary">
-          {next
-            ? "You're exploring Loomarr with invented channels."
-            : "That's the tour. Everything here is invented, so explore freely."}
+          {next ? "You're exploring the Loomarr demo." : "That's the tour. It's a demo, so explore freely."}
         </Text>
       </Surface>
       {next ? (
