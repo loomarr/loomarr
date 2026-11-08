@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
@@ -121,6 +122,67 @@ type CapabilityRunner struct {
 	execute    CapabilityExecutor
 	limit      func() int
 	now        func() time.Time
+
+	mu      sync.Mutex
+	backoff map[string]capabilityRetry // clip hash → when it may run again after failing
+}
+
+// capabilityRetry is one clip's failure streak. A failed clip is stamped with nothing (its
+// evidence was never paid for), so without this it stayed the first candidate and was retried
+// every pass. On the household install five clips whose frames ffmpeg refused filled every slot of
+// every pass for days: 1,726 failures, no other clip enriched (#2456). Kept in memory on purpose:
+// a restart costs one retry per failing clip, and a schema change for that isn't worth it.
+type capabilityRetry struct {
+	failures int
+	next     time.Time
+}
+
+// Capability retry backoff: 10 minutes after the first failure, doubling to a day. A transient
+// fault (model server down) clears within the first steps; a clip that always fails costs one
+// attempt a day.
+const (
+	capabilityRetryBase = 10 * time.Minute
+	capabilityRetryMax  = 24 * time.Hour
+)
+
+func capabilityRetryDelay(failures int) time.Duration {
+	delay := capabilityRetryBase
+	for i := 1; i < failures && delay < capabilityRetryMax; i++ {
+		delay *= 2
+	}
+	return min(delay, capabilityRetryMax)
+}
+
+// waiting reports the clips still backing off at now. A clip whose wait is over keeps its streak,
+// so failing again doubles the delay; only a success clears it.
+func (r *CapabilityRunner) waiting(now time.Time) map[string]bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[string]bool{}
+	for hash, retry := range r.backoff {
+		if now.Before(retry.next) {
+			out[hash] = true
+		}
+	}
+	return out
+}
+
+func (r *CapabilityRunner) failed(hash string, now time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.backoff == nil {
+		r.backoff = map[string]capabilityRetry{}
+	}
+	retry := r.backoff[hash]
+	retry.failures++
+	retry.next = now.Add(capabilityRetryDelay(retry.failures))
+	r.backoff[hash] = retry
+}
+
+func (r *CapabilityRunner) succeeded(hash string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.backoff, hash)
 }
 
 func NewCapabilityRunner(kind Capability, repository capabilityRepository,
@@ -158,12 +220,17 @@ func (r *CapabilityRunner) Run(ctx context.Context) (RunResult, error) {
 			return result, err
 		}
 	}
-	candidates, err := r.repository.ListCapabilityCandidates(ctx, selection.Producer, selection.ProducerVersion, taxonomyVersion, limit)
+	// Ask for enough extra rows that clips still backing off can't take every slot.
+	waiting := r.waiting(r.now())
+	listed, err := r.repository.ListCapabilityCandidates(ctx, selection.Producer, selection.ProducerVersion, taxonomyVersion, limit+len(waiting))
 	if err != nil {
 		return result, fmt.Errorf("list %s enrichment candidates: %w", r.kind, err)
 	}
-	if len(candidates) > limit {
-		candidates = candidates[:limit]
+	candidates := make([]Candidate, 0, limit)
+	for _, candidate := range listed {
+		if !waiting[candidate.ClipHash] && len(candidates) < limit {
+			candidates = append(candidates, candidate)
+		}
 	}
 	result.Considered = len(candidates)
 	var capabilityErrors []error
@@ -188,11 +255,13 @@ func (r *CapabilityRunner) Run(ctx context.Context) (RunResult, error) {
 			capabilityResult, err = r.execute(ctx, candidate)
 			if err != nil {
 				result.Failed++
+				r.failed(candidate.ClipHash, r.now())
 				capabilityErrors = append(capabilityErrors,
 					fmt.Errorf("run %s enrichment for %s: %w", r.kind, candidate.ClipHash, err))
 				continue
 			}
 		}
+		r.succeeded(candidate.ClipHash)
 		completedAt := r.now().UTC()
 		for i := range capabilityResult.States {
 			capabilityResult.States[i].ClipHash = candidate.ClipHash
