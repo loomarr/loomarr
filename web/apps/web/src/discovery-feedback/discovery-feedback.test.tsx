@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { DiscoveryFeedbackControls } from "./discovery-feedback";
 
 const event = {
@@ -31,6 +32,32 @@ describe("DiscoveryFeedbackControls", () => {
     expect(screen.getByText(/Household: Never.*future suggestions only/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(onClear).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the effect note to a list that states it once, keeping the row's own choice", () => {
+    const { rerender } = render(
+      <DiscoveryFeedbackControls
+        name="The Velvet Cartographer"
+        scope={{ scope: "household" }}
+        effectNote={false}
+        onSet={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/future suggestions only/i)).not.toBeInTheDocument();
+
+    rerender(
+      <DiscoveryFeedbackControls
+        name="The Velvet Cartographer"
+        scope={{ scope: "household" }}
+        effective={event}
+        effectNote={false}
+        onSet={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Household: Never.")).toBeInTheDocument();
+    expect(screen.queryByText(/future suggestions only/i)).not.toBeInTheDocument();
   });
 
   it("explains inherited household state and only offers a Channel override", () => {

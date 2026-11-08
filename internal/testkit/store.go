@@ -130,24 +130,6 @@ func (s *FaultSettingStore) SetSetting(ctx context.Context, key, value string) e
 	return nil
 }
 
-// SQLiteStore opens a fresh migrated production store for a test. Domain tests use
-// this shared adapter when behavior depends on real settings/channel persistence.
-//
-// Prefer MigratedSQLiteStore below: it gives the same fully-migrated schema without
-// paying migration's parse cost on every call. This form still runs the real
-// migrate path and stays for callers that specifically want that (e.g. asserting
-// on migration behavior itself), or as a fallback if the template ever needs
-// bypassing for a specific test.
-func SQLiteStore(t testing.TB) records.Store {
-	t.Helper()
-	st, err := records.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
-	if err != nil {
-		t.Fatalf("open SQLite test store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
-}
-
 // templateOnce and its outputs build the migrated-schema template exactly once per
 // `go test` process (§ this package's job: shared, safe test doubles).
 //
@@ -205,14 +187,30 @@ func buildTemplate() (string, error) {
 // MigratedSQLiteStore opens a fully-migrated SQLite store for a test by copying the
 // process-shared migrated template (see buildTemplate) into the test's own
 // t.TempDir() and opening that copy with migrate=false, so the schema is already
-// at HEAD and store.Open does zero migration work. This is the fast-path
-// equivalent of SQLiteStore above and should be preferred by any test that just
-// wants an empty, fully-migrated store — see this package's comment above
-// templateOnce for why it exists.
+// at HEAD and store.Open does zero migration work. Use it for any test that wants
+// an empty, fully-migrated store; tests of migration itself live in
+// internal/platform/store. See this package's comment above templateOnce for why
+// it exists.
 //
 // Every call still gets an independent on-disk database: the template is only
 // ever read from, and each test copies it into a fresh file it alone owns.
 func MigratedSQLiteStore(t testing.TB) records.Store {
+	t.Helper()
+
+	st, err := records.Open(context.Background(), MigratedSQLiteDSN(t), false)
+	if err != nil {
+		t.Fatalf("open copied SQLite test store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+// MigratedSQLiteDSN copies the migrated template into the test's own t.TempDir() and returns its
+// sqlite:// DSN, for a test that opens the store itself: through another package's Open, or twice to
+// prove something survives a restart. Opening it with migrate=true is cheap, since nothing is
+// pending. Never migrate a fresh file in a test instead: replaying every migration costs ~15 s per
+// open under -race, and it grows with each migration (#2716).
+func MigratedSQLiteDSN(t testing.TB) string {
 	t.Helper()
 
 	templateOnce.Do(func() {
@@ -226,13 +224,7 @@ func MigratedSQLiteStore(t testing.TB) records.Store {
 	if err := copyFile(templatePath, dest); err != nil {
 		t.Fatalf("copy migrated SQLite template: %v", err)
 	}
-
-	st, err := records.Open(context.Background(), "sqlite://"+dest, false)
-	if err != nil {
-		t.Fatalf("open copied SQLite test store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return "sqlite://" + dest
 }
 
 // copyFile duplicates src's bytes into dst. The template file is closed and

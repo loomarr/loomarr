@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
@@ -25,7 +26,7 @@ func TestBuild_FillerLayoutChangesOnlyAcrossGenerations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dsn := "sqlite://" + filepath.Join(root, "layout.db")
+	dsn := testkit.MigratedSQLiteDSN(t)
 	appliedA := filepath.Join(root, "clips-a")
 	watchA := filepath.Join(root, "watch-a")
 	desiredB := filepath.Join(root, "clips-b")

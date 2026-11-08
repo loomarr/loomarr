@@ -94,8 +94,8 @@ describe("ChannelAutoCurate", () => {
     render(
       <ChannelAutoCurate policy={{ autoCurate: { minScorePct: 0, maxTitles: 0 } }} onChange={vi.fn()} />,
     );
-    expect(screen.getByLabelText("Quality bar")).toHaveValue(null);
-    expect(screen.getByLabelText("Title cap")).toHaveValue(null);
+    expect(screen.getByLabelText("Quality bar")).toHaveValue("");
+    expect(screen.getByLabelText("Title cap")).toHaveValue("");
   });
 
   it("commits a threshold override on blur, not on keystroke", async () => {
@@ -189,7 +189,7 @@ describe("ChannelAutoCurate", () => {
     render(<Harness />);
     await userEvent.click(screen.getByRole("button", { name: `Reset to default (${label})` }));
     expect(onChange.mock.lastCall?.[0].autoCurate[field]).toBe(0);
-    expect(screen.getByLabelText(label)).toHaveValue(null);
-    expect(screen.getByRole("button", { name: `Reset to default (${label})` })).toBeDisabled();
+    expect(screen.getByLabelText(label)).toHaveValue("");
+    expect(screen.queryByRole("button", { name: `Reset to default (${label})` })).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
+import { Action } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
 import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
 
@@ -23,13 +23,23 @@ const LABELS: Record<string, string> = {
   loomarr: "Loomarr core",
   media_server: "Media server",
   requester: "Requester",
+  sonarr: "Sonarr",
+  radarr: "Radarr",
   tunarr: "Tunarr",
+  tunarr_library: "Tunarr library",
+  livetv: "Live TV guide",
   llm: "AI provider",
   tmdb: "TMDB",
   filler: "Filler",
 };
 
-const serviceLabel = (name: string): string => LABELS[name] ?? name;
+// An unlisted key still reads as words ("new_probe" → "New probe"), never as the raw key (#2734).
+const serviceLabel = (name: string): string => {
+  const label = LABELS[name];
+  if (label) return label;
+  const words = name.replaceAll("_", " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+};
 
 const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: ServicesPanelProps) => {
   const rows = view.rows ?? [];
@@ -56,26 +66,22 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
                 {/* ⚠ Only a FAILING row offers Fix — and only when the server said where its
                   settings live. Offering it on a healthy row would train the eye past it. */}
                 {!row.ok && row.settingsGroup ? (
-                  <Button
-                    type="button"
+                  <Action
+                    accessibilityLabel={`Fix ${serviceLabel(row.name)}`}
+                    onPress={() => onFix(row.settingsGroup as string)}
                     variant="outline"
-                    size="sm"
-                    onClick={() => onFix(row.settingsGroup as string)}
-                    aria-label={`Fix ${serviceLabel(row.name)}`}
                   >
                     Fix →
-                  </Button>
+                  </Action>
                 ) : null}
                 {!row.ok && onDiagnose ? (
-                  <Button
-                    type="button"
+                  <Action
+                    accessibilityLabel={`View ${serviceLabel(row.name)} diagnostics`}
+                    onPress={() => onDiagnose(row.name)}
                     variant="ghost"
-                    size="sm"
-                    onClick={() => onDiagnose(row.name)}
-                    aria-label={`View ${serviceLabel(row.name)} diagnostics`}
                   >
                     Logs →
-                  </Button>
+                  </Action>
                 ) : null}
               </>
             }
@@ -89,8 +95,9 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
               <span className="w-32 shrink-0 text-sm">{serviceLabel(row.name)}</span>
               <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
                 {/* An unconfigured integration has no target. Saying so beats an empty cell,
-                    which reads as a rendering bug rather than an answer. */}
-                {row.target || "not configured"}
+                    which reads as a rendering bug rather than an answer. ⚠ A PASSING row with
+                    no target is not unconfigured: TMDB has no target by design (#2734). */}
+                {row.target || (row.ok ? "" : "not configured")}
               </span>
               {/* The server's actionable detail ("connection refused"), under the row where a
                   failed check sits — the panel's job is to explain, not just to flag. */}

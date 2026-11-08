@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -53,15 +54,14 @@ type EngineStore interface {
 	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
+	RecordScheduledAirings(ctx context.Context, channelID string, airings []store.ScheduledAiring, recordedAt time.Time) error
+	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
-// AvailabilityStore is the title and episode cache used to resolve scheduled
-// content. It is separate from EngineStore because availability is independently
-// replaceable in tests and at composition time.
+// AvailabilityStore is the title store used to resolve scheduled content. It is separate from
+// EngineStore because availability is independently replaceable in tests and at composition time.
 type AvailabilityStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
-	GetSeriesEpisodes(ctx context.Context, libraryID string) (store.SeriesEpisodes, error)
-	UpsertSeriesEpisodes(ctx context.Context, episodes store.SeriesEpisodes) error
 }
 
 // PodFiller answers the backend-specific views of a channel's matched filler
@@ -399,9 +399,9 @@ type storeAvailability struct {
 	//
 	// The TTL is deliberately SHORT. It exists to collapse the repeats inside one operation
 	// (the thing that was costing 72 calls), not to serve as a real cache — the durable answer
-	// for episode enumeration is the persisted store, refreshed by the library-scan job. Set
-	// it longer and this quietly becomes a cache with no invalidation signal, which is the bug
-	// this comment used to describe as a safety property.
+	// for episode enumeration is the Library's own tables. Set it longer and this quietly
+	// becomes a cache with no invalidation signal, which is the bug this comment used to
+	// describe as a safety property.
 	//
 	// Guarded by a mutex: the guide resolves channels concurrently, and a map is not safe
 	// under that on its own.
@@ -409,10 +409,7 @@ type storeAvailability struct {
 	titleMemo map[provision.Key]titleLookup
 	durMemo   map[string]memoEntry[int64]
 	epsMemo   map[string]memoEntry[schedule.EpisodeResolution]
-	// episodeMaxAge keeps cache policy inside this adapter. Nil/zero retains the
-	// documented default while composition can supply the live setting.
-	episodeMaxAge func() time.Duration
-	now           func() time.Time
+	now       func() time.Time
 }
 
 // memoTTL bounds every memoized answer. Long enough to collapse the repeated resolves within
@@ -476,15 +473,6 @@ func NewStoreAvailability(ctx context.Context, st AvailabilityStore, dur Duratio
 		epsMemo:   map[string]memoEntry[schedule.EpisodeResolution]{},
 		now:       time.Now,
 	}
-}
-
-// WithEpisodeMaxAge supplies the live cache-age policy without exposing cache
-// mechanics to schedule.Availability callers or their test adapters.
-func WithEpisodeMaxAge(a Availability, maxAge func() time.Duration) Availability {
-	if sa, ok := a.(*storeAvailability); ok {
-		sa.episodeMaxAge = maxAge
-	}
-	return a
 }
 
 // WithBulkDurations attaches the bulk duration resolver used to prewarm the duration memo
@@ -653,17 +641,9 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeR
 		return schedule.EpisodeResolution{}
 	}
 
-	// THREE tiers, cheapest first. Enumerating a show is the most expensive library call there
-	// is, and a series in the lineup is re-resolved on every layout pass.
-	//
-	// PROFILED: a multi-series channel pays one enumeration PER SHOW, and that was ~90% of the
-	// Guide's latency — Star Trek Classics (4 shows) spent 232ms here while a 25-film movie
-	// channel spent 1ms.
-	//
-	//	1. in-process memo  — collapses the repeats within ONE layout (milliseconds apart)
-	//	2. persisted cache  — survives restarts; refreshed by channel-maintenance (§18.1)
-	//	3. the library      — the source of truth, and the fallback that keeps a cold cache
-	//	                      behaving exactly like today rather than emptying channels
+	// A series in the lineup is re-resolved on every layout pass, so the memo collapses the
+	// repeats within one layout. Behind it the Library's tables answer (#2151 step 16): its
+	// largest show reads in under 10ms, so no persisted cache sits between them.
 	now := s.clock()
 	s.mu.Lock()
 	if hit, ok := s.epsMemo[rec.LibraryID]; ok && now.Before(hit.exp) {
@@ -672,57 +652,12 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeR
 	}
 	s.mu.Unlock()
 
-	// Tier 2. A store read replaces a media-server round-trip: this is the whole point of the
-	// cache. A cached EMPTY list is a HIT, not a miss — ErrNotFound is the only "never asked",
-	// so a genuinely-empty show does not re-enumerate on every request.
-	var cached []schedule.ResolvedProgram
-	var hasCached bool
-	var cacheFresh bool
-	if s.store != nil {
-		if se, err := s.store.GetSeriesEpisodes(s.ctx, rec.LibraryID); err == nil {
-			cached, hasCached = se.Episodes, true
-			cacheFresh = !s.episodeCacheAged(se.FetchedAt, now)
-			if cacheFresh {
-				result := schedule.EpisodeResolution{Programs: cached}
-				s.memoEpisodes(rec.LibraryID, result, now)
-				return result
-			}
-		}
+	var result schedule.EpisodeResolution
+	if eps, err := s.episodes(s.ctx, rec.LibraryID); err == nil {
+		result.Programs = eps
 	}
-
-	// Tier 3. Never enumerated (or the store is unavailable) — ask the library and write the
-	// answer back, so the next request and the next restart both take tier 2.
-	eps, err := s.episodes(s.ctx, rec.LibraryID)
-	if err != nil {
-		if hasCached && len(cached) > 0 {
-			result := schedule.EpisodeResolution{Programs: cached, EditorialUnavailable: true}
-			s.memoEpisodes(rec.LibraryID, result, now)
-			return result
-		}
-		result := schedule.EpisodeResolution{}
-		s.memoEpisodes(rec.LibraryID, result, now)
-		return result
-	} else if s.store != nil {
-		// Best-effort: a write failure costs a re-fetch next time, never correctness, so it
-		// must not fail the resolve that is otherwise complete.
-		_ = s.store.UpsertSeriesEpisodes(s.ctx, store.SeriesEpisodes{
-			LibraryID: rec.LibraryID, Episodes: eps, FetchedAt: now,
-		})
-	}
-
-	result := schedule.EpisodeResolution{Programs: eps}
 	s.memoEpisodes(rec.LibraryID, result, now)
 	return result
-}
-
-func (s *storeAvailability) episodeCacheAged(fetchedAt, now time.Time) bool {
-	age := 24 * time.Hour
-	if s.episodeMaxAge != nil {
-		if configured := s.episodeMaxAge(); configured > 0 {
-			age = configured
-		}
-	}
-	return fetchedAt.IsZero() || !fetchedAt.After(now.Add(-age))
 }
 
 // memoEpisodes records an episode list in the in-process memo. The empty result is memoized
@@ -780,7 +715,14 @@ func (e *Engine) CarriesOver(ctx context.Context, policy schedule.ChannelPolicy)
 //
 // Called from BOTH reconcile and CyclePreview, through this one helper, so the preview cannot
 // disagree with what actually ships (§8.1's one-code-path rule).
-func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy schedule.ChannelPolicy, at time.Time) map[string]time.Time {
+//
+// "Aired" means both (#1677, #1678 decision 1): what was watched (the airings playout records) and
+// what the schedule put on air (the scheduled ledger reconcile records, plus the accepted cycle's
+// own programmes that started before the window opened). Each unit takes its latest of the two, so
+// a channel nobody watches still knows what the window before it aired. The accepted cycle is read
+// in memory as well as from the ledger, so a window arranged before reconcile has recorded the old
+// cycle's last programmes (the playout resolver's turn) is arranged exactly as reconcile will.
+func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy schedule.ChannelPolicy, at time.Time, accepted []schedule.Slot, acceptedAnchor time.Time) map[string]time.Time {
 	if e.store == nil {
 		return nil
 	}
@@ -801,5 +743,67 @@ func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy s
 			"channel", ch.ID, "err", err)
 		return nil
 	}
+	scheduled, err := e.store.LastScheduledByChannel(ctx, ch.ID, opened)
+	if err != nil {
+		e.log.Debug("recency: scheduled ledger unavailable; using watched airings only", "channel", ch.ID, "err", err)
+	}
+	for _, b := range scheduledPrograms(accepted, acceptedAnchor, opened) {
+		if scheduled == nil {
+			scheduled = map[string]time.Time{}
+		}
+		scheduled[b.LibraryItemID] = latest(scheduled[b.LibraryItemID], b.Start)
+	}
+	for unit, at := range scheduled {
+		if hist == nil {
+			hist = map[string]time.Time{}
+		}
+		hist[unit] = latest(hist[unit], at)
+	}
 	return hist
+}
+
+func latest(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
+}
+
+// scheduledPrograms is every programme the accepted cycle, walked from its anchor, started before
+// `until` (#1677). An empty cycle or no anchor aired nothing.
+func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []playout.Broadcast {
+	if len(slots) == 0 || anchor.IsZero() || !anchor.Before(until) {
+		return nil
+	}
+	var out []playout.Broadcast
+	for _, b := range playout.BroadcastsBetween(slots, anchor, anchor, until) {
+		if b.Kind == schedule.SlotProgram && b.LibraryItemID != "" && b.Start.Before(until) {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// recordScheduled writes the scheduled ledger (#1677): every programme the accepted cycle has
+// started by now, up to the instant it hands over at the rolling-window boundary. Each row is
+// stamped as known from the programme's start, so a window arranged later reads every programme
+// that started before it opened, however late the reconcile that records it runs. Idempotent, and
+// best-effort: a ledger write never fails a reconcile.
+func (e *Engine) recordScheduled(ctx context.Context, ch store.Channel, now time.Time) {
+	if e.store == nil || len(ch.Desired) == 0 || ch.PlayoutAnchor.IsZero() {
+		return
+	}
+	until := now.Add(time.Nanosecond) // a programme starting at now has started
+	if window, zone := e.RollingWindow(ch.Policy, now); window > 0 {
+		if end := playout.CarryOverEnd(ch.Desired, ch.PlayoutAnchor, schedule.NextWindowStart(ch.PlayoutAnchor, window, zone)); end.Before(until) {
+			until = end // past the hand-over the next window airs, not this cycle
+		}
+	}
+	for _, b := range scheduledPrograms(ch.Desired, ch.PlayoutAnchor, until) {
+		airing := store.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
+		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []store.ScheduledAiring{airing}, b.Start); err != nil {
+			e.log.Debug("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
+			return
+		}
+	}
 }

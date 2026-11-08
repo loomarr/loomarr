@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type metadataDestinationTester struct {
@@ -32,7 +32,7 @@ func (t *metadataDestinationTester) PublishDestinationTest(
 func TestProtectedRepositoryNeverGivesPlaintextCredentialsToStorage(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "notifications.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestProtectedRepositoryNeverGivesPlaintextCredentialsToStorage(t *testing.T
 func TestProtectedRepositoryRegistersEveryLiveCredentialWithSystemicRedaction(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "notifications.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestProtectedRepositoryRegistersEveryLiveCredentialWithSystemicRedaction(t 
 func TestProtectedRepositoryBindsCredentialsToDestinationIdentity(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "notifications.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestProtectedRepositoryBindsCredentialsToDestinationIdentity(t *testing.T) 
 func TestProtectedRepositoryListsMetadataWithoutOpeningCredentials(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "notifications.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

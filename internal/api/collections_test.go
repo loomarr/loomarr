@@ -20,9 +20,8 @@ func (f fakeCollections) Collections(context.Context) ([]api.LibraryCollection, 
 	return f.colls, f.err
 }
 
-// newCollectionsHarness wires a collections service AND the live-config seam
-// reporting a configured library — the handler gates on both, so a test that sets only the
-// service would 501 and prove nothing about the happy path.
+// newCollectionsHarness wires a collections service with NO media server connected: the
+// household's collections are the Library's own (#2151 step 15e), so listing them needs none.
 func newCollectionsHarness(t *testing.T, svc api.CollectionService) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
@@ -31,8 +30,8 @@ func newCollectionsHarness(t *testing.T, svc api.CollectionService) *apiHarness 
 			Auth:              defaults.Auth,
 			Log:               defaults.Log,
 			Collections:       svc,
-			LiveSettings:      stringSettings(func(key string) string { return "http://media.local" }),
-			LibraryConfigured: func() bool { return true },
+			LiveSettings:      stringSettings(func(key string) string { return "" }),
+			LibraryConfigured: func() bool { return false },
 		})
 	})
 }

@@ -99,6 +99,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  // react-native-web's vendored Animated and VirtualizedList code reads Node's bare `global`
+  // (`global.cancelAnimationFrame`, `global.performance`), which browsers do not define. Without
+  // this, stopping an animation on a hard load throws "global is not defined" (#2725).
+  define: { global: "globalThis" },
   resolve: {
     // The production Web root now mounts the same universal design-system provider as native
     // clients. Resolve its host primitives through the browser adapters and one React runtime;

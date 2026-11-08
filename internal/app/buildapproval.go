@@ -55,11 +55,9 @@ func buildApproval(
 		WithProposalNotifier(notifier).
 		WithDecisionQuality(decisionQuality).
 		WithHolidays(holidays)
-	if libraryClient != nil {
-		approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
-			return libraryPresence{titles: st, lib: libraryClient.Snapshot()}
-		}})
-	}
+	approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() catalog.LibraryPresence {
+		return libraryPresence{titles: st}
+	}})
 	return approvalBuild{
 		binder:          channelBinder,
 		approver:        approver,

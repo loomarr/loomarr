@@ -2,6 +2,7 @@ import type { SplitReviewSegmentDTO } from "@loomarr/api/models/splitReviewSegme
 import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
 import {
+  Action,
   Badge,
   Card,
   Dialog,
@@ -10,8 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  Tooltip,
 } from "@loomarr/design-system";
-import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
@@ -269,16 +271,16 @@ const SplitReviewEditor = ({
       )}
 
       <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
-        <Button variant="outline" size="sm" onClick={onBack}>
+        <Action onPress={onBack} variant="outline">
           Back
-        </Button>
+        </Action>
         <div className="flex items-center gap-3">
           <span className="text-muted-foreground font-mono text-sm tabular-nums">
             {pluralize(draft.length, "clip")}
           </span>
-          <Button size="sm" disabled={!confirmable || confirming} onClick={() => onConfirm(toWire(draft))}>
+          <Action disabled={!confirmable || confirming} onPress={() => onConfirm(toWire(draft))}>
             {confirming ? "Keeping clips…" : "Keep clips"}
-          </Button>
+          </Action>
         </div>
       </div>
 
@@ -528,15 +530,17 @@ const SegmentInspector = ({
         </div>
         <div className="flex flex-wrap justify-end gap-1">
           {!last && (
-            <Button variant="ghost" size="sm" onClick={onMergeWithNext} title="Join this clip and the next">
-              <Merge aria-hidden />
-              Join next
-            </Button>
+            <Tooltip content="Join this clip and the next">
+              <Action onPress={onMergeWithNext} variant="ghost">
+                Join next
+              </Action>
+            </Tooltip>
           )}
-          <Button variant="ghost" size="sm" onClick={onDrop} title="Do not keep this clip">
-            <Trash2 aria-hidden />
-            Remove
-          </Button>
+          <Tooltip content="Do not keep this clip">
+            <Action icon="delete" onPress={onDrop} variant="ghost">
+              Remove
+            </Action>
+          </Tooltip>
         </div>
       </div>
 
@@ -561,16 +565,15 @@ const SegmentInspector = ({
       {segment.suggestedEra ? (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span>Loomarr thinks this may be from around {segment.suggestedEra}.</span>
-          <Button
+          <Action
+            onPress={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
             variant="outline"
-            size="sm"
-            onClick={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
           >
             {`Use ${segment.suggestedEra}`}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => onChange({ suggestedEra: undefined })}>
+          </Action>
+          <Action onPress={() => onChange({ suggestedEra: undefined })} variant="ghost">
             Not right
-          </Button>
+          </Action>
         </div>
       ) : null}
 

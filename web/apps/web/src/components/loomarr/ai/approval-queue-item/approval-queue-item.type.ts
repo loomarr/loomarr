@@ -29,6 +29,9 @@ interface ApprovalQueueItemProps {
   // detail you open when you want them; a refusal changes what approving MEANS — before this,
   // an admin approved seven titles and got five, with nothing on the card saying so.
   refused?: RefusedPick[];
+  // The rating the proposal's audience ceiling allows (e.g. "TV-Y7"), named in the refusal notice so
+  // a reviewer sees which limit left the titles out. Omitted when the proposal carries none.
+  audienceLimit?: string;
   // Holidays this request asked the channel to be exclusive to that the household's country doesn't
   // keep (#2030 decision 38). Their season never comes, so the channel doesn't follow it; shown
   // beside `refused` for the same reason.

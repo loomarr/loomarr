@@ -145,7 +145,7 @@ const DefectReview = ({ busy, error, onLabel, onSkip, player, report }: DefectRe
               onPress={() => {
                 if (!busy) onLabel(row.clipId, "pass");
               }}
-              tone="primary"
+              tone="success"
             >
               Pass
             </Action>

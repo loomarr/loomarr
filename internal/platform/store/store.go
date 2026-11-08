@@ -184,21 +184,6 @@ type ChannelStore interface {
 	ClaimDueChannels(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Channel, error)
 }
 
-// SeriesEpisodeStore is the cached series episode lists (§5, §9 series expansion).
-//
-// A materialized answer, not a second source of truth: the media server still owns what
-// episodes exist. It exists because enumerating a show is one library call, and doing it
-// per series on every guide request was ~90% of that endpoint's latency.
-type SeriesEpisodeStore interface {
-	// GetSeriesEpisodes returns ErrNotFound for a show never enumerated — deliberately
-	// distinct from a cached EMPTY list, which is a real answer ("no episodes present yet").
-	GetSeriesEpisodes(ctx context.Context, libraryID string) (SeriesEpisodes, error)
-	UpsertSeriesEpisodes(ctx context.Context, se SeriesEpisodes) error
-	// ListStaleSeriesEpisodes returns shows fetched before `before`, oldest first, for the
-	// channel-maintenance job (§18.1).
-	ListStaleSeriesEpisodes(ctx context.Context, before time.Time, limit int) ([]SeriesEpisodes, error)
-}
-
 // ProposalRepository is the one persistence surface for proposals and the suggestion jobs that
 // produce them (§8): the job queue, the proposals it yields, and the approval decisions on them.
 // A proposal's body is the typed proposals.Proposal; the repository is the only place its JSON is
@@ -592,15 +577,6 @@ type ScheduledAiring struct {
 	AiredAt       time.Time
 }
 
-// LibraryPathStore caches the media server's file path per library item (#1456) so playout
-// resolves a direct-play input without a media-server request at airtime.
-type LibraryPathStore interface {
-	// LibraryItemPath returns the cached SERVER path (never the mapped local one); ok=false on a miss.
-	LibraryItemPath(ctx context.Context, itemID string) (path string, ok bool, err error)
-	// SetLibraryItemPath upserts the server path for an item.
-	SetLibraryItemPath(ctx context.Context, itemID, serverPath string) error
-}
-
 // ActivityStore is the Dashboard feed (§5, §12, V32).
 type ActivityStore interface {
 	// RecordActivity appends one Dashboard feed row. Best-effort by contract: callers log
@@ -779,14 +755,12 @@ type InventoryStore interface {
 type Store interface {
 	TitleStore
 	ChannelStore
-	SeriesEpisodeStore
 	ProposalRepository
 	ScheduledJobStore
 	UserStore
 	ClipStore
 	InteractiveOperationStore
 	AiringStore
-	LibraryPathStore
 	ActivityStore
 	InvitationStore
 	PasswordRecoveryStore
@@ -817,6 +791,7 @@ type Store interface {
 	LibraryReferenceStore
 	LibraryArtReader
 	CatalogRetentionStore
+	LibraryTitleSearcher
 
 	// Close releases the underlying database handle.
 	Close() error

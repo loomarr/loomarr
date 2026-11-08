@@ -124,6 +124,10 @@ func newGenerationHealth(processStarted time.Time, generation int) *diagnostics.
 		// it never goes stale.
 		{Key: diagnostics.StartupCheckPlayoutTonemap, Label: "HDR tone mapping", Required: false,
 			Mode: diagnostics.HealthCheckContinuous, RemediationRoute: "/settings/system/playback"},
+		// Tasks waiting more than twice their own interval for a worker (#2721).
+		{Key: diagnostics.StartupCheckScheduledTasks, Label: "Scheduled tasks", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/system/tasks"},
 	}, time.Now)
 }
 

@@ -1,10 +1,9 @@
 import * as searchApi from "@loomarr/api/endpoints/search";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Text } from "@loomarr/design-system";
-import { Plus, X } from "lucide-react";
+import { Action, Text } from "@loomarr/design-system";
+import { X } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
@@ -122,23 +121,26 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
               setAdding(false);
             }}
           />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start"
-            onClick={() => {
+          <Action
+            onPress={() => {
               setQuery("");
               setAdding(false);
             }}
+            style={{ alignSelf: "flex-start" }}
+            variant="ghost"
           >
             Cancel
-          </Button>
+          </Action>
         </div>
       ) : (
-        <Button variant="outline" size="sm" className="self-start" onClick={() => setAdding(true)}>
-          <Plus aria-hidden />
+        <Action
+          icon="plus"
+          onPress={() => setAdding(true)}
+          style={{ alignSelf: "flex-start" }}
+          variant="outline"
+        >
           Add a show…
-        </Button>
+        </Action>
       )}
     </div>
   );
