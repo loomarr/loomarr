@@ -64,8 +64,11 @@ type Service interface {
   candidates (chapters first, otherwise coinciding black and silence near quarter-hour points), and the
   active picture that the channel watermark anchors to. Reads are byte-budgeted, so no file is decoded
   whole. Results live in `inventory_source_analysis`, are dropped when the revision changes, and are
-  read through `inventory.AnalysisReader`. Playout never asks the media server at airtime: an
-  unmeasured source gets one stream-facts probe on first play.
+  read through `inventory.AnalysisReader`. Each reconcile of an internal-playout channel queues
+  the library files it airs in the next 48 hours that are not yet measured at their current
+  revision, so a first airing usually starts with its keyframe index; nothing past that horizon is
+  measured ahead, and Tunarr-backed channels queue nothing. Playout never asks the media server at
+  airtime: a source still unmeasured gets one stream-facts probe on first play.
 - **Playout moves onto the Library tables one reader at a time.** Audio-track choice reads first: a
   local file the scanner read at its current size and modification time takes its own audio tracks
   from `library_streams` (`LibraryAudioTracks`), with external audio files excluded. Any other file
