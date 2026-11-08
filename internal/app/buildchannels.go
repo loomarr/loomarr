@@ -28,7 +28,6 @@ import (
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
-	"github.com/loomarr/loomarr/internal/provisionbackstop"
 )
 
 type channelBuild struct {
@@ -58,7 +57,7 @@ func buildChannels(
 	libraryClient *library.Client, secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
-	jobReg *jobs.Registry, episodeRefresh *provisionbackstop.EpisodeRefresh, fillerLayout filler.Layout,
+	jobReg *jobs.Registry, fillerLayout filler.Layout,
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder, watermarks *channelWatermarks, calendar func() schedule.Calendar,
@@ -145,7 +144,6 @@ func buildChannels(
 	// binder is assembled. Nil until assigned, which numbering treats as "Loomarr's store only".
 	var chanNumbers approval.NumberSource
 	if st != nil {
-		lib := libraryClient
 		prog := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
@@ -200,19 +198,13 @@ func buildChannels(
 			func() livetvpublish.MediaSourceLibrary { return libraryClient.Snapshot() }, msProg)
 		tunarrConnectSvc = mediaSource
 
-		// Program duration comes from the media server (§9/§10): give the scheduler
-		// a resolver so program slots carry a real runtime before the Tunarr push,
-		// and an episode resolver so a series entry expands into its episodes (§9).
-		// A library item id (#2151 step 15) is answered from the Library's tables, any other id by
-		// the media server.
-		meta := itemMetadata{facts: st, lib: lib}
-		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(st, lib))
-		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return settings.EpisodesMaxAge.Get(set) })
-		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
-		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches
-		// by id list — the bulk answer simply was not wired to the scheduler's duration path, so
-		// a 25-movie channel paid 25 sequential round trips on every cold guide request (~375ms
-		// of GET /v1/guide, measured against the dev Emby).
+		// Give the scheduler a resolver so program slots carry the Library's runtime before the
+		// Tunarr push, and an episode resolver so a series entry expands into the Library's
+		// episodes (§9, #2151 step 16).
+		meta := itemMetadata{facts: st}
+		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(st))
+		// Bulk duration resolution, so a cycle layout costs ONE Library read instead of one per
+		// movie (§9 N+1).
 		avail = channels.WithBulkDurations(avail, bulkDurations(meta))
 		// Tests inject an in-process Tunarr double here; production uses the real
 		// URL-built programmer (prog). Either way the engine is a *channels.Engine.
@@ -257,11 +249,11 @@ func buildChannels(
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
-		channelEngine.WithRatings(libraryRatings{titles: st, lib: lib})
+		channelEngine.WithRatings(libraryRatings{titles: st})
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
-		channelEngine.WithBoxSets(&libraryBoxSets{lib: lib, own: st, ttl: 15 * time.Minute})
+		channelEngine.WithBoxSets(&libraryBoxSets{own: st, ttl: 15 * time.Minute})
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
 		channelEngine.WithNotifier(emitter)
@@ -284,7 +276,7 @@ func buildChannels(
 		backendView = backendtransition.NewDurableView(st)
 		playoutBuilt, err := buildPlayout(playoutDeps{
 			rootCtx: rootCtx, store: st, settings: set, owner: owner,
-			captureResolver: capturePlayoutResolver, library: libraryClient, secrets: secrets,
+			captureResolver: capturePlayoutResolver, secrets: secrets,
 			readSecret: readGeneratedSecret, events: eventBus, layout: fillerLayout,
 			channels: channelEngine, liveTVConnector: liveTVConnector, backendView: backendView,
 			resolveDesiredBackend: resolveDesiredBackend, log: log, programmer: prog,
@@ -310,7 +302,7 @@ func buildChannels(
 		// (with its own ClaimDueChannels lease), driven by River. The Runner's lease/batch are
 		// constructed here; it has no standalone loop.
 		chSweep := channels.NewRunner(channelEngine, st, chEvery, 2*chEvery, 50, time.Now, log)
-		jobReg.Add(channelMaintenanceJob(chSweep, episodeRefresh, func(ctx context.Context) error {
+		jobReg.Add(channelMaintenanceJob(chSweep, func(ctx context.Context) error {
 			return backendController.ApplyCurrent(ctx, resolveDesiredBackend)
 		}, func(ctx context.Context) error {
 			// Same gate as the auto-wire after a save: no Tunarr configured, nothing to wire.
