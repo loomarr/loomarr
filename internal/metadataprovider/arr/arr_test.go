@@ -210,6 +210,7 @@ func TestRadarr_FetchReturnsTheMovie(t *testing.T) {
 		Overview:     "A clockmaker inherits an orchard whose trees keep perfect time.",
 		PremiereDate: "2016-05-20", Year: 2016, Genres: []string{"Drama", "Fantasy"},
 		Network: "Ironbell Pictures", Runtime: 112 * time.Minute,
+		Edition: "Extended Cut", // the current file's
 	}
 	if !reflect.DeepEqual(*rec.Descriptive, wantDesc) {
 		t.Errorf("descriptive = %+v, want %+v", *rec.Descriptive, wantDesc)

@@ -40,26 +40,30 @@ type ItemFile struct {
 	AudioChannels int
 	// Subtitles is each subtitle stream's language in order, "" where the file doesn't say.
 	Subtitles []string
-	// Extra is a copy that never plays, because another of the title's files does (decision 37).
+	// Edition is the labelled version of the title it is, "" for the default (decision 54).
+	Edition string
+	// Extra is a copy that never plays, because another of the title's files in its edition does
+	// (decisions 37, 54).
 	Extra bool
 	// managed is true when its arr lists it.
 	managed bool
 }
 
-// markExtras marks every file but the one that plays as an extra copy (decision 37). One file is
-// never an extra.
+// markExtras marks every file but the one that plays in its edition as an extra copy (decisions
+// 37, 54). One file is never an extra, nor is a title's only copy of an edition.
 func markExtras(files []ItemFile) {
 	if len(files) < 2 {
 		return
 	}
-	best := playingCopy(len(files), func(i int) bool { return files[i].managed }, func(i int) int {
-		if files[i].Picture == nil {
-			return 0
-		}
-		return files[i].Picture.Width * files[i].Picture.Height
-	}, func(i int) int64 { return files[i].Size })
+	plays := playingCopies(len(files), func(i int) string { return files[i].Edition },
+		func(i int) bool { return files[i].managed }, func(i int) int {
+			if files[i].Picture == nil {
+				return 0
+			}
+			return files[i].Picture.Width * files[i].Picture.Height
+		}, func(i int) int64 { return files[i].Size })
 	for i := range files {
-		files[i].Extra = i != best
+		files[i].Extra = !plays[i]
 	}
 }
 
@@ -159,7 +163,7 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 		for _, f := range files {
 			source := item.sources[f.Path]
 			file := itemFile(f, source.facts)
-			file.managed = source.managed
+			file.managed, file.Edition = source.managed, source.edition
 			detail.Files = append(detail.Files, file)
 		}
 		markExtras(detail.Files)
@@ -328,6 +332,7 @@ type scannedItem struct {
 type scannedSource struct {
 	facts   inventory.SourceFacts
 	managed bool
+	edition string
 }
 
 // scanned is what the scanner wrote about an item; zero when the inventory has none.
@@ -358,7 +363,8 @@ func (l *Library) scanned(ctx context.Context, id string) (scannedItem, error) {
 	for _, s := range item.Sources {
 		for _, o := range s.Origins {
 			if present(o.Key, o.MissingAt) && o.Locator.Path != "" {
-				out.sources[o.Locator.Path] = scannedSource{facts: o.Observation.Facts, managed: ext[o.Key].Managed}
+				out.sources[o.Locator.Path] = scannedSource{facts: o.Observation.Facts, managed: ext[o.Key].Managed,
+					edition: ext[o.Key].Edition}
 			}
 		}
 	}

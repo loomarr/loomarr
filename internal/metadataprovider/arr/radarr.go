@@ -126,6 +126,8 @@ func movieRecord(m radarrMovie, country, base string) mp.Record {
 	if f := m.MovieFile; m.HasFile && f != nil && strings.TrimSpace(f.Path) != "" {
 		rec.Files = []mp.FileRef{{Path: f.Path, SizeBytes: f.Size}}
 		rec.Technical = technical(f.MediaInfo, f.Size)
+		// The edition is the current file's, as Radarr read it from the release name.
+		rec.Descriptive.Edition = strings.TrimSpace(f.Edition)
 	}
 	return rec
 }
@@ -165,5 +167,6 @@ type radarrMovie struct {
 type radarrMovieFile struct {
 	Path      string     `json:"path"`
 	Size      int64      `json:"size"`
+	Edition   string     `json:"edition"`
 	MediaInfo *mediaInfo `json:"mediaInfo"`
 }

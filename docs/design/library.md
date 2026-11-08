@@ -287,7 +287,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   episode names its series' scan origin, and the store fills `series_id` whichever of the two
   is written second. An episode with no rating takes its show's (`rating_from = 'show'`); its
   genres and studios are its show's only (decision 42). `library_sources` has one row per present
-  file, with the copy that plays marked (`plays`, decision 37's rule, shared with the title page).
+  file, with its `edition` and the copy that plays in each edition marked (`plays`, decision 37's
+  rule, shared with the title page).
   `library_streams` has one row per track, with labels computed once from the raw header values
   (decision 44): resolution by height or, for a picture wider than 16:9, by width; HDR type from
   the transfer; audio format; the channel layout where the container states none (neither
@@ -414,9 +415,19 @@ step 5). Nothing reads the scanner's origins until the cutover.
   its header is read the picture (4K, 1080p HD, 720p HD or standard, "extra-rich colour" for
   HDR), the sound that plays (its default audio stream), each subtitle language, and the
   measured length.
-- **Extra copies** (step 10e, decision 37). When a movie has several files, one plays: the file
-  its arr lists (each file origin's extension notes `managed`), else the sharpest picture, else
-  the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
+- **Editions** (step 14b-1c, decision 54). A movie file can be a labelled version of its title,
+  such as a Director's Cut. Its arr's edition counts first (Radarr's, read from the release name),
+  then its name's `{edition-…}`, then its NFO's `<edition>`; a catalog never has a say. The label
+  is kept as given, with its words capitalised when it came in one case ("EXTENDED" →
+  "Extended"); Theatrical is the default and has no label. Labels that differ only by a trailing
+  "Cut", "Edition" or "Version", by case or by an apostrophe are one edition. Each file origin's
+  extension notes its edition. Editions are labels, not separate titles: each edition has its own
+  copy that plays, picked below, and only a second copy of the same edition is an extra. The
+  `{edition-…}` tag never reaches a title's name or its search. The Library does not show
+  editions yet: that needs a mock.
+- **Extra copies** (step 10e, decision 37). When a movie has several files, one plays in each
+  edition: the file its arr lists (each file origin's extension notes `managed`), else the
+  sharpest picture, else the biggest file. Each other file is an extra copy: a warning card on the title's page ("An
   extra copy is taking 4.0 GB") with Remove extra copy (`POST …/remove-copy`, 409 for the copy
   that plays). Removing moves the file to `<media folder>/.loomarr-trash/<date>/<its path>`, the
   same share, so it is a rename and can be undone by moving it back; the trash holds a `.ignore`,
