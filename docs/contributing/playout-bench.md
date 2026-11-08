@@ -29,7 +29,7 @@ job on the host makes the numbers meaningless.
 | `break/pts_gaps`, `break/audio_off_grid` | video PTS off the frame grid, audio PTS off the AAC frame grid, across every corpus clip | 0 |
 | `break/sps_variants` | distinct H.264 SPS across every clip's output, so items of any geometry, cadence or codec splice into one decoder | 1 |
 | `break/loudness_dev_lu` | worst integrated-loudness deviation from −23 LUFS on the generated clips, no `loudnorm` | ≤ 1 LU |
-| `break/first_packet_ms` | worst time to first output byte across the commercial spots | ≤ 250 ms |
+| `break/first_packet_ms` | worst time to first output byte across the commercial spots | ≤ 250 ms; NVENC ≤ 400 ms, because each spot is a new process that pays the driver's start-up |
 | `vmaf_mean/<class>` | VMAF of the output against the source scaled to the rung | tracked against the baseline only |
 
 Classes are `h264-1080p`, `hevc-1080p` and `hdr-4k`. A source the builder refuses on this host (a

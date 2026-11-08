@@ -163,6 +163,16 @@ func TestJudge_NVENCStartAllowsTheDriversInitialisation(t *testing.T) {
 	if !contains(f, "start_p95_ms/h264-1080p") || !contains(f, "start_p95_ms/hevc-1080p") {
 		t.Fatalf("other families keep 400/500 ms, failed: %v", f)
 	}
+	spots := func(r *Report) {
+		hardwareGreen(r)
+		r.Set("break/first_packet_ms", 265, "ms", Lower)
+	}
+	if f := failed(Judge(report("nvenc", spots), ModeFull)); len(f) != 0 {
+		t.Fatalf("an NVENC spot's first packet under 400 ms must pass, failed: %v", f)
+	}
+	if f := failed(Judge(report("vaapi", spots), ModeFull)); !contains(f, "break/first_packet_ms") {
+		t.Fatalf("other families keep 250 ms for a spot's first packet, failed: %v", f)
+	}
 	tooSlow := report("nvenc", func(r *Report) {
 		hardwareGreen(r)
 		r.Set("start_p95_ms/h264-1080p", 701, "ms", Lower)
