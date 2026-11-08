@@ -7,6 +7,10 @@
 //
 // Nothing here is committed media: the clips, posters, backdrops, icons and the watermark are all
 // generated at setup time (assets.go) into a local directory, deterministically, from this file.
+//
+// The one exception is the open content pack (openpack.json, pack.go), which only the public demo
+// site serves (DEMO_SITE_CONTENT=open): real, openly licensed films and public-domain clips, pinned
+// by URL and SHA-256 and downloaded at setup. The guard exempts exactly that manifest.
 package demolibrary
 
 import (
@@ -18,6 +22,10 @@ import (
 // real id would let a configured TMDB key fetch a REAL poster for an invented title. Ids from
 // 90,000,000 are far above anything either service has issued, so a lookup finds nothing.
 const ProviderIDBase = 90_000_000
+
+// OpenProviderIDBase offsets the open pack's provider ids, for the same reason and in a block of
+// their own: an open title must not collide with an invented one in a store that held both.
+const OpenProviderIDBase = 91_000_000
 
 // Kind is the media-server item type a title is served as.
 type Kind string
@@ -36,6 +44,7 @@ type Format struct {
 	Width    int
 	Height   int
 	Codec    string // "h264" | "hevc"
+	Audio    string // "aac" | "mp3"; empty is aac, which every generated file carries
 	TenBit   bool
 	HDR10    bool
 	Duration int // seconds
@@ -88,7 +97,7 @@ var Fillers = []Filler{
 	{ID: "commercial-headphones-2015", Name: "Headphones commercial 2015", Duration: 20},
 }
 
-// Title is one invented catalogue entry.
+// Title is one catalogue entry: invented (catalog.go) or from the open pack (Open).
 type Title struct {
 	N        int // 1-based index within its kind; drives the id and provider id
 	Kind     Kind
@@ -97,20 +106,30 @@ type Title struct {
 	Rating   string
 	Genres   []string
 	Overview string
-	Format   string // Format.ID
-	Episodes int    // series only
+	Format   string // Format.ID; invented titles only
+	Episodes int    // invented series only
+	Open     bool   // from the open pack: "open-" ids and OpenProviderIDBase
 }
 
 // ID is the stand-in server's item id.
 func (t Title) ID() string {
-	if t.Kind == Series {
-		return fmt.Sprintf("demo-series-%02d", t.N)
+	prefix := "demo"
+	if t.Open {
+		prefix = "open"
 	}
-	return fmt.Sprintf("demo-film-%02d", t.N)
+	if t.Kind == Series {
+		return fmt.Sprintf("%s-series-%02d", prefix, t.N)
+	}
+	return fmt.Sprintf("%s-film-%02d", prefix, t.N)
 }
 
 // ProviderID is the TVDB id (series) or TMDB id (film) the title is keyed on.
-func (t Title) ProviderID() int { return ProviderIDBase + t.N }
+func (t Title) ProviderID() int {
+	if t.Open {
+		return OpenProviderIDBase + t.N
+	}
+	return ProviderIDBase + t.N
+}
 
 // Key is the Loomarr provisioning key the title resolves to.
 func (t Title) Key() string {
@@ -120,12 +139,14 @@ func (t Title) Key() string {
 	return "movie:tmdb:" + strconv.Itoa(t.ProviderID())
 }
 
-// Episode is one generated episode of a series.
+// Episode is one episode of a series.
 type Episode struct {
-	ID     string
-	Name   string
-	Season int
-	Number int
+	ID       string
+	Name     string
+	Season   int
+	Number   int
+	Year     int    // open pack only; zero reports the series' year
+	Overview string // open pack only; empty reports the series' overview
 }
 
 // EpisodesOf lists a series' episodes: one season, invented episode names.
@@ -133,13 +154,17 @@ func EpisodesOf(t Title) []Episode {
 	out := make([]Episode, 0, t.Episodes)
 	for i := 1; i <= t.Episodes; i++ {
 		out = append(out, Episode{
-			ID:     fmt.Sprintf("%s-s01e%02d", t.ID(), i),
+			ID:     episodeID(t, i),
 			Name:   episodeWords[(t.N*7+i*3)%len(episodeWords)] + " " + episodeNouns[(t.N*5+i)%len(episodeNouns)],
 			Season: 1, Number: i,
 		})
 	}
 	return out
 }
+
+// episodeID is episode n's item id. Every series has one season; the stand-in finds an episode's
+// series by cutting the id at "-s01e".
+func episodeID(t Title, n int) string { return fmt.Sprintf("%s-s01e%02d", t.ID(), n) }
 
 var (
 	episodeWords = []string{"The Borrowed", "A Very Loud", "The Upside-Down", "Nobody's", "The Seventh", "A Borrowed", "The Runaway", "The Quiet", "The Tangled", "An Unexpected"}
@@ -242,12 +267,12 @@ var Catalogue = []Title{
 // Channel is one pre-approved demo channel. Numbers and names are cited by the docs ("channel
 // 101"), so they are stable across releases: add channels, never renumber.
 type Channel struct {
-	Number    int
-	Name      string
-	Group     string
-	Strategy  string // "shuffle" mixes a series channel's shows; "sequential" airs in lineup order
-	Watermark bool
-	Titles    []string // Title.ID()s, in lineup order
+	Number    int      `json:"number"`
+	Name      string   `json:"name"`
+	Group     string   `json:"group"`
+	Strategy  string   `json:"strategy"` // "shuffle" mixes a series channel's shows; "sequential" airs in lineup order
+	Watermark bool     `json:"watermark"`
+	Titles    []string `json:"titles"` // Title.ID()s, in lineup order
 }
 
 // Channels are the channels `make demo-seed` creates.
@@ -264,16 +289,6 @@ var Channels = []Channel{
 		Titles: []string{"demo-series-20", "demo-series-21", "demo-series-22", "demo-series-23", "demo-series-30"}},
 	{Number: 106, Name: "Mystery Hour", Group: "Movies & Series", Strategy: "shuffle",
 		Titles: []string{"demo-series-15", "demo-series-16", "demo-series-18", "demo-film-10", "demo-film-29"}},
-}
-
-// ByID finds a catalogue title by its item id.
-func ByID(id string) (Title, bool) {
-	for _, t := range Catalogue {
-		if t.ID() == id {
-			return t, true
-		}
-	}
-	return Title{}, false
 }
 
 // FormatByID finds a generated format by id.

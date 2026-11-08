@@ -8,7 +8,7 @@
 | Worktree | A live-reload build with its own ports and database | The change works while you build it | The shipped image, or a real upgrade |
 | Pull request | Fast affected checks | The change compiles and its unit tests pass | Browser suites, race tests, Postgres or the image |
 | Merge queue | Every affected gate on the current base | The change is safe to merge | That the image runs as a deployed app |
-| Demo site | A real image beside the invented demo library | The image starts, seeds, and plays channels | Real data, GPU encoding or load |
+| Demo site | A real image beside the demo library | The image starts, seeds, and plays channels | Real data, GPU encoding or load |
 | Staging | The demo site on a cloud server, for a few hours | The same as the demo site, away from your machine, from a commit or a release | Real data, GPU encoding or load |
 | Migration rehearsal | A candidate image on a copy of a real backup, with no network | The migrations run on real data and the server starts | That the app behaves well afterwards |
 | Production | A signed release | Everything, on real data | Nothing: a mistake here reaches a household |
@@ -45,6 +45,11 @@ DEMO_SITE_DATABASE=postgres make demo-site VERSION=0.2.0-beta.9-rc.11
 
 `make demo-site-down` stops it and deletes its data. Run it before switching to an older version or
 a different database, because the data stays between runs and an older server won't open it.
+
+Add `DEMO_SITE_CONTENT=open` to fill it with real films, cartoons and vintage commercials instead of
+the invented library: the [open content pack](demo-content.md), every item openly licensed. The
+first start downloads about 1.3 GB and checks every file against its pinned hash. The public site
+uses it by default. Run `make demo-site-down` before switching between the two.
 
 The sign-in is public, so the site only listens on this machine. Set `DEMO_SITE_BIND` only on a
 private network. Without a GPU it plays two channels at once, and a third is refused until one

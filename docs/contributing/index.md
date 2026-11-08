@@ -12,6 +12,7 @@ cross-harness contract and points here for detail.
 | [Setup](setup.md) | Toolchain versions, getting a clean clone green |
 | [Dev loop](dev-loop.md) | Running both halves with live reload |
 | [Environments](environments.md) | Where to try a change, what each place proves, and the demo site |
+| [Demo content](demo-content.md) | The open content pack the public demo site plays: every item, its source and licence |
 | [Dev watchers](dev-watchers.md) | Watching the machine, your PRs and agent lanes; retiring worktrees cleanly |
 | [Testing](testing.md) | The test layers and which are gates |
 | [Playout bench](playout-bench.md) | The cross-hardware playout measurement, its thresholds and CI jobs |

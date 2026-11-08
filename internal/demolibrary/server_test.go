@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/demolibrary"
@@ -18,7 +19,7 @@ import (
 func demoClient(t *testing.T) (*library.Client, demolibrary.Layout) {
 	t.Helper()
 	l := demolibrary.Layout{Dir: t.TempDir()}
-	srv := httptest.NewServer(demolibrary.Server{Layout: l, Token: "demo-token"})
+	srv := httptest.NewServer(demolibrary.Server{Layout: l, Library: demolibrary.Invented(), Token: "demo-token"})
 	t.Cleanup(srv.Close)
 	return library.New(library.Emby, srv.URL, "demo-token", "demo-test"), l
 }
@@ -149,9 +150,77 @@ func TestStandInStatesAFilmsFileSizeOnlyOnceTheFileExists(t *testing.T) {
 	}
 }
 
+// The open pack runs through the same stand-in: real episode names and per-file runtimes reach
+// the real client, every title's overview carries its credit and licence, and the filler clips
+// point at the downloaded pack files.
+func TestStandInServesTheOpenPack(t *testing.T) {
+	ctx := context.Background()
+	lib, err := demolibrary.Load(demolibrary.ContentOpen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := demolibrary.Layout{Dir: t.TempDir()}
+	srv := httptest.NewServer(demolibrary.Server{Layout: l, Library: lib, Token: "demo-token"})
+	t.Cleanup(srv.Close)
+	c := library.New(library.Emby, srv.URL, "demo-token", "demo-test")
+
+	items, err := c.AllItems(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != len(lib.Titles) {
+		t.Fatalf("scan saw %d items, want the pack's %d titles", len(items), len(lib.Titles))
+	}
+	for _, it := range items {
+		if it.TMDBID+it.TVDBID < demolibrary.OpenProviderIDBase {
+			t.Errorf("%q keyed below the open pack's provider range", it.Name)
+		}
+		if !strings.Contains(it.Overview, "Licence: ") {
+			t.Errorf("%q overview carries no licence: %q", it.Name, it.Overview)
+		}
+	}
+
+	var series demolibrary.Title
+	for _, ti := range lib.Titles {
+		if ti.Kind == demolibrary.Series {
+			series = ti
+			break
+		}
+	}
+	want := lib.EpisodesOf(series)
+	eps, err := c.ListEpisodes(ctx, series.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(want) < 2 || len(eps) != len(want) {
+		t.Fatalf("episodes of %s = %d, want the pack's %d (and several)", series.Name, len(eps), len(want))
+	}
+	for i, e := range eps {
+		shape, _ := lib.Shape(want[i].ID)
+		if e.Name != want[i].Name || e.DurationMs != int64(shape.Duration)*1000 {
+			t.Errorf("episode %d = %q %dms, want %q %ds", i+1, e.Name, e.DurationMs, want[i].Name, shape.Duration)
+		}
+	}
+
+	folder, err := c.LibraryIDByName(ctx, demolibrary.FillerLibraryName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clips, err := c.ListFillerClips(ctx, folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != len(lib.Fillers) {
+		t.Fatalf("filler clips = %d, want %d", len(clips), len(lib.Fillers))
+	}
+	if wantPath, _ := filepath.Abs(l.PackFiller(clips[0].LibraryItemID)); clips[0].Path != wantPath {
+		t.Fatalf("filler path = %q, want the pack download %q", clips[0].Path, wantPath)
+	}
+}
+
 func TestStandInRefusesAWrongToken(t *testing.T) {
 	l := demolibrary.Layout{Dir: t.TempDir()}
-	srv := httptest.NewServer(demolibrary.Server{Layout: l, Token: "demo-token"})
+	srv := httptest.NewServer(demolibrary.Server{Layout: l, Library: demolibrary.Invented(), Token: "demo-token"})
 	t.Cleanup(srv.Close)
 	c := library.New(library.Emby, srv.URL, "wrong", "demo-test")
 	if _, err := c.AllItems(context.Background()); err == nil {

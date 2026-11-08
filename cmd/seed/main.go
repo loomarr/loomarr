@@ -449,7 +449,7 @@ func items(ps []pick) []proposals.ProposalItem {
 // demoFilm is a film from the invented demo catalogue, keyed on its demo TMDB id. Its library
 // item id is the stand-in media server's (`make demo-library`), so the two line up.
 func demoFilm(id string) demolibrary.Title {
-	t, ok := demolibrary.ByID(id)
+	t, ok := demolibrary.Invented().ByID(id)
 	if !ok || t.Kind != demolibrary.Movie {
 		panic("seed: unknown demo film " + id)
 	}

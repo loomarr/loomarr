@@ -67,11 +67,11 @@ type SeedChannel struct {
 // gate is the only way a title becomes `available`; a hand-made lineup over the HTTP API would
 // leave every entry pending. Everything the running backend owns (settings, names, numbers,
 // icons, watermarks, reconcile) goes over its HTTP API so it hot-applies.
-func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
+func seed(ctx context.Context, lib *demolibrary.Library, cfg seedConfig, log *slog.Logger) error {
 	if cfg.base == "" || cfg.databaseURL == "" {
 		return errors.New("seed needs BASE (the backend URL) and DATABASE_URL (its store)")
 	}
-	if err := demolibrary.Generate(ctx, cfg.dir, cfg.ffmpeg, log); err != nil {
+	if err := demolibrary.Generate(ctx, lib, cfg.dir, cfg.ffmpeg, log); err != nil {
 		return err
 	}
 	api, err := newBackend(cfg.base)
@@ -111,8 +111,8 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 		out.AdminPassword = demoAdminPassword
 	}
 	approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
-	for _, c := range demolibrary.Channels {
-		id, err := ensureChannel(ctx, st, approver, admin.ID, c)
+	for _, c := range lib.Channels {
+		id, err := ensureChannel(ctx, st, approver, lib, admin.ID, c)
 		if err != nil {
 			return fmt.Errorf("channel %d %q: %w", c.Number, c.Name, err)
 		}
@@ -168,16 +168,23 @@ func ensureAdmin(ctx context.Context, st store.Store) (identitystore.User, bool,
 
 // ensureChannel approves the channel's proposal once, keyed by deterministic job and proposal
 // ids, and returns the channel the approval bound.
-func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approver, adminID string, c demolibrary.Channel) (string, error) {
-	jobID := fmt.Sprintf("job_demo_%d", c.Number)
-	propID := fmt.Sprintf("prop_demo_%d", c.Number)
+func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approver, lib *demolibrary.Library, adminID string, c demolibrary.Channel) (string, error) {
+	// The open pack keys its channels apart from the invented library's, so a store seeded with one
+	// never mistakes the other's channel for its own: switching content on a kept store fails on the
+	// taken channel number instead of renaming an invented channel over the pack's name.
+	key := "demo"
+	if lib.Content == demolibrary.ContentOpen {
+		key = "demo_open"
+	}
+	jobID := fmt.Sprintf("job_%s_%d", key, c.Number)
+	propID := fmt.Sprintf("prop_%s_%d", key, c.Number)
 	if ch, err := st.GetChannelByIntentRef(ctx, jobID); err == nil {
 		return ch.ID, nil
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return "", err
 	}
 	if _, err := st.GetProposal(ctx, propID); errors.Is(err, store.ErrNotFound) {
-		if err := createProposal(ctx, st, adminID, jobID, propID, c); err != nil {
+		if err := createProposal(ctx, st, lib, adminID, jobID, propID, c); err != nil {
 			return "", err
 		}
 	} else if err != nil {
@@ -194,11 +201,11 @@ func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approv
 	return approved.ChannelID, nil
 }
 
-func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID string, c demolibrary.Channel) error {
+func createProposal(ctx context.Context, st store.Store, lib *demolibrary.Library, adminID, jobID, propID string, c demolibrary.Channel) error {
 	intent := proposals.Intent{Description: c.Name}
 	var lineup []proposals.ProposalItem
 	for _, id := range c.Titles {
-		t, ok := demolibrary.ByID(id)
+		t, ok := lib.ByID(id)
 		if !ok {
 			return fmt.Errorf("unknown demo title %q", id)
 		}

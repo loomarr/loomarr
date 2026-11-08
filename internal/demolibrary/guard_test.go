@@ -445,8 +445,60 @@ func TestDemoCatalogueIsInvented(t *testing.T) {
 	}
 	for _, c := range Channels {
 		for _, id := range c.Titles {
-			if _, ok := ByID(id); !ok {
+			if _, ok := Invented().ByID(id); !ok {
 				t.Errorf("channel %d lists unknown title %s", c.Number, id)
+			}
+		}
+	}
+}
+
+// openPackManifest is the one file under the guarded directories allowed to name real titles: the
+// open content pack, served only by the public demo site (DEMO_SITE_CONTENT=open). Its titles are
+// real by design, and every one is pinned to a licence the pack test checks.
+const openPackManifest = "internal/demolibrary/openpack.json"
+
+// packNames matches any of the open pack's title and episode names in text. It is the exemption's
+// other half: what the manifest may name, nothing else in the guarded tree may.
+func packNames(t *testing.T) *regexp.Regexp {
+	t.Helper()
+	p, err := EmbeddedPack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, pt := range p.Titles {
+		names = append(names, regexp.QuoteMeta(pt.Name))
+		for _, e := range pt.Episodes {
+			names = append(names, regexp.QuoteMeta(e.Name))
+		}
+	}
+	// Names may end in punctuation ("Wing It!"), where \b never matches, so bound on non-word runes.
+	return regexp.MustCompile(`(?i)(?:^|\W)(?:` + strings.Join(names, "|") + `)(?:$|\W)`)
+}
+
+// The invented library stays invented with the pack in the package: no invented title, episode,
+// clip or channel borrows a pack name or lists a pack title.
+func TestInventedLibraryBorrowsNothingFromThePack(t *testing.T) {
+	re := packNames(t)
+	lib := Invented()
+	for _, ti := range lib.Titles {
+		text := ti.Name + "\n" + ti.Overview
+		for _, e := range lib.EpisodesOf(ti) {
+			text += "\n" + e.Name
+		}
+		if hit := re.FindString(text); hit != "" {
+			t.Errorf("invented title %q carries the pack name %q", ti.Name, hit)
+		}
+	}
+	for _, f := range lib.Fillers {
+		if hit := re.FindString(f.Name); hit != "" {
+			t.Errorf("invented filler %q carries the pack name %q", f.Name, hit)
+		}
+	}
+	for _, c := range lib.Channels {
+		for _, id := range c.Titles {
+			if strings.HasPrefix(id, "open-") {
+				t.Errorf("invented channel %d lists the pack title %s", c.Number, id)
 			}
 		}
 	}
@@ -605,13 +657,26 @@ func TestMigratedGoTestsStayInvented(t *testing.T) {
 
 func TestSeedsCarryNoRealTitles(t *testing.T) {
 	root := repoRoot(t)
+	pack := packNames(t)
+	exempt := false
 	for _, rel := range seedFiles(t, root) {
 		if path.Base(rel) == "guard_test.go" { // holds the denylist itself
 			continue
 		}
-		if hits := realHits(mustRead(t, filepath.Join(root, rel))); len(hits) != 0 {
+		if rel == openPackManifest { // real by design; see openPackManifest
+			exempt = true
+			continue
+		}
+		text := mustRead(t, filepath.Join(root, rel))
+		if hits := realHits(text); len(hits) != 0 {
 			t.Errorf("%s carries real titles or ids: %q", rel, hits)
 		}
+		if hit := pack.FindString(text); hit != "" {
+			t.Errorf("%s names the open pack title %q; only %s may", rel, strings.TrimSpace(hit), openPackManifest)
+		}
+	}
+	if !exempt {
+		t.Errorf("the guard exempts %s, which no longer exists; move the exemption with the manifest", openPackManifest)
 	}
 }
 

@@ -15,6 +15,16 @@ services:
       LOOMARR_DEMO_USERNAME: guest
       LOOMARR_DEMO_PASSWORD: loomarr-guest
 
+  # Visitors see real, openly licensed films and vintage commercials rather than test cards
+  # (docs/demo-content-credits.md).
+  demo-library:
+    environment:
+      DEMO_CONTENT: ${DEMO_SITE_CONTENT:-open}
+
+  demo-seed:
+    environment:
+      DEMO_CONTENT: ${DEMO_SITE_CONTENT:-open}
+
   cloudflared:
     image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
     profiles: ["public"]

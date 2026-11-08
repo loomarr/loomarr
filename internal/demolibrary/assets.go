@@ -17,7 +17,7 @@ import (
 
 // AssetVersion stamps the generated tree. Bump it when a generator changes what it draws, so an
 // existing demo directory is regenerated instead of mixing old and new files.
-const AssetVersion = 4
+const AssetVersion = 5
 
 // Test Card palette (web/packages/design-system/src/tokens/brand-contract.json). Duplicated
 // rather than read at runtime because the backend binary does not ship the web tree; the guard
@@ -47,13 +47,24 @@ func (l Layout) Icon(number int) string {
 	return filepath.Join(l.Dir, "art", "icon", strconv.Itoa(number)+".png")
 }
 func (l Layout) Watermark() string { return filepath.Join(l.Dir, "art", "watermark.png") }
-func (l Layout) manifest() string  { return filepath.Join(l.Dir, "manifest.json") }
-func (l Layout) work() string      { return filepath.Join(l.Dir, ".work") }
+
+// PackProgramme and PackFiller are where the open pack's downloaded files live. They sit under
+// media/, which a reset never removes, so switching content modes in one directory does not throw
+// away a gigabyte of verified downloads.
+func (l Layout) PackProgramme(itemID string) string {
+	return filepath.Join(l.Dir, "media", "programmes", itemID+".mp4")
+}
+func (l Layout) PackFiller(id string) string {
+	return filepath.Join(l.Dir, "media", "filler", id+".mp4")
+}
+func (l Layout) manifest() string { return filepath.Join(l.Dir, "manifest.json") }
+func (l Layout) work() string     { return filepath.Join(l.Dir, ".work") }
 
 // Manifest records how every generated file was made. Generated art carries the repository's
 // licence; a future AI-art step would add its model and prompt per file here (#1587).
 type Manifest struct {
 	Version   int             `json:"version"`
+	Content   Content         `json:"content"`
 	Generator string          `json:"generator"`
 	Licence   string          `json:"licence"`
 	Files     []ManifestEntry `json:"files"`
@@ -65,38 +76,77 @@ type ManifestEntry struct {
 	Source string `json:"source"`
 }
 
-// Generate writes every demo asset under dir that is not already there. It is idempotent: a
-// complete directory at the current AssetVersion is left untouched, and a partial one (an
-// interrupted run) is finished, because each file is written to a temporary name and renamed.
-func Generate(ctx context.Context, dir, ffmpeg string, log *slog.Logger) error {
+// Generate writes every asset lib needs under dir that is not already there. It is idempotent: a
+// complete directory at the current AssetVersion and content is left untouched, and a partial one
+// (an interrupted run) is finished, because each file is written to a temporary name and renamed.
+//
+// The invented library generates all of its media. The open pack downloads its pinned files and
+// verifies each against its SHA-256 first, then cuts its posters and backdrops from those videos;
+// its channel icons and watermark are generated like the invented library's.
+func Generate(ctx context.Context, lib *Library, dir, ffmpeg string, log *slog.Logger) error {
 	l := Layout{Dir: dir}
-	if err := l.resetIfStale(); err != nil {
+	if err := l.resetIfStale(lib.Content); err != nil {
 		return err
 	}
-	for _, sub := range []string{"video", "filler", "art/poster", "art/backdrop", "art/icon", ".work"} {
+	for _, sub := range []string{"video", "filler", "art/poster", "art/backdrop", "art/icon", "media/programmes", "media/filler", ".work"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
 			return err
 		}
 	}
+	m := Manifest{Version: AssetVersion, Content: lib.Content, Generator: "loomarr internal/demolibrary", Licence: "Same licence as the Loomarr repository; no third-party imagery"}
 	g := generator{ffmpeg: ffmpeg, l: l, log: log}
 	var jobs []job
-	for _, f := range Formats {
-		jobs = append(jobs, job{l.Video(f.ID), "ffmpeg lavfi SMPTE bars, " + f.Label, func(ctx context.Context, out string) error { return g.video(ctx, f, out) }})
+	if lib.pack == nil {
+		for _, f := range Formats {
+			jobs = append(jobs, job{l.Video(f.ID), "ffmpeg lavfi SMPTE bars, " + f.Label, func(ctx context.Context, out string) error { return g.video(ctx, f, out) }})
+		}
+		for i, f := range lib.Fillers {
+			jobs = append(jobs, job{l.Filler(f.ID), "ffmpeg lavfi colour card", func(ctx context.Context, out string) error { return g.filler(ctx, f, chroma[i%len(chroma)], out) }})
+		}
+		for _, t := range lib.Titles {
+			jobs = append(jobs,
+				job{l.Poster(t.ID()), "ffmpeg typographic poster", func(ctx context.Context, out string) error { return g.poster(ctx, t, out) }},
+				job{l.Backdrop(t.ID()), "ffmpeg typographic backdrop", func(ctx context.Context, out string) error { return g.backdrop(ctx, t, out) }})
+		}
+	} else {
+		m.Licence = "Generated files: same licence as the Loomarr repository. Pack media and the frames cut from it: each file's own licence, below"
+		d := newDownloader(log)
+		var total int64
+		for _, f := range lib.pack.files() {
+			dest := l.PackProgramme(f.itemID)
+			if f.filler {
+				dest = l.PackFiller(f.itemID)
+			}
+			if err := d.fetch(ctx, f.media, dest); err != nil {
+				return err
+			}
+			total += f.media.Size
+			rel, _ := filepath.Rel(dir, dest)
+			m.Files = append(m.Files, ManifestEntry{Path: rel, Source: f.media.URL + " sha256:" + f.media.SHA256 + " " + Licences[f.media.Licence]})
+		}
+		log.Info("demo pack media verified", "files", len(lib.pack.files()), "bytes", total)
+		for _, pt := range lib.pack.Titles {
+			t := pt.title()
+			src := l.PackProgramme(t.ID())
+			if pt.Kind == Series {
+				src = l.PackProgramme(episodeID(t, 1))
+			}
+			art := pt.artMedia()
+			source := "ffmpeg frame from " + art.URL + " " + Licences[art.Licence]
+			jobs = append(jobs,
+				job{l.Poster(t.ID()), source, func(ctx context.Context, out string) error {
+					return g.frame(ctx, src, pt.PosterAt, 600, 900, out)
+				}},
+				job{l.Backdrop(t.ID()), source, func(ctx context.Context, out string) error {
+					return g.frame(ctx, src, pt.BackdropAt, 1280, 720, out)
+				}})
+		}
 	}
-	for i, f := range Fillers {
-		jobs = append(jobs, job{l.Filler(f.ID), "ffmpeg lavfi colour card", func(ctx context.Context, out string) error { return g.filler(ctx, f, chroma[i%len(chroma)], out) }})
-	}
-	for _, t := range Catalogue {
-		jobs = append(jobs,
-			job{l.Poster(t.ID()), "ffmpeg typographic poster", func(ctx context.Context, out string) error { return g.poster(ctx, t, out) }},
-			job{l.Backdrop(t.ID()), "ffmpeg typographic backdrop", func(ctx context.Context, out string) error { return g.backdrop(ctx, t, out) }})
-	}
-	for _, c := range Channels {
+	for _, c := range lib.Channels {
 		jobs = append(jobs, job{l.Icon(c.Number), "ffmpeg typographic channel icon", func(ctx context.Context, out string) error { return g.icon(ctx, c, out) }})
 	}
 	jobs = append(jobs, job{l.Watermark(), "ffmpeg test-card bars on transparent", g.watermark})
 
-	m := Manifest{Version: AssetVersion, Generator: "loomarr internal/demolibrary", Licence: "Same licence as the Loomarr repository; no third-party imagery"}
 	made := 0
 	for _, j := range jobs {
 		rel, _ := filepath.Rel(dir, j.out)
@@ -115,7 +165,7 @@ func Generate(ctx context.Context, dir, ffmpeg string, log *slog.Logger) error {
 		made++
 		log.Info("demo asset generated", "file", rel)
 	}
-	if err := l.linkItems(); err != nil {
+	if err := l.linkItems(lib); err != nil {
 		return err
 	}
 	log.Info("demo assets ready", "dir", dir, "generated", made, "total", len(jobs))
@@ -133,33 +183,37 @@ func tempName(out string) string {
 }
 
 // Item is the path the stand-in server reports for one playable item (a film or an episode). It
-// is a symlink to the item's format file: every item gets its own path, as on a real server, so
-// nothing keyed on a media path sees two titles collapse into one, at the cost of no disk.
+// is a symlink to the item's file: an invented item's format file, or an open item's download.
+// Every item gets its own path, as on a real server, so nothing keyed on a media path sees two
+// titles collapse into one, at the cost of no disk.
 func (l Layout) Item(itemID string) string { return filepath.Join(l.Dir, "items", itemID+".mp4") }
 
 // linkItems (re)creates the per-item symlinks.
-func (l Layout) linkItems() error {
+func (l Layout) linkItems(lib *Library) error {
 	if err := os.MkdirAll(filepath.Join(l.Dir, "items"), 0o755); err != nil {
 		return err
 	}
-	link := func(itemID, formatID string) error {
+	link := func(t Title, itemID string) error {
 		p := l.Item(itemID)
-		target := filepath.Join("..", "video", formatID+".mp4")
+		target := filepath.Join("..", "media", "programmes", itemID+".mp4")
+		if !t.Open {
+			target = filepath.Join("..", "video", t.Format+".mp4")
+		}
 		if cur, err := os.Readlink(p); err == nil && cur == target {
 			return nil
 		}
 		_ = os.Remove(p)
 		return os.Symlink(target, p)
 	}
-	for _, t := range Catalogue {
+	for _, t := range lib.Titles {
 		if t.Kind == Movie {
-			if err := link(t.ID(), t.Format); err != nil {
+			if err := link(t, t.ID()); err != nil {
 				return err
 			}
 			continue
 		}
-		for _, e := range EpisodesOf(t) {
-			if err := link(e.ID, t.Format); err != nil {
+		for _, e := range lib.EpisodesOf(t) {
+			if err := link(t, e.ID); err != nil {
 				return err
 			}
 		}
@@ -167,8 +221,9 @@ func (l Layout) linkItems() error {
 	return nil
 }
 
-// resetIfStale removes generated files left by a different AssetVersion.
-func (l Layout) resetIfStale() error {
+// resetIfStale removes generated files left by a different AssetVersion or content mode. The
+// open pack's verified downloads under media/ stay: they are pinned, so they are never stale.
+func (l Layout) resetIfStale(content Content) error {
 	raw, err := os.ReadFile(l.manifest())
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -177,7 +232,7 @@ func (l Layout) resetIfStale() error {
 		return err
 	}
 	var m Manifest
-	if json.Unmarshal(raw, &m) == nil && m.Version == AssetVersion {
+	if json.Unmarshal(raw, &m) == nil && m.Version == AssetVersion && m.Content == content {
 		return nil
 	}
 	for _, sub := range []string{"video", "filler", "art", "items", ".work"} {
@@ -324,6 +379,13 @@ func (g generator) still(ctx context.Context, filters []string, out string) erro
 		args = append(args, "-q:v", "4")
 	}
 	return g.run(ctx, append(args, out)...)
+}
+
+// frame cuts one still from a video at second `at`, scaled to cover w×h and centre-cropped: an
+// open title's poster (2:3) and backdrop (16:9) are its own pictures.
+func (g generator) frame(ctx context.Context, src string, at float64, w, h int, out string) error {
+	vf := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,setsar=1", w, h, w, h)
+	return g.run(ctx, "-ss", strconv.FormatFloat(at, 'f', 2, 64), "-i", src, "-frames:v", "1", "-vf", vf, "-q:v", "3", out)
 }
 
 // poster is a 2:3 typographic cover: accent field, bars, wrapped title, year and genre.

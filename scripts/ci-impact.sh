@@ -561,6 +561,13 @@ classify() {
       select_gate postgres
       select_gate image
       ;;
+    internal/demolibrary/*.json)
+      # The open content pack manifest (#2268), embedded by pack.go. Only the demo tool and the
+      # package's own tests read it; the release image never carries it.
+      known=true
+      select_gate contracts
+      select_gate go
+      ;;
     cmd/station-data/*.rq|cmd/station-data/*.tsv)
       # Generator inputs only: a change matters once `go generate` rewrites the seed above.
       known=true
