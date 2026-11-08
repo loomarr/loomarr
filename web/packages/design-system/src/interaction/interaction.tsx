@@ -46,8 +46,11 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   /**
    * `stacked` puts the icon over a small label, on a tile with no outline until focused: the row of
    * player controls under a phone's picture (#1659 native mock 5e). Give it an icon.
+   *
+   * `icon` draws the icon alone on a square the density's target wide; the children, a string,
+   * become its accessible name. For a row's Remove, a pane's close, a pager's arrows. Give it an icon.
    */
-  layout?: "inline" | "stacked";
+  layout?: "icon" | "inline" | "stacked";
   /**
    * Web-only composition escape hatch (Base UI's `render` prop equivalent, #970 PR B checkpoint 3):
    * renders Action's resolved style and content onto this element instead of a `Pressable`, so a
@@ -150,6 +153,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
     const stacked = layout === "stacked" && icon !== undefined;
+    const iconOnly = layout === "icon" && icon !== undefined;
+    const iconLabel = iconOnly && typeof children === "string" ? children : undefined;
     const look = variant ? variantLook(theme)[variant] : undefined;
     // A solid fill: an amber focus border cannot show on the amber primary (WCAG 2.4.7), and is
     // under 3:1 on the destructive and suggest fills. A focused fill keeps its rest look
@@ -211,7 +216,9 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           : "inverse";
 
     const content =
-      stacked && icon ? (
+      iconOnly && icon ? (
+        <Icon decorative glyph={icons[icon]} size={tv ? "touch" : "default"} tone={iconTone} />
+      ) : stacked && icon ? (
         <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
           <Icon
             decorative
@@ -291,11 +298,12 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             : 2,
       ...focusRing,
       justifyContent: "center" as const,
-      minHeight: tv ? 0 : semanticTargets[density],
+      minHeight: tv && !iconOnly ? 0 : semanticTargets[density],
       opacity: isDisabled ? 0.55 : 1,
       // A stacked tile shares its row with three others on a phone, so its label gets the width.
-      paddingHorizontal: tv ? 24 : stacked ? 4 : semanticSpace.control,
-      paddingVertical: tv ? 8 : 0,
+      paddingHorizontal: iconOnly ? 0 : tv ? 24 : stacked ? 4 : semanticSpace.control,
+      paddingVertical: tv && !iconOnly ? 8 : 0,
+      ...(iconOnly ? { width: semanticTargets[density] } : {}),
     };
 
     if (isWeb && render && isValidElement(render)) {
@@ -316,6 +324,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         render,
         mergeRenderProps(
           {
+            "aria-label": iconLabel,
             ...restProps,
             "aria-disabled": isDisabled || undefined,
             onBlur: focusLook.onBlur,
@@ -341,6 +350,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
 
     return (
       <Pressable
+        accessibilityLabel={iconLabel}
         {...props}
         accessibilityState={{ ...accessibilityState, disabled: isDisabled, selected }}
         accessibilityRole={role}
