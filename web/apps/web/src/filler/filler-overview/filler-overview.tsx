@@ -4,7 +4,7 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Badge, type BadgeTone, Card } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Card, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -264,7 +264,11 @@ const FillerOverview = () => {
               // identical numbers per channel (#2733).
               <CoverageCard
                 coverage={shared}
-                title={<p className="font-medium">All {readiness.pool.channels.length} channels</p>}
+                title={
+                  <Text as="p" textRole="label">
+                    All {readiness.pool.channels.length} channels
+                  </Text>
+                }
               />
             ) : (
               readiness.pool.channels.map((channel) => (
