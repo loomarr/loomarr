@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { useThemeName } from "@tamagui/core";
 import { useId, useState } from "react";
 
 import { Text } from "../primitives";
@@ -21,6 +22,9 @@ const DateField = ({
   width,
 }: DateFieldProps) => {
   const [focused, setFocused] = useState(false);
+  // The browser draws the calendar glyph and its popup for this scheme: the app's theme, not the
+  // device's, or a dark box on a light device gets a dark glyph.
+  const scheme = useThemeName().startsWith("light") ? "light" : "dark";
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const descriptionId = `${inputId}-description`;
@@ -46,7 +50,7 @@ const DateField = ({
           borderWidth: focused ? 3 : 2,
           boxSizing: "border-box",
           color: "var(--contentPrimary)",
-          colorScheme: "light dark",
+          colorScheme: scheme,
           fontFamily: typography.family.data.web,
           fontSize: typography[density].body.size,
           minHeight: semanticTargets[density],
