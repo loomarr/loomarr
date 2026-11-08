@@ -21,15 +21,19 @@ func touch(t *testing.T, root, rel string) {
 	}
 }
 
-// A walk lists media and disc images, skips by-products and ignored folders, marks extras, and
-// follows a symlink only inside the root.
+// A walk lists media and disc images, skips by-products, extras and ignored folders, and follows a
+// symlink only inside the root.
 func TestWalkRoot(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	touch(t, root, "India/India.mkv")
 	touch(t, root, "India/India.nfo")
+	touch(t, root, "India/poster.jpg")
 	touch(t, root, "India/trailers/Teaser.mp4")
 	touch(t, root, "India/India-featurette.mkv")
+	touch(t, root, "India/backdrops/Theme.mkv")
 	touch(t, root, "India/trickplay/India.mkv")
+	// A show named like an extras folder, at the top of the root, is a show.
+	touch(t, root, "Shorts/Season 01/Shorts S01E01.mkv")
 	touch(t, root, "@eaDir/India.mkv")
 	touch(t, root, "Juliet/.ignore")
 	touch(t, root, "Juliet/Juliet.mkv")
@@ -58,8 +62,7 @@ func TestWalkRoot(t *testing.T) {
 		got[f.Rel] = f
 	}
 	want := []string{
-		"India/India-featurette.mkv", "India/India.mkv", "India/trailers/Teaser.mp4",
-		"Kilo/VIDEO_TS", "Lima/Lima.iso", "November/November.mkv",
+		"India/India.mkv", "Kilo/VIDEO_TS", "Lima/Lima.iso", "November/November.mkv", "Shorts/Season 01/Shorts S01E01.mkv",
 	}
 	var rels []string
 	for rel := range got {
@@ -69,8 +72,11 @@ func TestWalkRoot(t *testing.T) {
 	if !slices.Equal(rels, want) {
 		t.Fatalf("walked %v, want %v", rels, want)
 	}
-	if got["India/India.mkv"].Extra || !got["India/trailers/Teaser.mp4"].Extra || !got["India/India-featurette.mkv"].Extra {
-		t.Error("extras not marked")
+	// A skipped extra beside the movie does not make it share the folder: the poster is still its.
+	if india := got["India/India.mkv"]; !india.Sole {
+		t.Error("the movie lost its folder to a skipped extra")
+	} else if _, ok := india.Sidecars[filepath.Join(root, "India", "poster.jpg")]; !ok {
+		t.Errorf("folder poster not the movie's: %v", india.Sidecars)
 	}
 	if got["Kilo/VIDEO_TS"].Problem != ProblemDiscImage || got["Lima/Lima.iso"].Problem != ProblemDiscImage {
 		t.Error("disc images not listed as problems")

@@ -36,13 +36,16 @@ var skippedDirs = map[string]bool{
 // discDirs are disc structures, which are not imported but listed as problems.
 var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
 
-// extrasDirs are the Kodi/Jellyfin folders whose videos are extras of the item they sit beside.
+// extrasDirs are the Kodi/Jellyfin folders that hold a title's extras and theme videos. Below the top
+// of a root they are skipped: only movies and episodes become titles (0047). At the top they are
+// titles' own folders, such as a show named "Shorts".
 var extrasDirs = map[string]bool{
 	"extras": true, "featurettes": true, "behind the scenes": true, "deleted scenes": true,
 	"interviews": true, "scenes": true, "shorts": true, "trailers": true, "other": true, "samples": true,
+	"backdrops": true,
 }
 
-// extrasSuffixes mark an extra by its file name, as in "Movie (2001)-trailer.mkv".
+// extrasSuffixes mark an extra by its file name, as in "Movie (2001)-trailer.mkv"; it is skipped.
 var extrasSuffixes = []string{
 	"-trailer", "-featurette", "-behindthescenes", "-deleted", "-interview", "-scene", "-short", "-sample", "-other",
 }
@@ -59,8 +62,6 @@ type File struct {
 	Path string
 	Rel  string
 	Stat Stat
-	// Extra marks a trailer, featurette or other extra of the item beside it.
-	Extra bool
 	// Sidecars are the file's own NFO and artwork files, by path, so a changed sidecar changes the
 	// file's identity digest without being read.
 	Sidecars map[string]Stat
@@ -91,7 +92,7 @@ func walkRoot(ctx context.Context, root string, steps *atomic.Int64) (Walk, erro
 		return Walk{}, err
 	}
 	w.realRoot = real
-	if err := w.dir(ctx, w.root, false); err != nil {
+	if err := w.dir(ctx, w.root); err != nil {
 		return Walk{}, err
 	}
 	w.out.Skipped = w.skipped
@@ -108,11 +109,10 @@ func walkFolders(ctx context.Context, root string, dirs []string, steps *atomic.
 	}
 	w.realRoot = real
 	for _, dir := range dirs {
-		skip, extras := w.within(dir)
-		if skip {
+		if w.within(dir) {
 			continue
 		}
-		if err := w.dir(ctx, dir, extras); err != nil {
+		if err := w.dir(ctx, dir); err != nil {
 			return Walk{}, err
 		}
 	}
@@ -120,26 +120,26 @@ func walkFolders(ctx context.Context, root string, dirs []string, steps *atomic.
 	return w.out, nil
 }
 
-// within reports whether dir lies in a folder a walk skips (a by-product, a disc structure, or one
-// holding an .ignore file above it), and whether it lies in an extras folder.
-func (w *walker) within(dir string) (skip, extras bool) {
+// within reports whether dir lies in a folder a walk skips: a by-product, a disc structure, an extras
+// folder below the top of the root, or one holding an .ignore file above it.
+func (w *walker) within(dir string) bool {
 	rel := w.rel(dir)
 	if rel == "." {
-		return false, false
+		return false
 	}
 	at := w.root
-	for _, seg := range strings.Split(rel, "/") {
+	for i, seg := range strings.Split(rel, "/") {
 		if _, err := os.Stat(filepath.Join(at, ".ignore")); err == nil {
-			return true, false
+			return true
 		}
 		lower := strings.ToLower(seg)
-		if skippedDirs[lower] || strings.HasPrefix(lower, ".trash-") || discDirs[lower] || seg == ".." {
-			return true, false
+		if skippedDirs[lower] || strings.HasPrefix(lower, ".trash-") || discDirs[lower] || seg == ".." ||
+			(i > 0 && extrasDirs[lower]) {
+			return true
 		}
-		extras = extras || extrasDirs[lower]
 		at = filepath.Join(at, seg)
 	}
-	return false, extras
+	return false
 }
 
 type walker struct {
@@ -169,7 +169,7 @@ func newWalker(root string, steps *atomic.Int64) *walker {
 	return w
 }
 
-func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
+func (w *walker) dir(ctx context.Context, dir string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
 		if e.IsDir() {
 			continue
 		}
-		if videoExtensions[strings.ToLower(filepath.Ext(e.Name()))] {
+		if lower := strings.ToLower(e.Name()); videoExtensions[filepath.Ext(lower)] && !extraName(lower) {
 			videos++
 		}
 		if isNFO(e.Name()) || localart.IsImage(e.Name()) {
@@ -235,21 +235,22 @@ func (w *walker) dir(ctx context.Context, dir string, extras bool) error {
 		case isDir && (skippedDirs[lower] || strings.HasPrefix(lower, ".trash-")):
 		case isDir && discDirs[lower]:
 			w.problem(path, Stat{}, ProblemDiscImage)
+		case isDir && extrasDirs[lower] && w.rel(dir) != ".":
 		case isDir:
-			if err := w.dir(ctx, path, extras || extrasDirs[lower]); err != nil {
+			if err := w.dir(ctx, path); err != nil {
 				return err
 			}
 		case filepath.Ext(lower) == ".iso" || filepath.Ext(lower) == ".img":
 			st, _ := w.stat(path, e)
 			w.problem(path, st, ProblemDiscImage)
-		case videoExtensions[filepath.Ext(lower)]:
+		case videoExtensions[filepath.Ext(lower)] && !extraName(lower):
 			st, ok := w.stat(path, e)
 			if !ok {
 				w.out.Complete = false
 				continue
 			}
 			w.out.Files = append(w.out.Files, File{
-				Path: path, Rel: w.rel(path), Stat: st, Extra: extras || extraName(lower),
+				Path: path, Rel: w.rel(path), Stat: st,
 				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1,
 			})
 		}

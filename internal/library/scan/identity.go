@@ -231,7 +231,7 @@ func embeddedRecord(file File) (mp.Record, string) {
 	segments := strings.Split(file.Rel, "/")
 	name := segments[len(segments)-1]
 	src := mp.Source{Basis: mp.BasisEmbeddedID}
-	if n, ok := numberingIn(name); ok && !file.Extra {
+	if n, ok := numberingIn(name); ok {
 		rec := mp.Record{Source: src, Kind: mp.KindEpisode, Numbering: &n}
 		seriesDir := seriesFolder(file.Rel)
 		if seriesDir != "" {

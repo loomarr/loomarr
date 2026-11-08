@@ -181,7 +181,7 @@ func (w *Watcher) shareFailed(root string, err error, permanent bool) {
 // watch (the inotify limit) is logged once per tree; its changes wait for the hourly walk.
 func (w *Watcher) addTree(fsw *fsnotify.Watcher, root, dir string) {
 	walker := walker{root: root}
-	if skip, _ := walker.within(dir); skip {
+	if walker.within(dir) {
 		return
 	}
 	var failed error
@@ -203,7 +203,8 @@ func (w *Watcher) addTree(fsw *fsnotify.Watcher, root, dir string) {
 		}
 		for _, e := range entries {
 			lower := strings.ToLower(e.Name())
-			if !e.IsDir() || skippedDirs[lower] || strings.HasPrefix(lower, ".trash-") || discDirs[lower] {
+			if !e.IsDir() || skippedDirs[lower] || strings.HasPrefix(lower, ".trash-") || discDirs[lower] ||
+				(d != root && extrasDirs[lower]) {
 				continue
 			}
 			add(filepath.Join(d, e.Name()))

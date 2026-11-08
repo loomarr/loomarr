@@ -3,10 +3,8 @@ package scan
 import (
 	"context"
 	"errors"
-	"path"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,8 +25,6 @@ type builder struct {
 	seen map[inventory.OriginKey]bool
 	// series is each series folder the pass found, and whether one of its episodes was written.
 	series map[string]*seriesSeen
-	// movies is the cheaply known ids of the main video in each folder, for the extras beside it.
-	movies map[string][]inventory.ExternalID
 	// items is each movie and series the pass wrote, for Library → Items.
 	items []store.LibraryItem
 	// matches is what said which title each origin the pass resolved is. Header reads resolve
@@ -143,24 +139,15 @@ type identity struct {
 	embedded mp.Record
 	// seriesDir is an episode's series folder, relative to the root.
 	seriesDir string
-	// parent is an extra's item ids.
-	parent []inventory.ExternalID
-	digest string
+	digest    string
 }
 
 func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 	return &builder{
 		im: im, root: root, idx: idx, seen: map[inventory.OriginKey]bool{},
-		series: map[string]*seriesSeen{}, movies: map[string][]inventory.ExternalID{},
+		series:  map[string]*seriesSeen{},
 		matches: map[inventory.OriginKey]store.LibraryMatch{},
 	}
-}
-
-// order puts main videos before extras, so an extra finds the ids of the item it belongs to.
-func (b *builder) order(files []File) []File {
-	out := append([]File(nil), files...)
-	sort.SliceStable(out, func(i, j int) bool { return !out[i].Extra && out[j].Extra })
-	return out
 }
 
 func (b *builder) identify(file File) identity {
@@ -174,10 +161,7 @@ func (b *builder) identify(file File) identity {
 		}
 	}
 	b.seen[fileOrigin(b.root, file.Rel)] = true
-	switch {
-	case file.Extra:
-		id.parent = b.movies[mainFolder(file.Rel)]
-	case id.kind == mp.KindEpisode:
+	if id.kind == mp.KindEpisode {
 		s := b.series[id.seriesDir]
 		if s == nil {
 			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent}
@@ -187,19 +171,8 @@ func (b *builder) identify(file File) identity {
 			s.managed = m.series
 		}
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
-	default:
-		var ids []mp.ExternalID
-		if len(m.records) > 0 {
-			ids = m.records[0].IDs
-		} else {
-			ids = embedded.IDs
-		}
-		dir := path.Dir(file.Rel)
-		if _, ok := b.movies[dir]; !ok {
-			b.movies[dir] = toInventory(ids)
-		}
 	}
-	id.digest = identityDigest(file, m, embedded, id.parent)
+	id.digest = identityDigest(file, m, embedded)
 	return id
 }
 
@@ -212,8 +185,8 @@ func (b *builder) markWritten(id identity) {
 	}
 }
 
-// cheapIDs are the ids the cheap sources give a file, and its series' or parent's: enough to put a
-// wanted file's header read first without building its item.
+// cheapIDs are the ids the cheap sources give a file, and its series': enough to put a wanted file's
+// header read first without building its item.
 func (id identity) cheapIDs() []inventory.ExternalID {
 	var ids []mp.ExternalID
 	for _, r := range id.managed.records {
@@ -224,7 +197,7 @@ func (id identity) cheapIDs() []inventory.ExternalID {
 	}
 	ids = append(ids, id.embedded.IDs...)
 	ids = append(ids, id.embedded.Parent...)
-	return append(toInventory(ids), id.parent...)
+	return toInventory(ids)
 }
 
 // snapshot is the file's inventory item without its header facts. It reads the file's NFO
@@ -237,17 +210,6 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			SchemaVersion: 1, ObservedAt: now,
 		},
 	}
-	if file.Extra {
-		snapshot.Kind = id.itemKind(file)
-		snapshot.Observation.Facts.Name = fallbackName(file.Rel)
-		for _, p := range id.parent {
-			snapshot.Observation.Facts.Relationships = append(snapshot.Observation.Facts.Relationships,
-				inventory.Relationship{Kind: "parent", ExternalID: p.Namespace + ":" + p.Value})
-		}
-		snapshot.Observation.Coverage = map[string]inventory.Coverage{"sources": inventory.CoveragePresent}
-		return snapshot
-	}
-
 	records := append([]mp.Record(nil), id.managed.records...)
 	// further are the other episodes of a multi-episode file. The file is one item, as the media
 	// server keeps it: its first episode, numbered through its last, carrying every episode's ids
@@ -291,7 +253,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		facts.Name = fallbackName(file.Rel)
 	}
 	coverage["sources"] = inventory.CoveragePresent
-	snapshot.Kind = id.itemKind(file)
+	snapshot.Kind = kindOf(id.kind)
 	snapshot.Observation.Facts, snapshot.Observation.Coverage = facts, coverage
 	snapshot.Observation.Extension = originExtensionOf(resolved, len(id.managed.records) > 0)
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
@@ -399,14 +361,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-// itemKind is the inventory kind the file is written as.
-func (id identity) itemKind(file File) inventory.ItemKind {
-	if file.Extra {
-		return kindExtra
-	}
-	return kindOf(id.kind)
-}
-
+// kindOf is the inventory kind a file of kind k is written as.
 func kindOf(k mp.Kind) inventory.ItemKind {
 	switch k {
 	case mp.KindEpisode:
@@ -424,14 +379,4 @@ func toInventory(ids []mp.ExternalID) []inventory.ExternalID {
 		out = append(out, inventory.ExternalID{Namespace: string(id.Namespace), Value: id.Value})
 	}
 	return out
-}
-
-// mainFolder is the folder of the item an extra belongs to: its own folder, or the one above an
-// extras folder.
-func mainFolder(rel string) string {
-	dir := path.Dir(rel)
-	if extrasDirs[strings.ToLower(path.Base(dir))] {
-		return path.Dir(dir)
-	}
-	return dir
 }

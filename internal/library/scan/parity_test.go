@@ -11,8 +11,8 @@ import (
 )
 
 // The report pairs the media server's files with the scanner's by path, through the path map.
-// What the path map doesn't cover, and the extras the media server lists apart, are explained;
-// a file the media server lists that the scanner never found fails the gate.
+// What the path map doesn't cover is explained, and a skipped trailer makes no finding; a file the
+// media server lists that the scanner never found fails the gate.
 func TestParityPairsFilesByPath(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
@@ -41,9 +41,7 @@ func TestParityPairsFilesByPath(t *testing.T) {
 	}
 	for _, f := range r.Findings {
 		if strings.HasSuffix(f.Path, "-trailer.mkv") {
-			if f.Kind != FindingScannerOnly || f.Explained == "" {
-				t.Errorf("trailer: %+v, want an explained scanner-only finding", f)
-			}
+			t.Errorf("trailer: %+v, want no finding: extras are not imported", f)
 			continue
 		}
 		explained, ok := want[f.Name]

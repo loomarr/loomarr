@@ -182,12 +182,13 @@ func TestImportWritesOnceAndSkipsUnchanged(t *testing.T) {
 	if series.Kind != kindSeries || !hasID(series.ExternalIDs, "tvdb", "90081189") {
 		t.Errorf("series = %+v", series)
 	}
-	trailer := h.item(fileOrigin(h.root, "Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001)-trailer.mkv"))
-	if trailer.Kind != kindExtra || trailer.ID == movie.ID {
-		t.Errorf("trailer = %+v", trailer)
+	// The trailer is no title: nothing is written for it and its header is never read.
+	trailer := fileOrigin(h.root, "Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001)-trailer.mkv")
+	if _, ok, err := h.inv.Item(context.Background(), inventory.ItemRef{Origin: &trailer}); err != nil || ok {
+		t.Errorf("trailer written: ok=%v err=%v", ok, err)
 	}
-	if h.reads.Load() != 4 {
-		t.Errorf("header reads = %d, want 4", h.reads.Load())
+	if h.reads.Load() != 3 {
+		t.Errorf("header reads = %d, want 3", h.reads.Load())
 	}
 
 	h.inv.applied.Store(0)
@@ -207,7 +208,8 @@ func TestImportWritesOnceAndSkipsUnchanged(t *testing.T) {
 }
 
 // Library → Items lists the movie and the series a pass wrote, with the series counting its
-// episodes and an extra counting toward nothing; once headers are read nothing is getting ready.
+// episodes and a skipped trailer counting toward nothing; once headers are read nothing is getting
+// ready.
 func TestImportListsMoviesAndSeries(t *testing.T) {
 	h := newHarness(t)
 	h.file("Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001).mkv", 10)

@@ -188,8 +188,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
   file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
   season folder, else the nearest folder named by an id, else its own. A file nothing grounds is
-  still written, with no ids. Extras (trailers, `extras/` folders and the like) are their own
-  items, related to the movie beside them. An origin whose ids later name another item of its kind
+  still written, with no ids. Only movies and episodes are titles (0047): extras (trailers,
+  `-trailer` files, `extras/` folders and the like) and theme videos (`backdrops/`) are not
+  imported, and a skipped extra does not take a movie's folder art from it. An origin whose ids later name another item of its kind
   moves to it, when it is its item's only origin or joined the item by its ids rather than founding
   it. A joined origin whose ids then name nothing goes back to an item of its own, so taking back a
   Needs you link splits the copy out again; the founding origin never leaves.
@@ -211,7 +212,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   manages nothing rather than counting as down. Header reads fall back to the same ffprobe playout
   uses, and wait while playout's admission budget holds any session, copies included. A root
   inside another in-use root is walked as part of it. Walks skip `trickplay/`,
-  `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, names that are not UTF-8 and folders holding
+  `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
+  show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
 - **Change signals.** Each signal names folders, and `Scanner.PassFolders` passes over only those
   (`Importer.RunFolders`): it writes and removes what is under them, under the same removal guard,
@@ -409,7 +411,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   when the two share a TMDB, TVDB or IMDb id and contradict none; an episode agrees by its own
   ids, or else by its show's ids and its numbering. Durations agree within a second. Expected
   differences are explained and counted: a path the path map doesn't cover, a folder not in use,
-  a file the scanner skips, an extra, a title waiting in Needs you. The gate passes with no
+  a file the scanner skips, a title waiting in Needs you. The gate passes with no
   unexplained presence or identity finding and at least 99.5% of durations agreeing; a live
   channel check follows before the cutover.
 

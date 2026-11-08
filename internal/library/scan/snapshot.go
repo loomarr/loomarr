@@ -19,7 +19,6 @@ const (
 	kindMovie   inventory.ItemKind = "movie"
 	kindSeries  inventory.ItemKind = "series"
 	kindEpisode inventory.ItemKind = "episode"
-	kindExtra   inventory.ItemKind = "extra"
 )
 
 // authorityPrefix starts every scan root's authority.
@@ -57,20 +56,19 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	5: each origin notes where its shown details came from (Technical details).
 //	6: a file's origin notes whether its arr lists it (the copy that plays).
 //	7: a multi-episode file carries every episode's ids, not only its first's.
-const writeVersion = 7
+//	8: extras are not titles (0047); the digest drops what only an extra used.
+const writeVersion = 8
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
-func identityDigest(file File, m managed, embedded mp.Record, parent []inventory.ExternalID) string {
+func identityDigest(file File, m managed, embedded mp.Record) string {
 	payload, _ := json.Marshal(struct {
 		Version  int
 		Records  []mp.Record
 		Series   *mp.Record
 		Embedded mp.Record
 		Sidecars map[string]Stat
-		Parent   []inventory.ExternalID
-		Extra    bool
-	}{writeVersion, m.records, m.series, embedded, file.Sidecars, parent, file.Extra})
+	}{writeVersion, m.records, m.series, embedded, file.Sidecars})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }

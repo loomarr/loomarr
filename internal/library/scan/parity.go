@@ -129,12 +129,8 @@ func Parity(server []library.ServerFile, files []ParityFile, pathMap library.Pat
 		if f.Problem != "" || paired[f.Path] {
 			continue
 		}
-		finding := Finding{Kind: FindingScannerOnly, Path: f.Path, Name: f.Name,
-			Detail: "the scanner found it; the media server doesn't list it"}
-		if f.Kind == string(kindExtra) {
-			finding.Explained = "an extra; the media server lists extras apart"
-		}
-		report.Findings = append(report.Findings, finding)
+		report.Findings = append(report.Findings, Finding{Kind: FindingScannerOnly, Path: f.Path, Name: f.Name,
+			Detail: "the scanner found it; the media server doesn't list it"})
 	}
 	slices.SortFunc(report.Findings, func(a, b Finding) int {
 		return cmp.Or(cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.Explained, b.Explained), cmp.Compare(a.Path, b.Path))
