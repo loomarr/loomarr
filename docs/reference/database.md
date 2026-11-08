@@ -40,7 +40,7 @@ clients show them beside the data.
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
 - [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
-- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`library_item_paths`](#library_item_paths), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
+- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`library_item_paths`](#library_item_paths), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_spoken_safety_runs`](#filler_spoken_safety_runs), [`filler_spoken_safety_events`](#filler_spoken_safety_events), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
@@ -557,13 +557,13 @@ A title's present files, one row each, with the copy that plays marked. Replaced
 
 ### library_streams
 
-Each track inside a title's files (video, audio, subtitles), one row each, with labels worked out once so every reader uses the same words. Replaced whenever the title is written.
+Each track of a title's files (video, audio, subtitles), one row each: those inside the file and the subtitle and audio files beside it. Labels are worked out once so every reader uses the same words. Replaced whenever the title is written.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `item_id` | The title (a library_items id). | `TEXT` · key · → `library_sources.item_id` |
-| `path` | The file the track is in (a library_sources path). | `TEXT` · key · → `library_sources.path` |
-| `stream_index` | The track's position among all the file's streams, as the header numbers it. | `INTEGER` · key |
+| `path` | The file the track belongs to (a library_sources path). | `TEXT` · key · → `library_sources.path` |
+| `stream_index` | The track's position among all the file's streams, as the header numbers it; an external track comes after the file's own. | `INTEGER` · key |
 | `kind` | video, audio or subtitle. | `TEXT` |
 | `codec` | The codec the header names, such as hevc or eac3. | `TEXT` |
 | `profile` | The codec profile, such as Main 10 or DTS-HD MA; empty when the header gives none. | `TEXT` |
@@ -582,7 +582,37 @@ Each track inside a title's files (video, audio, subtitles), one row each, with 
 | `pixel_format` | A video track's pixel format, such as yuv420p10le. | `TEXT` |
 | `color_transfer` | A video track's transfer characteristic, such as smpte2084. | `TEXT` |
 | `resolution` | A video track's resolution label, such as 1080p or 4K (reading the width too, so a wide film is not undersold). | `TEXT` |
-| `hdr` | A video track's dynamic range, such as HDR10 or HLG; empty for standard range. | `TEXT` |
+| `hdr` | A video track's dynamic range, such as Dolby Vision, HDR10 or HLG; empty for standard range. | `TEXT` |
+| `commentary` | True for a commentary track. | `BOOLEAN` |
+| `hearing_impaired` | True for a track for the deaf and hard of hearing, such as SDH subtitles. | `BOOLEAN` |
+| `descriptive` | True for an audio track that describes the picture. | `BOOLEAN` |
+| `external_ref` | For a track in its own file beside the title's file (such as Film.en.forced.srt), where that file is, as an absolute path; empty for a track inside the file. | `TEXT` |
+
+### library_chapters
+
+A file's chapter marks, as its container lists them, one row each in order. Replaced whenever the title is written.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title (a library_items id). | `TEXT` · key · → `library_sources.item_id` |
+| `path` | The file the chapters are in (a library_sources path). | `TEXT` · key · → `library_sources.path` |
+| `position` | The chapter's order, from 0. | `INTEGER` · key |
+| `start_ms` | Where the chapter starts, in milliseconds. | `INTEGER` |
+| `end_ms` | Where it ends, in milliseconds; -1 when the container does not say. | `INTEGER` |
+| `title` | The chapter's name, if the file gives one. | `TEXT` |
+
+### library_markers
+
+The spans an .edl file beside a title's file marks, one row each in order. Replaced whenever the title is written.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_id` | The title (a library_items id). | `TEXT` · key · → `library_sources.item_id` |
+| `path` | The file the markers are for (a library_sources path). | `TEXT` · key · → `library_sources.path` |
+| `position` | The span's order in the .edl, from 0. | `INTEGER` · key |
+| `start_ms` | Where the span starts, in milliseconds. | `INTEGER` |
+| `end_ms` | Where it ends, in milliseconds. | `INTEGER` |
+| `kind` | What the line asks for; cut (skip it), mute, scene (a scene marker) or commercial (a commercial break). | `TEXT` |
 
 ### library_trickplay
 

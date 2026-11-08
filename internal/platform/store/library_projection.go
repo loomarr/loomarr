@@ -111,7 +111,8 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 
 // saveLibraryItemRows replaces an item's ids, genres, studios, tags, files, tracks and artwork.
 func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
-	for _, table := range []string{"library_trickplay", "library_streams", "library_sources", "library_art",
+	for _, table := range []string{"library_trickplay", "library_chapters", "library_markers", "library_streams",
+		"library_sources", "library_art",
 		"library_ids", "library_genres", "library_studios", "library_tags"} {
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE item_id = ?`), it.ID); err != nil {
 			return fmt.Errorf("replace %s: %w", table, err)
@@ -176,12 +177,26 @@ func (s *sqlStore) saveLibraryFilesAndArt(ctx context.Context, tx *sql.Tx, it Li
 			indexes[st.Index] = true
 			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_streams (item_id, path, stream_index, kind,
 				codec, profile, title, is_default, forced, language, language_name, channels, channel_layout,
-				sample_rate, audio_format, width, height, frame_rate, pixel_format, color_transfer, resolution, hdr)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+				sample_rate, audio_format, width, height, frame_rate, pixel_format, color_transfer, resolution, hdr,
+				commentary, hearing_impaired, descriptive, external_ref)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 				it.ID, src.Path, st.Index, st.Kind, st.Codec, st.Profile, st.Title, st.Default, st.Forced,
 				st.Language, st.LanguageName, st.Channels, st.ChannelLayout, st.SampleRate, st.AudioFormat,
-				st.Width, st.Height, st.FrameRate, st.PixelFormat, st.ColorTransfer, st.Resolution, st.HDR); err != nil {
+				st.Width, st.Height, st.FrameRate, st.PixelFormat, st.ColorTransfer, st.Resolution, st.HDR,
+				st.Commentary, st.HearingImpaired, st.Descriptive, st.ExternalRef); err != nil {
 				return fmt.Errorf("save library stream: %w", err)
+			}
+		}
+		for i, c := range src.Chapters {
+			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_chapters (item_id, path, position, start_ms,
+				end_ms, title) VALUES (?, ?, ?, ?, ?, ?)`), it.ID, src.Path, i, c.StartMs, c.EndMs, c.Title); err != nil {
+				return fmt.Errorf("save library chapter: %w", err)
+			}
+		}
+		for i, m := range src.Markers {
+			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_markers (item_id, path, position, start_ms,
+				end_ms, kind) VALUES (?, ?, ?, ?, ?, ?)`), it.ID, src.Path, i, m.StartMs, m.EndMs, m.Kind); err != nil {
+				return fmt.Errorf("save library marker: %w", err)
 			}
 		}
 	}

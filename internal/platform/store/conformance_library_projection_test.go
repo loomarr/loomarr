@@ -183,9 +183,16 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 		ColorTransfer: "smpte2084", Resolution: "4K", HDR: "HDR10"}
 	audio := LibraryStream{Index: 1, Kind: "audio", Codec: "eac3", Channels: 6, Language: "en",
 		LanguageName: "English", AudioFormat: "Dolby Digital Plus", Default: true}
+	commentary := audio
+	commentary.Index, commentary.Commentary, commentary.Default = 2, true, false
+	external := LibraryStream{Index: 3, Kind: "subtitle", Codec: "subrip", Language: "en", Forced: true,
+		HearingImpaired: true, ExternalRef: "/m/a.en.forced.sdh.srt"}
 	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film",
 		Sources: []LibrarySource{
-			{Path: "/m/a.mkv", Container: "matroska", SizeBytes: 9, DurationMs: 1000, Plays: true, Streams: []LibraryStream{video, audio}},
+			{Path: "/m/a.mkv", Container: "matroska", SizeBytes: 9, DurationMs: 1000, Plays: true,
+				Streams:  []LibraryStream{video, audio, commentary, external},
+				Chapters: []LibraryChapter{{StartMs: 0, EndMs: 500, Title: "One"}, {StartMs: 500, EndMs: -1}},
+				Markers:  []LibraryMarker{{StartMs: 100, EndMs: 200, Kind: "commercial"}}},
 			{Path: "/m/b.mkv", SizeBytes: 5, Streams: []LibraryStream{audio},
 				Trickplay: []LibraryTrickplay{{Ref: "/m/b.bif", Format: "bif"}}},
 		},
@@ -215,6 +222,21 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 4 {
 		t.Fatalf("art rows = %d, want two plus a poster for each of two seasons", n)
 	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE item_id = 'm1' AND commentary = TRUE AND stream_index = 2`); n != 1 {
+		t.Fatalf("commentary rows = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE external_ref = '/m/a.en.forced.sdh.srt'
+		AND hearing_impaired = TRUE AND forced = TRUE AND path = '/m/a.mkv'`); n != 1 {
+		t.Fatalf("external subtitle rows = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_chapters WHERE path = '/m/a.mkv' AND
+		((position = 0 AND title = 'One' AND end_ms = 500) OR (position = 1 AND end_ms = -1))`); n != 2 {
+		t.Fatalf("chapter rows = %d, want 2", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_markers WHERE path = '/m/a.mkv' AND kind = 'commercial'
+		AND start_ms = 100 AND end_ms = 200`); n != 1 {
+		t.Fatalf("marker rows = %d, want 1", n)
+	}
 	if n := count(`SELECT COUNT(*) FROM library_trickplay WHERE item_id = 'm1' AND path = '/m/b.mkv' AND format = 'bif'`); n != 1 {
 		t.Fatalf("trickplay rows = %d, want b.mkv's", n)
 	}
@@ -236,5 +258,12 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 	}
 	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 0 {
 		t.Fatalf("art after a rewrite = %d, want 0", n)
+	}
+	item.Sources[0].Chapters, item.Sources[0].Markers = nil, nil
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_chapters`) + count(`SELECT COUNT(*) FROM library_markers`); n != 0 {
+		t.Fatalf("chapters and markers after a rewrite without them = %d, want 0", n)
 	}
 }

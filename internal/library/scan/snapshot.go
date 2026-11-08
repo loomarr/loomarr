@@ -72,7 +72,9 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	17: a movie's file notes its edition, and each edition has its own copy that plays (decision 54).
 //	18: a series carries a poster for each season it has one for (decisions 45, 61).
 //	19: a file notes the trickplay files beside it (decision 61).
-const writeVersion = 19
+//	20: a file notes its external subtitle and audio files and its .edl markers, and lists its
+//	    chapters and its tracks' commentary, SDH and descriptive flags (decisions 45, 46, 61).
+const writeVersion = 20
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -139,6 +141,10 @@ type fileNotes struct {
 	Edition string `json:"edition,omitempty"`
 	// Trickplay are the trickplay files beside it, by path: referenced, never imported (decision 61).
 	Trickplay []string `json:"trickplay,omitempty"`
+	// External are the subtitle and audio files beside it, as their names describe them; Markers
+	// the spans its .edl marks (decision 61).
+	External []externalTrack `json:"external,omitempty"`
+	Markers  []marker        `json:"markers,omitempty"`
 }
 
 // listedExtension is what a title's library row needs that its facts do not say.
@@ -258,8 +264,19 @@ func librarySources(item inventory.Item) []store.LibrarySource {
 			for _, ref := range exts[o.Key].Trickplay {
 				src.Trickplay = append(src.Trickplay, store.LibraryTrickplay{Ref: ref, Format: "bif"})
 			}
+			next := 0
 			for _, st := range f.Streams {
 				src.Streams = append(src.Streams, libraryStream(st))
+				next = max(next, st.Index+1)
+			}
+			for i, t := range exts[o.Key].External {
+				src.Streams = append(src.Streams, externalStream(t, next+i))
+			}
+			for _, c := range f.Chapters {
+				src.Chapters = append(src.Chapters, store.LibraryChapter{StartMs: c.StartMillis, EndMs: c.EndMillis, Title: c.Title})
+			}
+			for _, m := range exts[o.Key].Markers {
+				src.Markers = append(src.Markers, store.LibraryMarker{StartMs: m.StartMs, EndMs: m.EndMs, Kind: m.Kind})
 			}
 			files = append(files, file{src: src, managed: exts[o.Key].Managed})
 			break
@@ -291,7 +308,9 @@ func libraryStream(st inventory.Stream) store.LibraryStream {
 	out := store.LibraryStream{
 		Index: st.Index, Kind: string(st.Kind), Codec: st.Codec, Profile: st.Profile, Title: st.Title,
 		Default: st.Disposition.Default, Forced: st.Disposition.Forced,
-		Channels: st.Channels, ChannelLayout: st.ChannelLayout, SampleRate: st.SampleRate,
+		Commentary: st.Disposition.Comment, HearingImpaired: st.Disposition.HearingImpaired,
+		Descriptive: st.Disposition.VisualImpaired,
+		Channels:    st.Channels, ChannelLayout: st.ChannelLayout, SampleRate: st.SampleRate,
 		Width: st.Width, Height: st.Height, FrameRate: st.FrameRate, PixelFormat: st.PixelFormat,
 		ColorTransfer: st.ColorTransfer,
 	}
@@ -302,6 +321,17 @@ func libraryStream(st inventory.Stream) store.LibraryStream {
 	case inventory.StreamAudio:
 		out.AudioFormat = audioFormatLabel(st.Codec, st.Profile)
 		out.ChannelLayout = cmp.Or(st.ChannelLayout, header.ChannelLayout(st.Codec, st.Channels))
+	}
+	return out
+}
+
+// externalStream is an external track as a row, at index, after the file's own tracks.
+func externalStream(t externalTrack, index int) store.LibraryStream {
+	out := store.LibraryStream{Index: index, Kind: t.Kind, Codec: t.Codec, Default: t.Default, Forced: t.Forced,
+		HearingImpaired: t.HearingImpaired, Commentary: t.Commentary, ExternalRef: t.Ref}
+	out.Language, out.LanguageName = languageLabel(t.Language)
+	if t.Kind == string(inventory.StreamAudio) {
+		out.AudioFormat = audioFormatLabel(t.Codec, "")
 	}
 	return out
 }
@@ -374,8 +404,8 @@ func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time
 	coverage := map[string]inventory.Coverage{"sourceStat": inventory.CoveragePresent}
 	schema := 1
 	if read != nil {
-		facts.Container, facts.DurationMillis, facts.Bitrate, facts.Streams =
-			read.Container, read.DurationMillis, read.Bitrate, read.Streams
+		facts.Container, facts.DurationMillis, facts.Bitrate, facts.Streams, facts.Chapters =
+			read.Container, read.DurationMillis, read.Bitrate, read.Streams, read.Chapters
 		coverage["streams"] = inventory.CoveragePresent
 		coverage["audioStreams"] = inventory.CoverageEmpty
 		for _, s := range read.Streams {

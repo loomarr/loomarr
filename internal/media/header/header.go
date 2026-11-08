@@ -27,17 +27,14 @@ type Header struct {
 	ChaptersKnown bool
 }
 
-// Chapter is one chapter mark. EndMillis is -1 when the container does not say.
-type Chapter struct {
-	StartMillis int64
-	EndMillis   int64
-	Title       string
-}
+// Chapter is one chapter mark, as the inventory stores it.
+type Chapter = inventory.Chapter
 
 // SourceFacts is the header as the inventory stores a source's facts.
 func (h Header) SourceFacts() inventory.SourceFacts {
 	return inventory.SourceFacts{
 		Container: h.Container, DurationMillis: h.DurationMillis, Bitrate: h.Bitrate, Streams: h.Streams,
+		Chapters: h.Chapters,
 	}
 }
 
@@ -46,7 +43,8 @@ func (h Header) SourceFacts() inventory.SourceFacts {
 //
 //	1: containers, durations, streams, colour and chapters.
 //	2: commentary, hearing-impaired and described tracks, and a video track's Dolby Vision profile.
-const Version = 2
+//	3: a file's chapters are kept with its facts.
+const Version = 3
 
 // Read returns a file's header facts from its container. ok is false for a container this package
 // does not read (AVI, MPEG-TS, …), one whose header does not parse, or one where a fact playout

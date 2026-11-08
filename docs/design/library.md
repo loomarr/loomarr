@@ -233,6 +233,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   its appearing or going changes the identity digest at no cost to the walk. Only the `.bif`
   layout is handled, because it is the one seen in a real library. The `trickplay/` folder skip
   stays until another server's layout turns up.
+  External subtitle and audio files beside a video (`<name>.en.forced.srt`, `<name>.fr.mka`,
+  decision 61) join its sidecars the same way and are never opened. Their names give the
+  language (the first word that names one) and the flags `forced`, `default`, `sdh`/`cc`/`hi`
+  and `commentary`. They are listed as `library_streams` rows after the file's own tracks, with
+  `external_ref` set to the path. A `<name>.edl` is stat'd and read (at most 64 KiB) into
+  `library_markers`: each line is `start end [action]`, in seconds, with actions 0 cut, 1 mute,
+  2 scene and 3 commercial. The header reader keeps the first edition's top-level chapters with
+  the file's facts (`header.Version` 3), and they become `library_chapters` rows. Tracks carry
+  their commentary, SDH and descriptive flags from the dispositions (decisions 45 and 46).
 - **Change signals.** Each signal names folders, and `Scanner.PassFolders` passes over only those
   (`Importer.RunFolders`): it writes and removes what is under them, under the same removal guard,
   and still counts every file outside them as present. A folder deleted whole is a change to the

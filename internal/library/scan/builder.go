@@ -274,6 +274,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 	snapshot.Observation.Extension = originExtensionOf(id.kind, res, seriesKey, fileNotes{
 		Managed: len(id.managed.records) > 0, Edition: fileEdition(records), Trickplay: file.trickplay(),
+		External: file.externalTracks(), Markers: readEDL(file.edl()),
 	})
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
 	return snapshot
