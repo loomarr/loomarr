@@ -126,6 +126,8 @@ interface ToolProps {
   swap?: boolean;
   /** Glyph at full text colour: a control that is one of four on the screen. */
   bright?: boolean;
+  /** A larger glyph and a hairline ring: a control that carries the screen (variant D). */
+  ringed?: boolean;
 }
 
 const Tool = ({
@@ -137,6 +139,7 @@ const Tool = ({
   keyHint,
   keycap,
   label,
+  ringed = false,
   size,
   swap,
   tipAlign,
@@ -151,7 +154,8 @@ const Tool = ({
         disabled={disabled}
         style={{
           alignItems: "center",
-          background: active ? flat.focus : undefined,
+          background: active ? flat.focus : ringed ? flat.elevated : undefined,
+          border: ringed ? `1px solid ${flat.hairline}` : undefined,
           borderRadius: 999,
           display: "inline-flex",
           flexShrink: 0,
@@ -166,7 +170,7 @@ const Tool = ({
         {swap ? (
           <ArrowLeftRight aria-hidden color={glyph} size={20} strokeWidth={1.75} />
         ) : icon ? (
-          <Icon color={glyph} decorative glyph={icons[icon]} size="player" />
+          <Icon color={glyph} decorative glyph={icons[icon]} size={ringed ? "control" : "player"} />
         ) : null}
         {active ? (
           <span
@@ -214,7 +218,15 @@ const Capsule = ({ children, end = false }: { children: ReactNode; end?: boolean
 );
 
 // Play and pause: the one primary control, a flat white disc.
-const PlayDisc = ({ playing, size = 44 }: { playing: boolean; size?: number }) => (
+const PlayDisc = ({
+  large = false,
+  playing,
+  size = 44,
+}: {
+  large?: boolean;
+  playing: boolean;
+  size?: number;
+}) => (
   <button
     aria-label={playing ? "Pause" : "Play"}
     className="pp-btn"
@@ -230,7 +242,12 @@ const PlayDisc = ({ playing, size = 44 }: { playing: boolean; size?: number }) =
     }}
     type="button"
   >
-    <Icon color={playerChrome.discInk} decorative glyph={playing ? icons.pause : icons.play} size="default" />
+    <Icon
+      color={playerChrome.discInk}
+      decorative
+      glyph={playing ? icons.pause : icons.play}
+      size={large ? "touch" : "default"}
+    />
   </button>
 );
 
@@ -258,7 +275,7 @@ const GoLive = ({ density }: { density: Density }) => (
     type="button"
   >
     <span style={{ background: flat.live, borderRadius: 4, height: 7, width: 7 }} />
-    <Text density={density} shout strong textRole="guideIdent" tone="live">
+    <Text density={density} strong textRole="label" tone="live">
       Go live
     </Text>
   </button>

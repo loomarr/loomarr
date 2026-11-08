@@ -155,3 +155,11 @@ const channels: ChannelRow[] = [
 
 export type { Break, ChannelRow, Programme, Segment, Spot };
 export { at, b1, channel, channels, formatTime, MINUTE, NOW, segments, WINDOW };
+
+// Variant D's richer title block: what an Emby / Plex / Apple TV player sets under the title.
+const nowMeta = { genre: "Comedy", rating: "TV-PG", year: "1996" };
+
+// The channel the viewer came from. Absent (null) on a first tune-in, and then no control is drawn.
+const lastChannel: { name: string; number: string } | null = { name: "Saturday Mornings", number: "3" };
+
+export { lastChannel, nowMeta };

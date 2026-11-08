@@ -1,10 +1,11 @@
 // PROTOTYPE — throwaway (Direction mocks, 2026-11-08)
 // /prototype/player — the video player's on-screen chrome, flat. A: today's structure, flattened.
 // B: A plus a tuner (channel down / up). C: a television's on-screen display (the design review's
-// structure). Switch with [ ] variant, , . state, D device, T tint.
+// structure). D: C's structure with the content and type of a shipped player. Switch with [ ] variant, , . state, D device, T tint.
 import { ThemeScope } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { ClassicChrome } from "@/prototype-direction/player/chrome-classic";
+import { RichChrome } from "@/prototype-direction/player/chrome-rich";
 import { OsdChrome } from "@/prototype-direction/player/chrome-osd";
 import { channel } from "@/prototype-direction/player/data";
 import { PlayerStyles } from "@/prototype-direction/player/flat";
@@ -56,7 +57,9 @@ const PlayerPrototype = () => {
         <ThemeScope theme="dark">
           <PlayerStyles />
           <LivePicture />
-          {search.variant === "C" ? (
+          {search.variant === "D" ? (
+            <RichChrome {...props} />
+          ) : search.variant === "C" ? (
             <OsdChrome {...props} />
           ) : (
             <ClassicChrome {...props} tuner={search.variant === "B"} />
