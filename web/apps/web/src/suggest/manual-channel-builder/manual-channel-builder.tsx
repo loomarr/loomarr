@@ -8,13 +8,11 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Badge } from "@loomarr/design-system";
+import { Badge, Field } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
 import { Plus, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../components/loomarr/shell";
 import { useAiReconnect } from "../use-ai-reconnect";
@@ -167,15 +165,14 @@ const ManualChannelBuilder = ({
         />
       )}
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="manual-channel-name">Channel name</Label>
-        <Input
-          id="manual-channel-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Name this channel"
-        />
-      </div>
+      <Field
+        autoCapitalize="words"
+        id="manual-channel-name"
+        label="Channel name"
+        onChangeText={setName}
+        placeholder="Name this channel"
+        value={name}
+      />
 
       {!fromIdea && (
         <div>

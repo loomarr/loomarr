@@ -1,11 +1,10 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Badge, Card, Surface, Text } from "@loomarr/design-system";
+import { Badge, Card, Field, Surface, Text } from "@loomarr/design-system";
 import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { episodeSelectionLabel } from "../episode-selection-label";
 import { ProposalEdit } from "../proposal-edit";
@@ -162,16 +161,14 @@ const ApprovalQueueItem = ({
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
         <div className="border-border flex flex-col gap-2 border-t pt-2">
-          <label className="text-muted-foreground text-sm" htmlFor={reasonId}>
-            Why not? Optional: the requester sees this.
-          </label>
-          <Input
-            id={reasonId}
+          <Field
             autoFocus
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. over the acquisition cap this week, ask again Monday"
             disabled={busy}
+            id={reasonId}
+            label="Why not? Optional: the requester sees this."
+            onChangeText={setReason}
+            placeholder="e.g. over the acquisition cap this week, ask again Monday"
+            value={reason}
           />
           <div className="flex justify-end gap-2">
             <Button

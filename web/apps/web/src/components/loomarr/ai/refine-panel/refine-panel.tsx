@@ -1,5 +1,6 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
+import { Field, Surface } from "@loomarr/design-system";
 import { Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
@@ -7,7 +8,6 @@ import { RefineReview } from "@/components/loomarr/ai/refine-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import { suggestionFailureCopy } from "@/suggest/suggestion-failure-copy";
@@ -133,13 +133,20 @@ const RefinePanel = ({
             <form.Field name="change">
               {(field) => (
                 <>
-                  <Input
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="e.g. More 90s sci-fi, fewer movies after midnight"
-                    aria-label={`What to change on ${channelName}`}
-                    className="flex-1"
-                  />
+                  <Surface
+                    backgroundColor="transparent"
+                    borderWidth={0}
+                    flexGrow={1}
+                    flexShrink={1}
+                    minWidth={0}
+                  >
+                    <Field
+                      accessibilityLabel={`What to change on ${channelName}`}
+                      onChangeText={field.handleChange}
+                      placeholder="e.g. More 90s sci-fi, fewer movies after midnight"
+                      value={field.state.value}
+                    />
+                  </Surface>
                   <Button type="submit" disabled={field.state.value.trim().length === 0}>
                     Suggest changes
                   </Button>

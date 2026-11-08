@@ -7,6 +7,7 @@ import type { SearchFieldProps } from "./search-field.type";
 // the glyph sits in front of the text rather than over it. The glyph is decoration: the label names
 // it, printed above the box or, with `labelHidden`, only announced.
 const SearchField = ({
+  autoFocus,
   disabled,
   label,
   labelHidden = false,
@@ -19,6 +20,7 @@ const SearchField = ({
       accessibilityLabel={label}
       autoCapitalize="none"
       autoCorrect={false}
+      autoFocus={autoFocus}
       disabled={disabled}
       label={labelHidden ? undefined : label}
       onChangeText={onChangeText}
