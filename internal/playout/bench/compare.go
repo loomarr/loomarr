@@ -154,6 +154,19 @@ var (
 		{metric: "speed_x/hdr-4k", limit: 2},
 		{metric: "concurrency/total_cores", max: true, limit: 1},
 	}
+	// familyLimits replace a hardware limit for one family, with the measurement that justifies it.
+	// NVENC: every new ffmpeg process spends ~460 ms initialising CUDA and the encoder before its
+	// first frame (RTX 3080 Ti, driver 615, 2026-11-08: a 1-frame encode took 455 ms), so a 1080p
+	// channel cannot start in 400 ms on NVIDIA. The maintainer set 700 ms (#2268). Each commercial
+	// spot is a fresh process too, so its first packet pays the same start-up (251–380 ms across
+	// four runs; Arc 60 ms); the maintainer set 400 ms there.
+	familyLimits = map[string]map[string]float64{
+		"nvenc": {
+			"start_p95_ms/h264-1080p": 700,
+			"start_p95_ms/hevc-1080p": 700,
+			"break/first_packet_ms":   400,
+		},
+	}
 )
 
 // Judge measures a report against the thresholds of its family. A threshold whose metric is absent
@@ -168,6 +181,9 @@ func Judge(r *Report, mode Mode) []Verdict {
 	for _, t := range set {
 		if mode == ModeCorrectness && !t.correctness {
 			continue
+		}
+		if limit, ok := familyLimits[r.Family][t.metric]; ok {
+			t.limit = limit
 		}
 		v := Verdict{Metric: t.metric, Limit: limitText(t)}
 		m, ok := r.Metrics[t.metric]

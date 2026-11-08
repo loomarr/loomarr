@@ -148,6 +148,40 @@ func TestJudge_HardwareThresholds(t *testing.T) {
 	}
 }
 
+func TestJudge_NVENCStartAllowsTheDriversInitialisation(t *testing.T) {
+	// An RTX 3080 Ti spends ~460 ms initialising CUDA and NVENC in every new process (2026-11-08),
+	// so a 1080p channel cannot start in 400 ms on NVIDIA; the maintainer set 700 ms for NVENC.
+	slow := func(r *Report) {
+		hardwareGreen(r)
+		r.Set("start_p95_ms/h264-1080p", 561, "ms", Lower)
+		r.Set("start_p95_ms/hevc-1080p", 630, "ms", Lower)
+	}
+	if f := failed(Judge(report("nvenc", slow), ModeFull)); len(f) != 0 {
+		t.Fatalf("NVENC 1080p starts under 700 ms must pass, failed: %v", f)
+	}
+	f := failed(Judge(report("vaapi", slow), ModeFull))
+	if !contains(f, "start_p95_ms/h264-1080p") || !contains(f, "start_p95_ms/hevc-1080p") {
+		t.Fatalf("other families keep 400/500 ms, failed: %v", f)
+	}
+	spots := func(r *Report) {
+		hardwareGreen(r)
+		r.Set("break/first_packet_ms", 265, "ms", Lower)
+	}
+	if f := failed(Judge(report("nvenc", spots), ModeFull)); len(f) != 0 {
+		t.Fatalf("an NVENC spot's first packet under 400 ms must pass, failed: %v", f)
+	}
+	if f := failed(Judge(report("vaapi", spots), ModeFull)); !contains(f, "break/first_packet_ms") {
+		t.Fatalf("other families keep 250 ms for a spot's first packet, failed: %v", f)
+	}
+	tooSlow := report("nvenc", func(r *Report) {
+		hardwareGreen(r)
+		r.Set("start_p95_ms/h264-1080p", 701, "ms", Lower)
+	})
+	if f := failed(Judge(tooSlow, ModeFull)); !contains(f, "start_p95_ms/h264-1080p") {
+		t.Fatalf("NVENC over 700 ms must fail, failed: %v", f)
+	}
+}
+
 func TestJudge_NotMeasuredIsAFailureUnlessSkipped(t *testing.T) {
 	r := report("nvenc", func(r *Report) {
 		hardwareGreen(r)
