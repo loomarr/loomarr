@@ -14,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -280,7 +279,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}
 
 	resourceBudget.WithMemoryGate(encodeMemoryGate(
-		media.HostMemAvailable,
+		playout.HostMemAvailable,
 		func() int { return settings.PlayoutMemoryReserveMb.Get(set) },
 		func() int { return settings.PlayoutEncodeMemoryMb.Get(set) },
 		playoutRes.EncodeHostBytes,
@@ -440,8 +439,8 @@ const defaultEncodeHostBytes = int64(1) << 30
 // and defaultEncodeHostBytes.
 func encodeMemoryGate(
 	available func() (int64, bool), reserveMiB, perEncodeMiB func() int, measured func() int64,
-) media.MemoryGate {
-	return media.MemoryGate{
+) playout.MemoryGate {
+	return playout.MemoryGate{
 		Available: func() (int64, bool) {
 			if reserveMiB() <= 0 {
 				return 0, false // disabled: report unknown so the gate stays open

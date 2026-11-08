@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
-	"github.com/loomarr/loomarr/internal/media/loudness"
+	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
@@ -648,14 +648,14 @@ func tooQuietToCorrect(target float64, l tools.ConditioningLoudness) (StageResul
 		return StageResult{}, false
 	}
 	measured := l.IntegratedLUFS
-	if _, reachable := loudness.Correction(target, measured, nil); reachable {
+	if _, reachable := measure.LoudnessCorrection(target, measured, nil); reachable {
 		return StageResult{}, false
 	}
 	return StageResult{
 		Verdict: VerdictReject, Reason: ReasonTooQuiet,
 		Note: "too quiet to correct",
 		Detail: fmt.Sprintf("%.1f LUFS; reaching %.0f LUFS needs +%.1f dB, at most +%.0f dB",
-			measured, target, target-measured, loudness.MaxBoostDB),
+			measured, target, target-measured, measure.MaxBoostDB),
 	}, true
 }
 

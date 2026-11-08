@@ -629,7 +629,7 @@ report is not a finished encode, so the rung encodes it again.
   duration.
 
 **Loudness is measured at ingest and corrected at playout**, target `filler.target_lufs`
-(−23 LUFS), by one rule in `internal/media/loudness` (#2032). Files are never levelled on disk.
+(−23 LUFS), by one rule, `measure.LoudnessCorrection` in `internal/media/measure` (#2032). Files are never levelled on disk.
 
 - The playback derivative's integrated loudness and true peak are measured at ingest. Derivative
   verification refuses a clip with audio but no valid measurement, so every new clip is measured.
