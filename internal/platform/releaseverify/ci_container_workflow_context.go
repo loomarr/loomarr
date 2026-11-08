@@ -8,13 +8,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The household self-hosted runner (#1570) must never execute a `pull_request` run, including one
-// from a fork — the repository is public. `push` alone matches every branch, not just `main`, so
-// only `merge_group` and a push to `main` specifically may select it; every other event or ref,
-// including `workflow_dispatch` (which would otherwise starve the merge queue of the two runners)
-// and a push to any other branch, falls back to `ubuntu-latest`.
-const goWorkflowSelfHostedRunsOn = `${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}`
-
 type workflowJobContextKey struct {
 	workflow string
 	job      string
@@ -73,7 +66,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
 		{workflow: "ci-go-cache-warm.yml", job: "run"}:       {name: "Warm Go build cache (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 30, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2", "postgres"}}},
 		{workflow: "ci-go-cache-warm.yml", job: "contracts"}: {name: "Warm Go contracts cache", runsOn: "ubuntu-latest", timeoutMinutes: 30},
-		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: goWorkflowSelfHostedRunsOn, timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2"}}},
+		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2"}}},
 		{workflow: "ci-image-certification.yml", job: "run"}: {name: "Rust image — runtime certification", runsOn: "ubuntu-latest"},
 		{workflow: "ci-image.yml", job: "run"}: {
 			name: "Image — release build (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}", timeoutMinutes: 45,

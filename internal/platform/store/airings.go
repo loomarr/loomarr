@@ -34,27 +34,45 @@ const airingRetention = 8 * 24 * time.Hour
 // start, and only the first write lands, so `recorded_at` is when the airing was FIRST observed.
 // That is what lets LastAiredByChannel ignore rows written after a window opened.
 func (s *sqlStore) RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error {
+	return s.recordAiringIn(ctx, "airings", channelID, key, libraryItemID, airedAt, recordedAt)
+}
+
+// RecordScheduledAirings logs programmes a channel's schedule put on air, watched or not (#1677).
+// It is the scheduled signal; RecordAiring is the watched one, and the two never share a table, so
+// neither poisons the other. Each airing is written once, with the same retention as `airings`.
+func (s *sqlStore) RecordScheduledAirings(ctx context.Context, channelID string, airings []ScheduledAiring, recordedAt time.Time) error {
+	for _, a := range airings {
+		if err := s.recordAiringIn(ctx, "scheduled_airings", channelID, a.Key, a.LibraryItemID, a.AiredAt, recordedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// recordAiringIn writes one airing to table (airings or scheduled_airings), once, and prunes the
+// unit's rows past the retention horizon down to the newest of them.
+func (s *sqlStore) recordAiringIn(ctx context.Context, table, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error {
 	if channelID == "" || libraryItemID == "" {
 		return nil // nothing identifiable to record; not an error (playout must never fail on telemetry)
 	}
 	res, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO airings (channel_id, library_item_id, aired_at, recorded_at, key) VALUES (?, ?, ?, ?, ?)
+		`INSERT INTO `+table+` (channel_id, library_item_id, aired_at, recorded_at, key) VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT (channel_id, library_item_id, aired_at) DO NOTHING`),
 		channelID, libraryItemID, epoch(airedAt), epoch(recordedAt), string(key))
 	if err != nil {
-		return fmt.Errorf("record airing %s/%s: %w", channelID, libraryItemID, err)
+		return fmt.Errorf("record %s %s/%s: %w", table, channelID, libraryItemID, err)
 	}
 	if n, nerr := res.RowsAffected(); nerr != nil || n == 0 {
-		return nil // a repeat resolve of an airing already logged: nothing new to prune
+		return nil // a repeat of an airing already logged: nothing new to prune
 	}
 	// Keep every airing inside the retention horizon plus the newest one older than it.
 	horizon := epoch(recordedAt.Add(-airingRetention))
 	if _, err := s.db.ExecContext(ctx, s.ph(
-		`DELETE FROM airings WHERE channel_id = ? AND library_item_id = ? AND recorded_at < ?
-		   AND aired_at < (SELECT MAX(aired_at) FROM airings
+		`DELETE FROM `+table+` WHERE channel_id = ? AND library_item_id = ? AND recorded_at < ?
+		   AND aired_at < (SELECT MAX(aired_at) FROM `+table+`
 		                   WHERE channel_id = ? AND library_item_id = ? AND recorded_at < ?)`),
 		channelID, libraryItemID, horizon, channelID, libraryItemID, horizon); err != nil {
-		return fmt.Errorf("prune airings %s/%s: %w", channelID, libraryItemID, err)
+		return fmt.Errorf("prune %s %s/%s: %w", table, channelID, libraryItemID, err)
 	}
 	return nil
 }
@@ -68,11 +86,20 @@ func (s *sqlStore) RecordAiring(ctx context.Context, channelID string, key provi
 // has not aired (as of `before`) is absent — callers read absence as "never aired", which ranks
 // it first. The whole channel at once, because that is how placement consumes it.
 func (s *sqlStore) LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error) {
+	return s.lastAiredIn(ctx, "airings", channelID, before)
+}
+
+// LastScheduledByChannel is LastAiredByChannel over the scheduled ledger (#1677).
+func (s *sqlStore) LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error) {
+	return s.lastAiredIn(ctx, "scheduled_airings", channelID, before)
+}
+
+func (s *sqlStore) lastAiredIn(ctx context.Context, table, channelID string, before time.Time) (map[string]time.Time, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT library_item_id, MAX(aired_at) FROM airings WHERE channel_id = ? AND recorded_at < ?
+		`SELECT library_item_id, MAX(aired_at) FROM `+table+` WHERE channel_id = ? AND recorded_at < ?
 		 GROUP BY library_item_id`), channelID, epoch(before))
 	if err != nil {
-		return nil, fmt.Errorf("list airings %s: %w", channelID, err)
+		return nil, fmt.Errorf("list %s %s: %w", table, channelID, err)
 	}
 	defer func() { _ = rows.Close() }()
 

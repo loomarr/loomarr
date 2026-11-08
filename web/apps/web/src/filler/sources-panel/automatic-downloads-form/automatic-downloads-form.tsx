@@ -1,10 +1,10 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
 import { formatRelative } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
-import { useRef, useState } from "react";
+import { type ComponentRef, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { SourceActions } from "../use-source-actions";
 
@@ -56,7 +56,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
     downloadSchedulePreset(source.automaticDownloads?.everySeconds || 6 * 3600) === "custom",
   );
   const [saveError, setSaveError] = useState<string>();
-  const saveButton = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<ComponentRef<typeof Action>>(null);
   const automaticDownloads = source.automaticDownloads;
   if (!automaticDownloads) return null;
   const interval = downloadIntervalParts(everySeconds);
@@ -161,13 +161,12 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
           )}
         </div>
       )}
-      <Button
-        ref={saveButton}
-        type="button"
-        variant="outline"
-        className="self-start"
+      <Action
         disabled={actions.updating}
-        onClick={() => {
+        ref={saveButton}
+        style={{ alignSelf: "flex-start" }}
+        variant="outline"
+        onPress={() => {
           setSaveError(undefined);
           actions.updateSource(
             source.id,
@@ -186,7 +185,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         }}
       >
         {actions.updatingSourceID === source.id ? "Saving…" : "Save automatic downloads"}
-      </Button>
+      </Action>
       {saveError && (
         <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
           {saveError}

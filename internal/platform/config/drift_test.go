@@ -22,6 +22,7 @@ func TestChangedKeysNamesEveryBootKey(t *testing.T) {
 		"LOOMARR_METRICS_TOKEN":              "scrape-token",
 		"LOOMARR_DEMO_USERNAME":              "visitor",
 		"LOOMARR_DEMO_PASSWORD":              "visitor-password",
+		"LOOMARR_TMDB_BASE_URL":              "http://localhost:22000/tmdb/3",
 	}
 	// The demo account is only valid as a pair, so the baseline sets both and each row moves one.
 	base := map[string]string{"LOOMARR_DEMO_USERNAME": "guest", "LOOMARR_DEMO_PASSWORD": "guest-password"}

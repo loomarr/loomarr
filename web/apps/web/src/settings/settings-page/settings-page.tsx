@@ -2,13 +2,13 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSettingsEdits } from "../settings-edits";
 import type { SettingsPageProps } from "./settings-page.type";
@@ -210,17 +210,17 @@ const SettingsPage = ({
                   open={openBlocks?.[block.group] ?? false}
                   onToggle={() => toggleBlock(block.group)}
                   action={
-                    <Button
-                      variant="outline"
-                      onClick={() => test(block.check as string)}
+                    <Action
                       disabled={testing !== undefined}
+                      onPress={() => test(block.check as string)}
+                      variant="outline"
                     >
                       {testing === block.check
                         ? Object.keys(edits).length > 0
                           ? "Saving & checking…"
                           : "Checking…"
                         : checkLabel}
-                    </Button>
+                    </Action>
                   }
                 >
                   {block.description && (

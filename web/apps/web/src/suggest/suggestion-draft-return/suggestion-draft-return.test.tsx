@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { writeSuggestionDraft } from "../suggestion-draft";
 import { SuggestionDraftReturn } from "./suggestion-draft-return";

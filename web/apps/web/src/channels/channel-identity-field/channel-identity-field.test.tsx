@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ChannelIdentityField } from "./channel-identity-field";
 
-// Purely presentational + a promise-returning onSave — no providers needed. The field owns
+// Presentational + a promise-returning onSave — only the theme provider. The field owns
 // the draft/dirty/save-state machine; these assert the confirmation contract: editing reveals
 // Save/Cancel, Save commits the parsed value, Cancel/Escape reverts, an invalid draft blocks
 // Save, and a rejected onSave (e.g. a 409 renumber) surfaces inline + keeps the editor open.

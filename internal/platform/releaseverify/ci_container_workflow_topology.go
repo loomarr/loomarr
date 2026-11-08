@@ -27,7 +27,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 7, "consumer": 7}},
 
 		"ci-clients.yml":             {jobs: map[string]int{"run": 10}},
-		"ci-docs.yml":                {jobs: map[string]int{"run": 7}},
+		"ci-docs.yml":                {jobs: map[string]int{"run": 8}},
 		"ci-frontend.yml":            {jobs: map[string]int{"run": 10}},
 		"ci-go-contracts.yml":        {jobs: map[string]int{"run": 10}},
 		"ci-go.yml":                  {jobs: map[string]int{"run": 14}},
@@ -99,7 +99,7 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"playwright":    {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
 		"tuner":         {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'", with: map[string]string{"project": "${{ inputs.project || 'all' }}", "repeat_each": "${{ inputs.repeat_each || '1' }}", "quarantine": "${{ needs.changes.outputs.lane == 'manual-tuner' && 'off' || 'exclude' }}"}, permissions: map[string]string{"contents": "read", "issues": "read"}},
 		"image":         {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
-		"docs":          {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
+		"docs":          {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'", with: map[string]string{"diagrams": "${{ needs.changes.outputs.impact_diagrams == 'true' }}"}},
 		"android":       {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_android == 'true'"},
 		"playout-bench": {name: "Playout bench — software-only pipeline", condition: "needs.changes.outputs.impact_playout_bench == 'true'"},
 	}

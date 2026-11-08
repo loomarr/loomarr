@@ -4,13 +4,12 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
-import { Badge, Card, FieldHint } from "@loomarr/design-system";
+import { Action, Badge, Card, FieldHint } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Button } from "@/components/ui/button";
 import { useAppForm } from "@/lib/app-form";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -134,9 +133,13 @@ const AccountScreen = () => {
                 </FieldHint>
               )}
               <div className="flex items-center gap-3">
-                <Button type="submit" disabled={changePassword.isPending}>
+                {/* A real submit button under Action's look, so Enter in a field still submits. */}
+                <Action
+                  disabled={changePassword.isPending}
+                  render={<button disabled={changePassword.isPending} type="submit" />}
+                >
                   Change password
-                </Button>
+                </Action>
                 {/* The honest consequence, stated before the click rather than after. */}
                 <span className="text-static-400 text-xs">
                   changing it signs you out everywhere, including here
@@ -187,14 +190,13 @@ const AccountScreen = () => {
                 )}
                 {/* No Sign out on your own session: the shell's Sign out is for that. */}
                 {!s.current && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => revoke.mutate({ hash: s.id })}
+                  <Action
                     disabled={revoke.isPending}
+                    onPress={() => revoke.mutate({ hash: s.id })}
+                    variant="ghost"
                   >
                     Sign out
-                  </Button>
+                  </Action>
                 )}
               </li>
             ))}

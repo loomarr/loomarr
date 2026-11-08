@@ -3,13 +3,13 @@ import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useProposalOutlook } from "../live-proposal-outlook";
@@ -157,25 +157,25 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {isAdmin &&
                 (groundingUnconfigured ? (
-                  <Link
-                    to="/settings/connections"
-                    search={{ focus: "tmdb" }}
-                    className={buttonVariants({ variant: "link", size: "sm" })}
+                  <Action
+                    accessibilityRole="link"
+                    render={<Link to="/settings/connections" search={{ focus: "tmdb" }} />}
+                    variant="link"
                   >
                     Connect TMDB
-                  </Link>
+                  </Action>
                 ) : (
-                  <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
+                  <Action accessibilityRole="link" render={<Link to="/settings/ai" />} variant="link">
                     Set up AI
-                  </Link>
+                  </Action>
                 ))}
               {/* Always offered client-side on a failed generation (#1817 maintainer decision 1,
                   tracked on #1872) — no server Journey action gates it; the LLM being off is the
                   one failure this recovers from, so grounding-only failures don't offer it. */}
               {aiUnconfigured && (
-                <Button variant="outline" size="sm" onClick={flow.buildManually}>
+                <Action onPress={flow.buildManually} variant="outline">
                   Build it manually instead
-                </Button>
+                </Action>
               )}
             </div>
           </div>
@@ -213,29 +213,25 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
           </div>
           <div className="flex flex-wrap gap-2">
             {run.actions.includes("edit") && (
-              <Button
-                variant={failureNeedsEdit ? "default" : "outline"}
-                size="sm"
-                onClick={editFailedDescription}
-              >
+              <Action onPress={editFailedDescription} variant={failureNeedsEdit ? undefined : "outline"}>
                 {run.failure?.recoveryAction === "edit_reference" ? "Change link" : "Edit description"}
-              </Button>
+              </Action>
             )}
             {run.actions.includes("retry") && (
-              <Button variant="outline" size="sm" onClick={retry}>
+              <Action onPress={retry} variant="outline">
                 Try again
-              </Button>
+              </Action>
             )}
             {run.actions.includes("check_ai") && (
-              <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
+              <Action accessibilityRole="link" render={<Link to="/settings/ai" />} variant="link">
                 Check AI settings
-              </Link>
+              </Action>
             )}
             {/* Always offered client-side (#1817 maintainer decision 1, #1872): a generation
                 failure, whatever its reason, can always fall back to building by hand. */}
-            <Button variant="suggest" size="sm" onClick={flow.buildManually}>
+            <Action onPress={flow.buildManually} variant="suggest">
               Build it manually instead
-            </Button>
+            </Action>
           </div>
         </div>
       )}
@@ -283,9 +279,9 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                   ? "Created automatically using your account setting."
                   : "This channel has already been created."}
               </p>
-              <Button variant="outline" size="sm" onClick={startFresh}>
+              <Action onPress={startFresh} variant="outline">
                 Create another
-              </Button>
+              </Action>
             </div>
           )}
         </div>

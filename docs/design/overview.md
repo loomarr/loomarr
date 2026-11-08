@@ -65,7 +65,8 @@ availability events are an internal feed to the scheduler, which is what drives 
 optional outbound webhook and SSE serve external consumers.
 
 **Filler flow.** Every clip arrives through a filler source: `folder` (a watched directory),
-`youtube` (yt-dlp), `archive` (Archive.org) or `library` (a filler library on the media server).
+`youtube` (yt-dlp), `archive` (Archive.org) or `library` (a folder of the household library, copied
+from and never changed).
 Loomarr probes and hashes the files itself, and each clip then travels the ingest pipeline
 (transcode, language, transcription, tagging, compilation splitting). Tunarr is optional: when a
 channel uses it, Loomarr registers the folder as a Tunarr `local` source.

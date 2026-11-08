@@ -452,10 +452,8 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 // within it, which is consistent with the stamp only being read at reconcile anyway.
 type libraryBoxSets struct {
 	lib *library.Client
-	// own lists the household's collections' members; nil leaves them out.
-	own interface {
-		LibraryCollectionMemberIDs(ctx context.Context) ([]store.LibraryCollectionMember, error)
-	}
+	// own is the household's collections; nil leaves them out.
+	own ownCollections
 	ttl time.Duration
 
 	mu         sync.Mutex
@@ -488,6 +486,7 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 		return index, nil
 	}
 	idx := make(map[provision.Key][]string)
+	imported := map[string]bool{}
 	if a.own != nil {
 		members, err := a.own.LibraryCollectionMemberIDs(ctx)
 		if err != nil {
@@ -497,6 +496,9 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 			for _, k := range provisionbackstop.ScanItemKeys(ownMember(m)) {
 				idx[k] = append(idx[k], m.CollectionID)
 			}
+		}
+		if imported, err = importedCollections(ctx, a.own); err != nil {
+			return nil, err
 		}
 	}
 	if noServer {
@@ -508,6 +510,9 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 		return nil, err
 	}
 	for _, c := range colls {
+		if imported[c.ID] {
+			continue // the household's copy stands for it; scopes were rewritten to that (step 15b)
+		}
 		members, err := lib.CollectionMembers(ctx, c.ID)
 		if err != nil {
 			// One unreadable collection must not discard the whole index — the rest is still
@@ -545,23 +550,70 @@ func (a *libraryBoxSets) cachedIndex(
 	return a.index, true
 }
 
-// libraryCollections adapts library.Client to api.CollectionService: the read-only list
-// behind the scope.collections picker (programming-design §2.2).
-//
-// Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
-// lookups and is TTL-stale by design (membership is only read at reconcile), whereas an
-// operator who just made a collection in Emby and opened the picker expects to see it. The
-// list is one cheap call; the index is the expensive one.
-type libraryCollections struct{ lib *library.Client }
+// ownCollections is the household's collections (#2151 step 12), as the collection scope reads
+// them.
+type ownCollections interface {
+	LibraryCollectionMemberIDs(ctx context.Context) ([]store.LibraryCollectionMember, error)
+	ListLibraryCollections(ctx context.Context) ([]store.LibraryCollection, error)
+}
 
-func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryCollection, error) {
-	colls, err := a.lib.Collections(ctx)
+// importedCollections is the media server's id of each collection the household's were imported
+// from at the cutover (step 15b).
+func importedCollections(ctx context.Context, own ownCollections) (map[string]bool, error) {
+	colls, err := own.ListLibraryCollections(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.LibraryCollection, 0, len(colls))
+	out := map[string]bool{}
 	for _, c := range colls {
-		out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: c.ChildCount})
+		if c.ImportedID != "" {
+			out[c.ImportedID] = true
+		}
+	}
+	return out, nil
+}
+
+// libraryCollections is api.CollectionService: the read-only list behind the scope.collections
+// picker (programming-design §2.2). The household's collections come first (#2151 step 15e); the
+// media server adds only the ones not imported from it, and its absence or failure leaves the
+// household's.
+//
+// Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
+// lookups and is TTL-stale by design (membership is only read at reconcile), whereas an
+// operator who just made a collection and opened the picker expects to see it. The list is one
+// cheap call; the index is the expensive one.
+type libraryCollections struct {
+	own ownCollections
+	lib *library.Client
+}
+
+func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryCollection, error) {
+	own, err := a.own.ListLibraryCollections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.LibraryCollection, 0, len(own))
+	imported := map[string]bool{}
+	for _, c := range own {
+		out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: len(c.Members)})
+		if c.ImportedID != "" {
+			imported[c.ImportedID] = true
+		}
+	}
+	if a.lib == nil {
+		return out, nil
+	}
+	colls, err := a.lib.Collections(ctx)
+	if err != nil {
+		if len(out) > 0 || errors.Is(err, library.ErrConnectionRequired) {
+			return out, nil
+		}
+		return nil, err
+	}
+	for _, c := range colls {
+		if !imported[c.ID] {
+			out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: c.ChildCount})
+		}
 	}
 	return out, nil
 }

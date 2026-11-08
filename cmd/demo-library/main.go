@@ -8,7 +8,8 @@
 //
 // `make demo-library` and `make demo-seed` wrap serve and seed. By default nothing here needs the
 // LLM, TMDB or the network: every title is invented and every asset is generated locally with
-// ffmpeg. --content open (DEMO_CONTENT=open, the public demo site only) serves the licensed open
+// ffmpeg. serve also answers as TMDB under /tmdb/3 over the same catalogue (#1941), for a backend
+// started with LOOMARR_TMDB_BASE_URL. --content open (DEMO_CONTENT=open, the public demo site only) serves the licensed open
 // content pack instead, downloading its pinned files on first run.
 package main
 
@@ -90,14 +91,15 @@ func serve(ctx context.Context, lib *demolibrary.Library, dir, ffmpeg, addr stri
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: demolibrary.Server{Layout: demolibrary.Layout{Dir: dir}, Library: lib, Token: DemoToken}, ReadHeaderTimeout: 10 * time.Second}
+	media := demolibrary.Server{Layout: demolibrary.Layout{Dir: dir}, Library: lib, Token: DemoToken}
+	srv := &http.Server{Handler: withTMDB(media, lib), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdown)
 	}()
-	log.Info("demo library serving", "url", "http://"+ln.Addr().String(), "token", DemoToken, "content", lib.Content, "titles", len(lib.Titles))
+	log.Info("demo library serving", "url", "http://"+ln.Addr().String(), "tmdb", "http://"+ln.Addr().String()+TMDBPrefix, "token", DemoToken, "content", lib.Content, "titles", len(lib.Titles))
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
