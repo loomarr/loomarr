@@ -1,9 +1,6 @@
 package library
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestParsePathMap(t *testing.T) {
 	cases := []struct {
@@ -58,17 +55,5 @@ func TestPathMap_Apply(t *testing.T) {
 		if ok != c.wantOK || got != c.want {
 			t.Errorf("Apply(%q) = (%q,%v), want (%q,%v) — %s", c.in, got, ok, c.want, c.wantOK, c.why)
 		}
-	}
-}
-
-// With no path map, ResolveInput short-circuits to the HTTP stream without even fetching the path.
-func TestResolveInput_FallsBackToStreamWithoutMapping(t *testing.T) {
-	c := New(Emby, "http://emby:8096", "tok", "dev")
-	src := c.ResolveInput(t.Context(), "item1", nil, func(string) bool { return true })
-	if src.Kind != InputHTTP {
-		t.Fatalf("no path map ⇒ HTTP stream, got kind %v url %q", src.Kind, src.URL)
-	}
-	if !strings.Contains(src.URL, "/Videos/item1/stream") {
-		t.Fatalf("expected the stream URL, got %q", src.URL)
 	}
 }

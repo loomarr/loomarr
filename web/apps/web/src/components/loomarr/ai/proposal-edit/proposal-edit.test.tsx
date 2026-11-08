@@ -271,7 +271,8 @@ describe("ProposalEdit", () => {
     expect(screen.getAllByText("Wren Halloway Collection")).toHaveLength(1);
     expect(screen.getByText("2 of 3 selected")).toBeVisible();
     expect(screen.getByText("2 in your library")).toBeVisible();
-    expect(screen.queryByText("Wren Halloway and the Glass Orchard")).not.toBeInTheDocument();
+    // Closed, the films are mounted but hidden until found.
+    expect(screen.getByText("Wren Halloway and the Glass Orchard")).not.toBeVisible();
 
     await userEvent.click(chooseFilms());
     expect(screen.getAllByText("Wren Halloway and the Glass Orchard")[0]).toBeVisible();
