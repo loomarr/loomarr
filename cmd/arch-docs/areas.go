@@ -102,7 +102,7 @@ var areas = []area{
 			"good the suggestions are.",
 		Packages: []string{
 			"proposals", "proposals/workflow", "proposals/outlook", "proposals/suggest",
-			"proposals/webreference", "proposals/plannerreference", "proposals/quality",
+			"proposals/webreference", "proposals/quality",
 		},
 		MayImport: map[string]string{
 			"platform": "the store, the language model, the holiday vocabulary and whole-word matching the " +
@@ -191,8 +191,8 @@ var areas = []area{
 			"store", "store/storedb", "store/catalogstore", "store/identitystore",
 			"platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
 			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
-			"platform/events", "platform/storagegovernor", "platform/logchange", "platform/releasenotes",
-			"platform/releaseverify", "platform/buildinfo", "platform/web", "platform/devbootstrap",
+			"platform/events", "platform/storagegovernor", "platform/logchange",
+			"platform/releaseverify", "platform/buildinfo", "platform/web",
 			"platform/llm", "platform/openroutercatalog", "platform/openroutermedia",
 			"platform/holidayvocab", "platform/langcode", "platform/rating", "platform/textmatch",
 		},
@@ -205,8 +205,7 @@ var areas = []area{
 			"media": "the store persists creative fingerprints and defect verdicts, and metrics count image " +
 				"generation",
 			"people": "the identity store persists accounts, invitations, recovery, contacts, notifications " +
-				"and wrapped keys; housekeeping applies each one's retention; dev bootstrap provisions the " +
-				"dev admin",
+				"and wrapped keys; housekeeping applies each one's retention",
 		},
 	},
 	{

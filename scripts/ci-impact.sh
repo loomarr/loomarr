@@ -526,7 +526,7 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/proposals/plannerreference/testdata/*)
+    cmd/eval/internal/plannerreference/testdata/*)
       known=true
       select_gate contracts
       select_gate go

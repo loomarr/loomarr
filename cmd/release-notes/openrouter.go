@@ -1,4 +1,4 @@
-package releasenotes
+package main
 
 import (
 	"bytes"

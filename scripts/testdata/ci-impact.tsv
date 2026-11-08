@@ -152,7 +152,7 @@ filler-eval-corpus	research/corpus/seed-v1.json	docs
 generic-go-package-testdata	internal/filler/enrichment/testdata/hp-sauce.info.json	contracts,go
 planner-eval-corpus	internal/eval/testdata/planner-certification-v1.json;internal/eval/testdata/planner-certification-v2.json;internal/eval/testdata/planner-certification-v3.json;internal/eval/testdata/planner-certification-v4.json;internal/eval/testdata/planner-certification-v5.json;internal/eval/testdata/planner-certification-v6.json;internal/eval/testdata/planner-certification-v6-base.json;internal/eval/testdata/planner-catalog-v1.json;internal/eval/testdata/planner-catalog-v2.json	contracts,go
 recommendation-eval-corpus	internal/channels/recommend/testdata/channel-recommendation-v1.json;internal/channels/recommend/testdata/channel-recommendation-snapshots-v1.json	contracts,go
-planner-reference-golden	internal/proposals/plannerreference/testdata/planner-reference-host-v2.golden.json	contracts,go
+planner-reference-golden	cmd/eval/internal/plannerreference/testdata/planner-reference-host-v2.golden.json	contracts,go
 filler-corpus-research	research/corpus/pilot/locked.json;research/corpus/seeds/cdc.json	docs
 installation-location-data	internal/filler/location/places.tsv.gz;internal/filler/location/ip-country.csv.gz;internal/filler/location/location-data.generated.json	contracts,go,image
 broadcast-station-seed	internal/filler/station/stations.tsv.gz;internal/filler/station/station-data.generated.json	contracts,go,postgres,image

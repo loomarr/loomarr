@@ -18,9 +18,7 @@ One area of the [package map](../package-map.md#start-here).
   The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
 - **`proposals/outlook`** · 2 importers · → `channels`, `channels/schedule`, `library`, `platform/holidayvocab`, `proposals`, `proposals/suggest`, `provision`, `store`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
-- **`proposals/plannerreference`** · → `proposals/quality`
-  Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`proposals/quality`** · 7 importers · → `provision`
+- **`proposals/quality`** · 6 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 - **`proposals/suggest`** · 7 importers · → `catalog`, `channels/schedule`, `moviecollections`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/textmatch`, `proposals`, `proposals/quality`, `proposals/webreference`, `provision`, `store`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).

@@ -13,7 +13,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`people/auth`** · 3 importers · → `library`, `people/contact`, `people/invitation`, `people/recovery`, `store`, `store/identitystore`
+- **`people/auth`** · 2 importers · → `library`, `people/contact`, `people/invitation`, `people/recovery`, `store`, `store/identitystore`
   Issues and validates Loomarr sessions (design §11).
 - **`people/contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).

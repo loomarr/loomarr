@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **people** · 13 imports — the identity store persists accounts, invitations, recovery, contacts, notifications and wrapped keys; housekeeping applies each one's retention; dev bootstrap provisions the dev admin
+- **people** · 12 imports — the identity store persists accounts, invitations, recovery, contacts, notifications and wrapped keys; housekeeping applies each one's retention
 - **filler** · 6 imports — the store persists the clip catalog, its taxonomy and broadcast stations
 - **library** · 5 imports — the store persists inventory, provision and episode-evidence values, and settings parses the media-server connection
 - **media** · 5 imports — the store persists creative fingerprints and defect verdicts, and metrics count image generation
@@ -23,8 +23,6 @@ One area of the [package map](../package-map.md#start-here).
   Carries the version stamped into the binary at build time.
 - **`platform/config`** · 5 importers
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
-- **`platform/devbootstrap`** · → `people/auth`, `platform/settings`
-  Prepares an isolated agent worktree for UI development.
 - **`platform/diagnostics`** · 7 importers · → `platform/storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`platform/events`** · 2 importers
@@ -51,11 +49,9 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`platform/rating`** · 8 importers
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
-- **`platform/releasenotes`**
-  Categorizes GitHub-generated release notes without allowing a language model to invent release content.
 - **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`platform/settings`** · 8 importers · → `library`, `platform/config`
+- **`platform/settings`** · 7 importers · → `library`, `platform/config`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.

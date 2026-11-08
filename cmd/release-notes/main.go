@@ -9,15 +9,13 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/platform/releasenotes"
 )
 
 func main() {
 	input := flag.String("input", "", "GitHub-generated release-note body")
 	output := flag.String("output", "", "destination Markdown file")
 	header := flag.String("header", "", "optional curated Markdown header")
-	model := flag.String("model", envOr("RELEASE_NOTES_MODEL", releasenotes.DefaultModel), "OpenRouter model")
+	model := flag.String("model", envOr("RELEASE_NOTES_MODEL", DefaultModel), "OpenRouter model")
 	flag.Parse()
 	if err := run(*input, *output, *header, *model); err != nil {
 		fmt.Fprintf(os.Stderr, "release-notes: %v\n", err)
@@ -33,13 +31,13 @@ func run(input, output, header, model string) error {
 	if err != nil {
 		return fmt.Errorf("read generated notes: %w", err)
 	}
-	doc, err := releasenotes.Parse(string(native))
+	doc, err := Parse(string(native))
 	if err != nil {
 		return err
 	}
-	var classification releasenotes.Classification
+	var classification Classification
 	if len(doc.Changes) > 0 {
-		classifier := releasenotes.OpenRouter{APIKey: os.Getenv("OPENROUTER_RELEASE_API_KEY"), Model: model}
+		classifier := OpenRouter{APIKey: os.Getenv("OPENROUTER_RELEASE_API_KEY"), Model: model}
 		var classifyErr error
 		for attempt := 1; attempt <= 3; attempt++ {
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -56,7 +54,7 @@ func run(input, output, header, model string) error {
 			return fmt.Errorf("categorize after 3 attempts: %w", classifyErr)
 		}
 	}
-	formatted, err := releasenotes.Render(doc, classification)
+	formatted, err := Render(doc, classification)
 	if err != nil {
 		return err
 	}
