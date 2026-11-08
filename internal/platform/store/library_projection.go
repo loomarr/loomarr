@@ -111,7 +111,7 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 
 // saveLibraryItemRows replaces an item's ids, genres, studios, tags, files, tracks and artwork.
 func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
-	for _, table := range []string{"library_streams", "library_sources", "library_art",
+	for _, table := range []string{"library_trickplay", "library_streams", "library_sources", "library_art",
 		"library_ids", "library_genres", "library_studios", "library_tags"} {
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE item_id = ?`), it.ID); err != nil {
 			return fmt.Errorf("replace %s: %w", table, err)
@@ -156,6 +156,17 @@ func (s *sqlStore) saveLibraryFilesAndArt(ctx context.Context, tx *sql.Tx, it Li
 			bitrate, duration_ms, edition, plays) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 			it.ID, src.Path, src.Container, src.SizeBytes, src.Bitrate, src.DurationMs, src.Edition, src.Plays); err != nil {
 			return fmt.Errorf("save library source: %w", err)
+		}
+		refs := map[string]bool{}
+		for _, tp := range src.Trickplay {
+			if tp.Ref == "" || refs[tp.Ref] {
+				continue
+			}
+			refs[tp.Ref] = true
+			if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_trickplay (item_id, path, ref, format)
+				VALUES (?, ?, ?, ?)`), it.ID, src.Path, tp.Ref, tp.Format); err != nil {
+				return fmt.Errorf("save library trickplay: %w", err)
+			}
 		}
 		indexes := map[int]bool{}
 		for _, st := range src.Streams {

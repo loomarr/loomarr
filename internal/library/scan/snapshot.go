@@ -71,7 +71,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	16: an audio track whose container states no channel layout is labelled as ffmpeg states it.
 //	17: a movie's file notes its edition, and each edition has its own copy that plays (decision 54).
 //	18: a series carries a poster for each season it has one for (decisions 45, 61).
-const writeVersion = 18
+//	19: a file notes the trickplay files beside it (decision 61).
+const writeVersion = 19
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -122,15 +123,22 @@ type DetailsFrom struct {
 // originExtension is what the scanner keeps in an origin's Observation.Extension.
 type originExtension struct {
 	From DetailsFrom `json:"from"`
+	fileNotes
+	// Listed is how a title is listed in the Library; nil for an origin written before it carried
+	// one (a movie or series before write version 10, an episode before 12), whose row stays as it
+	// was until it is written again.
+	Listed *listedExtension `json:"listed,omitempty"`
+}
+
+// fileNotes is what the scanner notes about a file itself, beside what its title resolves to.
+type fileNotes struct {
 	// Managed is true for a file its arr lists: the arr's current file, the one that plays when a
 	// title has several (decision 37).
 	Managed bool `json:"managed,omitempty"`
 	// Edition is the labelled version of a movie this file is, "" for the default (decision 54).
 	Edition string `json:"edition,omitempty"`
-	// Listed is how a title is listed in the Library; nil for an origin written before it carried
-	// one (a movie or series before write version 10, an episode before 12), whose row stays as it
-	// was until it is written again.
-	Listed *listedExtension `json:"listed,omitempty"`
+	// Trickplay are the trickplay files beside it, by path: referenced, never imported (decision 61).
+	Trickplay []string `json:"trickplay,omitempty"`
 }
 
 // listedExtension is what a title's library row needs that its facts do not say.
@@ -141,20 +149,22 @@ type listedExtension struct {
 	Series store.LibraryOrigin `json:"series,omitzero"`
 }
 
-// originExtensionOf is r's provenance, whether an arr lists the file, and how the title is listed
-// (m is what said which title it is; series an episode's series origin), as an origin's
-// Observation.Extension.
-func originExtensionOf(kind mp.Kind, res resolution, managed bool, series inventory.OriginKey, edition string) json.RawMessage {
+// originExtensionOf is res's provenance, how the title is listed (series is an episode's series
+// origin) and what the scanner notes about the file, as an origin's Observation.Extension. Only a
+// movie has an edition.
+func originExtensionOf(kind mp.Kind, res resolution, series inventory.OriginKey, file fileNotes) json.RawMessage {
 	r := res.resolved
+	if kind != mp.KindMovie {
+		file.Edition = ""
+	}
 	ext := originExtension{From: DetailsFrom{
 		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
 		Year: r.Year.From.Provider, Premiere: r.PremiereDate.From.Provider,
 		Score: r.CommunityRating.From.Provider, Runtime: r.Runtime.From.Provider,
-	}, Managed: managed}
+	}, fileNotes: file}
 	switch kind {
 	case mp.KindMovie:
 		ext.Listed = &listedExtension{Catalog: res.catalog, Match: res.match}
-		ext.Edition = edition
 	case mp.KindSeries:
 		ext.Listed = &listedExtension{Catalog: res.catalog, Match: res.match}
 	case mp.KindEpisode:
@@ -245,6 +255,9 @@ func librarySources(item inventory.Item) []store.LibrarySource {
 			f := o.Observation.Facts
 			src := store.LibrarySource{Path: o.Locator.Path, Container: f.Container, SizeBytes: f.SizeBytes,
 				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition}
+			for _, ref := range exts[o.Key].Trickplay {
+				src.Trickplay = append(src.Trickplay, store.LibraryTrickplay{Ref: ref, Format: "bif"})
+			}
 			for _, st := range f.Streams {
 				src.Streams = append(src.Streams, libraryStream(st))
 			}

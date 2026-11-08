@@ -186,9 +186,11 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film",
 		Sources: []LibrarySource{
 			{Path: "/m/a.mkv", Container: "matroska", SizeBytes: 9, DurationMs: 1000, Plays: true, Streams: []LibraryStream{video, audio}},
-			{Path: "/m/b.mkv", SizeBytes: 5, Streams: []LibraryStream{audio}},
+			{Path: "/m/b.mkv", SizeBytes: 5, Streams: []LibraryStream{audio},
+				Trickplay: []LibraryTrickplay{{Ref: "/m/b.bif", Format: "bif"}}},
 		},
-		Art: []LibraryArt{{Kind: "poster", Ref: "/m/poster.jpg"}, {Kind: "fanart", Ref: "/m/fanart.jpg"}},
+		Art: []LibraryArt{{Kind: "poster", Ref: "/m/poster.jpg"}, {Kind: "fanart", Ref: "/m/fanart.jpg"},
+			{Kind: "season-poster", Season: 0, Ref: "/m/s0.jpg"}, {Kind: "season-poster", Season: 1, Ref: "/m/s1.jpg"}},
 	}
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
 		t.Fatal(err)
@@ -210,8 +212,11 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 	if n := count(`SELECT COUNT(*) FROM library_streams WHERE kind = 'audio' AND language = 'en' AND is_default = TRUE`); n != 2 {
 		t.Fatalf("English audio rows = %d, want one per file", n)
 	}
-	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 2 {
-		t.Fatalf("art rows = %d", n)
+	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 4 {
+		t.Fatalf("art rows = %d, want two plus a poster for each of two seasons", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_trickplay WHERE item_id = 'm1' AND path = '/m/b.mkv' AND format = 'bif'`); n != 1 {
+		t.Fatalf("trickplay rows = %d, want b.mkv's", n)
 	}
 
 	// Written again with one file: the other file and its tracks go.
@@ -225,6 +230,9 @@ func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
 	}
 	if n := count(`SELECT COUNT(*) FROM library_streams WHERE path = '/m/b.mkv'`); n != 0 {
 		t.Fatalf("a gone file's tracks = %d, want 0", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_trickplay WHERE item_id = 'm1'`); n != 0 {
+		t.Fatalf("a gone file's trickplay = %d, want 0", n)
 	}
 	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 0 {
 		t.Fatalf("art after a rewrite = %d, want 0", n)

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"unicode/utf8"
@@ -62,8 +63,9 @@ type File struct {
 	Path string
 	Rel  string
 	Stat Stat
-	// Sidecars are the file's own NFO and artwork files, by path, so a changed sidecar changes the
-	// file's identity digest without being read.
+	// Sidecars are the file's own NFO, artwork and trickplay files, by path, so a changed sidecar
+	// changes the file's identity digest without being read. A trickplay file's Stat is zero: only
+	// its being there counts.
 	Sidecars map[string]Stat
 	// Sole is whether it is its folder's only video, so the folder's own sidecars are its.
 	Sole bool
@@ -201,10 +203,14 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		if lower := strings.ToLower(e.Name()); videoExtensions[filepath.Ext(lower)] && !extraName(lower) {
 			videos++
 		}
-		if isNFO(e.Name()) || localart.IsImage(e.Name()) {
+		switch {
+		case isNFO(e.Name()) || localart.IsImage(e.Name()):
 			if st, ok := w.stat(filepath.Join(dir, e.Name()), e); ok {
 				nfos[filepath.Join(dir, e.Name())] = st
 			}
+		case isTrickplay(e.Name()) && e.Type().IsRegular():
+			// Referenced, never read: whether it is there is all that counts, so it costs no stat.
+			nfos[filepath.Join(dir, e.Name())] = Stat{}
 		}
 	}
 	w.nfo[dir], w.videos[dir] = nfos, videos
@@ -309,6 +315,11 @@ func (w *walker) sidecars(dir, name string) map[string]Stat {
 			if base == stem || base == "movie" {
 				out[path] = st
 			}
+		case isTrickplay(path):
+			// A trickplay file is one video's, by name: never the folder's.
+			if base == stem || strings.HasPrefix(base, stem+"-") {
+				out[path] = st
+			}
 		case strings.HasPrefix(base, stem+"-") || sole:
 			out[path] = st
 		}
@@ -317,6 +328,22 @@ func (w *walker) sidecars(dir, name string) map[string]Stat {
 }
 
 func isNFO(name string) bool { return strings.EqualFold(filepath.Ext(name), ".nfo") }
+
+// isTrickplay reports whether name is a trickplay file: a Roku BIF of seek thumbnails, which Emby
+// writes beside the video as "<name>.bif" (decision 61).
+func isTrickplay(name string) bool { return strings.EqualFold(filepath.Ext(name), ".bif") }
+
+// trickplay is the file's trickplay files, by path, in order.
+func (f File) trickplay() []string {
+	var out []string
+	for path := range f.Sidecars {
+		if isTrickplay(path) {
+			out = append(out, path)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
 
 // hasNFO reports whether the file has an NFO to read.
 func (f File) hasNFO() bool {

@@ -72,6 +72,14 @@ type LibrarySource struct {
 	// Plays marks the copy that plays (decision 37).
 	Plays   bool
 	Streams []LibraryStream
+	// Trickplay are the trickplay files beside it, referenced and never imported (decision 61).
+	Trickplay []LibraryTrickplay
+}
+
+// LibraryTrickplay is one trickplay file of a source: where it is and its format ("bif").
+type LibraryTrickplay struct {
+	Ref    string
+	Format string
 }
 
 // LibraryStream is one track of a file: raw values, and labels computed once (decision 44).

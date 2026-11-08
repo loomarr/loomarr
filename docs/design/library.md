@@ -228,6 +228,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
   show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+  A video's trickplay file beside it (Emby's `<name>.bif`, decision 61) is referenced in
+  `library_trickplay`, never read or imported. It joins the file's sidecars without a stat, so
+  its appearing or going changes the identity digest at no cost to the walk. Only the `.bif`
+  layout is handled, because it is the one seen in a real library. The `trickplay/` folder skip
+  stays until another server's layout turns up.
 - **Change signals.** Each signal names folders, and `Scanner.PassFolders` passes over only those
   (`Importer.RunFolders`): it writes and removes what is under them, under the same removal guard,
   and still counts every file outside them as present. A folder deleted whole is a change to the
