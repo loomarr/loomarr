@@ -104,7 +104,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
-      "tailwindClasses": 61,
+      "tailwindClasses": 62,
       "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
