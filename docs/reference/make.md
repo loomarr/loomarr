@@ -163,8 +163,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make observability-dev-test` |  | prove seeded Loomarr metrics and Grafana provisioning over real Docker + HTTP |
 | `make db-view` |  | browse a copy of a database in CloudBeaver until Ctrl-C (FILE=backup.db, URL=postgres://…, ENGINE=postgres) |
 | `make test-sso` |  | SSO against REAL Authelia + Authentik containers (requires Docker) |
-| `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes <br>*runs:* `rust-dev-build` |
-| `make rust-dev-build` |  | build the required Rust worker for local development |
+| `make dev-be` |  | backend with live reload (Air) — rebuilds + restarts on Go/Rust changes |
+| `make rust-dev-build` |  | build the debug Rust image worker the Go tests use (make dev-be runs a release one) |
 | `make dev-gpu` |  | dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit) |
 | `make dev-fe` |  | frontend with HMR on this worktree's isolated port, proxying its backend |
 | `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
