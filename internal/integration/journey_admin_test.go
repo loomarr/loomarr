@@ -39,21 +39,16 @@ func TestJourney_NewAdmin(t *testing.T) {
 			"rationale":"90s Saturday morning cartoons",
 			"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":3}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]},
 			"picks":[
-				{"mediaType":"movie","key":"movie:tmdb:90005001","name":"Sunny Toon Hour"},
-				{"mediaType":"movie","key":"movie:tmdb:90005002","name":"Robo Rangers"},
-				{"mediaType":"movie","key":"movie:tmdb:90005003","name":"Critter Club"},
-				{"mediaType":"movie","key":"movie:tmdb:90005004","name":"Midnight Mayhem Toons"}
+				{"mediaType":"movie","key":"movie:tmdb:90005001","name":"Sunny Cartoon Hour"},
+				{"mediaType":"movie","key":"movie:tmdb:90005002","name":"Robo Rangers Cartoon"},
+				{"mediaType":"movie","key":"movie:tmdb:90005003","name":"Critter Cartoon Club"},
+				{"mediaType":"movie","key":"movie:tmdb:90005004","name":"Midnight Mayhem Cartoons"}
 			],
 			"policy":{"audience":{"ceiling":"TV-Y7"},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),
 	)
 	h := newHarness(t, withLLM(llm), withSeerr(), withTunarrPlayout())
-	h.ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toon Hour", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Robo Rangers", Type: "Movie", Year: 1993, TMDBID: 90005002, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-3", Name: "Critter Club", Type: "Movie", Year: 1994, TMDBID: 90005003, Genres: []string{"Animation"}, OfficialRating: "TV-Y", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-4", Name: "Midnight Mayhem Toons", Type: "Movie", Year: 1994, TMDBID: 90005004, Genres: []string{"Animation"}, OfficialRating: "TV-MA", RunTimeTicks: hourTicks},
-	)
+	seedLibraryMovies(t, h.store, kidsCartoons...)
 	seedFillerClips(t, h.store)
 
 	// A1: BOOTSTRAP the owning admin — and a second attempt 409s (bootstrap is

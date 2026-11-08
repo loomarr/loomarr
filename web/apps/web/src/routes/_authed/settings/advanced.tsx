@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AdvancedSettingsTable } from "@/components/loomarr/settings/advanced-settings-table";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useSettingsEdits } from "@/settings/settings-edits";
+import { announceSettingsChange, announceSettingsFailure } from "@/settings/settings-feedback";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // Settings → Advanced settings (config-design §5) — the raw registry escape hatch.
@@ -31,8 +32,24 @@ const AdvancedSettings = () => {
   // doing when there is a second, so the convention is set once rather than guessed.
   const [query, setQuery] = useState("");
   const refresh = () => invalidateSettings(queryClient);
-  const envOverride = settingsApi.useSettingsEnvOverride({ mutation: { onSuccess: refresh } });
-  const clear = settingsApi.useSettingsClear({ mutation: { onSuccess: refresh } });
+  const envOverride = settingsApi.useSettingsEnvOverride({
+    mutation: {
+      onSuccess: async (_response, { data }) => {
+        await refresh();
+        announceSettingsChange(data.enabled ? "Now editable here" : "Handed back to the environment");
+      },
+      onError: (error) => announceSettingsFailure(error, "Couldn't change who manages this setting"),
+    },
+  });
+  const clear = settingsApi.useSettingsClear({
+    mutation: {
+      onSuccess: async () => {
+        await refresh();
+        announceSettingsChange("Setting cleared");
+      },
+      onError: (error) => announceSettingsFailure(error, "Couldn't clear this setting"),
+    },
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col">

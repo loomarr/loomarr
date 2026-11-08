@@ -193,9 +193,10 @@ and demotes nothing. ⚠ The chain's reactive step of evicting the resident sugg
 hardware encode produced nothing ([suggester](suggester.md#model-residency)) left with the chain: the packager's ladder has no eviction
 step, and `internal/playout` no longer references the evictor.
 
-**Direct files, Loomarr-owned facts.** Playout reads the media file directly: the library item's path
-mapped through `library.path_map` (§15), with the media server's HTTP stream only as the fallback when
-no mapping resolves a readable file. Stream facts, the keyframe index, loudness and break candidates
+**Direct files, Loomarr-owned facts.** Playout reads the media file directly: the playing file Loomarr's
+own scan found for the library item ([library](library.md)). It never streams from a media server
+([0046](decisions/0046-loomarr-scans-its-own-media-files.md)): an item whose file is gone or unreadable,
+or an id the Library does not hold, has nothing to play and airs the offline card. Stream facts, the keyframe index, loudness and break candidates
 come from Loomarr's own per-source measurements (inventory, `inventory_source_analysis`), never from the
 media server at airtime. An unmeasured local source gets one synchronous probe recorded against its
 revision; without facts, ffmpeg probes and the gap is logged. Background analysis runs one source at a

@@ -105,4 +105,24 @@ describe("ServicesPanel", () => {
     expect(screen.queryByText("pass")).not.toBeInTheDocument();
     expect(screen.queryByText("fail")).not.toBeInTheDocument();
   });
+
+  // #2734: TMDB has no target by design, so a passing TMDB row read "not configured · pass"
+  // while Connections showed it working. A passing row is never called unconfigured.
+  it("never calls a passing row without a target unconfigured", () => {
+    render(<ServicesPanel view={{ loomarr, rows: [{ name: "tmdb", ok: true }] }} onFix={() => {}} />);
+    expect(screen.getByText("TMDB")).toBeInTheDocument();
+    expect(screen.queryByText("not configured")).not.toBeInTheDocument();
+  });
+
+  // #2734: every check the server sends reads as a name, never as its internal key.
+  it.each([
+    ["sonarr", "Sonarr"],
+    ["radarr", "Radarr"],
+    ["livetv", "Live TV guide"],
+    ["tunarr_library", "Tunarr library"],
+  ])("labels %s as %s", (name, label) => {
+    render(<ServicesPanel view={{ loomarr, rows: [{ name, ok: true, target: "x" }] }} onFix={() => {}} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.queryByText(name)).not.toBeInTheDocument();
+  });
 });

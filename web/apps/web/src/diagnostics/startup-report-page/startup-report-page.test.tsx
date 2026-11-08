@@ -64,6 +64,8 @@ describe("StartupReportPage", () => {
       "href",
       "/settings/connections",
     );
+    // #2734: the detail and its link read as two things, never "unavailableOpen".
+    expect(table).toHaveTextContent("Configured but unavailable · Open");
     expect(screen.queryByRole("button", { name: /check again/i })).not.toBeInTheDocument();
     expect(screen.queryByText("Startup history")).not.toBeInTheDocument();
   });

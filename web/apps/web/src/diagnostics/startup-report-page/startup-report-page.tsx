@@ -59,9 +59,13 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
     <td className="text-muted-foreground px-4 py-3">
       {check.detail || "—"}
       {check.remediationRoute && (
-        <a className="text-signal ml-2 underline underline-offset-4" href={check.remediationRoute}>
-          Open
-        </a>
+        <>
+          {/* A real separator, so the detail and its link never run together as text (#2734). */}
+          <span aria-hidden> · </span>
+          <a className="text-signal underline underline-offset-4" href={check.remediationRoute}>
+            Open
+          </a>
+        </>
       )}
     </td>
   </tr>
