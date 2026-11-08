@@ -41,9 +41,7 @@ const RecentlyTuned = ({ continueWatching, layout, nowMs, activeChannelIds }: Re
             </span>
             <span className="text-static-400 text-sm">{data.channelName}</span>
           </div>
-          <h3 className="mt-2.5 text-base font-semibold break-words">
-            {data.now.seriesTitle ?? data.now.title}
-          </h3>
+          <h3 className="mt-2.5 text-base font-semibold break-words">{data.now.title}</h3>
           <p className="text-static-400 m-0 text-sm">Join what’s on now.</p>
         </div>
         <Action

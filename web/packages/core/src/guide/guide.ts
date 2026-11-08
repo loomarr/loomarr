@@ -111,11 +111,16 @@ const GUIDE_KIND_LABEL = {
   flex: "Filler",
 } as const;
 
-/** The compact identity shared by Guide blocks and their accessible names. */
-const guideAiringLabel = (airing: GuideAiring): string => {
+/**
+ * The one name an airing goes by, wherever it is shown (Home, the Guide, the player's band, a
+ * channel's page): "Series · Title", the title alone for a movie, or the kind's own word when the
+ * airing has no title. The episode's number is a separate fact: `formatGuideEpisode`.
+ */
+const formatProgrammeTitle = (airing: Pick<GuideAiring, "kind" | "series" | "title">): string => {
   const title = airing.title.trim();
   if (!title) return GUIDE_KIND_LABEL[airing.kind];
-  return airing.series ? `${airing.series} · ${title}` : title;
+  const series = airing.series?.trim();
+  return series ? `${series} · ${title}` : title;
 };
 
 /**
@@ -339,8 +344,8 @@ export {
   formatGuideEpisode,
   formatGuideTime,
   formatGuideTimeRange,
+  formatProgrammeTitle,
   GUIDE_BUCKET_MS,
-  guideAiringLabel,
   guideChannelForTypeahead,
   guideChannelState,
   guideFillerEntryLabel,

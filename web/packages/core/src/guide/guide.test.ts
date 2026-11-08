@@ -7,8 +7,8 @@ import {
   formatGuideEpisode,
   formatGuideTime,
   formatGuideTimeRange,
+  formatProgrammeTitle,
   GUIDE_BUCKET_MS,
-  guideAiringLabel,
   guideChannelForTypeahead,
   guideChannelState,
   guideFillerEntryLabel,
@@ -79,26 +79,17 @@ describe("guide time formatting", () => {
 });
 
 describe("guide presentation facts", () => {
+  it("names an airing one way everywhere: series, a dot, the title (#2748)", () => {
+    const airing = { kind: "program" as const, title: " The Mad Scientist ", series: " Superman " };
+    expect(formatProgrammeTitle(airing)).toBe("Superman · The Mad Scientist");
+    expect(formatGuideEpisode(1, 1)).toBe("S01E01");
+  });
+
   it("keeps series and episode title together with honest fallbacks", () => {
     expect(
-      guideAiringLabel({
-        scheduleBlockId: "episode",
-        kind: "program",
-        title: "The Seventh Postcard",
-        series: "Kettle Kids",
-        startMs: 0,
-        stopMs: 1,
-      }),
+      formatProgrammeTitle({ kind: "program", title: "The Seventh Postcard", series: "Kettle Kids" }),
     ).toBe("Kettle Kids · The Seventh Postcard");
-    expect(
-      guideAiringLabel({
-        scheduleBlockId: "pending",
-        kind: "pending",
-        title: "   ",
-        startMs: 0,
-        stopMs: 1,
-      }),
-    ).toBe("Coming soon");
+    expect(formatProgrammeTitle({ kind: "pending", title: "   " })).toBe("Coming soon");
   });
 
   it("labels a break from the clip's viewer name, or the break's own label without one (#1980)", () => {

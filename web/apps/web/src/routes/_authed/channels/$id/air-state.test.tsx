@@ -1,6 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api";
 import { describe, expect, it } from "vitest";
-import { airStateOf } from "./route";
+import { airStateOf, headerAirLine } from "./route";
 
 // A minimal channel — only the fields airStateOf reads. Cast partial per this suite's
 // convention (see -channel-advanced.test.tsx): the DTO is large and status/tunarrId/
@@ -48,5 +48,22 @@ describe("airStateOf", () => {
     expect(airStateOf(channel({ status: "drifted", inAppPlayable: true })).label).toBe(
       "On air (catching up)",
     );
+  });
+});
+
+describe("headerAirLine", () => {
+  const live = airStateOf(channel({ status: "live", inAppPlayable: true }));
+  const now = { gap: false, startMs: 0, stopMs: 30 * 60_000, title: "Superman" };
+
+  // #2748: the header names the airing the way Home, the Guide and the player do.
+  it("names the airing as Series · Title, as everywhere else", () => {
+    const airing = { kind: "program" as const, series: "Superman", title: "The Mad Scientist" };
+    expect(headerAirLine(live, now, 10 * 60_000, airing).text).toBe(
+      "On now: Superman · The Mad Scientist · 20m left",
+    );
+  });
+
+  it("falls back to the now/next title while the timeline has not answered", () => {
+    expect(headerAirLine(live, now, 10 * 60_000).text).toBe("On now: Superman · 20m left");
   });
 });

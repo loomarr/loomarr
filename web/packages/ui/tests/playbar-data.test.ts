@@ -82,7 +82,7 @@ describe("playbarFromTimeline", () => {
     expect(band).toMatchObject({
       channelName: "Coast 90s",
       channelNumber: "7",
-      programmeLine: "An ensemble comedy · S2 E4 “Opening Night”",
+      programmeLine: "An ensemble comedy · Opening Night",
       timeLabel: "9m in · 13m left",
     });
     expect(band.progress).toBeCloseTo(9 / 22);
@@ -208,14 +208,14 @@ describe("playbarFromTimeline", () => {
     });
 
     expect(info).toMatchObject({
-      facts: "1994 · TV-PG · Mystery · Drama",
+      facts: "S02E04 · 1994 · TV-PG · Mystery · Drama",
       progress: 9 / 22,
       startMs: at(-9),
       stopMs: at(13),
       synopsis: "A storm cuts the island off from the mainland.",
       timeLabel: "9m in · 13m left",
-      title: "Coastline Mysteries · S2 E4 “The Last Lighthouse”",
-      upNext: { line: "S1 E1 “Pilot”", name: "Night Shift Diner", startMs: at(14) },
+      title: "Coastline Mysteries · The Last Lighthouse",
+      upNext: { line: "S01E01 “Pilot”", name: "Night Shift Diner", startMs: at(14) },
     });
   });
 

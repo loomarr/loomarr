@@ -1,9 +1,9 @@
 import {
   formatGuideTime,
   formatGuideTimeRange,
+  formatProgrammeTitle,
   type GuideAiringLayout,
   type GuideSelection,
-  guideAiringLabel,
 } from "@loomarr/core/guide";
 import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
@@ -50,12 +50,6 @@ const airingHitReach = (airing: GuideAiringLayout, timelinePx: number) => {
   if (clippedStart === clippedEnd) return { left: missing / 2, right: missing / 2 };
   return clippedStart ? { left: 0, right: missing } : { left: missing, right: 0 };
 };
-
-// "Series “Episode”" as the mocks write a programme; a film or a break is its label alone.
-const programmeLine = (airing: GuideAiringLayout) =>
-  airing.source.series && airing.source.title.trim()
-    ? `${airing.source.series} “${airing.source.title.trim()}”`
-    : guideAiringLabel(airing.source);
 
 // The sheet's time line (5d): "8:50–9:39 PM · in 24m · TV-G". A programme on now counts down as
 // Watching's rows do ("34m left"); one that has ended says nothing more.
@@ -215,7 +209,7 @@ const GuideCompact = ({
                 <View style={{ flex: 1, minWidth: 0, position: "relative" }}>
                   {channel.airings.map((airing) => {
                     const selected = rowSelected && airing.scheduleBlockId === selection?.scheduleBlockId;
-                    const label = guideAiringLabel(airing.source);
+                    const label = formatProgrammeTitle(airing.source);
                     const reach = airingHitReach(airing, hitTimelinePx);
                     const drawnLeft = airing.startRatio * hitTimelinePx;
                     const drawnWidth = airing.widthRatio * hitTimelinePx;
@@ -342,7 +336,7 @@ const GuideCompact = ({
                   {` · ${selectedChannel.source.name}`}
                 </Text>
                 <Text density={density} numberOfLines={2} textRole="cardTitle">
-                  {programmeLine(selectedAiring)}
+                  {formatProgrammeTitle(selectedAiring.source)}
                 </Text>
                 {/* Two lines: a range across noon or midnight ("11:30 PM–12:15 AM") would cut off the rating. */}
                 <Text density={density} numberOfLines={2} textRole="guideMeta">
@@ -394,7 +388,7 @@ const GuideCompact = ({
               {` · ${formatGuideTimeRange(selectedAiring.source.startMs, selectedAiring.source.stopMs, layout.timezone)}`}
             </Text>
             <Text density={density} numberOfLines={1} textRole="cardTitle">
-              {programmeLine(selectedAiring)}
+              {formatProgrammeTitle(selectedAiring.source)}
             </Text>
           </View>
           <Action

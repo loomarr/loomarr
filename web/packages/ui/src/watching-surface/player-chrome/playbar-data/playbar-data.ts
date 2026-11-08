@@ -1,5 +1,5 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { type GuideAiringLayout, guideAiringLabel } from "@loomarr/core/guide";
+import { formatGuideEpisode, formatProgrammeTitle, type GuideAiringLayout } from "@loomarr/core/guide";
 
 import type {
   PlaybarSegment,
@@ -49,15 +49,11 @@ const spotOf = (entry: PodEntry, index: number): PlaybarSpot => {
   };
 };
 
-const episodeLine = (airing: TimelineAiring) => {
-  const se = [
-    airing.season === undefined ? "" : `S${airing.season}`,
-    airing.episode === undefined ? "" : `E${airing.episode}`,
-  ]
+// A series airing's second line: its episode number and the episode's own name.
+const episodeLine = (airing: TimelineAiring) =>
+  [formatGuideEpisode(airing.season, airing.episode), airing.title.trim() ? `“${airing.title.trim()}”` : ""]
     .filter(Boolean)
     .join(" ");
-  return [se, airing.title.trim() ? `“${airing.title.trim()}”` : ""].filter(Boolean).join(" ");
-};
 
 const segmentOf = (airing: TimelineAiring): PlaybarSegment => {
   if (airing.kind === "filler")
@@ -69,7 +65,7 @@ const segmentOf = (airing: TimelineAiring): PlaybarSegment => {
       stopMs: airing.stopMs,
     };
   const series = airing.series?.trim();
-  const name = series || guideAiringLabel(airing);
+  const name = series || formatProgrammeTitle(airing);
   const line = series
     ? episodeLine(airing)
     : [airing.year ? String(airing.year) : "", airing.genres?.[0] ?? ""].filter(Boolean).join(" · ");
@@ -143,8 +139,7 @@ const bandOf = (
       timeLabel: behind ?? `Break · ${minutes(airing.stopMs - airing.startMs)} min`,
     };
   }
-  const series = airing.series?.trim();
-  const line = series ? `${series} · ${episodeLine(airing)}` : guideAiringLabel(airing);
+  const line = formatProgrammeTitle(airing);
   const elapsed = `${minutes(playheadMs - airing.startMs)}m in`;
   return {
     ...base,
@@ -167,7 +162,12 @@ const infoOf = (
   const facts =
     airing.kind === "filler"
       ? ""
-      : [airing.year ? String(airing.year) : "", airing.rating ?? "", ...(airing.genres ?? [])]
+      : [
+          formatGuideEpisode(airing.season, airing.episode) ?? "",
+          airing.year ? String(airing.year) : "",
+          airing.rating ?? "",
+          ...(airing.genres ?? []),
+        ]
           .filter(Boolean)
           .join(" · ");
   const segment = segmentOf(airing);

@@ -1,4 +1,4 @@
-import { formatGuideTime, formatGuideTimeRange, guideAiringLabel } from "@loomarr/core/guide";
+import { formatGuideTime, formatGuideTimeRange, formatProgrammeTitle } from "@loomarr/core/guide";
 import {
   Action,
   AdaptiveSplit,
@@ -152,7 +152,7 @@ const GuideSurface = ({
                       const selected =
                         channel.source.channelId === selection.channelId &&
                         airing.scheduleBlockId === selection.scheduleBlockId;
-                      const label = guideAiringLabel(airing.source);
+                      const label = formatProgrammeTitle(airing.source);
                       return (
                         <Action
                           accessibilityLabel={`${channel.source.name}, ${label}, ${formatGuideTimeRange(

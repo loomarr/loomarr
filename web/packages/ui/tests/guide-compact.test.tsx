@@ -71,7 +71,7 @@ describe("GuideCompact", () => {
     expect(markup()).not.toContain("Selected programme");
     const html = markup({ selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" } });
     expect(html).toContain("Selected programme");
-    expect(html).toContain("A series 2 “Episode 3”");
+    expect(html).toContain("A series 2 · Episode 3");
     expect(html).toContain('aria-label="Watch 2 Channel 2"');
   });
 
