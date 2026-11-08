@@ -19,6 +19,8 @@ import (
 //     having decided it should.
 //   - unbounded: a table whose retention admits that nothing deletes its rows ("Unbounded: ...")
 //     is a gap until something does.
+//   - unit: a number column documented in milliseconds ends in _ms, one in nanoseconds in _ns,
+//     and a Unix-seconds one in neither, so a reader never multiplies by the wrong thousand.
 //
 // Gaps already in the schema are listed in KnownGaps with the work that removes them. The list may
 // only shrink: a listed gap that no longer exists is itself a problem, so fixing one forces its
@@ -49,6 +51,9 @@ func Lint(doc Doc, live []LiveTable) []string {
 			}
 		}
 		for _, c := range lt.Columns {
+			if t, ok := described[lt.Name]; ok && !unitNamed(c, t.Columns[c.Name]) {
+				found["unit "+lt.Name+"."+c.Name] = true
+			}
 			if !stateColumn(c) || c.Checked {
 				continue
 			}
@@ -87,6 +92,28 @@ func leads(index, key []string) bool {
 	})
 }
 
+// unitFix is how a column named against its unit is fixed.
+const unitFix = "end the name in its documented unit: _ms for milliseconds, _ns for nanoseconds, neither for seconds"
+
+// unitNamed reports whether an integer column's name carries the unit its description gives it.
+// Any other column is skipped: a unit in a text or blob column's description is of values inside
+// it (a JSON offset, a packed keyframe index).
+func unitNamed(c LiveColumn, about string) bool {
+	if !strings.EqualFold(c.Type, "INTEGER") && !strings.EqualFold(c.Type, "BIGINT") {
+		return true
+	}
+	ms, ns := strings.HasSuffix(c.Name, "_ms"), strings.HasSuffix(c.Name, "_ns")
+	switch {
+	case strings.Contains(about, "nanoseconds"):
+		return ns
+	case strings.Contains(about, "milliseconds"):
+		return ms
+	case strings.Contains(about, "Unix seconds"):
+		return !ms && !ns
+	}
+	return true
+}
+
 func stateColumn(c LiveColumn) bool {
 	if !strings.EqualFold(c.Type, "TEXT") {
 		return false
@@ -104,6 +131,8 @@ func lintFix(gap string) string {
 		return "add an index whose first column is this foreign key"
 	case strings.HasPrefix(gap, "check "):
 		return "list the allowed values in a CHECK (column IN (...))"
+	case strings.HasPrefix(gap, "unit "):
+		return unitFix
 	case strings.HasPrefix(gap, "unbounded "):
 		return "delete old rows (housekeeping or a retention setting), then say how long they're kept"
 	default:

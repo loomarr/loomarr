@@ -424,7 +424,7 @@ One measured step of the pipeline that suggests and adds titles (retrieval, gene
 | `occurred_at` | When the step happened, in Unix seconds. | `BIGINT` |
 | `stage` | The pipeline step. `retrieval`, `generation`, `grounding`, `approval`, `acquisition` or `scheduling`. | `TEXT` |
 | `outcome` | How it went, from a set fixed per stage. retrieval is succeeded, empty or failed; generation is succeeded, abstained or failed; grounding is accepted or rejected; approval is approved or declined; acquisition is playable or failed; scheduling is scheduled or failed. | `TEXT` |
-| `duration_millis` | How long the step took, in milliseconds. 0 when not measured. | `BIGINT` |
+| `duration_ms` | How long the step took, in milliseconds. 0 when not measured. | `BIGINT` |
 | `tool_calls` | How many tool calls the model made during the step. | `INTEGER` |
 | `candidate_count` | How many candidate titles the step surfaced. | `INTEGER` |
 | `cost_nanos` | What the step cost, in billionths of a US dollar. | `BIGINT` |
@@ -443,7 +443,7 @@ Daily totals of suggestion-quality receipts, one row per day, stage, outcome and
 | `outcome` | How the steps went, with the same values as quality_receipts.outcome. | `TEXT` · key |
 | `run_snapshot_id` | The evaluation run (quality_run_snapshots.id), or empty for ordinary use. | `TEXT` · key |
 | `observation_count` | How many receipts were rolled into the row. | `BIGINT` |
-| `duration_millis` | Total time of those steps, in milliseconds. | `BIGINT` |
+| `duration_ms` | Total time of those steps, in milliseconds. | `BIGINT` |
 | `tool_calls` | Total tool calls. | `BIGINT` |
 | `candidate_count` | Total candidate titles surfaced. | `BIGINT` |
 | `cost_nanos` | Total cost, in billionths of a US dollar. | `BIGINT` |
