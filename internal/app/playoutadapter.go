@@ -128,9 +128,6 @@ type playoutResolver struct {
 	// roots while a saved layout change is waiting on restart.
 	fillerDir string
 
-	// pathMap resolves the parsed `library.path_map` (§15, V47) live, so a mapping edit applies
-	// without a restart. Empty ⇒ no mapping ⇒ ResolveInput uses the media server's HTTP stream.
-	pathMap func() library.PathMap
 	// probeFormat probes a source's codec/format for the direct-play copy decision (probe.go).
 	// Nil ⇒ treat as transcode-required (safe: correctness over speed when we cannot probe).
 	probeFormat playout.FormatProber
@@ -258,13 +255,12 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 		return airing, "", nil
 	}
 
-	// Resolve the input ffmpeg reads: the FILE directly (direct play, V47) when a path mapping
-	// resolves a readable local file, else the media server's HTTP stream (fallback). This is where
-	// direct play begins — reading the file lets the encoder `-c copy` it.
-	src := r.itemInput(ctx, r.lib, airing.LibraryItemID)
+	// Resolve the input ffmpeg reads: the library item's file, directly. This is where direct play
+	// begins — reading the file lets the encoder `-c copy` it.
+	src := r.itemInput(ctx, airing.LibraryItemID)
 	if src.URL == "" {
-		// The item id is real but the media server is unconfigured, so there is nothing to
-		// read. Reporting it as "nothing airing" rather than an error means the channel shows
+		// The lineup names an item whose file is gone or unreadable, or an id the Library does
+		// not hold. Reporting it as "nothing airing" rather than an error means the channel shows
 		// the offline card instead of failing to tune — the same outcome the viewer would get
 		// from an error, minus the retry storm.
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
@@ -335,7 +331,7 @@ func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (pl
 		return playout.StillAiring{}, false, err
 	}
 	airing := playout.AiringAt(slots, epoch, now)
-	if airing.Kind == schedule.SlotFiller || !airing.Playable() || r.lib == nil {
+	if airing.Kind == schedule.SlotFiller || !airing.Playable() {
 		return playout.StillAiring{}, false, nil
 	}
 	itemID := airing.LibraryItemID
@@ -344,7 +340,7 @@ func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (pl
 		Offset: airing.Offset,
 		At:     airing.StartedAt,
 		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
-			src := r.itemInput(ctx, r.lib, itemID)
+			src := r.itemInput(ctx, itemID)
 			if src.URL == "" {
 				return playout.StillSource{}, false, nil
 			}
@@ -645,8 +641,6 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		return store.BroadcastCodecH264
 	}
 
-	lib := r.lib.Snapshot()
-
 	var codecs []string
 	probed := 0
 	for _, sl := range slots {
@@ -658,7 +652,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" {
 			continue
 		}
-		src := r.itemInput(ctx, lib, sl.LibraryItemID)
+		src := r.itemInput(ctx, sl.LibraryItemID)
 		if src.URL == "" {
 			continue
 		}
@@ -1234,27 +1228,21 @@ type libraryFileReader interface {
 	LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error)
 }
 
-// itemInput is the input ffmpeg reads for a programme. A library item id reads the item's own
-// playing file while it is readable (#2151 step 15); any other id is a media-server id, resolved
-// to a mapped local file or the server's stream. lib may be nil when no media server is connected.
-func (r *playoutResolver) itemInput(ctx context.Context, lib *library.Client, itemID string) library.InputSource {
-	if r.libraryFile != nil {
-		path, ok, err := r.libraryFile.LibraryPlayingFile(ctx, itemID)
-		if err != nil && r.log != nil {
-			r.log.Debug("playout: library file unavailable", "item", itemID, "err", err)
-		}
-		if ok && library.StatReadableFile(path) {
-			return library.InputSource{URL: path, Kind: library.InputFile}
-		}
-	}
-	if lib == nil {
+// itemInput is the input ffmpeg reads for a programme: the library item's own playing file, while
+// it is readable. Playout reads only files Loomarr's scan found (#2151 step 16); an id the Library
+// does not hold, or a file that is gone, has nothing to play.
+func (r *playoutResolver) itemInput(ctx context.Context, itemID string) library.InputSource {
+	if r.libraryFile == nil {
 		return library.InputSource{}
 	}
-	var pm library.PathMap
-	if r.pathMap != nil {
-		pm = r.pathMap()
+	path, ok, err := r.libraryFile.LibraryPlayingFile(ctx, itemID)
+	if err != nil && r.log != nil {
+		r.log.Debug("playout: library file unavailable", "item", itemID, "err", err)
 	}
-	return lib.ResolveInput(ctx, itemID, pm, library.StatReadableFile)
+	if !ok || !library.StatReadableFile(path) {
+		return library.InputSource{}
+	}
+	return library.InputSource{URL: path, Kind: library.InputFile}
 }
 
 // libraryVideoReader is the store's read of the video a Library item plays.
