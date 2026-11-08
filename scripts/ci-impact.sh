@@ -187,7 +187,7 @@ classify() {
       select_gate rust
       select_gate image
       ;;
-    internal/store/migrations/*)
+    internal/platform/store/migrations/*)
       known=true
       select_gate contracts
       select_gate go

@@ -17,14 +17,14 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The image service's store bridge (§22, V52).
 //
 // `internal/media/images` declares the persistence it needs with its OWN types (images.Store), and no
-// domain package in this codebase imports internal/store. This file is the whole cost of that
+// domain package in this codebase imports internal/platform/store. This file is the whole cost of that
 // rule: a type-for-type translation, in the composition root, where the two vocabularies are
 // allowed to meet.
 //
@@ -153,7 +153,7 @@ func (a imageStore) TouchImage(ctx context.Context, hash string, at time.Time) e
 }
 
 func (a imageStore) PutRef(ctx context.Context, ref images.Ref) error {
-	return a.st.PutImageRef(ctx, catalogstore.ImageRef{
+	return a.st.PutImageRef(ctx, clipstore.ImageRef{
 		ImageHash: ref.ImageHash,
 		OwnerKind: ref.OwnerKind,
 		OwnerID:   ref.OwnerID,
@@ -162,7 +162,7 @@ func (a imageStore) PutRef(ctx context.Context, ref images.Ref) error {
 }
 
 func (a imageStore) PutDerivative(ctx context.Context, d images.Derivative) error {
-	return a.st.PutImageDerivative(ctx, catalogstore.ImageDerivative{
+	return a.st.PutImageDerivative(ctx, clipstore.ImageDerivative{
 		ImageHash:  d.ImageHash,
 		Recipe:     d.Recipe,
 		Format:     string(d.Format),
@@ -176,9 +176,9 @@ func (a imageStore) PutDerivative(ctx context.Context, d images.Derivative) erro
 }
 
 func (a imageStore) PutDerivatives(ctx context.Context, derivatives []images.Derivative) error {
-	rows := make([]catalogstore.ImageDerivative, 0, len(derivatives))
+	rows := make([]clipstore.ImageDerivative, 0, len(derivatives))
 	for _, d := range derivatives {
-		rows = append(rows, catalogstore.ImageDerivative{
+		rows = append(rows, clipstore.ImageDerivative{
 			ImageHash: d.ImageHash, Recipe: d.Recipe, Format: string(d.Format), Width: d.Width,
 			Bytes: d.Bytes, OutputHash: d.OutputHash, Path: d.Path, Animated: d.Animated,
 			CreatedAt: d.CreatedAt,
@@ -201,7 +201,7 @@ func (a imageStore) ListDerivatives(ctx context.Context, hash string) ([]images.
 // while the store names them for the table (ListOrphanImages, ListImagesExpiredBefore), and the
 // rename happens here rather than in either package. That is the same translation the type
 // conversions above perform, one level up: `internal/media/images` reads as a subsystem talking about
-// its own subject, and `internal/store` reads as a schema, because neither had to compromise to
+// its own subject, and `internal/platform/store` reads as a schema, because neither had to compromise to
 // match the other.
 
 func (a imageStore) ListAwaitingFetch(ctx context.Context, limit int) ([]images.Image, error) {
@@ -262,7 +262,7 @@ func (a imageStore) RepointRefs(ctx context.Context, from, to string) error {
 	return a.st.RepointImageRefs(ctx, from, to)
 }
 
-func fromStoreDerivatives(rows []catalogstore.ImageDerivative) []images.Derivative {
+func fromStoreDerivatives(rows []clipstore.ImageDerivative) []images.Derivative {
 	out := make([]images.Derivative, 0, len(rows))
 	for _, d := range rows {
 		out = append(out, images.Derivative{
@@ -280,7 +280,7 @@ func fromStoreDerivatives(rows []catalogstore.ImageDerivative) []images.Derivati
 	return out
 }
 
-func fromStoreImages(rows []catalogstore.Image) []images.Image {
+func fromStoreImages(rows []clipstore.Image) []images.Image {
 	out := make([]images.Image, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, fromStoreImage(r))
@@ -304,8 +304,8 @@ func mapImageErr(err error) error {
 	return err
 }
 
-func toStoreImage(img images.Image) catalogstore.Image {
-	return catalogstore.Image{
+func toStoreImage(img images.Image) clipstore.Image {
+	return clipstore.Image{
 		Hash:            img.Hash,
 		Origin:          string(img.Origin),
 		SourceURL:       img.SourceURL,
@@ -329,7 +329,7 @@ func toStoreImage(img images.Image) catalogstore.Image {
 	}
 }
 
-func fromStoreImage(rec catalogstore.Image) images.Image {
+func fromStoreImage(rec clipstore.Image) images.Image {
 	return images.Image{
 		Hash:            rec.Hash,
 		Origin:          images.Origin(rec.Origin),
@@ -357,7 +357,7 @@ func fromStoreImage(rec catalogstore.Image) images.Image {
 // artworkAdoptStore bridges the clips table onto images.ArtworkAdoptStore (§22, V52 phase 6).
 //
 // ⚠ **Resolving the artwork cache path is THIS layer's job, and that is why the store returns
-// relative paths.** `internal/store` must not know where FILLER_DIR is — a query that joined a
+// relative paths.** `internal/platform/store` must not know where FILLER_DIR is — a query that joined a
 // filesystem location onto a row would make the same SQL wrong the moment an operator moved the
 // folder. `internal/media/images` must not know either; it takes absolute paths and never asks what
 // produced them. The two vocabularies meet here, like every other translation in this file.

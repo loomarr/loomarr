@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/requester"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // QueueStatuser is the narrow capability the queue poller needs (§18.1 arr-queue-poll): report

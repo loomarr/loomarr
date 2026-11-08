@@ -8,7 +8,7 @@ import (
 	"slices"
 
 	"github.com/loomarr/loomarr/internal/filler/screening"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 func (s *sqlStore) appendSpokenSafetyEvent(ctx context.Context, tx store.Tx, event screening.SpokenSafetyLedgerEvent) error {

@@ -12,7 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Channel watermark PREVIEW (#1659 W2): the channel page's On-screen logo preview shows the PNG the

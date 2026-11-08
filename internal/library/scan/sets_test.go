@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // A movie whose catalog record names its set asks for the set's own record; once fetched, the set

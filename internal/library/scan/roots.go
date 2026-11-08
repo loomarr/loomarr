@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // ErrNotAbsolute rejects a folder that is not an absolute path.

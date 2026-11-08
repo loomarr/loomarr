@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // CookieName is the session cookie (§11).

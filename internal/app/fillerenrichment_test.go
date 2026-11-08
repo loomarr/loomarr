@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -96,7 +96,7 @@ func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) 
 func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_100, 0).UTC()
-	clip := catalogstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "ready", Path: "ready.mp4", Name: "Ready advert", Kind: filler.Commercial,
 		Placement: filler.PlacementBreakBody, Held: false, DurationMs: 30_000,
 	}, UpdatedAt: at, CreatedAt: at}
@@ -125,7 +125,7 @@ func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) 
 func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAnswers(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_200, 0).UTC()
-	clip := catalogstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "operator", Path: "operator.mp4", Name: "Operator advert", Kind: filler.Commercial,
 		Brand: "Operator Brand", Era: 1987, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
@@ -188,7 +188,7 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := catalogstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "inherited-geography", Path: "inherited-geography.mp4", Name: "Local advert",
 		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
@@ -225,7 +225,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := catalogstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "explicit-geography", Path: "explicit-geography.mp4", Name: "Regional advert",
 		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
@@ -260,7 +260,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAnswer(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_500, 0).UTC()
-	clip := catalogstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "cleveland-news", Path: "cleveland-news.mp4", Name: "WEWS NewsChannel 5 News Update 03/10/1991",
 		Kind: filler.Interstitial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
@@ -304,7 +304,7 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_000, 0).UTC()
-	clip := catalogstore.Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "Brambly Sauce Advert",
+	clip := clipstore.Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "Brambly Sauce Advert",
 		Kind: filler.Commercial}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -330,14 +330,14 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 }
 
 // geographyFixture registers one archive source and one break-body clip fetched from it.
-func geographyFixture(t *testing.T, st records.Store, at time.Time, country, title string) (catalogstore.Clip, fstest.MapFS) {
+func geographyFixture(t *testing.T, st records.Store, at time.Time, country, title string) (clipstore.Clip, fstest.MapFS) {
 	t.Helper()
 	source := records.NewFillerSource("archive:geo", "archive", "archive.org/details/commercials", "Archive source", at)
 	source.Geography = filler.Geography{Country: country}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := catalogstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "geo-clip", Path: "geo-clip.mp4", Name: title,
 		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}

@@ -24,8 +24,8 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/landiscovery"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 func main() {

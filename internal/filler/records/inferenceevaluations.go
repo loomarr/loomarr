@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/storedb"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 type InferenceEvaluationState string

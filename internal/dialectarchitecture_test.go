@@ -10,27 +10,27 @@ import (
 	"testing"
 )
 
-// dialectNames are the backend identities (storedb.Dialect, re-exported by internal/store).
+// dialectNames are the backend identities (storedb.Dialect, re-exported by internal/platform/store).
 var dialectNames = map[string]bool{
 	"DialectPostgres": true,
 	"DialectSQLite":   true,
 }
 
 // dialectExceptions are the only packages that may name a backend. Everything else asks a
-// storedb helper for the SQL (LockRows, XactLock, ByDialect) or an internal/store capability
+// storedb helper for the SQL (LockRows, XactLock, ByDialect) or an internal/platform/store capability
 // (SupportsReplicas, CanMigrateToPostgres) for the behaviour, so a dialect difference has one
 // owner (docs/design/decisions/0001-postgres-and-sqlite.md).
 var dialectExceptions = map[string]string{
 	modulePath + "/internal/platform/jobs": "selects River's driver per backend: the pgx driver and the SQLite driver " +
 		"are different Go packages, so the choice cannot be a SQL helper",
-	modulePath + "/internal/store": "is the SQL adapter that implements both backends: constructors, " +
+	modulePath + "/internal/platform/store": "is the SQL adapter that implements both backends: constructors, " +
 		"placeholders, goose dialect, pg_notify invalidations, SQLite-only backup and the SQLite-to-Postgres move",
-	modulePath + "/internal/store/storedb": "defines the dialect and owns the helpers that turn it into SQL " +
+	modulePath + "/internal/platform/store/storedb": "defines the dialect and owns the helpers that turn it into SQL " +
 		"(row locks, advisory locks, per-dialect text)",
 }
 
 // A backend comparison is a dialect difference spreading. A package outside the allowlist names
-// neither backend; a new difference goes into a storedb helper or an internal/store capability.
+// neither backend; a new difference goes into a storedb helper or an internal/platform/store capability.
 func TestBackendNamesStayInsideTheStoreAdapter(t *testing.T) {
 	refs := dialectReferences(t, loomarrPackages(t))
 	seen := map[string]bool{}
@@ -38,7 +38,7 @@ func TestBackendNamesStayInsideTheStoreAdapter(t *testing.T) {
 		seen[ref.packagePath] = true
 		if _, ok := dialectExceptions[ref.packagePath]; !ok {
 			t.Errorf("%s:%d names %s — use a storedb helper (LockRows, XactLock, ByDialect) or an "+
-				"internal/store capability (SupportsReplicas, CanMigrateToPostgres) instead of comparing the backend",
+				"internal/platform/store capability (SupportsReplicas, CanMigrateToPostgres) instead of comparing the backend",
 				ref.file, ref.line, ref.name)
 		}
 	}

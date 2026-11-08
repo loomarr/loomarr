@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // proposalSeeder is the slice of a store a seeded proposal needs.

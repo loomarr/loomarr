@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The content hashes the byte-route tests address the seeded clips by. ⚠ Since V45a the byte
@@ -57,7 +57,7 @@ func newMediaServer(t *testing.T) (*httptest.Server, string, records.Store) {
 	// Hash → disk path. The wire identity is the hash (V45a); the route looks a clip up by hash
 	// then serves the row's path. A path is never addressable directly, only a catalogued hash.
 	for hash, p := range map[string]string{mediaHash: "80s/toys/intro.mp4", htmlHash: "notes.html"} {
-		if err := st.UpsertClip(ctx, catalogstore.Clip{
+		if err := st.UpsertClip(ctx, clipstore.Clip{
 			Clip:      filler.Clip{Hash: hash, Path: p, Name: p, Kind: filler.Commercial, DurationMs: 30_000},
 			UpdatedAt: time.Now().UTC(),
 		}); err != nil {

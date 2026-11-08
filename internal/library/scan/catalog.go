@@ -6,7 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // CatalogStore is the cache of catalog records the walk reads (#2151, decision 20). Only the

@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // GET /v1/filler/watch — the Filler header's live status (§10 V38c).
@@ -131,13 +131,13 @@ func (s *Server) fillerWatch(ctx context.Context, _ *struct{}) (*fillerWatchOutp
 	//
 	// ⚠ Counted in SQL. Both of these loaded whole rows to call len() on the slice — this
 	// endpoint polls the Filler page header, so it paid for two full catalog reads on a timer.
-	clipCount, err := s.store.CountClips(ctx, catalogstore.ClipFilter{})
+	clipCount, err := s.store.CountClips(ctx, clipstore.ClipFilter{})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count filler clips", err)
 	}
 	// ...so the queue is counted separately, or an install that just auto-fetched reads as "0
 	// clips" while holding a dozen.
-	heldCount, err := s.store.CountClips(ctx, catalogstore.ClipFilter{HeldOnly: true})
+	heldCount, err := s.store.CountClips(ctx, clipstore.ClipFilter{HeldOnly: true})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count held clips", err)
 	}

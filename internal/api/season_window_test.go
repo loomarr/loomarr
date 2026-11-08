@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The read DTO surfaces a stored season window so the UI can show/edit "seasons

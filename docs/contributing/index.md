@@ -58,7 +58,7 @@ cmd/seed/         populates a dev store
 
 internal/app/       wires every subsystem from an open store
 internal/api/       inbound HTTP — ServeMux + Huma v2
-internal/store/     one interface, SQLite and Postgres behind it
+internal/platform/store/    one interface, SQLite and Postgres behind it
 internal/platform/settings/ the typed registry: env > database > default
 internal/playout/   the streaming engine
 internal/proposals/suggest/ intent → grounded proposal

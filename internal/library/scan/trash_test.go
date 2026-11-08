@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Two files of one movie: the sharper plays and the other is an extra copy. Removing the copy that

@@ -15,7 +15,7 @@ func TestVerifyCIImageInputs(t *testing.T) {
       - id: filter
         run: |
           changed=$(git diff --name-only HEAD^ HEAD)
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|\.go$|^go\.(mod|sum)$|^docs/(get-started\.md|guides/|explanation/)|^web/|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/platform/store/migrations/|\.go$|^go\.(mod|sum)$|^docs/(get-started\.md|guides/|explanation/)|^web/|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           fi
 `
@@ -27,7 +27,7 @@ func TestVerifyCIImageInputs(t *testing.T) {
 		t.Fatalf("complete image filter: %v", err)
 	}
 
-	withoutMigrations := strings.Replace(workflow, "|^internal/store/migrations/", "", 1)
+	withoutMigrations := strings.Replace(workflow, "|^internal/platform/store/migrations/", "", 1)
 	if err := os.WriteFile(path, []byte(withoutMigrations), 0o600); err != nil {
 		t.Fatal(err)
 	}

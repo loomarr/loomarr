@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 const lifecycleImageVersion = "0.0.0-lifecycle"

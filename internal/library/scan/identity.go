@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Manager is one arr that knows which files are which items: Sonarr or Radarr. A full pass lists it

@@ -27,7 +27,7 @@ var aggregateStoreExceptions = map[string]string{
 // is naming the aggregate; without it here, moving a package onto records.Store would hide its
 // aggregate reference from the allowlist.
 var aggregateStorePackages = map[string]bool{
-	modulePath + "/internal/store":          true,
+	modulePath + "/internal/platform/store": true,
 	modulePath + "/internal/filler/records": true,
 }
 
@@ -126,25 +126,25 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 // clusterPackages are the store's cluster packages. The store re-exports their types and
 // sentinels by alias so its own Store contract can name them unqualified.
 var clusterPackages = map[string]bool{
-	modulePath + "/internal/store/identitystore": true,
-	modulePath + "/internal/store/catalogstore":  true,
+	modulePath + "/internal/platform/store/identitystore": true,
+	modulePath + "/internal/platform/store/clipstore":     true,
 }
 
 // The store's cluster aliases are for the store itself. Everything else names the cluster type
-// (identitystore.User, catalogstore.Clip), so a reader lands on the package that owns it. The
+// (identitystore.User, clipstore.Clip), so a reader lands on the package that owns it. The
 // alias names are read from the store's own declarations, so adding an alias needs no edit here.
 func TestStoreClusterAliasesStayInsideTheStore(t *testing.T) {
 	packages := loomarrPackages(t)
-	storePkg := packages[modulePath+"/internal/store"]
+	storePkg := packages[modulePath+"/internal/platform/store"]
 	if storePkg == nil {
-		t.Fatal("internal/store is not in the package graph")
+		t.Fatal("internal/platform/store is not in the package graph")
 	}
 	aliases := storeClusterAliases(t, storePkg)
 	if len(aliases) == 0 {
-		t.Fatal("found no cluster aliases in internal/store — the scan would vacuously pass")
+		t.Fatal("found no cluster aliases in internal/platform/store — the scan would vacuously pass")
 	}
 	for packagePath, pkg := range packages {
-		if packagePath == modulePath+"/internal/store" {
+		if packagePath == modulePath+"/internal/platform/store" {
 			continue
 		}
 		files := append(append(append(append([]string(nil), pkg.GoFiles...), pkg.CgoFiles...),
@@ -156,7 +156,7 @@ func TestStoreClusterAliasesStayInsideTheStore(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse %s: %v", path, err)
 			}
-			storeNames := importNames(t, path, file, modulePath+"/internal/store")
+			storeNames := importNames(t, path, file, modulePath+"/internal/platform/store")
 			if len(storeNames) == 0 {
 				continue
 			}
@@ -180,7 +180,7 @@ func TestStoreClusterAliasesStayInsideTheStore(t *testing.T) {
 }
 
 // storeClusterAliases maps each exported store declaration whose value is a cluster package's
-// identifier (type User = identitystore.User, var ErrTaxonConflict = catalogstore.ErrTaxonConflict)
+// identifier (type User = identitystore.User, var ErrTaxonConflict = clipstore.ErrTaxonConflict)
 // to that cluster package's name.
 func storeClusterAliases(t *testing.T, storePkg *build.Package) map[string]string {
 	t.Helper()

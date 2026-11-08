@@ -188,8 +188,8 @@ var areas = []area{
 			"shared vocabularies such as holidays, language codes, the audience rating ladder and " +
 			"whole-word text matching.",
 		Packages: []string{
-			"store", "store/storedb", "store/catalogstore", "store/identitystore",
-			"platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
+			"platform/store", "platform/store/storedb", "platform/store/clipstore",
+			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
 			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
 			"platform/events", "platform/storagegovernor", "platform/logchange",
 			"platform/releaseverify", "platform/buildinfo", "platform/web",
@@ -227,7 +227,7 @@ var areas = []area{
 			"testkit", "testkit/execfixture", "testkit/httpfixture",
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
-			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "store/storetest",
+			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "platform/store/storetest",
 			"demolibrary", "integration", "eval",
 		},
 		ImportsAnyArea: true,
@@ -248,7 +248,7 @@ var flows = []flow{
 			"durable Proposal Job and runs `proposals/suggest`, which grounds each title through `catalog` " +
 			"(the library, `tmdb` and the clip catalog) and `proposals/webreference`, using a model from " +
 			"`platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the " +
-			"channel and `channels/edit` writes it through `store`; any title the household lacks becomes a " +
+			"channel and `channels/edit` writes it through `platform/store`; any title the household lacks becomes a " +
 			"`provision` record that `provisionbackstop` hands to `requester` for Sonarr or Radarr. " +
 			"`channels/schedule` turns " +
 			"the approved lineup and what is actually available into ordered programming, and the " +
@@ -267,7 +267,7 @@ var flows = []flow{
 			"is then checked: `filler/screening` for what it says and shows, and whether it is safe to air, " +
 			"`filler/structure/assessment` for long reels that need splitting, and `filler/defectfloor` " +
 			"for picture and sound defects. A clip that passes its checks enters the catalog, whose " +
-			"values are `filler/clips`, whose tags are `filler/taxonomy`, and which `store/catalogstore` " +
+			"values are `filler/clips`, whose tags are `filler/taxonomy`, and which `platform/store/clipstore` " +
 			"persists. When `channels/schedule` leaves a break in a channel's programming, the `channels` engine " +
 			"asks `filler` for a pod that fits it, and `playout` plays the pod as part of the stream.",
 	},

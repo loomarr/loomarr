@@ -9,8 +9,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 type bulkBody struct {
@@ -30,7 +30,7 @@ func postBulk(t *testing.T, srv, path, body, token string) (*http.Response, bulk
 	return res, b
 }
 
-func listPaths(t *testing.T, st store.Store, f catalogstore.ClipFilter) []string {
+func listPaths(t *testing.T, st store.Store, f clipstore.ClipFilter) []string {
 	t.Helper()
 	clips, err := st.ListClips(context.Background(), f)
 	if err != nil {
@@ -134,12 +134,12 @@ func TestBulkRemoveFiller_HidesTheClipButKeepsTheRow(t *testing.T) {
 		t.Errorf("updated = %d, want 1", body.Updated)
 	}
 
-	if got := listPaths(t, st, catalogstore.ClipFilter{}); len(got) != 1 || got[0] != "b.mp4" {
+	if got := listPaths(t, st, clipstore.ClipFilter{}); len(got) != 1 || got[0] != "b.mp4" {
 		t.Errorf("catalog = %v, want only b.mp4", got)
 	}
 	// The row is still there, which is what makes restore possible and what makes the
 	// tombstone survive a re-scan.
-	if got := listPaths(t, st, catalogstore.ClipFilter{IncludeRemoved: true}); len(got) != 2 {
+	if got := listPaths(t, st, clipstore.ClipFilter{IncludeRemoved: true}); len(got) != 2 {
 		t.Errorf("with IncludeRemoved = %v, want both rows", got)
 	}
 }
@@ -158,14 +158,14 @@ func TestBulkRemoveFiller_SurvivesAReScan(t *testing.T) {
 	// ⚠ Carries the same HASH as the seeded row, or this upsert inserts a SECOND clip instead of
 	// updating the tombstoned one — and the test would pass for the wrong reason (the tombstone
 	// survives because nothing touched it). Identity is the hash since V38c.
-	if err := st.UpsertClip(ctx, catalogstore.Clip{
+	if err := st.UpsertClip(ctx, clipstore.Clip{
 		Clip:      filler.Clip{Hash: clipHashFor("a.mp4"), Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000},
 		UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := listPaths(t, st, catalogstore.ClipFilter{}); len(got) != 0 {
+	if got := listPaths(t, st, clipstore.ClipFilter{}); len(got) != 0 {
 		t.Errorf("catalog = %v after a re-scan — the removal was silently undone", got)
 	}
 }
@@ -175,14 +175,14 @@ func TestBulkRemoveFiller_RestorePutsItBack(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	putClip(t, st, filler.Clip{Path: "a.mp4", Name: "a.mp4", Kind: filler.Commercial, DurationMs: 30_000})
 	postBulk(t, srv.URL, "/v1/filler/bulk/remove", `{"hashes":["`+clipHashFor("a.mp4")+`"]}`, adminToken)
-	if got := listPaths(t, st, catalogstore.ClipFilter{}); len(got) != 0 {
+	if got := listPaths(t, st, clipstore.ClipFilter{}); len(got) != 0 {
 		t.Fatalf("setup: clip not removed, catalog = %v", got)
 	}
 
 	postBulk(t, srv.URL, "/v1/filler/bulk/remove",
 		`{"hashes":["`+clipHashFor("a.mp4")+`"],"restore":true}`, adminToken)
 
-	if got := listPaths(t, st, catalogstore.ClipFilter{}); len(got) != 1 {
+	if got := listPaths(t, st, clipstore.ClipFilter{}); len(got) != 1 {
 		t.Errorf("catalog = %v after restore, want the clip back", got)
 	}
 }
@@ -198,7 +198,7 @@ func TestFillerBulkRoutes_RequireAdmin(t *testing.T) {
 			t.Errorf("%s succeeded with no credential", path)
 		}
 	}
-	if got := listPaths(t, st, catalogstore.ClipFilter{}); len(got) != 1 {
+	if got := listPaths(t, st, clipstore.ClipFilter{}); len(got) != 1 {
 		t.Errorf("an unauthenticated caller changed the catalog: %v", got)
 	}
 }

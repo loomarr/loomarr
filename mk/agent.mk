@@ -100,10 +100,10 @@ docs-release-gate: ## fail a release whose user-facing changes have no docs chan
 
 .PHONY: backup-restore-verify backup-restore-drill
 backup-restore-verify: ## isolated SQLite backup, destructive replacement, restore, and state validation
-	$(GO) test -race ./internal/store -run '^TestSQLiteBackupRestoreDrill$$' -count=1
+	$(GO) test -race ./internal/platform/store -run '^TestSQLiteBackupRestoreDrill$$' -count=1
 
 backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres backup/restore drills
-	$(GO) test -race -tags=integration ./internal/store -run '^TestPostgresBackupRestoreDrill$$' -count=1
+	$(GO) test -race -tags=integration ./internal/platform/store -run '^TestPostgresBackupRestoreDrill$$' -count=1
 
 .PHONY: graph
 graph: ## build the local Graphify index in graphify-out/ (never committed; needs graphifyy, see docs/agents/graphify.md)

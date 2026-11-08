@@ -10,7 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/inventory"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Library → Items (#2151 step 10): the movies and series the scanner wrote, and one title's page.

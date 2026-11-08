@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // PairingTTL is how long a code shown on a TV stays valid.

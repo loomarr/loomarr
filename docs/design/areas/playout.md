@@ -17,7 +17,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`playout`** · 5 importers · → `channels/schedule`, `media/encode`, `media/measure`, `media/proctree`, `platform/config`, `platform/diagnostics`, `playout/packager`, `provision`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
-- **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `store`
+- **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `platform/store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`playout/bench`** · → `media/encode`, `playout`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.

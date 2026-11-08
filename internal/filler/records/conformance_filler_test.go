@@ -20,8 +20,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // Filler (§10): clips, their lifecycle, the source registry, pulls and split proposals.
@@ -1085,11 +1085,11 @@ func testAiringClipReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
 	}
-	record := func(blur float64) catalogstore.ClipDefectRecord {
+	record := func(blur float64) clipstore.ClipDefectRecord {
 		r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
 		a := defects.Assess(r, old.Era)
 		verdict, reason := defects.Decide(a, nil)
-		return catalogstore.ClipDefectRecord{ClipHash: old.Hash, Readings: r, Era: old.Era, Assessment: a,
+		return clipstore.ClipDefectRecord{ClipHash: old.Hash, Readings: r, Era: old.Era, Assessment: a,
 			Verdict: verdict, VerdictReason: reason, MeasuredAt: at}
 	}
 	if err := s.UpsertClipDefects(ctx, record(4)); err != nil {
@@ -1099,7 +1099,7 @@ func testAiringClipReplacement(t *testing.T, newStore NewStoreFunc) {
 	reencoded.Hash, reencoded.Path = "airing-new-bytes", "ai/ri/airing-new-bytes.mp4"
 	reencoded.UpdatedAt = at.Add(time.Hour)
 
-	if err := s.ReplaceAiringClip(ctx, old.Hash, reencoded, catalogstore.ClipDefectRecord{}); err == nil {
+	if err := s.ReplaceAiringClip(ctx, old.Hash, reencoded, clipstore.ClipDefectRecord{}); err == nil {
 		t.Fatal("a switch with no defect verdict committed")
 	}
 	if _, err := s.GetClip(ctx, old.Hash); err != nil {
@@ -1834,14 +1834,14 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	record := func(hash string, era int, blur float64, j *defects.Judgement) catalogstore.ClipDefectRecord {
+	record := func(hash string, era int, blur float64, j *defects.Judgement) clipstore.ClipDefectRecord {
 		r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: blur}
 		a := defects.Assess(r, era)
 		verdict, reason := defects.Decide(a, j)
-		return catalogstore.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: a, Judgement: j,
+		return clipstore.ClipDefectRecord{ClipHash: hash, Readings: r, Era: era, Assessment: a, Judgement: j,
 			Verdict: verdict, VerdictReason: reason, MeasuredAt: now}
 	}
-	if err := s.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord{ClipHash: one.Hash}); err == nil {
+	if err := s.UpsertClipDefects(ctx, clipstore.ClipDefectRecord{ClipHash: one.Hash}); err == nil {
 		t.Fatal("a record with no measurement or verdict version was stored")
 	}
 	unjudged := record(one.Hash, 1988, 4, nil)
@@ -1896,8 +1896,8 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	labelTwo := catalogstore.ClipDefectLabel{Label: defects.LabelPass, Era: 1988, LabelledAt: now}
-	if want := map[string]catalogstore.ClipDefectLabel{
+	labelTwo := clipstore.ClipDefectLabel{Label: defects.LabelPass, Era: 1988, LabelledAt: now}
+	if want := map[string]clipstore.ClipDefectLabel{
 		one.Hash: {Label: defects.LabelFail, Era: 2012, LabelledAt: now}, two.Hash: labelTwo,
 	}; !reflect.DeepEqual(labels, want) {
 		t.Fatalf("labels = %+v, want %+v: judging again must keep a label and the era it was given for", labels, want)
@@ -5872,7 +5872,7 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 	}
 	// The loser's defect record describes bytes that are about to be deleted (#2034).
 	readings := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}
-	if err := s.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord{
+	if err := s.UpsertClipDefects(ctx, clipstore.ClipDefectRecord{
 		ClipHash: loser.Hash, Readings: readings, Era: 1988, Assessment: defects.Assess(readings, 1988),
 		Verdict: defects.VerdictPass, MeasuredAt: now,
 	}); err != nil {

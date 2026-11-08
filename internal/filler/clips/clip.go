@@ -339,7 +339,7 @@ func (c Clip) Tagged() bool {
 // ⚠ Commercial-only on purpose: bumpers, station ids and PSAs serve their bookend role without
 // era/audience/category, so an untagged one is complete, not an exception.
 //
-// ⚠ THE predicate. The store's UntaggedOnly SQL (`needsDetailsWhere` in internal/store/clips.go)
+// ⚠ THE predicate. The store's UntaggedOnly SQL (`needsDetailsWhere` in internal/platform/store/clipstore/clips.go)
 // is this rule in SQL, and a conformance test over both backends pins that the two select the same
 // clips. Change one, change the other in the same commit.
 func (c Clip) NeedsDetails() bool {

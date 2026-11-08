@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 var ErrApplicationQuiescing = errors.New("application generation is quiescing")

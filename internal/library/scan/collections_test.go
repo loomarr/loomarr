@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // A collection lists its titles in the household's order; a member that has left the library drops

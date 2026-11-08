@@ -26,9 +26,9 @@ import (
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/watermark"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // channelWatermarks is the composition root's channel-bug service (#1512 phase 1d): the GPU

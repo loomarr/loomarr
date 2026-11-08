@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // InvalidationListenStep scripts one subscription attempt for InvalidationListener.

@@ -217,7 +217,7 @@ Air run at pinned versions from the harness.
 - `web/packages/design-system/generated/` → `make fe-tokens`
 - `web/packages/api/generated/` and `web/apps/web/src/routeTree.gen.ts` → `make fe-codegen`; both are
   gitignored and absent from a fresh worktree
-- applied migrations in `internal/store/migrations/` are immutable; add the next migration
+- applied migrations in `internal/platform/store/migrations/` are immutable; add the next migration
 
 ## Repository map
 

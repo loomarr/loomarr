@@ -43,7 +43,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // autheliaImage is pinned. A floating tag would make this test's meaning change under us:

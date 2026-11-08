@@ -6,7 +6,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/media/tools"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The wire's needsDetails is the domain predicate, not a client-side guess from kind + tagged: an
@@ -24,7 +24,7 @@ func TestClipToDTONeedsDetailsFollowsThePredicate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := clipToDTO(catalogstore.Clip{Clip: tc.clip}, false, nil).NeedsDetails; got != tc.want {
+			if got := clipToDTO(clipstore.Clip{Clip: tc.clip}, false, nil).NeedsDetails; got != tc.want {
 				t.Errorf("needsDetails = %v, want %v", got, tc.want)
 			}
 		})

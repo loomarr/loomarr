@@ -5,7 +5,7 @@ package records
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/store/storetest"
+	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 )
 
 // TestPostgresConformance runs the SAME filler suite as SQLite (AGENTS.md: one suite, two

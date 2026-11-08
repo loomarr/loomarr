@@ -22,7 +22,7 @@
 # a balanced 2026-09-01 sample to 1430/657/583 package-seconds in merge-group run 35472062915.
 # Packages that must not share a runner live in two reviewed serial lanes, still identified as
 # `certification`: latency-sensitive media packages, and CPU-heavy packages whose own parallel tests
-# need every core (internal/store, #1570). The remaining weighted packages are balanced across two
+# need every core (internal/platform/store, #1570). The remaining weighted packages are balanced across two
 # ordinary lanes. Separate runners let the two serial groups overlap without allowing package
 # concurrency inside either group.
 #
@@ -65,7 +65,7 @@ MAX_ORDINARY_AGGREGATE_SECONDS=$((LANE_TEST_SECONDS * ORDINARY_WORKERS))
 # No single package may take longer than a lane's whole test step: a package is the sharder's
 # indivisible unit, so one that did would put its lane over the target whatever the partition. A
 # package that outgrows this must run its tests in parallel, move to a serial lane of its own, or be
-# split (internal/store needed the first two, #1570), never be given a larger budget.
+# split (internal/platform/store needed the first two, #1570), never be given a larger budget.
 MAX_PACKAGE_SECONDS=$LANE_TEST_SECONDS
 
 if [[ ! -r "$WEIGHTS" ]]; then

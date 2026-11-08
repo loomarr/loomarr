@@ -7,7 +7,7 @@ internal/demolibrary	379
 internal/app	281
 internal/filler/fetch	261
 internal/api	216
-internal/store	191
+internal/platform/store	191
 internal/integration	178
 internal/channels/schedule	151
 internal/media/images	149

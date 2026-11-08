@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The Catalog tab's bulk bar (§10 V35): retag a selection, or remove it from the catalog.
@@ -117,7 +117,7 @@ func (s *Server) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*bu
 		// graph in one transaction. Without Tags, both taxonomy fields remain untouched.
 		if in.Body.Tags != nil {
 			if err := s.store.SetClipTags(ctx, clip.Hash, leaves); err != nil {
-				if errors.Is(err, catalogstore.ErrTaxonConflict) {
+				if errors.Is(err, clipstore.ErrTaxonConflict) {
 					return nil, errConflict("Taxonomy changed", "The tag vocabulary changed while these clips were being edited. Review the tags and try again.")
 				}
 				return nil, huma.Error500InternalServerError("retag clips", err)

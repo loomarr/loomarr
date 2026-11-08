@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/screening"
-	"github.com/loomarr/loomarr/internal/store/storedb"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // RecoverInterruptedSpokenSafetyRuns closes attempts owned by a previous

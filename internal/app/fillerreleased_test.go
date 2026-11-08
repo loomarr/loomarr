@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -29,7 +29,7 @@ func releasedClipRunningRow(t *testing.T, st records.Store, hash string) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.Now().UTC().Add(-time.Hour)
-	if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{
 		Hash: hash, Path: "ab/" + hash + ".mp4", Name: hash + ".mp4", Kind: filler.Commercial,
 		DurationMs: 30_000, Source: "archive", Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at}); err != nil {

@@ -16,13 +16,13 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`proposals`** · 10 importers · → `channels/schedule`, `platform/storagegovernor`, `provision`
   The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
-- **`proposals/outlook`** · 2 importers · → `channels`, `channels/schedule`, `library`, `platform/holidayvocab`, `proposals`, `proposals/suggest`, `provision`, `store`
+- **`proposals/outlook`** · 2 importers · → `channels`, `channels/schedule`, `library`, `platform/holidayvocab`, `platform/store`, `proposals`, `proposals/suggest`, `provision`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
 - **`proposals/quality`** · 6 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
-- **`proposals/suggest`** · 7 importers · → `catalog`, `channels/schedule`, `moviecollections`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/textmatch`, `proposals`, `proposals/quality`, `proposals/webreference`, `provision`, `store`, `tmdb`
+- **`proposals/suggest`** · 7 importers · → `catalog`, `channels/schedule`, `moviecollections`, `platform/holidayvocab`, `platform/llm`, `platform/rating`, `platform/store`, `platform/textmatch`, `proposals`, `proposals/quality`, `proposals/webreference`, `provision`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 - **`proposals/webreference`** · 4 importers
   Resolves bounded, read-only evidence from public web pages supplied in channel Intents.
-- **`proposals/workflow`** · 2 importers · → `channels/schedule`, `proposals`, `proposals/suggest`, `store`
+- **`proposals/workflow`** · 2 importers · → `channels/schedule`, `platform/store`, `proposals`, `proposals/suggest`
   Owns the durable Proposal Job lifecycle and the authoritative First-channel Journey composed from it.

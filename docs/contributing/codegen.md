@@ -36,7 +36,7 @@ to drift against. That's also why a fresh clone typechecks red until codegen has
 
 ## Migrations
 
-Goose migrations under `internal/store/migrations/{sqlite,postgres}` are hand-written and applied
+Goose migrations under `internal/platform/store/migrations/{sqlite,postgres}` are hand-written and applied
 at boot. Never edit an applied migration; add a new one.
 
 Two long-lived branches will both take the next free number and goose silently skips the second.

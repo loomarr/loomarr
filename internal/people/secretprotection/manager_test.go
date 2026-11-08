@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 func TestManagerReadsASecretAfterDatabaseAndProcessRestart(t *testing.T) {

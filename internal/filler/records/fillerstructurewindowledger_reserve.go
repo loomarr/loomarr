@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 func (s *sqlStore) ReserveStructureWindowCall(ctx context.Context, reservation window.CallReservation, budget InferenceBudget) (window.CallReservationState, error) {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // CompleteSplitConfirmation is V65's single durable commit. Reversible media publication happens

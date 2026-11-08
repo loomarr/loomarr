@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -60,7 +60,7 @@ func TestTaxonomyEditorReloadsHolidaysAfterASeasonalEdit(t *testing.T) {
 	snap := newHolidaySnapshot(st, slog.New(slog.DiscardHandler))
 	editor := taxonomyEditor{store: st, holidaysChanged: snap.Reload}
 	harvest := taxonomy.Taxon{Slug: "harvest-fair", Label: "Harvest fair", Axis: taxonomy.AxisSeasonal}
-	if _, err := editor.Apply(t.Context(), catalogstore.TaxonomyEdit{Create: true, Taxon: harvest}); err != nil {
+	if _, err := editor.Apply(t.Context(), clipstore.TaxonomyEdit{Create: true, Taxon: harvest}); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(holidayIDsOf(snap.Current()), harvest.Slug) {

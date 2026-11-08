@@ -12,9 +12,9 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // guideConcurrency bounds how many channel timelines resolve at once. The work is CPU-bound
@@ -365,9 +365,9 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			}
 		}
 	}
-	clipsByHash := map[string]catalogstore.Clip{}
+	clipsByHash := map[string]clipstore.Clip{}
 	if s.images != nil && len(clipHashes) > 0 {
-		clips, clipErr := s.store.ListClips(ctx, catalogstore.ClipFilter{Hashes: clipHashes})
+		clips, clipErr := s.store.ListClips(ctx, clipstore.ClipFilter{Hashes: clipHashes})
 		if clipErr != nil {
 			s.log.Warn("guide: filler artwork lookup failed", "err", clipErr)
 		} else {

@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 const structureSplitShadowSelect = `SELECT id, proposal_id, clip_hash, source_sha256,

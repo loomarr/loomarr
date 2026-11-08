@@ -27,7 +27,7 @@ var ErrSplitValidation = errors.New("invalid split segments")
 // ErrProposalGone means the proposal was confirmed or rejected while a rung was working on it.
 //
 // ⚠ A DOMAIN sentinel, translated from the store's ErrNotFound by the adapter, because
-// `internal/filler` is the pure domain and does not import `internal/store` (Tier 3). It exists
+// `internal/filler` is the pure domain and does not import `internal/platform/store` (Tier 3). It exists
 // for one race: split-time grounding is a read-modify-write spanning minutes of vision calls, and
 // a `Confirm` landing inside that window must not be undone by the write that follows.
 var ErrProposalGone = errors.New("filler: the split proposal was resolved while it was being grounded")

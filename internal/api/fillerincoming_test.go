@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 type calmIncomingBody struct {
@@ -72,7 +72,7 @@ func putClip(t *testing.T, st store.Store, clip filler.Clip) {
 	if clip.Hash == "" {
 		clip.Hash = clipHashFor(clip.Path)
 	}
-	if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: clip, UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: clip, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 }
