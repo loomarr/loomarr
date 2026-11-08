@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/scan"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // The app starts the scanner once it is built: a file in an in-use folder reaches the scanner's

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Serving a clip's own bytes, so the operator can watch one before deciding about it (§10 V35).

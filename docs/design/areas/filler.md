@@ -26,7 +26,7 @@ One area of the [package map](../package-map.md#start-here).
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`filler/location`** · 3 importers
   Owns Loomarr's offline place search and location resolution.
-- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `store`, `store/catalogstore`, `store/storedb`
+- **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`filler/research`** · 3 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.

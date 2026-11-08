@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/docs"
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // registerHelp mounts the in-app Help + system-info routes (§13). Both are readable by

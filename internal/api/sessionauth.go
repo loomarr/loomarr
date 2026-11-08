@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // sessionAuthorizer resolves a request to a role via the session cookie first

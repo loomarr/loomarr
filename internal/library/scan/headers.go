@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // headerBatch is how many read results are saved per write.

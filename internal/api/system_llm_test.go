@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // fakeSystemLLM is a scriptable SystemLLMService for the API-layer tests.

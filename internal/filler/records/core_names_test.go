@@ -2,30 +2,30 @@ package records
 
 import (
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
-// The filler conformance suite moved here from internal/store unedited (#1747); these test-only
+// The filler conformance suite moved here from internal/platform/store unedited (#1747); these test-only
 // aliases name the core store types and errors it asserts against. They leave the package's
 // non-test API untouched: production code in this package spells them store.X.
 type (
-	Clip                 = catalogstore.Clip
-	ClipFilter           = catalogstore.ClipFilter
-	ClipSort             = catalogstore.ClipSort
-	TaxonomyEdit         = catalogstore.TaxonomyEdit
+	Clip                 = clipstore.Clip
+	ClipFilter           = clipstore.ClipFilter
+	ClipSort             = clipstore.ClipSort
+	TaxonomyEdit         = clipstore.TaxonomyEdit
 	InteractiveOperation = store.InteractiveOperation
-	Image                = catalogstore.Image
-	ImageRef             = catalogstore.ImageRef
-	InferiorCopy         = catalogstore.InferiorCopy
+	Image                = clipstore.Image
+	ImageRef             = clipstore.ImageRef
+	InferiorCopy         = clipstore.InferiorCopy
 )
 
 const (
-	ClipSortAdded      = catalogstore.ClipSortAdded
-	ClipSortConfidence = catalogstore.ClipSortConfidence
-	ClipSortDuration   = catalogstore.ClipSortDuration
-	ClipSortName       = catalogstore.ClipSortName
-	ClipSortPlays      = catalogstore.ClipSortPlays
+	ClipSortAdded      = clipstore.ClipSortAdded
+	ClipSortConfidence = clipstore.ClipSortConfidence
+	ClipSortDuration   = clipstore.ClipSortDuration
+	ClipSortName       = clipstore.ClipSortName
+	ClipSortPlays      = clipstore.ClipSortPlays
 
 	InteractiveOperationRunning     = store.InteractiveOperationRunning
 	InteractiveOperationSuccess     = store.InteractiveOperationSuccess
@@ -38,7 +38,7 @@ const (
 
 var (
 	ErrNotFound                        = store.ErrNotFound
-	ErrTaxonConflict                   = catalogstore.ErrTaxonConflict
-	ErrUnknownClipSort                 = catalogstore.ErrUnknownClipSort
+	ErrTaxonConflict                   = clipstore.ErrTaxonConflict
+	ErrUnknownClipSort                 = clipstore.ErrUnknownClipSort
 	ErrConditioningPublicationMismatch = filler.ErrConditioningOwnershipMismatch
 )

@@ -9,7 +9,7 @@ import (
 
 	"github.com/riverqueue/river"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // pausableJob is a job that counts its executions.

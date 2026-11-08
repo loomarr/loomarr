@@ -8,7 +8,7 @@ import (
 
 	"github.com/riverqueue/river"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // The queue split (§18.1): a job's ceiling must bound only the jobs that share its queue.

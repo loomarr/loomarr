@@ -10,7 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/defects"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The report reads the real store through the floor's adapter: a label is stamped with the era its
@@ -24,7 +24,7 @@ func TestFillerDefectReports_LabelThroughTheStore(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	at := time.Unix(1_800_000_000, 0).UTC()
 	for _, hash := range []string{"measured", "unmeasured"} {
-		c := catalogstore.Clip{}
+		c := clipstore.Clip{}
 		c.Hash, c.Path, c.Name, c.Kind, c.Era = hash, hash+".mp4", hash, filler.Commercial, 1988
 		if err := st.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
@@ -33,7 +33,7 @@ func TestFillerDefectReports_LabelThroughTheStore(t *testing.T) {
 	r := defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlurMean: 9.5}
 	a := defects.Assess(r, 1988)
 	verdict, reason := defects.Decide(a, nil)
-	if err := st.UpsertClipDefects(ctx, catalogstore.ClipDefectRecord{ClipHash: "measured", Readings: r, Era: 1988,
+	if err := st.UpsertClipDefects(ctx, clipstore.ClipDefectRecord{ClipHash: "measured", Readings: r, Era: 1988,
 		Assessment: a, Verdict: verdict, VerdictReason: reason, MeasuredAt: at}); err != nil {
 		t.Fatal(err)
 	}

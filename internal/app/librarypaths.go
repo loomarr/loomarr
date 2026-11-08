@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // libraryPathCache adapts the store's path table to library.PathCache (#1456), so playout

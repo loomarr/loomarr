@@ -16,10 +16,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // This file is the job execution model (§8): submissions become persisted jobs;

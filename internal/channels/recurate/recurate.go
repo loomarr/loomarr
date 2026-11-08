@@ -22,9 +22,9 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Thresholds supplies the global re-curation knobs, read per call so a settings change takes

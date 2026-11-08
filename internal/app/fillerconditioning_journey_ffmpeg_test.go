@@ -21,9 +21,9 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/packager"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -52,7 +52,7 @@ type conditionedJourney struct {
 	ffmpeg      string
 	ffprobe     string
 	fixtures    testkit.FillerConditioningFixtures
-	conditioned catalogstore.Clip
+	conditioned clipstore.Clip
 	mezzanine   string
 	tags        filler.SidecarTags
 }
@@ -86,7 +86,7 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Kind: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := st.UpsertClip(ctx, clipstore.Clip{Clip: filler.Clip{Hash: parentHash, Path: parentRel, Name: "Compilation", Kind: filler.Commercial, DurationMs: parentProbe.DurationMs, Source: "test-folder"}, UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.HoldClips(ctx, []string{parentRel}, time.Now().UTC()); err != nil {
@@ -145,11 +145,11 @@ func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditio
 	if !productive {
 		t.Fatalf("pipeline passes were not productive: %+v", passes)
 	}
-	clips, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
+	clips, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeComposites: true, IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var conditioned catalogstore.Clip
+	var conditioned clipstore.Clip
 	for _, candidate := range clips {
 		if candidate.ParentHash == parentHash && candidate.Hash != childHash {
 			conditioned = candidate

@@ -12,6 +12,7 @@
 # internal/api serves the channel packager's HLS and MPEG-TS (#1512 phase 2c).
 2	internal/api
 2	internal/playout
-# internal/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel (#1631), and
-# beside three other packages in an ordinary -p=4 lane they only competed for the same cores.
-2	internal/store
+# internal/platform/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel
+# (#1631), and beside three other packages in an ordinary -p=4 lane they only competed for the same
+# cores.
+2	internal/platform/store

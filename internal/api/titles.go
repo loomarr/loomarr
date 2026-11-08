@@ -10,9 +10,9 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // registerMiddleware resolves each request's role + user (§7) before the

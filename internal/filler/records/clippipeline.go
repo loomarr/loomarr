@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The per-clip ingest pipeline's persistence (§10 V51b, migration 00044).
@@ -432,7 +432,7 @@ func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]f
 	if err := rows.Err(); err != nil || len(hashes) == 0 {
 		return nil, err
 	}
-	clips, err := s.core.ListClips(ctx, catalogstore.ClipFilter{Hashes: hashes, IncludeHeld: true, IncludeComposites: true})
+	clips, err := s.core.ListClips(ctx, clipstore.ClipFilter{Hashes: hashes, IncludeHeld: true, IncludeComposites: true})
 	if err != nil {
 		return nil, fmt.Errorf("list clips without pipeline: %w", err)
 	}

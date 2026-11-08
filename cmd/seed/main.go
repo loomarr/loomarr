@@ -39,12 +39,12 @@ import (
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/rating"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // Fixed credentials + seeds so a seeded dev install is predictable (and so the
@@ -393,7 +393,7 @@ func seedClips(ctx context.Context, st store.Store) error {
 	}
 	now := time.Now()
 	for _, seeded := range clips {
-		if err := st.UpsertClip(ctx, catalogstore.Clip{Clip: seeded.clip, UpdatedAt: now}); err != nil {
+		if err := st.UpsertClip(ctx, clipstore.Clip{Clip: seeded.clip, UpdatedAt: now}); err != nil {
 			return fmt.Errorf("upsert clip %q: %w", seeded.clip.Name, err)
 		}
 		if err := st.SetClipTags(ctx, seeded.clip.Hash, seeded.tags); err != nil {

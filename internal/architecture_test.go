@@ -55,7 +55,7 @@ func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) 
 //
 // ⚠ **These gates USED TO SERVE A STALE PASS (GH #282, fixed 2026-08-10) — do not undo it by
 // reaching for `exec.Command("go", "list", ...)`.** They learned about the tree by shelling out,
-// and subprocess output is not an input Go's test cache tracks: moving a file in `internal/store`
+// and subprocess output is not an input Go's test cache tracks: moving a file in `internal/platform/store`
 // did not change package `internal`'s test binary, so nothing invalidated the cached result and
 // the gate reported `ok (cached)` over a tree it never examined. CI restores a warm cache, so a
 // violating PR could go green on it.
@@ -63,7 +63,7 @@ func TestInboundDependencyRuleIncludesNewNestedProductionPackages(t *testing.T) 
 // They now read the tree from SOURCE (importgraph_test.go), which the cache DOES track. The
 // difference is directly observable, and worth repeating if you touch this:
 //
-//	git mv internal/store/conformance_titles_test.go internal/store/conformance_titles.go
+//	git mv internal/platform/store/conformance_titles_test.go internal/platform/store/conformance_titles.go
 //	go test ./internal/ -run TestNoLoomarrPackageLinksTestingIntoTheBinary   # NO -count=1
 //
 // Before: `ok (cached)`. After: FAIL, correctly, on a warm cache. It is also ~50x faster
@@ -180,7 +180,7 @@ func TestCoreStoreDoesNotImportFiller(t *testing.T) {
 		modulePath + "/internal/filler/taxonomy": true,
 		modulePath + "/internal/filler/station":  true,
 	}
-	for _, path := range []string{modulePath + "/internal/store", clips} {
+	for _, path := range []string{modulePath + "/internal/platform/store", clips} {
 		pkg, ok := pkgs[path]
 		if !ok {
 			t.Fatalf("%s is not in the import graph", path)
@@ -195,13 +195,13 @@ func TestCoreStoreDoesNotImportFiller(t *testing.T) {
 	}
 }
 
-// internal/store/storedb is the persistence kernel every store package builds on (Querier, Tx,
+// internal/platform/store/storedb is the persistence kernel every store package builds on (Querier, Tx,
 // Dialect, the epoch codec, the advisory lock, ErrNotFound). It stays a leaf: the moment it imports
 // a Loomarr package, a cluster package that needs the kernel can no longer be imported by that
-// package without a cycle, and the split of internal/store stops being possible. Test files are
+// package without a cycle, and the split of internal/platform/store stops being possible. Test files are
 // exempt, as in the gate above; only the production import set counts.
 func TestStoreDBImportsNoLoomarrPackage(t *testing.T) {
-	requireLeafPackage(t, loomarrPackages(t), modulePath+"/internal/store/storedb",
+	requireLeafPackage(t, loomarrPackages(t), modulePath+"/internal/platform/store/storedb",
 		"storedb is the dependency-free kernel of the store split; code that needs a Loomarr type "+
 			"belongs in a store package, not in the kernel")
 }
@@ -233,27 +233,27 @@ func requireLeafPackage(t *testing.T, pkgs map[string]*build.Package, path, why 
 	}
 }
 
-// internal/store/identitystore is the identity cluster extracted from internal/store (users,
+// internal/platform/store/identitystore is the identity cluster extracted from internal/platform/store (users,
 // sessions, devices, invitations, contact addresses, password recovery, notifications). It builds
-// on the storedb kernel and must never import internal/store: store embeds it and re-exports its
+// on the storedb kernel and must never import internal/platform/store: store embeds it and re-exports its
 // types, so an edge back would be an import cycle, and the cluster would stop being a package that
 // can be read, tested and owned without the aggregate. Test files are exempt, as above; only the
 // production import set counts.
 func TestIdentityStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/store/identitystore")
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/identitystore")
 }
 
-// internal/store/catalogstore is the clip-catalog cluster (clips and their tags, the taxonomy,
+// internal/platform/store/clipstore is the clip-catalog cluster (clips and their tags, the taxonomy,
 // holidays, images, broadcast stations, and the defect, fingerprint and creative-identity tables).
 // The same direction as identitystore, and for the same reason: store embeds it and re-exports its
 // types. The one table it must touch that it does not own, channels, it reaches through the
 // ChannelPolicies interface that store implements, so there is no import edge back.
-func TestCatalogStoreImportsKernelNotAggregate(t *testing.T) {
-	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/store/catalogstore")
+func TestClipStoreImportsKernelNotAggregate(t *testing.T) {
+	requireClusterOnKernelNotAggregate(t, loomarrPackages(t), modulePath+"/internal/platform/store/clipstore")
 }
 
 // requireClusterOnKernelNotAggregate fails unless the cluster package at path exists in the walked
-// source tree, has production files, imports the storedb kernel, and imports neither internal/store
+// source tree, has production files, imports the storedb kernel, and imports neither internal/platform/store
 // nor the filler store. It reads the import set from source (loomarrPackages), not from the
 // compiler, so a forbidden import fails here even where it would also be an import cycle.
 func requireClusterOnKernelNotAggregate(t *testing.T, pkgs map[string]*build.Package, path string) {
@@ -265,16 +265,16 @@ func requireClusterOnKernelNotAggregate(t *testing.T, pkgs map[string]*build.Pac
 	if len(pkg.GoFiles) == 0 {
 		t.Fatalf("%s has no production files", path)
 	}
-	if !slices.Contains(pkg.Imports, modulePath+"/internal/store/storedb") {
-		t.Errorf("%s does not import internal/store/storedb — the cluster must run on the kernel handle", path)
+	if !slices.Contains(pkg.Imports, modulePath+"/internal/platform/store/storedb") {
+		t.Errorf("%s does not import internal/platform/store/storedb — the cluster must run on the kernel handle", path)
 	}
 	for _, imported := range aggregateStoreImports(pkg) {
 		t.Errorf("%s imports %s — a cluster builds on storedb and is imported BY the aggregate; "+
-			"a type it needs from internal/store belongs in the cluster or the kernel", path, imported)
+			"a type it needs from internal/platform/store belongs in the cluster or the kernel", path, imported)
 	}
 }
 
-// aggregateStoreImports names the imports of pkg that are the aggregate store, internal/store
+// aggregateStoreImports names the imports of pkg that are the aggregate store, internal/platform/store
 // itself or the filler store that embeds it. Exact paths: a prefix match would also catch the
 // storedb kernel and the cluster packages, which are the allowed direction.
 func aggregateStoreImports(pkg *build.Package) []string {
@@ -290,11 +290,11 @@ func aggregateStoreImports(pkg *build.Package) []string {
 // The gate above only means something if aggregateStoreImports sees an edge when there is one, and
 // does not mistake the kernel or a sibling cluster for the aggregate.
 func TestAggregateStoreImportsFlagsOnlyTheAggregate(t *testing.T) {
-	store := modulePath + "/internal/store"
+	store := modulePath + "/internal/platform/store"
 	filler := modulePath + "/internal/filler/records"
-	kernel := modulePath + "/internal/store/storedb"
-	sibling := modulePath + "/internal/store/identitystore"
-	catalog := modulePath + "/internal/store/catalogstore"
+	kernel := modulePath + "/internal/platform/store/storedb"
+	sibling := modulePath + "/internal/platform/store/identitystore"
+	catalog := modulePath + "/internal/platform/store/clipstore"
 	pkg := &build.Package{Imports: []string{kernel, sibling, catalog, "database/sql", filler, store}}
 	if got, want := aggregateStoreImports(pkg), []string{filler, store}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("aggregate imports = %v, want %v", got, want)
@@ -325,7 +325,7 @@ func TestImageServiceDoesNotImportGoPixelCode(t *testing.T) {
 
 // NO Loomarr package linked into the binary may import `testing`. There is no exemption.
 //
-// ⚠ **There used to be one, for `internal/store`, and the reason it lasted was a mis-estimate
+// ⚠ **There used to be one, for `internal/platform/store`, and the reason it lasted was a mis-estimate
 // rather than a constraint.** The conformance suite (7 files, ~4,450 lines — 42% of the non-test
 // package) sat in ordinary .go files because BOTH backend drivers must reach `RunConformance` —
 // SQLite in-package, Postgres behind the `integration` tag — so the assertions "had to be

@@ -3,7 +3,7 @@ package scan
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Problem is a title that needs a look (#2151 decision 24): files that can't be played, or a

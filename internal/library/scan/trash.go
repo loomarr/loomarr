@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // The extra-copy trash (#2151 decision 37, step 10e). Remove extra copy moves a copy that never

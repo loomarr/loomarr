@@ -20,7 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 type fillerEnrichmentRepository struct{ st records.Store }
@@ -199,7 +199,7 @@ func (r fillerEnrichmentRepository) ListCapabilityCandidates(ctx context.Context
 	return fillerEnrichmentCandidates(clips, err)
 }
 
-func fillerEnrichmentCandidates(clips []catalogstore.Clip, err error) ([]enrichment.Candidate, error) {
+func fillerEnrichmentCandidates(clips []clipstore.Clip, err error) ([]enrichment.Candidate, error) {
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@ package scan
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Collection is one of the household's collections (#2151 decision 28) with its titles in the

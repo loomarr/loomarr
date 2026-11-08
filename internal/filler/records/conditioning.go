@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // CommitConditioningPublication closes the catalog half of the owner-bound filesystem saga. The
@@ -13,13 +13,13 @@ import (
 // publication is still pending under an owner and names this target, then has the core adopt the
 // target in one transaction (store.AdoptConditionedClip). Any mismatch, here or in the catalog
 // rows, is filler.ErrConditioningOwnershipMismatch, which holds the clip for review.
-func (s *sqlStore) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target catalogstore.Clip) error {
+func (s *sqlStore) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target clipstore.Clip) error {
 	if publication.State != "pending" || publication.Owner == "" || publication.SourceHash == "" ||
 		publication.TargetHash == "" || publication.TargetHash != target.Hash {
 		return filler.ErrConditioningOwnershipMismatch
 	}
 	err := s.core.AdoptConditionedClip(ctx, publication.SourceHash, target)
-	if errors.Is(err, catalogstore.ErrConditionedClipMismatch) {
+	if errors.Is(err, clipstore.ErrConditionedClipMismatch) {
 		return filler.ErrConditioningOwnershipMismatch
 	}
 	return err

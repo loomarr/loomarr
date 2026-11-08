@@ -22,7 +22,7 @@ var requiredImageInputs = []string{
 	"Cargo.lock",
 	"rust-toolchain.toml",
 	"rust/loomarr-image/src/main.rs",
-	"internal/store/migrations/sqlite/99999_release_probe.sql",
+	"internal/platform/store/migrations/sqlite/99999_release_probe.sql",
 	"internal/app/app.go",
 	"go.mod",
 	"go.sum",

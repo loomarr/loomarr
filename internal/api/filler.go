@@ -16,8 +16,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // registerFiller mounts /v1/filler* (§7/§10). List is visible to any
@@ -474,7 +474,7 @@ func (s *Server) clipPathByHash(ctx context.Context, hash string) (string, bool)
 // grid, and each tile has a still AND a hover loop, so a per-row lookup is two queries per tile:
 // a 200-clip page would be 400 round trips to render one screen. This is the same N+1 the channel
 // list already avoids, one surface over, and it matters more here because the page is bigger.
-func (s *Server) clipArtworkResolver(ctx context.Context, clips []catalogstore.Clip) func(string) *ImageDTO {
+func (s *Server) clipArtworkResolver(ctx context.Context, clips []clipstore.Clip) func(string) *ImageDTO {
 	if s.images == nil || len(clips) == 0 {
 		return nil
 	}
@@ -497,7 +497,7 @@ func (s *Server) clipArtworkResolver(ctx context.Context, clips []catalogstore.C
 // clipToDTO renders a clip for the wire. `img`, when non-nil, resolves an image hash to its
 // record — pre-resolved by the caller for the whole page, never looked up per clip (see
 // imageDTOsByHash: the catalog is a grid, so a per-row lookup is two queries per tile).
-func clipToDTO(c catalogstore.Clip, playsCounted bool, img func(string) *ImageDTO) ClipDTO {
+func clipToDTO(c clipstore.Clip, playsCounted bool, img func(string) *ImageDTO) ClipDTO {
 	d := ClipDTO{
 		Hash: c.Hash, TunarrProgramID: c.TunarrProgramID, Name: c.Name, Kind: string(c.Kind),
 		Era: c.Era, Audience: string(c.Audience), Category: c.Category, Tags: c.Tags, AssertedTags: c.AssertedTags,
@@ -631,7 +631,7 @@ type listFillerOutput struct {
 }
 
 func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFillerOutput, error) {
-	f := catalogstore.ClipFilter{
+	f := clipstore.ClipFilter{
 		Kind:                filler.Kind(in.Kind),
 		Era:                 in.Era,
 		Audience:            filler.Audience(in.Audience),
@@ -649,7 +649,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		TopLevelOnly:        in.TopLevel,
 		ParentHash:          in.ParentHash,
 		Hashes:              in.Hashes,
-		Sort:                catalogstore.ClipSort(in.Sort),
+		Sort:                clipstore.ClipSort(in.Sort),
 		Desc:                in.Order == "desc",
 		Limit:               in.Limit,
 		Offset:              in.Offset,
@@ -659,7 +659,7 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 		// ⚠ Defence in depth: huma's enum already rejects an unknown sort at validation, so this
 		// can only fire if the two vocabularies drift. It is a 422 rather than a 500 because it is
 		// the caller's value that is wrong — and never a silent fall-back to the default order.
-		if errors.Is(err, catalogstore.ErrUnknownClipSort) {
+		if errors.Is(err, clipstore.ErrUnknownClipSort) {
 			return nil, huma.Error422UnprocessableEntity("unknown sort", err)
 		}
 		return nil, err
@@ -846,7 +846,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 			if errors.Is(err, store.ErrNotFound) {
 				return nil, errNotFound("Clip not found", "That filler clip doesn't exist — it may have been removed by a catalog sync.")
 			}
-			if errors.Is(err, catalogstore.ErrTaxonConflict) {
+			if errors.Is(err, clipstore.ErrTaxonConflict) {
 				return nil, errConflict("Taxonomy changed", "The tag vocabulary changed while this clip was being edited. Review the tags and try again.")
 			}
 			return nil, err
@@ -917,7 +917,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		return nil, err
 	}
 	s.reconcileChannelsForFillerChange(ctx, clip.Clip, c.Clip)
-	out := clipToDTO(c, s.playsCounted(), s.clipArtworkResolver(ctx, []catalogstore.Clip{c}))
+	out := clipToDTO(c, s.playsCounted(), s.clipArtworkResolver(ctx, []clipstore.Clip{c}))
 	stations := s.labelStations(ctx)
 	out.StationCallSign, out.StationLabel = stationNames(stations, c.Station, c.AirDate)
 	return &clipOutput{Body: out}, nil

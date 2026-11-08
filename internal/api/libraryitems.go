@@ -8,7 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/library/scan"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Library → Items (#2151 step 10, decisions 22 and 25): the movies and series Loomarr found in its

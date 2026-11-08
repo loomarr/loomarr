@@ -23,8 +23,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // fakeFiller records filler service calls.
@@ -377,7 +377,7 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 		Visibility: images.VisibilityMember,
 	}
 	srv, st, _ := newFillerServerWithImages(t, imageService)
-	if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: filler.Clip{
+	if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: filler.Clip{
 		Hash: "clip-art", Path: "clip-art.mp4", Name: "Period commercial", Kind: filler.Commercial,
 		DurationMs: 30_000, ThumbImageHash: "still-art", HoverImageHash: "hover-art",
 	}}); err != nil {
@@ -415,7 +415,7 @@ func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *test
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := catalogstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: filler.Clip{
 		Hash: "source-label", Path: "source-label.mp4", Name: "Friendly advert",
 		Kind: filler.Commercial, DurationMs: 30_000, Source: source.ID,
 	}}
@@ -457,7 +457,7 @@ func clearSeededSources(t *testing.T, st records.Store) {
 
 func seedClip(t *testing.T, st records.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
 	t.Helper()
-	c := catalogstore.Clip{}
+	c := clipstore.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
 	// both so assertions stay legible — the store does not care what a hash looks like, and the
 	// 64-hex shape is enforced (and tested) in `filler.ClipPath`.

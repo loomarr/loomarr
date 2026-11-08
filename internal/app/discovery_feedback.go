@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 type discoveryFeedbackSource struct{ store store.DiscoveryFeedbackStore }

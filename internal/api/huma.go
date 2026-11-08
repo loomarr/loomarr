@@ -26,13 +26,13 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
 )
 
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
@@ -498,12 +498,12 @@ type FillerResearchService interface {
 // atomic graph transaction; this seam adds an authoritative preview and post-commit channel
 // convergence without making HTTP handlers understand either implementation.
 type TaxonomyEditor interface {
-	Preview(ctx context.Context, edit catalogstore.TaxonomyEdit) (TaxonomyImpact, error)
-	Apply(ctx context.Context, edit catalogstore.TaxonomyEdit) (TaxonomyImpact, error)
+	Preview(ctx context.Context, edit clipstore.TaxonomyEdit) (TaxonomyImpact, error)
+	Apply(ctx context.Context, edit clipstore.TaxonomyEdit) (TaxonomyImpact, error)
 }
 
 type TaxonomyImpact struct {
-	Store    catalogstore.TaxonomyEditImpact
+	Store    clipstore.TaxonomyEditImpact
 	Channels []TaxonomyChannelImpact
 }
 

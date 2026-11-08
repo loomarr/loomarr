@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -134,7 +134,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 	waitForAcquisition(t, st, jobID, now, filler.AcquisitionSuccess)
 
-	held, err := st.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true})
+	held, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: true})
 	if err != nil {
 		t.Fatal(err)
 	}

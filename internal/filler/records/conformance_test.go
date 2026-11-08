@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/storetest"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storetest"
 )
 
 // NewStoreFunc builds a fresh, migrated, empty extended store for one test. Like the core suite's,

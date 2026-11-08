@@ -8,7 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/people/auth"
-	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // registerProvisioning mounts the identity-provisioning routes (§11): first-run

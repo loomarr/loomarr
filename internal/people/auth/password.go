@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // Local account management (§11). Two operations the identity model implied but

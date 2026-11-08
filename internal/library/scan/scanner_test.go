@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Each folder waits on its own: a quiet one is due while a busy one keeps waiting, and the busy one

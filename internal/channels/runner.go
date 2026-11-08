@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Runner performs the channel-reconcile SWEEP (§9, §18): claim due channels (leased so

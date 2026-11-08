@@ -7,7 +7,7 @@ import (
 	"slices"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Set is a ready-made set (#2151 decision 28): a TMDB collection the library has at least one movie

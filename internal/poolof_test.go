@@ -31,7 +31,7 @@ import (
 // asserting on its own concrete type is ordinary implementation, not a pierced boundary; those
 // are how backup, migrate and migrate_data reach the pool they own.
 func TestOnlyTheCompositionRootTakesTheRawPool(t *testing.T) {
-	// `internal/store` defines it; `internal/app` is the sanctioned caller.
+	// `internal/platform/store` defines it; `internal/app` is the sanctioned caller.
 	allowed := map[string]bool{"store": true, "app": true}
 
 	root, err := filepath.Abs("..")

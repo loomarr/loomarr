@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // The Needs you notice (#2151 decision 32): the operators hear, at most once a day, how many titles

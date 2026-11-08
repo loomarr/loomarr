@@ -9,8 +9,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The taxonomy API (§10 V45a): read the tag graph, serve it as a tagging vocabulary, and let an
@@ -195,20 +195,20 @@ func (s *Server) previewTaxonomyEdit(ctx context.Context, in *previewTaxonomyEdi
 	return out, nil
 }
 
-func impactCommandToEdit(command TaxonomyImpactCommandDTO) (catalogstore.TaxonomyEdit, error) {
+func impactCommandToEdit(command TaxonomyImpactCommandDTO) (clipstore.TaxonomyEdit, error) {
 	taxon := taxonomy.Canonicalize(taxonomy.Taxon{
 		Slug: command.Slug, Label: command.Label, Parent: command.Parent, Axis: taxonomy.Axis(command.Axis),
 		Synonyms: command.Synonyms, RetiredAliases: command.RetiredAliases,
 	})
 	switch command.Operation {
 	case "create":
-		return catalogstore.TaxonomyEdit{Create: true, Taxon: taxon}, nil
+		return clipstore.TaxonomyEdit{Create: true, Taxon: taxon}, nil
 	case "update":
-		return catalogstore.TaxonomyEdit{Slug: taxon.Slug, Taxon: taxon}, nil
+		return clipstore.TaxonomyEdit{Slug: taxon.Slug, Taxon: taxon}, nil
 	case "delete":
-		return catalogstore.TaxonomyEdit{Delete: true, Slug: taxon.Slug}, nil
+		return clipstore.TaxonomyEdit{Delete: true, Slug: taxon.Slug}, nil
 	default:
-		return catalogstore.TaxonomyEdit{}, errUnprocessable("Unknown taxonomy operation", "Choose create, update, or delete.")
+		return clipstore.TaxonomyEdit{}, errUnprocessable("Unknown taxonomy operation", "Choose create, update, or delete.")
 	}
 }
 
@@ -278,7 +278,7 @@ func (s *Server) createTaxon(ctx context.Context, in *createTaxonInput) (*struct
 		return nil, errUnprocessable("Incomplete taxon", "A taxon needs a slug, a label, and an axis.")
 	}
 	taxon := createDTOToTaxon(in.Body)
-	if err := s.applyTaxonomyEdit(ctx, catalogstore.TaxonomyEdit{Create: true, Taxon: taxon}); err != nil {
+	if err := s.applyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Create: true, Taxon: taxon}); err != nil {
 		return nil, err
 	}
 	return &struct{ Body TaxonDTO }{Body: taxonToDTO(taxon)}, nil
@@ -294,7 +294,7 @@ func (s *Server) updateTaxon(ctx context.Context, in *updateTaxonInput) (*struct
 		return nil, errUnprocessable("Incomplete taxon", "A taxon needs a label and an axis.")
 	}
 	taxon := updateDTOToTaxon(in.Slug, in.Body)
-	if err := s.applyTaxonomyEdit(ctx, catalogstore.TaxonomyEdit{Slug: in.Slug, Taxon: taxon}); err != nil {
+	if err := s.applyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Slug: in.Slug, Taxon: taxon}); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, errNotFound("Taxon not found", "That tag doesn't exist — it may have already been removed.")
 		}
@@ -308,7 +308,7 @@ type deleteTaxonInput struct {
 }
 
 func (s *Server) deleteTaxon(ctx context.Context, in *deleteTaxonInput) (*struct{}, error) {
-	err := s.applyTaxonomyEdit(ctx, catalogstore.TaxonomyEdit{Delete: true, Slug: in.Slug})
+	err := s.applyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: in.Slug})
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errNotFound("Taxon not found", "That tag doesn't exist — it may have already been removed.")
 	}
@@ -318,7 +318,7 @@ func (s *Server) deleteTaxon(ctx context.Context, in *deleteTaxonInput) (*struct
 	return &struct{}{}, nil
 }
 
-func (s *Server) applyTaxonomyEdit(ctx context.Context, edit catalogstore.TaxonomyEdit) error {
+func (s *Server) applyTaxonomyEdit(ctx context.Context, edit clipstore.TaxonomyEdit) error {
 	var err error
 	if s.taxonomy != nil {
 		_, err = s.taxonomy.Apply(ctx, edit)
@@ -332,7 +332,7 @@ func mapTaxonomyEditError(err error) error {
 	switch {
 	case errors.Is(err, taxonomy.ErrInvalidForest):
 		return errUnprocessable("Invalid taxonomy", err.Error())
-	case errors.Is(err, catalogstore.ErrTaxonConflict):
+	case errors.Is(err, clipstore.ErrTaxonConflict):
 		return errConflict("Taxonomy changed", err.Error())
 	default:
 		return err

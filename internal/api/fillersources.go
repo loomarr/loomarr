@@ -14,8 +14,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // GET /v1/filler/sources — where a clip catalog comes from (§10, V28).
@@ -1164,7 +1164,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	// and a total, which on a large catalog was the dominant cost of rendering this page. The
 	// filter is still the zero filter, so the default exclusions (removed, held) are unchanged
 	// and the numbers mean exactly what they did.
-	bySource, err := s.store.CountClipsBySource(ctx, catalogstore.ClipFilter{})
+	bySource, err := s.store.CountClipsBySource(ctx, clipstore.ClipFilter{})
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count clips", err)
 	}

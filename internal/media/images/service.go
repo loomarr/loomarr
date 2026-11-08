@@ -24,7 +24,7 @@ import (
 
 // Store is the persistence this service needs, declared HERE with this package's own types.
 //
-// ⚠ Narrow and locally-owned on purpose: no domain package in this codebase imports internal/store,
+// ⚠ Narrow and locally-owned on purpose: no domain package in this codebase imports internal/platform/store,
 // and an adapter in internal/app bridges the two. Following that rule rather than reaching for the
 // concrete store is what keeps this package testable without a database.
 type Store interface {

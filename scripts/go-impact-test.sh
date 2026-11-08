@@ -9,8 +9,8 @@ module="$(cd "$ROOT" && go list -m)"
 grep -qx "$module/internal/proposals/suggest" <<<"$leaf"
 grep -qx "$module/internal/app" <<<"$leaf"
 grep -qx "$module/cmd/loomarr" <<<"$leaf"
-if grep -qx "$module/internal/store" <<<"$leaf"; then
-  echo 'go-impact-test: a suggest leaf selected unrelated internal/store' >&2
+if grep -qx "$module/internal/platform/store" <<<"$leaf"; then
+  echo 'go-impact-test: a suggest leaf selected unrelated internal/platform/store' >&2
   exit 1
 fi
 

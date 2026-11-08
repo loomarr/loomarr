@@ -8,7 +8,7 @@ import (
 	"time"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 func radarrMovie(tmdb, file string) mp.Record {

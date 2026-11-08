@@ -14,7 +14,7 @@ import (
 //
 // ⚠ **This exists because the gates were passing over trees they never examined** (GH #282).
 // They learned about the tree by shelling out to `go list`, and subprocess output is NOT an
-// input Go's test cache tracks — so moving a file in `internal/store` did not change package
+// input Go's test cache tracks — so moving a file in `internal/platform/store` did not change package
 // `internal`'s test binary, nothing invalidated the cached result, and the gate reported
 // `ok (cached)` with the violation present. Only `-count=1` showed the red. CI restores a warm
 // cache, so a violating PR could go green on it: a real hole in a real guard.
@@ -177,7 +177,7 @@ func importersOf(pkgs map[string]*build.Package, set map[string]bool, target str
 //
 // The direct verification is manual, and recorded here so it can be repeated:
 //
-//	git mv internal/store/conformance_titles_test.go internal/store/conformance_titles.go
+//	git mv internal/platform/store/conformance_titles_test.go internal/platform/store/conformance_titles.go
 //	go test ./internal/ -run TestNoLoomarrPackageLinksTestingIntoTheBinary   # NO -count=1
 //
 // Before #282's fix that returned `ok (cached)`. After it, it correctly FAILS on a warm cache.
@@ -192,12 +192,12 @@ func TestPackageGraph_IsReadFromSource(t *testing.T) {
 	}
 	var importsStore bool
 	for _, imp := range app.Imports {
-		if imp == modulePath+"/internal/store" {
+		if imp == modulePath+"/internal/platform/store" {
 			importsStore = true
 		}
 	}
 	if !importsStore {
-		t.Error("internal/app does not import internal/store — the composition root wires the " +
+		t.Error("internal/app does not import internal/platform/store — the composition root wires the " +
 			"store into every subsystem, so this means the walk is reading the wrong thing")
 	}
 

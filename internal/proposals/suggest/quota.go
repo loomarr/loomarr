@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Usage is a user's standing against their pending-acquisition cap (§11).

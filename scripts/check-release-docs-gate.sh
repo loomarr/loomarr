@@ -76,7 +76,7 @@ self_test() {
 	fi
 
 	# 2. User-facing change, with NO docs change in range: fails.
-	printf 'internal/api/channels.go\ninternal/store/migrations/0099.sql\n' >"$tmp/paths-without-docs.txt"
+	printf 'internal/api/channels.go\ninternal/platform/store/migrations/0099.sql\n' >"$tmp/paths-without-docs.txt"
 	if check "$tmp/notes-with-docs.md" "$tmp/paths-without-docs.txt" >/dev/null 2>&1; then
 		echo "check-release-docs-gate: self-test: expected a missing docs change to fail" >&2
 		exit 1

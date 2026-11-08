@@ -730,7 +730,7 @@ lane of its own, or be split, never be given a larger budget. (Until #1650 a tem
 Pull request #1631 made the 21 heaviest `internal/store` tests (88% of its time) run in parallel. Pinned to four
 cores locally, that cut the package from 146.9s to 110.1s, but merge-group run 36359955148 measured
 it at 542s in ordinary lane 1/2: beside three other `-p=4` packages on a four-vCPU runner, its
-parallel tests only competed for the same cores. So `internal/store` now runs alone in the second
+parallel tests only competed for the same cores. So the store package (now `internal/platform/store`) runs alone in the second
 serial lane, where one package at a time owns the runner, and the playout/capacity set shares the
 first. There, workflow-dispatch run 36366596157 measured it at 171s, which left it too light to
 balance the first lane's 405s, so `internal/integration`, whose tests are serial, shares its lane.

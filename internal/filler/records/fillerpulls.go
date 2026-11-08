@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Persisted filler pulls (§10 V35) — the approval gate for filler acquisition.

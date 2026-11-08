@@ -10,8 +10,8 @@ import (
 	"io"
 
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/storedb"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 const structureWindowCallLedgerSelect = `SELECT request_sha256, evaluation_id, source_sha256,

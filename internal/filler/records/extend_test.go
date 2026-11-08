@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // TestExtendHidesNoCoreMethod guards the wrapper Extend returns. It embeds the store.Store

@@ -3,8 +3,8 @@ package approval
 import (
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // channelNameFromIntent prefers the LLM's proposed channelName (a real network-style name),

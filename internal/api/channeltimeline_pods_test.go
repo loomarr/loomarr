@@ -14,15 +14,15 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
 )
 
 // failingClipListStore is the real store with ListClips broken, so a test can prove a still lookup
 // failure degrades the strip instead of failing it.
 type failingClipListStore struct{ records.Store }
 
-func (failingClipListStore) ListClips(context.Context, catalogstore.ClipFilter) ([]catalogstore.Clip, error) {
+func (failingClipListStore) ListClips(context.Context, clipstore.ClipFilter) ([]clipstore.Clip, error) {
 	return nil, errors.New("clip catalogue unavailable")
 }
 
@@ -109,7 +109,7 @@ func seedPodClips(t *testing.T, st records.Store) {
 			DurationMs: 10_000,
 		},
 	} {
-		if err := st.UpsertClip(context.Background(), catalogstore.Clip{Clip: c}); err != nil {
+		if err := st.UpsertClip(context.Background(), clipstore.Clip{Clip: c}); err != nil {
 			t.Fatal(err)
 		}
 	}

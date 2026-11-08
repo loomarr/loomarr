@@ -265,7 +265,7 @@ var migratedGo = []string{
 	"internal/filler/",
 	// The channels tests, every package under internal/channels (slices 9, 11 and 13), and the store
 	// and provisionbackstop tests (slice 13).
-	"internal/channels/", "internal/provisionbackstop/", "internal/store/",
+	"internal/channels/", "internal/provisionbackstop/", "internal/platform/store/",
 	// The app, requester, provision and proposals/workflow tests (slice 15).
 	"internal/app/", "internal/proposals/workflow/", "internal/provision/", "internal/requester/",
 	// The eval tests with hand-written fixtures (slice 16). The rest of internal/eval pins its frozen

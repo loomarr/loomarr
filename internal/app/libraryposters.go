@@ -13,8 +13,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // posterFileMax bounds a poster file read from a share. A real one is a few hundred KB; the image
@@ -23,7 +23,7 @@ const posterFileMax = 32 << 20
 
 // posterRefs is the image_refs half of the store: which image a library item owns as its poster.
 type posterRefs interface {
-	PutImageRef(ctx context.Context, ref catalogstore.ImageRef) error
+	PutImageRef(ctx context.Context, ref clipstore.ImageRef) error
 	DeleteImageRefs(ctx context.Context, ownerKind, ownerID string) error
 }
 
@@ -65,7 +65,7 @@ func (p libraryPosters) Poster(ctx context.Context, itemID, ref string) error {
 	if err := p.refs.DeleteImageRefs(ctx, store.LibraryItemImageOwner, itemID); err != nil {
 		return err
 	}
-	return p.refs.PutImageRef(ctx, catalogstore.ImageRef{
+	return p.refs.PutImageRef(ctx, clipstore.ImageRef{
 		ImageHash: rec.Hash, OwnerKind: store.LibraryItemImageOwner, OwnerID: itemID, Role: string(images.RolePoster),
 	})
 }

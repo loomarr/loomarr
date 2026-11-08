@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Library → Needs you (#2151 step 11, decision 27): the titles nothing grounds, with what a search

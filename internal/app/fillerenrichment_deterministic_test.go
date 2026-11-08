@@ -7,7 +7,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -18,7 +18,7 @@ import (
 func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_000, 0).UTC()
-	for _, clip := range []catalogstore.Clip{
+	for _, clip := range []clipstore.Clip{
 		{Clip: filler.Clip{Hash: "hp", Path: "hp.mp4", Name: "HP Sauce Advert", Kind: filler.Commercial}, UpdatedAt: at, CreatedAt: at},
 		{Clip: filler.Clip{Hash: "tootsie", Path: "tootsie.mp4", Name: "Tootsie Pop Classic Commercial", Kind: filler.Commercial}, UpdatedAt: at, CreatedAt: at.Add(time.Second)},
 	} {

@@ -5,7 +5,7 @@
 
 # test-pg's packages (mk/store.mk; its recipe is audited literally by releaseverify). A drift here
 # costs cache hits, never gate coverage.
-GO_CACHE_WARM_PG_PACKAGES := ./internal/store/ ./internal/playout/backendtransition/ ./internal/app/ ./internal/filler/records/
+GO_CACHE_WARM_PG_PACKAGES := ./internal/platform/store/./internal/playout/backendtransition/ ./internal/app/ ./internal/filler/records/
 
 .PHONY: go-cache-warm
 go-cache-warm: ## CI cache warming only: build one gate's Go test binaries without running them (GO_CACHE_WARM names a race lane or postgres)

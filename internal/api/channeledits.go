@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/loomarr/loomarr/internal/channels/edit"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // channelEdits is the one write path for operator channel changes (create, PATCH, icon and

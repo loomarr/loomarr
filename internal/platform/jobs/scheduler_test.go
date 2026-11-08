@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // fakeStore is an in-memory ScheduleStore with a controllable clock-independent view; the

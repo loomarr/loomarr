@@ -26,8 +26,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/screening"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
-	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/store/catalogstore"
+	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // ErrInferenceNotReserved reports a settlement that lost the reserved-state
@@ -125,8 +125,8 @@ type FillerSafetyStore interface {
 type FillerEnrichmentStore interface {
 	ListFillerEnrichment(ctx context.Context, clipHash string) ([]enrichment.State, error)
 	ApplyFillerEnrichment(ctx context.Context, candidate enrichment.State, updatedAt time.Time) (enrichment.State, bool, error)
-	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]catalogstore.Clip, error)
-	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]catalogstore.Clip, error)
+	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]clipstore.Clip, error)
+	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]clipstore.Clip, error)
 	ApplyFillerEnrichmentPass(ctx context.Context, pass enrichment.Pass) (int, error)
 	ListSettledGeographyClips(ctx context.Context) ([]SettledGeographyClip, error)
 }
@@ -231,7 +231,7 @@ type FillerPipelineStore interface {
 	// CommitConditioningPublication checks the transcode rung's owner-bound publication record,
 	// then has the core adopt the conditioned target (store.AdoptConditionedClip). Any mismatch
 	// is filler.ErrConditioningOwnershipMismatch.
-	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target catalogstore.Clip) error
+	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target clipstore.Clip) error
 }
 
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).

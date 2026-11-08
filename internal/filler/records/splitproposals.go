@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/screening"
 	"github.com/loomarr/loomarr/internal/filler/structure"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // The persisted split proposal (§10, V34 — migration 00025). Detection runs

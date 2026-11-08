@@ -455,13 +455,13 @@ RETIRED=(
   'act-on-filler-diagnostic|#2147: the filler decision routes were deleted with their ledger'
 
 )
-# ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than
+# ⚠ `internal/platform/store/migrations/` is exempt, and it is the one exemption that is forced rather than
 # chosen. A migration that CREATES a table names it, and §16 makes applied migrations immutable —
 # so `00012_channel_icons.sql` will say `channel_icons` for the life of the repository and cannot
 # be annotated out of the way. The migration that DROPS it has to name it too. Neither is an
 # instruction to an operator, which is what this ban protects; both are the historical record the
 # forward-only rule exists to keep.
-ALLOW_PATH='^(PROGRESS\.md|project/|docs/engineering/|scripts/check-retired\.sh|internal/platform/web/dist/|internal/store/migrations/)'
+ALLOW_PATH='^(PROGRESS\.md|project/|docs/engineering/|scripts/check-retired\.sh|internal/platform/web/dist/|internal/platform/store/migrations/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how
 # §10's "keeps being re-decided" history survives, and how a corrective comment ("this used to
 # say X") points at the thing it corrects.

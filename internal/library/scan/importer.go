@@ -17,7 +17,7 @@ import (
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // Removal guard (decision 33): a completed walk that would remove more than this share of a root's

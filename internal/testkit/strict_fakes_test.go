@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 // A shared fake refuses what the real thing refuses; one that accepts anything hides the bugs
