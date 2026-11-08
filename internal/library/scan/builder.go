@@ -40,6 +40,9 @@ type seriesSeen struct {
 
 	once       sync.Once
 	resolution resolution
+	// seasons are its season records the pass read, by catalog id.
+	seasonsMu sync.Mutex
+	seasons   map[string]cachedSeason
 }
 
 // listed finishes a movie or series the pass wrote: its library row came with the write (the
