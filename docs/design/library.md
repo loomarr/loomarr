@@ -588,6 +588,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `migration.library.collections_import.v1` marker so one the household deletes stays deleted, and
   a TMDB-generated one only when a record names it, since the Library's ready-made sets already
   hold those. Members come over through the id map.
+- **The filler library source reads a folder** (step 15d, decision 36). A `library` filler source
+  names one of the household library's folders and is copied from, never drained: each clip file
+  under it is copied into the filler watch folder for intake to hash and file, skipping a clip the
+  catalog already holds (#1605), so a re-scan of an unchanged folder copies nothing. A row that
+  still names a media-server library is rewritten on the next filler sync to its folder: the
+  library's folders as the media server reports them, through the path map, with a row for each
+  extra folder. A name with no mapped folder is logged once and does no work.
 
 ## Cached series episodes
 

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -288,12 +289,20 @@ func (a fillerIdentityStoreAdapter) MergeInferiorCopy(ctx context.Context, c fil
 // fetch path puts its `Enabled && Fetchable()` check. Both predicates are the store's domain
 // knowledge about a row; re-deriving them inside the job is how the two start disagreeing about
 // what a source is for.
-type fillerScanSourceAdapter struct{ st records.FillerSourceStore }
+type fillerScanSourceAdapter struct {
+	st records.FillerSourceStore
+	// cutover rewrites a library row still naming a media-server library before it is listed;
+	// nil lists rows as they are.
+	cutover *fillerLibraryCutover
+}
 
 func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.ScanSource, error) {
 	srcs, err := a.st.ListFillerSources(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if a.cutover != nil {
+		a.cutover.rewrite(ctx, srcs)
 	}
 	out := make([]filler.ScanSource, 0, len(srcs))
 	for _, s := range srcs {
@@ -304,44 +313,93 @@ func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.
 	return out, nil
 }
 
-// fillerLibraryAdapter bridges the media-server client → filler.LibraryLister (§10 V38c).
-//
-// ⚠ It resolves the operator's library NAME to the item id the API needs. The operator types
-// "Commercials" because that is what their media server shows them; `ListFillerClips` needs the
-// library's id. Making the operator find an id would be asking them to do a lookup Loomarr can do.
-//
-// ⚠ An unknown name is an EMPTY result and no error. The operator named a library their server
-// does not have, which is "found nothing" — a scan that reports zero clips against a named
-// library, not a failure that stops the other sources.
-type fillerLibraryAdapter struct{ lib *library.Client }
+// fillerLibraryCutover rewrites a library filler source that still names a media-server library
+// into the household library's folder for it (#2151 decision 36): the library's folders, as the
+// media server reports them, through the scan roots' path map. A library with several folders
+// gets a row for each. A name that doesn't resolve yet (no media server, no mapped folder) is
+// left for a later sync and does no work meanwhile.
+type fillerLibraryCutover struct {
+	st    records.FillerSourceStore
+	roots interface {
+		LibraryRoots(ctx context.Context) (store.LibraryRoots, error)
+	}
+	lib *library.Client
+	log *slog.Logger
+	now func() time.Time
 
-func (a fillerLibraryAdapter) ListLibraryClips(ctx context.Context, name string) ([]filler.LibraryClip, error) {
-	if a.lib == nil || name == "" {
-		return nil, nil
+	mu     sync.Mutex
+	warned map[string]bool
+}
+
+// rewrite rewrites srcs in place as it rewrites their rows.
+func (c *fillerLibraryCutover) rewrite(ctx context.Context, srcs []records.FillerSource) {
+	for i, s := range srcs {
+		if s.Kind != string(source.LibraryID) || s.URI == "" || filepath.IsAbs(s.URI) {
+			continue
+		}
+		folders, err := c.folders(ctx, s.URI)
+		if len(folders) == 0 {
+			c.warnOnce(s, err)
+			continue
+		}
+		name := s.URI
+		s.URI = folders[0]
+		if err := c.st.UpsertFillerSource(ctx, s); err != nil {
+			c.log.Warn("filler: could not rewrite a library source to its folder", "source", s.ID, "folder", s.URI, "err", err)
+			continue
+		}
+		srcs[i] = s
+		c.log.Info("filler: a library source now reads its library folder", "source", s.ID, "library", name, "folder", s.URI)
+		for _, folder := range folders[1:] {
+			extra := records.NewFillerSource(string(source.LibraryID)+":"+folder, s.Kind, folder, s.Label, c.now())
+			extra.Enabled = s.Enabled
+			if err := c.st.UpsertFillerSource(ctx, extra); err != nil {
+				c.log.Warn("filler: could not add a library source for another of its folders", "library", name, "folder", folder, "err", err)
+			}
+		}
 	}
-	lib := a.lib.Snapshot()
-	id, err := lib.LibraryIDByName(ctx, name)
-	if errors.Is(err, library.ErrConnectionRequired) {
-		return nil, nil
+}
+
+// folders are the local folders of the media-server library called name.
+func (c *fillerLibraryCutover) folders(ctx context.Context, name string) ([]string, error) {
+	lib := c.lib.Snapshot()
+	server, err := lib.LibraryFolders(ctx, name)
+	if err != nil || len(server) == 0 {
+		return nil, err
 	}
+	flavor, err := lib.FlavorName()
 	if err != nil {
 		return nil, err
 	}
-	if id == "" {
-		return nil, nil // no such library on this server
-	}
-	clips, err := lib.ListFillerClips(ctx, id)
-	if errors.Is(err, library.ErrConnectionRequired) {
-		return nil, nil
-	}
+	roots, err := c.roots.LibraryRoots(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]filler.LibraryClip, 0, len(clips))
-	for _, c := range clips {
-		out = append(out, filler.LibraryClip{Name: c.Name, Path: c.Path})
+	var out []string
+	for _, folder := range server {
+		for _, p := range roots.Paths {
+			if p.Authority == flavor && p.AuthorityPath == folder && p.RootPath != "" {
+				out = append(out, p.RootPath)
+				break
+			}
+		}
 	}
 	return out, nil
+}
+
+// warnOnce says once per process why a library source still does no work.
+func (c *fillerLibraryCutover) warnOnce(s records.FillerSource, err error) {
+	if errors.Is(err, library.ErrConnectionRequired) {
+		err = nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.warned[s.ID] {
+		return
+	}
+	c.warned[s.ID] = true
+	c.log.Warn("filler: a library source names a media-server library with no folder Loomarr can read; "+
+		"it does nothing until it is set to a folder", "source", s.ID, "library", s.URI, "err", err)
 }
 
 // fillerChannelWake is the shared post-commit latency path for every non-HTTP eligibility change.

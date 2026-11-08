@@ -155,8 +155,7 @@ type Syncer struct {
 	// configured clip folder is scanned, which is exactly the pre-V38c behaviour — so every
 	// existing construction keeps working without opting in.
 	scanSources ScanSourceStore
-	// libraries copies clips out of a media-server library. nil ⇒ library rows do no work, which
-	// is the honest state for an install with no media server configured.
+	// libraries copies clips out of library folders. nil ⇒ library rows do no work.
 	libraries    *LibraryScanner
 	acquisitions AcquisitionManifestStore
 	storage      *storagegovernor.Governor
@@ -234,28 +233,45 @@ func (s *Syncer) drainScanSources(ctx context.Context, inferior map[string]bool)
 					"source", src.ID, "folder", src.URI, "taken", res.Taken)
 			}
 		case "library":
-			if s.libraries == nil {
-				continue // no media server configured; the row simply does no work
+			// A row still naming a media-server library rather than a folder is one the cutover
+			// could not rewrite yet; it does no work.
+			if s.libraries == nil || !filepath.IsAbs(src.URI) {
+				continue
+			}
+			layout := s.layout
+			if layout.ClipDir() == "" {
+				layout, err = NewLayout(s.dir, s.watch)
+				if err != nil {
+					s.warnSource("filler: could not validate a library folder", src, err)
+					continue
+				}
+			}
+			// The same guard as a watched folder: a library folder holding the clip folder would
+			// copy the whole catalog back through intake on every pass.
+			sourceDir, err := layout.intakeSource(src.URI)
+			if err != nil {
+				s.warnSource("filler: skipped a library folder that overlaps the clip library", src, err)
+				continue
 			}
 			if catalogued == nil {
 				catalogued = cataloguedClips(s.dir, inferior)
 			}
-			res, err := s.libraries.Scan(ctx, src.URI, watch, catalogued)
+			res, err := s.libraries.Scan(ctx, sourceDir, watch, catalogued)
 			if err != nil {
 				// ⚠ ErrLibraryUnreachableStorage is logged like any other failure HERE, but it
 				// stays a distinct error so the Sources row can say "mount the volume" rather
 				// than "this library is empty" — the two look identical to an operator and have
 				// completely different remedies.
-				s.warnSource("filler: could not scan a media-server library", src, err)
+				s.warnSource("filler: could not scan a library folder", src, err)
 				continue
 			}
 			if s.log != nil && res.Copied > 0 {
-				s.log.Info("filler: copied clips from a media-server library",
-					"source", src.ID, "library", src.URI, "copied", res.Copied)
+				s.log.Info("filler: copied clips from a library folder",
+					"source", src.ID, "folder", src.URI, "copied", res.Copied)
 			}
 			if res.Copied > 0 {
 				if _, err := takeInFrom(ctx, watch, s.dir, true, src.ID, s.logAttrs, nil, s.storage, inferior); err != nil {
-					s.warnSource("filler: could not file media-server library clips", src, err)
+					s.warnSource("filler: could not file library folder clips", src, err)
 				}
 			}
 		}

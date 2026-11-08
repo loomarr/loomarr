@@ -14,8 +14,9 @@ provisioning loop (decision [0006](decisions/0006-filler-is-its-own-pipeline.md)
 ## Ownership and folders
 
 - **Filler is Loomarr-owned.** Clips live in Loomarr's clip folder, identified by content hash, and
-  programme content stays separate. A media-server library may be one **source** Loomarr copies
-  from; it is never the catalog's only route, never played in place, never modified, and never
+  programme content stays separate. A folder of the household library may be one **source**
+  Loomarr copies from (#2151 decision 36: it used to name a media-server library); it is never the
+  catalog's only route, never played in place, never modified, and never
   offered to the suggester as programme material. An install with no media server, or with one
   that is down, still gets a full catalog from folders and remotes. "No media server, no
   commercials" must not come back.
