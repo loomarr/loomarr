@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/loomarr/loomarr/internal/platform/store/schemadoc"
 )
@@ -158,7 +159,7 @@ func checkedColumns(ddl string) map[string]bool {
 			}
 		}
 		for _, word := range strings.FieldsFunc(ddl[start:min(end, len(ddl))], func(r rune) bool {
-			return !(r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+			return r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r)
 		}) {
 			out[strings.ToLower(word)] = true
 		}
