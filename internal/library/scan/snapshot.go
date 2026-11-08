@@ -56,7 +56,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	4: titles note what said which title they are, and its page (Wrong title?).
 //	5: each origin notes where its shown details came from (Technical details).
 //	6: a file's origin notes whether its arr lists it (the copy that plays).
-const writeVersion = 6
+//	7: a multi-episode file carries every episode's ids, not only its first's.
+const writeVersion = 7
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.

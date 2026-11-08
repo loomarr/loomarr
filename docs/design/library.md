@@ -177,7 +177,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
 
 - **One origin per file.** Each root is an authority (`scan:<digest>`); each media file under it
   is an origin keyed by its path within the root. Files that carry the same ids join one item, as
-  the media server's origin of the same title does. A series is an origin keyed by its folder.
+  the media server's origin of the same title does; an id joins only items of its own kind, since
+  TVDB numbers shows and episodes from one sequence. A series is an origin keyed by its folder. A
+  multi-episode file is one item, its first episode numbered through its last, carrying every
+  episode's own ids (Sonarr's records, or the NFO's further `<episodedetails>`).
 - **Identity** is the precedence resolver's, over Sonarr's or Radarr's record for the file (its
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
   file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
