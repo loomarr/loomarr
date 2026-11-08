@@ -59,8 +59,8 @@ func (r *broadcastRegistration) serve(name, id string, publicURL func() string) 
 			continue
 		}
 		public := strings.TrimRight(strings.TrimSpace(publicURL()), "/")
-		parsed, parseErr := url.Parse(public)
-		if parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		parsed, ok := httpURL(public)
+		if !ok || localOnlyHost(parsed.Hostname()) {
 			continue
 		}
 		payload, marshalErr := json.Marshal(broadcastResponse{Protocol: 1, ID: id, Name: name, URL: public})
@@ -69,6 +69,32 @@ func (r *broadcastRegistration) serve(name, id string, publicURL func() string) 
 		}
 		_, _ = r.conn.WriteTo(payload, sender)
 	}
+}
+
+// LocalOnlyURL reports whether an http(s) public URL names a host that no other device can reach:
+// a loopback name or address, the unspecified address, or a link-local address. A lane backend's
+// http://localhost:<port> is the usual case (#1892). Discovery stays silent rather than hand a
+// phone or TV an address that leads back to itself.
+func LocalOnlyURL(raw string) bool {
+	parsed, ok := httpURL(strings.TrimSpace(raw))
+	return ok && localOnlyHost(parsed.Hostname())
+}
+
+func httpURL(raw string) (*url.URL, bool) {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, false
+	}
+	return parsed, true
+}
+
+func localOnlyHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast())
 }
 
 // onLocalNetwork reports whether a discovery request came from a device that could be on the

@@ -27,6 +27,17 @@ func TestPickAudioTrack_FallsBackToTheFirstTrackWhenTheLanguageIsAbsent(t *testi
 	}
 }
 
+// One language in two spellings is a match: the Library keeps "en" where the container wrote "eng",
+// and an operator may type "EN" or "en-US".
+func TestPickAudioTrack_MatchesALanguageWhateverItsSpelling(t *testing.T) {
+	tracks := []AudioTrack{{Language: "ru"}, {Language: "en"}}
+	for _, prefer := range []string{"eng", "EN", "en-US", "English"} {
+		if got := PickAudioTrack(tracks, prefer); got != 1 {
+			t.Errorf("prefer %q: picked audio track %d, want 1 (the en track)", prefer, got)
+		}
+	}
+}
+
 // Untagged tracks are common and must not be read as a mismatch that selects something worse.
 func TestPickAudioTrack_UntaggedTracksFallBackToTheFirst(t *testing.T) {
 	if got := PickAudioTrack([]AudioTrack{{}, {}}, "eng"); got != 0 {

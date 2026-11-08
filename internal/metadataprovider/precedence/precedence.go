@@ -100,7 +100,7 @@ type Resolved struct {
 	Year          Picked[int]
 	Genres        Picked[[]string]
 	Keywords      Picked[[]string]
-	Network       Picked[string]
+	Studios       Picked[[]string]
 	Status        Picked[string]
 	Runtime       Picked[time.Duration]
 	Tagline       Picked[string]
@@ -263,12 +263,12 @@ func resolveDescriptive(out *Resolved, records []mp.Record) {
 	out.SortTitle = d(func(x *mp.Descriptive) string { return x.SortTitle })
 	out.Overview = d(func(x *mp.Descriptive) string { return x.Overview })
 	out.PremiereDate = d(func(x *mp.Descriptive) string { return x.PremiereDate })
-	out.Network = d(func(x *mp.Descriptive) string { return x.Network })
 	out.Status = d(func(x *mp.Descriptive) string { return x.Status })
 	out.Tagline = d(func(x *mp.Descriptive) string { return x.Tagline })
 	out.Trailer = d(func(x *mp.Descriptive) string { return x.Trailer })
 	out.Edition = d(func(x *mp.Descriptive) string { return x.Edition })
 	out.Countries = firstSlice(records, func(rec mp.Record) []string { return rec.Descriptive.Countries })
+	out.Studios = firstSlice(records, func(rec mp.Record) []string { return rec.Descriptive.Studios })
 	out.People = firstSlice(records, func(rec mp.Record) []mp.Person { return rec.Descriptive.People })
 	out.Year = first(records, func(rec mp.Record) int { return rec.Descriptive.Year })
 	out.Runtime = first(records, func(rec mp.Record) time.Duration { return rec.Descriptive.Runtime })
@@ -311,13 +311,19 @@ func resolveTechnical(out *Resolved, records []mp.Record) {
 
 func resolveArtwork(records []mp.Record) []Picked[mp.ArtworkRef] {
 	var out []Picked[mp.ArtworkRef]
-	seen := map[string]bool{}
+	// One image per kind, and per season for season posters.
+	type slot struct {
+		kind   string
+		season int
+	}
+	seen := map[slot]bool{}
 	for _, rec := range records {
 		for _, art := range rec.Artwork {
-			if art.Ref == "" || seen[art.Kind] {
+			s := slot{art.Kind, art.Season}
+			if art.Ref == "" || seen[s] {
 				continue
 			}
-			seen[art.Kind] = true
+			seen[s] = true
 			out = append(out, Picked[mp.ArtworkRef]{Value: art, From: rec.Source})
 		}
 	}

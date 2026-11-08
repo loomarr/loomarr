@@ -154,8 +154,7 @@ type Clip struct {
 	// rollups derived from the taxonomy graph. Editors MUST round-trip this set, never Tags: saving
 	// the full expansion would promote derived ancestors into assertions that survive graph edits.
 	AssertedTags []string
-	DurationMs   int64  // from ffprobe (the core probes now — §14 bundles it for playout)
-	Rating       string // optional content rating
+	DurationMs   int64 // from ffprobe (the core probes now — §14 bundles it for playout)
 	// Quality is the resolution label ("1080p", "480p"), derived from the probed video height
 	// at scan time; "" for an audio-only clip or one scanned before quality existed.
 	//

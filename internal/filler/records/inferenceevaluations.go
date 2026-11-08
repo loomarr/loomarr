@@ -25,6 +25,10 @@ const (
 	InferenceHeldBudget InferenceEvaluationState = "held_budget"
 )
 
+// InferenceWindowComplete is the only outcome a settled evaluation records: a structure-window
+// call answered. Every other call leaves outcome empty, and the column's CHECK holds it to that.
+const InferenceWindowComplete = "window_complete"
+
 type InferenceTokens struct {
 	Prompt, Completion, Reasoning, Cached, CacheWrite, Image, Audio, Video int64
 }

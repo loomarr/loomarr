@@ -51,9 +51,16 @@ type ExternalID struct {
 	Value     string `json:"value"`
 }
 
+// Person is someone credited on a title (#2151 decision 49). Role is what they did, lower case
+// (actor, director, writer, creator, or what the source calls it); Character is an actor's part.
+// TMDB is their TMDB person id when the source knows it; one without is kept by name, unlinked.
 type Person struct {
-	Name string `json:"name"`
-	Role string `json:"role,omitempty"`
+	Name      string `json:"name"`
+	Role      string `json:"role,omitempty"`
+	Character string `json:"character,omitempty"`
+	TMDB      string `json:"tmdb,omitempty"`
+	// Photo is an http(s) URL of their headshot.
+	Photo string `json:"photo,omitempty"`
 }
 
 type Rating struct {
@@ -64,6 +71,8 @@ type Rating struct {
 type ArtworkRef struct {
 	Kind string `json:"kind"`
 	Ref  string `json:"ref"`
+	// Season is the season a season poster belongs to, 0 for the specials; zero for other kinds.
+	Season int `json:"season,omitempty"`
 }
 
 type Relationship struct {
@@ -74,13 +83,17 @@ type Relationship struct {
 // ItemFacts intentionally retains more than today's consumers need. Typed fields are the stable
 // projection Loomarr understands; Observation.Extension preserves bounded safe importer fields.
 type ItemFacts struct {
-	Name           string         `json:"name,omitempty"`
-	OriginalTitle  string         `json:"originalTitle,omitempty"`
-	SortTitle      string         `json:"sortTitle,omitempty"`
-	Overview       string         `json:"overview,omitempty"`
-	Genres         []string       `json:"genres,omitempty"`
-	Tags           []string       `json:"tags,omitempty"`
-	Studios        []string       `json:"studios,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	OriginalTitle string   `json:"originalTitle,omitempty"`
+	SortTitle     string   `json:"sortTitle,omitempty"`
+	Overview      string   `json:"overview,omitempty"`
+	Genres        []string `json:"genres,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	Studios       []string `json:"studios,omitempty"`
+	Countries     []string `json:"countries,omitempty"`
+	Tagline       string   `json:"tagline,omitempty"`
+	// Trailer is a web page that plays the trailer.
+	Trailer        string         `json:"trailer,omitempty"`
 	People         []Person       `json:"people,omitempty"`
 	ProductionYear int            `json:"productionYear,omitempty"`
 	SeasonNumber   int            `json:"seasonNumber,omitempty"`
@@ -97,6 +110,11 @@ type ItemFacts struct {
 type Disposition struct {
 	Default bool `json:"default,omitempty"`
 	Forced  bool `json:"forced,omitempty"`
+	// Comment is a commentary track; HearingImpaired one for the deaf and hard of hearing (SDH);
+	// VisualImpaired one that describes the picture.
+	Comment         bool `json:"comment,omitempty"`
+	HearingImpaired bool `json:"hearingImpaired,omitempty"`
+	VisualImpaired  bool `json:"visualImpaired,omitempty"`
 }
 
 // Stream is ordered by Index, the source-global stream index. Audio consumers derive ffmpeg's
@@ -121,8 +139,10 @@ type Stream struct {
 	ColorTransfer  string      `json:"colorTransfer,omitempty"`
 	ColorPrimaries string      `json:"colorPrimaries,omitempty"`
 	HDR            bool        `json:"hdr,omitempty"`
-	Interlaced     bool        `json:"interlaced,omitempty"`
-	SubtitleFormat string      `json:"subtitleFormat,omitempty"`
+	// DolbyVision is a video stream's Dolby Vision profile, 0 for none.
+	DolbyVision    int    `json:"dolbyVision,omitempty"`
+	Interlaced     bool   `json:"interlaced,omitempty"`
+	SubtitleFormat string `json:"subtitleFormat,omitempty"`
 }
 
 type SourceFacts struct {
@@ -134,6 +154,16 @@ type SourceFacts struct {
 	ModifiedUnixNano int64    `json:"modifiedUnixNano,omitempty"`
 	UnsafePreroll    bool     `json:"unsafePreroll,omitempty"`
 	Streams          []Stream `json:"streams,omitempty"`
+	// Chapters are the container's chapter marks, in order; nil when it has none or they were not
+	// read.
+	Chapters []Chapter `json:"chapters,omitempty"`
+}
+
+// Chapter is one chapter mark. EndMillis is -1 when the container does not say.
+type Chapter struct {
+	StartMillis int64  `json:"startMillis"`
+	EndMillis   int64  `json:"endMillis"`
+	Title       string `json:"title,omitempty"`
 }
 
 // Locator is protected operational data, never an authenticated URL. Library sources retain only

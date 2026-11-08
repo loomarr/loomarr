@@ -162,6 +162,19 @@ type playoutResolver struct {
 	// inventory is Loomarr's durable provider-neutral source observation (§5 V66). Audio selection
 	// reads it before Library or ffprobe I/O; nil preserves the safe direct-probe fallback.
 	inventory inventory.Service
+	// libraryAudio is the Library's tracks for a file the scanner read (#2151 decision 47). Audio
+	// selection reads it first, while the file is as the scanner read it; nil skips it.
+	libraryAudio libraryAudioReader
+	// libraryFile is the file a Library item plays (#2151 step 15): a programme keyed by a library
+	// item id reads it directly, with no media server. nil, or any other id, resolves through the
+	// media server.
+	libraryFile libraryFileReader
+	// libraryVideo is a Library item's video format as the scanner read it, for lineup formats and
+	// still tone mapping; nil, or any other id, reads the inventory.
+	libraryVideo libraryVideoReader
+	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil,
+	// or any other id, asks the media server.
+	itemFacts store.LibraryItemFactsReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
@@ -248,11 +261,7 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 	// Resolve the input ffmpeg reads: the FILE directly (direct play, V47) when a path mapping
 	// resolves a readable local file, else the media server's HTTP stream (fallback). This is where
 	// direct play begins — reading the file lets the encoder `-c copy` it.
-	var pm library.PathMap
-	if r.pathMap != nil {
-		pm = r.pathMap()
-	}
-	src := r.lib.ResolveInput(ctx, airing.LibraryItemID, pm, library.StatReadableFile)
+	src := r.itemInput(ctx, r.lib, airing.LibraryItemID)
 	if src.URL == "" {
 		// The item id is real but the media server is unconfigured, so there is nothing to
 		// read. Reporting it as "nothing airing" rather than an error means the channel shows
@@ -335,11 +344,7 @@ func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (pl
 		Offset: airing.Offset,
 		At:     airing.StartedAt,
 		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
-			var pm library.PathMap
-			if r.pathMap != nil {
-				pm = r.pathMap()
-			}
-			src := r.lib.ResolveInput(ctx, itemID, pm, library.StatReadableFile)
+			src := r.itemInput(ctx, r.lib, itemID)
 			if src.URL == "" {
 				return playout.StillSource{}, false, nil
 			}
@@ -377,6 +382,9 @@ func (r *playoutResolver) indexedKeyframe(ctx context.Context, input string, off
 // the inventory's stream facts (never ffprobe), importing the item when they are missing or stale.
 // Unknown is false: an untone-mapped still is dim, not broken.
 func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string) bool {
+	if format, ok := r.libraryFormat(ctx, libraryItemID); ok {
+		return format.HDR()
+	}
 	if r.inventory == nil || r.lib == nil {
 		return false
 	}
@@ -564,6 +572,9 @@ func (r *playoutResolver) LineupFormats(ctx context.Context, channelID string) (
 // inventoryFormat is one library item's stream facts from the inventory, importing the library's
 // snapshot on a miss (as inventoryAudioTracks does). The zero MediaFormat means unknown.
 func (r *playoutResolver) inventoryFormat(ctx context.Context, libraryItemID string) playout.MediaFormat {
+	if format, ok := r.libraryFormat(ctx, libraryItemID); ok {
+		return format
+	}
 	if r.inventory == nil || r.lib == nil {
 		return playout.MediaFormat{}
 	}
@@ -634,10 +645,6 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		return store.BroadcastCodecH264
 	}
 
-	var pm library.PathMap
-	if r.pathMap != nil {
-		pm = r.pathMap()
-	}
 	lib := r.lib.Snapshot()
 
 	var codecs []string
@@ -651,7 +658,7 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" {
 			continue
 		}
-		src := lib.ResolveInput(ctx, sl.LibraryItemID, pm, library.StatReadableFile)
+		src := r.itemInput(ctx, lib, sl.LibraryItemID)
 		if src.URL == "" {
 			continue
 		}
@@ -1043,7 +1050,7 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 		return
 	}
 
-	meta, err := r.lib.ItemMetadataByID(ctx, ids)
+	meta, err := itemMetadata{facts: r.itemFacts, lib: r.lib}.ItemMetadataByID(ctx, ids)
 	if err != nil && r.log != nil {
 		// Logged, not returned: the partial map is still applied below. ItemMetadataByID
 		// returns what it gathered alongside the error precisely so a slow page of a large
@@ -1209,36 +1216,6 @@ func (r *playoutResolver) AudioTrackFor(ctx context.Context, channelID, libraryI
 	return playout.PickAudioTrack(tracks, prefer)
 }
 
-// AudioTrackFromInventory applies the channel's audio policy using only Loomarr-owned durable
-// metadata. A missing observation is explicit so the planner can spend its bounded refresh budget;
-// this path never contacts the Library server and never invokes ffprobe.
-func (r *playoutResolver) AudioTrackFromInventory(
-	ctx context.Context, channelID, libraryItemID string,
-) (int, bool) {
-	if r.audioLanguage == nil {
-		return 0, true
-	}
-	prefer := r.preferredAudioLanguage(ctx, channelID)
-	if strings.TrimSpace(prefer) == "" {
-		return 0, true
-	}
-	if r.inventory == nil || r.lib == nil || strings.TrimSpace(libraryItemID) == "" {
-		return 0, false
-	}
-	origin, err := r.lib.InventoryOrigin(libraryItemID)
-	if err != nil {
-		return 0, false
-	}
-	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
-		Item: inventory.ItemRef{Origin: &origin}, Kinds: []inventory.SourceKind{inventory.SourceLibraryOriginal},
-		RequiredCoverage: []string{"audioStreams"},
-	})
-	if err != nil || !ok {
-		return 0, false
-	}
-	return playout.PickAudioTrack(playoutAudioTracks(source.Observation.Facts.Streams), prefer), true
-}
-
 func (r *playoutResolver) preferredAudioLanguage(ctx context.Context, channelID string) string {
 	prefer := r.audioLanguage()
 	// A channel override wins over the instance default. Failure to reload the channel is
@@ -1252,10 +1229,92 @@ func (r *playoutResolver) preferredAudioLanguage(ctx context.Context, channelID 
 	return prefer
 }
 
+// libraryFileReader is the store's read of the file a Library item plays.
+type libraryFileReader interface {
+	LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error)
+}
+
+// itemInput is the input ffmpeg reads for a programme. A library item id reads the item's own
+// playing file while it is readable (#2151 step 15); any other id is a media-server id, resolved
+// to a mapped local file or the server's stream. lib may be nil when no media server is connected.
+func (r *playoutResolver) itemInput(ctx context.Context, lib *library.Client, itemID string) library.InputSource {
+	if r.libraryFile != nil {
+		path, ok, err := r.libraryFile.LibraryPlayingFile(ctx, itemID)
+		if err != nil && r.log != nil {
+			r.log.Debug("playout: library file unavailable", "item", itemID, "err", err)
+		}
+		if ok && library.StatReadableFile(path) {
+			return library.InputSource{URL: path, Kind: library.InputFile}
+		}
+	}
+	if lib == nil {
+		return library.InputSource{}
+	}
+	var pm library.PathMap
+	if r.pathMap != nil {
+		pm = r.pathMap()
+	}
+	return lib.ResolveInput(ctx, itemID, pm, library.StatReadableFile)
+}
+
+// libraryVideoReader is the store's read of the video a Library item plays.
+type libraryVideoReader interface {
+	LibraryPlayingVideo(ctx context.Context, itemID string) (store.LibraryStream, bool, error)
+}
+
+// libraryFormat is a library item's video format as the scanner read its playing file's header
+// (#2151 step 15): what a channel's format and a still's tone mapping need. ok is false for any
+// other id, which the inventory answers as before.
+func (r *playoutResolver) libraryFormat(ctx context.Context, itemID string) (playout.MediaFormat, bool) {
+	if r.libraryVideo == nil {
+		return playout.MediaFormat{}, false
+	}
+	v, ok, err := r.libraryVideo.LibraryPlayingVideo(ctx, itemID)
+	if err != nil || !ok {
+		if err != nil && r.log != nil {
+			r.log.Debug("playout: library video unavailable", "item", itemID, "err", err)
+		}
+		return playout.MediaFormat{}, false
+	}
+	return playoutFormatOf(inventory.SourceFacts{Streams: []inventory.Stream{{
+		Index: v.Index, Kind: inventory.StreamVideo, Codec: v.Codec, Width: v.Width, Height: v.Height,
+		FrameRate: v.FrameRate, PixelFormat: v.PixelFormat, ColorTransfer: v.ColorTransfer,
+	}}}), true
+}
+
+// libraryAudioReader is the store's one Library read audio selection makes.
+type libraryAudioReader interface {
+	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]store.LibraryStream, bool, error)
+}
+
+// libraryAudioTracks is a local file's audio tracks as the Library lists them, when the scanner
+// read the file as it is now (#2151 decision 47).
+func (r *playoutResolver) libraryAudioTracks(ctx context.Context, streamURL string) ([]playout.AudioTrack, bool) {
+	if r.libraryAudio == nil {
+		return nil, false
+	}
+	_, info, ok := localInventoryOrigin(streamURL)
+	if !ok {
+		return nil, false
+	}
+	streams, ok, err := r.libraryAudio.LibraryAudioTracks(ctx, streamURL, info.Size(), info.ModTime().UnixNano())
+	if err != nil || !ok {
+		return nil, false
+	}
+	tracks := make([]playout.AudioTrack, 0, len(streams))
+	for _, s := range streams {
+		tracks = append(tracks, playout.AudioTrack{SourceIndex: s.Index, Language: s.Language})
+	}
+	return tracks, true
+}
+
 func (r *playoutResolver) inventoryAudioTracks(
 	ctx context.Context,
 	libraryItemID, streamURL string,
 ) ([]playout.AudioTrack, bool) {
+	if tracks, ok := r.libraryAudioTracks(ctx, streamURL); ok {
+		return tracks, true
+	}
 	if r.inventory == nil {
 		return nil, false
 	}
@@ -1416,12 +1475,13 @@ func inventoryFactsOf(observed playout.SourceObservation) inventory.SourceFacts 
 		facts.Streams = append(facts.Streams, inventory.Stream{
 			Index: stream.Index, Kind: inventory.StreamKind(stream.Kind), Codec: stream.Codec,
 			Profile: stream.Profile, Level: stream.Level, Language: stream.Language, Title: stream.Title,
-			Disposition: inventory.Disposition{Default: stream.Default, Forced: stream.Forced},
-			Channels:    stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: stream.SampleRate,
+			Disposition: inventory.Disposition{Default: stream.Default, Forced: stream.Forced, Comment: stream.Comment,
+				HearingImpaired: stream.HearingImpaired, VisualImpaired: stream.VisualImpaired},
+			Channels: stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: stream.SampleRate,
 			Width: stream.Width, Height: stream.Height, FrameRate: stream.FrameRate,
 			PixelFormat: stream.PixelFormat, ColorSpace: stream.ColorSpace,
 			ColorTransfer: stream.ColorTransfer, ColorPrimaries: stream.ColorPrimaries,
-			HDR: stream.HDR, Interlaced: stream.Interlaced,
+			HDR: stream.HDR, DolbyVision: stream.DolbyVision, Interlaced: stream.Interlaced,
 			SubtitleFormat: func() string {
 				if stream.Kind == string(inventory.StreamSubtitle) {
 					return stream.Codec

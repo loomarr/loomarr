@@ -425,7 +425,12 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("RevokeSessionsForUser hit another user's sessions: u2 has %d, want 1", len(got))
 	}
 
-	// …and their paired devices, for good (ADR 0043) — and only theirs.
+	// DisableUser sets the flag and, in the same transaction, deletes the user's sessions, paired
+	// devices (for good, ADR 0043) and the pairings they approved but no device redeemed yet — and
+	// only theirs; a pending pairing nobody approved is not anyone's to revoke.
+	if err := s.CreateSession(ctx, Session{TokenHash: "h-again", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
 	for _, d := range []DeviceToken{
 		{TokenHash: "d-tv", UserID: "u1", DeviceName: "Lounge TV", CreatedAt: now},
 		{TokenHash: "d-phone", UserID: "u1", DeviceName: "Phone", CreatedAt: now},
@@ -435,21 +440,6 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.RevokeDeviceTokensForUser(ctx, "u1"); err != nil {
-		t.Fatal(err)
-	}
-	if devices, err := s.ListDeviceTokensForUser(ctx, "u1"); err != nil || len(devices) != 0 {
-		t.Errorf("after RevokeDeviceTokensForUser: u1 has %d devices (err %v), want 0", len(devices), err)
-	}
-	if _, err := s.GetDeviceToken(ctx, "d-tv"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetDeviceToken(revoked) err = %v, want ErrNotFound", err)
-	}
-	if devices, _ := s.ListDeviceTokensForUser(ctx, "u2"); len(devices) != 1 {
-		t.Errorf("RevokeDeviceTokensForUser hit another user's devices: u2 has %d, want 1", len(devices))
-	}
-
-	// …and the pairings they approved but no device redeemed yet — and only theirs; a pending
-	// pairing nobody approved is not anyone's to revoke.
 	for _, p := range []DevicePairing{
 		{DeviceCodeHash: "p-u1", UserCode: "AAAA-AAAA"},
 		{DeviceCodeHash: "p-u2", UserCode: "BBBB-BBBB"},
@@ -465,23 +455,45 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("ApproveDevicePairing(%s, %s) = %v, %v", code, user, ok, err)
 		}
 	}
-	if err := s.RevokeDevicePairingsForUser(ctx, "u1"); err != nil {
+	disabledAt := now.Add(time.Minute)
+	if err := s.DisableUser(ctx, "u1", disabledAt); err != nil {
 		t.Fatal(err)
+	}
+	if u, err := s.GetUser(ctx, "u1"); err != nil || !u.Disabled || !u.UpdatedAt.Equal(disabledAt) {
+		t.Errorf("after DisableUser: u1 = %+v (err %v), want disabled, updated at %v", u, err, disabledAt)
+	}
+	if u, err := s.GetUser(ctx, "u2"); err != nil || u.Disabled {
+		t.Errorf("DisableUser disabled another user: u2 = %+v (err %v)", u, err)
+	}
+	if got, _ = s.ListSessionsForUser(ctx, "u1", now); len(got) != 0 {
+		t.Errorf("after DisableUser: u1 has %d sessions, want 0", len(got))
+	}
+	if got, _ = s.ListSessionsForUser(ctx, "u2", now); len(got) != 1 {
+		t.Errorf("DisableUser hit another user's sessions: u2 has %d, want 1", len(got))
+	}
+	if devices, err := s.ListDeviceTokensForUser(ctx, "u1"); err != nil || len(devices) != 0 {
+		t.Errorf("after DisableUser: u1 has %d devices (err %v), want 0", len(devices), err)
+	}
+	if _, err := s.GetDeviceToken(ctx, "d-tv"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetDeviceToken(revoked) err = %v, want ErrNotFound", err)
+	}
+	if devices, _ := s.ListDeviceTokensForUser(ctx, "u2"); len(devices) != 1 {
+		t.Errorf("DisableUser hit another user's devices: u2 has %d, want 1", len(devices))
 	}
 	if _, err := s.GetDevicePairing(ctx, "p-u1", now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetDevicePairing(revoked) err = %v, want ErrNotFound", err)
 	}
 	for _, code := range []string{"p-u2", "p-pending"} {
 		if _, err := s.GetDevicePairing(ctx, code, now); err != nil {
-			t.Errorf("RevokeDevicePairingsForUser hit %s: %v", code, err)
+			t.Errorf("DisableUser hit pairing %s: %v", code, err)
 		}
+	}
+	if err := s.DisableUser(ctx, "u-ghost", now); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DisableUser(unknown) err = %v, want ErrNotFound", err)
 	}
 
 	// A disabled user approves nothing and is issued nothing, so no credential can be minted after
 	// the revocation above (ADR 0043). Unknown users likewise.
-	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin, Disabled: true}); err != nil {
-		t.Fatal(err)
-	}
 	if ok, err := s.ApproveDevicePairing(ctx, "CCCC-CCCC", "u1", now); err != nil || ok {
 		t.Errorf("ApproveDevicePairing by a disabled user = %v, %v; want false, nil", ok, err)
 	}
@@ -696,7 +708,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 
 	// An unrecognised level is normalised on the way in — the UI has no colour for it, so
 	// storing it would render an invisible dot.
-	if err := st.RecordActivity(ctx, Activity{Text: "odd", Level: "banana"}); err != nil {
+	if err := st.RecordActivity(ctx, Activity{Text: "odd", Kind: ActivityKindSystem, Level: "banana"}); err != nil {
 		t.Fatalf("record odd level: %v", err)
 	}
 	after, _ := st.ListActivity(ctx, 1)
@@ -979,6 +991,7 @@ func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
 	// Proposals: one of each status, all OLD.
 	for _, p := range []Proposal{
 		{ID: "p-denied", Status: "denied", UpdatedAt: old},
+		{ID: "p-superseded", Status: "superseded", UpdatedAt: old},
 		{ID: "p-approved", Status: "approved", UpdatedAt: old},
 		{ID: "p-submitted", Status: "submitted", UpdatedAt: old},
 		{ID: "p-fresh-denied", Status: "denied", UpdatedAt: recent},
@@ -988,23 +1001,25 @@ func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
 		}
 	}
 
-	n, err = st.PurgeDeniedProposals(ctx, time.Now().Add(-90*24*time.Hour))
+	n, err = st.PurgeDiscardedProposals(ctx, time.Now().Add(-90*24*time.Hour))
 	if err != nil {
 		t.Fatalf("purge proposals: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("purged %d proposals, want 1 (the old denied one)", n)
+	if n != 2 {
+		t.Errorf("purged %d proposals, want 2 (the old denied and superseded ones)", n)
 	}
 	// ⚠ THE AUDIT TRAIL. An approved proposal is the record that someone authorized spending
 	// real resources (§7); a submitted one is a member still waiting for an answer. Neither
 	// may be aged out.
 	for _, id := range []string{"p-approved", "p-submitted", "p-fresh-denied"} {
 		if _, err := st.GetProposal(ctx, id); err != nil {
-			t.Errorf("proposal %s was purged; only OLD DENIED proposals may go (%v)", id, err)
+			t.Errorf("proposal %s was purged; only OLD DENIED or SUPERSEDED proposals may go (%v)", id, err)
 		}
 	}
-	if _, err := st.GetProposal(ctx, "p-denied"); err == nil {
-		t.Error("the old denied proposal survived a purge that should have removed it")
+	for _, id := range []string{"p-denied", "p-superseded"} {
+		if _, err := st.GetProposal(ctx, id); err == nil {
+			t.Errorf("proposal %s survived a purge that should have removed it", id)
+		}
 	}
 }
 

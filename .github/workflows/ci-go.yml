@@ -13,19 +13,10 @@ env:
 jobs:
   run:
     name: Go — race-policy tests (${{ matrix.lane }})
-    # #1570: the merge queue was paying GitHub-hosted runner-slot queueing (up to ~16 min) on top of
-    # test time. `merge_group` and a push to `main` specifically (NOT any push — `push` alone matches
-    # every branch) are the household self-hosted runner (loomarr-go, provisioned by the sibling
-    # homelab PR); `pull_request`, including from a fork, ALWAYS stays on GitHub-hosted — the
-    # repository is public, so a self-hosted runner must never execute untrusted fork code.
-    # `workflow_dispatch` stays on GitHub-hosted. The two household runners are sized for the merge
-    # queue; when dispatched runs (baseline regeneration, full-scope checks) also landed here, they
-    # took both runners and merge groups waited 30+ min for their Go lanes. The merge queue has
-    # priority on this capacity.
-    # The `|| 'ubuntu-latest'` fallback is the fail-safe default for every event (and every non-main
-    # push) this expression does not name, including a future trigger nobody has updated this comment
-    # for yet.
-    runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}
+    # Every event runs on GitHub-hosted runners. Merge-group and main-push runs once went to two
+    # self-hosted runners (#1570) that were never Loomarr's to use; with up to eight merge groups
+    # building, their queue reached 200 jobs and post-merge assurance fell hours behind.
+    runs-on: ubuntu-latest
     # The weighted package plan budgets each lane's test step from #1570's ten-minute Go-only queue
     # target (`scripts/go-shard.sh --budgets`). This timeout is the backstop: crossing the
     # operator-facing 15-minute budget fails loud instead of delaying the queue.
@@ -75,29 +66,10 @@ jobs:
       # Composition tests acquire the real debug image worker through internal/testkit. Install
       # the pinned toolchain but deliberately do not cache Cargo/target here: the old combined
       # cache reached 1.36GB and cost longer to restore/save than the focused build. Static Rust
-      # checks and release certification still run once in `go-contracts`.
-      #
-      # GitHub-hosted images ship rustup on PATH; the self-hosted loomarr-go runner (#1570) does
-      # not. Bootstrap rustup there with no default toolchain — rust-toolchain.toml selects 1.99.1
-      # — and put Cargo's bin directory on PATH for later steps, because a persistent runner keeps
-      # ~/.cargo between jobs but a fresh job's PATH never includes it. The C compiler that
-      # libwebp-sys and `go test -race` need is a host package, not something this step installs.
+      # checks and release certification still run once in `go-contracts`. GitHub-hosted images
+      # ship rustup on PATH.
       - name: Install pinned Rust toolchain
-        run: |
-          if ! command -v rustup >/dev/null 2>&1; then
-            cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
-            if [ ! -x "$cargo_bin/rustup" ]; then
-              # Download to a file, never `curl | sh`: the default `bash -e` step shell has no
-              # pipefail, so a failed download piped into sh would "succeed" with nothing installed.
-              installer="$RUNNER_TEMP/rustup-init.sh"
-              curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --retry 5 \
-                --output "$installer" https://sh.rustup.rs
-              sh "$installer" -y --no-modify-path --profile minimal --default-toolchain none
-            fi
-            echo "$cargo_bin" >> "$GITHUB_PATH"
-            export PATH="$cargo_bin:$PATH"
-          fi
-          rustup toolchain install 1.99.1 --profile minimal
+        run: rustup toolchain install 1.99.1 --profile minimal
       # Each test shard keeps only its Go module and compiler caches. Lint and static Rust checks
       # run in `go-contracts`, so restoring their caches here would spend time and storage on
       # inputs this job never reads.

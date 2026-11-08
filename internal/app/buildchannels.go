@@ -203,14 +203,17 @@ func buildChannels(
 		// Program duration comes from the media server (§9/§10): give the scheduler
 		// a resolver so program slots carry a real runtime before the Tunarr push,
 		// and an episode resolver so a series entry expands into its episodes (§9).
-		avail := channels.NewStoreAvailability(rootCtx, st, lib.ItemDurationMs, episodeResolver(lib))
+		// A library item id (#2151 step 15) is answered from the Library's tables, any other id by
+		// the media server.
+		meta := itemMetadata{facts: st, lib: lib}
+		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(st, lib))
 		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return settings.EpisodesMaxAge.Get(set) })
 		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
 		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches
 		// by id list — the bulk answer simply was not wired to the scheduler's duration path, so
 		// a 25-movie channel paid 25 sequential round trips on every cold guide request (~375ms
 		// of GET /v1/guide, measured against the dev Emby).
-		avail = channels.WithBulkDurations(avail, bulkDurations(lib))
+		avail = channels.WithBulkDurations(avail, bulkDurations(meta))
 		// Tests inject an in-process Tunarr double here; production uses the real
 		// URL-built programmer (prog). Either way the engine is a *channels.Engine.
 		pusher := tunarr.Programmer(prog)
@@ -245,16 +248,20 @@ func buildChannels(
 			NaturalBreaks: func(ctx context.Context) schedule.NaturalBreakSource {
 				return playoutRes.naturalBreakSource(ctx)
 			},
+			// Measure ahead (#1518): the next two days' programmes go to the one measure worker.
+			Premeasure: func(ctx context.Context, libraryItemIDs []string) {
+				playoutRes.premeasure(ctx, libraryItemIDs)
+			},
 		}, time.Now, log).WithMetrics(metricRecorder).WithQualityRecorder(quality.NewSchedulingRecorder(st, log))
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
 		// it and the channel plays nothing (§9). Uses the same library client the
 		// availability resolver does.
-		channelEngine.WithRatings(libraryRatings{lib: lib})
+		channelEngine.WithRatings(libraryRatings{titles: st, lib: lib})
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
-		channelEngine.WithBoxSets(&libraryBoxSets{lib: lib, ttl: 15 * time.Minute})
+		channelEngine.WithBoxSets(&libraryBoxSets{lib: lib, own: st, ttl: 15 * time.Minute})
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
 		channelEngine.WithNotifier(emitter)

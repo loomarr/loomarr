@@ -2,10 +2,10 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryCollection } from "@loomarr/api/models/libraryCollection";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Text } from "@loomarr/design-system";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
@@ -97,7 +97,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center gap-1.5">
-        <Label>Only these collections</Label>
+        <Text textRole="label">Only these collections</Text>
         <FieldHelp label="Only these collections">
           Restrict the channel to titles in the collections you keep in your media server. Leave empty for no
           restriction. Changes to a collection are picked up the next time the channel rebuilds.

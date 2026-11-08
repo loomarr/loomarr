@@ -1,6 +1,6 @@
+import { Field } from "@loomarr/design-system";
 import { Check, Lock } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
-import { Input } from "@/components/ui/input";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import type { LanguagePickerProps } from "./language-picker.type";
@@ -45,39 +45,41 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
         )}
       </div>
       <div className="relative">
-        <Input
-          id={`${listID}-input`}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={listID}
+        <Field
           aria-activedescendant={open && choices[active] ? `${listID}-${active}` : undefined}
-          value={query}
-          placeholder="Search languages"
+          aria-autocomplete="list"
+          aria-controls={listID}
+          aria-expanded={open}
           autoComplete="off"
+          autoCorrect={false}
           disabled={locked}
-          onFocus={() => setOpen(true)}
+          id={`${listID}-input`}
           onBlur={() => setOpen(false)}
-          onChange={(event) => {
-            setQuery(event.target.value);
+          onChangeText={(text) => {
+            setQuery(text);
             setOpen(true);
             setActive(0);
           }}
-          onKeyDown={(event) => {
+          onFocus={() => setOpen(true)}
+          onKeyPress={(event) => {
+            const key = event.nativeEvent.key;
             if (!open || choices.length === 0) return;
-            if (event.key === "ArrowDown") {
+            if (key === "ArrowDown") {
               event.preventDefault();
               setActive((current) => Math.min(current + 1, choices.length - 1));
-            } else if (event.key === "ArrowUp") {
+            } else if (key === "ArrowUp") {
               event.preventDefault();
               setActive((current) => Math.max(current - 1, 0));
-            } else if (event.key === "Enter" && choices[active]) {
+            } else if (key === "Enter" && choices[active]) {
               event.preventDefault();
               choose(choices[active].code, choices[active].label);
-            } else if (event.key === "Escape") {
+            } else if (key === "Escape") {
               setOpen(false);
             }
           }}
+          placeholder="Search languages"
+          role="combobox"
+          value={query}
         />
         {open && !locked && (
           <div

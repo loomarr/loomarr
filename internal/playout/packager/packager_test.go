@@ -784,6 +784,36 @@ func TestFirstManifestWaitsForARealItem(t *testing.T) {
 	}
 }
 
+// An airing whose source can't be read never produces, so nothing defines the init and the first
+// manifest is never ready. Live, the master then hung for over 2 minutes and no client could say why
+// (#1938): past StartDeadline the wait fails the start, naming the item's last failure.
+func TestFirstManifestFailsTheStartPastTheStartDeadline(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads a mode-000 file")
+	}
+	src := filepath.Join(t.TempDir(), "movie.mkv")
+	if err := os.WriteFile(src, []byte("x"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	sched := func(ctx context.Context, _ time.Time) (Item, error) {
+		return Item{Label: "movie", Duration: time.Hour, Open: func(context.Context, Slot) (io.ReadCloser, error) {
+			return os.Open(src)
+		}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour, SlateRetry: 50 * time.Millisecond,
+		StartDeadline: 300 * time.Millisecond}, sched, readySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := start(t, p)
+	wctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	err = p.AwaitPlaylist(wctx)
+	if !errors.Is(err, ErrNoStart) || !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("AwaitPlaylist on an unreadable source = %v, want ErrNoStart naming the permission error", err)
+	}
+}
+
 func TestSlateNeverDefinesTheChannelInit(t *testing.T) {
 	slateSPS := append([]byte(nil), testSPS...)
 	slateSPS[3] = 0x1e

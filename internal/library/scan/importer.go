@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -32,6 +33,11 @@ const (
 // the reader, is the limit: more readers do not read faster.
 const headerConcurrency = 4
 
+// arrRetry is how long a folder pass goes on with an arr's failed listing before asking it again.
+// A change notification arrives every few seconds on a busy share; each used to ask a down arr
+// again, and wait on it.
+const arrRetry = time.Minute
+
 // ImportStore is the store the importer reads roots from and keeps its file table in.
 type ImportStore interface {
 	LibraryRoots(ctx context.Context) (store.LibraryRoots, error)
@@ -39,12 +45,17 @@ type ImportStore interface {
 	store.LibraryFileStore
 }
 
-// Posters puts a title's poster in the image service (#2151 step 10). ref is what precedence
-// resolved: an image file beside the media, or a manager's https URL; "" is none. The title owns
-// one poster: the one it had before is let go.
-type Posters interface {
-	Poster(ctx context.Context, itemID, ref string) error
+// Artwork puts a title's artwork in the image service: its poster (#2151 step 10), its fanart as
+// the backdrop and its clear logo (#2567). kind is one of ImportedArt; ref is what precedence
+// resolved for it, an image file beside the media or a provider's https URL, local first; "" is
+// none. The title owns one image per kind: the one it had before is let go.
+type Artwork interface {
+	Art(ctx context.Context, itemID, kind, ref string) error
 }
+
+// ImportedArt is the artwork kinds a title's images are imported for. The rest (banner,
+// landscape, clearart, discart) stay references: nothing shows them yet.
+var ImportedArt = []string{mp.KindPoster, mp.KindFanart, mp.KindClearlogo}
 
 // Importer is the shadow scanner (#2151 step 5). Each pass walks every in-use root, writes each
 // new or changed media file to the inventory as an origin of its root, then reads the headers of
@@ -65,8 +76,8 @@ type Importer struct {
 	// Art lists artwork sidecars; nil lists none. A file's come from the walk's own listing; a
 	// series folder's are listed when the series is written.
 	Art *localart.Provider
-	// Posters imports the poster of each title the pass writes; nil imports none.
-	Posters Posters
+	// Artwork imports the artwork of each title the pass writes; nil imports none.
+	Artwork Artwork
 	// Catalog is the cache of catalog records a title's details come from; nil reads none.
 	Catalog CatalogStore
 	// Answers is the maintainer's Needs you answers; nil reads none.
@@ -92,11 +103,17 @@ type Importer struct {
 	// 32). Nil hears nothing.
 	RootReadability func(ctx context.Context, root string, readable bool)
 
+	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
+	readerVersion int
+
 	run sync.Mutex
 	// index is the arr index the last listing built, reused by folder passes, and indexPaths the
 	// path map and arr addresses it was built with. Guarded by run.
 	index      *managerIndex
 	indexPaths string
+	// indexedAt is when the index was last listed; an incomplete one is listed again by a folder
+	// pass only after arrRetry.
+	indexedAt time.Time
 
 	mu       sync.Mutex
 	progress Progress
@@ -310,8 +327,14 @@ func (im *Importer) arrIndex(ctx context.Context, paths []store.LibraryRootPath,
 			key += "|" + m.Authority + "=" + m.Address()
 		}
 	}
-	if full || relist || im.index == nil || !im.index.complete || im.indexPaths != key {
+	retry := im.index != nil && !im.index.complete && im.now().Sub(im.indexedAt) >= arrRetry
+	if full || relist || im.index == nil || retry || im.indexPaths != key {
 		return im.listArrs(ctx, managers, paths, key)
+	}
+	if !im.index.complete {
+		// An arr failed a moment ago: asking it again on every folder pass only waits on it
+		// again. Its folders' files wait; the rest pass on what the others listed.
+		return *im.index
 	}
 	for _, item := range changed {
 		if !im.refreshArrItem(ctx, managers, paths, item) {
@@ -342,7 +365,7 @@ func (im *Importer) listArrs(ctx context.Context, managers []Manager, paths []st
 	for _, err := range errs {
 		im.log().Warn("library scan: an arr did not list", "err", err)
 	}
-	im.index, im.indexPaths = &idx, key
+	im.index, im.indexPaths, im.indexedAt = &idx, key, im.now()
 	return idx
 }
 
@@ -538,7 +561,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel)})
 		}
 	}
-	for _, file := range walk.Files {
+	// Every file is identified before any is written, so an episode's series knows each season on
+	// disk when the episode is described (decision 53).
+	ids := make([]identity, len(walk.Files))
+	for i, file := range walk.Files {
+		if file.Problem == "" {
+			ids[i] = b.identify(file)
+		}
+	}
+	for i, file := range walk.Files {
 		old, known := prev[file.Path]
 		// A held file the walk finds again is back.
 		old.Held = false
@@ -549,7 +580,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			}
 			continue
 		}
-		id := b.identify(file)
+		id := ids[i]
 		row := store.LibraryFile{Path: file.Path, Root: root, Size: file.Stat.Size, ModifiedNs: file.Stat.ModifiedNs,
 			Identity: id.digest, Kind: string(kindOf(id.kind)), Header: store.LibraryHeaderPending, SeenAt: now}
 		sameBytes := known && old.Size == file.Stat.Size && old.ModifiedNs == file.Stat.ModifiedNs && old.MissingAt.IsZero()
@@ -566,9 +597,10 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 				queue = append(queue, pending{row: old, file: file, id: id, b: b})
 			}
 			continue
-		case !idx.complete:
-			// An arr is down: what it would say about a new, changed or re-identified file is
-			// unknown, and writing without it would only have to be undone. The file waits.
+		case !idx.knows(file.Path):
+			// An arr that manages this folder is down: what it would say about a new, changed or
+			// re-identified file is unknown, and writing without it would only have to be undone.
+			// The file waits. A folder no failing arr manages carries on.
 			if prev[file.Path].Held {
 				save = append(save, old)
 			}
@@ -576,10 +608,11 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		}
 		b.markWritten(id)
 		snapshot := b.snapshot(ctx, file, id, now)
-		var header *inventory.SourceFacts
+		var read *inventory.SourceFacts
+		var readBy int
 		if sameBytes && old.Header == store.LibraryHeaderRead {
-			header = im.lastHeader(ctx, snapshot.Origin)
-			if header == nil {
+			read, readBy = im.lastHeader(ctx, snapshot.Origin)
+			if read == nil {
 				row.Header = store.LibraryHeaderPending
 			}
 		} else if from, ok := moved[file.Stat]; ok && !sameBytes {
@@ -587,12 +620,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			// opened again.
 			delete(moved, file.Stat)
 			if rel, err := filepath.Rel(root, from.Path); err == nil {
-				if header = im.lastHeader(ctx, fileOrigin(root, filepath.ToSlash(rel))); header != nil {
+				if read, readBy = im.lastHeader(ctx, fileOrigin(root, filepath.ToSlash(rel))); read != nil {
 					row.Header = store.LibraryHeaderRead
 				}
 			}
 		}
-		snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(file, header, now)}
+		// An older reader's facts stand, and the title stays ready, until this reader reads the file
+		// again; till then the file keeps its old identity, so a pass cut short comes back to it.
+		reread := read != nil && readBy < im.reader()
+		snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(file, read, readBy, now)}
 		itemID, problem, err := im.applyFile(ctx, snapshot)
 		if err != nil {
 			return result, nil, err
@@ -609,8 +645,12 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		if id.seriesDir != "" {
 			episodes = append(episodes, episodeRow{at: len(save), seriesDir: id.seriesDir})
 		}
-		save = append(save, row)
-		if row.Header == store.LibraryHeaderPending {
+		saved := row
+		if reread {
+			saved.Identity = old.Identity
+		}
+		save = append(save, saved)
+		if row.Header == store.LibraryHeaderPending || reread {
 			queue = append(queue, pending{row: row, file: file, id: id, b: b})
 		}
 	}
@@ -807,22 +847,26 @@ func (im *Importer) apply(ctx context.Context, snapshot inventory.Snapshot) (inv
 	return im.Inventory.ApplySnapshot(ctx, snapshot)
 }
 
-// lastHeader is the header facts the inventory holds for a file origin, nil when it holds none.
-func (im *Importer) lastHeader(ctx context.Context, origin inventory.OriginKey) *inventory.SourceFacts {
+// lastHeader is the header facts the inventory holds for a file origin and the header.Version that
+// read them; nil when it holds none.
+func (im *Importer) lastHeader(ctx context.Context, origin inventory.OriginKey) (*inventory.SourceFacts, int) {
 	item, ok, err := im.Inventory.Item(ctx, inventory.ItemRef{Origin: &origin})
 	if err != nil || !ok {
-		return nil
+		return nil, 0
 	}
 	for _, src := range item.Sources {
 		for _, o := range src.Origins {
 			if o.Key == origin && o.Observation.Coverage["streams"] == inventory.CoveragePresent {
 				facts := o.Observation.Facts
-				return &facts
+				return &facts, o.Observation.SchemaVersion
 			}
 		}
 	}
-	return nil
+	return nil, 0
 }
+
+// reader is the header.Version this importer's header reads are recorded under.
+func (im *Importer) reader() int { return cmp.Or(im.readerVersion, header.Version) }
 
 func (im *Importer) now() time.Time {
 	if im.Now != nil {

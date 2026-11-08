@@ -154,16 +154,46 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 		list.Items[0].Poster.Height != 30 || list.Items[1].Poster != nil {
 		t.Fatalf("list = %+v", list)
 	}
+	// Alpha also holds a clear logo (#2567).
+	logo := images.Image{Hash: strings.Repeat("c3", 32), Origin: images.OriginExtracted, Role: images.RoleLogo,
+		Width: 800, Height: 310, OriginFetchedAt: at}
+	imgs.records[logo.Hash] = logo
+	if err := h.Store.PutImage(ctx, clipstore.Image{Hash: logo.Hash, Origin: string(logo.Origin), Role: string(logo.Role),
+		Visibility: "member", CreatedAt: at, UpdatedAt: at, LastUsedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Store.PutImageRef(ctx, clipstore.ImageRef{ImageHash: logo.Hash, OwnerKind: store.LibraryItemImageOwner,
+		OwnerID: "90000001", Role: "logo"}); err != nil {
+		t.Fatal(err)
+	}
+
 	var page struct {
 		Item struct {
 			Poster *struct {
 				Hash string `json:"hash"`
 			} `json:"poster"`
 		} `json:"item"`
+		LogoImage *struct {
+			Hash string `json:"hash"`
+			Src  string `json:"src"`
+		} `json:"logoImage"`
 	}
 	decode(t, h.Do(http.MethodGet, "/v1/library/items/90000001", adminToken, ""), &page)
 	if page.Item.Poster == nil || page.Item.Poster.Hash != held.Hash {
 		t.Fatalf("page poster = %+v", page.Item.Poster)
+	}
+	if page.LogoImage == nil || page.LogoImage.Hash != logo.Hash || !strings.HasSuffix(page.LogoImage.Src, ".webp") {
+		t.Fatalf("page logo = %+v, want the logo with a WebP fallback that keeps its alpha", page.LogoImage)
+	}
+
+	// A title with no logo and no backdrop has neither field: not null, not an empty object.
+	res := h.Do(http.MethodGet, "/v1/library/items/90000002", adminToken, "")
+	var raw map[string]json.RawMessage
+	decode(t, res, &raw)
+	for _, field := range []string{"logoImage", "backdropImage"} {
+		if v, ok := raw[field]; ok {
+			t.Errorf("%s = %s on a title with none, want the field absent", field, v)
+		}
 	}
 }
 

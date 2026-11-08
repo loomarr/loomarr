@@ -13,19 +13,19 @@ test("Filler keeps its workspace stable and settings focused without losing edit
   await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Clip folders", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Processing tools", exact: true })).toHaveCount(0);
-  await page.getByRole("spinbutton", { name: "Add up to", exact: true }).fill("4");
+  await page.getByRole("textbox", { name: "Add up to", exact: true }).fill("4");
   await page.getByRole("link", { name: "Storage limits", exact: true }).click();
   await expect(page).toHaveURL(/\/filler\/settings\/storage$/);
-  await expect(page.getByRole("spinbutton", { name: "Filler storage allowance" })).toBeVisible();
-  await expect(page.getByRole("spinbutton", { name: "Automatic-download catalog limit" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Filler storage allowance" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Automatic-download catalog limit" })).toHaveCount(0);
   await page.getByRole("button", { name: "Show advanced (1)" }).click();
-  await expect(page.getByRole("spinbutton", { name: "Automatic-download catalog limit" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Automatic-download catalog limit" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Automatic downloads", exact: true })).toHaveCount(0);
-  await page.getByRole("spinbutton", { name: "Automatic-download catalog limit" }).fill("1000");
+  await page.getByRole("textbox", { name: "Automatic-download catalog limit" }).fill("1000");
   await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(1);
   await page.getByRole("link", { name: "All filler settings" }).click();
   await page.getByRole("link", { name: /^Automatic downloads/ }).click();
-  await expect(page.getByRole("spinbutton", { name: "Add up to", exact: true })).toHaveValue("4");
+  await expect(page.getByRole("textbox", { name: "Add up to", exact: true })).toHaveValue("4");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect
     .poll(() => backend.state.edits)

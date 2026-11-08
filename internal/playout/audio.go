@@ -1,6 +1,6 @@
 package playout
 
-import "strings"
+import "github.com/loomarr/loomarr/internal/platform/langcode"
 
 // Audio track selection (§9.1) — which of a file's audio tracks the viewer actually hears.
 //
@@ -58,17 +58,17 @@ type AudioTrack struct {
 // in its own language, which is worse than a perfect match and far better than a channel that
 // goes silent (or fails to encode) because a hard requirement could not be met.
 //
-// Matching is case-insensitive and trims whitespace: container tags are written by hundreds of
-// different tools and "ENG" / "eng " are the same language.
+// Matching compares languages, not spellings: container tags are written by hundreds of different
+// tools, and "ENG", "eng ", "en" and "en-US" are the same language (langcode.Normalize).
 func PickAudioTrack(tracks []AudioTrack, prefer string) int {
-	prefer = strings.ToLower(strings.TrimSpace(prefer))
+	prefer = langcode.Normalize(prefer)
 	if prefer == "" || len(tracks) == 0 {
 		// No preference stated ⇒ ffmpeg's historical behaviour, preserved deliberately so an
 		// operator who wants it can have it by clearing the setting.
 		return 0
 	}
 	for i, t := range tracks {
-		if strings.ToLower(strings.TrimSpace(t.Language)) == prefer {
+		if langcode.Normalize(t.Language) == prefer {
 			return i
 		}
 	}

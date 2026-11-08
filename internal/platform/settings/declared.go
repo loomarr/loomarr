@@ -283,6 +283,43 @@ func optionalCountryCode(v any) error {
 	return nil
 }
 
+// optionalMetadataLanguage validates metadata.language: empty, an ISO 639-1 code, or one with a
+// region ("pt-BR"), as TMDB takes it.
+func optionalMetadataLanguage(v any) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("want a language code")
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	lang, region, hasRegion := strings.Cut(s, "-")
+	letters := func(x string, lo, hi byte) bool {
+		for i := range len(x) {
+			if x[i] < lo || x[i] > hi {
+				return false
+			}
+		}
+		return len(x) == 2
+	}
+	if !letters(lang, 'a', 'z') || (hasRegion && !letters(region, 'A', 'Z')) {
+		return fmt.Errorf("want a language code such as en, fr or pt-BR")
+	}
+	return nil
+}
+
+// metadataCountry validates metadata.country: only the US ratings ladder exists (#2151 decision 21).
+func metadataCountry(v any) error {
+	if err := optionalCountryCode(v); err != nil {
+		return err
+	}
+	if s := strings.ToUpper(strings.TrimSpace(v.(string))); s != "" && s != "US" {
+		return fmt.Errorf("only US ratings are supported for now")
+	}
+	return nil
+}
+
 func credentialFreeHTTPSEndpoint(v any) error {
 	raw, ok := v.(string)
 	if !ok {
@@ -737,6 +774,18 @@ func declared() []Setting {
 			// it as builtIn, never as set, and never previews it.
 			Kind: KindSecret, Default: buildinfo.TMDBKey(), Required: FeatureSuggestions,
 			Doc: "Your own TMDB API key, if you have one. Loomarr comes with its own, so most households can leave this empty. TMDB powers title search, channel icon suggestions, and grounding for AI channel suggestions.",
+		},
+		{
+			// #2151 decision 21: one installation-wide metadata language and country, defaulting to
+			// the media server's.
+			Key: "metadata.language", Label: "Title language", EnvVar: "METADATA_LANGUAGE", Group: GroupTMDB,
+			Kind: KindString, Default: "", Advanced: true, Validate: optionalMetadataLanguage,
+			Doc: "The language titles, overviews and trailers are shown in, as a language code (en, fr, pt-BR). Empty uses your media server's metadata language, or English. Changing it fetches every title's details again.",
+		},
+		{
+			Key: "metadata.country", Label: "Ratings country", EnvVar: "METADATA_COUNTRY", Group: GroupTMDB,
+			Kind: KindString, Default: "", Advanced: true, Validate: metadataCountry,
+			Doc: "The country whose content ratings Loomarr uses. Only US ratings are supported for now, so this can be empty or US.",
 		},
 
 		// --- AI (§15, §8.1; in-app selection persists to llm.* and overrides these env pins) ---

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -33,14 +34,23 @@ type seriesSeen struct {
 	write   bool
 	// itemID is the series item writeSeries wrote, "" until then.
 	itemID string
+	// last is the highest episode number on disk in each season, from every file the pass
+	// identified before writing any.
+	last map[int]int
+
+	once       sync.Once
+	resolution resolution
+	// seasons are its season records the pass read, by catalog id.
+	seasonsMu sync.Mutex
+	seasons   map[string]cachedSeason
 }
 
 // listed finishes a movie or series the pass wrote: its library row came with the write (the
-// store's LibraryProjection); its poster and its set's record are asked for here.
+// store's LibraryProjection); its artwork and its set's record are asked for here.
 func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snapshot) {
 	facts := snapshot.Observation.Facts
 	set := setKey(facts.Relationships)
-	b.poster(ctx, id, facts.Artwork)
+	b.artwork(ctx, id, facts.Artwork)
 	// The set's own record names it and every movie in it; the Enricher fetches it once asked.
 	if set.String() != "" && b.im.Catalog != nil {
 		if err := b.im.Catalog.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{set}); err != nil {
@@ -93,21 +103,25 @@ func libraryOrigin(o inventory.OriginKey) store.LibraryOrigin {
 	return store.LibraryOrigin{Authority: string(o.Authority), Key: o.ExternalItemID}
 }
 
-// poster hands the title's resolved poster, or none, to the image service. One that cannot be
-// imported leaves the title as it was until it is written again; the grid shows its name.
-func (b *builder) poster(ctx context.Context, id string, art []inventory.ArtworkRef) {
-	if b.im.Posters == nil {
+// artwork hands the title's resolved poster, fanart and clear logo, or none of each, to the image
+// service. Precedence already put a local sidecar ahead of a provider's image (decision 19), so
+// the first of a kind is the one. One that cannot be imported leaves the title's image of that
+// kind as it was until it is written again.
+func (b *builder) artwork(ctx context.Context, id string, art []inventory.ArtworkRef) {
+	if b.im.Artwork == nil {
 		return
 	}
-	ref := ""
-	for _, a := range art {
-		if a.Kind == localart.KindPoster {
-			ref = a.Ref
-			break
+	for _, kind := range ImportedArt {
+		ref := ""
+		for _, a := range art {
+			if a.Kind == kind && a.Season == 0 {
+				ref = a.Ref
+				break
+			}
 		}
-	}
-	if err := b.im.Posters.Poster(ctx, id, ref); err != nil {
-		b.im.log().Warn("library scan: poster not imported", "item", id, "err", err)
+		if err := b.im.Artwork.Art(ctx, id, kind, ref); err != nil {
+			b.im.log().Warn("library scan: artwork not imported", "item", id, "kind", kind, "err", err)
+		}
 	}
 }
 
@@ -142,16 +156,36 @@ func (b *builder) identify(file File) identity {
 	if id.kind == mp.KindEpisode {
 		s := b.series[id.seriesDir]
 		if s == nil {
-			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent}
+			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{}}
 			b.series[id.seriesDir] = s
 		}
 		if m.series != nil {
 			s.managed = m.series
 		}
+		if n := id.numbering(); n != nil {
+			s.last[n.Season] = max(s.last[n.Season], n.Episode, n.EpisodeEnd)
+		}
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
 	}
-	id.digest = identityDigest(file, m, embedded)
+	id.digest = identityDigest(file, m, embedded, b.im.reader())
 	return id
+}
+
+// numbering is where the cheap sources place an episode file, through its last episode; nil for
+// none.
+func (id identity) numbering() *mp.Numbering {
+	recs := id.managed.records
+	if len(recs) == 0 {
+		return id.embedded.Numbering
+	}
+	if recs[0].Numbering == nil {
+		return nil
+	}
+	n := *recs[0].Numbering
+	if last := recs[len(recs)-1].Numbering; last != nil && last.Episode > n.Episode {
+		n.EpisodeEnd = last.Episode
+	}
+	return &n
 }
 
 // markWritten records that the pass writes the file, so its series is written too. It runs before
@@ -225,7 +259,12 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			series = append(series, *s.managed)
 		}
 	}
-	resolved, m := b.resolve(ctx, snapshot.Origin, precedence.Input{Kind: id.kind, Records: records, Series: series})
+	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
+	res := b.resolve(ctx, snapshot.Origin, in)
+	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
+		res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
+	}
+	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
 		facts.Name = fallbackName(file.Rel)
@@ -237,7 +276,10 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	if id.kind == mp.KindEpisode && id.seriesDir != "" {
 		seriesKey = seriesOrigin(b.root, id.seriesDir)
 	}
-	snapshot.Observation.Extension = originExtensionOf(id.kind, resolved, len(id.managed.records) > 0, m, seriesKey)
+	snapshot.Observation.Extension = originExtensionOf(id.kind, res, seriesKey, fileNotes{
+		Managed: len(id.managed.records) > 0, Edition: fileEdition(records), Trickplay: file.trickplay(),
+		External: file.externalTracks(), Markers: readEDL(file.edl()),
+	})
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
 	return snapshot
 }
@@ -254,26 +296,38 @@ func withFurtherIDs(ids []inventory.ExternalID, further []mp.Record) []inventory
 	return ids
 }
 
+// resolution is what one title resolves to.
+type resolution struct {
+	resolved precedence.Resolved
+	match    store.LibraryMatch
+	// catalog is the catalog row its details come from, cached or not; zero for none.
+	catalog store.LibraryCatalogKey
+	// record is that row's cached record, nil until the Enricher fetches it.
+	record *mp.Record
+}
+
 // resolve applies precedence. A movie or series the maintainer linked to a title (Needs you) has
 // the link as a record of its own, below what the files say (decision 27). One whose ids then name
 // a cached catalog record is resolved again with it, so its details come from the catalog
 // (decision 7); one not cached yet is written without, and again once the Enricher fetches it.
-func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in precedence.Input) (precedence.Resolved, store.LibraryMatch) {
+func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in precedence.Input) resolution {
 	if rec, ok := b.im.linkRecord(ctx, in.Kind, origin); ok {
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
 	}
-	resolved := b.im.Resolver.Resolve(in)
+	out := resolution{resolved: b.im.Resolver.Resolve(in)}
 	// The catalog record below adds details, never identity: what decides is known now.
-	var m store.LibraryMatch
 	if in.Kind == mp.KindMovie || in.Kind == mp.KindSeries {
-		m = match(resolved, in.Records)
+		out.match = match(out.resolved, in.Records)
 	}
-	rec, ok := b.im.catalogRecord(ctx, catalogKey(in.Kind, pickedIDs(resolved.IDs)))
+	out.catalog = catalogKey(in.Kind, pickedIDs(out.resolved.IDs))
+	rec, ok := b.im.catalogRecord(ctx, out.catalog)
 	if !ok {
-		return resolved, m
+		return out
 	}
+	out.record = &rec
 	in.Records = append(append([]mp.Record(nil), in.Records...), rec)
-	return b.im.Resolver.Resolve(in), m
+	out.resolved = b.im.Resolver.Resolve(in)
+	return out
 }
 
 // sidecar reads what a sidecar provider (NFO, artwork) finds beside a file or in a series folder.
@@ -292,12 +346,11 @@ func (b *builder) sidecar(ctx context.Context, p mp.Provider, kind mp.Kind, medi
 	return rec, true
 }
 
-// writeSeries writes each series one of whose episodes this pass wrote.
-func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
-	for _, s := range b.series {
-		if !s.write {
-			continue
-		}
+// resolveSeries resolves a series once a pass: its episodes read it to number themselves by its
+// catalog's seasons, and writeSeries writes it. Header reads resolve concurrently, so it is
+// guarded.
+func (b *builder) resolveSeries(ctx context.Context, s *seriesSeen) resolution {
+	s.once.Do(func() {
 		records := []mp.Record{{Source: mp.Source{Basis: mp.BasisEmbeddedID}, Kind: mp.KindSeries, IDs: s.ids}}
 		if s.managed != nil {
 			records = append(records, *s.managed)
@@ -314,7 +367,19 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 				}
 			}
 		}
-		resolved, m := b.resolve(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: records})
+		s.resolution = b.resolve(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: records})
+	})
+	return s.resolution
+}
+
+// writeSeries writes each series one of whose episodes this pass wrote.
+func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
+	for _, s := range b.series {
+		if !s.write {
+			continue
+		}
+		res := b.resolveSeries(ctx, s)
+		resolved := res.resolved
 		facts, coverage := itemFacts(resolved)
 		if facts.Name == "" {
 			facts.Name = strings.TrimSpace(embeddedID.ReplaceAllString(s.dir, ""))
@@ -324,7 +389,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			Origin: seriesOrigin(b.root, s.dir), Kind: kindSeries,
 			Observation: inventory.Observation[inventory.ItemFacts]{
 				SchemaVersion: 1, ObservedAt: now, Coverage: coverage, Facts: facts,
-				Extension: originExtensionOf(mp.KindSeries, resolved, false, m, inventory.OriginKey{}),
+				Extension: originExtensionOf(mp.KindSeries, res, inventory.OriginKey{}, fileNotes{}),
 			},
 			ExternalIDs: externalIDs(resolved.IDs),
 		}

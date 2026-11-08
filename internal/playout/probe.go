@@ -43,9 +43,16 @@ type probedStream struct {
 	ChannelLayout  string          `json:"channel_layout"`
 	SampleRate     string          `json:"sample_rate"` // audio Hz, emitted as a JSON string
 	Disposition    struct {
-		Default int `json:"default"`
-		Forced  int `json:"forced"`
+		Default         int `json:"default"`
+		Forced          int `json:"forced"`
+		Comment         int `json:"comment"`
+		HearingImpaired int `json:"hearing_impaired"`
+		VisualImpaired  int `json:"visual_impaired"`
 	} `json:"disposition"`
+	SideData []struct {
+		Type      string `json:"side_data_type"`
+		DVProfile int    `json:"dv_profile"`
+	} `json:"side_data_list"`
 	Tags struct {
 		Language string `json:"language"`
 		Title    string `json:"title"`
@@ -87,7 +94,8 @@ func runFFprobeObserved(ctx context.Context, bin, input string, inspectPackets b
 ) (probed, error) {
 	entries := "stream=index,codec_type,codec_name,profile,level,width,height,avg_frame_rate,pix_fmt," +
 		"color_space,color_transfer,color_primaries,field_order,channels,channel_layout,sample_rate" +
-		":stream_tags=language,title:stream_disposition=default,forced" +
+		":stream_tags=language,title:stream_disposition=default,forced,comment,hearing_impaired,visual_impaired" +
+		":stream_side_data=side_data_type,dv_profile" +
 		":format=format_name,duration,bit_rate"
 	args := []string{
 		"-v", "error",
@@ -166,27 +174,33 @@ type SourceObservation struct {
 }
 
 type ObservedStream struct {
-	Index          int
-	Kind           string
-	Codec          string
-	Profile        string
-	Level          string
-	Language       string
-	Title          string
-	Default        bool
-	Forced         bool
-	Channels       int
-	ChannelLayout  string
-	SampleRate     int
-	Width          int
-	Height         int
-	FrameRate      string
-	PixelFormat    string
-	ColorSpace     string
-	ColorTransfer  string
-	ColorPrimaries string
-	HDR            bool
-	Interlaced     bool
+	Index    int
+	Kind     string
+	Codec    string
+	Profile  string
+	Level    string
+	Language string
+	Title    string
+	Default  bool
+	Forced   bool
+	// Comment, HearingImpaired and VisualImpaired are the commentary, SDH and described-video
+	// dispositions; DolbyVision a video stream's Dolby Vision profile, 0 for none.
+	Comment         bool
+	HearingImpaired bool
+	VisualImpaired  bool
+	DolbyVision     int
+	Channels        int
+	ChannelLayout   string
+	SampleRate      int
+	Width           int
+	Height          int
+	FrameRate       string
+	PixelFormat     string
+	ColorSpace      string
+	ColorTransfer   string
+	ColorPrimaries  string
+	HDR             bool
+	Interlaced      bool
 }
 
 // SourceProber returns the complete cheap ffprobe observation used by Inventory and derives audio
@@ -222,10 +236,18 @@ func sourceObservationOf(result probed) SourceObservation {
 		if kind != "video" && kind != "audio" && kind != "subtitle" {
 			continue
 		}
+		dolbyVision := 0
+		for _, side := range stream.SideData {
+			if side.Type == "DOVI configuration record" {
+				dolbyVision = side.DVProfile
+			}
+		}
 		observation.Streams = append(observation.Streams, ObservedStream{
 			Index: stream.Index, Kind: kind, Codec: stream.CodecName, Profile: stream.Profile,
 			Level: scalarJSON(stream.Level), Language: stream.Tags.Language, Title: stream.Tags.Title,
 			Default: stream.Disposition.Default != 0, Forced: stream.Disposition.Forced != 0,
+			Comment: stream.Disposition.Comment != 0, HearingImpaired: stream.Disposition.HearingImpaired != 0,
+			VisualImpaired: stream.Disposition.VisualImpaired != 0, DolbyVision: dolbyVision,
 			Channels: stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: int(parseInt(stream.SampleRate)),
 			Width: stream.Width, Height: stream.Height, FrameRate: stream.AvgFrameRate,
 			PixelFormat: stream.PixFmt, ColorSpace: stream.ColorSpace, ColorTransfer: stream.ColorTransfer,

@@ -21,7 +21,7 @@
   "number_of_seasons": 3,
   "seasons": [
     { "id": 90000721, "season_number": 0, "episode_count": 2, "name": "Specials" },
-    { "id": 90000722, "season_number": 1, "episode_count": 10, "name": "Season 1" },
+    { "id": 90000722, "season_number": 1, "episode_count": 10, "name": "Season 1", "poster_path": "/img-season-90000722.jpg" },
     { "id": 90000723, "season_number": 2, "episode_count": 8, "name": "Season 2" },
     { "id": 90000724, "season_number": 3, "episode_count": 6, "name": "Season 3" },
     { "id": 90000725, "season_number": 4, "episode_count": 0, "name": "Season 4" }
@@ -52,10 +52,24 @@
       { "descriptors": [], "iso_3166_1": "US", "rating": "TV-14" }
     ]
   },
+  "created_by": [
+    { "id": 90003201, "name": "Station Creator", "profile_path": "/person-90003201.jpg" }
+  ],
+  "credits": {
+    "cast": [
+      { "id": 90003202, "name": "Station Lead", "character": "Keeper", "order": 0, "profile_path": null }
+    ],
+    "crew": []
+  },
   "keywords": {
     "results": [
       { "id": 90001101, "name": "lighthouse" },
       { "id": 90001102, "name": "harbor" }
+    ]
+  },
+  "episode_groups": {
+    "results": [
+      { "id": "90000799a", "name": "DVD Order", "type": 3, "episode_count": 26, "group_count": 3, "description": "", "network": null }
     ]
   },
   "images": {

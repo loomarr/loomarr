@@ -14,8 +14,9 @@ provisioning loop (decision [0006](decisions/0006-filler-is-its-own-pipeline.md)
 ## Ownership and folders
 
 - **Filler is Loomarr-owned.** Clips live in Loomarr's clip folder, identified by content hash, and
-  programme content stays separate. A media-server library may be one **source** Loomarr copies
-  from; it is never the catalog's only route, never played in place, never modified, and never
+  programme content stays separate. A folder of the household library may be one **source**
+  Loomarr copies from (#2151 decision 36: it used to name a media-server library); it is never the
+  catalog's only route, never played in place, never modified, and never
   offered to the suggester as programme material. An install with no media server, or with one
   that is down, still gets a full catalog from folders and remotes. "No media server, no
   commercials" must not come back.
@@ -718,6 +719,13 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
   - The corpus proves the direction of each bar and catches regressions. Absolute readings depend
     on content, so the household labelling report recalibrates the bars on real clips that never
     leave the machine.
+- **Cut-off start and end are recorded, never judged (#2034).** Each measurement keeps the first
+  and last sampled frames' luma and the first and last 100 ms of sound's level
+  (`defects.FramingEvidence`, versioned on its own as `defects.FramingVersion` so recording it
+  re-measured nothing). No check reads it: the floor retires and deletes clear fails, and a real
+  advert may open on a music sting or a bright card. It becomes a check only after household
+  labels calibrate it. Corpus v2's `recordOnly` cases (`cut_start`, `cut_end`) are scored on that
+  evidence, not on the outcome.
 - **A vision model rules on the borderline band** (`filler.VisionDefectJudge`). It sees six stills
   spread across the clip, the names of the borderline checks, and what a fair bar is for the era.
   It answers pass, fail or abstain with a reason (`defects.JudgeVersion`). The record keeps the

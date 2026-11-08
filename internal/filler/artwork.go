@@ -367,8 +367,8 @@ func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
 		}
 		webpArgs := append(append([]string{}, common...),
 			"-filter_complex", fmt.Sprintf(
-				"[0:v]split=2[still][anim];[still]select=eq(n\\,0),scale=%d:-1[s];[anim]fps=%d,scale=%d:-2:flags=lanczos[a]",
-				tools.PreviewWidth, previewFPS, tools.PreviewWidth),
+				"[0:v]%s,split=2[still][anim];[still]select=eq(n\\,0),scale=%d:-1[s];[anim]fps=%d,scale=%d:-2:flags=lanczos[a]",
+				tools.ColorTagRepair, tools.PreviewWidth, previewFPS, tools.PreviewWidth),
 			"-map", "[s]", "-frames:v", "1", "-q:v", "6", "-update", "1", "-y", stillDst,
 			// ⚠ `-loop 0` makes the WebP loop FOREVER, which is what makes it a hover preview
 			// rather than a six-second animation that stops and leaves a still.
@@ -387,11 +387,11 @@ func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
 			// animated WebP rendition to clients.
 			gifArgs := append(append([]string{}, common...),
 				"-filter_complex", fmt.Sprintf(
-					"[0:v]split=2[still][anim];[still]select=eq(n\\,0),scale=%d:-1[s];"+
+					"[0:v]%s,split=2[still][anim];[still]select=eq(n\\,0),scale=%d:-1[s];"+
 						"[anim]fps=%d,scale=%d:-2:flags=lanczos,split[a1][a2];"+
 						"[a1]palettegen=max_colors=%d:stats_mode=diff[p];"+
 						"[a2][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle[a]",
-					tools.PreviewWidth, fallbackPreviewFPS, tools.PreviewWidth, fallbackPaletteColors),
+					tools.ColorTagRepair, tools.PreviewWidth, fallbackPreviewFPS, tools.PreviewWidth, fallbackPaletteColors),
 				"-map", "[s]", "-frames:v", "1", "-q:v", "6", "-update", "1", "-y", stillDst,
 				"-map", "[a]", "-f", "gif", "-loop", "0", "-y", animDst,
 			)

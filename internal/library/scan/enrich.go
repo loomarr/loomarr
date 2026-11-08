@@ -25,11 +25,21 @@ const (
 	enrichRetry = 6 * time.Hour
 )
 
+// catalogVersions is the shape of record each kind is read in now. Raising a kind's version when
+// the scanner starts reading something a cached record lacks fetches every record of that kind
+// again, ahead of the refresh, as if new; a kind not listed is version 0.
+//
+//	series 1: a series counts its other episode orderings (decision 53).
+//	series 2: a series carries each season's poster.
+//	movie 1, series 3: every studio or network, the tagline, countries and trailer (decision 46).
+//	movie 2, series 4: the main cast and key crew, a series' creators (decision 49).
+var catalogVersions = map[string]int{string(mp.KindMovie): 2, string(mp.KindSeries): 4}
+
 // EnrichStore is the cache the Enricher fills.
 type EnrichStore interface {
 	DueLibraryCatalog(ctx context.Context, due store.LibraryCatalogDue) ([]store.LibraryCatalogKey, error)
 	CountLibraryCatalog(ctx context.Context) (int, error)
-	SaveLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, record string, at time.Time) (bool, error)
+	SaveLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
 	FailLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, retryAt time.Time) error
 	RewriteLibraryCatalogFiles(ctx context.Context, key store.LibraryCatalogKey) ([]store.LibraryFilePath, error)
 }
@@ -44,6 +54,9 @@ type Enricher struct {
 	Provider mp.Provider
 	// Rewrite asks for a pass over folders under a root.
 	Rewrite func(root string, dirs ...string)
+	// Language is the language records are read in now ("en-US"); a record cached in another is
+	// fetched again first (decision 21). Nil, or "", checks none.
+	Language func() string
 	// Enabled is the scanner's kill switch; nil is on. Off, nothing is fetched.
 	Enabled  func() bool
 	Interval time.Duration
@@ -82,7 +95,7 @@ func (e *Enricher) Tick(ctx context.Context) error {
 	}
 	due, err := e.Store.DueLibraryCatalog(ctx, store.LibraryCatalogDue{
 		Now: now, StaleBefore: now.Add(-orDuration(e.Refresh, EnrichRefresh)),
-		New: enrichNewBatch, Stale: e.staleShare(total),
+		New: enrichNewBatch, Stale: e.staleShare(total), Versions: catalogVersions, Language: e.language(),
 	})
 	if err != nil {
 		return err
@@ -174,7 +187,12 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 		e.log().Debug("library enrich: fetch failed", "catalog", key.String(), "err", fetchErr)
 		return fetchFailed, nil
 	}
-	changed, err := e.Store.SaveLibraryCatalog(ctx, key, record, now)
+	// A record says the language it was read in; "the catalog has no such title" holds in any.
+	language := rec.Language
+	if fetchErr != nil {
+		language = e.language()
+	}
+	changed, err := e.Store.SaveLibraryCatalog(ctx, key, record, catalogVersions[key.Kind], language, now)
 	if err != nil || !changed {
 		return fetchDone, err
 	}
@@ -187,8 +205,13 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 }
 
 func (e *Enricher) sleep(ctx context.Context, d time.Duration) error {
-	if e.Sleep != nil {
-		return e.Sleep(ctx, d)
+	return sleepFor(ctx, e.Sleep, d)
+}
+
+// sleepFor waits d with sleep, or on the clock when sleep is nil; it ends early with ctx.
+func sleepFor(ctx context.Context, sleep func(context.Context, time.Duration) error, d time.Duration) error {
+	if sleep != nil {
+		return sleep(ctx, d)
 	}
 	t := time.NewTimer(d)
 	defer t.Stop()
@@ -198,6 +221,13 @@ func (e *Enricher) sleep(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
+}
+
+func (e *Enricher) language() string {
+	if e.Language != nil {
+		return e.Language()
+	}
+	return ""
 }
 
 func (e *Enricher) now() time.Time {

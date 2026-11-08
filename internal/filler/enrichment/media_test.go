@@ -105,6 +105,66 @@ func TestCapabilityRunner_BoundsReadyCatchupAndStampsOnlyCompletedWork(t *testin
 	}
 }
 
+// Clips that keep failing back off instead of filling every slot of every pass (#2456): on the
+// household install five such clips took all five slots for days and nothing else was enriched.
+func TestCapabilityRunner_FailingClipsBackOffAndStopStarvingTheRest(t *testing.T) {
+	clock := time.Unix(10_000, 0).UTC()
+	repository := &runnerRepository{
+		candidates: []enrichment.Candidate{
+			{ClipHash: "bad-1"}, {ClipHash: "bad-2"}, {ClipHash: "good-1"}, {ClipHash: "good-2"},
+		},
+		states: map[string][]enrichment.State{},
+	}
+	var executed []string
+	runner := enrichment.NewCapabilityRunner(enrichment.CapabilityTranscript, repository,
+		func() enrichment.CapabilitySelection {
+			return enrichment.CapabilitySelection{Available: true, Producer: "transcript:local", ProducerVersion: "v1"}
+		},
+		func(_ context.Context, c enrichment.Candidate) (enrichment.CapabilityResult, error) {
+			executed = append(executed, c.ClipHash)
+			if c.ClipHash == "bad-1" || c.ClipHash == "bad-2" {
+				return enrichment.CapabilityResult{}, errors.New("ffmpeg semantic frame: exit status 161")
+			}
+			return enrichment.CapabilityResult{}, nil
+		},
+		func() int { return 2 }, func() time.Time { return clock },
+	)
+	pass := func(at time.Duration) []string {
+		t.Helper()
+		clock = time.Unix(10_000, 0).UTC().Add(at)
+		executed = nil
+		_, _ = runner.Run(context.Background())
+		return executed
+	}
+	same := func(got []string, want ...string) bool {
+		if len(got) != len(want) {
+			return false
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	if got := pass(0); !same(got, "bad-1", "bad-2") {
+		t.Fatalf("first pass ran %v, want the two listed first", got)
+	}
+	if got := pass(time.Minute); !same(got, "good-1", "good-2") {
+		t.Fatalf("pass a minute later ran %v, want the failing clips skipped and the rest served", got)
+	}
+	if got := pass(11 * time.Minute); !same(got, "bad-1", "bad-2") {
+		t.Fatalf("pass after 10 minutes ran %v, want the failing clips retried", got)
+	}
+	if got := pass(25 * time.Minute); !same(got, "good-1", "good-2") {
+		t.Fatalf("pass 14 minutes after the second failure ran %v, want them still waiting (20 minutes)", got)
+	}
+	if got := pass(32 * time.Minute); !same(got, "bad-1", "bad-2") {
+		t.Fatalf("pass after the doubled wait ran %v, want the failing clips retried", got)
+	}
+}
+
 func TestCapabilityRunner_IsQuietUntilCapabilityExists(t *testing.T) {
 	repository := &runnerRepository{candidates: []enrichment.Candidate{{ClipHash: "ready"}}}
 	runner := enrichment.NewCapabilityRunner(

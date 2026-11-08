@@ -6,7 +6,6 @@ import { Action, SectionHeader } from "@loomarr/design-system";
 import { ListGroup, ListRow, type ListRowProps } from "@loomarr/ui";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
 import { REQUEST_ROW_TONE } from "@/queue/request-lists";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 
@@ -66,20 +65,20 @@ const OnTheWay = () => {
 const requestAction = ({ journey, status }: RequestEntry) => {
   if (status.tab === "needs-you") {
     return (
-      <Button size="sm" variant="outline" render={<Link to="/requests/needs-you" />}>
+      <Action accessibilityRole="link" render={<Link to="/requests/needs-you" />} variant="outline">
         Edit and retry
-      </Button>
+      </Action>
     );
   }
   if (status.tone === "lock" && journey.channel) {
     return (
-      <Button
-        size="sm"
-        variant="outline"
+      <Action
+        accessibilityRole="link"
         render={<Link to="/watch/$id" params={{ id: journey.channel.id }} />}
+        variant="outline"
       >
         Watch
-      </Button>
+      </Action>
     );
   }
   return undefined;

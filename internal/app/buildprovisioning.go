@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -19,7 +20,7 @@ import (
 // buildProvisioning registers acquisition, availability, retention, and queue work and returns
 // the one episode refresher consumed later by channel maintenance.
 func buildProvisioning(
-	st store.Store,
+	st records.Store,
 	set resolved,
 	libraryClient *library.Client,
 	emitter *eventEmitter,
@@ -53,12 +54,12 @@ func buildProvisioning(
 	registry.Add(keeper.Job())
 
 	libraryScan := provisionbackstop.NewLibraryScan(
-		st, libraryClient, emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
+		st, libraryTitleScanner{titles: st, server: libraryClient}, emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
 	).WithActivity(activityRecorder).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.AddAll(libraryScan.Jobs())
 
 	episodeRefresh := provisionbackstop.NewDynamicEpisodeRefresh(st, func() provisionbackstop.EpisodeResolver {
-		return episodeResolver(libraryClient.Snapshot())
+		return episodeResolver(st, libraryClient.Snapshot())
 	}, func() time.Duration {
 		return settings.EpisodesMaxAge.Get(set)
 	}, time.Now, log)

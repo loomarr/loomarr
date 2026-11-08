@@ -154,7 +154,6 @@ type Channel struct {
 	// derives a stable instant from the channel id (see dealOriginOf). Transient, like
 	// DefaultWindow: it is not stored, so no channel needs a migration to get one.
 	DealOrigin time.Time     `json:"-"`
-	FillerRef  string        // ref to the channel's filler list (§10); "" = none yet
 	TunarrID   string        // retained Tunarr projection id; "" until first-ever successful projection
 	Status     ChannelStatus // Loomarr-side status
 	Shuffle    ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)

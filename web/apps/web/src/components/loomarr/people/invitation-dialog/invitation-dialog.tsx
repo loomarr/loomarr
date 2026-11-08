@@ -1,10 +1,11 @@
-import type { CreateInvitationInputBodyKind } from "@loomarr/api/models/createInvitationInputBodyKind";
+import { CreateInvitationInputBodyKind } from "@loomarr/api/models/createInvitationInputBodyKind";
 import { CreateInvitationInputBodyRole } from "@loomarr/api/models/createInvitationInputBodyRole";
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueInvitationGrantOutputBody";
 import { createInvitationSchema } from "@loomarr/core/schemas";
 import {
   Badge,
+  ChoiceGroup,
   Dialog,
   DialogClose,
   DialogContent,
@@ -22,7 +23,6 @@ import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationDialogProps } from "./invitation-dialog.type";
 
@@ -193,31 +193,23 @@ const InvitationDialog = ({
           <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
             <form.Field name="kind">
               {(field) => (
-                <fieldset className="grid gap-2 sm:grid-cols-2">
-                  <legend className="mb-2 text-sm font-medium">Credential path</legend>
-                  <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
-                    <input
-                      type="radio"
-                      name="invitation-kind"
-                      value="local"
-                      checked={field.state.value === "local"}
-                      disabled={busy}
-                      onChange={() => field.handleChange("local")}
-                    />
-                    Local Loomarr account
-                  </Label>
-                  <Label className="border-border flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border p-3">
-                    <input
-                      type="radio"
-                      name="invitation-kind"
-                      value="library"
-                      checked={field.state.value === "library"}
-                      disabled={busy || !libraryAvailable}
-                      onChange={() => field.handleChange("library")}
-                    />
-                    Emby or Jellyfin account
-                  </Label>
-                </fieldset>
+                <ChoiceGroup
+                  label="Credential path"
+                  onValueChange={field.handleChange}
+                  options={[
+                    {
+                      disabled: busy,
+                      label: "Local Loomarr account",
+                      value: CreateInvitationInputBodyKind.local,
+                    },
+                    {
+                      disabled: busy || !libraryAvailable,
+                      label: "Emby or Jellyfin account",
+                      value: CreateInvitationInputBodyKind.library,
+                    },
+                  ]}
+                  value={field.state.value}
+                />
               )}
             </form.Field>
 

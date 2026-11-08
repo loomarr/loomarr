@@ -113,15 +113,13 @@ func (s *Server) listLibraryNeeds(ctx context.Context, _ *struct{}) (*listLibrar
 	for _, n := range needs {
 		summaries = append(summaries, n.LibraryItemSummary)
 	}
-	for _, p := range problems {
-		summaries = append(summaries, p.LibraryItemSummary)
-	}
+	summaries = append(summaries, problems...)
 	posters := s.libraryPosters(ctx, summaries)
 	out := &listLibraryNeedsOutput{}
 	out.Body.Problems = make([]libraryProblemDTO, 0, len(problems))
 	for _, p := range problems {
 		out.Body.Problems = append(out.Body.Problems, libraryProblemDTO{
-			Item: libraryItemOf(p.LibraryItemSummary, posters), ExtraBytes: p.ExtraBytes,
+			Item: libraryItemOf(p, posters), ExtraBytes: p.ExtraBytes,
 		})
 	}
 	out.Body.Needs = make([]libraryNeedDTO, 0, len(needs))

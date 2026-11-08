@@ -37,8 +37,14 @@ type libraryStore interface {
 	store.LibraryCatalogStore
 	store.LibraryNeedsStore
 	store.LibraryCollectionStore
+	store.LibraryPeopleStore
+	store.LibraryIDMapStore
+	store.LibraryReferenceStore
+	store.LibraryItemFactsReader
+	store.LibraryTitleReader
+	store.SettingStore
 	inventory.Repository
-	posterRefs
+	artRefs
 }
 
 // libraryBuild is what Settings → Library needs beyond the store and settings.
@@ -129,7 +135,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		},
 		NFO:      nfo.New(),
 		Art:      localart.New(),
-		Posters:  libraryPostersOf(deps.images, st),
+		Artwork:  libraryArtworkOf(deps.images, st),
 		Catalog:  st,
 		Answers:  st,
 		Resolver: resolver,
@@ -168,17 +174,34 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
+	if deps.lib != nil {
+		mapper := &scan.IDMapper{Store: st, ServerFiles: serverFiles(deps.lib), Enabled: im.Enabled, Log: deps.log,
+			References: &scan.ReferenceRewriter{
+				Store: st, Collections: serverCollections(deps.lib), Members: serverCollectionMembers(deps.lib),
+				Flavor: func() string { return string(deps.lib.Snapshot().Connection().Flavor) }, Log: deps.log,
+			}}
+		deps.owner.goRunAfterBuild(mapper.Run)
+	}
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
 		CollectionStore: st, SetRecords: st}
 	if deps.tmdb != nil {
-		provider := mptmdb.New(deps.tmdb, nil)
+		provider := mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
 		enricher := &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
+			Language: func() string {
+				language, err := provider.Language()
+				if err != nil {
+					return ""
+				}
+				return language
+			},
 			Enabled: im.Enabled, Log: deps.log,
 		}
 		deps.owner.goRunAfterBuild(enricher.Run)
 		lib.Enricher = enricher
+		filmographer := &scan.Filmographer{Store: st, Catalog: provider, Enabled: im.Enabled, Log: deps.log}
+		deps.owner.goRunAfterBuild(filmographer.Run)
 		lib.Search = tmdbSearcher(deps.tmdb)
 		matcher := &scan.Matcher{
 			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,
@@ -187,6 +210,50 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		deps.owner.goRunAfterBuild(matcher.Run)
 	}
 	return libraryServices{roots: lib, hooks: hooks}
+}
+
+// serverFiles lists the media server's catalog for the cutover's id map, or says none is connected.
+func serverFiles(lib *library.Client) func(context.Context) ([]library.ServerFile, error) {
+	return func(ctx context.Context) ([]library.ServerFile, error) {
+		if _, err := lib.Snapshot().Connection().Validate(); err != nil {
+			return nil, scan.ErrNoServerCatalog
+		}
+		return lib.ServerFiles(ctx)
+	}
+}
+
+// serverCollections lists the media server's collections for the cutover's import.
+func serverCollections(lib *library.Client) func(context.Context) ([]scan.ServerCollection, error) {
+	return func(ctx context.Context) ([]scan.ServerCollection, error) {
+		lib := lib.Snapshot()
+		if _, err := lib.Connection().Validate(); err != nil {
+			return nil, scan.ErrNoServerCatalog
+		}
+		colls, err := lib.Collections(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]scan.ServerCollection, 0, len(colls))
+		for _, c := range colls {
+			out = append(out, scan.ServerCollection{ID: c.ID, Name: c.Name, FromTMDB: c.TMDBID != ""})
+		}
+		return out, nil
+	}
+}
+
+// serverCollectionMembers lists one media-server collection's titles by their media-server ids.
+func serverCollectionMembers(lib *library.Client) func(context.Context, string) ([]string, error) {
+	return func(ctx context.Context, id string) ([]string, error) {
+		members, err := lib.Snapshot().CollectionMembers(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(members))
+		for _, m := range members {
+			out = append(out, m.LibraryItemID)
+		}
+		return out, nil
+	}
 }
 
 // tmdbSearcher is TMDB's title search, as Needs you searches it.

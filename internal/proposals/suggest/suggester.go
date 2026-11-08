@@ -132,6 +132,16 @@ type Suggester struct {
 	// calendar is the household's holiday calendar (#2030): the definitions a request's named
 	// holiday is read against, and the country that decides which of them come into season.
 	calendar func() schedule.Calendar
+	// interactive is held for each run, so background model work yields the AI server to it
+	// (#1508). Nil holds nothing.
+	interactive *llm.InteractiveGate
+}
+
+// WithInteractiveGate marks every suggestion run as interactive LLM work on gate: background filler
+// vision waits while one is in flight (#1508).
+func (s *Suggester) WithInteractiveGate(gate *llm.InteractiveGate) *Suggester {
+	s.interactive = gate
+	return s
 }
 
 // WithCalendar reads named holidays against the household's calendar rather than the shipped US
@@ -241,6 +251,7 @@ const groundingRetryPrompt = `You returned no grounded picks without finding usa
 	`or keywords for a holiday, motif, franchise, or topic. Then select only ids the tool returns.`
 
 func (s *Suggester) Suggest(ctx context.Context, request proposals.Intent) (proposals.Proposal, error) {
+	defer s.interactive.Begin()()
 	intent := Intent{Intent: request}
 	if conflictingConstraints(intent) {
 		trace := proposals.DecisionTrace{Version: DecisionTraceVersion, Terminal: TerminalConstraintsConflict}

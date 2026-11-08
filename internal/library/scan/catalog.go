@@ -46,9 +46,18 @@ func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin invento
 	}, true
 }
 
-// catalogKey is the catalog row a movie's or series' details come from: its TMDB id, the one
-// catalog a title is fetched from. A title with none has the zero key.
+// catalogKey is the catalog row a title's details come from: a movie's or series' TMDB id, the
+// one catalog a title is fetched from, or an episode's own TVDB id, by which TMDB finds its view
+// of the episode (decision 53; never its season and number). A title with none has the zero key.
 func catalogKey(kind mp.Kind, ids []mp.ExternalID) store.LibraryCatalogKey {
+	if kind == mp.KindEpisode {
+		for _, id := range ids {
+			if id.Namespace == mp.NamespaceTVDB && id.Value != "" {
+				return store.LibraryCatalogKey{Provider: string(mp.NamespaceTVDB), Kind: string(kind), ExternalID: id.Value}
+			}
+		}
+		return store.LibraryCatalogKey{}
+	}
 	if kind != mp.KindMovie && kind != mp.KindSeries {
 		return store.LibraryCatalogKey{}
 	}

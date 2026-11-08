@@ -60,6 +60,9 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("SplitConfirmationRequiresReviewParent", func(t *testing.T) {
 			testSplitConfirmationRequiresReviewParent(t, newStore)
 		})
+		t.Run("SplitConfirmationRefusesFiledParent", func(t *testing.T) {
+			testSplitConfirmationRefusesFiledParent(t, newStore)
+		})
 		t.Run("SplitProposalClaimFencesConfirmers", func(t *testing.T) {
 			testSplitProposalClaimFencesConfirmers(t, newStore)
 		})
@@ -73,13 +76,13 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FillerAcquisitionRepairSummary", func(t *testing.T) { testFillerAcquisitionRepairSummary(t, newStore) })
 		t.Run("InteractiveOperations", func(t *testing.T) { testInteractiveOperations(t, newStore) })
 		t.Run("FillerInferenceAccountingAndBudgets", func(t *testing.T) { testFillerInferenceAccountingAndBudgets(t, newStore) })
+		t.Run("FillerRetention", func(t *testing.T) { testFillerRetention(t, newStore) })
+		t.Run("FillerRetentionEmptyCatalog", func(t *testing.T) { testFillerRetentionEmptyCatalog(t, newStore) })
 		t.Run("FillerStructureWindowCallLedger", func(t *testing.T) { testFillerStructureWindowCallLedger(t, newStore) })
 		t.Run("FillerStructureWindowCallLedgerRetry", func(t *testing.T) { testFillerStructureWindowCallLedgerRetry(t, newStore) })
 		t.Run("FillerHeldClipUpsertAndCompositeRelease", func(t *testing.T) { testFillerHeldClipUpsertAndCompositeRelease(t, newStore) })
 		t.Run("FillerTerminalReadyTransaction", func(t *testing.T) { testFillerTerminalReadyTransaction(t, newStore) })
 		t.Run("FillerSplitShadowDecisions", func(t *testing.T) { testFillerSplitShadowDecisions(t, newStore) })
-		t.Run("FillerSpokenSafetyLedger", func(t *testing.T) { testFillerSpokenSafetyLedger(t, newStore) })
-		t.Run("FillerSpokenSafetyExecutionPort", func(t *testing.T) { testFillerSpokenSafetyExecutionPort(t, newStore) })
 		t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 		t.Run("ClipPipelineState", func(t *testing.T) { testClipPipeline(t, newStore) })
 		t.Run("ClipPipelineOverview", func(t *testing.T) { testClipPipelineOverview(t, newStore) })

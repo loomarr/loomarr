@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -59,6 +60,21 @@ type LibraryHeldCount struct {
 
 // LibraryFileStore keeps the scanner's file table.
 type LibraryFileStore interface {
+	// LibraryAudioTracks is a file's own audio tracks (none of its external audio files), in
+	// stream order, as the Library lists them (#2151 decision 47): Index, Language, Default,
+	// Commentary, Descriptive, Codec and Channels. ok is false unless the scanner read the file's
+	// header at this size and modification time and lists it with a title, so a file changed since
+	// is never answered from its old tracks.
+	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) (tracks []LibraryStream, ok bool, err error)
+	// LibraryPlayingFile is the file a library item plays: its one source marked plays, while the
+	// scanner sees it present. ok is false for an id that is not a library item, or one with no
+	// present file.
+	LibraryPlayingFile(ctx context.Context, itemID string) (path string, ok bool, err error)
+	// LibraryPlayingVideo is the first video stream of the file a library item plays, as the
+	// scanner last read its header: Index, Codec, Width, Height, FrameRate, PixelFormat and
+	// ColorTransfer. ok is false when LibraryPlayingFile has no answer, or the file's header has
+	// not been read with a video stream.
+	LibraryPlayingVideo(ctx context.Context, itemID string) (video LibraryStream, ok bool, err error)
 	// LibraryFiles reads every file row of one root, missing ones included, in path order.
 	LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error)
 	// SaveLibraryFiles writes rows whole, in one transaction.
@@ -71,6 +87,71 @@ type LibraryFileStore interface {
 	SetLibraryRootScanned(ctx context.Context, root string, at time.Time) error
 	// LibraryFileCounts counts present files across roots.
 	LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error)
+}
+
+func (s *sqlStore) LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error) {
+	var path string
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT s.path FROM library_sources s
+		JOIN library_files f ON f.path = s.path
+		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = ''
+		ORDER BY s.path LIMIT 1`), itemID).Scan(&path)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return "", false, nil
+	case err != nil:
+		return "", false, fmt.Errorf("library playing file: %w", err)
+	}
+	return path, true, nil
+}
+
+func (s *sqlStore) LibraryPlayingVideo(ctx context.Context, itemID string) (LibraryStream, bool, error) {
+	v := LibraryStream{Kind: "video"}
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT st.stream_index, st.codec, st.width, st.height, st.frame_rate,
+		st.pixel_format, st.color_transfer FROM library_sources s
+		JOIN library_files f ON f.path = s.path
+		JOIN library_streams st ON st.item_id = s.item_id AND st.path = s.path AND st.kind = 'video' AND st.external_ref = ''
+		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = '' AND f.header = ?
+		ORDER BY s.path, st.stream_index LIMIT 1`), itemID, LibraryHeaderRead).Scan(
+		&v.Index, &v.Codec, &v.Width, &v.Height, &v.FrameRate, &v.PixelFormat, &v.ColorTransfer)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return LibraryStream{}, false, nil
+	case err != nil:
+		return LibraryStream{}, false, fmt.Errorf("library playing video: %w", err)
+	}
+	return v, true, nil
+}
+
+func (s *sqlStore) LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {
+	var listed int
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_files f
+		JOIN library_sources src ON src.path = f.path
+		WHERE f.path = ? AND f.size_bytes = ? AND f.modified_ns = ? AND f.header = ? AND f.missing_at_ms = 0`),
+		path, sizeBytes, modifiedNs, LibraryHeaderRead).Scan(&listed); err != nil {
+		return nil, false, fmt.Errorf("library audio tracks: %w", err)
+	}
+	if listed == 0 {
+		return nil, false, nil
+	}
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT stream_index, language, is_default, commentary, descriptive,
+		codec, channels FROM library_streams WHERE path = ? AND kind = 'audio' AND external_ref = ''
+		ORDER BY stream_index`), path)
+	if err != nil {
+		return nil, false, fmt.Errorf("library audio tracks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	tracks := []LibraryStream{}
+	for rows.Next() {
+		t := LibraryStream{Kind: "audio"}
+		if err := rows.Scan(&t.Index, &t.Language, &t.Default, &t.Commentary, &t.Descriptive, &t.Codec, &t.Channels); err != nil {
+			return nil, false, fmt.Errorf("library audio tracks: %w", err)
+		}
+		tracks = append(tracks, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("library audio tracks: %w", err)
+	}
+	return tracks, true, nil
 }
 
 func (s *sqlStore) LibraryFiles(ctx context.Context, root string) ([]LibraryFile, error) {

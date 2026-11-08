@@ -4,9 +4,9 @@ import type { JobView } from "@loomarr/api/models/jobView";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
+import { Action, StatusDot, type StatusTone } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Pause, Pencil, Play } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ErrorDetails } from "@/components/loomarr/feedback/error-details";
@@ -77,9 +77,9 @@ const ExecutionHistory = ({ name }: { name: string }) => {
     return (
       <div className="text-destructive mt-4 flex items-center gap-2 text-xs" role="alert">
         <span>Couldn’t load execution history.</span>
-        <Button variant="ghost" size="sm" onClick={() => query.refetch()}>
+        <Action onPress={() => query.refetch()} variant="ghost">
           Retry
-        </Button>
+        </Action>
       </div>
     );
   }
@@ -321,32 +321,22 @@ const TasksPage = () => {
                                   <ExecutionHistory name={job.name} />
                                   {!job.disabledReason && (
                                     <div className="mt-3 flex items-center gap-1">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-muted-foreground"
+                                      <Action
+                                        accessibilityLabel={
+                                          job.paused ? `Resume ${job.title}` : `Pause ${job.title}`
+                                        }
                                         disabled={pausing}
-                                        aria-label={job.paused ? `Resume ${job.title}` : `Pause ${job.title}`}
-                                        onClick={() =>
+                                        icon={job.paused ? "play" : "pause"}
+                                        onPress={() =>
                                           pause.mutate({ name: job.name, data: { paused: !job.paused } })
                                         }
-                                      >
-                                        {job.paused ? (
-                                          <Play className="size-4" aria-hidden />
-                                        ) : (
-                                          <Pause className="size-4" aria-hidden />
-                                        )}
-                                        {job.paused ? "Resume" : "Pause"}
-                                      </Button>
-                                      <Button
                                         variant="ghost"
-                                        size="sm"
-                                        className="text-muted-foreground"
-                                        onClick={() => setEditing(job)}
                                       >
-                                        <Pencil className="size-4" aria-hidden />
+                                        {job.paused ? "Resume" : "Pause"}
+                                      </Action>
+                                      <Action icon="edit" onPress={() => setEditing(job)} variant="ghost">
                                         Modify
-                                      </Button>
+                                      </Action>
                                       <RunButton busy={busy} onRun={() => run.mutate({ name: job.name })} />
                                     </div>
                                   )}

@@ -17,6 +17,9 @@ type Source struct {
 type Record struct {
 	Source Source
 	Kind   Kind
+	// Language is the language a catalog answered in ("en-US"); empty for a source that has
+	// one language.
+	Language string
 	// IDs are the item's own grounded ids: an episode's are its own episode ids, never its
 	// series' (decision 15).
 	IDs []ExternalID
@@ -107,8 +110,8 @@ type Descriptive struct {
 	CommunityRating float64
 	// Collection is the franchise a movie belongs to in the source's catalog, or nil.
 	Collection *CollectionRef
-	// Network is a series' network or a movie's studio.
-	Network string
+	// Studios are a series' networks or a movie's studios, in the source's order.
+	Studios []string
 	// Status is a series' status as its source reports it, such as "continuing" or "ended".
 	Status string
 	// Runtime is the nominal running time, not a measurement of a file.
@@ -128,6 +131,21 @@ type Descriptive struct {
 	// It says how many episodes each season holds, never which file is which: TMDB and TVDB number
 	// some shows differently.
 	Seasons []SeasonSize
+	// Orderings counts the other episode orderings the catalog knows for a series (TMDB's episode
+	// groups: DVD, absolute, story arc). Nil is unknown. Only a series with none is numbered by
+	// season and episode (#2151 decision 53).
+	Orderings *int
+}
+
+// FilmCredit is one title in a person's filmography (#2151 decision 50): a movie or series by its
+// TMDB id, what they did on it, and an actor's character.
+type FilmCredit struct {
+	Kind      Kind
+	TMDB      string
+	Title     string
+	Year      int
+	Role      PersonRole
+	Character string
 }
 
 // SeasonSize is one season of a series and how many episodes it has.
@@ -143,6 +161,8 @@ const (
 	PersonActor    PersonRole = "actor"
 	PersonDirector PersonRole = "director"
 	PersonWriter   PersonRole = "writer"
+	// PersonCreator created a series.
+	PersonCreator PersonRole = "creator"
 )
 
 // Person is someone credited on a title (decision 49). TMDB is their TMDB person id when the
@@ -183,4 +203,23 @@ type Technical struct {
 type ArtworkRef struct {
 	Kind string
 	Ref  string
+	// Season is the season a season poster (KindSeasonPoster) belongs to, 0 for the specials;
+	// zero for any other kind.
+	Season int `json:",omitempty"`
 }
+
+// Artwork kinds, named as the arrs and TMDB name them so precedence picks one per kind. Every
+// provider maps what it is sent onto these; library_art.kind's CHECK lists exactly this set.
+const (
+	KindPoster    = "poster"
+	KindFanart    = "fanart"
+	KindClearlogo = "clearlogo"
+	KindBanner    = "banner"
+	KindLandscape = "landscape"
+	KindClearart  = "clearart"
+	KindDiscart   = "discart"
+	// KindThumb is an episode's still.
+	KindThumb = "thumb"
+	// KindSeasonPoster is a series' poster for one of its seasons (#2151 decisions 45, 61).
+	KindSeasonPoster = "season-poster"
+)

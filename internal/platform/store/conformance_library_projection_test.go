@@ -93,6 +93,14 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 		case "series":
 			it.Rating, it.From.Rating = "TV-PG", "tmdb"
 			it.Genres, it.Studios = []string{"Drama", "Comedy", "Drama"}, []string{"Network"}
+			it.Countries = []string{"Canada", "Ireland"}
+			it.Tagline, it.Trailer = "Keep the lamps lit.", "https://www.youtube.com/watch?v=show9000"
+			it.Credits = []LibraryCredit{
+				{Name: "Station Lead", Role: "actor", Character: "Keeper", TMDB: "90003202", Photo: "https://img.invalid/lead.jpg"},
+				{Name: "Station Lead", Role: "creator", TMDB: "90003202"},
+				{Name: "Pen Name", Role: "writer"},
+				{Name: "", Role: "actor"},
+			}
 			it.IDs = []LibraryID{{"tmdb", "90000701"}, {"tvdb", "90000702"}}
 		case "episode":
 			it.Season, it.Episode, it.Series = 1, 2, showOrigin
@@ -164,8 +172,129 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 	if got := names("library_studios"); len(got) != 1 || got[0] != "Network" {
 		t.Fatalf("studios = %v", got)
 	}
+	if got := names("library_countries"); len(got) != 2 || got[0] != "Canada" || got[1] != "Ireland" {
+		t.Fatalf("countries = %v, want Canada, Ireland in order", got)
+	}
+	var tagline, trailer string
+	if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT tagline, trailer FROM library_items WHERE id = ?`),
+		string(show)).Scan(&tagline, &trailer); err != nil || tagline != "Keep the lamps lit." ||
+		trailer != "https://www.youtube.com/watch?v=show9000" {
+		t.Fatalf("tagline, trailer = %q, %q, %v", tagline, trailer, err)
+	}
+	// One person credited twice is one row, keeping the photo the creator credit lacks; a person
+	// with no TMDB id is kept by name; a credit with no name is dropped.
+	var credits, people int
+	if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT COUNT(*) FROM library_credits WHERE item_id = ? AND
+		((position = 0 AND person_id = 'tmdb:90003202' AND role = 'actor' AND character_name = 'Keeper') OR
+		 (position = 1 AND person_id = 'tmdb:90003202' AND role = 'creator') OR
+		 (position = 2 AND person_id = 'name:Pen Name' AND role = 'writer'))`), string(show)).Scan(&credits); err != nil || credits != 3 {
+		t.Fatalf("credits = %d, %v; want the actor, the creator and the writer", credits, err)
+	}
+	if err := sqlSt.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_people WHERE
+		(id = 'tmdb:90003202' AND tmdb_id = '90003202' AND photo = 'https://img.invalid/lead.jpg') OR
+		(id = 'name:Pen Name' AND tmdb_id = '' AND name = 'Pen Name')`).Scan(&people); err != nil || people != 2 {
+		t.Fatalf("people = %d, %v; want the linked lead with their photo and the unlinked writer", people, err)
+	}
 	var ids int
 	if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT COUNT(*) FROM library_ids WHERE item_id = ?`), string(show)).Scan(&ids); err != nil || ids != 2 {
 		t.Fatalf("ids = %d, %v; want 2", ids, err)
+	}
+}
+
+// A title's files, tracks and artwork are rows of their own, replaced whole on each write.
+func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	sqlSt, ok := st.(*sqlStore)
+	if !ok {
+		t.Skip("reads rows directly")
+	}
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	video := LibraryStream{Index: 0, Kind: "video", Codec: "hevc", Width: 3840, Height: 1600,
+		ColorTransfer: "smpte2084", Resolution: "4K", HDR: "HDR10"}
+	audio := LibraryStream{Index: 1, Kind: "audio", Codec: "eac3", Channels: 6, Language: "en",
+		LanguageName: "English", AudioFormat: "Dolby Digital Plus", Default: true}
+	commentary := audio
+	commentary.Index, commentary.Commentary, commentary.Default = 2, true, false
+	external := LibraryStream{Index: 3, Kind: "subtitle", Codec: "subrip", Language: "en", Forced: true,
+		HearingImpaired: true, ExternalRef: "/m/a.en.forced.sdh.srt"}
+	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film",
+		Sources: []LibrarySource{
+			{Path: "/m/a.mkv", Container: "matroska", SizeBytes: 9, DurationMs: 1000, Plays: true,
+				Streams:  []LibraryStream{video, audio, commentary, external},
+				Chapters: []LibraryChapter{{StartMs: 0, EndMs: 500, Title: "One"}, {StartMs: 500, EndMs: -1}},
+				Markers:  []LibraryMarker{{StartMs: 100, EndMs: 200, Kind: "commercial"}}},
+			{Path: "/m/b.mkv", SizeBytes: 5, Streams: []LibraryStream{audio},
+				Trickplay: []LibraryTrickplay{{Ref: "/m/b.bif", Format: "bif"}}},
+		},
+		Art: []LibraryArt{{Kind: "poster", Ref: "/m/poster.jpg"}, {Kind: "fanart", Ref: "/m/fanart.jpg"},
+			{Kind: "season-poster", Season: 0, Ref: "/m/s0.jpg"}, {Kind: "season-poster", Season: 1, Ref: "/m/s1.jpg"}},
+	}
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+		t.Fatal(err)
+	}
+	count := func(query string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(query), args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := count(`SELECT COUNT(*) FROM library_sources WHERE item_id = 'm1' AND plays = TRUE AND path = '/m/a.mkv'`); n != 1 {
+		t.Fatalf("playing copy rows = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE item_id = 'm1' AND resolution = '4K' AND hdr = 'HDR10'`); n != 1 {
+		t.Fatalf("labelled video rows = %d", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE kind = 'audio' AND language = 'en' AND is_default = TRUE`); n != 2 {
+		t.Fatalf("English audio rows = %d, want one per file", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 4 {
+		t.Fatalf("art rows = %d, want two plus a poster for each of two seasons", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE item_id = 'm1' AND commentary = TRUE AND stream_index = 2`); n != 1 {
+		t.Fatalf("commentary rows = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE external_ref = '/m/a.en.forced.sdh.srt'
+		AND hearing_impaired = TRUE AND forced = TRUE AND path = '/m/a.mkv'`); n != 1 {
+		t.Fatalf("external subtitle rows = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_chapters WHERE path = '/m/a.mkv' AND
+		((position = 0 AND title = 'One' AND end_ms = 500) OR (position = 1 AND end_ms = -1))`); n != 2 {
+		t.Fatalf("chapter rows = %d, want 2", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_markers WHERE path = '/m/a.mkv' AND kind = 'commercial'
+		AND start_ms = 100 AND end_ms = 200`); n != 1 {
+		t.Fatalf("marker rows = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_trickplay WHERE item_id = 'm1' AND path = '/m/b.mkv' AND format = 'bif'`); n != 1 {
+		t.Fatalf("trickplay rows = %d, want b.mkv's", n)
+	}
+
+	// Written again with one file: the other file and its tracks go.
+	item.Sources = item.Sources[:1]
+	item.Art = nil
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_sources WHERE item_id = 'm1'`); n != 1 {
+		t.Fatalf("sources after a rewrite = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE path = '/m/b.mkv'`); n != 0 {
+		t.Fatalf("a gone file's tracks = %d, want 0", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_trickplay WHERE item_id = 'm1'`); n != 0 {
+		t.Fatalf("a gone file's trickplay = %d, want 0", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 0 {
+		t.Fatalf("art after a rewrite = %d, want 0", n)
+	}
+	item.Sources[0].Chapters, item.Sources[0].Markers = nil, nil
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_chapters`) + count(`SELECT COUNT(*) FROM library_markers`); n != 0 {
+		t.Fatalf("chapters and markers after a rewrite without them = %d, want 0", n)
 	}
 }

@@ -1,8 +1,7 @@
-import { SectionHeader } from "@loomarr/design-system";
+import { Action, SectionHeader } from "@loomarr/design-system";
 import { surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
-import { Button } from "@/components/ui/button";
 import { AiringArtwork } from "../on-now";
 import type { RecentlyTunedProps } from "./recently-tuned.type";
 
@@ -47,9 +46,12 @@ const RecentlyTuned = ({ continueWatching, layout, nowMs, activeChannelIds }: Re
           </h3>
           <p className="text-static-400 m-0 text-sm">Join what’s on now.</p>
         </div>
-        <Button render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}>
+        <Action
+          accessibilityRole="link"
+          render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}
+        >
           Watch live
-        </Button>
+        </Action>
       </div>
     </section>
   );

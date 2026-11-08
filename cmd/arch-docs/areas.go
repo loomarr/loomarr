@@ -129,8 +129,9 @@ var areas = []area{
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
-				"backend transition, start-up configuration, Tunarr's HTTP client and metrics, and the " +
-				"address check that keeps LAN discovery answering only the household's network",
+				"backend transition, start-up configuration, Tunarr's HTTP client and metrics, the " +
+				"address check that keeps LAN discovery answering only the household's network, and the " +
+				"language codes an audio track is chosen by",
 			"channels": "the `channels/schedule` programming a backend plays",
 			"library": "the media server's Live TV API that channels are published to, and `provision` keys " +
 				"naming what a slot plays",
@@ -220,7 +221,8 @@ var areas = []area{
 		Name:  "test",
 		Title: "Test support",
 		Description: "Code that exists for tests and never ships in the server: the shared test doubles " +
-			"and fixtures, the store's SQLite and Postgres test databases, the invented demo library, the " +
+			"and fixtures, the store's SQLite and Postgres test databases, the invented demo library and the " +
+			"TMDB stand-in it and the tests share, the " +
 			"end-to-end integration journeys, and the evaluation harness that runs only under its own " +
 			"build tag.",
 		Packages: []string{
@@ -228,7 +230,7 @@ var areas = []area{
 			"testkit/playoutstreamfixture", "testkit/postgresimage", "testkit/recordfixture",
 			"testkit/channeljourney", "testkit/libraryfixture", "testkit/outlookfixture",
 			"testkit/catalogfixture", "testkit/moviecollectionsfixture", "platform/store/storetest",
-			"demolibrary", "integration", "eval",
+			"demolibrary", "tmdb/tmdbstandin", "integration", "eval",
 		},
 		ImportsAnyArea: true,
 	},
