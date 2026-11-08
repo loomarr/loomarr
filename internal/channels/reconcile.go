@@ -440,6 +440,12 @@ func (e *Engine) reconcileOnce(
 	if playsInternally && onAirChanged && e.scheduleInvalidator != nil {
 		e.scheduleInvalidator.StopChannel(ch.ID)
 	}
+	// Measure ahead (#1518): what this channel airs in the next two days is queued for the one
+	// low-priority worker, so its first airing already has a keyframe index and break candidates.
+	// Tunarr streams its own way and never reads them.
+	if playsInternally {
+		e.premeasureAhead(ctx, ch)
+	}
 
 	// Tell the UI the channel changed so it updates live (no manual refresh — the
 	// "self-maintaining" model, §9). Best-effort: nil notifier / a dropped frame is a

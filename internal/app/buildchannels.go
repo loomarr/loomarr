@@ -248,6 +248,10 @@ func buildChannels(
 			NaturalBreaks: func(ctx context.Context) schedule.NaturalBreakSource {
 				return playoutRes.naturalBreakSource(ctx)
 			},
+			// Measure ahead (#1518): the next two days' programmes go to the one measure worker.
+			Premeasure: func(ctx context.Context, libraryItemIDs []string) {
+				playoutRes.premeasure(ctx, libraryItemIDs)
+			},
 		}, time.Now, log).WithMetrics(metricRecorder).WithQualityRecorder(quality.NewSchedulingRecorder(st, log))
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops
