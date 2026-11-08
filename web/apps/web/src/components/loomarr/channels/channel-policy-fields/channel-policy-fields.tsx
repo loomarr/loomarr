@@ -94,7 +94,7 @@ const DateAxisRow = ({
         />
       </div>
       <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(index)}>
-        Remove {where}
+        Remove <span className="sr-only">{where}</span>
       </Button>
     </div>
   );
@@ -651,7 +651,7 @@ const ChannelPolicyFields = ({
               initial={tidyGoDuration(separation?.[field])}
               key={separation?.[field] ?? ""}
               placeholder="Use built-in"
-              width={112}
+              width={160}
               onCommit={(text) => {
                 const next = durationOrUndefined(text);
                 if (next === tidyGoDuration(separation?.[field]) || next === separation?.[field]) return;
@@ -675,7 +675,7 @@ const ChannelPolicyFields = ({
             key={separation?.blockMax ?? ""}
             keyboardType="number-pad"
             placeholder="Use built-in"
-            width={112}
+            width={160}
             onCommit={(text) => {
               // Blank clears the authored cap and returns to the built-in limit. `0` is
               // also resolved as built-in here, so there is no separate no-limit state.
