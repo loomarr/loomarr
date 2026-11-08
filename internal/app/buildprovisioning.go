@@ -17,8 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provisionbackstop"
 )
 
-// buildProvisioning registers acquisition, availability, retention, and queue work and returns
-// the one episode refresher consumed later by channel maintenance.
+// buildProvisioning registers acquisition, availability, retention, and queue work.
 func buildProvisioning(
 	st records.Store,
 	set resolved,
@@ -29,9 +28,9 @@ func buildProvisioning(
 	processDiagnostics *diagnostics.ProcessManager,
 	log *slog.Logger,
 	metricRecorder *metrics.Recorder,
-) *provisionbackstop.EpisodeRefresh {
+) {
 	if st == nil {
-		return nil
+		return
 	}
 	reconciler := provisionbackstop.NewDynamic(st, set.requesterFor(metricRecorder), func() provisionbackstop.LibraryLookup {
 		return libraryLookup{titles: st, lib: libraryClient.Snapshot()}
@@ -58,12 +57,6 @@ func buildProvisioning(
 	).WithActivity(activityRecorder).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.AddAll(libraryScan.Jobs())
 
-	episodeRefresh := provisionbackstop.NewDynamicEpisodeRefresh(st, func() provisionbackstop.EpisodeResolver {
-		return episodeResolver(st, libraryClient.Snapshot())
-	}, func() time.Duration {
-		return settings.EpisodesMaxAge.Get(set)
-	}, time.Now, log)
-
 	if arr := set.arrRequester(metricRecorder); arr != nil {
 		queuePoll := provisionbackstop.NewQueuePoll(st, arr, emitter, settings.DownloadingTTL.Get(set), time.Now, log)
 		registry.Add(queuePoll.Job("arr-queue-poll", "Poll Sonarr and Radarr",
@@ -73,5 +66,4 @@ func buildProvisioning(
 		registry.Add(queuePoll.Job("seerr-queue-poll", "Poll Seerr acquisitions",
 			"Updates requested titles from the coarse acquisition states reported by Seerr."))
 	}
-	return episodeRefresh
 }

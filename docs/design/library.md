@@ -596,7 +596,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   are history and keep theirs). An id the map doesn't pair still maps when its record names a
   title (a title's key, a proposal pick's) whose TMDB or TVDB id a Library title carries: a media
   server that re-added its library left every old id dead, but not the titles. The pass runs in
-  one transaction and drops the media server's episode cache.
+  one transaction.
 
   There is no all-or-nothing gate: every reader takes either kind of id, so what maps is rewritten
   at once and the rest is logged and waits for a later pass. An airing names an episode with no
@@ -619,22 +619,16 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (`LibraryPlayingFile`). An item whose file is gone airs the offline card. The media server's
   stream URL, its per-item path lookup and the `library_item_paths` cache are deleted (migration
   194). `library.path_map` now only helps folder discovery.
-
-## Cached series episodes
-
-Expanding a series into episodes costs one media-server call per show, which used to dominate guide
-latency. `series_episodes` caches one row per show (episodes plus `fetched_at`); the library stays the
-source of truth.
-
-- **Read:** a miss or a stale row falls back to the live call and writes the result back.
-- **Refresh:** the `channel-maintenance` job re-enumerates aged rows, only for shows referenced by
-  lineups. It is deliberately not hung off `library-scan`, which only visits in-flight acquisitions and
-  would never refresh a show that is already available.
-- **Playable contract:** every cached episode needs a non-blank library item id, a positive duration and
-  valid season and episode numbers. A write that breaks it is rejected whole; a cache row that breaks
-  it fails the read, and duplicate identity members are an error, not last-one-wins.
-- **Editorial evidence** (rating in `(0,10]`, an overview up to 2,048 code points, up to 16 tags) is
-  repaired tolerantly: an invalid or ambiguous field becomes unavailable without discarding the episode.
+- **A series expands only from the Library** (step 16). A lineup's series reads the Library's
+  episodes (`LibraryEpisodes`) and nothing else: an id that is no library series expands to nothing,
+  with no media-server call. An episode needs a non-blank library item id, a positive duration and
+  valid season and episode numbers, or it is dropped. Its editorial evidence (rating in `(0,10]`,
+  an overview up to 2,048 code points, up to 16 tags) is repaired tolerantly: an invalid field
+  becomes unavailable without discarding the episode. The read is three indexed queries: the
+  household library's largest show (948 episodes) answers in under 10ms, so the media server's
+  episode cache (`series_episodes`, its `channel-maintenance` refresh and `episodes.max_age`) is
+  deleted (migration 195). The engine's five-second memo still collapses the repeats within one
+  layout.
 
 ## Search
 

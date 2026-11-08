@@ -19,9 +19,6 @@ const (
 	// is written afresh, and a person's identification answer (library_answers, keyed by where the
 	// title is) still applies to it.
 	LibraryItemRetention = 365 * 24 * time.Hour
-	// MediaServerCacheRetention is how long the media server's episode list or file path of an item
-	// nothing names is kept. Either is fetched again on its next use.
-	MediaServerCacheRetention = 30 * 24 * time.Hour
 )
 
 // CatalogRetentionStore deletes what the catalog keeps after titles and files have gone.
@@ -38,9 +35,7 @@ type CatalogRetentionStore interface {
 //     for a person to confirm;
 //   - library rows older than LibraryItemRetention with no item, file, episode or collection
 //     membership left and that no stored record names, with their candidates and image refs;
-//   - catalog records no library row names, fetched (or failing) longer than LibraryItemRetention;
-//   - the media server's episode lists and paths of items nothing names, after
-//     MediaServerCacheRetention.
+//   - catalog records no library row names, fetched (or failing) longer than LibraryItemRetention.
 //
 // "Names" is LibraryReferences: titles, airings, channels' slots and open proposals' picks.
 func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, error) {
@@ -50,7 +45,6 @@ func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, e
 	}
 	missing := now.Add(-CatalogMissingRetention)
 	itemCutoffMs := now.Add(-LibraryItemRetention).UnixMilli()
-	cache := now.Add(-MediaServerCacheRetention)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -121,10 +115,6 @@ func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, e
 		    WHERE i.catalog = library_catalog.provider || ':' || library_catalog.kind || ':' || library_catalog.external_id
 		       OR i.set_key = library_catalog.provider || ':' || library_catalog.kind || ':' || library_catalog.external_id)`,
 		itemCutoffMs, itemCutoffMs); err != nil {
-		return 0, err
-	}
-	if err := exec("episode lists", `DELETE FROM series_episodes WHERE fetched_at < ?
-		AND NOT EXISTS (SELECT 1 FROM titles t WHERE t.library_id = series_episodes.library_id)`, epoch(cache)); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -158,70 +158,43 @@ func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 	return nil
 }
 
-// episodeResolver expands a series lineup entry into its episodes (§9), mapping each to a
-// schedule.ResolvedProgram so the schedule domain stays free of a library dependency. A library
-// series id reads the Library's own tables (#2151 step 15); any other id lists the media server's
-// episodes, as before the cutover. lib may be nil when no media server is connected.
-func episodeResolver(st store.LibraryEpisodeReader, lib *library.Client) channels.EpisodeResolver {
+// episodeResolver expands a series lineup entry into the Library's episodes (§9, #2151 step 16),
+// mapping each to a schedule.ResolvedProgram so the schedule domain stays free of a library
+// dependency. An episode that could not play is dropped and its editorial evidence is bounded. An
+// id that is no library series expands to nothing: the media server is never asked.
+func episodeResolver(st store.LibraryEpisodeReader) channels.EpisodeResolver {
 	return func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error) {
-		eps, found, err := libraryEpisodes(ctx, st, showItemID)
+		rows, _, err := st.LibraryEpisodes(ctx, showItemID)
 		if err != nil {
 			return nil, err
 		}
-		if !found && lib != nil {
-			if eps, err = lib.ListEpisodes(ctx, showItemID); err != nil {
-				return nil, err
+		out := make([]schedule.ResolvedProgram, 0, len(rows))
+		for _, r := range rows {
+			if episodeevidence.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
+				continue
 			}
-		}
-		out := make([]schedule.ResolvedProgram, 0, len(eps))
-		for _, e := range eps {
+			evidence := episodeevidence.Sanitize(r.Score, r.Overview, r.Tags)
+			// The catalog's premiere date is a calendar day; anything else is unknown, not an error.
+			airDate, _ := time.Parse(time.DateOnly, r.PremiereDate)
 			out = append(out, schedule.ResolvedProgram{
-				LibraryItemID: e.LibraryItemID,
-				Title:         e.Name,
-				DurationMs:    e.DurationMs,
-				Season:        e.Season,
-				Year:          e.ProductionYear,
-				AirDate:       e.AirDate,
-				Episode:       e.Episode,
-				EpisodeEnd:    e.EpisodeEnd, // §5 multi-part: single-file span end
+				LibraryItemID: r.ItemID,
+				Title:         r.Name,
+				DurationMs:    r.DurationMs,
+				Season:        r.Season,
+				Year:          r.Year,
+				AirDate:       airDate,
+				Episode:       r.Episode,
+				EpisodeEnd:    r.EpisodeEnd, // §5 multi-part: single-file span end
 				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
 				// so the schedule domain only ever compares ladder values (§4).
-				OfficialRating:  rating.Normalize(e.OfficialRating),
-				CommunityRating: e.CommunityRating,
-				Overview:        e.Overview,
-				Tags:            append([]string(nil), e.Tags...),
+				OfficialRating:  rating.Normalize(r.Rating),
+				CommunityRating: evidence.CommunityRating,
+				Overview:        evidence.Overview,
+				Tags:            evidence.Tags,
 			})
 		}
 		return out, nil
 	}
-}
-
-// libraryEpisodes reads a library series' episodes under the media server's own listing rules:
-// an episode that could not play is dropped, and its editorial evidence is bounded.
-func libraryEpisodes(ctx context.Context, st store.LibraryEpisodeReader, seriesID string) ([]library.Episode, bool, error) {
-	if st == nil {
-		return nil, false, nil
-	}
-	rows, found, err := st.LibraryEpisodes(ctx, seriesID)
-	if err != nil || !found {
-		return nil, found, err
-	}
-	eps := make([]library.Episode, 0, len(rows))
-	for _, r := range rows {
-		if episodeevidence.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
-			continue
-		}
-		evidence := episodeevidence.Sanitize(r.Score, r.Overview, r.Tags)
-		// The catalog's premiere date is a calendar day; anything else is unknown, not an error.
-		airDate, _ := time.Parse(time.DateOnly, r.PremiereDate)
-		eps = append(eps, library.Episode{
-			LibraryItemID: r.ItemID, Name: r.Name, DurationMs: r.DurationMs,
-			Season: r.Season, Episode: r.Episode, EpisodeEnd: r.EpisodeEnd,
-			ProductionYear: r.Year, AirDate: airDate, OfficialRating: r.Rating,
-			CommunityRating: evidence.CommunityRating, Overview: evidence.Overview, Tags: evidence.Tags,
-		})
-	}
-	return eps, true, nil
 }
 
 // bulkDurations adapts the library's BULK metadata call to channels.DurationsResolver.
