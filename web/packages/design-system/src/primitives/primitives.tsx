@@ -203,6 +203,7 @@ const dataRoles = new Set<TextRole>([
   "cardChannelNumber",
   "cardTime",
   "cardInitials",
+  "captionMono",
   "guideMeta",
   "guideLabel",
   "guideNumber",
@@ -216,6 +217,7 @@ const mutedRoles = new Set<TextRole>([
   "time",
   "cardMeta",
   "cardTime",
+  "captionMono",
   "guideMeta",
   "guideLabel",
 ]);

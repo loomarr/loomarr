@@ -11,6 +11,7 @@ import {
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
+import { Text } from "@loomarr/design-system";
 import { GuideCompact, type GuideFilter, GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -24,7 +25,6 @@ import { ColorBars } from "@/components/loomarr/shell/color-bars";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { TvStatic } from "@/components/loomarr/shell/tv-static";
 import { Button } from "@/components/ui/button";
-import { Caption } from "@/components/ui/caption";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
@@ -394,9 +394,9 @@ const GuidePage = ({ search }: GuidePageProps) => {
             {/* Span stays in the primary row: it changes the question the guide answers, and
                 four compact choices are faster to scan than a select. */}
             <div className="flex items-center gap-1.75 sm:ml-auto">
-              <Caption shout className="tracking-[0.06em]">
+              <Text as="span" shout textRole="captionMono" tracking={0.06}>
                 Span
-              </Caption>
+              </Text>
               <div className="flex gap-1">
                 {WINDOW_CHOICES.map((w) => {
                   const active = windowMinutes === Number(w.value);
@@ -451,9 +451,9 @@ const GuidePage = ({ search }: GuidePageProps) => {
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
               <div className="flex items-center gap-1.75">
-                <Caption shout className="tracking-[0.06em]">
+                <Text as="span" shout textRole="captionMono" tracking={0.06}>
                   Start at
-                </Caption>
+                </Text>
                 <Select
                   value={startHour === null ? "auto" : String(startHour)}
                   onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}

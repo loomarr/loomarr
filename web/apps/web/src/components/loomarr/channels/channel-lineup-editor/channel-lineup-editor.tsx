@@ -18,13 +18,12 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge, Tooltip } from "@loomarr/design-system";
+import { Badge, Text, Tooltip } from "@loomarr/design-system";
 import { GripVertical, Plus, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Caption } from "@/components/ui/caption";
 import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
 import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../shell";
@@ -284,11 +283,10 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           everything added since. */}
       {entries.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.75">
-          {/* tracking-[0.06em] overrides `shout`'s tracking-wide (0.025em) — the same toolbar
-              label voice as the guide's "Start". */}
-          <Caption shout className="tracking-[0.06em]">
+          {/* Wider than `shout`'s own 0.025em: the same toolbar label voice as the guide's "Start". */}
+          <Text as="span" shout textRole="captionMono" tracking={0.06}>
             Show
-          </Caption>
+          </Text>
           {(
             [
               ["order", "Play order"],

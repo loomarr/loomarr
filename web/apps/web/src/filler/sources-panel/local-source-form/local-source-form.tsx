@@ -1,5 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { addFillerSourceSchema } from "@loomarr/core/schemas";
+import { Text } from "@loomarr/design-system";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -8,7 +9,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 // are labelled by the provider's own address label plus `aria-label` — a static visible label above
 // an input whose meaning changes with the kind would contradict it.
 import { Button } from "@/components/ui/button";
-import { Caption } from "@/components/ui/caption";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFillerProviders } from "../../use-filler-providers";
@@ -97,7 +97,9 @@ const LocalSourceForm = () => {
         </form.Subscribe>
       </form>
       {addSource.error != null && <ErrorState error={addSource.error} />}
-      <Caption>Uses your location. Every clip is checked before it can play.</Caption>
+      <Text as="span" textRole="captionMono">
+        Uses your location. Every clip is checked before it can play.
+      </Text>
     </div>
   );
 };

@@ -1,6 +1,5 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Badge } from "@loomarr/design-system";
-import { Caption } from "@/components/ui/caption";
+import { Badge, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ApprovalHistoryRowProps } from "./approval-history-row.type";
 
@@ -36,7 +35,11 @@ const ApprovalHistoryRow = ({ proposal, className }: ApprovalHistoryRowProps) =>
             its own column: a re-curation touching an approved proposal would have moved a
             timestamp borrowed from `updated_at`, silently reordering the audit trail. Denials
             carry no approval time, so the slot stays empty rather than showing a wrong one. */}
-        {proposal.approvedAt && <Caption className="shrink-0">{formatRelative(proposal.approvedAt)}</Caption>}
+        {proposal.approvedAt && (
+          <Text as="span" className="shrink-0" textRole="captionMono">
+            {formatRelative(proposal.approvedAt)}
+          </Text>
+        )}
       </div>
 
       {/* WHO, and WHAT they changed. `modSummary` is generated server-side, so it records what
