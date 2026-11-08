@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -84,11 +85,49 @@ func TestEpisodeResolverCarriesProductionYearToScheduler(t *testing.T) {
 	})
 	lib := library.New(library.Emby, mediaServer.URL, mediaServer.AdminToken, "test-device")
 
-	episodes, err := episodeResolver(lib)(context.Background(), "the-mudpuddles")
+	episodes, err := episodeResolver(libraryEpisodesFake{}, lib)(context.Background(), "the-mudpuddles")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(episodes) != 1 || episodes[0].Year != 1992 {
 		t.Fatalf("resolved episodes = %+v, want one episode carrying year 1992", episodes)
+	}
+}
+
+type libraryEpisodesFake map[string][]store.LibraryEpisode
+
+func (f libraryEpisodesFake) LibraryEpisodes(_ context.Context, seriesID string) ([]store.LibraryEpisode, bool, error) {
+	eps, ok := f[seriesID]
+	return eps, ok, nil
+}
+
+// A library series expands from the Library's tables under the media server's listing rules: an
+// episode that cannot play is dropped, and a series with nothing to play stays empty rather than
+// asking the media server.
+func TestEpisodeResolverReadsLibrarySeriesFromTheTables(t *testing.T) {
+	fake := libraryEpisodesFake{
+		"lib-show": {
+			{ItemID: "lib-e1", Name: "Pilot", Season: 1, Episode: 1, Year: 1992, PremiereDate: "1992-09-14",
+				Rating: "TV-PG", Score: 7.5, Overview: "The first.", Tags: []string{"pilot"}, DurationMs: 1_320_000},
+			{ItemID: "lib-e2", Name: "Not yet read", Season: 1, Episode: 2},
+		},
+		"lib-empty": nil,
+	}
+	resolve := episodeResolver(fake, nil)
+	got, err := resolve(context.Background(), "lib-show")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("resolved %+v, want only the playable episode", got)
+	}
+	e := got[0]
+	if e.LibraryItemID != "lib-e1" || e.Title != "Pilot" || e.DurationMs != 1_320_000 || e.Season != 1 ||
+		e.Episode != 1 || e.Year != 1992 || !e.AirDate.Equal(time.Date(1992, 9, 14, 0, 0, 0, 0, time.UTC)) ||
+		e.OfficialRating == "" || e.CommunityRating != 7.5 || e.Overview != "The first." || len(e.Tags) != 1 {
+		t.Errorf("episode = %+v", e)
+	}
+	if got, err := resolve(context.Background(), "lib-empty"); err != nil || len(got) != 0 {
+		t.Errorf("a library series with nothing to play = %+v, %v; want none", got, err)
 	}
 }

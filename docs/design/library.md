@@ -539,7 +539,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   call (`LibraryPlayingFile`); any other id resolves through the media server as before. Item
   metadata follows: the guide's descriptions, a lineup's durations and a proposal's outlook read a
   library item's overview, genres, year, rating and runtime from the tables (`LibraryItemFacts`).
-  The runtime is the playing file's own duration, and an episode takes its show's genres.
+  The runtime is the playing file's own duration, and an episode takes its show's genres. A
+  lineup's series expands from the tables too (`LibraryEpisodes`): the episodes with a present file
+  to play, in season and episode order, under the media server's listing rules (an episode that
+  could not play is dropped, editorial evidence is bounded). A library series with nothing to play
+  expands to nothing; it never falls back to the media server.
 
   `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
   pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`

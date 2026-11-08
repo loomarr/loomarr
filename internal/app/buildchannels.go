@@ -206,7 +206,7 @@ func buildChannels(
 		// A library item id (#2151 step 15) is answered from the Library's tables, any other id by
 		// the media server.
 		meta := itemMetadata{facts: st, lib: lib}
-		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(lib))
+		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(st, lib))
 		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return settings.EpisodesMaxAge.Get(set) })
 		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
 		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches

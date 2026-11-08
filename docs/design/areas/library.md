@@ -16,7 +16,7 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`episodeevidence`** · 3 importers
+- **`episodeevidence`** · 4 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`inventory`** · 7 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
