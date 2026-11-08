@@ -425,4 +425,36 @@ describe("SettingField", () => {
     expect(field).toBeInvalid();
     expect(field).toHaveAccessibleDescription("Base URL of your Emby/Jellyfin server. must include a scheme");
   });
+
+  // #2736: the audit footer names the person in words, never a raw id.
+  describe("audit footer", () => {
+    const nineDaysAgo = new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString();
+
+    it("names the person who changed it, in whole words", () => {
+      render(
+        <SettingField
+          entry={entry({ updatedBy: "Sam", updatedAt: nineDaysAgo })}
+          value="http://x"
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Changed by Sam, 9 days ago")).toBeInTheDocument();
+    });
+
+    it("says you for the caller's own change", () => {
+      render(
+        <SettingField
+          entry={entry({ updatedBy: "Sam", updatedByYou: true, updatedAt: nineDaysAgo })}
+          value="http://x"
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Changed by you, 9 days ago")).toBeInTheDocument();
+    });
+
+    it("leaves an unknown author unnamed", () => {
+      render(<SettingField entry={entry({ updatedAt: nineDaysAgo })} value="http://x" onChange={vi.fn()} />);
+      expect(screen.getByText("Changed 9 days ago")).toBeInTheDocument();
+    });
+  });
 });

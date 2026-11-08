@@ -397,7 +397,8 @@ type SettingEntry struct {
 	ShowWhen     map[string][]string `json:"showWhen,omitempty" doc:"Conditional visibility: show only when a named key's current value is listed (§5)."`
 	RequiredFor  string              `json:"requiredFor,omitempty"`
 	Doc          string              `json:"doc"`
-	UpdatedBy    string              `json:"updatedBy,omitempty"`
+	UpdatedBy    string              `json:"updatedBy,omitempty" doc:"Display name of the person who last changed it. Empty when that person is unknown; never a raw user id (#2736)."`
+	UpdatedByYou bool                `json:"updatedByYou,omitempty" doc:"The signed-in caller made the last change, so the UI can say 'you'."`
 	UpdatedAt    string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
 }
 
