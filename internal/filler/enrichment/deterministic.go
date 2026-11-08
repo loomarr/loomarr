@@ -22,7 +22,7 @@ const (
 )
 
 var DeterministicAxes = []Axis{
-	AxisKind, AxisEra, AxisBrand, AxisGeography, AxisProduct, AxisFormat,
+	AxisRole, AxisEra, AxisBrand, AxisGeography, AxisProduct, AxisFormat,
 	AxisSeasonal, AxisAudienceCue, AxisPresentation,
 }
 
@@ -155,7 +155,7 @@ func AnalyzeDeterministic(signals Signals) []State {
 		kindReference = "item.title_description_or_original_name"
 	}
 	if kind != "" && kind != "unclassified" {
-		appendState(AxisKind, Value{Text: kind}, itemEvidence(kindReference, 100))
+		appendState(AxisRole, Value{Text: kind}, itemEvidence(kindReference, 100))
 		format := map[string]string{
 			"commercial": "commercial", "psa": "psa", "promo": "promo", "bumper": "bumper",
 			"station_id": "ident", "interstitial": "interstitial", "political": "political", "news": "news",

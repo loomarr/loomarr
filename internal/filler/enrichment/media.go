@@ -38,12 +38,12 @@ type MediaWork struct {
 }
 
 var transcriptAxes = map[Axis]bool{
-	AxisKind: true, AxisAudience: true, AxisBrand: true, AxisProduct: true,
+	AxisRole: true, AxisAudience: true, AxisBrand: true, AxisProduct: true,
 	AxisFormat: true, AxisSeasonal: true, AxisAudienceCue: true, AxisPresentation: true,
 }
 
 var visionAxes = map[Axis]bool{
-	AxisKind: true, AxisEra: true, AxisAudience: true, AxisBrand: true, AxisProduct: true,
+	AxisRole: true, AxisEra: true, AxisAudience: true, AxisBrand: true, AxisProduct: true,
 	AxisFormat: true, AxisSeasonal: true, AxisAudienceCue: true, AxisPresentation: true,
 }
 

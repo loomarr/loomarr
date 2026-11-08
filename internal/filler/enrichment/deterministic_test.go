@@ -43,8 +43,8 @@ func readSignals(t *testing.T, name, hash string) enrichment.Signals {
 
 func TestAnalyzeDeterministic_TootsieUsesItemTextButNotUploadDate(t *testing.T) {
 	got := statesByAxis(enrichment.AnalyzeDeterministic(readSignals(t, "tootsie-pop.info.json", "tootsie")))
-	if got[enrichment.AxisKind].Value.Text != "commercial" {
-		t.Fatalf("kind = %+v", got[enrichment.AxisKind])
+	if got[enrichment.AxisRole].Value.Text != "commercial" {
+		t.Fatalf("kind = %+v", got[enrichment.AxisRole])
 	}
 	if got[enrichment.AxisBrand].Value.Text != "Tootsie Pop" {
 		t.Fatalf("brand = %+v", got[enrichment.AxisBrand])

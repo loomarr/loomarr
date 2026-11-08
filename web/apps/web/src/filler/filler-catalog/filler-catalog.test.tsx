@@ -53,7 +53,7 @@ describe("FillerCatalog", () => {
       },
       enrichment: {
         state: "details_limited",
-        facts: [{ axis: "kind", evidence: "item_metadata" }],
+        facts: [{ axis: "role", evidence: "item_metadata" }],
       },
     };
     server.use(

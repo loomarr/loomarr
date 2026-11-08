@@ -48,7 +48,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
-import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { DEFAULT_ROLES } from "@/test/fixtures/filler";
 import { libraryStatus } from "@/test/fixtures/library";
 import { setting } from "@/test/fixtures/settings";
 import { me, user } from "@/test/fixtures/users";
@@ -278,14 +278,14 @@ const stubReachable = () => {
       geography: { country: "", place: "" },
       language: "",
       undeterminedLanguage: 0,
-      defaultKinds: DEFAULT_KINDS,
+      defaultRoles: DEFAULT_ROLES,
       // The per-setting breakdown (V51f). Nothing at zero: this suite is about REACHING screens,
       // not diagnosing a catalog, so the meter should render its ordinary healthy shape.
       criteria: [
         { criterion: "era", clips: 4 },
         { criterion: "audience", clips: 4 },
         { criterion: "category", clips: 4 },
-        { criterion: "kind", clips: 4 },
+        { criterion: "role", clips: 4 },
         { criterion: "duration", clips: 4 },
         { criterion: "quality", clips: 4 },
       ],
@@ -432,7 +432,7 @@ const stubReachable = () => {
         geography: { country: "", place: "" },
         language: "",
         undeterminedLanguage: 0,
-        defaultKinds: DEFAULT_KINDS,
+        defaultRoles: DEFAULT_ROLES,
       },
     }),
     // The watch route's audio/subtitle picker (V46) — channel-level tracks, media-derived.

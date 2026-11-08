@@ -62,7 +62,7 @@ func TestCriterionCoverage_CountsEachSettingIndependently(t *testing.T) {
 		// Three "toys" clips among the commercials, plus the late-night toys one.
 		{CriterionCategory, 4, "clips tagged toys"},
 		// No kind narrowing, so every commercial passes.
-		{CriterionKind, 5, "commercials under the default kind set"},
+		{CriterionRole, 5, "commercials under the default kind set"},
 		{CriterionDuration, 5, "no bounds set, so everything is eligible"},
 		{CriterionQuality, 5, "no floor set, so everything is eligible"},
 	} {
@@ -87,7 +87,7 @@ func TestCriterionCoverage_NamesTheOneSettingThatIsEmptyingTheLadder(t *testing.
 	if got := criterion(report, CriterionAudience); got != 0 {
 		t.Errorf("audience = %d, want 0 — it is the setting emptying the ladder", got)
 	}
-	for _, c := range []Criterion{CriterionEra, CriterionCategory, CriterionKind, CriterionDuration} {
+	for _, c := range []Criterion{CriterionEra, CriterionCategory, CriterionRole, CriterionDuration} {
 		if got := criterion(report, c); got != 2 {
 			t.Errorf("%s = %d, want 2 — only the audience should read empty", c, got)
 		}

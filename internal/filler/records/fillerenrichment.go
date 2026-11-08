@@ -271,7 +271,7 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, s
 	var err error
 	clips := s.db.Clips(tx)
 	switch state.Axis {
-	case enrichment.AxisKind:
+	case enrichment.AxisRole:
 		if kind := filler.Role(state.Value.Text); kind == filler.Commercial || kind == filler.Bumper ||
 			kind == filler.StationID || kind == filler.PSA || kind == filler.Trailer || kind == filler.Interstitial ||
 			kind == filler.Political || kind == filler.News {

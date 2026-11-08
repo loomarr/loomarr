@@ -25,7 +25,7 @@ func TestFilterKinds_PoliticalAndNewsAreOptIn(t *testing.T) {
 		want  []string
 	}{
 		{name: "no kinds chosen", kinds: nil, local: inRadius, want: []string{"ad", "local", "unknown"}},
-		{name: "the default ticked plus political", kinds: append(DefaultKinds(), "political"), local: inRadius, want: []string{"ad", "campaign", "local"}},
+		{name: "the default ticked plus political", kinds: append(DefaultRoles(), "political"), local: inRadius, want: []string{"ad", "campaign", "local"}},
 		{name: "news opted in", kinds: []string{"commercial", "news"}, local: inRadius, want: []string{"ad", "network", "local"}},
 		{name: "commercials only", kinds: []string{"commercial"}, local: inRadius, want: []string{"ad"}},
 		{name: "station idents without news", kinds: []string{"station_id"}, local: inRadius, want: []string{"local"}},
@@ -36,7 +36,7 @@ func TestFilterKinds_PoliticalAndNewsAreOptIn(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var got []string
-			for _, c := range filterKinds(catalog, tc.kinds, tc.local) {
+			for _, c := range filterRoles(catalog, tc.kinds, tc.local) {
 				got = append(got, c.Hash)
 			}
 			if !slices.Equal(got, tc.want) {
@@ -47,7 +47,7 @@ func TestFilterKinds_PoliticalAndNewsAreOptIn(t *testing.T) {
 }
 
 func TestDefaultKinds_LeavesOutOnlyTheOptInKinds(t *testing.T) {
-	got := DefaultKinds()
+	got := DefaultRoles()
 	for _, optIn := range []Role{Political, News, Unclassified} {
 		if slices.Contains(got, string(optIn)) {
 			t.Errorf("DefaultKinds() = %v, includes %q", got, optIn)

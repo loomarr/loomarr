@@ -15,7 +15,7 @@ const fillerRefinementKnownClip: ClipDTO = {
   enrichment: {
     state: "complete",
     facts: [
-      { axis: "kind", evidence: "item_metadata" },
+      { axis: "role", evidence: "item_metadata" },
       { axis: "era", evidence: "item_metadata" },
       { axis: "audience", evidence: "inference" },
       { axis: "brand", evidence: "content_observation" },

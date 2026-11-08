@@ -32,7 +32,7 @@ const (
 	CriterionEra       Criterion = "era"
 	CriterionAudience  Criterion = "audience"
 	CriterionCategory  Criterion = "category"
-	CriterionKind      Criterion = "kind"
+	CriterionRole      Criterion = "role"
 	CriterionDuration  Criterion = "duration"
 	CriterionQuality   Criterion = "quality"
 	CriterionGeography Criterion = "geography"
@@ -293,8 +293,8 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 		{CriterionCategory, count(func(c Clip) bool {
 			return len(filterCategories([]Clip{c}, w.Categories)) > 0
 		})},
-		{CriterionKind, count(func(c Clip) bool {
-			return len(filterKinds([]Clip{c}, w.Kinds, area.Stations)) > 0
+		{CriterionRole, count(func(c Clip) bool {
+			return len(filterRoles([]Clip{c}, w.Roles, area.Stations)) > 0
 		})},
 		{CriterionDuration, count(func(c Clip) bool { return durationEligible(c, policy) })},
 		{CriterionQuality, count(func(c Clip) bool { return qualityEligible(c, policy) })},
@@ -303,8 +303,8 @@ func criterionCoverage(catalog []Clip, w Window, policy Policy) []CriterionCover
 
 // Coverage reports which rung a break for `w` would draw from, given `catalog`.
 //
-// ⚠ The catalog is narrowed in the SAME ORDER Assemble narrows it — excluded ids, then kinds,
-// then the pools — because that order is load-bearing. Kinds is applied catalog-wide (it shapes
+// ⚠ The catalog is narrowed in the SAME ORDER Assemble narrows it — excluded ids, then roles,
+// then the pools — because that order is load-bearing. Roles is applied catalog-wide (it shapes
 // bumpers too), and exclusions must be gone before pools are counted or coverage reports clips
 // that assembly will never pick.
 func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
@@ -321,7 +321,7 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 		}
 		catalog = kept
 	}
-	// ⚠ The per-criterion breakdown is measured BEFORE the kind filter, because "kind" is itself
+	// ⚠ The per-criterion breakdown is measured BEFORE the role filter, because "role" is itself
 	// one of the criteria being reported. Measuring it after would make that line always equal the
 	// base — a row that can never say anything.
 	criteria := criterionCoverage(catalog, w, policy)
@@ -344,7 +344,7 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	geography := effectiveGeography(w.Geography, policy.Geography)
 	area := geography.Resolve(policy.LocalStations)
 	catalog = filterGeography(catalog, area)
-	catalog = filterKinds(catalog, w.Kinds, area.Stations)
+	catalog = filterRoles(catalog, w.Roles, area.Stations)
 
 	pools := candidatePools(catalog, w, policy)
 

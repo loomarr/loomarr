@@ -2,7 +2,7 @@ import type { CoverageDTO } from "@loomarr/api";
 import { screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { DEFAULT_ROLES } from "@/test/fixtures/filler";
 import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { CoverageMeter } from "./coverage-meter";
@@ -27,16 +27,16 @@ const HEALTHY: CoverageDTO["criteria"] = [
   { criterion: "era", clips: 9 },
   { criterion: "audience", clips: 9 },
   { criterion: "category", clips: 9 },
-  { criterion: "kind", clips: 9 },
+  { criterion: "role", clips: 9 },
   { criterion: "duration", clips: 9 },
   { criterion: "quality", clips: 9 },
 ];
 
-const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage" | "defaultKinds"> = {
+const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage" | "defaultRoles"> = {
   geography: { country: "", place: "" },
   language: "",
   undeterminedLanguage: 0,
-  defaultKinds: DEFAULT_KINDS,
+  defaultRoles: DEFAULT_ROLES,
 };
 
 const full: CoverageDTO = {
@@ -245,7 +245,7 @@ describe("CoverageMeter", () => {
             { criterion: "era", clips: 214 },
             { criterion: "audience", clips: 0 },
             { criterion: "category", clips: 112 },
-            { criterion: "kind", clips: 198 },
+            { criterion: "role", clips: 198 },
             { criterion: "duration", clips: 205 },
             { criterion: "quality", clips: 211 },
           ],
@@ -276,7 +276,7 @@ describe("CoverageMeter", () => {
             { criterion: "era", clips: 0 },
             { criterion: "audience", clips: 0 },
             { criterion: "category", clips: 5 },
-            { criterion: "kind", clips: 5 },
+            { criterion: "role", clips: 5 },
             { criterion: "duration", clips: 5 },
             { criterion: "quality", clips: 5 },
           ],

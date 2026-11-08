@@ -8,7 +8,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { DEFAULT_ROLES } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
 import { FillerCriteria } from "./filler-criteria";
@@ -379,12 +379,12 @@ describe("FillerCriteria geography", () => {
   });
 });
 
-// Political ads and news are opt-in (#2037). A channel that chose no kinds shows the server's
+// Political ads and news are opt-in (#2037). A channel that chose no roles shows the server's
 // default set ticked; ticking Political adds it to that set, and a set equal to the default again
 // saves as no choice, so the channel keeps following the default.
 describe("FillerCriteria clip kinds", () => {
   it("shows the default set ticked and the opt-in kinds unticked", () => {
-    renderCriteria(<FillerCriteria selection={{}} onChange={vi.fn()} defaultKinds={DEFAULT_KINDS} />);
+    renderCriteria(<FillerCriteria selection={{}} onChange={vi.fn()} defaultRoles={DEFAULT_ROLES} />);
 
     expect(screen.getByRole("checkbox", { name: "Commercials" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Station IDs" })).toBeChecked();
@@ -394,26 +394,26 @@ describe("FillerCriteria clip kinds", () => {
 
   it("adds an opt-in kind to the default set rather than replacing it", async () => {
     const onChange = vi.fn();
-    renderCriteria(<FillerCriteria selection={{}} onChange={onChange} defaultKinds={DEFAULT_KINDS} />);
+    renderCriteria(<FillerCriteria selection={{}} onChange={onChange} defaultRoles={DEFAULT_ROLES} />);
 
     await userEvent.click(screen.getByRole("checkbox", { name: "Political ads" }));
 
-    expect(onChange).toHaveBeenLastCalledWith({ kinds: [...DEFAULT_KINDS, "political"] });
+    expect(onChange).toHaveBeenLastCalledWith({ roles: [...DEFAULT_ROLES, "political"] });
   });
 
   it("saves no choice once the ticks match the default again", async () => {
     const onChange = vi.fn();
     renderCriteria(
       <FillerCriteria
-        selection={{ kinds: [...DEFAULT_KINDS, "political"] }}
+        selection={{ roles: [...DEFAULT_ROLES, "political"] }}
         onChange={onChange}
-        defaultKinds={DEFAULT_KINDS}
+        defaultRoles={DEFAULT_ROLES}
       />,
     );
 
     await userEvent.click(screen.getByRole("checkbox", { name: "Political ads" }));
 
-    expect(onChange).toHaveBeenLastCalledWith({ kinds: undefined });
+    expect(onChange).toHaveBeenLastCalledWith({ roles: undefined });
   });
 
   it("stays disabled until the server says what the default is", () => {

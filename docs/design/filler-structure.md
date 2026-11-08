@@ -15,7 +15,7 @@ that the source is a compilation. Boundary detection belongs to `split`, not `pr
 hour-long capture is decoded once.
 
 `IsComposite` is a separate axis from `Role`: a container is excluded from pods once, the safe
-polarity, instead of every `filterKinds` caller special-casing a `composite` kind. While structure is
+polarity, instead of every `filterRoles` caller special-casing a `composite` role. While structure is
 unresolved it means "long-source candidate"; only the structure assessment below makes it a
 semantic verdict.
 

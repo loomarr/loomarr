@@ -11,7 +11,7 @@ import "fmt"
 // channel is deciding about one clip, and "won't be picked" with no reason sends them hunting
 // through channel settings for a rule they cannot see.
 //
-// ⚠ **Every answer comes from the SAME predicates assembly uses** — `filterKinds`,
+// ⚠ **Every answer comes from the SAME predicates assembly uses** — `filterRoles`,
 // `durationEligible`, `qualityEligible`, `filterCategories`, `filterAudience`, `filterEra`,
 // `filterDecade` — applied to a one-clip slice rather than re-implemented. That is the whole
 // design constraint: `channelpreview.go` records the v2 mock's own meter recomputing its
@@ -27,7 +27,7 @@ import "fmt"
 type FitReason string
 
 const (
-	FitKind      FitReason = "kind"      // the channel does not use this kind of clip
+	FitRole      FitReason = "role"      // the channel does not air this role of clip
 	FitDuration  FitReason = "duration"  // too long or too short for this channel's breaks
 	FitQuality   FitReason = "quality"   // below the channel's minimum-quality floor
 	FitCategory  FitReason = "category"  // the channel narrowed to categories this clip is not in
@@ -100,8 +100,8 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	// KIND and DURATION gate everything, pins included: `pickPinned` reads the kind-filtered
 	// catalog and checks `durationEligible` itself, so these two reject a pinned clip as surely
 	// as an unpinned one.
-	if len(filterKinds(one, w.Kinds, policy.area(w.Geography).Stations)) == 0 {
-		fit.Reason = FitKind
+	if len(filterRoles(one, w.Roles, policy.area(w.Geography).Stations)) == 0 {
+		fit.Reason = FitRole
 		return fit
 	}
 	if c.EffectivePlacement() == PlacementBreakBody && !durationEligible(c, policy) {

@@ -72,7 +72,7 @@ type AvailabilityStore interface {
 type PodFiller interface {
 	// BuildFillerList returns the Tunarr program uuids of the matched clip pool for a
 	// channel, given a deterministic seed and the channel's per-channel filler
-	// Selection (§10 — era/audience/category/kinds + pinned/excluded). ok=false → no
+	// Selection (§10 — era/audience/category/roles + pinned/excluded). ok=false → no
 	// pool (empty catalog / only the fallback card): the engine skips the attach and
 	// the channel's flex falls back to the bumper card (never dead air).
 	BuildFillerList(ctx context.Context, channelID string, seed int64, sel filler.Selection) (programIDs []string, ok bool)

@@ -887,7 +887,7 @@ func TestFiller_PatchCorrectsRole(t *testing.T) {
 	}
 	var kindState enrichment.State
 	for _, state := range states {
-		if state.Axis == enrichment.AxisKind {
+		if state.Axis == enrichment.AxisRole {
 			kindState = state
 		}
 	}

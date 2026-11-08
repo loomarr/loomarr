@@ -225,7 +225,7 @@ func TestAssemble_CategorySelectionNarrowsPool(t *testing.T) {
 // (the pod is bumpers), because kinds is applied catalog-wide before assembly.
 func TestAssemble_KindsSelectionBumpersOnly(t *testing.T) {
 	w := kidsWindow(7)
-	w.Kinds = []string{"bumper"}
+	w.Roles = []string{"bumper"}
 	p := filler.Assemble(sampleCatalog(), w, filler.Policy{}, nil)
 	for _, e := range p.Entries {
 		if e.Role == filler.Commercial {
@@ -307,7 +307,7 @@ func TestAssemble_UnclassifiedCannotBeForcedIntoAPod(t *testing.T) {
 		DurationMs: 30_000, Held: false,
 	}
 	w := kidsWindow(7)
-	w.Kinds = []string{string(filler.Unclassified), string(filler.Commercial)}
+	w.Roles = []string{string(filler.Unclassified), string(filler.Commercial)}
 	w.Pinned = []string{unknown.ID()}
 	p := filler.Assemble(append(sampleCatalog(), unknown), w, filler.Policy{}, nil)
 	if containsID(p, unknown.ID()) {

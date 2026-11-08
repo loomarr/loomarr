@@ -4,7 +4,7 @@ import type { ClipEnrichmentFactDTOEvidence } from "@loomarr/api/models/clipEnri
 import { formatBytes } from "@loomarr/core/format";
 
 const ENRICHMENT_AXIS_LABEL: Record<ClipEnrichmentFactDTOAxis, string> = {
-  kind: "Type",
+  role: "Type",
   era: "Year",
   audience: "Audience",
   brand: "Advertiser",

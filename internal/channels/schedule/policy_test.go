@@ -118,7 +118,7 @@ func TestValidate(t *testing.T) {
 		// A fully-specified filler selection with every closed-set value valid.
 		OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{
 			Era: &Range{From: 1990, To: 1999}, Audience: "kids",
-			Categories: []string{"toys", "cereal"}, Kinds: []string{"commercial", "bumper"},
+			Categories: []string{"toys", "cereal"}, Roles: []string{"commercial", "bumper"},
 			Pinned: []string{"prog-1"}, Excluded: []string{"prog-2"}, Language: "fre",
 		}},
 	}
@@ -138,7 +138,7 @@ func TestValidate(t *testing.T) {
 		{ProposalPolicy: ProposalPolicy{Audience: AudiencePolicy{Unrated: "maybe"}}},
 		{ProposalPolicy: ProposalPolicy{Seasonal: SeasonalPolicy{Mode: "sometimes"}}},
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Audience: "nobody"}}},                // unknown audience
-		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Kinds: []string{"advert"}}}},         // unknown kind
+		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Roles: []string{"advert"}}}},         // unknown role
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Language: "klingon"}}},               // unknown language
 		{OperatorPolicy: OperatorPolicy{Filler: &FillerSelection{Era: &Range{From: 1999, To: 1990}}}}, // inverted era range
 		{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: &DateScope{}}}},
@@ -246,7 +246,7 @@ func TestSeedFillerSelectionDerivesOnlyGroundedChannelFacts(t *testing.T) {
 			if got == nil || got.Audience != tc.audience || got.Era == nil || *got.Era != era {
 				t.Fatalf("seed = %+v, want era %+v and audience %q", got, era, tc.audience)
 			}
-			if len(got.Categories) != 0 || len(got.Kinds) != 0 {
+			if len(got.Categories) != 0 || len(got.Roles) != 0 {
 				t.Fatalf("program genres or missing intent invented filler taxonomy: %+v", got)
 			}
 			got.Era.From = 1980

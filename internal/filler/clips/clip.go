@@ -23,12 +23,12 @@ const (
 	Interstitial Role = "interstitial"
 	// Political is a campaign or issue ad, and News is a news or weather segment (#2037). Both
 	// download and pass the floor like any clip, but a channel airs them only once it opts in; a
-	// station's own news within the channel's radius is the exception (see filler's filterKinds).
+	// station's own news within the channel's radius is the exception (see filler's filterRoles).
 	Political Role = "political"
 	News      Role = "news"
 )
 
-// Placement says where a Ready clip may be scheduled. It is deliberately separate from Kind:
+// Placement says where a Ready clip may be scheduled. It is deliberately separate from Role:
 // selecting a source can authorize generic break-body use without claiming that unknown bytes are
 // a commercial.
 type Placement string
@@ -273,9 +273,9 @@ type Clip struct {
 	// pod assembly exactly like Held/RemovedAt, because airing a 16-minute block as one "commercial"
 	// is the bug this flag removes. Its SEGMENTS (produced by splitting) are the airable clips.
 	//
-	// ⚠ A distinct axis from Kind, deliberately. A composite's segments are commercials/bumpers/PSAs;
-	// the composite itself is a CONTAINER. Overloading Kind with a `composite` value would force every
-	// `filterKinds` call site to special-case it — which is how a container leaks into a pod. A
+	// ⚠ A distinct axis from Role, deliberately. A composite's segments are commercials/bumpers/PSAs;
+	// the composite itself is a CONTAINER. Overloading Role with a `composite` value would force every
+	// `filterRoles` call site to special-case it — which is how a container leaks into a pod. A
 	// boolean the pod filter excludes ONCE (the same polarity as Held) is the safe shape.
 	IsComposite bool
 	// ParentHash is the identity of the COMPOSITE this clip was split out of (§10 V45), or "" for a

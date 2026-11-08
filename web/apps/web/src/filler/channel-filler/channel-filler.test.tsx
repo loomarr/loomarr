@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
-import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { DEFAULT_ROLES } from "@/test/fixtures/filler";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -36,18 +36,18 @@ const renderSection = (ui: ReactNode) => {
 
 // ⚠ Every coverage payload carries the per-setting breakdown since V51f. Nothing at zero, so the
 // diagnosis panel stays hidden and these tests keep asserting what they were written to assert.
-const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage" | "defaultKinds"> = {
+const NO_LIMIT: Pick<CoverageDTO, "geography" | "language" | "undeterminedLanguage" | "defaultRoles"> = {
   geography: { country: "", place: "" },
   language: "",
   undeterminedLanguage: 0,
-  defaultKinds: DEFAULT_KINDS,
+  defaultRoles: DEFAULT_ROLES,
 };
 
 const HEALTHY: CoverageDTO["criteria"] = [
   { criterion: "era", clips: 4 },
   { criterion: "audience", clips: 4 },
   { criterion: "category", clips: 4 },
-  { criterion: "kind", clips: 4 },
+  { criterion: "role", clips: 4 },
   { criterion: "duration", clips: 4 },
   { criterion: "quality", clips: 4 },
 ];
@@ -152,7 +152,7 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[]; revision?: number } = {}) 
       geography: { country: "US", place: "" },
       language: "en",
       undeterminedLanguage: 0,
-      defaultKinds: DEFAULT_KINDS,
+      defaultRoles: DEFAULT_ROLES,
     }),
   );
 

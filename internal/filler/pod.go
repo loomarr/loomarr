@@ -162,12 +162,12 @@ type Window struct {
 	BreakDurationMs int64
 	// The per-channel selection (§10 FillerSelection), all optional:
 	//   Categories — commercial-pool category narrowing (empty = any).
-	//   Kinds      — which clip kinds the pod may use (empty = the default set);
+	//   Roles      — which clip roles the pod may use (empty = the default set);
 	//                applied catalog-wide in Assemble, so it shapes bumpers too.
 	//   Pinned     — clip ids to force in as a top-priority pool (before the ladder).
 	//   Excluded   — clip ids never used; threaded into `used` by the caller/Assemble.
 	Categories []string
-	Kinds      []string
+	Roles      []string
 	Pinned     []string
 	Excluded   []string
 	// Exposures is the household's snapshot before SnapshotAt (§10 rotation, ExposuresBefore).
@@ -268,9 +268,9 @@ func Assemble(catalog []Clip, w Window, policy Policy, used map[string]bool) Pod
 	for _, id := range w.Excluded {
 		used[id] = true
 	}
-	//  - KINDS: narrow the catalog to the selected kinds before anything picks from
+	//  - ROLES: narrow the catalog to the selected roles before anything picks from
 	//    it, so the choice shapes bumpers (pickBumper) as well as the commercial fill.
-	catalog = filterKinds(catalog, w.Kinds, policy.area(w.Geography).Stations)
+	catalog = filterRoles(catalog, w.Roles, policy.area(w.Geography).Stations)
 
 	// Intro bumper (best-effort — a matched bumper if we have one).
 	// A station segment closes a break, before the programme returns; it never opens one (#2065).

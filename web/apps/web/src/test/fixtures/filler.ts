@@ -59,9 +59,9 @@ const defectReport = (over: Partial<FillerDefectReportDTO> = {}): FillerDefectRe
   ...over,
 });
 
-// `DEFAULT_KINDS` is what the server's coverage answer says a channel that chose no kinds airs:
-// every kind except the opt-in political and news (#2037).
-const DEFAULT_KINDS: CoverageDTO["defaultKinds"] = [
+// `DEFAULT_ROLES` is what the server's coverage answer says a channel that chose no roles airs:
+// every role except the opt-in political and news (#2037).
+const DEFAULT_ROLES: CoverageDTO["defaultRoles"] = [
   "commercial",
   "bumper",
   "station_id",
@@ -163,4 +163,4 @@ const fillerProviders: FillerProviderDescriptionDTO[] = [
   },
 ];
 
-export { DEFAULT_KINDS, defectReport, fillerProviders, fillerSource, readiness };
+export { DEFAULT_ROLES, defectReport, fillerProviders, fillerSource, readiness };

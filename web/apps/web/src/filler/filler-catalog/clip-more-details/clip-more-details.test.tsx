@@ -95,7 +95,7 @@ describe("ClipMoreDetails", () => {
           enrichment: {
             state: "details_limited",
             facts: [
-              { axis: "kind", evidence: "item_metadata" },
+              { axis: "role", evidence: "item_metadata" },
               { axis: "era", evidence: "operator" },
             ],
           },

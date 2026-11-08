@@ -85,7 +85,7 @@ type Selection struct {
 	EraWindows []EraRange // normalized union; when present, authoritative over Era
 	Audience   Audience   // "" = any
 	Categories []string   // empty = any
-	Kinds      []string   // empty = the default kinds (all but political and news)
+	Roles      []string   // empty = the default roles (all but political and news)
 	Pinned     []string   // clip ids always included
 	Excluded   []string   // clip ids never used
 	Geography  Geography  // zero country inherits Installation geography from Policy
@@ -326,7 +326,7 @@ func (a *PodAdapter) assemble(clips []Clip, history *AiringHistory, channelID st
 		podMax = 4 // matches fillCommercials' own fallback (the setting default is 4)
 	}
 	// The window IS the per-channel selection (§10): era/audience narrow the ladder,
-	// categories/kinds narrow the catalog, pinned/excluded are the overrides. An empty
+	// categories/roles narrow the catalog, pinned/excluded are the overrides. An empty
 	// Selection leaves every field at its zero "any" value → the whole catalog, which is
 	// the prior behaviour (and the additive default for a channel with no filler choice).
 	var season schedule.HolidaySeason
@@ -431,7 +431,7 @@ func (a *PodAdapter) windowFor(channelID string, seed int64, sel Selection, podM
 		// the return bumper and the last ad's end. This was max(10 minutes, break), which let a
 		// 2 minute break hold 132 seconds of pod (4 × 30s ads + two bumpers).
 		GapMs: breakDurationMs, PodMax: podMax, BreakDurationMs: breakDurationMs,
-		Categories: sel.Categories, Kinds: sel.Kinds,
+		Categories: sel.Categories, Roles: sel.Roles,
 		Pinned: sel.Pinned, Excluded: sel.Excluded,
 	}
 }
