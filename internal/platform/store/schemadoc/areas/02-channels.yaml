@@ -9,6 +9,7 @@ tables:
       One row per channel. A channel is created by approving a channel request or by hand. Detaching
       a channel keeps its row with status `detached`; deleting it removes the row, its airing
       history and its channel feedback.
+    retention: Kept until an admin deletes the channel; a detached channel keeps its row.
     columns:
       id: Identifies the channel. Other tables point here.
       intent_ref: >
@@ -80,6 +81,9 @@ tables:
       channel. Written when the programme is really streamed, not when it is scheduled. The
       schedule uses it to prefer what hasn't aired recently. Rows older than 8 days are pruned down
       to the latest airing of each episode or film; rows go when their channel is deleted.
+    retention: >
+      Airings older than 8 days are pruned to the latest one per episode or film on each channel;
+      goes with its channel (deleted when that is).
     columns:
       channel_id: The channel it aired on (channels.id).
       library_item_id: The library item id of the episode or film that aired.
@@ -95,6 +99,9 @@ tables:
       about it. Seasonal channel rules and seasonal filler tags read them. Each holiday owns the
       seasonal tag with the same slug. Rows are added at startup from Loomarr's shipped list and
       when a seasonal tag is made. An undated holiday is removed when its tag stops being seasonal.
+    retention: >
+      Kept while its seasonal tag exists; an undated holiday is deleted when its tag stops being
+      seasonal.
     columns:
       id: The holiday's slug, which is also the slug of its seasonal tag (taxa.slug).
       label: The holiday's display name.
@@ -122,6 +129,8 @@ tables:
     about: >
       One row per revision of Loomarr's shipped holiday list that startup has applied. Each
       revision applies once, so a later change or removal by an admin is never undone. Kept forever.
+    retention: >
+      Kept forever: one small row per shipped list revision, so no revision is applied twice.
     columns:
       version: The revision number of the shipped holiday list.
       applied_at: When it was applied, in Unix seconds.
