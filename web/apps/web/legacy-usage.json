@@ -598,8 +598,8 @@
       "tailwindClasses": 34
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
-      "tailwindClasses": 156,
-      "legacyUi": 2
+      "tailwindClasses": 138,
+      "legacyUi": 1
     },
     "src/settings/pair-device/pair-device.tsx": {
       "tailwindClasses": 63,
