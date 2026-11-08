@@ -1,13 +1,13 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
+import { Field } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 // The two halves of device pairing, in the order an operator meets them: approve the code a TV is
 // showing, then manage what is already paired (§11, Shield P1).
@@ -95,16 +95,19 @@ const ApproveDevice = () => {
       >
         <form.Field name="userCode">
           {(field) => (
-            <Input
-              aria-label="Code shown on the device"
-              autoComplete="off"
-              className="w-44 font-mono tracking-widest uppercase"
-              name={field.name}
-              onChange={(event) => field.handleChange(event.target.value)}
-              placeholder="BCDF-GHJK"
-              spellCheck={false}
-              value={field.state.value}
-            />
+            <div className="w-44">
+              <Field
+                accessibilityLabel="Code shown on the device"
+                autoCapitalize="characters"
+                autoComplete="off"
+                autoCorrect={false}
+                onChangeText={field.handleChange}
+                placeholder="BCDF-GHJK"
+                spellCheck={false}
+                style={{ letterSpacing: 1.4, textTransform: "uppercase" }}
+                value={field.state.value}
+              />
+            </div>
           )}
         </form.Field>
         <form.Subscribe selector={(state) => state.values.userCode}>
