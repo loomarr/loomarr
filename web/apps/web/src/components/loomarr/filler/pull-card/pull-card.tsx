@@ -1,9 +1,8 @@
 import { pluralize } from "@loomarr/core/format";
-import { Badge, Card, Text } from "@loomarr/design-system";
+import { Badge, Card, Field, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { PullCardProps } from "./pull-card.type";
 
@@ -190,12 +189,12 @@ const PullCard = ({
         </details>
       )}
 
-      <Input
-        value={note}
-        onChange={(e) => changeNote(e.target.value)}
-        placeholder="Optional annotation for your records"
-        aria-label="Notes for this pull"
+      <Field
+        accessibilityLabel="Notes for this pull"
         disabled={deciding}
+        onChangeText={changeNote}
+        placeholder="Optional annotation for your records"
+        value={note}
       />
 
       <Text as="span" textRole="captionMono">

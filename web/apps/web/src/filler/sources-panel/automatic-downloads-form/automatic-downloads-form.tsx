@@ -1,10 +1,10 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
 import { formatRelative } from "@loomarr/core/format";
+import { NumberField } from "@loomarr/ui";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { SourceActions } from "../use-source-actions";
 
@@ -118,31 +118,22 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-sm">Add up to</span>
-            <Input
-              type="number"
-              min={1}
-              max={1000}
-              aria-label="Clips per source check"
-              value={maxPerCheck}
-              onChange={(event) => setMaxPerCheck(Math.min(1000, Math.max(Number(event.target.value), 1)))}
+            <NumberField
+              accessibilityLabel="Clips per source check"
+              amount={maxPerCheck}
+              onAmount={(amount) => setMaxPerCheck(Math.min(1000, Math.max(amount, 1)))}
             />
           </div>
           {editingCustomSchedule && (
             <div className="flex flex-col gap-1.5 sm:col-span-2">
               <span className="text-sm">Custom schedule</span>
               <div className="flex gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  max={downloadIntervalMaximum(interval.unit)}
-                  step="any"
-                  aria-label="Source check interval"
-                  value={interval.amount}
-                  onChange={(event) => {
+                <NumberField
+                  accessibilityLabel="Source check interval"
+                  amount={interval.amount}
+                  onAmount={(amount) => {
                     const maximum = downloadIntervalMaximum(interval.unit);
-                    setEverySeconds(
-                      downloadIntervalSeconds(Math.min(Number(event.target.value), maximum), interval.unit),
-                    );
+                    setEverySeconds(downloadIntervalSeconds(Math.min(amount, maximum), interval.unit));
                   }}
                 />
                 <Select

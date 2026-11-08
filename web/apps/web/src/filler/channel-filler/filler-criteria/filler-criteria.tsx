@@ -4,12 +4,11 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Toggle } from "@loomarr/design-system";
-import { useEffect, useState } from "react";
+import { Field, Surface, Toggle } from "@loomarr/design-system";
+import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -102,6 +101,32 @@ const YEAR_MIN = 1900;
 const YEAR_MAX = 2099;
 const MAX_ERA_WINDOWS = 8;
 
+// Narrow enough that a From/To pair and its button share a row.
+const Narrow = ({ children }: { children: ReactNode }) => (
+  <Surface backgroundColor="transparent" borderWidth={0} width={112}>
+    {children}
+  </Surface>
+);
+
+const YearBox = (props: ComponentProps<typeof Field>) => (
+  <Narrow>
+    <Field keyboardType="number-pad" maxLength={4} {...props} />
+  </Narrow>
+);
+
+// A box that edits a draft and hands it over only on blur. Remount it (key) to reseed it.
+const CommitField = ({
+  initial,
+  onCommit,
+  ...field
+}: Omit<ComponentProps<typeof Field>, "onBlur" | "onChangeText" | "value"> & {
+  initial: string;
+  onCommit: (text: string) => void;
+}) => {
+  const [text, setText] = useState(initial);
+  return <Field {...field} onBlur={() => onCommit(text)} onChangeText={setText} value={text} />;
+};
+
 const isValidWindow = (range: Range): range is Range & { from: number; to: number } =>
   Number.isInteger(range.from) &&
   Number.isInteger(range.to) &&
@@ -158,38 +183,22 @@ const WindowRow = ({
 
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`filler-window-${index}-from`} className="text-muted-foreground text-xs">
-          From year
-        </Label>
-        <Input
-          id={`filler-window-${index}-from`}
-          type="number"
-          min={YEAR_MIN}
-          max={YEAR_MAX}
-          className="w-28"
-          disabled={disabled}
-          value={draft.from}
-          onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-          onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`filler-window-${index}-to`} className="text-muted-foreground text-xs">
-          To year
-        </Label>
-        <Input
-          id={`filler-window-${index}-to`}
-          type="number"
-          min={YEAR_MIN}
-          max={YEAR_MAX}
-          className="w-28"
-          disabled={disabled}
-          value={draft.to}
-          onChange={(event) => setDraft({ ...draft, to: event.target.value })}
-          onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
-        />
-      </div>
+      <YearBox
+        disabled={disabled}
+        id={`filler-window-${index}-from`}
+        label="From year"
+        onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
+        onChangeText={(from) => setDraft({ ...draft, from })}
+        value={draft.from}
+      />
+      <YearBox
+        disabled={disabled}
+        id={`filler-window-${index}-to`}
+        label="To year"
+        onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
+        onChangeText={(to) => setDraft({ ...draft, to })}
+        value={draft.to}
+      />
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => onRemove(index)}>
         Remove
       </Button>
@@ -243,27 +252,19 @@ const WindowEditor = ({
       ))}
       {windows.length < MAX_ERA_WINDOWS && (
         <div className="flex flex-wrap items-end gap-2">
-          <Input
-            aria-label="New date range from"
-            type="number"
-            min={YEAR_MIN}
-            max={YEAR_MAX}
-            className="w-28"
+          <YearBox
+            accessibilityLabel="New date range from"
             disabled={disabled}
-            value={draft.from}
-            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+            onChangeText={(from) => setDraft({ ...draft, from })}
             placeholder="From"
+            value={draft.from}
           />
-          <Input
-            aria-label="New date range to"
-            type="number"
-            min={YEAR_MIN}
-            max={YEAR_MAX}
-            className="w-28"
+          <YearBox
+            accessibilityLabel="New date range to"
             disabled={disabled}
-            value={draft.to}
-            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+            onChangeText={(to) => setDraft({ ...draft, to })}
             placeholder="To"
+            value={draft.to}
           />
           <Button
             type="button"
@@ -373,28 +374,27 @@ const FillerCriteria = ({
         ) : (
           <>
             <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="filler-country" className="text-muted-foreground text-xs">
-                  Country code
-                </Label>
-                <Input
-                  id="filler-country"
-                  className="w-28 uppercase"
-                  maxLength={2}
+              <Narrow>
+                <CommitField
+                  autoCapitalize="characters"
+                  autoCorrect={false}
                   disabled={disabled || Boolean(fixedCountry)}
-                  defaultValue={fixedCountry ?? selection.geography.country}
+                  id="filler-country"
+                  initial={fixedCountry ?? selection.geography.country ?? ""}
                   key={`country-${fixedCountry ?? selection.geography.country}`}
-                  onBlur={(event) =>
+                  label="Country code"
+                  maxLength={2}
+                  onCommit={(text) =>
                     onChange({
                       ...selection,
                       geography: {
                         ...selection.geography!,
-                        country: fixedCountry ?? event.target.value.trim().toUpperCase(),
+                        country: fixedCountry ?? text.trim().toUpperCase(),
                       },
                     })
                   }
                 />
-              </div>
+              </Narrow>
               <div className="min-w-52 flex-1">
                 <LocationPicker
                   value={{
@@ -494,46 +494,42 @@ const FillerCriteria = ({
           </>
         ) : (
           <div className="flex items-center gap-3">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="filler-era-from" className="text-muted-foreground text-xs">
-                From year
-              </Label>
-              <Input
-                id="filler-era-from"
-                type="number"
-                className="w-28"
+            <Narrow>
+              <CommitField
                 disabled={disabled}
-                defaultValue={era?.from ?? ""}
-                placeholder="Any"
+                id="filler-era-from"
+                initial={String(era?.from ?? "")}
                 key={`from-${era?.from ?? ""}`}
-                onBlur={(e) => {
-                  const from = e.target.value === "" ? undefined : Number(e.target.value);
+                keyboardType="number-pad"
+                label="From year"
+                maxLength={4}
+                onCommit={(text) => {
+                  const from = text === "" ? undefined : Number(text);
                   if (from === era?.from) return;
                   const { eraWindows: _windows, ...rest } = selection;
                   onChange({ ...rest, era: { ...era, from } });
                 }}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="filler-era-to" className="text-muted-foreground text-xs">
-                To year
-              </Label>
-              <Input
-                id="filler-era-to"
-                type="number"
-                className="w-28"
-                disabled={disabled}
-                defaultValue={era?.to ?? ""}
                 placeholder="Any"
+              />
+            </Narrow>
+            <Narrow>
+              <CommitField
+                disabled={disabled}
+                id="filler-era-to"
+                initial={String(era?.to ?? "")}
                 key={`to-${era?.to ?? ""}`}
-                onBlur={(e) => {
-                  const to = e.target.value === "" ? undefined : Number(e.target.value);
+                keyboardType="number-pad"
+                label="To year"
+                maxLength={4}
+                onCommit={(text) => {
+                  const to = text === "" ? undefined : Number(text);
                   if (to === era?.to) return;
                   const { eraWindows: _windows, ...rest } = selection;
                   onChange({ ...rest, era: { ...era, to } });
                 }}
+                placeholder="Any"
               />
-            </div>
+            </Narrow>
           </div>
         )}
         {eraWindows === undefined && (

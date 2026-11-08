@@ -4,6 +4,7 @@ import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
 import { Badge, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
+import { NumberField } from "@loomarr/ui";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
 import { type ComponentProps, type ReactNode, useState } from "react";
 import { Label } from "@/components/ui/label";
@@ -56,37 +57,6 @@ const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
   const bytes = Number(raw);
   if (!Number.isFinite(bytes)) return { amount: 0, unit: "MiB" };
   return { amount: Number((bytes / 1024 ** 2).toFixed(2)), unit: "MiB" };
-};
-
-type NumberBoxProps = Omit<ComponentProps<typeof Field>, "onChangeText" | "value"> & {
-  amount: number;
-  onAmount: (amount: number) => void;
-};
-
-// A number in a design-system Field. While the operator types, the box shows their text, not the
-// parsed number: "1." re-rendered from Number("1.") would come back as "1" and eat the point. The
-// text is kept only while it still reads as the amount shown: a duration re-expresses 1.5 days as
-// 36 hours, and the box must then say 36 beside its new unit.
-// The flexible Surface lets the box shrink beside its unit; a web View does not shrink by default.
-const NumberBox = ({ amount, onAmount, onBlur, ...field }: NumberBoxProps) => {
-  const [draft, setDraft] = useState<string>();
-  return (
-    <Surface backgroundColor="transparent" borderWidth={0} flexGrow={1} flexShrink={1} minWidth={0}>
-      <Field
-        {...field}
-        keyboardType="decimal-pad"
-        onBlur={(event) => {
-          setDraft(undefined);
-          onBlur?.(event);
-        }}
-        onChangeText={(text) => {
-          setDraft(text);
-          onAmount(Number(text));
-        }}
-        value={draft !== undefined && Number(draft) === amount ? draft : String(amount)}
-      />
-    </Surface>
-  );
 };
 
 // A number box with its unit beside it: the bytes editor's MiB, or a registry-declared unit.
@@ -235,7 +205,7 @@ const SettingField = ({
           </Select>
           {preset === CUSTOM_PRESET && (
             <div className="flex gap-2">
-              <NumberBox
+              <NumberField
                 accessibilityLabel="Custom check interval"
                 amount={current.amount}
                 disabled={pinned || disabledReason !== undefined}
@@ -266,7 +236,7 @@ const SettingField = ({
       const current = durationParts(value);
       return (
         <div className="flex gap-2">
-          <NumberBox
+          <NumberField
             amount={current.amount}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
@@ -298,7 +268,7 @@ const SettingField = ({
       const current = byteParts(value);
       return (
         <WithUnit unit={current.unit}>
-          <NumberBox
+          <NumberField
             amount={current.amount}
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}

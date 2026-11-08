@@ -1,11 +1,10 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
+import { Field, Surface, Text } from "@loomarr/design-system";
 import { Check, Loader2, Play, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { SourceSearchProps } from "./source-search.type";
 
@@ -128,16 +127,17 @@ const SourceSearch = ({
           onSearch();
         }}
       >
-        <div className="min-w-0 flex-1">
-          <Input
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
+        <Surface backgroundColor="transparent" borderWidth={0} flexGrow={1} flexShrink={1} minWidth={0}>
+          {/* The visible label lives in the tab heading above, so the control carries its own
+              accessible name rather than relying on placeholder text (which is not a label). */}
+          <Field
+            accessibilityLabel="Search this source"
+            autoCapitalize="none"
+            onChangeText={onQueryChange}
             placeholder="Search this source…"
-            // The visible label lives in the tab heading above, so the control carries its own
-            // accessible name rather than relying on placeholder text (which is not a label).
-            aria-label="Search this source"
+            value={query}
           />
-        </div>
+        </Surface>
         <Button type="submit" disabled={searching || query.trim().length < 2}>
           <Search className="size-4" aria-hidden />
           {searching ? "Searching…" : "Search"}

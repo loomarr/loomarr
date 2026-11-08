@@ -113,6 +113,8 @@ export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-r
 export { ListGroup, ListRow } from "./src/list-row";
 export type { LinkLike, NavTab, NavTabsProps } from "./src/nav-tabs";
 export { NavTabs } from "./src/nav-tabs";
+export type { NumberFieldProps } from "./src/number-field";
+export { NumberField } from "./src/number-field";
 export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,

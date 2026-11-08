@@ -4,7 +4,7 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge, Card } from "@loomarr/design-system";
+import { Badge, Card, Field } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus } from "lucide-react";
@@ -12,7 +12,6 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -273,26 +272,22 @@ const TaxonEditor = ({
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="taxon-label">Label</Label>
-          <Input
-            id="taxon-label"
-            value={label}
-            onChange={(event) => edit(() => setLabel(event.target.value))}
-          />
-        </div>
-        <div>
-          <Label htmlFor="taxon-slug">Slug</Label>
-          <Input
-            id="taxon-slug"
-            value={slug}
-            disabled={editor.mode === "edit"}
-            placeholder="breakfast-cereal"
-            onChange={(event) =>
-              edit(() => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))
-            }
-          />
-        </div>
+        <Field
+          id="taxon-label"
+          label="Label"
+          onChangeText={(text) => edit(() => setLabel(text))}
+          value={label}
+        />
+        <Field
+          autoCapitalize="none"
+          autoCorrect={false}
+          disabled={editor.mode === "edit"}
+          id="taxon-slug"
+          label="Slug"
+          onChangeText={(text) => edit(() => setSlug(text.toLowerCase().replace(/[^a-z0-9_-]/g, "-")))}
+          placeholder="breakfast-cereal"
+          value={slug}
+        />
         <div>
           <Label htmlFor="taxon-axis">Axis</Label>
           <Select
@@ -341,24 +336,23 @@ const TaxonEditor = ({
             </SelectContent>
           </Select>
         </div>
-        <div>
-          <Label htmlFor="taxon-synonyms">Classifier synonyms</Label>
-          <Input
-            id="taxon-synonyms"
-            value={synonyms}
-            placeholder="soda, soft drink"
-            onChange={(event) => edit(() => setSynonyms(event.target.value))}
-          />
-        </div>
-        <div>
-          <Label htmlFor="taxon-aliases">Retired slugs</Label>
-          <Input
-            id="taxon-aliases"
-            value={aliases}
-            placeholder="old-machine-name"
-            onChange={(event) => edit(() => setAliases(event.target.value))}
-          />
-        </div>
+        <Field
+          autoCapitalize="none"
+          id="taxon-synonyms"
+          label="Classifier synonyms"
+          onChangeText={(text) => edit(() => setSynonyms(text))}
+          placeholder="soda, soft drink"
+          value={synonyms}
+        />
+        <Field
+          autoCapitalize="none"
+          autoCorrect={false}
+          id="taxon-aliases"
+          label="Retired slugs"
+          onChangeText={(text) => edit(() => setAliases(text))}
+          placeholder="old-machine-name"
+          value={aliases}
+        />
       </div>
       <p className="text-muted-foreground text-xs">
         Synonyms help the classifier resolve ordinary wording. Retired slugs preserve old integrations; both

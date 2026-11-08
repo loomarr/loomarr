@@ -1,9 +1,9 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Badge, Toggle } from "@loomarr/design-system";
+import { Badge, Surface, Toggle } from "@loomarr/design-system";
+import { SearchField } from "@loomarr/ui";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
 
@@ -63,14 +63,15 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
   return (
     <div className={className}>
       {scalable && (
-        <Input
-          type="search"
-          className="max-w-sm"
-          value={filter}
-          placeholder="Filter your sources…"
-          aria-label={`Filter ${sectionLabel} sources`}
-          onChange={(event) => setFilter(event.target.value)}
-        />
+        <Surface backgroundColor="transparent" borderWidth={0} maxWidth={384}>
+          <SearchField
+            label={`Filter ${sectionLabel} sources`}
+            labelHidden
+            onChangeText={setFilter}
+            placeholder="Filter your sources…"
+            value={filter}
+          />
+        </Surface>
       )}
 
       {visible.length > 0 ? (

@@ -5,17 +5,24 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { goDurationMinutes, pluralize } from "@loomarr/core/format";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Field,
+  Surface,
+} from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
 import { usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraOf } from "@/lib/era-dates";
@@ -49,7 +56,6 @@ type DurationChoice = {
   // The unit the custom number is typed in, and its Go duration suffix.
   unit: { suffix: "m" | "h"; minutes: number; words: string; describe: (n: number) => string };
   min: number;
-  step: number;
   // Shown when the default setting cannot be read.
   fallbackDefault: number;
   help: string;
@@ -62,7 +68,6 @@ const BREAK_LENGTH: DurationChoice = {
   customAriaLabel: "Custom break length in minutes",
   unit: { suffix: "m", minutes: 1, words: "minutes", describe: (n) => `${n} min` },
   min: 0.5,
-  step: 0.5,
   fallbackDefault: 2,
   help: "Loomarr automatically uses enough clips to fill this target. The minimum is 30 seconds.",
 };
@@ -74,10 +79,16 @@ const COMMERCIAL_SPACING: DurationChoice = {
   customAriaLabel: "Custom commercial repeat spacing in hours",
   unit: { suffix: "h", minutes: 60, words: "hours", describe: (n) => pluralize(n, "hour") },
   min: 0,
-  step: 0.5,
   fallbackDefault: 4,
   help: "Minimum time before a commercial you saw on any channel airs again here. Loomarr first uses commercials from a nearby year, and repeats one sooner only when a break would otherwise run short.",
 };
+
+// The custom number beside its unit words, sized for a few digits.
+const AmountBox = (props: ComponentProps<typeof Field>) => (
+  <Surface backgroundColor="transparent" borderWidth={0} width={96}>
+    <Field autoCorrect={false} {...props} />
+  </Surface>
+);
 
 // One field for a channel duration that follows a default or overrides it. Break length uses it
 // with deliberately no "off" sentinel: frequency owns whether a channel has breaks, keeping a
@@ -154,17 +165,13 @@ const DurationChoiceField = ({
       </Select>
       {mode === "custom" && (
         <div className="flex items-center gap-2">
-          <Input
-            aria-label={choice.customAriaLabel}
-            className="w-24"
-            type="number"
-            min={min}
-            step={choice.step}
-            inputMode="decimal"
-            value={customValue}
+          <AmountBox
+            accessibilityLabel={choice.customAriaLabel}
             disabled={disabled}
-            onChange={(event) => changeCustomValue(event.target.value)}
+            keyboardType="decimal-pad"
             onBlur={restoreValidValue}
+            onChangeText={changeCustomValue}
+            value={customValue}
           />
           <span className="text-muted-foreground text-sm">{unit.words}</span>
         </div>
@@ -249,17 +256,13 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
       </Select>
       {mode === "custom" && (
         <div className="flex items-center gap-2">
-          <Input
-            aria-label="Custom breaks per program hour"
-            className="w-24"
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            value={customValue}
+          <AmountBox
+            accessibilityLabel="Custom breaks per program hour"
             disabled={disabled}
-            onChange={(event) => changeCustomValue(event.target.value)}
+            keyboardType="number-pad"
             onBlur={restoreValidValue}
+            onChangeText={changeCustomValue}
+            value={customValue}
           />
           <span className="text-muted-foreground text-sm">breaks per program hour</span>
         </div>

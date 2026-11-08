@@ -1,7 +1,7 @@
 import { Card } from "@loomarr/design-system";
+import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -50,14 +50,12 @@ const CatalogToolbar = ({
           as a layout bug rather than a generous input. It still grows on narrow
           screens (min-w-48) and stops being silly on wide ones. */}
       <div className={cn("min-w-0 flex-1", !phone && "max-w-md min-w-48")}>
-        <Label htmlFor="clip-search" className={cn(phone && "sr-only")}>
-          Search
-        </Label>
-        <Input
-          id="clip-search"
-          value={q}
+        <SearchField
+          label="Search"
+          labelHidden={phone}
+          onChangeText={(text) => onFilterChange({ q: text || undefined })}
           placeholder="Clip name"
-          onChange={(e) => onFilterChange({ q: e.target.value || undefined })}
+          value={q}
         />
       </div>
       {phone ? (
