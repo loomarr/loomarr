@@ -11,6 +11,9 @@ tables:
       rows; a row goes away when its file is no longer in any clip folder, unless its recording was
       deliberately reclaimed (reaped_at), in which case the row stays. A clip's category is not
       stored: it is the most specific product tag in clip_tags.
+    retention: >
+      Kept while its file is in a clip folder; the folder scan deletes the rest, except reclaimed
+      compilations, which stay. A copy merged into a better copy is deleted too.
     columns:
       hash: >
         The clip's identity: a 64-character hex hash sampled from its bytes. Two copies of the same
@@ -108,7 +111,10 @@ tables:
   - name: clip_tags
     about: >
       Each tag a clip carries from the taxonomy (taxa). Rows are rewritten whenever a clip is
-      tagged or the taxonomy changes, and go away with the clip.
+      tagged or the taxonomy changes.
+    retention: >
+      Rewritten on each retag and removed with a deleted tag or a merged copy. Tags of a clip the
+      folder scan removes are left behind; nothing tidies them up yet.
     columns:
       clip_hash: The clip that carries the tag (clips.hash).
       taxon: The tag (taxa.slug).
@@ -122,6 +128,7 @@ tables:
       The tag vocabulary for clips, one row per tag, arranged as trees on separate axes. Loomarr
       seeds it on first start and adds new shipped tags over time; operators can edit and delete
       tags.
+    retention: Kept until an operator deletes the tag.
     columns:
       slug: The tag's stable id, such as beer. Tag rows elsewhere point here.
       label: The tag's display name.
@@ -142,6 +149,7 @@ tables:
     about: >
       Every ancestor and descendant pair in the tag trees, including each tag paired with itself.
       Rebuilt from taxa whenever the trees change, so "everything under drinks" is one lookup.
+    retention: Cleared and rebuilt in full from taxa whenever the tag trees change.
     columns:
       ancestor: The broader tag (taxa.slug).
       descendant: A tag at or below it (taxa.slug).
@@ -150,6 +158,7 @@ tables:
     about: >
       Which shipped batches of new tags this install has already received. Each batch is applied
       once, so a tag the operator later deletes is not added back.
+    retention: Kept forever, so a shipped tag the operator deleted never comes back.
     columns:
       version: The shipped tag batch's number.
       applied_at: When the batch was applied, in Unix seconds.
@@ -159,6 +168,7 @@ tables:
       The remote collections clips are downloaded from: archive.org collections and YouTube
       channels or playlists, added by an operator or offered from Loomarr's shipped list. A row
       stays until the operator deletes it; switching it off keeps its history.
+    retention: Kept until an operator deletes the source.
     columns:
       id: >
         The source's stable id, separate from its address so re-pointing a source keeps its
@@ -207,6 +217,7 @@ tables:
     about: >
       One on/off switch per provider. A remote source downloads only when both it and its provider
       are switched on.
+    retention: Kept forever; there is one fixed row per provider.
     columns:
       kind: The provider, archive or youtube.
       enabled: 1 when the provider is switched on.
@@ -215,6 +226,8 @@ tables:
     about: >
       Counts of what source checks found, per source, for the sweep in progress or the last
       completed one. Cleared when a new sweep begins; deleted with the source.
+    retention: >
+      Replaced by each new check of the source; goes with its source (deleted when that is).
     columns:
       source_id: The source checked (filler_sources.id).
       disposition: >
@@ -227,6 +240,7 @@ tables:
     about: >
       A proposed batch of clips to download, which an operator approves or dismisses. Decided pulls
       are kept as history of what was agreed to.
+    retention: "Unbounded: nothing deletes these rows yet; every decided pull stays."
     columns:
       id: Identifies the pull.
       title: A short summary of what the pull is for.
@@ -246,6 +260,7 @@ tables:
     about: >
       Links an approved pull to the one download run its approval started. Written in the same step
       as the approval.
+    retention: "Unbounded: nothing deletes these rows yet; one stays per approved pull."
     columns:
       pull_id: The approved pull (filler_pulls.id).
       acquisition_id: The download run it started (filler_acquisition_runs.id).
@@ -255,6 +270,7 @@ tables:
       One row per download run: a source check, an approved pull or URLs an admin typed in. Shows
       what was asked for and how the downloads went. Runs left unfinished by a restart are marked as
       errors.
+    retention: "Unbounded: nothing deletes these rows yet; one stays per download run."
     columns:
       id: Identifies the run. Downloaded files and prepared clips point here.
       trigger: >
@@ -280,6 +296,7 @@ tables:
     about: >
       One row per file a download produced, tracking it from download to the clip folder to the
       catalog. Rows that need repair are kept until someone deals with them.
+    retention: "Unbounded: nothing deletes these rows yet; one stays per downloaded file."
     columns:
       id: Identifies the downloaded file.
       acquisition_id: The download run that produced it (filler_acquisition_runs.id).
@@ -315,6 +332,7 @@ tables:
     about: >
       Each clip's preparation: which step it is at, how that step is going, and the clip's outcome
       (ready, rejected, waiting for review). One row per clip, deleted with the clip.
+    retention: Kept while the clip exists; removed when the folder scan drops it or it is merged.
     columns:
       clip_hash: The clip being prepared (clips.hash).
       stage: >
@@ -361,6 +379,9 @@ tables:
     about: >
       Pairs of clips that are different versions of the same ad, such as a cut-down or another
       ending. A break never carries two versions, and airing one rests the others.
+    retention: >
+      Moved to the better copy when a clip is merged; otherwise never deleted, even after a clip
+      leaves the catalog.
     columns:
       a_hash: One clip of the pair (clips.hash); always the smaller hash.
       b_hash: The other clip of the pair (clips.hash).
@@ -369,6 +390,7 @@ tables:
     about: >
       A saved picture-and-sound fingerprint of each clip, used to spot copies and versions of the
       same ad. Recomputed when the fingerprint method changes; removed when the clip is.
+    retention: Kept while the clip exists; removed when the folder scan drops it or it is merged.
     columns:
       clip_hash: The clip fingerprinted (clips.hash).
       algorithm: The fingerprint method and its version.
@@ -379,6 +401,7 @@ tables:
     about: >
       Each clip's latest picture and sound defect check, against a quality bar set by the clip's
       era, and the verdict it earned. One row per clip, replaced on each new measurement.
+    retention: Kept while the clip exists; removed when the folder scan drops it or it is merged.
     columns:
       clip_hash: The clip checked (clips.hash).
       measurement_version: >
@@ -413,6 +436,7 @@ tables:
     about: >
       Copies of an ad that lost to a better copy of the same ad and were merged into it. Kept so the
       same file is never catalogued again.
+    retention: Kept forever, so a copy merged away is never catalogued again.
     columns:
       clip_hash: The losing copy's former clip hash.
       source_hash: >
@@ -425,6 +449,7 @@ tables:
     about: >
       A record written when a clip becomes ready to air, at the same moment it joins the playable
       catalog. One per clip.
+    retention: "Unbounded: nothing deletes these rows yet, even after the clip leaves the catalog."
     columns:
       id: Identifies the event, as ready:<clip hash>.
       clip_hash: The clip that became ready (clips.hash).
@@ -444,6 +469,7 @@ tables:
       Which entries from Loomarr's shipped list of curated sources this install has been offered.
       An offer adds the source switched off, and the offer is kept after the source is deleted so a
       deleted source stays deleted.
+    retention: Kept forever, so a curated source the operator deleted stays deleted.
     columns:
       source_id: The offered source (filler_sources.id).
       list_version: The version of the shipped list that first offered it.
@@ -459,6 +485,9 @@ tables:
     about: >
       Each time a clip aired on a channel, used to rest clips between airings across the household.
       Airings from the last eight weeks are kept, plus each clip's newest few beyond that.
+    retention: >
+      Trimmed each time a clip airs to its last eight weeks plus its newest four airings; a clip's
+      airings are not deleted when it leaves the catalog.
     columns:
       channel_id: The channel it aired on.
       clip_hash: The clip that aired (clips.hash).
@@ -470,6 +499,9 @@ tables:
       Suggestions about a clip's year, country or station found by researching it online, with the
       pages cited, plus Loomarr's own uncited era guesses. Only a confident, cited geography finding
       updates the clip; the rest are shown as suggestions.
+    retention: >
+      Unbounded: nothing deletes these rows yet; each new research round adds rows, and they stay
+      after the clip leaves the catalog.
     columns:
       clip_hash: The clip researched (clips.hash).
       producer: >
@@ -490,6 +522,7 @@ tables:
       A directory of over-the-air TV stations that filler clips can name, so a clip titled with a
       station's call sign is placed in that station's town. Shipped with Loomarr and replaced
       whole at startup when a newer revision ships. Not related to Loomarr's own channels.
+    retention: Replaced whole at startup whenever a newer shipped directory arrives.
     columns:
       id: >
         Identifies the station. `fcc:` and the FCC facility id, or `wd:` and the Wikidata id for a
@@ -504,6 +537,7 @@ tables:
     about: >
       Every call sign a broadcast station has held, with the dates it was used. Replaced with the
       station directory.
+    retention: Replaced with the station directory; goes with its station (deleted when that is).
     columns:
       station_id: The station (broadcast_stations.id).
       call_sign: The base call sign without suffixes such as -TV, for example WEWS.
@@ -513,6 +547,7 @@ tables:
   - name: broadcast_station_seed_revisions
     about: >
       One row per revision of the shipped station directory that startup has applied. Kept forever.
+    retention: Kept forever, as the record of which shipped directory revisions were applied.
     columns:
       version: The revision number of the shipped station directory.
       applied_at: When it was applied, in Unix seconds.
