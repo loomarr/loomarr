@@ -128,6 +128,10 @@ type Descriptive struct {
 	// It says how many episodes each season holds, never which file is which: TMDB and TVDB number
 	// some shows differently.
 	Seasons []SeasonSize
+	// Orderings counts the other episode orderings the catalog knows for a series (TMDB's episode
+	// groups: DVD, absolute, story arc). Nil is unknown. Only a series with none is numbered by
+	// season and episode (#2151 decision 53).
+	Orderings *int
 }
 
 // SeasonSize is one season of a series and how many episodes it has.

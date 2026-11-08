@@ -3,8 +3,11 @@ package scan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -238,5 +241,74 @@ func TestEnricherDescribesAnEpisodeByItsTVDBID(t *testing.T) {
 	}
 	if facts.SeasonNumber != 1 || facts.EpisodeNumber != 2 {
 		t.Fatalf("numbering = S%dE%d, want the file's S1E2 (TMDB's record carries none)", facts.SeasonNumber, facts.EpisodeNumber)
+	}
+}
+
+// An episode with no TVDB id takes TMDB's entry for its season and number, but only when TMDB
+// numbers the series as the disk does: no other ordering, and each season on disk ends at TMDB's
+// count for it (decision 53). Otherwise its season is never asked for, and it keeps its file's
+// details.
+func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	series := func(orderings, seasonOne int) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+			Descriptive: &mp.Descriptive{
+				Title: "Golf Show", Orderings: &orderings,
+				Seasons: []mp.SeasonSize{{Number: 0, Episodes: 2}, {Number: 1, Episodes: seasonOne}},
+			},
+		}
+	}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000079" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	season := mp.Record{Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+		entry(1, "Tee Off"), entry(2, "The Back Nine"), entry(3, "Sudden Death"),
+	}}
+	for _, tc := range []struct {
+		name   string
+		series mp.Record
+		want   string
+	}{
+		{"TMDB numbers it as the disk does", series(0, 3), "The Back Nine"},
+		{"TMDB knows another ordering", series(1, 3), "Golf Show S01E02"},
+		{"a season on disk is not TMDB's size", series(0, 4), "Golf Show S01E02"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			h.im.Catalog = h.st
+			for n := 1; n <= 3; n++ {
+				h.file(fmt.Sprintf("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E0%d.mkv", n), 10)
+			}
+			h.run()
+			catalog := &fakeCatalog{records: map[string]mp.Record{"90000701": tc.series, "90000701/1": season}}
+			e := &Enricher{
+				Store: h.st, Provider: catalog,
+				Rewrite: func(root string, dirs ...string) {
+					if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+						t.Fatal(err)
+					}
+				},
+			}
+			// The series' record first; with it, the episodes ask for their season's.
+			for range 2 {
+				if err := e.Tick(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			askedSeason := slices.Contains(catalog.fetched, "season:90000701/1")
+			if numbered := tc.want != "Golf Show S01E02"; askedSeason != numbered {
+				t.Fatalf("fetched %v; want the season asked for: %v", catalog.fetched, numbered)
+			}
+			origin := fileOrigin(h.root, "Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02.mkv")
+			facts := h.origin(h.item(origin), origin).Observation.Facts
+			if facts.Name != tc.want || facts.SeasonNumber != 1 || facts.EpisodeNumber != 2 {
+				t.Fatalf("episode = %q S%dE%d, want %q S1E2", facts.Name, facts.SeasonNumber, facts.EpisodeNumber, tc.want)
+			}
+		})
 	}
 }

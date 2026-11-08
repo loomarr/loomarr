@@ -4,9 +4,11 @@
 // that one detail call carries (append_to_response), and an episode by its own TVDB episode id
 // through TMDB's /find.
 //
-// An episode is never matched by season and episode number. TMDB and TVDB lay out 81 of 527
-// reference shows differently, so a number from one is the wrong episode in the other. The episode
-// record therefore carries no numbering; it is the TMDB view of the episode the TVDB id names.
+// An episode fetched by its TVDB id carries no numbering: it is the TMDB view of the episode the id
+// names. TMDB and TVDB lay out 81 of 527 reference shows differently, so a number from one can be
+// the wrong episode in the other. A season (by TMDB series id and season number) lists its
+// episodes numbered, and the scanner uses it only for a show TMDB knows one ordering of whose
+// seasons on disk fit TMDB's (#2151 decision 53).
 //
 // It reuses the shared TMDB client for the credential, transport and metrics, so the key is
 // resolved once per operation and never reaches a URL. One installation-wide language and country
@@ -77,12 +79,13 @@ func (*Provider) Capabilities() mp.Capabilities {
 	return mp.Capabilities{
 		Basis:   source.Basis,
 		Catalog: source.Catalog,
-		Kinds:   []mp.Kind{mp.KindMovie, mp.KindSeries, mp.KindEpisode, mp.KindCollection},
+		Kinds:   []mp.Kind{mp.KindMovie, mp.KindSeries, mp.KindEpisode, mp.KindCollection, mp.KindSeason},
 		Resolves: []mp.Resolvable{
 			{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
 			{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
+			{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
 		},
 		Families: []mp.Family{mp.FamilyIdentity, mp.FamilyDescriptive, mp.FamilyCertification, mp.FamilyArtwork},
 		// TMDB documents roughly 50 requests per second per address and 20 simultaneous
@@ -96,6 +99,17 @@ func (*Provider) Capabilities() mp.Capabilities {
 func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	if !p.Capabilities().CanResolve(ref) {
 		return mp.Record{}, fmt.Errorf("tmdb: %s by %s: %w", ref.Kind, ref.ID.Namespace, mp.ErrUnsupported)
+	}
+	if ref.Kind == mp.KindSeason {
+		series, number, ok := SeasonRef(ref.ID.Value)
+		if !ok {
+			return mp.Record{}, fmt.Errorf("tmdb: season %q is not <series id>/<season>: %w", ref.ID.Value, mp.ErrUnsupported)
+		}
+		loc, err := p.resolveLocale()
+		if err != nil {
+			return mp.Record{}, err
+		}
+		return p.season(ctx, loc, series, number)
 	}
 	id, err := strconv.Atoi(strings.TrimSpace(ref.ID.Value))
 	if err != nil || id <= 0 {
@@ -364,6 +378,12 @@ type wireSeries struct {
 		SeasonNumber int `json:"season_number"`
 		EpisodeCount int `json:"episode_count"`
 	} `json:"seasons"`
+	// EpisodeGroups are the other orderings TMDB knows; nil when the answer did not carry them.
+	EpisodeGroups *struct {
+		Results []struct {
+			ID string `json:"id"`
+		} `json:"results"`
+	} `json:"episode_groups"`
 	Keywords struct {
 		Results []idName `json:"results"`
 	} `json:"keywords"`
@@ -377,7 +397,7 @@ type wireSeries struct {
 
 func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, error) {
 	var s wireSeries
-	path := "/tv/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,content_ratings,keywords,images")
+	path := "/tv/" + strconv.Itoa(id) + "?" + loc.detailQuery("external_ids,content_ratings,keywords,images,episode_groups")
 	if err := p.get(ctx, path, &s); err != nil {
 		return mp.Record{}, err
 	}
@@ -416,6 +436,10 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 				mp.SeasonSize{Number: season.SeasonNumber, Episodes: season.EpisodeCount})
 		}
 	}
+	if s.EpisodeGroups != nil {
+		n := len(s.EpisodeGroups.Results)
+		rec.Descriptive.Orderings = &n
+	}
 	if len(s.EpisodeRuntime) > 0 && s.EpisodeRuntime[0] > 0 {
 		rec.Descriptive.Runtime = time.Duration(s.EpisodeRuntime[0]) * time.Minute
 	}
@@ -442,6 +466,72 @@ func seriesStatus(s string) string {
 	default:
 		return strings.ToLower(strings.TrimSpace(s))
 	}
+}
+
+// ---- season ----
+
+// SeasonRef reads a season's id, "<TMDB series id>/<season number>"; false for anything else.
+func SeasonRef(value string) (series, number int, ok bool) {
+	s, n, found := strings.Cut(strings.TrimSpace(value), "/")
+	if !found {
+		return 0, 0, false
+	}
+	series, err := strconv.Atoi(s)
+	if err != nil || series <= 0 {
+		return 0, 0, false
+	}
+	number, err = strconv.Atoi(n)
+	if err != nil || number < 0 {
+		return 0, 0, false
+	}
+	return series, number, true
+}
+
+type wireSeason struct {
+	SeasonNumber int `json:"season_number"`
+	Episodes     []struct {
+		ID            int     `json:"id"`
+		EpisodeNumber int     `json:"episode_number"`
+		SeasonNumber  int     `json:"season_number"`
+		Name          string  `json:"name"`
+		Overview      string  `json:"overview"`
+		AirDate       string  `json:"air_date"`
+		Runtime       int     `json:"runtime"`
+		VoteAverage   float64 `json:"vote_average"`
+		VoteCount     int     `json:"vote_count"`
+	} `json:"episodes"`
+}
+
+// season is one season of a series: its episodes in TMDB's numbering, as Children.
+func (p *Provider) season(ctx context.Context, loc locale, series, number int) (mp.Record, error) {
+	var s wireSeason
+	q := url.Values{}
+	q.Set("language", loc.language)
+	path := "/tv/" + strconv.Itoa(series) + "/season/" + strconv.Itoa(number) + "?" + q.Encode()
+	if err := p.get(ctx, path, &s); err != nil {
+		return mp.Record{}, err
+	}
+	if s.SeasonNumber != number || len(s.Episodes) == 0 {
+		return mp.Record{}, fmt.Errorf("tmdb series %d season %d: %w", series, number, mp.ErrNotFound)
+	}
+	parent := []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(series)}}
+	rec := mp.Record{Source: source, Kind: mp.KindSeason, Parent: parent}
+	for _, e := range s.Episodes {
+		if e.ID <= 0 || e.EpisodeNumber <= 0 {
+			continue
+		}
+		rec.Children = append(rec.Children, mp.Record{
+			Source: source, Kind: mp.KindEpisode, Parent: parent,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(e.ID)}},
+			Numbering: &mp.Numbering{Season: number, Episode: e.EpisodeNumber},
+			Descriptive: &mp.Descriptive{
+				Title: e.Name, Overview: e.Overview, PremiereDate: e.AirDate, Year: yearOf(e.AirDate),
+				CommunityRating: communityRating(e.VoteAverage, e.VoteCount),
+				Runtime:         time.Duration(e.Runtime) * time.Minute,
+			},
+		})
+	}
+	return rec, nil
 }
 
 // ---- episode ----

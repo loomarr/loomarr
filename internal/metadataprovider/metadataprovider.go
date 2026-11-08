@@ -55,6 +55,9 @@ const (
 	// KindCollection is a catalog's set of movies, such as a TMDB collection (a franchise). Its
 	// record's Children are the set's movies in the catalog's order.
 	KindCollection Kind = "collection"
+	// KindSeason is one season of a series in a catalog's numbering. Its record's Children are the
+	// season's episodes, numbered; it is fetched by "<series id>/<season>".
+	KindSeason Kind = "season"
 )
 
 // Family is a group of fields that share one precedence rule.

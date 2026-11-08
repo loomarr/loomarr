@@ -38,6 +38,9 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/movie/90000601", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_movie_90000601.json") })
 	mux.HandleFunc("/tv/90000701", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_tv_90000701.json") })
+	mux.HandleFunc("/tv/90000701/season/1", func(w http.ResponseWriter, _ *http.Request) {
+		serve(w, "provider_tv_90000701_season_1.json")
+	})
 	mux.HandleFunc("/collection/90000611", func(w http.ResponseWriter, _ *http.Request) {
 		serve(w, "provider_collection_90000611.json")
 	})
@@ -258,6 +261,34 @@ func TestFetchSeries(t *testing.T) {
 	}
 	if len(rec.Children) != 0 {
 		t.Error("TMDB's season layout differs from TVDB's, so a series carries no episodes; they are fetched by their own ids")
+	}
+	if d.Orderings == nil || *d.Orderings != 1 {
+		t.Errorf("orderings = %v, want the one episode group", d.Orderings)
+	}
+}
+
+// A season lists its episodes in TMDB's numbering; an episode TMDB has no id for is left out, and
+// anything but "<series>/<season>" is refused.
+func TestFetchSeason(t *testing.T) {
+	p := newFakeTMDB(t).provider(nil)
+	rec, err := p.Fetch(context.Background(), ref(mp.KindSeason, mp.NamespaceTMDB, "90000701/1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Kind != mp.KindSeason || len(rec.Children) != 2 {
+		t.Fatalf("season = %+v, want two numbered episodes", rec)
+	}
+	e := rec.Children[1]
+	if e.Numbering == nil || e.Numbering.Season != 1 || e.Numbering.Episode != 2 ||
+		e.Descriptive.Title != "Low Water" || e.Descriptive.Runtime != 41*time.Minute ||
+		!reflect.DeepEqual(e.IDs, []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000792"}}) ||
+		!reflect.DeepEqual(e.Parent, []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}}) {
+		t.Errorf("episode 2 = %+v", e)
+	}
+	for _, bad := range []string{"90000701", "x/1", "90000701/-1"} {
+		if _, err := p.Fetch(context.Background(), ref(mp.KindSeason, mp.NamespaceTMDB, bad)); !errors.Is(err, mp.ErrUnsupported) {
+			t.Errorf("%q = %v, want unsupported", bad, err)
+		}
 	}
 }
 

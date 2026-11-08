@@ -538,7 +538,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel)})
 		}
 	}
-	for _, file := range walk.Files {
+	// Every file is identified before any is written, so an episode's series knows each season on
+	// disk when the episode is described (decision 53).
+	ids := make([]identity, len(walk.Files))
+	for i, file := range walk.Files {
+		if file.Problem == "" {
+			ids[i] = b.identify(file)
+		}
+	}
+	for i, file := range walk.Files {
 		old, known := prev[file.Path]
 		// A held file the walk finds again is back.
 		old.Held = false
@@ -549,7 +557,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			}
 			continue
 		}
-		id := b.identify(file)
+		id := ids[i]
 		row := store.LibraryFile{Path: file.Path, Root: root, Size: file.Stat.Size, ModifiedNs: file.Stat.ModifiedNs,
 			Identity: id.digest, Kind: string(kindOf(id.kind)), Header: store.LibraryHeaderPending, SeenAt: now}
 		sameBytes := known && old.Size == file.Stat.Size && old.ModifiedNs == file.Stat.ModifiedNs && old.MissingAt.IsZero()

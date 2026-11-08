@@ -58,6 +58,11 @@
       { "id": 90001102, "name": "harbor" }
     ]
   },
+  "episode_groups": {
+    "results": [
+      { "id": "90000799a", "name": "DVD Order", "type": 3, "episode_count": 26, "group_count": 3, "description": "", "network": null }
+    ]
+  },
   "images": {
     "backdrops": [
       { "aspect_ratio": 1.778, "height": 1080, "iso_639_1": null, "file_path": "/img-backdrop-textless-90000701.jpg", "vote_average": 5.6, "vote_count": 3, "width": 1920 }
