@@ -57,7 +57,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	6: a file's origin notes whether its arr lists it (the copy that plays).
 //	7: a multi-episode file carries every episode's ids, not only its first's.
 //	8: extras are not titles (0047); the digest drops what only an extra used.
-const writeVersion = 8
+//	9: NFOs are read in full (decision 59): older id tags, tags, ratings, people and sets.
+const writeVersion = 9
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
@@ -131,7 +132,16 @@ func itemFacts(r precedence.Resolved) (inventory.ItemFacts, map[string]inventory
 		Name: r.Title.Value, OriginalTitle: r.OriginalTitle.Value, SortTitle: r.SortTitle.Value,
 		Overview: r.Overview.Value, Genres: r.Genres.Value, ProductionYear: r.Year.Value,
 		PremiereDate: r.PremiereDate.Value, OfficialRating: r.Certification.Value.Rating,
-		RuntimeMillis: r.Runtime.Value.Milliseconds(),
+		RuntimeMillis: r.Runtime.Value.Milliseconds(), Tags: r.Keywords.Value,
+		CommunityScore: r.CommunityRating.Value,
+	}
+	// A person's role reads as the media server's does: an actor's character, else their job.
+	for _, p := range r.People.Value {
+		role := p.Character
+		if role == "" {
+			role = string(p.Role)
+		}
+		f.People = append(f.People, inventory.Person{Name: p.Name, Role: role})
 	}
 	if r.Network.Value != "" {
 		f.Studios = []string{r.Network.Value}

@@ -1,6 +1,7 @@
 // Package nfo provides Kodi NFO sidecars as a metadata provider (#2151 decision 2). An NFO beside
-// a media file says which title the file is (its typed uniqueid elements) and carries guide text,
-// numbering and a content rating. The scraper that wrote it is named by the default uniqueid, and
+// a media file says which title the file is (its typed uniqueid elements, or an older scraper's
+// id tags) and carries guide text, numbering, a content rating, people, tags and its set. Its ids
+// decide identity with no search; its details fill gaps and never override a service (ADR 0047). The scraper that wrote it is named by the default uniqueid, and
 // that namespace is the record's catalog.
 //
 // Reading is bounded and refuses anything but plain XML: a file over MaxSize, a non-regular file,
@@ -9,14 +10,18 @@ package nfo
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -226,7 +231,9 @@ func records(kind mp.Kind, docs []document) mp.Record {
 	return rec
 }
 
-// document is the part of a Kodi movie, tvshow or episodedetails element Loomarr reads.
+// document is a Kodi movie, tvshow or episodedetails element as Loomarr reads it: everything that
+// describes the title (decision 59). Watched state and the scraper's stream details are not read;
+// the header read measures the file itself.
 type document struct {
 	Title         string     `xml:"title"`
 	OriginalTitle string     `xml:"originaltitle"`
@@ -243,6 +250,22 @@ type document struct {
 	Genres        []string   `xml:"genre"`
 	Studios       []string   `xml:"studio"`
 	UniqueIDs     []uniqueID `xml:"uniqueid"`
+	Tags          []string   `xml:"tag"`
+	Tagline       string     `xml:"tagline"`
+	Countries     []string   `xml:"country"`
+	Trailer       string     `xml:"trailer"`
+	Edition       string     `xml:"edition"`
+	Set           set        `xml:"set"`
+	Ratings       []rating   `xml:"ratings>rating"`
+	Rating        string     `xml:"rating"`
+	Actors        []actor    `xml:"actor"`
+	Directors     []crew     `xml:"director"`
+	Writers       []crew     `xml:"credits"`
+	// The id tags older scrapers wrote before uniqueid.
+	ID     string `xml:"id"`
+	IMDBID string `xml:"imdbid"`
+	TMDBID string `xml:"tmdbid"`
+	TVDBID string `xml:"tvdbid"`
 }
 
 type uniqueID struct {
@@ -251,8 +274,36 @@ type uniqueID struct {
 	Value   string `xml:",chardata"`
 }
 
+// set is a movie's collection: <set tmdbcolid="…"><name>…</name></set>, or an older scraper's
+// <set>name</set>.
+type set struct {
+	TMDBColID string `xml:"tmdbcolid,attr"`
+	Name      string `xml:"name"`
+	Text      string `xml:",chardata"`
+}
+
+type rating struct {
+	Name    string `xml:"name,attr"`
+	Max     string `xml:"max,attr"`
+	Default string `xml:"default,attr"`
+	Value   string `xml:"value"`
+}
+
+type actor struct {
+	Name   string `xml:"name"`
+	Role   string `xml:"role"`
+	Order  string `xml:"order"`
+	Thumb  string `xml:"thumb"`
+	TMDBID string `xml:"tmdbid"`
+}
+
+type crew struct {
+	TMDBID string `xml:"tmdbid,attr"`
+	Name   string `xml:",chardata"`
+}
+
 func recordFrom(kind mp.Kind, doc document) mp.Record {
-	externalIDs, catalog := identities(doc.UniqueIDs)
+	externalIDs, catalog := identities(slices.Concat(doc.UniqueIDs, olderIDs(kind, doc)))
 	rec := mp.Record{
 		Source: mp.Source{Provider: mp.IDNFO, Basis: mp.BasisSidecar, Catalog: catalog},
 		Kind:   kind,
@@ -268,6 +319,15 @@ func recordFrom(kind mp.Kind, doc document) mp.Record {
 			Network:       firstNonEmpty(cleanAll(doc.Studios)),
 			Status:        clean(doc.Status),
 			Runtime:       time.Duration(leadingMinutes(doc.Runtime)) * time.Minute,
+			Keywords:      cleanAll(doc.Tags),
+			Tagline:       clean(doc.Tagline),
+			Countries:     cleanAll(doc.Countries),
+			Trailer:       trailerURL(doc.Trailer),
+			Edition:       clean(doc.Edition),
+			Collection:    collection(doc.Set),
+			People:        people(doc),
+
+			CommunityRating: communityRating(doc),
 		},
 	}
 	if rec.Descriptive.Year == 0 && len(rec.Descriptive.PremiereDate) == 10 {
@@ -307,7 +367,7 @@ func identities(raw []uniqueID) ([]mp.ExternalID, mp.Namespace) {
 		}
 		seen[ns] = true
 		out = append(out, mp.ExternalID{Namespace: ns, Value: value})
-		if strings.EqualFold(strings.TrimSpace(u.Default), "true") && catalog == "" {
+		if isTrue(u.Default) && catalog == "" {
 			catalog = ns
 		}
 	}
@@ -328,6 +388,168 @@ func validID(ns mp.Namespace, value string) bool {
 	default:
 		return namespacePattern.MatchString(string(ns)) && valuePattern.MatchString(value)
 	}
+}
+
+// olderIDs are the id tags scrapers wrote before uniqueid. They come after every uniqueid, so a
+// uniqueid wins its namespace. A bare <id> is an IMDb id when it looks like one, and otherwise the
+// default catalog's id by Kodi's convention: TMDB for a movie, TVDB for a show or an episode.
+func olderIDs(kind mp.Kind, doc document) []uniqueID {
+	out := []uniqueID{
+		{Type: string(mp.NamespaceIMDB), Value: doc.IMDBID},
+		{Type: string(mp.NamespaceTMDB), Value: doc.TMDBID},
+		{Type: string(mp.NamespaceTVDB), Value: doc.TVDBID},
+	}
+	id := strings.TrimSpace(doc.ID)
+	switch {
+	case imdbPattern.MatchString(id):
+		out = append(out, uniqueID{Type: string(mp.NamespaceIMDB), Value: id})
+	case kind == mp.KindMovie:
+		out = append(out, uniqueID{Type: string(mp.NamespaceTMDB), Value: id})
+	default:
+		out = append(out, uniqueID{Type: string(mp.NamespaceTVDB), Value: id})
+	}
+	return out
+}
+
+// communityRating is the audience score on a 0-10 scale: the default of <ratings>, or else the
+// first that reads, scaled from its max; or else an older scraper's bare <rating>. Zero is none.
+func communityRating(doc document) float64 {
+	ratings := slices.Clone(doc.Ratings)
+	slices.SortStableFunc(ratings, func(a, b rating) int {
+		return cmp.Compare(boolRank(isTrue(b.Default)), boolRank(isTrue(a.Default)))
+	})
+	for _, r := range ratings {
+		if v, ok := outOfTen(r.Value, r.Max); ok {
+			return v
+		}
+	}
+	if v, ok := outOfTen(doc.Rating, ""); ok {
+		return v
+	}
+	return 0
+}
+
+// outOfTen reads a score out of max (10 when unstated) onto a 0-10 scale. A score of zero is no
+// votes, not a verdict.
+func outOfTen(value, max string) (float64, bool) {
+	v, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return 0, false
+	}
+	m := 10.0
+	if strings.TrimSpace(max) != "" {
+		if m, err = strconv.ParseFloat(strings.TrimSpace(max), 64); err != nil {
+			return 0, false
+		}
+	}
+	if m <= 0 || v <= 0 || v > m {
+		return 0, false
+	}
+	return v * 10 / m, true
+}
+
+func boolRank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func isTrue(s string) bool { return strings.EqualFold(strings.TrimSpace(s), "true") }
+
+// collection is a movie's set: by its TMDB collection id when the NFO names one, else by name
+// alone, which links nothing (a ready-made set needs its id).
+func collection(s set) *mp.CollectionRef {
+	name := clean(s.Name)
+	if name == "" {
+		name = clean(s.Text)
+	}
+	id := strings.TrimSpace(s.TMDBColID)
+	if !digitsPattern.MatchString(id) {
+		id = ""
+	}
+	if name == "" && id == "" {
+		return nil
+	}
+	ref := &mp.CollectionRef{Name: name}
+	if id != "" {
+		ref.ID = mp.ExternalID{Namespace: mp.NamespaceTMDBCollection, Value: id}
+	}
+	return ref
+}
+
+var youtubeAddon = regexp.MustCompile(`^plugin://plugin\.video\.youtube/.*[?&]video_?id=([A-Za-z0-9_-]{11})(?:&|$)`)
+
+// trailerURL is a trailer as a web page: an http(s) URL as written, or Kodi's YouTube add-on link
+// as the YouTube page it plays. Anything else (a local path, another add-on) is no trailer.
+func trailerURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	if m := youtubeAddon.FindStringSubmatch(s); m != nil {
+		return "https://www.youtube.com/watch?v=" + m[1]
+	}
+	if webURL(s) {
+		return s
+	}
+	return ""
+}
+
+func webURL(s string) bool {
+	if len(s) > maxURL {
+		return false
+	}
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+const (
+	maxURL = 2048
+	// maxPeople bounds one title's credits; real NFOs list a few dozen.
+	maxPeople = 1000
+)
+
+// people is the cast in billing order (<order>, then document order), then the directors, then
+// the writers (Kodi's <credits>).
+func people(doc document) []mp.Person {
+	cast := slices.Clone(doc.Actors)
+	slices.SortStableFunc(cast, func(a, b actor) int { return cmp.Compare(billing(a.Order), billing(b.Order)) })
+	var out []mp.Person
+	add := func(p mp.Person) {
+		if p.Name != "" && len(out) < maxPeople {
+			out = append(out, p)
+		}
+	}
+	for _, a := range cast {
+		add(mp.Person{Name: clean(a.Name), Role: mp.PersonActor, Character: clean(a.Role), TMDB: tmdbPerson(a.TMDBID), Photo: photo(a.Thumb)})
+	}
+	for _, c := range doc.Directors {
+		add(mp.Person{Name: clean(c.Name), Role: mp.PersonDirector, TMDB: tmdbPerson(c.TMDBID)})
+	}
+	for _, c := range doc.Writers {
+		add(mp.Person{Name: clean(c.Name), Role: mp.PersonWriter, TMDB: tmdbPerson(c.TMDBID)})
+	}
+	return out
+}
+
+// billing is an actor's place in the credits; one with no <order> comes after every one with.
+func billing(order string) int {
+	if n, ok := whole(order); ok {
+		return n
+	}
+	return math.MaxInt
+}
+
+func tmdbPerson(id string) string {
+	if id = strings.TrimSpace(id); digitsPattern.MatchString(id) {
+		return id
+	}
+	return ""
+}
+
+func photo(thumb string) string {
+	if s := strings.TrimSpace(thumb); webURL(s) {
+		return s
+	}
+	return ""
 }
 
 var countryPrefix = regexp.MustCompile(`^([A-Za-z]{2})\s*:\s*(.+)$`)

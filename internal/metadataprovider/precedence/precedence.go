@@ -103,6 +103,11 @@ type Resolved struct {
 	Network       Picked[string]
 	Status        Picked[string]
 	Runtime       Picked[time.Duration]
+	Tagline       Picked[string]
+	Countries     Picked[[]string]
+	Trailer       Picked[string]
+	Edition       Picked[string]
+	People        Picked[[]mp.Person]
 
 	CommunityRating Picked[float64]
 	Collection      Picked[mp.CollectionRef]
@@ -260,6 +265,11 @@ func resolveDescriptive(out *Resolved, records []mp.Record) {
 	out.PremiereDate = d(func(x *mp.Descriptive) string { return x.PremiereDate })
 	out.Network = d(func(x *mp.Descriptive) string { return x.Network })
 	out.Status = d(func(x *mp.Descriptive) string { return x.Status })
+	out.Tagline = d(func(x *mp.Descriptive) string { return x.Tagline })
+	out.Trailer = d(func(x *mp.Descriptive) string { return x.Trailer })
+	out.Edition = d(func(x *mp.Descriptive) string { return x.Edition })
+	out.Countries = firstSlice(records, func(rec mp.Record) []string { return rec.Descriptive.Countries })
+	out.People = firstSlice(records, func(rec mp.Record) []mp.Person { return rec.Descriptive.People })
 	out.Year = first(records, func(rec mp.Record) int { return rec.Descriptive.Year })
 	out.Runtime = first(records, func(rec mp.Record) time.Duration { return rec.Descriptive.Runtime })
 	out.Genres = firstSlice(records, func(rec mp.Record) []string { return rec.Descriptive.Genres })

@@ -78,11 +78,73 @@ func TestParse_Movie(t *testing.T) {
 			Overview:     "A clockmaker inherits an orchard whose trees keep perfect time.",
 			PremiereDate: "2016-05-20", Year: 2016, Genres: []string{"Drama", "Fantasy"},
 			Network: "Ironbell Pictures", Runtime: 112 * time.Minute,
+			Keywords: []string{"Clockwork"}, Tagline: "Every tree keeps time.", Countries: []string{"France"},
+			// Kodi's YouTube add-on link reads as the page it plays.
+			Trailer: "https://www.youtube.com/watch?v=AbCdEfGhIjK", Edition: "Director's Cut",
+			// The default rating wins over the first one listed.
+			CommunityRating: 7.2,
+			Collection: &mp.CollectionRef{
+				ID:   mp.ExternalID{Namespace: mp.NamespaceTMDBCollection, Value: "90000701"},
+				Name: "The Copper Orchard Collection",
+			},
+			// The cast in billing order, the actor with none last; then the crew.
+			People: []mp.Person{
+				{Name: "Invented Actor", Role: mp.PersonActor, Character: "The Clockmaker"},
+				{Name: "Invented Costar", Role: mp.PersonActor, Character: "The Gardener", TMDB: "90000802",
+					Photo: "https://artwork.example/person/90000802.jpg"},
+				{Name: "Invented Extra", Role: mp.PersonActor, Character: "Passer-by"},
+				{Name: "Invented Director", Role: mp.PersonDirector},
+				{Name: "Invented Writer", Role: mp.PersonWriter},
+			},
 		},
 		Certification: &mp.Certification{Rating: "Rated PG-13"},
 	}
 	if !reflect.DeepEqual(rec, want) {
 		t.Errorf("record =\n%+v\nwant\n%+v", rec, want)
+	}
+}
+
+// An older scraper's NFO names its title with id tags instead of uniqueid, rates it with a bare
+// <rating> and names its set as text. A bare <id> is IMDb's when it looks like it, and otherwise
+// the kind's default catalog: TMDB for a movie, TVDB for a show. A uniqueid still wins its
+// namespace, and a trailer that is not a web page is dropped.
+func TestParse_OlderScraperTags(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		kind    mp.Kind
+		doc     string
+		ids     []mp.ExternalID
+		catalog mp.Namespace
+	}{
+		{"movie by imdb id", mp.KindMovie, `<movie><id>tt90000611</id><tmdbid>90000511</tmdbid></movie>`,
+			[]mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000511"}, {Namespace: mp.NamespaceIMDB, Value: "tt90000611"}}, ""},
+		{"movie by a bare number", mp.KindMovie, `<movie><id>90000512</id></movie>`,
+			[]mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000512"}}, mp.NamespaceTMDB},
+		{"show by a bare number", mp.KindSeries, `<tvshow><id>90000513</id></tvshow>`,
+			[]mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90000513"}}, mp.NamespaceTVDB},
+		{"a uniqueid wins its namespace", mp.KindSeries,
+			`<tvshow><uniqueid type="tvdb" default="true">90000514</uniqueid><id>90000999</id><imdbid>tt90000614</imdbid></tvshow>`,
+			[]mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90000514"}, {Namespace: mp.NamespaceIMDB, Value: "tt90000614"}}, mp.NamespaceTVDB},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, err := nfo.Parse(tc.kind, []byte(tc.doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(rec.IDs, tc.ids) || rec.Source.Catalog != tc.catalog {
+				t.Errorf("ids %v, catalog %q; want %v, %q", rec.IDs, rec.Source.Catalog, tc.ids, tc.catalog)
+			}
+		})
+	}
+
+	rec, err := nfo.Parse(mp.KindMovie, []byte(`<movie><rating>6.4</rating><set>The Old Set</set>`+
+		`<trailer>/srv/trailers/old.mkv</trailer><ratings><rating max="10"><value>0</value></rating></ratings></movie>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := rec.Descriptive
+	if d.CommunityRating != 6.4 || d.Trailer != "" || d.Collection == nil || *d.Collection != (mp.CollectionRef{Name: "The Old Set"}) {
+		t.Errorf("rating %v, trailer %q, set %+v; want 6.4 (a zero score is no votes), none, the set by name", d.CommunityRating, d.Trailer, d.Collection)
 	}
 }
 

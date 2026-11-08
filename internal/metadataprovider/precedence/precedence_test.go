@@ -423,6 +423,26 @@ func TestResolve_KeywordsRatingAndCollectionFollowDescriptiveText(t *testing.T) 
 	}
 }
 
+// What only an NFO says today (people, tagline, countries, trailer, edition) fills a gap and never
+// overrides a service that says it (decision 59).
+func TestResolve_NFODetailsFillGaps(t *testing.T) {
+	cast := []mp.Person{{Name: "Invented Actor", Role: mp.PersonActor, Character: "C"}}
+	fromNFO := mp.Record{Source: nfoTMDB, Kind: mp.KindMovie, Descriptive: &mp.Descriptive{
+		Tagline: "N", Countries: []string{"France"}, Trailer: "https://trailer.invalid/n", Edition: "Director's Cut", People: cast,
+	}}
+	fromTMDB := mp.Record{Source: tmdbCat, Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Title: "T", Tagline: "T"}}
+	got := resolver(t).Resolve(precedence.Input{Kind: mp.KindMovie, Records: []mp.Record{fromNFO, fromTMDB}})
+	if got.Tagline.Value != "T" || got.Tagline.From != tmdbCat {
+		t.Errorf("tagline = %+v, want the catalog's", got.Tagline)
+	}
+	if !reflect.DeepEqual(got.People.Value, cast) || got.People.From != nfoTMDB ||
+		!reflect.DeepEqual(got.Countries.Value, []string{"France"}) || got.Trailer.Value != "https://trailer.invalid/n" ||
+		got.Edition.Value != "Director's Cut" {
+		t.Errorf("people %+v, countries %+v, trailer %+v, edition %+v; want the NFO's where the catalog says nothing",
+			got.People, got.Countries, got.Trailer, got.Edition)
+	}
+}
+
 func TestResolve_NothingKnownIsUnknown(t *testing.T) {
 	got := resolver(t).Resolve(precedence.Input{Kind: mp.KindMovie})
 	if got.Title.Known() || got.Certification.Known() || got.Technical.Duration.Known() || got.IDs != nil || got.Numbering.Known() {

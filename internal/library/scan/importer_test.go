@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync/atomic"
 	"syscall"
@@ -371,6 +372,29 @@ func TestImportAsksForANewlyConnectedArrsFolders(t *testing.T) {
 	h.run()
 	if asked != 1 {
 		t.Errorf("asked %d times; an arr whose folders are recorded is not asked again", asked)
+	}
+}
+
+// An NFO read in full gives the title its tags, audience score and people; an older scraper's
+// bare <id> grounds it (decision 59).
+func TestImportReadsTheWholeNFO(t *testing.T) {
+	h := newHarness(t)
+	h.file("Delta/Delta.mkv", 10)
+	doc := `<movie><title>Delta Feature</title><id>90000612</id><tag>Heist</tag>` +
+		`<ratings><rating name="imdb" max="10" default="true"><value>6.8</value></rating></ratings>` +
+		`<actor><name>Invented Lead</name><role>The Planner</role><order>0</order></actor>` +
+		`<director>Invented Director</director></movie>`
+	if err := os.WriteFile(filepath.Join(h.root, "Delta", "Delta.nfo"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	origin := fileOrigin(h.root, "Delta/Delta.mkv")
+	item := h.item(origin)
+	facts := h.origin(item, origin).Observation.Facts
+	wantPeople := []inventory.Person{{Name: "Invented Lead", Role: "The Planner"}, {Name: "Invented Director", Role: "director"}}
+	if !hasID(item.ExternalIDs, "tmdb", "90000612") || !reflect.DeepEqual(facts.Tags, []string{"Heist"}) ||
+		facts.CommunityScore != 6.8 || !reflect.DeepEqual(facts.People, wantPeople) {
+		t.Fatalf("ids %+v, tags %v, score %v, people %+v", item.ExternalIDs, facts.Tags, facts.CommunityScore, facts.People)
 	}
 }
 
