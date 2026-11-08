@@ -15,6 +15,8 @@ export {
   resolveBrandLaunchMinHeight,
 } from "./src/brand";
 export { Card } from "./src/card";
+export type { DateFieldProps } from "./src/date-field";
+export { DateField } from "./src/date-field";
 export type {
   DialogActionProps,
   DialogContentProps,
