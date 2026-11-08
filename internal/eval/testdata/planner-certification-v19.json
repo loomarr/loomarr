@@ -5,7 +5,7 @@
     "path": "testdata/planner-certification-v10-base.json",
     "sha256": "375f3519bffb28b800626f81b1e30a6f8b0eb8af5c671ecad7e33995a69a26fb"
   },
-  "promptVersion": "suggester-prompt-v18",
+  "promptVersion": "suggester-prompt-v17",
   "toolSchemaVersion": "catalog-search-v9",
   "scorerVersion": "planner-scorer-v3",
   "qualityMetrics": [

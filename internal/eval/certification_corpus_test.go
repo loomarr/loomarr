@@ -77,8 +77,9 @@ func TestCertificationContextRevisionPreservesQualificationGates(t *testing.T) {
 	}
 }
 
-// v19 (#1557) changes only its identity and its base: the v10 base is v9's families, byte for
-// byte as decoded, plus three person-routing families bound to existing fixtures.
+// v19 (#1557) keeps the v17 prompt and changes only its identity and its base: the v10 base is
+// v9's families, byte for byte as decoded, plus three person-routing families bound to existing
+// fixtures.
 func TestCertificationPersonRoutingRevisionOnlyAddsFamilies(t *testing.T) {
 	var contracts []map[string]any
 	for _, path := range []string{"testdata/planner-certification-v18.json", certificationManifestPath} {
@@ -90,7 +91,7 @@ func TestCertificationPersonRoutingRevisionOnlyAddsFamilies(t *testing.T) {
 		if err := json.Unmarshal(blob, &contract); err != nil {
 			t.Fatal(err)
 		}
-		for _, key := range []string{"version", "promptVersion", "base"} {
+		for _, key := range []string{"version", "base"} {
 			delete(contract, key)
 		}
 		contracts = append(contracts, contract)
