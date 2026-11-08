@@ -298,7 +298,10 @@ describe("ChannelFiller", () => {
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     await waitFor(() => expect(previews).toHaveLength(1));
-    await user.selectOptions(screen.getByRole("combobox", { name: "Break frequency" }), "No commercial breaks");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Break frequency" }),
+      "No commercial breaks",
+    );
 
     expect(await screen.findByRole("button", { name: /apply filler/i })).toBeInTheDocument();
     expect(previews).toHaveLength(1);

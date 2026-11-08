@@ -255,7 +255,10 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Play order" }), "Use channel strategy");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Play order" }),
+      "Use channel strategy",
+    );
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ ordering: "" }));
   });
