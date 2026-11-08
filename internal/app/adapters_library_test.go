@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -52,6 +53,48 @@ func TestLibraryBoxSetsCacheUsesFullConnectionGeneration(t *testing.T) {
 		if _, ok := cache.cachedIndex(boxSetGeneration(t, test.connection), now); ok {
 			t.Fatalf("changed %s reused a cached collection index", test.name)
 		}
+	}
+}
+
+type ownCollectionsFake []store.LibraryCollectionMember
+
+func (f ownCollectionsFake) LibraryCollectionMemberIDs(context.Context) ([]store.LibraryCollectionMember, error) {
+	return f, nil
+}
+
+// The household's own collections stamp a title under each key it can be known by, with no media
+// server configured; a configured one that can't be read still fails the pass open.
+func TestLibraryBoxSetsIndexesTheHouseholdsCollections(t *testing.T) {
+	own := ownCollectionsFake{
+		{CollectionID: "own-1", Kind: "series", TMDBID: "90000003", TVDBID: "90000002"},
+		{CollectionID: "own-1", Kind: "movie", TMDBID: "90000001"},
+		{CollectionID: "own-2", Kind: "movie", TMDBID: "90000001"},
+		{CollectionID: "own-2", Kind: "movie"},
+	}
+	none := &libraryBoxSets{
+		lib: library.NewDynamic(func() library.Connection { return library.Connection{} }, "device-1"),
+		own: own, ttl: time.Hour,
+	}
+	for key, want := range map[provision.Key][]string{
+		"series:tvdb:90000002": {"own-1"},
+		"series:tmdb:90000003": {"own-1"},
+		"movie:tmdb:90000001":  {"own-1", "own-2"},
+		"movie:tmdb:90000009":  nil,
+	} {
+		got, ok, err := none.BoxSets(context.Background(), key)
+		if err != nil || !ok || !slices.Equal(got, want) {
+			t.Errorf("%s = %v, %v, %v; want %v", key, got, ok, err, want)
+		}
+	}
+
+	partial := &libraryBoxSets{
+		lib: library.NewDynamic(func() library.Connection {
+			return library.Connection{Flavor: library.Emby, BaseURL: "https://emby.invalid"}
+		}, "device-1"),
+		own: own, ttl: time.Hour,
+	}
+	if _, ok, err := partial.BoxSets(context.Background(), "movie:tmdb:90000001"); err == nil || ok {
+		t.Errorf("a configured media server that can't be read: ok = %v, %v; want the pass unresolved", ok, err)
 	}
 }
 

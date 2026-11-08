@@ -257,7 +257,7 @@ func buildChannels(
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
-		channelEngine.WithBoxSets(&libraryBoxSets{lib: lib, ttl: 15 * time.Minute})
+		channelEngine.WithBoxSets(&libraryBoxSets{lib: lib, own: st, ttl: 15 * time.Minute})
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
 		channelEngine.WithNotifier(emitter)
