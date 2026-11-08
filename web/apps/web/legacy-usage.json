@@ -109,7 +109,7 @@
       "tailwindClasses": 47
     },
     "src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
-      "tailwindClasses": 64,
+      "tailwindClasses": 65,
       "legacyUi": 2
     },
     "src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
