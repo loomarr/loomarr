@@ -67,7 +67,8 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   render?: ReactElement<Record<string, unknown>>;
   selected?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
-  tone?: "danger" | "primary" | "secondary";
+  /** `success` is `danger`'s twin: the neutral tile in the success colour, for a yes beside a no. */
+  tone?: "danger" | "primary" | "secondary" | "success";
   variant?: ActionVariant;
 };
 
@@ -205,13 +206,15 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       ? variantTextColor(theme, variant)
       : tone === "danger"
         ? theme.stateDanger.val
-        : undefined;
+        : tone === "success"
+          ? theme.stateSuccess.val
+          : undefined;
     // A pointer label is already 700, so pressed only lifts the lighter TV label; never thinner.
     const labelWeight = tv ? (pressed ? "600" : "400") : "700";
     const iconTone: IconTone = look
       ? look.iconTone
-      : tone === "danger"
-        ? "danger"
+      : tone === "danger" || tone === "success"
+        ? tone
         : tone === "secondary"
           ? selected
             ? "content"
@@ -230,8 +233,8 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             tone={
               look
                 ? look.iconTone
-                : tone === "danger"
-                  ? "danger"
+                : tone === "danger" || tone === "success"
+                  ? tone
                   : tone === "secondary"
                     ? "content"
                     : "inverse"
