@@ -493,46 +493,40 @@
       "legacyUi": 1
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
-      "tailwindClasses": 39,
-      "legacyUi": 2
+      "tailwindClasses": 38,
+      "legacyUi": 1
     },
     "src/filler/sources-panel/local-source-form/local-source-form.tsx": {
       "tailwindClasses": 10,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
       "tailwindClasses": 77,
       "legacyUi": 2
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
-      "tailwindClasses": 44,
-      "legacyUi": 1
+      "tailwindClasses": 41
     },
     "src/filler/sources-panel/source-detail-sheet/source-detail-sheet.tsx": {
       "tailwindClasses": 4
     },
     "src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
-      "tailwindClasses": 15,
-      "legacyUi": 1
+      "tailwindClasses": 15
     },
     "src/filler/sources-panel/source-location-form/source-location-form.tsx": {
-      "tailwindClasses": 11,
-      "legacyUi": 1
+      "tailwindClasses": 11
     },
     "src/filler/sources-panel/source-preview-section/source-preview-section.tsx": {
       "tailwindClasses": 5
     },
     "src/filler/sources-panel/source-settings/source-settings.tsx": {
-      "tailwindClasses": 9,
-      "legacyUi": 1
+      "tailwindClasses": 9
     },
     "src/filler/sources-panel/source-status/source-status.tsx": {
-      "tailwindClasses": 31,
-      "legacyUi": 1
+      "tailwindClasses": 30
     },
     "src/filler/sources-panel/source-storage-card/source-storage-card.tsx": {
-      "tailwindClasses": 40,
-      "legacyUi": 1
+      "tailwindClasses": 40
     },
     "src/filler/sources-panel/sources-panel.tsx": {
       "tailwindClasses": 3

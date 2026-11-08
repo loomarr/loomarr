@@ -1,7 +1,6 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
-import { Disclosure } from "@loomarr/design-system";
+import { Action, Disclosure } from "@loomarr/design-system";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { AutomaticDownloadsForm } from "../automatic-downloads-form";
 import { SourceLocationForm } from "../source-location-form";
 import type { SourceActions } from "../use-source-actions";
@@ -40,15 +39,14 @@ const SourceSettings = ({ source, actions }: SourceSettingsProps) => {
 
         {source.actions.includes("remove") && (
           <div className="border-border border-t pt-3">
-            <Button
-              type="button"
-              variant="ghost"
+            <Action
+              accessibilityLabel={`Remove ${source.target}`}
               disabled={actions.removing}
-              onClick={() => actions.removeSource(source.id)}
-              aria-label={`Remove ${source.target}`}
+              onPress={() => actions.removeSource(source.id)}
+              variant="ghost"
             >
               {actions.removingSourceID === source.id ? "Removing…" : "Remove source"}
-            </Button>
+            </Action>
             <p className="text-muted-foreground mt-1 text-xs">
               Clips already downloaded stay in your library.
             </p>
