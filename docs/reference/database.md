@@ -291,6 +291,8 @@ What a channel actually broadcast: one row each time an episode or film started 
 
 What a channel's schedule put on air: one row each time an episode or film started on a channel's timeline, whether or not anyone watched. Kept apart from `airings`, which records only what was actually streamed. The schedule reads both, so a channel nobody watches still rotates evenly instead of re-airing something it showed hours ago. Pruned and deleted like `airings`.
 
+**Kept:** Rows older than 8 days are pruned to the latest one per episode or film on each channel; goes with its channel (deleted when that is).
+
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
