@@ -360,7 +360,11 @@ type wireSeries struct {
 	BackdropPath   string          `json:"backdrop_path"`
 	ExternalIDs    wireExternalIDs `json:"external_ids"`
 	Images         wireImages      `json:"images"`
-	Keywords       struct {
+	Seasons        []struct {
+		SeasonNumber int `json:"season_number"`
+		EpisodeCount int `json:"episode_count"`
+	} `json:"seasons"`
+	Keywords struct {
 		Results []idName `json:"results"`
 	} `json:"keywords"`
 	ContentRatings struct {
@@ -405,6 +409,12 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 			Status:          seriesStatus(s.Status),
 		},
 		Artwork: artwork(loc, s.Images, s.PosterPath, s.BackdropPath),
+	}
+	for _, season := range s.Seasons {
+		if season.SeasonNumber >= 0 && season.EpisodeCount > 0 {
+			rec.Descriptive.Seasons = append(rec.Descriptive.Seasons,
+				mp.SeasonSize{Number: season.SeasonNumber, Episodes: season.EpisodeCount})
+		}
 	}
 	if len(s.EpisodeRuntime) > 0 && s.EpisodeRuntime[0] > 0 {
 		rec.Descriptive.Runtime = time.Duration(s.EpisodeRuntime[0]) * time.Minute

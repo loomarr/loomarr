@@ -6589,6 +6589,9 @@ components:
     LibraryCandidateDTO:
       additionalProperties: false
       properties:
+        episodesMatches:
+          description: "Series only: every season and episode on disk fits its seasons"
+          type: boolean
         kind:
           enum:
             - movie
@@ -6621,6 +6624,7 @@ components:
         - nameMatches
         - yearMatches
         - lengthMatches
+        - episodesMatches
       type: object
     LibraryCollection:
       additionalProperties: false

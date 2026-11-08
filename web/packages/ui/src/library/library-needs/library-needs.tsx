@@ -37,6 +37,8 @@ const fileName = (path: string) => path.split("/").filter(Boolean).pop() ?? path
 const reasonFor = (c: LibraryNeedCandidate): string => {
   if (c.nameMatches && c.lengthMatches && !c.yearMatches)
     return "The name and length match; the year doesn't.";
+  if (c.nameMatches && c.episodesMatches)
+    return c.yearMatches ? "The name, year and episodes match." : "The name and episodes match.";
   if (c.nameMatches && c.yearMatches) return "The name and year match.";
   return "It looks close, but we can't be sure.";
 };

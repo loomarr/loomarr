@@ -42,9 +42,11 @@ type LibraryCandidate struct {
 	Year     int
 	Overview string
 	// Poster is the catalog's poster URL; "" for none.
-	Poster      string
-	NameMatch   bool
-	YearMatch   bool
+	Poster    string
+	NameMatch bool
+	YearMatch bool
+	// LengthMatch is whether what the files say beyond the name agrees: a movie's length, or a
+	// series' seasons and episodes (decisions 56 and 57).
 	LengthMatch bool
 }
 

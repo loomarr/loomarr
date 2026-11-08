@@ -281,3 +281,84 @@ func TestMatcherWaitsForTheCatalogKey(t *testing.T) {
 		t.Fatalf("searched = %q", needs[0].Searched)
 	}
 }
+
+// Decision 57: a show no arr or name identifies is matched by its search when exactly one result
+// fits its name, its year when the folder names one, and every season and episode on disk. A
+// show TMDB lays out differently from the files, or two that fit, wait for the maintainer.
+func TestMatcherSettlesASeriesOnlyWhenOneResultHoldsItsEpisodes(t *testing.T) {
+	ctx := context.Background()
+	big := []mp.SeasonSize{{Number: 0, Episodes: 3}, {Number: 1, Episodes: 10}, {Number: 2, Episodes: 8}}
+	small := []mp.SeasonSize{{Number: 1, Episodes: 6}}
+	oneLongSeason := []mp.SeasonSize{{Number: 1, Episodes: 22}}
+	for _, tc := range []struct {
+		name    string
+		folder  string
+		layouts map[string][]mp.SeasonSize
+		settled string
+	}{
+		{"one holds every episode", "Harbour Lights (1999)",
+			map[string][]mp.SeasonSize{"90000411": big, "90000412": small}, "90000411"},
+		{"no year in the folder", "Harbour Lights",
+			map[string][]mp.SeasonSize{"90000411": big, "90000412": small}, "90000411"},
+		{"laid out differently", "Harbour Lights (1999)",
+			map[string][]mp.SeasonSize{"90000411": oneLongSeason, "90000412": small}, ""},
+		{"two hold them", "Harbour Lights",
+			map[string][]mp.SeasonSize{"90000411": big, "90000412": big}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.im.Answers = h.st
+			h.file(tc.folder+"/Season 01/Harbour Lights S01E01.mkv", 10)
+			h.file(tc.folder+"/Season 01/Harbour Lights S01E07.mkv", 10)
+			h.file(tc.folder+"/Season 02/Harbour Lights S02E03-E04.mkv", 10)
+			h.file(tc.folder+"/Specials/Harbour Lights S00E05.mkv", 10)
+			h.run()
+			lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv}
+			hits := []SearchHit{
+				{Kind: "series", TMDBID: "90000411", Name: "Harbour Lights", Year: 1999},
+				{Kind: "series", TMDBID: "90000412", Name: "Harbour Lights", Year: 2000},
+			}
+			catalog := &fakeCatalog{records: map[string]mp.Record{}}
+			for id, layout := range tc.layouts {
+				catalog.records[id] = mp.Record{Kind: mp.KindSeries, Descriptive: &mp.Descriptive{Seasons: layout}}
+			}
+			search := &fakeSearch{hits: hits}
+			m := &Matcher{
+				Store: h.st, Search: search.search, Provider: catalog, Inventory: h.inv,
+				Match: lib.MatchBySearch, Episodes: lib.EpisodesOnDisk,
+			}
+			if err := m.Tick(ctx); err != nil {
+				t.Fatal(err)
+			}
+			h.run()
+			series := h.item(seriesOrigin(h.root, tc.folder))
+			needs, _ := lib.Needs(ctx)
+			if tc.settled == "" {
+				if len(needs) != 1 || hasID(series.ExternalIDs, "tmdb", "90000411") {
+					t.Fatalf("needs %d, ids %+v; want it left to the maintainer", len(needs), series.ExternalIDs)
+				}
+				return
+			}
+			listed, err := h.st.LibraryItem(ctx, string(series.ID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(needs) != 0 || !hasID(series.ExternalIDs, "tmdb", tc.settled) || DecidedBy(listed.Match) != DecidedBySearch {
+				t.Fatalf("needs %d, ids %+v, decided by %q; want it matched by the search",
+					len(needs), series.ExternalIDs, DecidedBy(listed.Match))
+			}
+		})
+	}
+}
+
+// A series is searched again when its episodes change: a new season on disk can settle it.
+func TestEvidenceKeyFollowsTheEpisodes(t *testing.T) {
+	a := evidence{episodes: map[int]int{2: 4, 1: 7}}.key()
+	b := evidence{episodes: map[int]int{1: 7, 2: 4, 3: 1}}.key()
+	if a != "|episodes 1:7 2:4" || a == b {
+		t.Fatalf("keys %q and %q; want a stable key that changes with the episodes", a, b)
+	}
+	if got := (evidence{length: time.Minute}).key(); got != "|length" {
+		t.Fatalf("movie key = %q, want the key movies were already searched with", got)
+	}
+}

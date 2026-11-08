@@ -236,6 +236,11 @@ func TestFetchSeries(t *testing.T) {
 	if d.Status != "continuing" {
 		t.Errorf("status = %q, want Sonarr's spelling of a returning series", d.Status)
 	}
+	// The layout says how big each season is; an announced season with no episodes yet is left out.
+	wantSeasons := []mp.SeasonSize{{Number: 0, Episodes: 2}, {Number: 1, Episodes: 10}, {Number: 2, Episodes: 8}, {Number: 3, Episodes: 6}}
+	if !reflect.DeepEqual(d.Seasons, wantSeasons) {
+		t.Errorf("seasons = %+v, want %+v", d.Seasons, wantSeasons)
+	}
 	if !reflect.DeepEqual(d.Keywords, []string{"lighthouse", "harbor"}) {
 		t.Errorf("keywords = %v: a series reads keywords from `results`", d.Keywords)
 	}
