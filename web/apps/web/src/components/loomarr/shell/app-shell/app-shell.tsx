@@ -130,6 +130,13 @@ const AppShell = ({
   const { pathname } = useLocation();
   const highlight = channelNavHighlight(pathname);
   const accountInitials = userName.slice(0, 2).toUpperCase();
+  // The footer's version line, inside a link to About for an admin and plain text for a member.
+  const versionLabel = (
+    <>
+      <BadgeInfo className="size-4 shrink-0" aria-hidden />
+      <span className="truncate">{isAdmin ? serverVersion : `Loomarr ${serverVersion}`}</span>
+    </>
+  );
   return (
     // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
     // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
@@ -228,13 +235,11 @@ const AppShell = ({
                 aria-label={`Loomarr ${serverVersion} — About`}
                 className="text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors"
               >
-                <BadgeInfo className="size-4 shrink-0" aria-hidden />
-                <span className="truncate">{serverVersion}</span>
+                {versionLabel}
               </Link>
             ) : (
               <span className="text-static-400 mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-xs">
-                <BadgeInfo className="size-4 shrink-0" aria-hidden />
-                <span className="truncate">Loomarr {serverVersion}</span>
+                {versionLabel}
               </span>
             )}
           </Tooltip>
