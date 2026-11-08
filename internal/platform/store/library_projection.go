@@ -114,7 +114,7 @@ func (s *sqlStore) saveLibraryItem(ctx context.Context, tx *sql.Tx, it LibraryIt
 func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
 	for _, table := range []string{"library_trickplay", "library_chapters", "library_markers", "library_streams",
 		"library_sources", "library_art",
-		"library_ids", "library_genres", "library_studios", "library_countries", "library_tags"} {
+		"library_ids", "library_genres", "library_studios", "library_countries", "library_tags", "library_credits"} {
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE item_id = ?`), it.ID); err != nil {
 			return fmt.Errorf("replace %s: %w", table, err)
 		}
@@ -144,7 +144,38 @@ func (s *sqlStore) saveLibraryItemRows(ctx context.Context, tx *sql.Tx, it Libra
 			}
 		}
 	}
+	if err := s.saveLibraryCredits(ctx, tx, it); err != nil {
+		return err
+	}
 	return s.saveLibraryFilesAndArt(ctx, tx, it)
+}
+
+// saveLibraryCredits writes an item's credits, and each person it names. A person's name and
+// photo are the latest any title gave; a title without a photo keeps the one held.
+func (s *sqlStore) saveLibraryCredits(ctx context.Context, tx *sql.Tx, it LibraryItem) error {
+	seen := map[string]bool{}
+	for i, c := range it.Credits {
+		if c.Name == "" || c.Role == "" {
+			continue
+		}
+		id := c.PersonID()
+		key := id + "\x00" + c.Role + "\x00" + c.Character
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_people (id, name, tmdb_id, photo) VALUES (?, ?, ?, ?)
+			ON CONFLICT (id) DO UPDATE SET name = excluded.name,
+			photo = CASE WHEN excluded.photo <> '' THEN excluded.photo ELSE library_people.photo END`),
+			id, c.Name, c.TMDB, c.Photo); err != nil {
+			return fmt.Errorf("save library person: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_credits (item_id, position, person_id, role,
+			character_name) VALUES (?, ?, ?, ?, ?)`), it.ID, i, id, c.Role, c.Character); err != nil {
+			return fmt.Errorf("save library credit: %w", err)
+		}
+	}
+	return nil
 }
 
 // saveLibraryFilesAndArt writes an item's files with their tracks, and its artwork.

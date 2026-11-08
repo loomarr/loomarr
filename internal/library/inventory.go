@@ -204,12 +204,11 @@ func itemFacts(item inventoryWireItem) inventory.ItemFacts {
 	for _, studio := range item.Studios {
 		facts.Studios = append(facts.Studios, studio.Name)
 	}
+	// The media server's Type is what they did (Actor, Director, GuestStar); its Role is an
+	// actor's character.
 	for _, person := range item.People {
-		role := person.Role
-		if role == "" {
-			role = person.Type
-		}
-		facts.People = append(facts.People, inventory.Person{Name: person.Name, Role: role})
+		facts.People = append(facts.People, inventory.Person{Name: person.Name,
+			Role: strings.ToLower(person.Type), Character: person.Role})
 	}
 	for kind, tag := range item.ImageTags {
 		facts.Artwork = append(facts.Artwork, inventory.ArtworkRef{Kind: strings.ToLower(kind), Ref: tag})

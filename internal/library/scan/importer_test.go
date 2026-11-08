@@ -391,7 +391,8 @@ func TestImportReadsTheWholeNFO(t *testing.T) {
 	origin := fileOrigin(h.root, "Delta/Delta.mkv")
 	item := h.item(origin)
 	facts := h.origin(item, origin).Observation.Facts
-	wantPeople := []inventory.Person{{Name: "Invented Lead", Role: "The Planner"}, {Name: "Invented Director", Role: "director"}}
+	wantPeople := []inventory.Person{{Name: "Invented Lead", Role: "actor", Character: "The Planner"},
+		{Name: "Invented Director", Role: "director"}}
 	if !hasID(item.ExternalIDs, "tmdb", "90000612") || !reflect.DeepEqual(facts.Tags, []string{"Heist"}) ||
 		facts.CommunityScore != 6.8 || !reflect.DeepEqual(facts.People, wantPeople) {
 		t.Fatalf("ids %+v, tags %v, score %v, people %+v", item.ExternalIDs, facts.Tags, facts.CommunityScore, facts.People)

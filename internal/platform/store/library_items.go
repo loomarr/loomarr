@@ -58,6 +58,9 @@ type LibraryItem struct {
 	// Tagline is the one-line pitch; Trailer a web page that plays the trailer.
 	Tagline string
 	Trailer string
+	// Credits are its cast in billing order, then its key crew (decision 49). An episode has
+	// none of its own: its show's apply (decision 42).
+	Credits []LibraryCredit
 	// Sources are its present files (decision 41), one marked Plays; Art its artwork references.
 	Sources []LibrarySource
 	Art     []LibraryArt
@@ -81,6 +84,25 @@ type LibrarySource struct {
 	// Chapters are its chapter marks, in order; Markers its .edl markers.
 	Chapters []LibraryChapter
 	Markers  []LibraryMarker
+}
+
+// LibraryCredit is one person credited on a title. Role is what they did (actor, director, writer,
+// creator); Character an actor's part. A person with a TMDB id is one library_people row wherever
+// they are credited; one without is kept by name, unlinked (decision 49).
+type LibraryCredit struct {
+	Name, Role, Character string
+	TMDB                  string
+	// Photo is an http(s) URL of their headshot.
+	Photo string
+}
+
+// PersonID is the library_people row the credit names: "tmdb:<id>" when linked, else
+// "name:<name>".
+func (c LibraryCredit) PersonID() string {
+	if c.TMDB != "" {
+		return "tmdb:" + c.TMDB
+	}
+	return "name:" + c.Name
 }
 
 // LibraryChapter is one chapter mark of a source. EndMs is -1 when the container does not say.

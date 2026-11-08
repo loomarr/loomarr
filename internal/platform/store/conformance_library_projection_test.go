@@ -95,6 +95,12 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 			it.Genres, it.Studios = []string{"Drama", "Comedy", "Drama"}, []string{"Network"}
 			it.Countries = []string{"Canada", "Ireland"}
 			it.Tagline, it.Trailer = "Keep the lamps lit.", "https://www.youtube.com/watch?v=show9000"
+			it.Credits = []LibraryCredit{
+				{Name: "Station Lead", Role: "actor", Character: "Keeper", TMDB: "90003202", Photo: "https://img.invalid/lead.jpg"},
+				{Name: "Station Lead", Role: "creator", TMDB: "90003202"},
+				{Name: "Pen Name", Role: "writer"},
+				{Name: "", Role: "actor"},
+			}
 			it.IDs = []LibraryID{{"tmdb", "90000701"}, {"tvdb", "90000702"}}
 		case "episode":
 			it.Season, it.Episode, it.Series = 1, 2, showOrigin
@@ -174,6 +180,20 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 		string(show)).Scan(&tagline, &trailer); err != nil || tagline != "Keep the lamps lit." ||
 		trailer != "https://www.youtube.com/watch?v=show9000" {
 		t.Fatalf("tagline, trailer = %q, %q, %v", tagline, trailer, err)
+	}
+	// One person credited twice is one row, keeping the photo the creator credit lacks; a person
+	// with no TMDB id is kept by name; a credit with no name is dropped.
+	var credits, people int
+	if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT COUNT(*) FROM library_credits WHERE item_id = ? AND
+		((position = 0 AND person_id = 'tmdb:90003202' AND role = 'actor' AND character_name = 'Keeper') OR
+		 (position = 1 AND person_id = 'tmdb:90003202' AND role = 'creator') OR
+		 (position = 2 AND person_id = 'name:Pen Name' AND role = 'writer'))`), string(show)).Scan(&credits); err != nil || credits != 3 {
+		t.Fatalf("credits = %d, %v; want the actor, the creator and the writer", credits, err)
+	}
+	if err := sqlSt.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_people WHERE
+		(id = 'tmdb:90003202' AND tmdb_id = '90003202' AND photo = 'https://img.invalid/lead.jpg') OR
+		(id = 'name:Pen Name' AND tmdb_id = '' AND name = 'Pen Name')`).Scan(&people); err != nil || people != 2 {
+		t.Fatalf("people = %d, %v; want the linked lead with their photo and the unlinked writer", people, err)
 	}
 	var ids int
 	if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT COUNT(*) FROM library_ids WHERE item_id = ?`), string(show)).Scan(&ids); err != nil || ids != 2 {
