@@ -31,6 +31,12 @@ func (s *Server) registerSetup(api huma.API) {
 	}, RoleAdmin), s.tunarrConnectHandler)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "arrs-from-requester", Method: http.MethodPost, Path: "/v1/setup/arrs-from-requester",
+		Summary: "Fill in Sonarr and Radarr from the requester", Description: "Admin only. Reads the Sonarr and Radarr Seerr already uses and saves each one's address and key where Loomarr has none yet, trying Seerr's own address first and the one it shows people second. A connection already set is never changed (#2151).",
+		Tags: []string{"setup"},
+	}, RoleAdmin), s.arrsFromRequester)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "livetv-reconnect", Method: http.MethodPost, Path: "/v1/setup/livetv-reconnect",
 		Summary: "Force-re-wire the Live TV tuner", Description: "Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9). " + operatorAPI,
 		Tags: []string{"setup"},

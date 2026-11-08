@@ -251,7 +251,7 @@ const WizardScreen = () => {
       case "checklist":
         return <ChecklistStep openId={openConn} onToggle={toggleConn} backend={backend} />;
       case "media":
-        return <LibraryStep />;
+        return <LibraryStep backend={backend} />;
       case "library":
         return <TunarrLibraryStep check={checkFor("tunarr_library")} />;
       case "users":

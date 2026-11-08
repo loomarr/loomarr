@@ -1,5 +1,6 @@
 import type { SettingEntry, SettingKey } from "@loomarr/api";
 import {
+  getArrsFromRequesterMockHandler,
   getBootstrapMockHandler,
   getLibraryStatusMockHandler,
   getListLibraryRootsMockHandler,
@@ -620,6 +621,7 @@ describe("wizard", () => {
           ],
         }),
         getLibraryStatusMockHandler(libraryStatus({ health: "needs_folders", inUse: 0 })),
+        getArrsFromRequesterMockHandler({ arrs: [] }),
       );
       renderAt("/wizard?step=media");
 

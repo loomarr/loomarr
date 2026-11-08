@@ -393,6 +393,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   in use that Loomarr can open (status `ok`). Until the media server's catalog retires (step 16),
   the step is optional and Skip for now is the way past. On the Tunarr path, Tunarr's own wiring
   step follows as "Tunarr library".
+  - Sonarr and Radarr are connected on this step, not on Connections. Arriving with either one
+    unset, the step calls `POST /v1/setup/arrs-from-requester`. That reads the Sonarr and Radarr
+    Seerr uses and saves each unset one's address and key: Seerr's own address first, its
+    external one second, the first Loomarr reaches winning. If none answers, the first is saved,
+    so the operator corrects only the address. A set or env-pinned connection is never changed.
+  - With an arr connected and no `server.public_url`, the step asks for Loomarr's address,
+    which the arrs' webhooks need.
+  - The arr probe treats a 200 that isn't JSON as a login page in front of the arr, not the arr.
 - **The parity gate** (step 14, decision 8). `make library-parity` (`eval library-parity`) reads
   the scanner's files from a Loomarr database and every movie and episode file the media server
   lists, both read-only, and pairs them by path through the path map. A pair agrees on identity
