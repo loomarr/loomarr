@@ -233,13 +233,12 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// because a clip's location can legitimately change (re-filed under a new extension, or
 		// found in a different folder) while its identity does not. That is the whole point of
 		// content addressing: the same bytes are the same clip wherever they sit.
-		// ⚠ transcript / brand / visible_text / vision_tagged are INSERTed (a new row starts empty)
-		// but deliberately OMITTED from DO UPDATE (§10 V44, migration 00038) — the same rule the
-		// block above states for language/removed_at/held/counters. The folder scan knows none of
-		// them; if they rode the update list, one re-sync would blank a transcribed or vision-tagged
-		// clip and re-trigger ~341s of Whisper or a paid vision call over work already done. Their
-		// writers are the job methods below — SetClipTranscript owns `transcript`, ApplyClipVision
-		// owns `visible_text`/`vision_tagged`, and `brand` is written by whichever grounded it
+		// ⚠ transcript / brand / visible_text are INSERTed (a new row starts empty) but
+		// deliberately OMITTED from DO UPDATE (§10 V44, migration 00038) — the same rule the block
+		// above states for language/removed_at/held/counters. The folder scan knows none of them;
+		// if they rode the update list, one re-sync would blank a transcribed or vision-read clip.
+		// Their writers are the job methods below — SetClipTranscript owns `transcript`,
+		// ApplyClipVision owns `visible_text`, and `brand` is written by whichever grounded it
 		// (SetClipBrand from text, ApplyClipVision from the frame).
 		//
 		// ⚠ is_composite / parent_hash (§10 V45, migration 00039) are also INSERTed but OMITTED from
@@ -259,8 +258,8 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		// FIFTH and SIXTH, and they DO have a writer — SetClipArtworkImages, after the adoption
 		// job ingests the files. The scan knows nothing about image identities, so including them
 		// in the update list would blank every clip's artwork on re-sync.
-		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO clips (hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, geographic_scope, country, network, station, air_date, geo_evidence, duration_ms, rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, is_composite, parent_hash, play_count, last_played_at, suggested_era, removed_at, held, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(hash) DO UPDATE SET
 		   enrichment_revision=CASE
 		     WHEN clips.name <> excluded.name OR clips.kind <> excluded.kind OR clips.source <> excluded.source
@@ -288,7 +287,7 @@ func (s *Store) UpsertClip(ctx context.Context, c Clip) error {
 		c.DurationMs, c.Rating, c.Source,
 		// ⚠ Flags are bound as real bools: they are BOOLEAN on Postgres (storage.md).
 		c.Quality, c.License, c.Thumbnail, c.Preview, c.ThumbImageHash, c.HoverImageHash, c.Language,
-		c.Transcript, c.Brand, c.VisibleText, c.VisionTagged,
+		c.Transcript, c.Brand, c.VisibleText,
 		c.IsComposite, c.ParentHash,
 		c.PlayCount, epoch(c.LastPlayedAt), c.SuggestedEra, epoch(c.RemovedAt),
 		c.Held, epoch(c.UpdatedAt), epoch(clipCreatedAt(c)))
@@ -622,12 +621,12 @@ func (s *Store) AdoptConditionedClip(ctx context.Context, sourceHash string, tar
 		res, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE clips SET
 			(name, name_source, kind, era, audience, category, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
-			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
+			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, suggested_era, removed_at, held,
 			 created_at, reaped_at) =
 			(SELECT name, name_source, kind, era, audience, category, rating, source, license,
 			 thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript,
-			 brand, visible_text, vision_tagged, is_composite, parent_hash, play_count,
+			 brand, visible_text, is_composite, parent_hash, play_count,
 			 last_played_at, suggested_era, removed_at, held,
 			 created_at, reaped_at FROM clips WHERE hash = ?),
 			path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
@@ -772,7 +771,7 @@ func clipPlacement(c Clip) clips.Placement {
 
 const clipSelect = `SELECT hash, path, tunarr_program_id, name, name_source, kind, placement, era, audience, category, duration_ms,
 	geographic_scope, country, network, station, air_date, geo_evidence,
-	rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text, vision_tagged,
+	rating, source, quality, license, thumbnail, preview, thumb_image_hash, hover_image_hash, language, transcript, brand, visible_text,
 	is_composite, parent_hash,
 	play_count, last_played_at, suggested_era,
 		removed_at, held, updated_at, created_at FROM clips`
@@ -1386,8 +1385,7 @@ func scanClip(sc scannable) (Clip, error) {
 		lastPlayedAt int64
 		removedAt    int64
 		// Flags are BOOLEAN on Postgres (storage.md), scanned into a bool, never an int.
-		held         bool
-		visionTagged bool
+		held bool
 		// is_composite is BOOLEAN (00039), the same side again.
 		isComposite bool
 		updatedAt   int64
@@ -1399,7 +1397,7 @@ func scanClip(sc scannable) (Clip, error) {
 		&c.DurationMs, &c.GeographicScope, &c.Country, &c.Network, &c.Station, &c.AirDate, &c.GeoEvidence,
 		&c.Rating, &c.Source, &c.Quality, &c.License, &c.Thumbnail, &c.Preview,
 		&c.ThumbImageHash, &c.HoverImageHash, &c.Language,
-		&c.Transcript, &c.Brand, &c.VisibleText, &visionTagged,
+		&c.Transcript, &c.Brand, &c.VisibleText,
 		&isComposite, &c.ParentHash,
 		&c.PlayCount, &lastPlayedAt, &c.SuggestedEra, &removedAt, &held, &updatedAt, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1411,7 +1409,6 @@ func scanClip(sc scannable) (Clip, error) {
 	c.Kind = clips.Kind(kind)
 	c.Audience = clips.Audience(audience)
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
-	c.VisionTagged = visionTagged
 	c.IsComposite = isComposite
 	c.LastPlayedAt = fromEpoch(lastPlayedAt)
 	if removedAt != 0 {
@@ -1758,12 +1755,10 @@ func (s *Store) SetClipTranscript(ctx context.Context, path, transcript string, 
 // SetClipBrand records a GROUNDED advertiser found by the text tagger or confirmed by an operator
 // (§10 V44, migration 00038).
 //
-// ⚠ Writes `brand` and nothing else — deliberately narrower than ApplyClipVision, which also
-// stamps `vision_tagged` and owns `visible_text`. The text tagger grounds a brand in the clip's
-// text signals (filename, sidecar, or the persisted transcript); the vision pass grounds one in the
-// on-screen text. Both are legitimate writers of `brand`, and each writes only what it is entitled
-// to: this must NOT touch `vision_tagged`, or a text-tagged clip would masquerade as one a vision
-// pass had read, and a re-run would skip the frame it never actually looked at.
+// ⚠ Writes `brand` and nothing else — deliberately narrower than ApplyClipVision, which also owns
+// `visible_text`. The text tagger grounds a brand in the clip's text signals (filename, sidecar, or
+// the persisted transcript); the vision pass grounds one in the on-screen text. Both are legitimate
+// writers of `brand`, and each writes only what it is entitled to.
 //
 // The caller has already applied the grounding rule (validateTags keeps a brand only when it
 // appears literally in the text), so this writes what it is given. Keyed by PATH, like the transcript
@@ -1784,9 +1779,9 @@ func (s *Store) SetClipBrand(ctx context.Context, path, brand string, at time.Ti
 // grounded brand and era, and the taxonomy assertions supported by the frames. The facts, direct
 // assertions, rollups, and category compatibility shadow commit together.
 //
-// ⚠ **The ONLY writer of `visible_text` and `vision_tagged`.** `brand` it SHARES with SetClipBrand
-// (the text tagger's grounded writer) — both write `brand` and only `brand`, and this one must not
-// be confused for the sole owner or a text-grounded brand would look vision-read. Same rule as
+// ⚠ **The pipeline's writer of `visible_text`.** `brand` it SHARES with SetClipBrand (the text
+// tagger's grounded writer) — both write `brand` and only `brand`, and this one must not be
+// confused for the sole owner or a text-grounded brand would look vision-read. Same rule as
 // every job column here: `UpsertClip` omits them so a re-sync cannot undo the pass. The caller has
 // already applied the grounding rule (a brand/era/category survives only if `visibleText` supports
 // it), so this method writes what it is given — the validation lives in the domain, not the SQL.
@@ -1804,14 +1799,14 @@ func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleT
 	}
 	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET
-		   enrichment_revision = CASE WHEN visible_text <> ? OR vision_tagged = ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
+		   enrichment_revision = CASE WHEN visible_text <> ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
 		   brand = CASE WHEN ? <> '' THEN ? ELSE brand END,
-		   visible_text = ?, vision_tagged = ?,
+		   visible_text = ?,
 		   era = CASE WHEN ? > 0 THEN ? ELSE era END,
 		   suggested_era = CASE WHEN ? > 0 THEN 0 WHEN ? > 0 AND era = 0 AND suggested_era = 0 THEN ? ELSE suggested_era END,
 		   updated_at = ? WHERE hash = ? AND path = ?`),
-		visibleText, false,
-		brand, brand, visibleText, true,
+		visibleText,
+		brand, brand, visibleText,
 		era, era,
 		era, suggestedEra, suggestedEra,
 		epoch(at), hash, path)
@@ -1849,10 +1844,10 @@ func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleT
 	return tx.Commit()
 }
 
-// ClearClipVisionTags removes the vision stamp so the rung will look again (§10 V51b) — the
-// invalidation half of `Rewind`.
+// ClearClipVisibleText forgets the on-screen text vision read (§10 V51b) — the invalidation half
+// of a `Rewind` to the vision rung, whose reset ladder is what makes the rung look again.
 //
-// ⚠ **It clears the STAMP and the text vision read; it does NOT clear brand, era or category.**
+// ⚠ **It clears the text vision read; it does NOT clear brand, era or category.**
 // Those three are SHARED with the text tagger — `SetClipBrand` and the classification update write the same
 // columns — and nothing on the row records which tier put a value there. Blanking them would
 // therefore destroy a text-grounded brand, or an era an operator confirmed by hand, in order to
@@ -1860,15 +1855,15 @@ func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleT
 // is the same additive contract `ApplyClipVision` has.
 //
 // ⚠ A separate narrow method rather than calling `ApplyClipVision` with empty strings: that one
-// is pinned as the ONLY writer of visible_text/vision_tagged and writes what it is GIVEN, so the
-// empty-argument trick works by accident today and breaks the first time it learns to gap-fill.
-func (s *Store) ClearClipVisionTags(ctx context.Context, path string, at time.Time) error {
+// writes what it is GIVEN, so the empty-argument trick works by accident today and breaks the
+// first time it learns to gap-fill.
+func (s *Store) ClearClipVisibleText(ctx context.Context, path string, at time.Time) error {
 	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET enrichment_revision = enrichment_revision + 1,
-		 visible_text = '', vision_tagged = ?, updated_at = ? WHERE path = ?`),
-		false, epoch(at), path)
+		 visible_text = '', updated_at = ? WHERE path = ?`),
+		epoch(at), path)
 	if err != nil {
-		return fmt.Errorf("clear clip vision tags %s: %w", path, err)
+		return fmt.Errorf("clear clip visible text %s: %w", path, err)
 	}
 	return nil
 }

@@ -158,21 +158,21 @@ func (c ClipTx) RecordTranscript(ctx context.Context, hash, transcript string, a
 	return err
 }
 
-// RecordVision stores what the vision rung read on screen and marks the clip vision-tagged,
-// advancing its enrichment revision on a change. A suggested era is kept only while the clip has
-// no era and no earlier suggestion.
+// RecordVision stores what the vision rung read on screen, advancing the clip's enrichment
+// revision when the text changed. A suggested era is kept only while the clip has no era and no
+// earlier suggestion.
 func (c ClipTx) RecordVision(ctx context.Context, hash, visibleText string, suggestedEra int, at time.Time) error {
 	_, err := c.tx.ExecContext(ctx, c.s.h.Rebind(`UPDATE clips SET
 		enrichment_revision = CASE
-			WHEN visible_text <> ? OR vision_tagged = ? THEN enrichment_revision + 1
+			WHEN visible_text <> ? THEN enrichment_revision + 1
 			ELSE enrichment_revision END,
-		visible_text = ?, vision_tagged = ?,
+		visible_text = ?,
 		suggested_era = CASE
 			WHEN era > 0 THEN 0
 			WHEN ? > 0 AND suggested_era = 0 THEN ?
 			ELSE suggested_era END,
 		updated_at = ? WHERE hash = ?`),
-		visibleText, false, visibleText, true,
+		visibleText, visibleText,
 		suggestedEra, suggestedEra, epoch(at), hash)
 	return err
 }

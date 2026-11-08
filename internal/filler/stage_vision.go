@@ -32,9 +32,9 @@ import (
 type VisionClipStore interface {
 	// ListTaxa is the vocabulary the vision tier grounds its category against (§10 V45a).
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
-	// ApplyClipVision records what the pass GROUNDED and stamps vision_tagged. ⚠ Called for every
-	// clip looked at, INCLUDING one that grounded nothing: the stamp is what says "vision already
-	// read this". Facts and taxonomy projections commit as one semantic write.
+	// ApplyClipVision records what the pass GROUNDED. Facts and taxonomy projections commit as one
+	// semantic write. The rung's done record on the ladder, not the clip, says vision already read
+	// it.
 	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error
 }
 
@@ -62,19 +62,16 @@ func (s *VisionStage) Cost() StageCost { return CostVision }
 
 // Applies when vision is configured, on, and this clip still has a gap the frames might close.
 //
-// ⚠ Two clip-level conditions, both required, both carried over from `isCandidate`. It must not
-// have been vision-read already (the stamp is what stops a re-run paying for the same frames) and
-// it must still be short on tags after the cheaper tiers. A clip the text tiers already resolved
-// has nothing for vision to add and a real cost to avoid.
+// ⚠ The clip must still be short on tags after the cheaper tiers: a clip the text tiers already
+// resolved has nothing for vision to add and a real cost to avoid. Nothing here asks whether vision
+// already read it — the ladder does. A done rung is never re-run, and a Rewind that resets it is a
+// deliberate request to look again.
 func (s *VisionStage) Applies(_ context.Context, c StoreClip) (bool, string) {
 	if s.tools == nil || s.provider == nil {
 		return false, "no vision model is configured"
 	}
 	if s.enabled == nil || !s.enabled() {
 		return false, "vision tagging is off"
-	}
-	if c.VisionTagged {
-		return false, "its frames have already been read"
 	}
 	if c.Tagged() {
 		return false, "the cheaper signals already tagged it"
@@ -138,7 +135,6 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	reportProgress(ctx, StageVision, 100)
 
 	updated := c
-	updated.VisionTagged = true
 	updated.VisibleText = v.VisibleText
 	if v.Brand != "" {
 		updated.Brand = v.Brand

@@ -16,23 +16,22 @@ import (
 // The vision rung (§10 V44's job, V51b's stage) — the expensive LAST tier. Its risk is the same as
 // the transcribe rung's, one level up: keyframes + a multimodal call cost real money and time, so
 // these assert it runs ONLY where the cheaper tiers left a gap, GROUNDS every tag against the
-// on-screen text the model says it read (an inferred brand is dropped), and STAMPS vision_tagged so
-// a re-run never pays twice.
+// on-screen text the model says it read (an inferred brand is dropped), and records every read so
+// the rung completes. Its done record on the ladder is what stops a re-run paying twice.
 //
 // ⚠ **Ported from `visionjob_test.go` when V51b retired the sweep.** `BoundsOnePass` went with it —
 // the bound is `filler.pipeline.max_vision`, enforced by the runner and tested there. Everything
 // else survives, because the grounding rule is the part that matters and it did not change.
 
-// fakeVisionStore records what the rung wrote and stamped, without a database.
+// fakeVisionStore records what the rung wrote, without a database.
 type fakeVisionStore struct {
 	tags     map[string]visionWrite // path → recorded vision tags
 	setPaths []string               // order + count of ApplyClipVision calls
 	setErr   error
 }
 
-// visionWrite is one recorded ApplyClipVision call. vision_tagged is always true on this path
-// (the store method stamps it), so we record the grounded values a re-run's candidacy turns on,
-// plus the suggestedEra the frame-heuristic tier feeds through.
+// visionWrite is one recorded ApplyClipVision call: the grounded values, plus the suggestedEra the
+// frame-heuristic tier feeds through.
 type visionWrite struct {
 	brand, visibleText, category string
 	era, suggestedEra            int
@@ -130,7 +129,7 @@ func TestVisionStage_ServesTheLiveTaxonomyAndPersistsMultipleTags(t *testing.T) 
 // oneFrame is a non-empty keyframe stand-in — the rung forwards bytes, it never decodes them.
 var oneFrame = [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}
 
-// visionClip builds an untagged, not-yet-vision-tagged candidate clip. Hash is DERIVED from the
+// visionClip builds an untagged candidate clip vision has not read. Hash is DERIVED from the
 // path rather than equal to it, so a hash-keyed call and a path-keyed one stay distinguishable.
 func visionClip(path string) filler.StoreClip {
 	return filler.StoreClip{Clip: filler.Clip{
@@ -209,10 +208,9 @@ func TestVisionStage_DropsBrandNotInVisibleText(t *testing.T) {
 	if got.brand != "" {
 		t.Errorf("brand = %q, want it DROPPED — it is not in the visible text, so it is inferred", got.brand)
 	}
-	// The clip is still STAMPED (the visibleText was recorded and vision_tagged set), just with no
-	// grounded tag — a read-only outcome, so a re-run does not pay for the frames again.
+	// The read is still RECORDED (the visibleText was written), just with no grounded tag.
 	if len(st.setPaths) != 1 {
-		t.Errorf("stamped %d times, want 1 — a read-only outcome is still recorded", len(st.setPaths))
+		t.Errorf("recorded %d times, want 1 — a read-only outcome is still recorded", len(st.setPaths))
 	}
 	if got.visibleText != "ENJOY THE HOLIDAYS" {
 		t.Errorf("visibleText = %q, want the read text recorded even when nothing grounds", got.visibleText)
@@ -410,17 +408,14 @@ func TestVisionStage_BoundsSemanticFramesToTheMeasuredClip(t *testing.T) {
 	}
 }
 
-// ⚠ A clip a vision pass ALREADY tagged (VisionTagged true) does not apply — the stamp is what
-// stops a re-run paying for the same frames. A fully-tagged clip does not apply either: the cheaper
-// tiers already resolved it, so there is nothing to add and a real cost to avoid.
+// ⚠ A fully-tagged clip does not apply: the cheaper tiers already resolved it, so there is nothing
+// to add and a real cost to avoid. (A clip vision already read is the ladder's business — its done
+// rung is never re-run.)
 func TestVisionStage_SkipsClipsWithNothingToGain(t *testing.T) {
-	seen := wordless(visionClip("seen.mp4"))
-	seen.VisionTagged = true // a prior pass already read this one
 	for _, tc := range []struct {
 		name string
 		clip filler.StoreClip
 	}{
-		{"already vision-tagged", seen},
 		{"already fully tagged", fullyTagged(visionClip("done.mp4"))},
 	} {
 		tools := &scriptedVision{frames: oneFrame}
@@ -434,8 +429,8 @@ func TestVisionStage_SkipsClipsWithNothingToGain(t *testing.T) {
 	}
 }
 
-// ⚠ A keyframe/model FAILURE is NOT stamped — leaving vision_tagged false is what makes a later
-// pass retry a clip that was never actually read. And a clip with no video stream yields zero
+// ⚠ A keyframe/model FAILURE records nothing and returns an error, so the runner retries a clip
+// that was never actually read. And a clip with no video stream yields zero
 // frames: a retryable failure, never a model call (there is nothing to show it).
 func TestVisionStage_FailuresAreNotStamped(t *testing.T) {
 	for _, tc := range []struct {
