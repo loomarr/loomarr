@@ -10,13 +10,12 @@ One area of the [package map](../package-map.md#start-here).
 
 - **platform** · 15 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
 - **media** · 1 import — the scanner reads each media file's header to learn its length, streams and embedded ids
-- **channels** · 1 import — the backstop's episode refresh re-reads each scheduled show into the scheduler's episode cache, whose entries are `channels/schedule.ResolvedProgram`; the job moves into channels with the Wave 6.4 directory moves
 
 ## Packages
 
 - **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`episodeevidence`** · 4 importers
+- **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`inventory`** · 7 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
@@ -44,7 +43,7 @@ One area of the [package map](../package-map.md#start-here).
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
 - **`provision`** · 27 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
-- **`provisionbackstop`** · 1 importer · → `channels/schedule`, `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `provision`, `requester`
+- **`provisionbackstop`** · 1 importer · → `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `provision`, `requester`
   Provisioning backstop (design §4, §7, §18).
 - **`requester`** · 2 importers · → `platform/httpx`, `platform/metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
