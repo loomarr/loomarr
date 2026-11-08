@@ -77,9 +77,17 @@ const NowNextItem = ({
       : row.next
         ? guideAiringLabel(row.next)
         : "Later tonight";
-  const spoken = `${number} ${name}. On now: ${row.title}.${
-    row.next ? ` Next at ${nextTime}: ${guideAiringLabel(row.next)}` : ""
-  }`;
+  // The row's name is its visible text, in the order it is drawn, so a voice-control user can say
+  // what they see (WCAG 2.5.3). Words that are not on screen ("On now", "Next at") broke that.
+  const spoken = [
+    `${number} ${name}`,
+    row.kind === "show" ? `${minutesText(row.minutesLeft)} left` : undefined,
+    row.title,
+    row.kind === "downloading" ? "Commercials play until its shows arrive" : undefined,
+    nextTime ? `${nextTime}: ${nextLine}` : nextLine,
+  ]
+    .filter(Boolean)
+    .join(". ");
   return (
     <Pressable accessibilityLabel={spoken} accessibilityRole="button" onPress={() => onWatch(channelId)}>
       <Surface

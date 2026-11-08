@@ -106,8 +106,9 @@ describe("GuideNowNext", () => {
     expect(html).toContain(">18 min left<");
     expect(html).toContain(">8:25 PM<");
     expect(html).toContain(">Kettle Kids · Snow Day for Gulls<");
+    // The row's name is its visible text in order, so it holds every piece drawn above.
     expect(html).toContain(
-      "On now: Kettle Kids · The Upside-Down Picnic. Next at 8:25 PM: Kettle Kids · Snow Day for Gulls",
+      "18 min left. Kettle Kids · The Upside-Down Picnic. 8:25 PM: Kettle Kids · Snow Day for Gulls",
     );
   });
 
