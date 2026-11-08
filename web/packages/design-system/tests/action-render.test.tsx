@@ -31,6 +31,21 @@ describe("Action variants", () => {
     expect(markup).toContain("color:#0B0C0E");
   });
 
+  // The pager's "Older ›": the row reverses rather than the markup, so the decorative icon stays
+  // first in the source and the label alone still names the button.
+  it("draws an inline icon after the label when asked, without renaming the button", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action icon="pageOlder" iconPlacement="end" variant="ghost">
+          Older
+        </Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("flex-direction:row-reverse");
+    expect(markup).not.toContain("aria-label");
+    expect(markup).toContain(">Older</");
+  });
+
   it("renders the danger tone as a neutral tile with danger text, never the on-air red fill", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

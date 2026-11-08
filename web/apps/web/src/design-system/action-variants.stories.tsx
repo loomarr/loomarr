@@ -23,6 +23,23 @@ const ActionVariantsWorkshop = () => (
       </Surface>
     </Surface>
     <Surface gap="control" padding="section">
+      <Text textRole="title">Icon after the label (a pager)</Text>
+      <Surface
+        backgroundColor="transparent"
+        borderWidth={0}
+        flexDirection="row"
+        gap="control"
+        justifyContent="space-between"
+      >
+        <Action icon="pageNewer" onPress={() => undefined} variant="ghost">
+          Newer
+        </Action>
+        <Action icon="pageOlder" iconPlacement="end" onPress={() => undefined} variant="ghost">
+          Older
+        </Action>
+      </Surface>
+    </Surface>
+    <Surface gap="control" padding="section">
       <Text textRole="title">Composed as a link (web `render` escape hatch)</Text>
       <Action render={<a href="#action-variants-story" />} variant="outline">
         Go to channels

@@ -39,6 +39,12 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   density?: Density;
   icon?: IconName;
   /**
+   * `end` draws an inline icon after the label, for a glyph that points the way the action goes:
+   * a pager's "Older" with its chevron toward older rows. The icon is decorative either way, so
+   * the name stays the label alone.
+   */
+  iconPlacement?: "end" | "start";
+  /**
    * Keep an inline label on one line by shrinking it to the room beside the icon, rather than
    * breaking a word that cannot fit (a 2×2 tile at an accessibility text size).
    */
@@ -130,6 +136,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       disabled = false,
       fitLabel = false,
       icon,
+      iconPlacement = "start",
       layout = "inline",
       onBlur,
       onFocus,
@@ -239,7 +246,12 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           </TamaguiText>
         </View>
       ) : icon ? (
-        <View alignItems="center" flexDirection="row" flexShrink={fitLabel ? 1 : undefined} gap="inline">
+        <View
+          alignItems="center"
+          flexDirection={iconPlacement === "end" ? "row-reverse" : "row"}
+          flexShrink={fitLabel ? 1 : undefined}
+          gap="inline"
+        >
           <Icon
             decorative
             glyph={icons[icon]}
