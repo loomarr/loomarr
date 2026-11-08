@@ -20,8 +20,8 @@ in if and only if you have a row. Roles gate everything that spends resources.
 accepted read-only and replaced with Argon2id on success; nothing writes bcrypt.
 
 **Imported login** delegates to `POST {LIBRARY_URL}/Users/AuthenticateByName`, discards the provider
-token (best-effort logout), confirms the id is allowlisted, refreshes name and disabled state, and
-replaces the offline verifier. A provider 401/403 is authoritative; only transport failure, timeout
+token (best-effort logout), confirms the id is allowlisted, refreshes the name, disables the user
+when the provider reports them disabled, and replaces the offline verifier. A provider 401/403 is authoritative; only transport failure, timeout
 or 5xx may fall back to the stored verifier. Jellyfin needs `Authorization: MediaBrowser Client=…`
 on the login request itself, Emby needs `X-Emby-Authorization: MediaBrowser …`; the `DeviceId` is
 stable per install.
@@ -54,8 +54,11 @@ first.
 
 `GET /v1/users/candidates` lists media-server users with an `imported` flag; `POST /v1/users/import`
 upserts an explicit set as allowlisted rows, copying the source's admin status on a new import.
-`POST /v1/users/sync` (and the periodic sync) refreshes only already-imported users' names and
-disabled state; sync never adds anyone. An unconfigured library connection returns the supported
+`POST /v1/users/sync` (and the periodic sync) refreshes only already-imported users' names, and
+disables any the media server reports disabled; sync never adds anyone. Loomarr owns the disabled
+flag: neither sync nor login ever clears it, so a disable made in Loomarr sticks and re-enabling is
+an admin action in Loomarr. Disabling sets the flag and revokes every credential in one
+transaction. An unconfigured library connection returns the supported
 unconfigured response.
 
 ## Invitations and recovery

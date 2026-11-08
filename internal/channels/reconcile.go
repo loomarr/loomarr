@@ -440,6 +440,12 @@ func (e *Engine) reconcileOnce(
 	if playsInternally && onAirChanged && e.scheduleInvalidator != nil {
 		e.scheduleInvalidator.StopChannel(ch.ID)
 	}
+	// Measure ahead (#1518): what this channel airs in the next two days is queued for the one
+	// low-priority worker, so its first airing already has a keyframe index and break candidates.
+	// Tunarr streams its own way and never reads them.
+	if playsInternally {
+		e.premeasureAhead(ctx, ch)
+	}
 
 	// Tell the UI the channel changed so it updates live (no manual refresh — the
 	// "self-maintaining" model, §9). Best-effort: nil notifier / a dropped frame is a
@@ -854,7 +860,7 @@ func (e *Engine) ensureChannel(ctx context.Context, localChannelID string, spec 
 			e.log.Warn("channel number already used in Tunarr; moving this channel rather than failing",
 				"channel", spec.Name, "wanted", spec.Number, "using", moved)
 			if e.acts != nil {
-				e.acts.Warn(ctx, "channel.renumbered", spec.Name, fmt.Sprintf(
+				e.acts.Warn(ctx, store.ActivityKindChannel, spec.Name, fmt.Sprintf(
 					"%q moved to channel %d — Tunarr already had a channel on %d. Loomarr never changes a channel it didn't create.",
 					spec.Name, moved, spec.Number))
 			}

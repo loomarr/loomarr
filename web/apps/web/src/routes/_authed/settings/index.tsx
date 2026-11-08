@@ -1,5 +1,6 @@
+import { SearchField } from "@loomarr/ui";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Search, X } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import {
   forwardRef,
   type KeyboardEvent,
@@ -11,7 +12,6 @@ import {
 } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Input } from "@/components/ui/input";
 import {
   canVisitDestination,
   SETTINGS_DESTINATIONS,
@@ -103,36 +103,17 @@ const SettingsHome = () => {
             <p className="text-muted-foreground mt-1 text-sm">
               Search in everyday words, or paste a setting key or environment variable.
             </p>
-            <div className="relative mt-3">
-              <Search
-                className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
-                aria-hidden
-              />
-              <Input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowDown" && results.length > 0) {
-                    event.preventDefault();
-                    resultLinks.current[0]?.focus();
-                  }
-                }}
+            <div className="mt-3">
+              <SearchField
+                clearLabel="Clear settings search"
+                controls={hasQuery ? "settings-finder-results" : undefined}
+                label="Find a setting"
+                labelHidden
+                onArrowDown={() => resultLinks.current[0]?.focus()}
+                onChangeText={setQuery}
                 placeholder="Try “Jellyfin”, “backups”, or FILLER_FETCH_EVERY"
-                aria-label="Find a setting"
-                {...(hasQuery ? { "aria-controls": "settings-finder-results" } : {})}
-                className="h-11 pr-10 pl-9"
+                value={query}
               />
-              {hasQuery && (
-                <button
-                  type="button"
-                  onClick={() => setQuery("")}
-                  className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring absolute top-1/2 right-2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md focus-visible:ring-2 focus-visible:outline-none"
-                  aria-label="Clear settings search"
-                >
-                  <X className="size-4" aria-hidden />
-                </button>
-              )}
             </div>
 
             {hasQuery && (

@@ -1,8 +1,7 @@
+import { Field, typography } from "@loomarr/design-system";
 import { Check, X } from "lucide-react";
-import { type ChangeEvent, type KeyboardEvent, useId, useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { GrowingTextarea, Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useBelowSm } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import type { ChannelIdentityFieldProps } from "./channel-identity-field.type";
@@ -76,47 +75,44 @@ const ChannelIdentityField = ({
   // same field, one line of content. Enter saves rather than breaking the line, and a newline
   // that arrives some other way (a paste) becomes a space.
   const narrow = useBelowSm();
-  const field = {
-    id,
-    value: draft,
-    disabled: saving,
-    "aria-label": label,
-    "aria-invalid": error ? true : undefined,
-    onChange: (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setDraft(e.target.value.replace(/[\r\n]+/g, " "));
-      setServerError(undefined);
-    },
-    onKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        void save();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        reset();
-      }
-    },
-    className: cn(
-      // Styled to read as intentionally editable (not the old transparent-border ghost).
-      "border-input bg-static-800/40",
-      // 448 px at most from `sm` up; below it the row is the name's alone (#1785). The textarea's
-      // 5 px padding keeps one line of it the input's 40 px.
-      variant === "title" && "h-10 py-[5px] text-xl font-semibold sm:max-w-md",
-      variant === "compact" && "h-9 w-20 text-center font-mono tabular-nums",
-      error && "border-onair-300 focus-visible:ring-onair-300",
-    ),
-  };
+  const wraps = variant === "title" && narrow;
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       <div className="flex items-center gap-2">
-        <Label htmlFor={id} className="sr-only">
-          {label}
-        </Label>
-        {variant === "title" && narrow ? (
-          <GrowingTextarea {...field} />
-        ) : (
-          <Input type={type} {...(type === "number" ? { min: 1 } : {})} {...field} />
-        )}
+        {/* 448 px at most from `sm` up; below it the row is the name's alone (#1785). */}
+        <div className={cn("min-w-0", variant === "title" ? "flex-1 sm:max-w-md" : "w-20")}>
+          <Field
+            accessibilityLabel={label}
+            disabled={saving}
+            id={id}
+            invalid={Boolean(error)}
+            keyboardType={type === "number" ? "number-pad" : "default"}
+            multiline={wraps}
+            numberOfLines={wraps ? 2 : undefined}
+            onChangeText={(text) => {
+              setDraft(text.replace(/[\r\n]+/g, " "));
+              setServerError(undefined);
+            }}
+            onKeyPress={(event) => {
+              const key = event.nativeEvent.key;
+              if (key === "Enter") {
+                event.preventDefault();
+                void save();
+              } else if (key === "Escape") {
+                event.preventDefault();
+                reset();
+              }
+            }}
+            // The name reads as the channel's title, in the body face; the number as a tabular figure.
+            style={
+              variant === "title"
+                ? { fontFamily: typography.family.body.web, fontSize: 20, fontWeight: "600" }
+                : { textAlign: "center" }
+            }
+            value={draft}
+          />
+        </div>
         {/* Save / Cancel appear ONLY when the field diverges from what's committed — the
             explicit per-field confirmation. */}
         {dirty && (

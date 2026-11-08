@@ -116,7 +116,7 @@ func (s disableBeforeCreateSession) CreateSession(ctx context.Context, sess iden
 }
 
 // A disable that lands after login has checked the flag but before the session is written leaves no
-// session behind: otherwise revokeAccess runs first, the INSERT survives it, and the session comes
+// session behind: otherwise the disable's revocation runs first, the INSERT survives it, and the session comes
 // back for its whole TTL when the user is re-enabled.
 func TestLoginRacingADisableIssuesNoSession(t *testing.T) {
 	st := newStore(t)

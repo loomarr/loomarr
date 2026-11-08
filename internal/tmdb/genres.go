@@ -97,3 +97,10 @@ func IsKnownGenre(s string) bool {
 	_, ok := genreIDByName[canonGenre(s)]
 	return ok
 }
+
+// GenreID is the TMDB genre id for a genre name or supported alias. The demo library uses it to
+// serve its invented titles' genres as the genre_ids TMDB would return.
+func GenreID(s string) (int, bool) {
+	id, ok := genreIDByName[canonGenre(s)]
+	return id, ok
+}

@@ -10,6 +10,7 @@ set -euo pipefail
 readonly GATES=(
   contracts go go_full rust postgres web clients apple_mobile apple_tv
   expo_android_mobile expo_android_tv visual e2e tuner image docs agent android policy playout_bench
+  diagrams
 )
 
 selected=()
@@ -79,7 +80,7 @@ classify() {
     web/apps/web/src/components/loomarr/channels/channel-card/*|web/apps/web/src/components/loomarr/channels/channel-collections-scope/*|web/apps/web/src/components/loomarr/channels/channel-cycle-preview/*|web/apps/web/src/components/loomarr/channels/channel-ident/*|web/apps/web/src/components/loomarr/channels/channel-lineup-editor/*|web/apps/web/src/components/loomarr/channels/channel-policy-fields/*|web/apps/web/src/components/loomarr/channels/channel-rules-editor/*|web/apps/web/src/components/loomarr/channels/channel-series-scope/*|web/apps/web/src/components/loomarr/channels/now-next-strip/*)
       [[ "$path" != *.test.* ]] || select_gate contracts
       ;;
-    web/apps/web/src/components/loomarr/filler/clip-card/*|web/apps/web/src/components/loomarr/filler/clip-player/*|web/apps/web/src/components/loomarr/filler/clip-row/*|web/apps/web/src/components/loomarr/filler/pod-timeline/*|web/apps/web/src/components/loomarr/filler/split-review-editor/*|web/apps/web/src/components/loomarr/people/import-dialog/*|web/apps/web/src/components/loomarr/people/invitation-join/*|web/apps/web/src/components/loomarr/player/video-player/*|web/apps/web/src/components/loomarr/shell/search-command/*)
+    web/apps/web/src/components/loomarr/filler/clip-card/*|web/apps/web/src/components/loomarr/filler/clip-row/*|web/apps/web/src/components/loomarr/filler/pod-timeline/*|web/apps/web/src/components/loomarr/filler/split-review-editor/*|web/apps/web/src/components/loomarr/people/import-dialog/*|web/apps/web/src/components/loomarr/people/invitation-join/*|web/apps/web/src/components/loomarr/player/video-player/*|web/apps/web/src/components/loomarr/shell/search-command/*)
       [[ "$path" != *.test.* ]] || select_gate contracts
       ;;
     web/apps/web/src/lib/policy-overrides/*|web/apps/web/src/queue/request-detail/*)
@@ -480,6 +481,13 @@ classify() {
       select_gate docs
       select_gate policy
       ;;
+    # D2 sources, their generated SVGs and the render helpers: the docs job re-renders them and
+    # fails on drift (`make diagrams-verify`, #1622), a Docker step other docs changes skip.
+    docs/diagrams/*)
+      known=true
+      select_gate docs
+      select_gate diagrams
+      ;;
     # The shared Claude settings run a session-start hook; agent-assets-verify guards what they hold.
     .claude/settings.json)
       known=true
@@ -684,7 +692,11 @@ classify() {
         # The resource-pass tools (#1794) run by hand against a live backend, like latency-sweep;
         # no gate runs them, and the contracts job lints them.
         scripts/perf/*) select_gate contracts ;;
-        scripts/generate-diagrams.sh) select_gate contracts ;;
+        scripts/generate-diagrams.sh)
+          select_gate contracts
+          select_gate docs
+          select_gate diagrams
+          ;;
         scripts/merge-release-digests.sh) select_gate contracts ;;
         scripts/observability-dev-runtime-test.sh) select_gate contracts ;;
         scripts/observability-dev-test.sh) select_gate contracts ;;
@@ -756,10 +768,12 @@ classify() {
       select_gate docs
       select_gate policy
       ;;
+    # mk/docs.mk pins the D2 image the diagram step renders with.
     mk/docs.mk)
       known=true
       select_gate docs
       select_gate policy
+      select_gate diagrams
       ;;
     mk/frontend.mk)
       known=true
@@ -874,6 +888,7 @@ classify() {
       known=true
       select_gate docs
       select_gate policy
+      select_gate diagrams
       ;;
     .github/workflows/ci-android.yml)
       known=true

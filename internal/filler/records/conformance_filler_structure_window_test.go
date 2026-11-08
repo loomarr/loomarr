@@ -49,7 +49,7 @@ func testFillerStructureWindowCallLedger(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("drifted settlement error=%v", err)
 	}
 	evaluation, err := s.GetInferenceEvaluation(ctx, "structure-window-"+acceptedReservation.RequestSHA256)
-	if err != nil || evaluation.State != InferenceCompleted || evaluation.ReservedNanoUSD != 40 || evaluation.Outcome != "window_complete" ||
+	if err != nil || evaluation.State != InferenceCompleted || evaluation.ReservedNanoUSD != 40 || evaluation.Outcome != InferenceWindowComplete ||
 		evaluation.Versions.Evidence != acceptedReservation.MediaSet.SHA256 {
 		t.Fatalf("shared accepted accounting=%+v error=%v", evaluation, err)
 	}

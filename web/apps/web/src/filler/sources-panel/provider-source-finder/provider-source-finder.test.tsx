@@ -4,13 +4,14 @@ import {
   getSuggestFillerSourcesMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { fillerProviders } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { ProviderSourceFinder } from "./provider-source-finder";
 
 const wrapper = ({ children }: { children: ReactNode }) => (

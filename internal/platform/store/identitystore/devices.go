@@ -112,25 +112,22 @@ func (s *Store) DeleteDevicePairing(ctx context.Context, codeHash string) error 
 	return err
 }
 
-// PurgeExpiredDevicePairings sweeps codes nobody completed.
-func (s *Store) PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error {
-	_, err := s.h.ExecContext(ctx, s.h.Rebind(
+// PurgeExpiredDevicePairings sweeps codes nobody completed (nightly housekeeping).
+func (s *Store) PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error) {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM device_pairings WHERE expires_at <= ?`), epoch(now))
-	return err
-}
-
-// RevokeDevicePairingsForUser deletes every pairing a user has approved but no device has redeemed
-// yet — called when a user is disabled, alongside RevokeDeviceTokensForUser. Otherwise a pairing
-// approved before the disable could still mint a device token after it.
-func (s *Store) RevokeDevicePairingsForUser(ctx context.Context, userID string) error {
-	_, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM device_pairings WHERE user_id = ?`), userID)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // enabledUserSQL selects the user row only while it is enabled; it takes the user id, then false.
 // Approving a pairing and minting a device token are both conditional on it, in the same statement.
 //
-// ⚠ Disabling sets users.disabled BEFORE it deletes the user's pairings and tokens, so a write that
+// ⚠ DisableUser sets users.disabled BEFORE it deletes the user's pairings and tokens (in one
+// transaction, so the UPDATE's row lock is held until the deletes commit), so a write that
 // sees the user enabled must also commit before that delete looks. SQLite has one writer, so that
 // already holds. Postgres runs READ COMMITTED: without FOR SHARE, a write whose snapshot predates the
 // disable could commit after the delete's snapshot and leave a credential behind. FOR SHARE makes it
@@ -226,14 +223,6 @@ func (s *Store) DeleteDeviceToken(ctx context.Context, tokenHash, userID string)
 	}
 	n, err := res.RowsAffected()
 	return n > 0, err
-}
-
-// RevokeDeviceTokensForUser deletes every device a user paired — called when a user is disabled.
-// Disable alone is not enough: a re-enabled user must not get back a lost device that now acts with
-// their role (ADR 0043).
-func (s *Store) RevokeDeviceTokensForUser(ctx context.Context, userID string) error {
-	_, err := s.h.ExecContext(ctx, s.h.Rebind(`DELETE FROM device_tokens WHERE user_id = ?`), userID)
-	return err
 }
 
 // nullableUser keeps a pending pairing's user_id NULL rather than "", so the foreign key stays

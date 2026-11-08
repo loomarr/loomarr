@@ -234,7 +234,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | Target | CI | What it does |
 | --- | --- | --- |
 | `make diagrams` |  | format D2 sources and regenerate the committed SVG diagrams |
-| `make diagrams-verify` |  | regenerated D2 sources and SVG diagrams must match committed <br>*runs:* `diagrams` |
+| `make diagrams-verify` | ✅ | regenerated D2 sources and SVG diagrams must match committed <br>*runs:* `diagrams` |
 | `make docs-lint` |  | D2 + markdownlint + lychee (offline) + inline repo paths + Vale <br>*runs:* `diagrams-verify` `docs-lint-md` `docs-lint-links` `docs-lint-paths` `docs-lint-prose` |
 | `make docs-lint-md` |  | markdown structure (globs + rules live in .markdownlint-cli2.jsonc) |
 | `make docs-lint-links` |  | relative-link check, offline, over the WIDE set (see lychee.toml for why) |
@@ -298,7 +298,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `rust-check` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `rust-check` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

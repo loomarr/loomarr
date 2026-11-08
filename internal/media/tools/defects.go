@@ -53,7 +53,8 @@ func MeasureDefects(ctx context.Context, ffmpegPath, file string, width, height 
 		return defects.Readings{}, fmt.Errorf("measure defects %s: %w", filepath.Base(file), err)
 	}
 	active := defects.ParseActiveArea(string(cropMeta), width, height)
-	log, err := runDefectsPass(ctx, ffmpegPath, file, defectsFilterGraph(metadataFile, active, hasAudio), "[defects]")
+	edgesFile := filepath.Join(dir, "audio-edges.txt")
+	log, err := runDefectsPass(ctx, ffmpegPath, file, defectsFilterGraph(metadataFile, edgesFile, active, hasAudio), "[defects]")
 	if err != nil {
 		return defects.Readings{}, fmt.Errorf("measure defects %s: %w", filepath.Base(file), err)
 	}
@@ -61,7 +62,13 @@ func MeasureDefects(ctx context.Context, ffmpegPath, file string, width, height 
 	if err != nil {
 		return defects.Readings{}, fmt.Errorf("measure defects %s: %w", filepath.Base(file), err)
 	}
-	return defects.Parse(log, string(frames), width, height, active, hasAudio), nil
+	var edges []byte
+	if hasAudio {
+		// Record-only evidence (defects.FramingEvidence): a missing file costs the framing
+		// evidence's sound half, never the measurement.
+		edges, _ = os.ReadFile(edgesFile)
+	}
+	return defects.Parse(log, string(frames), string(edges), width, height, active, hasAudio), nil
 }
 
 // runDefectsPass decodes file through graph, discarding the output, and returns ffmpeg's log.
@@ -80,8 +87,9 @@ func runDefectsPass(ctx context.Context, ffmpegPath, file, graph, output string)
 
 // defectsFilterGraph crops to the active picture, samples it at defects.SampleFPS for blocks, blur,
 // tape outliers and two upscale scores, reads every frame for interlace, and measures the sound as
-// 16-bit samples so a clipped track flattens at full scale.
-func defectsFilterGraph(metadataFile string, active defects.ActiveArea, hasAudio bool) string {
+// 16-bit samples so a clipped track flattens at full scale. The sampled frames' mean luma and the
+// sound's level per 100 ms window (written to edgesFile) are the record-only framing evidence.
+func defectsFilterGraph(metadataFile, edgesFile string, active defects.ActiveArea, hasAudio bool) string {
 	graph := fmt.Sprintf("[0:v:0]crop=%d:%d:%d:%d,format=yuv420p,split=2[sampled][fields];"+
 		"[sampled]fps=%d,split=2[detect][detail];"+
 		"[detect]blockdetect,blurdetect,signalstats=stat=tout+vrep,metadata=print:file='%s'[defects];"+
@@ -97,7 +105,13 @@ func defectsFilterGraph(metadataFile string, active defects.ActiveArea, hasAudio
 		"[fields]idet,nullsink",
 		active.Width, active.Height, active.X, active.Y, defects.SampleFPS, metadataFile)
 	if hasAudio {
-		graph += ";[0:a:0]aformat=sample_fmts=s16,astats=measure_overall=Peak_level+Peak_count+Flat_factor+Noise_floor:measure_perchannel=none,anullsink"
+		// ⚠ The edge branch's astats is SECOND in the graph and prints per window only
+		// (metadata=1, reset=1); Parse reads the first one's closing summary by its keys.
+		graph += fmt.Sprintf(";[0:a:0]aformat=sample_fmts=s16,asplit=2[stats][edges];"+
+			"[stats]astats=measure_overall=Peak_level+Peak_count+Flat_factor+Noise_floor:measure_perchannel=none,anullsink;"+
+			"[edges]aresample=48000,asetnsamples=n=4800:p=0,"+
+			"astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,"+
+			"ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file='%s',anullsink", edgesFile)
 	}
 	return graph
 }

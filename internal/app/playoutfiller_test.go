@@ -96,7 +96,7 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 		{Kind: schedule.SlotProgram, LibraryItemID: "x", DurationMs: 60000},
 	}
 	accepted := &stubChannels{}
-	accepted.ch.Desired = slots
+	accepted.ch.Desired, accepted.ch.PlayoutAnchor = slots, testPlayoutAnchor()
 	return &playoutResolver{
 		// A break gap FIRST, so a clock at the epoch lands inside it.
 		engine:    stubCycle{slots: slots},
@@ -122,6 +122,7 @@ func TestAiringNow_ReadsThePersistedAcceptedCycle(t *testing.T) {
 		Kind: schedule.SlotProgram, Title: "mutable preview", LibraryItemID: "preview", DurationMs: 60000,
 	}}}
 	accepted := &stubChannels{}
+	accepted.ch.PlayoutAnchor = testPlayoutAnchor()
 	accepted.ch.Desired = []schedule.Slot{{
 		Kind: schedule.SlotFlex, Title: "accepted broadcast", DurationMs: 60000,
 	}}

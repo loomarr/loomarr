@@ -1,11 +1,11 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Field } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { Check, Loader2, LocateFixed, Lock } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { LocationPickerProps } from "./location-picker.type";
 
@@ -152,40 +152,42 @@ const LocationPicker = ({
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <div className="relative min-w-0 flex-1">
-          <Input
-            id={`${listID}-input`}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={showResults}
-            aria-controls={listID}
+          <Field
             aria-activedescendant={open && locations[active] ? `${listID}-${active}` : undefined}
-            value={query}
-            placeholder="Search for a city or country"
+            aria-autocomplete="list"
+            aria-controls={listID}
+            aria-expanded={showResults}
             autoComplete="off"
+            autoCorrect={false}
             disabled={locked}
-            onFocus={() => setOpen(true)}
+            id={`${listID}-input`}
             onBlur={() => setOpen(false)}
-            onChange={(event) => {
-              setQuery(event.target.value);
+            onChangeText={(text) => {
+              setQuery(text);
               setEvidence(undefined);
               setOpen(true);
               setActive(0);
             }}
-            onKeyDown={(event) => {
+            onFocus={() => setOpen(true)}
+            onKeyPress={(event) => {
+              const key = event.nativeEvent.key;
               if (!open || !choicesReady || locations.length === 0) return;
-              if (event.key === "ArrowDown") {
+              if (key === "ArrowDown") {
                 event.preventDefault();
                 setActive((current) => Math.min(current + 1, locations.length - 1));
-              } else if (event.key === "ArrowUp") {
+              } else if (key === "ArrowUp") {
                 event.preventDefault();
                 setActive((current) => Math.max(current - 1, 0));
-              } else if (event.key === "Enter" && locations[active]) {
+              } else if (key === "Enter" && locations[active]) {
                 event.preventDefault();
                 choose(locations[active]);
-              } else if (event.key === "Escape") {
+              } else if (key === "Escape") {
                 setOpen(false);
               }
             }}
+            placeholder="Search for a city or country"
+            role="combobox"
+            value={query}
           />
           {showResults && (
             <div

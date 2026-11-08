@@ -73,9 +73,13 @@ func QualityFromHeight(h int) string {
 // will contain junk, a half-copied file, or something with no video stream; refusing to build
 // a catalog because one file is bad would mean one stray download silently costs a channel all
 // of its commercials. What is skipped is reported so the caller can log a count.
-func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int64) (found []RawClip, skipped int, err error) {
+//
+// unread names the subtrees the walk could not read (slash paths relative to dir). It is not the
+// same as skipped: a clip in an unreadable subtree was not rejected, it was never seen, so the
+// catalog's rows under it say nothing about whether the files still exist (#2673).
+func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int64) (found []RawClip, skipped int, unread []string, err error) {
 	if dir == "" {
-		return nil, 0, nil
+		return nil, 0, nil, nil
 	}
 	if probe == nil {
 		probe = FFprobe
@@ -99,6 +103,9 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 			}
 			// A child: an unreadable subdirectory shouldn't abort the whole scan.
 			skipped++
+			if rel, relErr := filepath.Rel(dir, path); relErr == nil {
+				unread = append(unread, filepath.ToSlash(rel))
+			}
 			return nil //nolint:nilerr // deliberate: skip and continue
 		}
 		if d.IsDir() {
@@ -268,9 +275,9 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		// The directory itself is unreadable or missing. That IS worth reporting: it is
 		// almost always a misconfigured FILLER_DIR, and silently returning an empty catalog
 		// would present as "filler mysteriously does nothing".
-		return nil, skipped, fmt.Errorf("scan filler dir %s: %w", dir, walkErr)
+		return nil, skipped, nil, fmt.Errorf("scan filler dir %s: %w", dir, walkErr)
 	}
-	return found, skipped, nil
+	return found, skipped, unread, nil
 }
 
 // scannedNameSource is the provenance of the name the scan takes from Loomarr's own sidecar or the
@@ -594,17 +601,25 @@ func (d DirSource) EnsureLocalSource(ctx context.Context, dir string) error {
 	return d.Tunarr.EnsureLocalSource(ctx, dir)
 }
 
-// ListLocalClips scans FILLER_DIR, then annotates with Tunarr uuids where available.
+// ListLocalClips is ScanLocalClips without the unreadable subtrees, for a caller that only wants
+// the clips.
 func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
+	scan, err := d.ScanLocalClips(ctx)
+	return scan.Clips, err
+}
+
+// ScanLocalClips scans FILLER_DIR, then annotates with Tunarr uuids where available. It also
+// reports the subtrees it could not read, which the sync needs to leave their clips alone (#2673).
+func (d DirSource) ScanLocalClips(ctx context.Context) (LocalScan, error) {
 	// The floor is read HERE rather than captured at wiring, so `filler.min_duration` hot-applies
 	// like every other setting the scan consults.
 	var minMs int64
 	if d.MinDuration != nil {
 		minMs = d.MinDuration().Milliseconds()
 	}
-	clips, rejected, err := scanDir(ctx, d.Layout.ClipDir(), d.Layout.WatchDir(), d.Probe, minMs)
+	clips, rejected, unread, err := scanDir(ctx, d.Layout.ClipDir(), d.Layout.WatchDir(), d.Probe, minMs)
 	if err != nil {
-		return nil, err
+		return LocalScan{}, err
 	}
 	// ⚠ Rejections are LOGGED, not silent. A quality gate that quietly drops files is
 	// indistinguishable from a scan that never saw them — the same silence that once let a
@@ -631,8 +646,9 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 		d.Log("filler: some clip artwork could not be generated", args...)
 	}
 
+	scan := LocalScan{Clips: clips, Unread: unread}
 	if d.Tunarr == nil || len(clips) == 0 {
-		return clips, nil
+		return scan, nil
 	}
 
 	// Tunarr's uuids are a BONUS, so a failure here must not fail the scan: the catalog is
@@ -640,14 +656,14 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 	// lose anything, and they lose it until the next sync rather than permanently.
 	byName, err := d.Tunarr.LocalClipIDsByName(ctx)
 	if err != nil {
-		return clips, nil //nolint:nilerr // deliberate: annotation is optional, see above
+		return scan, nil //nolint:nilerr // deliberate: annotation is optional, see above
 	}
 	for i := range clips {
 		if id, ok := byName[clips[i].Name]; ok {
 			clips[i].TunarrProgramID = id
 		}
 	}
-	return clips, nil
+	return scan, nil
 }
 
 // licenseBeside reads the licence URL from the info-JSON sitting next to a clip file (V33).

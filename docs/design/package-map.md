@@ -55,7 +55,7 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 ### [Test support](areas/test.md)
 
-Code that exists for tests and never ships in the server: the shared test doubles and fixtures, the store's SQLite and Postgres test databases, the invented demo library, the end-to-end integration journeys, and the evaluation harness that runs only under its own build tag.
+Code that exists for tests and never ships in the server: the shared test doubles and fixtures, the store's SQLite and Postgres test databases, the invented demo library and the TMDB stand-in it and the tests share, the end-to-end integration journeys, and the evaluation harness that runs only under its own build tag.
 
 ## Two flows, end to end
 

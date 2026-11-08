@@ -1,8 +1,8 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
+import { Action } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 
 const EncryptionSettings = () => {
   const queryClient = useQueryClient();
@@ -33,9 +33,9 @@ const EncryptionSettings = () => {
             key with your host or secrets manager—it is not included in database backups.
           </p>
         </div>
-        <Button disabled={!encryption?.enabled || rotate.isPending} onClick={onRotate} variant="outline">
+        <Action disabled={!encryption?.enabled || rotate.isPending} onPress={onRotate} variant="outline">
           {rotate.isPending ? "Rotating…" : "Rotate data key"}
-        </Button>
+        </Action>
       </div>
       {status.error != null && (
         <div className="mt-3">

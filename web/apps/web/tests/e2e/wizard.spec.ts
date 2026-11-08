@@ -12,11 +12,13 @@ import { installMockBackend } from "./mock-backend";
 const mask = (page: Page) => [page.getByText(/last received/i)];
 
 // Each step's snapshot waits for the heading that identifies it, so a shot is never
-// taken mid-transition.
+// taken mid-transition. The shot is a soft assertion: a changed step still fails the test, but
+// the walk goes on, so one CI run reports every changed step's actual PNG instead of only the
+// first (post-merge e2e baselines are copied by hand from those PNGs, one run per round).
 const shot = async (page: Page, name: string, heading: RegExp) => {
   await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
-  await expect(page).toHaveScreenshot(`${name}.png`, { mask: mask(page), fullPage: true });
+  await expect.soft(page).toHaveScreenshot(`${name}.png`, { mask: mask(page), fullPage: true });
 };
 
 test.describe("operator first-run wizard", () => {

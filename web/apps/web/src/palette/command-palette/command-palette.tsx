@@ -24,8 +24,8 @@ import type { CommandPaletteProps } from "./command-palette.type";
 // makes the claim true rather than deleting it — unlike `RestartOverlay`, this one really is a
 // dialog: it owns a text input and demands a response.
 //
-// ⚠ Built on the Dialog PRIMITIVE, not the app's `DialogContent` wrapper — same reason as
-// `ClipPlayer`. The wrapper centres a padded `max-w-md` card and injects its own close button;
+// ⚠ Built on the Dialog PRIMITIVE, not the app's `DialogContent` wrapper. The wrapper centres a
+// padded `max-w-md` card and injects its own close button;
 // the palette is a top-anchored `max-w-xl` surface with no chrome of its own.
 //
 // ⚠ ESCAPE IS NOW THE DIALOG'S. `useCommandShortcut` used to bind it at the window, because

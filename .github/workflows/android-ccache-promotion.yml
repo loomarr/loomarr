@@ -1,9 +1,12 @@
 # Publish a merge queue's verified compiler results into main's cache scope without rebuilding.
+# Starts when merge-group CI completes, not on the push to main: since #2282 that run can finish
+# after the merge, and a push-triggered promotion found nothing to promote (#2288).
 name: Android ccache promotion
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   actions: write
@@ -16,6 +19,7 @@ concurrency:
 jobs:
   promote:
     name: Promote verified Android compiler cache
+    if: github.event.workflow_run.event == 'merge_group' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -25,6 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          PRODUCER_SHA: ${{ github.event.workflow_run.head_sha }}
         run: ./scripts/android-ccache-promotion.sh locate >> "$GITHUB_OUTPUT"
       - name: Download the immutable compiler-cache transfer
         if: steps.producer.outputs.found == 'true'
@@ -38,11 +43,13 @@ jobs:
       - name: Validate the producer binding and cache contents
         id: cache
         if: steps.producer.outputs.found == 'true'
+        env:
+          PRODUCER_SHA: ${{ github.event.workflow_run.head_sha }}
         run: >-
           ./scripts/android-ccache-promotion.sh restore
           "$RUNNER_TEMP/loomarr-android-ccache-transfer"
           "$RUNNER_TEMP/loomarr-android-ccache"
-          "$GITHUB_SHA"
+          "$PRODUCER_SHA"
           "${{ steps.producer.outputs.run-id }}"
           android-tv-ccache-v2-Linux-ccache-4.14-
           >> "$GITHUB_OUTPUT"
