@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -28,20 +29,20 @@ type fakeVisionStore struct {
 	tags     map[string]visionWrite // path → recorded vision tags
 	setPaths []string               // order + count of ApplyClipVision calls
 	setErr   error
+	observed []eraObservation // RecordFillerEraObservation calls with a real era
 }
 
-// visionWrite is one recorded ApplyClipVision call: the grounded values, plus the suggestedEra the
-// frame-heuristic tier feeds through.
+// visionWrite is one recorded ApplyClipVision call: the grounded values.
 type visionWrite struct {
 	brand, visibleText, category string
-	era, suggestedEra            int
+	era                          int
 }
 
 func newFakeVisionStore() *fakeVisionStore {
 	return &fakeVisionStore{tags: map[string]visionWrite{}}
 }
 
-func (f *fakeVisionStore) ApplyClipVision(_ context.Context, _, path, brand, visibleText string, era, suggestedEra int, leaves []string, _ time.Time) error {
+func (f *fakeVisionStore) ApplyClipVision(_ context.Context, _, path, brand, visibleText string, era int, leaves []string, _ time.Time) error {
 	if f.setErr != nil {
 		return f.setErr
 	}
@@ -49,9 +50,23 @@ func (f *fakeVisionStore) ApplyClipVision(_ context.Context, _, path, brand, vis
 	f.tags[path] = visionWrite{
 		brand: brand, visibleText: visibleText,
 		category: taxonomy.New(taxonomy.SeedForest()).PrimaryProductLeaf(leaves),
-		era:      era, suggestedEra: suggestedEra,
+		era:      era,
 	}
 	return nil
+}
+
+// RecordFillerEraObservation keeps the uncited era guesses the rung records. Like the real store,
+// a zero era records nothing.
+func (f *fakeVisionStore) RecordFillerEraObservation(_ context.Context, _ string, era int, source research.ObservationSource, _ time.Time) error {
+	if era > 0 {
+		f.observed = append(f.observed, eraObservation{era: era, source: source})
+	}
+	return nil
+}
+
+type eraObservation struct {
+	era    int
+	source research.ObservationSource
 }
 
 // ListTaxa serves the REAL seed forest (§10 V45a): the vision tier grounds its category against it,
@@ -285,10 +300,10 @@ func TestVisionStage_DropsWrongTypedFieldWithoutDiscardingAnswer(t *testing.T) {
 
 // ⚠ THE tier-is-wired test: the free frame-heuristic tier must actually be INVOKED by the rung, not
 // merely exist. A monochrome 4:3 keyframe + a model that grounded NO era must produce a
-// SuggestedEra of 1960 ("pre-1970s?"). Without the AnalyzeFrames/SuggestedEraFrom call in Run this
+// 1960 ("pre-1970s?") era observation. Without the AnalyzeFrames/SuggestedEraFrom call in Run this
 // goes RED — which is the point, because a tier that is built and tested but never called is a dead
 // capability (the frames are decoded here for real, unlike oneFrame elsewhere).
-func TestVisionStage_FrameHintSeedsSuggestedEraWhenModelGroundsNoEra(t *testing.T) {
+func TestVisionStage_FrameHintRecordsAnEraObservationWhenModelGroundsNoEra(t *testing.T) {
 	st := newFakeVisionStore()
 	// A REAL black-and-white 4:3 JPEG — grayF is the same helper the framehints tests use.
 	tools := &scriptedVision{frames: [][]byte{grayF(t, 128)}}
@@ -299,8 +314,8 @@ func TestVisionStage_FrameHintSeedsSuggestedEraWhenModelGroundsNoEra(t *testing.
 		t.Fatal("the clip did not apply")
 	}
 	got := st.tags["silent.mp4"]
-	if got.suggestedEra != 1960 {
-		t.Errorf("suggestedEra = %d, want 1960 — a B&W 4:3 frame with no model-grounded era must seed the pre-1970s hint through the rung", got.suggestedEra)
+	if len(st.observed) != 1 || st.observed[0] != (eraObservation{era: 1960, source: research.ObservedByVision}) {
+		t.Errorf("observations = %+v, want one 1960 vision guess — a B&W 4:3 frame with no model-grounded era must record the pre-1970s hint through the rung", st.observed)
 	}
 	if got.era != 0 {
 		t.Errorf("era = %d, want 0 — the frame heuristic is a SUGGESTION, never a grounded era", got.era)
@@ -321,8 +336,8 @@ func TestVisionStage_FrameHintSuppressedByGroundedEra(t *testing.T) {
 	if got.era != 1985 {
 		t.Errorf("era = %d, want 1985 grounded off the visible year", got.era)
 	}
-	if got.suggestedEra != 0 {
-		t.Errorf("suggestedEra = %d, want 0 — a grounded era suppresses the frame hint", got.suggestedEra)
+	if len(st.observed) != 0 {
+		t.Errorf("observations = %+v, want none — a grounded era suppresses the frame hint", st.observed)
 	}
 }
 

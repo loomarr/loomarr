@@ -286,7 +286,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SetClipTags(ctx, "u1", []string{"cereal"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateClipClassification(ctx, "u1", 1994, "kids", 0, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, "u1", 1994, "kids", now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.GetClip(ctx, "u1")
@@ -297,44 +297,8 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 		t.Error("clip should be Tagged() after update")
 	}
 	// Tagging a missing clip → ErrNotFound.
-	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", 0, now); !errors.Is(err, ErrNotFound) {
+	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateClipClassification(missing) = %v, want ErrNotFound", err)
-	}
-
-	// Era suggestions (§10 V34) — the conditional suggested_era write:
-	//  **record** an ungrounded suggestion on an era-less clip,
-	//  **keep** it across a tag edit that carries neither era nor suggestion,
-	//  **clear** it in the same write that sets era (the operator confirming).
-	if err := s.UpdateClipClassification(ctx, "keep", 0, "family", 1985, now); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.GetClip(ctx, "keep")
-	if got.SuggestedEra != 1985 || got.Era != 0 {
-		t.Errorf("suggestion not recorded: era=%d suggestedEra=%d, want 0/1985", got.Era, got.SuggestedEra)
-	}
-	if err := s.UpdateClipClassification(ctx, "keep", 0, "general", 0, now); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.GetClip(ctx, "keep")
-	if got.SuggestedEra != 1985 {
-		t.Errorf("era-less tag edit wiped the suggestion: suggestedEra=%d, want 1985", got.SuggestedEra)
-	}
-	if err := s.UpdateClipClassification(ctx, "keep", 1985, "", 0, now); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.GetClip(ctx, "keep")
-	if got.Era != 1985 || got.SuggestedEra != 0 {
-		t.Errorf("confirming era did not clear the suggestion: era=%d suggestedEra=%d, want 1985/0", got.Era, got.SuggestedEra)
-	}
-	// A suggestion survives a sync upsert (sync.go merges it like the other tags).
-	keep, _ := s.GetClip(ctx, "keep")
-	keep.SuggestedEra = 1990
-	if err := s.UpsertClip(ctx, keep); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.GetClip(ctx, "keep")
-	if got.SuggestedEra != 1990 {
-		t.Errorf("suggested_era did not round-trip through UpsertClip: %d, want 1990", got.SuggestedEra)
 	}
 
 	// Prune: keep only "keep" — u1 is removed (it left the media server's library).
@@ -728,10 +692,10 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// UpdateClipClassification is hash-keyed, and its ErrNotFound is fatal to the tagging job.
-	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", 0, now); !errors.Is(err, ErrNotFound) {
+	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateClipClassification(path) = %v, want ErrNotFound — the tagger must pass the hash", err)
 	}
-	if err := s.UpdateClipClassification(ctx, c.Hash, 1994, "kids", 0, now); err != nil {
+	if err := s.UpdateClipClassification(ctx, c.Hash, 1994, "kids", now); err != nil {
 		t.Errorf("UpdateClipClassification(hash) = %v, want it to apply", err)
 	}
 
@@ -788,7 +752,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	// passed 0, so the era set by UpdateClipClassification above (1994) must SURVIVE — the CASE guard, not a
 	// blanket overwrite. It overwrites the text-grounded brand above, which is fine — both are
 	// grounded writers of the same column.
-	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Brightfield's", "BRIGHTFIELD'S CRUNCHLINGS", 0, 0, []string{"cereal"}, now); err != nil {
+	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Brightfield's", "BRIGHTFIELD'S CRUNCHLINGS", 0, []string{"cereal"}, now); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
@@ -801,40 +765,12 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	if got.Category != "cereal" || len(got.AssertedTags) != 1 || got.AssertedTags[0] != "cereal" {
 		t.Errorf("vision taxonomy = category %q / asserted %v, want cereal / [cereal]", got.Category, got.AssertedTags)
 	}
-	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Uncommitted", "SHOULD ROLL BACK", 0, 0, []string{"not-a-live-taxon"}, now); !errors.Is(err, ErrTaxonConflict) {
+	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Uncommitted", "SHOULD ROLL BACK", 0, []string{"not-a-live-taxon"}, now); !errors.Is(err, ErrTaxonConflict) {
 		t.Fatalf("invalid vision taxonomy error = %v, want ErrTaxonConflict", err)
 	}
 	got, _ = s.GetClip(ctx, c.Hash)
 	if got.Brand != "Brightfield's" || got.VisibleText != "BRIGHTFIELD'S CRUNCHLINGS" {
 		t.Errorf("invalid vision taxonomy partially committed facts: brand=%q text=%q", got.Brand, got.VisibleText)
-	}
-	// ⚠ A grounded era SUPPRESSES the frame-heuristic suggestion: this clip already has era 1994, so
-	// passing suggestedEra=1960 must NOT set suggested_era — a clip with a known era has no question
-	// to ask. This pins the "era = 0" precondition in the store's CASE guard.
-	if err := s.ApplyClipVision(ctx, c.Hash, c.Path, "Brightfield's", "BRIGHTFIELD'S CRUNCHLINGS", 0, 1960, []string{"cereal"}, now); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.GetClip(ctx, c.Hash)
-	if got.SuggestedEra != 0 {
-		t.Errorf("suggested_era = %d, want 0 — a frame hint must not seed a suggestion when the clip already has a grounded era", got.SuggestedEra)
-	}
-
-	// The frame-heuristic path on a clip with NO era: a fresh clip, vision grounds no era, the hint
-	// seeds a suggestion. This is the one write that turns a monochrome-4:3 measurement into the
-	// operator-confirms field.
-	hintClip := sampleClip("vhint", "wordless.mp4", filler.Commercial, 0, "", "")
-	if err := s.UpsertClip(ctx, hintClip); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.ApplyClipVision(ctx, hintClip.Hash, hintClip.Path, "", "", 0, 1960, nil, now); err != nil {
-		t.Fatal(err)
-	}
-	got, _ = s.GetClip(ctx, hintClip.Hash)
-	if got.SuggestedEra != 1960 {
-		t.Errorf("suggested_era = %d, want 1960 — a frame hint must seed the suggestion when the clip has no grounded era", got.SuggestedEra)
-	}
-	if got.Era != 0 {
-		t.Errorf("era = %d, want 0 — a frame hint is a SUGGESTION, never a grounded era", got.Era)
 	}
 
 	// ⚠ The load-bearing property: a re-sync (UpsertClip) must NOT clobber the job-written columns.
@@ -4726,7 +4662,7 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(candidates) != 0 {
 		t.Fatalf("candidates after the same transcript = %+v, err %v", candidates, err)
 	}
-	if err := s.ApplyClipVision(ctx, clip.Hash, clip.Path, "", "BRAMBLY SAUCE", 0, 0, nil, at.Add(9*time.Second)); err != nil {
+	if err := s.ApplyClipVision(ctx, clip.Hash, clip.Path, "", "BRAMBLY SAUCE", 0, nil, at.Add(9*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	candidates, err = s.ListFillerEnrichmentCandidates(ctx, pass.Producer, pass.ProducerVersion, pass.TaxonomyVersion, 10)
@@ -4821,6 +4757,71 @@ func testSettledGeographyClips(t *testing.T, newStore NewStoreFunc) {
 	if len(got) != 2 || got[declared].Country != "GB" || got[declared].Scope != "national" ||
 		got[station].Station != "fcc:7" || got[station].Scope != "local" || got[station].Path == "" {
 		t.Fatalf("settled geography clips = %+v; want the declared foreign and the station-local clip only", settled)
+	}
+}
+
+// An uncited era guess is a Context observation (#2323): shown only when nothing cited exists,
+// never counted as research, never outranking a cited country, and skipped for a clip whose era
+// is already verified.
+func testFillerEraObservation(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Unix(1_700_000_500, 0).UTC()
+	guess := sampleClip("guess-clip", "Twirlpop Classic Commercial", filler.Commercial, 0, "", "")
+	guess.Source = "archive:classic_tv_commercials"
+	guess.UpdatedAt = at
+	known := sampleClip("known-clip", "Known Commercial", filler.Commercial, 1992, "", "")
+	known.UpdatedAt = at
+	for _, c := range []Clip{guess, known} {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := s.RecordFillerEraObservation(ctx, guess.Hash, 1985, research.ObservedByVision, at.Add(5*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	observed, err := s.LatestFillerResearchReport(ctx, guess.Hash)
+	if err != nil || !observed.IsObservation() || observed.Suggestion.Year != 1985 ||
+		observed.Suggestion.Explanation == "" || len(observed.Cited()) != 0 {
+		t.Fatalf("observation = %+v, err %v", observed, err)
+	}
+	if err := s.RecordFillerEraObservation(ctx, known.Hash, 1985, research.ObservedBySplit, at); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.LatestFillerResearchReport(ctx, known.Hash); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a guess was kept beside a verified era: %+v, err %v", got, err)
+	}
+
+	// An observation is not research: the clip is still a research candidate.
+	candidates, err := s.ListFillerResearchCandidates(ctx, "context-model:fixture", "prompt:model",
+		"mediawiki", research.MediaWikiAdapterVersion, 3)
+	if err != nil || len(candidates) != 1 || candidates[0].ClipHash != guess.Hash {
+		t.Fatalf("candidates beside an observation = %+v, err %v", candidates, err)
+	}
+	cited := research.Report{ClipHash: guess.Hash, InputRevision: candidates[0].InputRevision,
+		Producer: "context-model:fixture", ProducerVersion: "prompt:model", CompletedAt: at.Add(time.Second),
+		Suggestion: research.Suggestion{CountryCode: "US", Country: "United States",
+			Confidence: 70, Explanation: "Aired in the US.", CitationIDs: []int{1}},
+		Packet: research.Packet{Query: guess.Name, Adapter: "mediawiki",
+			AdapterVersion: research.MediaWikiAdapterVersion, RetrievedAt: at,
+			Citations: []research.Citation{{ID: 1, Title: "Twirlpop",
+				URL: "https://en.wikipedia.org/wiki/Twirlpop", Extract: "It aired on US television."}}}}
+	if err := s.SaveFillerResearchReport(ctx, cited); err != nil {
+		t.Fatal(err)
+	}
+	// Cited research outranks the NEWER uncited guess.
+	if got, err := s.LatestFillerResearchReport(ctx, guess.Hash); err != nil || got.IsObservation() ||
+		got.Suggestion.CountryCode != "US" {
+		t.Fatalf("latest beside cited research = %+v, err %v", got, err)
+	}
+	// Nor may the newer guess hide the cited country from catch-up promotion.
+	if err := s.UpdateClipGeography(ctx, guess.Hash, string(filler.GeographicUnknown), "", "", "", "", "", at.Add(6*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3); err != nil || promoted != 1 {
+		t.Fatalf("promotion beside a newer observation = %d, %v, want 1", promoted, err)
 	}
 }
 

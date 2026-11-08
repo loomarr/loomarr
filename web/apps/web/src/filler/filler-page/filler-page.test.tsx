@@ -51,7 +51,6 @@ const clip = (hash: string, name: string): ClipDTO => ({
   playsCounted: true,
   tagged: true,
   needsDetails: false,
-  suggestedEra: 0,
 });
 
 // ⚠ `catalogQueries` records the URL of every `GET /v1/filler` and ONLY those. The old `calls`

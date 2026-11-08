@@ -195,13 +195,7 @@ func (s *sqlStore) SaveFillerResearchReport(ctx context.Context, report research
 	if revision != report.InputRevision {
 		return ErrFillerResearchStale
 	}
-	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_context_reports
-		(clip_hash, producer, producer_version, adapter, adapter_version, input_revision, report_json, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(clip_hash, producer, producer_version, adapter, adapter_version, input_revision)
-		DO UPDATE SET report_json=excluded.report_json, completed_at=excluded.completed_at`),
-		report.ClipHash, report.Producer, report.ProducerVersion, report.Packet.Adapter,
-		report.Packet.AdapterVersion, report.InputRevision, string(raw), epoch(report.CompletedAt)); err != nil {
+	if err := s.insertContextReportTx(ctx, tx, report, raw); err != nil {
 		return fmt.Errorf("save filler context report: %w", err)
 	}
 	if state, ok := fillerResearchGeographyState(report); ok {
@@ -211,6 +205,71 @@ func (s *sqlStore) SaveFillerResearchReport(ctx context.Context, report research
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("save filler context report: commit: %w", err)
+	}
+	return nil
+}
+
+func (s *sqlStore) insertContextReportTx(ctx context.Context, tx storedb.Tx, report research.Report, raw []byte) error {
+	_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_context_reports
+		(clip_hash, producer, producer_version, adapter, adapter_version, input_revision, report_json, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(clip_hash, producer, producer_version, adapter, adapter_version, input_revision)
+		DO UPDATE SET report_json=excluded.report_json, completed_at=excluded.completed_at`),
+		report.ClipHash, report.Producer, report.ProducerVersion, report.Packet.Adapter,
+		report.Packet.AdapterVersion, report.InputRevision, string(raw), epoch(report.CompletedAt))
+	return err
+}
+
+// RecordFillerEraObservation keeps an uncited era guess as a Context suggestion (#2323). It binds
+// to the clip's current input revision, and does nothing when the clip already has a verified era:
+// a guess beside a known year would only be noise.
+func (s *sqlStore) RecordFillerEraObservation(ctx context.Context, clipHash string, era int,
+	source research.ObservationSource, at time.Time) error {
+	if era <= 0 {
+		return nil
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("record filler era observation: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := s.recordEraObservationTx(ctx, tx, clipHash, era, source, at); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record filler era observation: commit: %w", err)
+	}
+	return nil
+}
+
+func (s *sqlStore) recordEraObservationTx(ctx context.Context, tx storedb.Tx, clipHash string, era int,
+	source research.ObservationSource, at time.Time) error {
+	if era <= 0 {
+		return nil
+	}
+	var revision int64
+	var verifiedEra int
+	err := tx.QueryRowContext(ctx, s.ph(`SELECT enrichment_revision, era FROM clips WHERE hash = ?`), clipHash).
+		Scan(&revision, &verifiedEra)
+	if errors.Is(err, sql.ErrNoRows) {
+		return store.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("record filler era observation: read clip: %w", err)
+	}
+	if verifiedEra > 0 {
+		return nil
+	}
+	report := research.EraObservation(clipHash, revision, era, source, at)
+	if err := report.Validate(); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(report)
+	if err != nil {
+		return fmt.Errorf("encode filler era observation: %w", err)
+	}
+	if err := s.insertContextReportTx(ctx, tx, report, raw); err != nil {
+		return fmt.Errorf("record filler era observation: %w", err)
 	}
 	return nil
 }
@@ -235,13 +294,16 @@ func (s *sqlStore) PromoteStoredFillerResearchCountries(ctx context.Context, lim
 		JOIN clips c ON c.hash = r.clip_hash
 		WHERE c.removed_at = 0 AND c.is_composite = false AND c.country = ''
 		  AND r.input_revision = c.enrichment_revision
+		  -- An uncited era guess must not outrank the cited report whose country this promotes.
+		  AND r.producer <> ?
 		  AND NOT EXISTS (
 			SELECT 1 FROM filler_enrichment_axes e
 			WHERE e.clip_hash = c.hash AND e.axis = 'geography' AND e.evidence_kind = 'operator'
 		  )
 	) ranked WHERE row_number = 1 AND ` + countryPredicate + `
 	ORDER BY completed_at, report_json LIMIT ?`
-	rows, err := s.db.QueryContext(ctx, s.ph(query), research.MinCountryProjectionConfidence, limit)
+	rows, err := s.db.QueryContext(ctx, s.ph(query), research.ProducerObservation,
+		research.MinCountryProjectionConfidence, limit)
 	if err != nil {
 		return 0, fmt.Errorf("list stored filler context countries: %w", err)
 	}
@@ -321,8 +383,12 @@ func fillerResearchGeographyState(report research.Report) (enrichment.State, boo
 
 func (s *sqlStore) LatestFillerResearchReport(ctx context.Context, clipHash string) (research.Report, error) {
 	var raw string
+	// Cited research outranks an uncited observation whatever their ages: a guess is only shown
+	// when nothing better was found.
 	err := s.db.QueryRowContext(ctx, s.ph(`SELECT report_json FROM filler_context_reports
-		WHERE clip_hash = ? ORDER BY completed_at DESC, producer_version DESC LIMIT 1`), clipHash).Scan(&raw)
+		WHERE clip_hash = ?
+		ORDER BY CASE WHEN producer = ? THEN 1 ELSE 0 END, completed_at DESC, producer_version DESC
+		LIMIT 1`), clipHash, research.ProducerObservation).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return research.Report{}, store.ErrNotFound
 	}

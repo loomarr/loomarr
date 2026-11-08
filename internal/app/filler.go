@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/library"
@@ -414,14 +415,18 @@ func (a fillerTranscribeStoreAdapter) SetClipTranscript(ctx context.Context, pat
 
 // fillerVisionStoreAdapter bridges the store → filler.VisionStore (§10 V44). Same list polarity as
 // the transcribe adapter — held candidates in, removed clips out.
-type fillerVisionStoreAdapter struct{ st store.Store }
+type fillerVisionStoreAdapter struct{ st records.Store }
 
 func (a fillerVisionStoreAdapter) ListClips(ctx context.Context, f filler.ClipQuery) ([]filler.StoreClip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
 
-func (a fillerVisionStoreAdapter) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error {
-	return a.st.ApplyClipVision(ctx, hash, path, brand, visibleText, era, suggestedEra, leaves, at)
+func (a fillerVisionStoreAdapter) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era int, leaves []string, at time.Time) error {
+	return a.st.ApplyClipVision(ctx, hash, path, brand, visibleText, era, leaves, at)
+}
+
+func (a fillerVisionStoreAdapter) RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error {
+	return a.st.RecordFillerEraObservation(ctx, clipHash, era, source, at)
 }
 
 // ListTaxa: the vision tier grounds its category against the taxonomy graph (§10 V45a).
@@ -562,6 +567,9 @@ func (a fillerSplitStoreAdapter) UpsertClipFingerprint(ctx context.Context, clip
 }
 func (a fillerSplitStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+}
+func (a fillerSplitStoreAdapter) RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error {
+	return a.st.RecordFillerEraObservation(ctx, clipHash, era, source, at)
 }
 func (a fillerSplitStoreAdapter) GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error) {
 	return a.st.GetClipTags(ctx, clipHash, leavesOnly)

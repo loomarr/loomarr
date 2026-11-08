@@ -23,7 +23,6 @@ const clip: ClipDTO = {
   playsCounted: true,
   tagged: true,
   needsDetails: false,
-  suggestedEra: 0,
 };
 
 // LoomarrProvider as main.tsx mounts it: the clip select box and chip are @loomarr/ui.

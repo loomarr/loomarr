@@ -158,10 +158,6 @@ type SidecarTags struct {
 	// Whisper (~341s per clip under QEMU) over the whole folder. omitempty keeps a wordless or
 	// not-yet-transcribed clip's sidecar unchanged.
 	Transcript string `json:"transcript,omitempty"`
-	// SuggestedEra is an UNGROUNDED guess awaiting confirmation — never a tag. Carried
-	// separately for the same reason the column is separate: restoring it as `Era` would
-	// launder a guess into a fact, which is the §8 failure the grounding rule exists to prevent.
-	SuggestedEra int `json:"suggestedEra,omitempty"`
 	// Mezzanine records that this clip was re-encoded to the ingest profile (§10 V51b), holding
 	// the profile's ID — `h264-crf20-aac192` — rather than a bare `true`.
 	//

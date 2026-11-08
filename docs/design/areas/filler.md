@@ -14,7 +14,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`filler`** · 10 importers · → `channels/schedule`, `filler/clips`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/langcode`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
+- **`filler`** · 10 importers · → `channels/schedule`, `filler/clips`, `filler/research`, `filler/source`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/langcode`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`filler/clips`** · 4 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
@@ -28,7 +28,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's offline place search and location resolution.
 - **`filler/records`** · 3 importers · → `filler`, `filler/enrichment`, `filler/research`, `filler/screening`, `filler/source`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
-- **`filler/research`** · 3 importers · → `platform/llm`
+- **`filler/research`** · 4 importers · → `platform/llm`
   Owns bounded external context lookup for publicly sourced filler.
 - **`filler/screening`** · 2 importers · → `filler`, `filler/structure/assessment`, `media/tools`
   Rendered-child screening runtime: the four-axis coordinator that records one closed, replayable result per axis for an immutable child subject, the private content-addressed evidence repository behind it, the playback-integrity and qualification evaluators, the release certification that replays an aggregate against its authority, and the SCREEN conveyor stage that turns the outcome into a pipeline verdict.

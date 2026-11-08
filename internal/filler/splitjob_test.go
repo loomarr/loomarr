@@ -18,6 +18,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -198,6 +199,8 @@ type splitMemStore struct {
 	fingerprintReadErr     error
 	fingerprintWriteErr    error
 	pipelines              map[string]filler.ClipPipeline
+	observedEras           map[string]int // clip hash → recorded uncited era guess
+	observedSources        []research.ObservationSource
 }
 
 type failingSplitStore struct {
@@ -379,6 +382,23 @@ func (m *splitMemStore) GetClip(_ context.Context, id string) (filler.StoreClip,
 	c, ok := m.clips[id]
 	return c, ok, nil
 }
+
+// RecordFillerEraObservation keeps a split segment's era guess. Like the real store, a zero era
+// records nothing.
+func (m *splitMemStore) RecordFillerEraObservation(_ context.Context, hash string, era int, source research.ObservationSource, _ time.Time) error {
+	if era <= 0 {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.observedEras == nil {
+		m.observedEras = map[string]int{}
+	}
+	m.observedEras[hash] = era
+	m.observedSources = append(m.observedSources, source)
+	return nil
+}
+
 func (m *splitMemStore) ListClips(context.Context) ([]filler.StoreClip, error) {
 	var out []filler.StoreClip
 	for _, c := range m.clips {
@@ -1835,7 +1855,8 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		{StartMs: 30000, EndMs: 61000, Name: "Brickle", Era: 1987, Audience: filler.Kids, Category: "toys", Language: "pl", LanguageChecked: true},
 		// Moving the start makes this a different audio span, so even a truthful copied answer must
 		// not bypass the child's downstream language check.
-		{StartMs: 62000, EndMs: 91000, Name: "Edited boundary", Era: 1987, Audience: filler.General, Category: "retail", Language: "en", LanguageChecked: true},
+		// The operator left this one's era unset, so its guessed era becomes an uncited observation.
+		{StartMs: 62000, EndMs: 91000, Name: "Edited boundary", SuggestedEra: 1985, Audience: filler.General, Category: "retail", Language: "en", LanguageChecked: true},
 	}
 	if _, err := sp.Confirm(context.Background(), propID, edited); err != nil {
 		t.Fatal(err)
@@ -1888,6 +1909,10 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		}
 	}
 	for _, seg := range segments {
+		wantObserved := map[string]int{"Edited boundary": 1985}[seg.Name]
+		if st.observedEras[seg.Hash] != wantObserved {
+			t.Errorf("segment %q observed era = %d, want %d", seg.Name, st.observedEras[seg.Hash], wantObserved)
+		}
 		wantLanguage := map[string]string{"Burger Barn": "en", "Brickle": filler.LangNone, "Edited boundary": ""}[seg.Name]
 		if seg.Language != wantLanguage {
 			t.Errorf("confirmed segment %q language = %q, want inherited %q", seg.Name, seg.Language, wantLanguage)

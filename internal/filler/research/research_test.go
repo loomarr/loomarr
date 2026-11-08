@@ -167,6 +167,44 @@ func TestReportRejectsUncitedClaims(t *testing.T) {
 	}
 }
 
+// An observation is Loomarr's own uncited era guess (#2323). It may suggest an era and nothing
+// else, it never carries a packet, and it can never project into a catalog fact.
+func TestEraObservationIsAnUncitedEraOnly(t *testing.T) {
+	at := time.Unix(1_900_000_000, 0).UTC()
+	decade := EraObservation("hash", 3, 1980, ObservedByVision, at)
+	if err := decade.Validate(); err != nil {
+		t.Fatalf("decade observation invalid: %v", err)
+	}
+	if decade.Suggestion.Decade != 1980 || decade.Suggestion.Year != 0 || decade.Suggestion.Explanation == "" ||
+		!decade.IsObservation() || len(decade.Cited()) != 0 {
+		t.Fatalf("decade observation = %+v", decade)
+	}
+	if year := EraObservation("hash", 3, 1987, ObservedBySplit, at); year.Validate() != nil ||
+		year.Suggestion.Year != 1987 || year.Suggestion.Decade != 0 {
+		t.Fatalf("year observation = %+v, %v", year, year.Validate())
+	}
+	if _, _, _, _, ok := decade.GeographyFact(); ok {
+		t.Fatal("an observation projected a geography fact")
+	}
+
+	for name, mutate := range map[string]func(*Report){
+		"a country":       func(r *Report) { r.Suggestion.CountryCode, r.Suggestion.Country = "US", "United States" },
+		"a station":       func(r *Report) { r.Suggestion.CallSign = "WXYZ" },
+		"a citation":      func(r *Report) { r.Suggestion.CitationIDs = []int{1} },
+		"a confidence":    func(r *Report) { r.Suggestion.Confidence = 40 },
+		"a packet":        func(r *Report) { r.Packet = researchPacket() },
+		"no era":          func(r *Report) { r.Suggestion.Decade = 0 },
+		"an era too old":  func(r *Report) { r.Suggestion.Decade = 1700 },
+		"an unknown kind": func(r *Report) { r.ProducerVersion = "guesswork" },
+	} {
+		report := EraObservation("hash", 3, 1980, ObservedByVision, at)
+		mutate(&report)
+		if err := report.Validate(); err == nil {
+			t.Errorf("an observation with %s validated", name)
+		}
+	}
+}
+
 func TestReportGeographyFactRequiresCitedConfidentCountry(t *testing.T) {
 	report := Report{ClipHash: "hash", InputRevision: 1, Producer: "context-model:fixture", ProducerVersion: "v1",
 		CompletedAt: time.Now(), Packet: researchPacket(), Suggestion: Suggestion{

@@ -335,10 +335,12 @@ state rather than additional semantic values.
 _Avoid_: pending review, Needs-help task, preparation state
 
 **Context suggestion**:
-A versioned, cited hypothesis about a Clip's likely era or geography, derived from bounded external
-context for a publicly sourced item. It is deliberately separate from Enrichment state: it cannot
-become a scheduling fact, readiness decision, or accepted axis without stronger exact-item/content
-evidence or an operator correction.
+A versioned hypothesis about a Clip's likely era or geography. Research derives a cited one from
+bounded external context for a publicly sourced item; an **observation** is an uncited era guess
+from the picture or from splitting a compilation, recorded only for a Clip with no verified era.
+Cited research outranks an observation, and only cited research may project a country. It is
+deliberately separate from Enrichment state: it cannot become a scheduling fact, readiness
+decision, or accepted axis without stronger exact-item/content evidence or an operator correction.
 _Avoid_: verified metadata, enrichment fact, scheduling tag
 
 **Evidence packet**:

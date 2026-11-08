@@ -132,7 +132,7 @@ func TestAnalyzeFrames_AspectRatio(t *testing.T) {
 
 // The hint is the whole point: a B&W 4:3 clip SUGGESTS a pre-1970s era, and every
 // other combination suggests nothing. The suggestion is never a grounded Era — the
-// caller writes it to Clip.SuggestedEra, which matching never reads.
+// caller records it as an uncited era observation, which matching never reads.
 func TestSuggestedEraFrom(t *testing.T) {
 	bw43 := tools.AnalyzeFrames([][]byte{
 		solidFrame(t, fourThreeW, fourThreeH, gray(60)),

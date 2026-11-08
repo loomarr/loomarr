@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -35,7 +36,10 @@ type VisionClipStore interface {
 	// ApplyClipVision records what the pass GROUNDED. Facts and taxonomy projections commit as one
 	// semantic write. The rung's done record on the ladder, not the clip, says vision already read
 	// it.
-	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era, suggestedEra int, leaves []string, at time.Time) error
+	ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era int, leaves []string, at time.Time) error
+	// RecordFillerEraObservation keeps an era the frames only suggest as an uncited Context
+	// suggestion (#2323).
+	RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error
 }
 
 // VisionStage reads a clip's frames.
@@ -151,10 +155,6 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 		}
 		updated.Category = forest.PrimaryProductLeaf(updated.AssertedTags)
 	}
-	if v.Era == 0 && suggestedEra > 0 && updated.SuggestedEra == 0 {
-		updated.SuggestedEra = suggestedEra
-	}
-
 	if v.Brand == "" && v.Era == 0 && len(v.Tags) == 0 {
 		// Read, but nothing the frames supported. Still stamped — the vision analogue of the
 		// wordless transcript sentinel: an outcome recorded precisely so it is never re-paid-for.
@@ -174,9 +174,19 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 		return StageResult{}, err
 	}
 	if s.store != nil && c.Path != "" {
+		at := s.now().UTC()
 		if err := s.store.ApplyClipVision(ctx, c.Hash, c.Path, observation.Brand, observation.VisibleText,
-			observation.Era, observation.SuggestedEra, observation.Tags, s.now().UTC()); err != nil {
+			observation.Era, observation.Tags, at); err != nil {
 			return StageResult{}, err
+		}
+		// An era the frames only suggest is a Context observation, never a clip fact. After the
+		// visible text, so it binds to the revision that text produced; the store skips it when
+		// the clip has a verified era.
+		if observation.Era == 0 {
+			if err := s.store.RecordFillerEraObservation(ctx, c.Hash, observation.SuggestedEra,
+				research.ObservedByVision, at); err != nil {
+				return StageResult{}, err
+			}
 		}
 	}
 	return result, nil

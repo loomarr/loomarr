@@ -23,7 +23,6 @@ const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   playsCounted: true,
   tagged: true,
   needsDetails: false,
-  suggestedEra: 0,
   ...over,
 });
 

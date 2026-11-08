@@ -179,10 +179,49 @@ func (r Report) GeographyFact() (scope, countryCode, station string, citationIDs
 	return scope, s.CountryCode, s.Station, append([]int(nil), s.CitationIDs...), true
 }
 
+// ProducerObservation names Loomarr's own uncited era guesses: a year a vision model proposed that
+// is not on screen, or one carried from a split segment (#2323). Only research retrieves pages, so
+// only research can cite. An observation therefore carries no packet, can claim nothing but an era,
+// and — because GeographyFact and every other projection require citations — never becomes a
+// catalog fact. It exists so the clip page can say "Likely 1985" without pretending it is known.
+const ProducerObservation = "observation"
+
+// ObservationSource is what an observation's guess came from; it is the report's ProducerVersion.
+type ObservationSource string
+
+const (
+	ObservedByVision ObservationSource = "vision"
+	ObservedBySplit  ObservationSource = "split"
+)
+
+// EraObservation builds the uncited Context suggestion for an era guess. An era ending in 0 is a
+// decade, as everywhere else in the catalog.
+func EraObservation(clipHash string, inputRevision int64, era int, source ObservationSource, at time.Time) Report {
+	suggestion := Suggestion{Explanation: observationExplanation[source]}
+	if era%10 == 0 {
+		suggestion.Decade = era
+	} else {
+		suggestion.Year = era
+	}
+	return Report{ClipHash: clipHash, InputRevision: inputRevision, Producer: ProducerObservation,
+		ProducerVersion: string(source), CompletedAt: at, Suggestion: suggestion}
+}
+
+var observationExplanation = map[ObservationSource]string{
+	ObservedByVision: "Guessed from the picture. No year appears on screen, so it isn't confirmed.",
+	ObservedBySplit:  "Guessed when this clip was cut from a longer recording. It isn't confirmed.",
+}
+
+// IsObservation reports whether the report is an uncited guess rather than cited research.
+func (r Report) IsObservation() bool { return r.Producer == ProducerObservation }
+
 func (r Report) Validate() error {
 	if strings.TrimSpace(r.ClipHash) == "" || r.InputRevision < 1 || strings.TrimSpace(r.Producer) == "" ||
 		strings.TrimSpace(r.ProducerVersion) == "" || r.CompletedAt.IsZero() {
 		return fmt.Errorf("%w: report identity is required", ErrInvalid)
+	}
+	if r.IsObservation() {
+		return r.validateObservation()
 	}
 	if err := r.Packet.Validate(); err != nil {
 		return err
@@ -223,6 +262,33 @@ func (r Report) Validate() error {
 	if (s.Year != 0 || s.Decade != 0 || s.CountryCode != "" || s.Country != "" || s.Scope != "" || s.CallSign != "") &&
 		len(s.CitationIDs) == 0 {
 		return fmt.Errorf("%w: a contextual claim requires a citation", ErrInvalid)
+	}
+	return nil
+}
+
+// validateObservation holds an uncited guess to the one claim it may make: an era.
+func (r Report) validateObservation() error {
+	if _, ok := observationExplanation[ObservationSource(r.ProducerVersion)]; !ok {
+		return fmt.Errorf("%w: unknown observation source %q", ErrInvalid, r.ProducerVersion)
+	}
+	if r.Packet.Adapter != "" || r.Packet.AdapterVersion != "" || r.Packet.Query != "" ||
+		len(r.Packet.Citations) > 0 || !r.Packet.RetrievedAt.IsZero() {
+		return fmt.Errorf("%w: an observation retrieves nothing, so it carries no packet", ErrInvalid)
+	}
+	s := r.Suggestion
+	if s.CountryCode != "" || s.Country != "" || s.Scope != "" || s.CallSign != "" || s.Station != "" ||
+		len(s.CitationIDs) > 0 || s.Confidence != 0 {
+		return fmt.Errorf("%w: an observation may suggest only an era", ErrInvalid)
+	}
+	if (s.Year == 0) == (s.Decade == 0) {
+		return fmt.Errorf("%w: an observation suggests exactly one year or decade", ErrInvalid)
+	}
+	if (s.Year != 0 && (s.Year < 1880 || s.Year > 2100)) ||
+		(s.Decade != 0 && (s.Decade < 1880 || s.Decade > 2100 || s.Decade%10 != 0)) {
+		return fmt.Errorf("%w: observed era is outside the supported range", ErrInvalid)
+	}
+	if len(s.Explanation) > MaxExplanationLen {
+		return fmt.Errorf("%w: observation explanation is too long", ErrInvalid)
 	}
 	return nil
 }

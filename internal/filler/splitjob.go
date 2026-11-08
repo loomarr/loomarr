@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/tools"
@@ -56,6 +57,9 @@ type SplitStore interface {
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string]creative.Fingerprint, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, fp creative.Fingerprint) error
 	UpsertClip(ctx context.Context, c StoreClip) error
+	// RecordFillerEraObservation carries a segment's guessed era onto its child as an uncited
+	// Context suggestion (#2323).
+	RecordFillerEraObservation(ctx context.Context, clipHash string, era int, source research.ObservationSource, at time.Time) error
 	GetClipTags(ctx context.Context, clipHash string, leavesOnly bool) ([]string, error)
 	SetClipTags(ctx context.Context, clipHash string, leaves []string) error
 	// UpsertClipPipeline durably enrolls a reviewed child before its media name is published.
@@ -1177,7 +1181,6 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.Kind = c.kind
 		nc.DurationMs = c.segment.EndMs - c.segment.StartMs
 		nc.Era = c.segment.Era
-		nc.SuggestedEra = c.segment.SuggestedEra
 		nc.Audience = c.segment.Audience
 		nc.Category = c.segment.Category
 		// ⚠ Lineage: each segment points back at the composite it was cut from (§10 V45). This is what
@@ -1208,6 +1211,14 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		nc.Rating = clip.Rating
 		if err := sp.store.UpsertClip(ctx, nc); err != nil {
 			return nil, err
+		}
+		// A segment's guessed era is carried onto the child as an uncited Context suggestion, not
+		// a clip fact; the store skips it when the child already has a verified era.
+		if c.segment.Era == 0 {
+			if err := sp.store.RecordFillerEraObservation(ctx, c.hash, c.segment.SuggestedEra,
+				research.ObservedBySplit, now); err != nil {
+				return nil, err
+			}
 		}
 		// Persist grounded proposal tags now that the cut has a stable content hash. Union with an
 		// identical existing clip so deduplication never lets AI erase operator-authored knowledge.

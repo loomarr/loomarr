@@ -529,17 +529,15 @@ describe("Filler page", () => {
     );
   });
 
-  // §10 era grounding (V34): the ungrounded AI year is a QUESTION on the card, and the
-  // admin's one-click confirm PATCHes it — carrying the clip's existing audience, because the
-  // BE's UpdateClipClassification writes era and audience unconditionally and a bare {era} would wipe
-  // audience. `category` is NOT sent (§10 V45a): it's a derived shadow of the taxonomy tags,
-  // and this confirm never touches tags.
+  // §10 era grounding (V34): an era-less clip shows no year, and the admin's explicit correction
+  // PATCHes it — carrying the clip's existing audience, because the BE's UpdateClipClassification
+  // writes era and audience unconditionally and a bare {era} would wipe audience. `category` is
+  // NOT sent (§10 V45a): it's a derived shadow of the taxonomy tags, and this edit never touches tags.
   it("corrects a year explicitly without losing other grounded details", async () => {
     const { tagPatches } = stubFiller({
       clips: [
         clip({
           era: 0,
-          suggestedEra: 1985,
           audience: "kids",
           tags: ["cereal", "food"],
           assertedTags: ["cereal"],
@@ -598,7 +596,7 @@ describe("Filler page", () => {
     // an ADMIN would see the button on, or this line tests nothing.
     stubFiller({
       me: MEMBER,
-      clips: [clip({ era: 0, suggestedEra: 1985, tagged: false, isComposite: true, durationMs: 900_000 })],
+      clips: [clip({ era: 0, tagged: false, isComposite: true, durationMs: 900_000 })],
     });
     renderAt("/filler/library");
     await screen.findByText("Crunchlings");

@@ -1,4 +1,4 @@
-import { aiTaggedClip, suggestedEraClip, taggedClip, thumbnailedClip, untaggedClip } from "@loomarr/fixtures";
+import { aiTaggedClip, taggedClip, thumbnailedClip, untaggedClip } from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { ClipCard } from "./clip-card";
@@ -28,10 +28,6 @@ const AdminActions: Story = { args: { clip: taggedClip, onOpen: noop } };
 // stories above are deliberately frameless, because on a Tunarr-backed install (or one where
 // ffmpeg never ran) that is the whole catalog, and it must not look broken.
 const WithThumbnail: Story = { args: { clip: thumbnailedClip, onOpen: noop } };
-
-// An ungrounded suggestion must not become a known year on the card.
-const SuggestedEra: Story = { args: { clip: suggestedEraClip } };
-const SuggestedEraAdmin: Story = { args: { clip: suggestedEraClip, onOpen: noop } };
 
 // The compilation-split entry point (§10 V34), and its in-flight state while detection runs.
 const SplitAction: Story = { args: { clip: taggedClip, onOpen: noop, onSplit: noop } };
@@ -70,8 +66,6 @@ export {
   Preparing,
   SplitAction,
   SplitPending,
-  SuggestedEra,
-  SuggestedEraAdmin,
   Tagged,
   TaggedEditable,
   Untagged,
