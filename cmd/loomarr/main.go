@@ -301,7 +301,11 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 		log.Warn("LAN discovery: host name unavailable", "err", hostnameErr)
 		hostname = ""
 	}
-	if advertisement, advertiseErr := landiscovery.Start(listener.Addr(), hostname); advertiseErr != nil {
+	if landiscovery.LocalOnlyURL(application.ServerPublicURL()) {
+		// A loopback or link-local public URL (an isolated dev lane's localhost) reaches nothing
+		// from a phone or TV, so this server does not offer itself on the network (#1892).
+		log.Info("LAN discovery: off, the public URL is reachable only from this machine")
+	} else if advertisement, advertiseErr := landiscovery.Start(listener.Addr(), hostname); advertiseErr != nil {
 		// Discovery failure cannot make the HTTP service unready. The TV reports the missing
 		// automatic path and retains manual address recovery when multicast is unavailable.
 		log.Warn("LAN discovery: advertisement unavailable", "err", advertiseErr)
