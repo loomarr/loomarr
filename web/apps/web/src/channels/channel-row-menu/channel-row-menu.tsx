@@ -1,16 +1,11 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
+import { Action, Menu, MenuAction, MenuContent, MenuTrigger } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreVertical, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ignoreFailure, useChannelSave } from "../use-channel-save";
 import { useDeleteConfirm } from "../use-delete-confirm";
 import type { ChannelRowMenu as ChannelRowMenuProps } from "./channel-row-menu.type";
@@ -100,88 +95,91 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
     <div className="relative shrink-0">
       {/* Closing always disarms the confirm: reopening the menu on a channel you nearly deleted
           should not present the armed Delete button again. */}
-      <DropdownMenu
+      <Menu
         onOpenChange={(next) => {
           if (!next) resetConfirm();
         }}
       >
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              aria-label={`Actions for ${channel.name}`}
-              onClick={swallow}
-            />
-          }
-        >
-          <MoreVertical className="size-4" aria-hidden />
-        </DropdownMenuTrigger>
+        <MenuTrigger>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            aria-label={`Actions for ${channel.name}`}
+            onClick={swallow}
+          >
+            <MoreVertical className="size-4" aria-hidden />
+          </Button>
+        </MenuTrigger>
 
-        <DropdownMenuContent align="start" className="w-59 gap-0.5 p-1.5">
+        <MenuContent align="start" width={236}>
           {/* Watch — FIRST, matching the mock's guide menu: the everyday reason to open a channel
               from the guide is to watch it. Routes straight to the Watch surface (§9.1); a paused
               channel still opens it (the surface shows the "off air" poster and explains, rather
               than the menu guessing). */}
-          <DropdownMenuItem onClick={() => void navigate({ to: "/watch/$id", params: { id: channel.id } })}>
-            <Tv className="text-signal size-4" aria-hidden />
+          <MenuAction
+            icon={<Tv className="text-signal size-4" aria-hidden />}
+            onSelect={() => void navigate({ to: "/watch/$id", params: { id: channel.id } })}
+          >
             Watch
-          </DropdownMenuItem>
+          </MenuAction>
 
           {/* Edit channel — the row's own click target opens the channel too, but a menu whose only
               options are Pause and Delete reads as a destructive-actions menu. */}
-          <DropdownMenuItem
-            onClick={() => void navigate({ to: "/channels/$id", params: { id: channel.id } })}
+          <MenuAction
+            icon={<Pencil className="text-static-400 size-4" aria-hidden />}
+            onSelect={() => void navigate({ to: "/channels/$id", params: { id: channel.id } })}
           >
-            <Pencil className="text-static-400 size-4" aria-hidden />
             Edit channel
-          </DropdownMenuItem>
+          </MenuAction>
 
           {/* Pause / Resume — reversible, single click. */}
-          <DropdownMenuItem disabled={busy} onClick={() => void togglePaused()}>
-            {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
+          <MenuAction
+            disabled={busy}
+            icon={paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
+            onSelect={() => void togglePaused()}
+          >
             {paused ? "Resume" : "Pause"}
-          </DropdownMenuItem>
+          </MenuAction>
 
           {/* Delete — a FULL removal (purge: the channel leaves the list AND Tunarr), so a deleted
               row actually disappears rather than lingering as a "detached" record. Irreversible →
               a two-step confirm, same gate as ChannelDangerZone.
-              ⚠ `closeOnClick={false}`: arming must leave the menu open, or the confirm it arms
+              ⚠ `closeOnSelect={false}`: arming must leave the menu open, or the confirm it arms
               would unmount in the same tick. */}
           {!confirming ? (
-            <DropdownMenuItem
+            <MenuAction
+              closeOnSelect={false}
               disabled={busy}
-              closeOnClick={false}
-              onClick={arm}
-              className="text-onair-300 hover:bg-onair-tint-15 data-[highlighted]:bg-onair-tint-15 data-[highlighted]:text-onair-300"
+              icon={<Trash2 className="size-4" aria-hidden />}
+              onSelect={arm}
+              tone="danger"
             >
-              <Trash2 className="size-4" aria-hidden />
               Delete…
-            </DropdownMenuItem>
+            </MenuAction>
           ) : (
             <div className="border-onair-tint-15 bg-onair-tint-15 flex flex-col gap-2 rounded border p-2">
               <p className="text-xs">Delete {channel.name} for good? This can't be undone.</p>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="destructive"
-                  size="sm"
+                <Action
+                  density="pointer"
                   disabled={busy}
                   // purge: a Delete from the LIST should remove the channel outright, not leave a
                   // detached record behind (the maintainer's choice). The detail-page danger zone
                   // still offers detach-vs-purge for the finer distinction.
-                  onClick={() => del.mutate({ id: channel.id, params: { purge: true } })}
+                  onPress={() => del.mutate({ id: channel.id, params: { purge: true } })}
+                  variant="destructive"
                 >
                   Delete
-                </Button>
-                <Button variant="ghost" size="sm" disabled={busy} onClick={resetConfirm}>
+                </Action>
+                <Action density="pointer" disabled={busy} onPress={resetConfirm} variant="ghost">
                   Cancel
-                </Button>
+                </Action>
               </div>
             </div>
           )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </MenuContent>
+      </Menu>
     </div>
   );
 };

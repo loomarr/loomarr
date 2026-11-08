@@ -58,4 +58,11 @@ interface DialogFooterProps extends DialogSectionProps {
   spread?: boolean;
 }
 
-export type { DialogActionProps, DialogContentProps, DialogFooterProps, DialogProps, DialogSectionProps };
+export type {
+  DialogActionProps,
+  DialogContentProps,
+  DialogFooterProps,
+  DialogProps,
+  DialogSectionProps,
+  PortalContainer,
+};
