@@ -203,9 +203,7 @@ const PersonDetail = ({
               </FieldHint>
             )}
             <div className="flex flex-wrap gap-2">
-              <Action render={<button disabled={contactSaving} type="submit" />} variant="suggest">
-                Save email
-              </Action>
+              <Action render={<button disabled={contactSaving} type="submit" />}>Save email</Action>
               <Action
                 onPress={() => {
                   setContactOpen(false);
@@ -364,9 +362,7 @@ const PersonDetail = ({
                 </FieldHint>
               )}
               <div className="flex flex-wrap gap-2">
-                <Action render={<button disabled={resetting} type="submit" />} variant="suggest">
-                  Set new password
-                </Action>
+                <Action render={<button disabled={resetting} type="submit" />}>Set new password</Action>
                 <Action
                   onPress={() => {
                     setResetOpen(false);

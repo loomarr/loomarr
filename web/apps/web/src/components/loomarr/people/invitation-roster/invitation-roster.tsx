@@ -102,7 +102,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                           delivery?.status === "sending"
                         }
                         onPress={() => onSendEmail(value.id)}
-                        variant={retry ? "suggest" : "outline"}
+                        variant={retry ? undefined : "outline"}
                       >
                         {sendingId === value.id ? "Queuing…" : action}
                       </Action>

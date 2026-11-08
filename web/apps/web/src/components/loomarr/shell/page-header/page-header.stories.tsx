@@ -17,7 +17,7 @@ const WithActions: Story = {
   args: {
     title: "Channels",
     description: "Every channel Loomarr manages, and what's on right now.",
-    actions: <Action variant="suggest">Add a channel</Action>,
+    actions: <Action>Add a channel</Action>,
   },
 };
 

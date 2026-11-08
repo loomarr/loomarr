@@ -421,7 +421,7 @@ const TaxonEditor = ({
             <Action
               disabled={busy || review.impact.deleteBlocked}
               onPress={applyReview}
-              variant={review.action === "delete" ? "destructive" : "suggest"}
+              variant={review.action === "delete" ? "destructive" : undefined}
             >
               {busy
                 ? "Applying…"
@@ -440,7 +440,6 @@ const TaxonEditor = ({
             <Action
               disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
               onPress={() => requestReview("save", saveCommand())}
-              variant="suggest"
             >
               {busy ? "Checking impact…" : "Review changes"}
             </Action>
