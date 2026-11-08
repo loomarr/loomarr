@@ -301,9 +301,11 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     if (isWeb && render && isValidElement(render)) {
       // `onPress` is Action's own (Pressable/RN) handler name; a cloned host element only
       // understands `onClick`, so it is bridged here rather than spread through `...props`
-      // unchanged, which would silently never fire. `accessibilityRole` is RN's too: it reaches the
-      // host as `role`, and spread raw it is an unknown DOM attribute.
+      // unchanged, which would silently never fire. `accessibilityRole` and `accessibilityLabel`
+      // are RN's too: they reach the host as `role` and `aria-label`, and spread raw they are
+      // unknown DOM attributes that leave the element unnamed.
       const {
+        accessibilityLabel,
         accessibilityRole: _role,
         onPress,
         ...restProps
@@ -318,6 +320,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
           {
             ...restProps,
             "aria-disabled": isDisabled || undefined,
+            "aria-label": accessibilityLabel,
             onBlur: focusLook.onBlur,
             onClick: onPress,
             onFocus: focusLook.onFocus,
