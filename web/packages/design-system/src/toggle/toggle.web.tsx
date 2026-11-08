@@ -66,6 +66,7 @@ const Toggle = ({
   };
 
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: the Base UI root renders the hidden input and the text sits in Text, neither of which the rule can see.
     <label
       style={{
         alignItems: "center",
