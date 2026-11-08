@@ -11,12 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/episodeevidence"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
-	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
@@ -156,45 +153,6 @@ func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 		return err
 	}
 	return nil
-}
-
-// episodeResolver expands a series lineup entry into the Library's episodes (§9, #2151 step 16),
-// mapping each to a schedule.ResolvedProgram so the schedule domain stays free of a library
-// dependency. An episode that could not play is dropped and its editorial evidence is bounded. An
-// id that is no library series expands to nothing: the media server is never asked.
-func episodeResolver(st store.LibraryEpisodeReader) channels.EpisodeResolver {
-	return func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error) {
-		rows, _, err := st.LibraryEpisodes(ctx, showItemID)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]schedule.ResolvedProgram, 0, len(rows))
-		for _, r := range rows {
-			if episodeevidence.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
-				continue
-			}
-			evidence := episodeevidence.Sanitize(r.Score, r.Overview, r.Tags)
-			// The catalog's premiere date is a calendar day; anything else is unknown, not an error.
-			airDate, _ := time.Parse(time.DateOnly, r.PremiereDate)
-			out = append(out, schedule.ResolvedProgram{
-				LibraryItemID: r.ItemID,
-				Title:         r.Name,
-				DurationMs:    r.DurationMs,
-				Season:        r.Season,
-				Year:          r.Year,
-				AirDate:       airDate,
-				Episode:       r.Episode,
-				EpisodeEnd:    r.EpisodeEnd, // §5 multi-part: single-file span end
-				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
-				// so the schedule domain only ever compares ladder values (§4).
-				OfficialRating:  rating.Normalize(r.Rating),
-				CommunityRating: evidence.CommunityRating,
-				Overview:        evidence.Overview,
-				Tags:            evidence.Tags,
-			})
-		}
-		return out, nil
-	}
 }
 
 // bulkDurations adapts the Library's BULK item metadata read to channels.DurationsResolver, so a
@@ -380,7 +338,7 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 	if mt == provision.Series {
 		lmt = library.Series
 	}
-	t, ok, err := libraryTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
+	t, ok, err := catalog.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
 	if err != nil || !ok {
 		return "", false, err
 	}
@@ -504,32 +462,6 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 		return 0, false, err
 	}
 	return cid, true, nil // ok=true (resolved); cid 0 means "standalone", a settled answer
-}
-
-// libraryPresence adapts the Library's titles to catalog.LibraryPresence, so discovery can mark
-// titles the household already owns as in-library, with their library item id and rating
-// (#2151 step 16). Prefers the TMDB id (the discovery id space); falls back to TVDB for a series
-// with no tmdb.
-type libraryPresence struct {
-	titles store.LibraryTitleReader
-}
-
-func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (catalog.Presence, bool, error) {
-	kind, id := library.TMDB, strconv.Itoa(tmdbID)
-	if tmdbID == 0 && tvdbID != 0 {
-		kind, id = library.TVDB, strconv.Itoa(tvdbID)
-	}
-	lmt := library.Movie
-	if mt == provision.Series {
-		lmt = library.Series
-	}
-	t, ok, err := libraryTitle(ctx, a.titles, kind, id, lmt)
-	if err != nil || !ok {
-		return catalog.Presence{}, false, err
-	}
-	return catalog.Presence{
-		LibraryItemID: t.ID, OfficialRating: t.Rating, Genres: t.Genres, SizeBytes: t.SizeBytes,
-	}, true, nil
 }
 
 // --- filler bridging adapters (§10) ---

@@ -642,6 +642,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   inventory from an item's media information, with its 24-hour re-import, is deleted: an id that
   is no library item is unknown, which is SDR and the first audio track. A local file the Library
   has not read is probed once and the measurement kept under its stat revision, as before.
+- **The semantic eval reads the Library** (step 16). `make eval` and `make eval-cert` ground
+  titles and certify schedule evidence against a Loomarr database (`LOOMARR_LIBRARY_DB`,
+  `sqlite://<path>`, opened without migrating and only read) through the same reads production
+  uses: `catalog.LibrarySearch`, `catalog.LibraryOwnership`, `LibraryItemFacts` and
+  `channels.LibraryEpisodeResolver`. A schedule evidence snapshot therefore names library item
+  ids, so one frozen against the media server's ids drifts and must be frozen again.
 
 ## Search
 

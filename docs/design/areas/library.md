@@ -8,12 +8,12 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 15 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
+- **platform** · 16 imports — the store, settings and jobs behind the provision backstop, the outbound HTTP client and metrics every remote service call goes through, and the audience rating ladder the metadata providers fold certifications onto
 - **media** · 1 import — the scanner reads each media file's header to learn its length, streams and embedded ids
 
 ## Packages
 
-- **`catalog`** · 7 importers · → `library`, `provision`
+- **`catalog`** · 7 importers · → `library`, `platform/store`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
