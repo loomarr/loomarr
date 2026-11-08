@@ -1,8 +1,8 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import { humanizeRelaxation } from "@loomarr/core/format";
+import { CompactSelect } from "@loomarr/design-system";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // relaxationSentence — a single eased scheduling rule (a relaxation-ladder step) written as
 // a warm, plain sentence rather than a `KIND: from → to` code. Each kind gets its own
@@ -89,26 +89,19 @@ const ChannelAdvanced = ({
             Streamed by
           </Label>
           <div className="flex flex-col gap-1">
-            <Select
-              value={backend}
+            <CompactSelect
+              id="channel-playout-backend"
+              label="Streamed by"
               onValueChange={(v) =>
                 onPolicyChange({
                   ...policy,
                   playout: { ...policy.playout, backend: v === "inherit" ? "" : v },
                 })
               }
-            >
-              <SelectTrigger id="channel-playout-backend" className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {BACKEND_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={BACKEND_OPTIONS}
+              value={backend}
+              width={224}
+            />
             {/* Resolved per request at tune time (api/playout.go playsInternally), so this
                 does not interrupt a stream already playing — it applies the next time someone
                 tunes in. Said plainly because the opposite assumption would make an operator

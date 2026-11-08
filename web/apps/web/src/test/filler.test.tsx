@@ -719,7 +719,8 @@ describe("Filler page", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /select crunchlings/i }));
 
     const remove = await screen.findByRole("button", { name: /remove from catalog/i });
-    expect(remove).toHaveAttribute("title", expect.stringMatching(/files stay/i));
+    await userEvent.hover(remove);
+    expect(await screen.findByText(/files stay/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^delete/i })).not.toBeInTheDocument();
   });
 
@@ -747,8 +748,7 @@ describe("Filler page", () => {
     // ⚠ "Set audience", not "Audience": the catalog's filter bar already owns that name, and
     // the first draft of this test found two comboboxes. The distinct label is the fix, and
     // this assertion is what keeps them distinct.
-    await userEvent.click(await screen.findByRole("combobox", { name: "Set audience" }));
-    await userEvent.click(await screen.findByRole("option", { name: "family" }));
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Set audience" }), "family");
 
     // §10 V45a: bulk edit is hash-keyed (see the bulk-remove test above).
     await expect.poll(() => bulkTags).toEqual([{ hashes: ["c1-hash"], audience: "family" }]);
