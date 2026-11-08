@@ -708,7 +708,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 
 	// An unrecognised level is normalised on the way in — the UI has no colour for it, so
 	// storing it would render an invisible dot.
-	if err := st.RecordActivity(ctx, Activity{Text: "odd", Level: "banana"}); err != nil {
+	if err := st.RecordActivity(ctx, Activity{Text: "odd", Kind: ActivityKindSystem, Level: "banana"}); err != nil {
 		t.Fatalf("record odd level: %v", err)
 	}
 	after, _ := st.ListActivity(ctx, 1)

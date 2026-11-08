@@ -106,7 +106,7 @@ tables:
       id: Identifies the entry.
       at: When it happened, in Unix seconds.
       kind: >
-        Which part of Loomarr wrote it. title, channel, proposal (a suggested lineup), filler, or system.
+        Which part of Loomarr wrote it: title, channel, proposal (a suggested lineup), or system.
       level: >
         How serious it is, which sets the coloured dot. info, warn, or error.
       text: The sentence shown in the feed.

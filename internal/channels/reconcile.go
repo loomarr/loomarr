@@ -860,7 +860,7 @@ func (e *Engine) ensureChannel(ctx context.Context, localChannelID string, spec 
 			e.log.Warn("channel number already used in Tunarr; moving this channel rather than failing",
 				"channel", spec.Name, "wanted", spec.Number, "using", moved)
 			if e.acts != nil {
-				e.acts.Warn(ctx, "channel.renumbered", spec.Name, fmt.Sprintf(
+				e.acts.Warn(ctx, store.ActivityKindChannel, spec.Name, fmt.Sprintf(
 					"%q moved to channel %d — Tunarr already had a channel on %d. Loomarr never changes a channel it didn't create.",
 					spec.Name, moved, spec.Number))
 			}

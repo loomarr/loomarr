@@ -14,7 +14,7 @@ import (
 const integrityLeafChecksMigration = 184
 
 var integrityLeafRebuilt = []string{
-	"diagnostic_process_runs", "filler_acquisition_artifacts", "filler_clip_defects",
+	"activity", "diagnostic_process_runs", "filler_acquisition_artifacts", "filler_clip_defects",
 	"filler_clip_pipeline", "filler_curated_offers", "filler_enrichment_axes", "filler_ready_events",
 	"interactive_operations", "library_answers", "library_candidates", "library_catalog",
 	"library_files", "library_filmography", "library_id_map", "library_markers", "library_streams",
@@ -44,7 +44,10 @@ func TestIntegrityLeafChecksMigration(t *testing.T) {
 	}
 	// The one column the migration drops: it only ever held 'ready'.
 	before["filler_ready_events"] = strings.Replace(before["filler_ready_events"], "outcome TEXT 1 'ready' 0; ", "", 1)
+	// activity.kind loses the '' default its CHECK would refuse.
+	before["activity"] = strings.Replace(before["activity"], "kind TEXT 1 '' 0", "kind TEXT 1 NULL 0", 1)
 	for _, stmt := range []string{
+		`INSERT INTO activity (id, at, kind, level, text) VALUES ('a1', 1, 'channel', 'warn', 'moved')`,
 		`INSERT INTO library_files (path, root, size_bytes, modified_ns, kind, seen_at_ms) VALUES ('/m/a.mkv', '/m', 1, 1, '', 1)`,
 		`INSERT INTO filler_curated_offers (source_id, list_version, offered_at) VALUES ('s1', 'v1', 1)`,
 		`INSERT INTO interactive_operations (id, kind, subject, status, started_at, updated_at)
@@ -85,6 +88,8 @@ func TestIntegrityLeafChecksMigration(t *testing.T) {
 		`UPDATE library_files SET kind = 'film' WHERE path = '/m/a.mkv'`,
 		`UPDATE filler_curated_offers SET local_state = 'ON' WHERE source_id = 's1'`,
 		`UPDATE interactive_operations SET status = 'succeeded' WHERE id = 'op1'`,
+		`UPDATE activity SET kind = 'channel.reconcile' WHERE id = 'a1'`,
+		`UPDATE activity SET level = 'debug' WHERE id = 'a1'`,
 	} {
 		if _, err := db.ExecContext(ctx, stmt); err == nil || !strings.Contains(err.Error(), "CHECK") {
 			t.Errorf("%s: err = %v, want a CHECK failure", stmt, err)

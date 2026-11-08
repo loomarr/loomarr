@@ -49,6 +49,10 @@ ALTER TABLE quality_daily_aggregates ADD CONSTRAINT quality_daily_aggregates_out
 ALTER TABLE quality_receipts ADD CONSTRAINT quality_receipts_outcome_check
     CHECK (outcome IN ('succeeded', 'empty', 'failed', 'abstained', 'accepted', 'rejected', 'approved',
         'declined', 'playable', 'scheduled'));
+ALTER TABLE activity ALTER COLUMN kind DROP DEFAULT;
+ALTER TABLE activity
+    ADD CONSTRAINT activity_kind_check CHECK (kind IN ('title', 'channel', 'proposal', 'system')),
+    ADD CONSTRAINT activity_level_check CHECK (level IN ('info', 'warn', 'error'));
 
 -- +goose Down
 -- No down: forward-only (§16).

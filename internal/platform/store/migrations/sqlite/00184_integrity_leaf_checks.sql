@@ -11,6 +11,22 @@ CREATE INDEX idx_device_pairings_user ON device_pairings (user_id);
 CREATE INDEX idx_inventory_external_ids_item ON inventory_external_ids (item_id);
 CREATE INDEX idx_password_recoveries_user ON password_recoveries (user_id);
 
+-- activity: kind loses its '' default, which the CHECK would refuse; every write names its domain.
+DROP INDEX idx_activity_at;
+ALTER TABLE activity RENAME TO activity_old;
+CREATE TABLE activity (
+    id         TEXT   NOT NULL PRIMARY KEY,
+    at         BIGINT NOT NULL DEFAULT 0,
+    kind       TEXT   NOT NULL CHECK (kind IN ('title', 'channel', 'proposal', 'system')),
+    level      TEXT   NOT NULL DEFAULT 'info' CHECK (level IN ('info', 'warn', 'error')),
+    text       TEXT   NOT NULL DEFAULT '',
+    subject_id TEXT   NOT NULL DEFAULT ''
+);
+INSERT INTO activity (id, at, kind, level, text, subject_id)
+SELECT id, at, kind, level, text, subject_id FROM activity_old;
+DROP TABLE activity_old;
+CREATE INDEX idx_activity_at ON activity (at DESC);
+
 -- diagnostic_process_runs
 DROP INDEX idx_diagnostic_process_runs_time;
 DROP INDEX idx_diagnostic_process_runs_status_time;

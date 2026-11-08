@@ -1881,7 +1881,7 @@ One line in the Dashboard's Recent activity feed, written when something notable
 | --- | --- | --- |
 | `id` | Identifies the entry. | `TEXT` · key |
 | `at` | When it happened, in Unix seconds. | `BIGINT` |
-| `kind` | Which part of Loomarr wrote it. title, channel, proposal (a suggested lineup), filler, or system. | `TEXT` |
+| `kind` | Which part of Loomarr wrote it: title, channel, proposal (a suggested lineup), or system. | `TEXT` |
 | `level` | How serious it is, which sets the coloured dot. info, warn, or error. | `TEXT` |
 | `text` | The sentence shown in the feed. | `TEXT` |
 | `subject_id` | The id of the channel, title or proposal it concerns, or empty. | `TEXT` |

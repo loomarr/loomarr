@@ -147,8 +147,6 @@ var KnownGaps = map[string]string{
 	"unbounded proposals":                           needsPrune,
 	"unbounded series_episodes":                     needsPrune,
 	"unbounded titles":                              needsPrune,
-	// Three call sites write untyped literals; they become constants before the CHECK.
-	"check activity.kind": needsCheck,
 	// Holds Sonarr's and Radarr's coverType as sent; mapped onto Loomarr's own art kinds first.
 	"check library_art.kind": needsCheck,
 }
