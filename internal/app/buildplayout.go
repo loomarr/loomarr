@@ -13,7 +13,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -50,7 +49,6 @@ type playoutDeps struct {
 	settings              resolved
 	owner                 *generationLifecycle
 	captureResolver       func(*playoutResolver)
-	library               *library.Client
 	secrets               *settings.Secrets
 	readSecret            func(context.Context, settings.GeneratedSecret) (string, error)
 	events                *events.Bus
@@ -78,8 +76,7 @@ type playoutDeps struct {
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	rootCtx, st, set := deps.rootCtx, deps.store, deps.settings
 	owner, capturePlayoutResolver := deps.owner, deps.captureResolver
-	libraryClient, readGeneratedSecret := deps.library, deps.readSecret
-	lib := libraryClient
+	readGeneratedSecret := deps.readSecret
 	eventBus, fillerLayout := deps.events, deps.layout
 	channelEngine, liveTVConnector := deps.channels, deps.liveTVConnector
 	backendView, resolveDesiredBackend, log := deps.backendView, deps.resolveDesiredBackend, deps.log
@@ -92,7 +89,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var residentVRAM func(context.Context) (float64, string)
 	// Internal playout (§9.1): Loomarr serves its own channels. Wired here because this is
 	// where BOTH halves already exist — the engine that answers "what airs when" and the
-	// library client that resolves an item to a streamable URL.
+	// Library that resolves an item to its file.
 	// residentVRAM (declared at function scope above) is the late-bound hook to "how much GPU VRAM
 	// a resident LLM holds right now" (§9.1 V49) — the real getter is assigned far below, after the
 	// LLM wiring. The budget closure reads it through that pointer; nil ⇒ assume no contention.
@@ -175,7 +172,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		}
 	})
 	playoutRes = &playoutResolver{
-		engine: channelEngine, lib: lib, now: time.Now,
+		engine: channelEngine, now: time.Now,
 		metrics:       deps.metrics,
 		detectContext: rootCtx,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition

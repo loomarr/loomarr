@@ -276,7 +276,7 @@ func buildChannels(
 		backendView = backendtransition.NewDurableView(st)
 		playoutBuilt, err := buildPlayout(playoutDeps{
 			rootCtx: rootCtx, store: st, settings: set, owner: owner,
-			captureResolver: capturePlayoutResolver, library: libraryClient, secrets: secrets,
+			captureResolver: capturePlayoutResolver, secrets: secrets,
 			readSecret: readGeneratedSecret, events: eventBus, layout: fillerLayout,
 			channels: channelEngine, liveTVConnector: liveTVConnector, backendView: backendView,
 			resolveDesiredBackend: resolveDesiredBackend, log: log, programmer: prog,
