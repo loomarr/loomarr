@@ -15,6 +15,10 @@ import (
 
 const goRaceShardCount = 2
 
+// goCertificationLaneCount is scripts/go-certification-lanes.tsv's highest lane, which ci-go.yml's
+// matrix names as certification-<lane>/4.
+const goCertificationLaneCount = 4
+
 func TestGoShardUsesMeasuredLongestProcessingTime(t *testing.T) {
 	t.Parallel()
 
@@ -153,6 +157,15 @@ example.invalid/cert`
 	}
 	if got := run("--certification", "2/2"); got != "example.invalid/cert" {
 		t.Fatalf("certification lane 2/2 =\n%s\nwant reviewed package", got)
+	}
+	// The manifest's highest lane is the lane count: a workflow naming another count is refused.
+	for _, spec := range []string{"1/3", "3/2"} {
+		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--certification", spec)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated)
+		if output, err := cmd.CombinedOutput(); err == nil {
+			t.Fatalf("certification lane %s of a two-lane manifest was accepted:\n%s", spec, output)
+		}
 	}
 	ordinary := run("1/1")
 	if ordinary != "example.invalid/a\nexample.invalid/b" {
@@ -486,7 +499,9 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 		"1 internal/integration",
 		"2 internal/api",
 		"2 internal/playout",
-		"2 internal/platform/store",
+		"3 internal/platform/store",
+		"4 internal/channels/schedule",
+		"4 internal/demolibrary",
 	}
 	if strings.Join(packages, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("certification lane packages = %v, want reviewed set %v", packages, want)
@@ -516,15 +531,16 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 			loads[shard-1] += max(weights[relative], 1)
 		}
 	}
-	certificationLoads := make([]int, 2)
-	for lane := 1; lane <= 2; lane++ {
-		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--certification", strconv.Itoa(lane)+"/2")
+	certificationLoads := make([]int, goCertificationLaneCount)
+	for lane := 1; lane <= goCertificationLaneCount; lane++ {
+		spec := strconv.Itoa(lane) + "/" + strconv.Itoa(goCertificationLaneCount)
+		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--certification", spec)
 		cmd.Dir = root
 		var stderr strings.Builder
 		cmd.Stderr = &stderr
 		output, err := cmd.Output()
 		if err != nil {
-			t.Fatalf("go certification lane %d/2: %v\n%s", lane, err, stderr.String())
+			t.Fatalf("go certification lane %s: %v\n%s", spec, err, stderr.String())
 		}
 		for _, pkg := range strings.Fields(string(output)) {
 			relative := strings.TrimPrefix(pkg, "github.com/loomarr/loomarr/")
@@ -582,10 +598,10 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 	if maxWorkerLoad*100 > minWorkerLoad*125 {
 		t.Fatalf("modeled bounded-worker shards differ by more than 25%%: loads=%v", workerLoads)
 	}
-	if max(certificationLoads[0], certificationLoads[1]) > budgets["lane_test"] {
+	if slices.Max(certificationLoads) > budgets["lane_test"] {
 		t.Fatalf("modeled certification lane exceeds the %ds lane budget: loads=%v", budgets["lane_test"], certificationLoads)
 	}
-	if max(certificationLoads[0], certificationLoads[1])*100 > min(certificationLoads[0], certificationLoads[1])*125 {
+	if slices.Max(certificationLoads)*100 > slices.Min(certificationLoads)*125 {
 		t.Fatalf("modeled certification lanes differ by more than 25%%: loads=%v", certificationLoads)
 	}
 }
