@@ -68,7 +68,7 @@ describe("CompositeCatalogGroup", () => {
     );
     renderGroup(onManage);
 
-    await userEvent.click(screen.getByRole("button", { name: "Show segments from Saturday reel" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Segments from Saturday reel/ }));
 
     expect(await screen.findByText("child: Soda spot")).toBeVisible();
     expect(screen.getByText("child: Cereal spot")).toBeVisible();
@@ -81,7 +81,7 @@ describe("CompositeCatalogGroup", () => {
     server.use(getListFillerMockHandler({ clips: [], total: 0 }));
     renderGroup();
 
-    await userEvent.click(screen.getByRole("button", { name: "Show segments from Saturday reel" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Segments from Saturday reel/ }));
 
     expect(await screen.findByText("No filed segments remain under this compilation.")).toBeVisible();
   });
@@ -94,7 +94,7 @@ describe("CompositeCatalogGroup", () => {
     );
     renderGroup();
 
-    await userEvent.click(screen.getByRole("button", { name: "Show segments from Saturday reel" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Segments from Saturday reel/ }));
 
     expect(await screen.findByText("Segments could not be loaded.")).toBeVisible();
   });

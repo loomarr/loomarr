@@ -183,7 +183,7 @@ describe("FillerCatalog", () => {
     render(<RouterHarness initialPath="/filler/library?view=list" content={<FillerCatalog isAdmin />} />, {
       wrapper: Wrapper,
     });
-    await user.click(await screen.findByRole("button", { name: "Show segments from Source recording" }));
+    await user.click(await screen.findByRole("button", { name: /^Segments from Source recording/ }));
     await user.click(await screen.findByRole("button", { name: "View details for Nested clip" }));
     expect(await screen.findByRole("dialog", { name: "Nested clip" })).toBeInTheDocument();
     expect(queries.some((query) => new URLSearchParams(query).get("hashes") === "child")).toBe(true);

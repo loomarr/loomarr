@@ -203,7 +203,7 @@ describe("ChannelCyclePreview", () => {
 
     render(<ChannelCyclePreview channelId="ch-1" />);
     expect(screen.getByText(/2 recorded decisions/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /show scheduler decisions/i }));
+    await userEvent.click(screen.getByRole("button", { name: /recorded decisions/i }));
     expect(screen.getByText(/placed by the deterministic shuffle/i)).toBeInTheDocument();
     expect(screen.getByText(/waiting for acquisition; filler holds its place/i)).toBeInTheDocument();
     expect(screen.getByText(/1 additional decision omitted/i)).toBeInTheDocument();
@@ -399,7 +399,7 @@ describe("ChannelCyclePreview — unsaved draft", () => {
     expect(screen.getByText(/2 titles not airing/i)).toBeInTheDocument();
     expect(screen.getByText(/2 held back by the audience ceiling/i)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /show which titles are not airing/i }));
+    await userEvent.click(screen.getByRole("button", { name: /titles not airing/i }));
 
     expect(screen.getByText("Cul-de-Sac Capers")).toBeInTheDocument();
     expect(screen.getByText("Hank & Delphine S04E06")).toBeInTheDocument();

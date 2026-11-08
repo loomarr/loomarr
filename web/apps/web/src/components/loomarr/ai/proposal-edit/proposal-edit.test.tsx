@@ -50,6 +50,9 @@ const copperKey: ProposalItem = {
   inLibrary: true,
   libraryItemId: "library-671",
 };
+const chooseFilms = () =>
+  screen.getByRole("button", { name: /^Choose films\s*From Wren Halloway Collection/ });
+
 const glassOrchard: ProposalItem = {
   name: "Wren Halloway and the Glass Orchard",
   year: 2002,
@@ -271,9 +274,9 @@ describe("ProposalEdit", () => {
     expect(screen.getAllByText("Wren Halloway Collection")).toHaveLength(1);
     expect(screen.getByText("2 of 3 selected")).toBeVisible();
     expect(screen.getByText("2 in your library")).toBeVisible();
-    expect(screen.getAllByText("Wren Halloway and the Glass Orchard")[0]).not.toBeVisible();
+    expect(screen.queryByText("Wren Halloway and the Glass Orchard")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose films from Wren Halloway Collection" }));
+    await userEvent.click(chooseFilms());
     expect(screen.getAllByText("Wren Halloway and the Glass Orchard")[0]).toBeVisible();
   });
 
@@ -363,7 +366,7 @@ describe("ProposalEdit", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Choose films from Wren Halloway Collection" }));
+    await userEvent.click(chooseFilms());
     await userEvent.click(screen.getByRole("button", { name: "Add Wren Halloway and the Glass Orchard" }));
 
     expect(onChange).toHaveBeenLastCalledWith({

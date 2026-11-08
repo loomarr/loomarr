@@ -6,11 +6,10 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge } from "@loomarr/design-system";
-import { Clapperboard, Clock, ListTree, ShieldAlert, Tv } from "lucide-react";
+import { Badge, Disclosure } from "@loomarr/design-system";
+import { Clapperboard, Clock, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -183,6 +182,7 @@ const isSafetyReason = (reason: ExcludedItemDTOReason): boolean =>
 // this panel exists to show. The COUNTS stay visible in the trigger row so nothing is hidden,
 // only folded.
 const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
+  const [expanded, setExpanded] = useState(false);
   const items = excluded.items ?? [];
   // Nothing refused ⇒ render nothing at all. An "Excluded (0)" row is noise on the overwhelming
   // majority of channels, and its absence is not ambiguous: the schedule above IS the answer.
@@ -190,56 +190,44 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
 
   const safety = excluded.overCeiling + excluded.unrated;
   return (
-    <Disclosure className="border-border rounded-md border">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <ShieldAlert
-          className={cn("size-4 shrink-0", safety > 0 ? "text-caution" : "text-muted-foreground")}
-          aria-hidden
-        />
-        <p className="text-sm">
-          <span className="font-medium">
-            {items.length} {items.length === 1 ? "title" : "titles"} not airing
-          </span>{" "}
-          <span className="text-muted-foreground">
-            {safety > 0
-              ? `— ${safety} held back by the audience ceiling`
-              : "— filtered out by this channel's rules"}
-          </span>
-        </p>
-        <Disclosure.Trigger className="ml-auto" label="Show which titles are not airing and why" />
-      </div>
-      <Disclosure.Panel className="border-border border-t">
-        {/* Same scroll treatment as the slot list above: a tight era filter can refuse dozens,
+    <Disclosure
+      label={`${items.length} ${items.length === 1 ? "title" : "titles"} not airing`}
+      description={
+        safety > 0 ? `${safety} held back by the audience ceiling` : "Filtered out by this channel's rules"
+      }
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+    >
+      {/* Same scroll treatment as the slot list above: a tight era filter can refuse dozens,
             and the panel must not run off the page. tabIndex + aria-label keep the region
             keyboard-reachable (WCAG 2.1.1) — the rows are non-focusable text. */}
-        <ul
-          className="scroll-thin divide-border flex max-h-64 flex-col divide-y overflow-y-auto"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive — see the slot list's note
-          tabIndex={0}
-          aria-label="Titles not airing"
-        >
-          {items.map((item, i) => (
-            <li
-              // ⚠ The key is NOT `item.key` alone: a per-episode ceiling refusal carries its
-              // SERIES key, so several rows legitimately share one. Title disambiguates them
-              // (it holds the SxxEyy), and the index closes the remaining gap.
-              // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
-              key={`${item.key}-${item.title}-${i}`}
-              className="flex flex-col gap-0.5 px-3 py-2"
+      <ul
+        className="scroll-thin divide-border flex max-h-64 flex-col divide-y overflow-y-auto"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive — see the slot list's note
+        tabIndex={0}
+        aria-label="Titles not airing"
+      >
+        {items.map((item, i) => (
+          <li
+            // ⚠ The key is NOT `item.key` alone: a per-episode ceiling refusal carries its
+            // SERIES key, so several rows legitimately share one. Title disambiguates them
+            // (it holds the SxxEyy), and the index closes the remaining gap.
+            // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
+            key={`${item.key}-${item.title}-${i}`}
+            className="flex flex-col gap-0.5 px-3 py-2"
+          >
+            <span className="truncate text-sm">{item.title || item.key}</span>
+            <span
+              className={cn(
+                "text-xs",
+                isSafetyReason(item.reason) ? "text-caution" : "text-muted-foreground",
+              )}
             >
-              <span className="truncate text-sm">{item.title || item.key}</span>
-              <span
-                className={cn(
-                  "text-xs",
-                  isSafetyReason(item.reason) ? "text-caution" : "text-muted-foreground",
-                )}
-              >
-                {REASON_LABEL[item.reason]}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Disclosure.Panel>
+              {REASON_LABEL[item.reason]}
+            </span>
+          </li>
+        ))}
+      </ul>
     </Disclosure>
   );
 };
@@ -273,50 +261,42 @@ const TRACE_REASON_LABEL: Record<ScheduleFactDTOReason, string> = {
 };
 
 const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
+  const [expanded, setExpanded] = useState(false);
   if (trace.recordedTotal === 0 && !trace.truncated) return null;
   const omitted = Math.max(0, trace.factTotal - trace.recordedTotal);
   return (
-    <Disclosure className="border-border rounded-md border">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <ListTree className="text-muted-foreground size-4 shrink-0" aria-hidden />
-        <p className="text-sm">
-          <span className="font-medium">
-            {trace.recordedTotal} recorded {trace.recordedTotal === 1 ? "decision" : "decisions"}
-          </span>{" "}
-          <span className="text-muted-foreground">
-            — {trace.ordering} · trace v{trace.version}
-          </span>
+    <Disclosure
+      label={`${trace.recordedTotal} recorded ${trace.recordedTotal === 1 ? "decision" : "decisions"}`}
+      description={`${trace.ordering} · trace v${trace.version}`}
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+    >
+      {omitted > 0 ? (
+        <p className="border-border text-muted-foreground border-b px-3 py-2 text-xs">
+          {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
         </p>
-        <Disclosure.Trigger className="ml-auto" label="Show scheduler decisions and reasons" />
-      </div>
-      <Disclosure.Panel className="border-border border-t">
-        {omitted > 0 ? (
-          <p className="border-border text-muted-foreground border-b px-3 py-2 text-xs">
-            {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
-          </p>
-        ) : null}
-        <ul
-          className="scroll-thin divide-border flex max-h-72 flex-col divide-y overflow-y-auto"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: bounded trace is a keyboard-scrollable region
-          tabIndex={0}
-          aria-label="Scheduler decisions"
-        >
-          {trace.facts.map((fact, i) => (
-            <li
-              // Repeated airings legitimately share key/title/reason; position + index keep rows distinct.
-              // biome-ignore lint/suspicious/noArrayIndexKey: index disambiguates repeated trace facts
-              key={`${fact.stage}-${fact.key ?? "gap"}-${fact.reason}-${fact.cyclePosition ?? "x"}-${i}`}
-              className="flex flex-col gap-0.5 px-3 py-2"
-            >
-              <span className="truncate text-sm">{fact.title || fact.key || "Commercial gap"}</span>
-              <span className="text-muted-foreground text-xs">
-                {TRACE_REASON_LABEL[fact.reason]}
-                {fact.cyclePosition !== undefined ? ` · cycle slot ${fact.cyclePosition + 1}` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Disclosure.Panel>
+      ) : null}
+      <ul
+        className="scroll-thin divide-border flex max-h-72 flex-col divide-y overflow-y-auto"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: bounded trace is a keyboard-scrollable region
+        tabIndex={0}
+        aria-label="Scheduler decisions"
+      >
+        {trace.facts.map((fact, i) => (
+          <li
+            // Repeated airings legitimately share key/title/reason; position + index keep rows distinct.
+            // biome-ignore lint/suspicious/noArrayIndexKey: index disambiguates repeated trace facts
+            key={`${fact.stage}-${fact.key ?? "gap"}-${fact.reason}-${fact.cyclePosition ?? "x"}-${i}`}
+            className="flex flex-col gap-0.5 px-3 py-2"
+          >
+            <span className="truncate text-sm">{fact.title || fact.key || "Commercial gap"}</span>
+            <span className="text-muted-foreground text-xs">
+              {TRACE_REASON_LABEL[fact.reason]}
+              {fact.cyclePosition !== undefined ? ` · cycle slot ${fact.cyclePosition + 1}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
     </Disclosure>
   );
 };

@@ -88,8 +88,8 @@
       "legacyUi": 2
     },
     "src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "tailwindClasses": 186,
-      "legacyUi": 4
+      "tailwindClasses": 151,
+      "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
       "tailwindClasses": 68,
@@ -209,7 +209,7 @@
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
       "tailwindClasses": 158,
-      "legacyUi": 3
+      "legacyUi": 2
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "tailwindClasses": 49,
@@ -376,10 +376,6 @@
     "src/components/ui/caption/caption.tsx": {
       "tailwindClasses": 1
     },
-    "src/components/ui/disclosure/disclosure.tsx": {
-      "tailwindClasses": 46,
-      "baseUi": 1
-    },
     "src/components/ui/dropdown-menu/dropdown-menu.tsx": {
       "tailwindClasses": 59,
       "baseUi": 2
@@ -395,7 +391,7 @@
       "baseUi": 1
     },
     "src/components/ui/index.ts": {
-      "legacyUi": 15
+      "legacyUi": 14
     },
     "src/components/ui/input/input.tsx": {
       "tailwindClasses": 12
@@ -549,8 +545,8 @@
       "tailwindClasses": 25
     },
     "src/filler/filler-catalog/composite-catalog-group/composite-catalog-group.tsx": {
-      "tailwindClasses": 28,
-      "legacyUi": 2
+      "tailwindClasses": 13,
+      "legacyUi": 1
     },
     "src/filler/filler-catalog/filler-catalog.tsx": {
       "tailwindClasses": 59,
@@ -595,10 +591,6 @@
       "tailwindClasses": 77,
       "legacyUi": 2
     },
-    "src/filler/sources-panel/source-clip-search/source-clip-search.tsx": {
-      "tailwindClasses": 4,
-      "legacyUi": 1
-    },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
       "tailwindClasses": 44,
       "legacyUi": 1
@@ -619,8 +611,8 @@
       "tailwindClasses": 5
     },
     "src/filler/sources-panel/source-settings/source-settings.tsx": {
-      "tailwindClasses": 13,
-      "legacyUi": 2
+      "tailwindClasses": 9,
+      "legacyUi": 1
     },
     "src/filler/sources-panel/source-status/source-status.tsx": {
       "tailwindClasses": 31,
@@ -827,8 +819,8 @@
       "legacyUi": 3
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
-      "tailwindClasses": 68,
-      "legacyUi": 2
+      "tailwindClasses": 64,
+      "legacyUi": 1
     },
     "src/suggest/suggestion-draft-return/suggestion-draft-return.tsx": {
       "tailwindClasses": 15,

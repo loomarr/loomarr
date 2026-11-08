@@ -367,7 +367,7 @@ describe("FillerPage shell", () => {
       expect(top?.searchParams.get("topLevel")).toBe("true");
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /show segments from saturday morning reel/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^segments from saturday morning reel/i }));
     expect(await screen.findByText("Cereal ad")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage 2 segments" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /use in a channel/i })).not.toBeInTheDocument();

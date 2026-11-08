@@ -2,10 +2,9 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, pluralize } from "@loomarr/core/format";
-import { Card } from "@loomarr/design-system";
+import { Disclosure } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Disclosure } from "@/components/ui/disclosure";
 
 interface CompositeCatalogGroupProps {
   clip: ClipDTO;
@@ -32,37 +31,29 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
           bespoke group heading made those established actions disappear. The disclosure below
           adds hierarchy without creating a second, weaker representation of the parent. */}
       {renderParent(clip)}
-      <Disclosure open={open} onOpenChange={setOpen}>
-        <Card overflow="hidden">
-          <div className="flex flex-wrap items-center gap-3 p-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Compilation segments</p>
-              <p className="text-muted-foreground font-mono text-xs">
-                {formatClipDuration(clip.durationMs)} source reel
-              </p>
-            </div>
-            {open && children.isFetching ? (
-              <span className="text-muted-foreground text-xs">Loading segments…</span>
-            ) : null}
-            {open && !children.isFetching ? (
-              <Button variant="outline" size="sm" onClick={onManage}>
-                Manage {pluralize(total, "segment")}
-              </Button>
-            ) : null}
-            <Disclosure.Trigger label={`${open ? "Hide" : "Show"} segments from ${clip.name}`} />
+      {/* The header is the whole press target, so the segment actions live in the open panel. */}
+      <Disclosure
+        label={`Segments from ${clip.name}`}
+        description={`${formatClipDuration(clip.durationMs)} source reel`}
+        expanded={open}
+        onExpandedChange={setOpen}
+      >
+        {children.isFetching ? (
+          <span className="text-muted-foreground text-xs">Loading segments…</span>
+        ) : (
+          <div>
+            <Button variant="outline" size="sm" onClick={onManage}>
+              Manage {pluralize(total, "segment")}
+            </Button>
           </div>
-          <Disclosure.Panel className="border-border border-t p-3">
-            {children.error ? (
-              <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
-            ) : rows.length > 0 ? (
-              <div className="border-border overflow-hidden rounded-lg border">{rows.map(renderChild)}</div>
-            ) : children.isFetching ? null : (
-              <p className="text-muted-foreground text-sm">
-                No filed segments remain under this compilation.
-              </p>
-            )}
-          </Disclosure.Panel>
-        </Card>
+        )}
+        {children.error ? (
+          <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
+        ) : rows.length > 0 ? (
+          <div className="border-border overflow-hidden rounded-lg border">{rows.map(renderChild)}</div>
+        ) : children.isFetching ? null : (
+          <p className="text-muted-foreground text-sm">No filed segments remain under this compilation.</p>
+        )}
       </Disclosure>
     </div>
   );

@@ -3,7 +3,6 @@ import { Badge, Toggle } from "@loomarr/design-system";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
@@ -347,22 +346,21 @@ const FillerSources = ({
               </div>
             </div>
 
-            <Disclosure open={providerBodyOpen}>
-              <Disclosure.Panel>
-                {renderProviderSetup?.(provider)}
+            {/* Folded, not unmounted: a paused provider's children keep their saved switches. */}
+            <div hidden={!providerBodyOpen}>
+              {renderProviderSetup?.(provider)}
 
-                {children.length > 0 ? (
-                  <SourceList
-                    className="mt-3"
-                    sources={children}
-                    sectionLabel={provider.target}
-                    renderRow={row}
-                  />
-                ) : (
-                  <p className="text-muted-foreground mt-3 text-xs">Nothing added yet.</p>
-                )}
-              </Disclosure.Panel>
-            </Disclosure>
+              {children.length > 0 ? (
+                <SourceList
+                  className="mt-3"
+                  sources={children}
+                  sectionLabel={provider.target}
+                  renderRow={row}
+                />
+              ) : (
+                <p className="text-muted-foreground mt-3 text-xs">Nothing added yet.</p>
+              )}
+            </div>
           </section>
         );
       })}
