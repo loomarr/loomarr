@@ -69,7 +69,15 @@ test.describe("operator first-run wizard", () => {
     // Connections save, and availability is polled — no inbound webhook to hand-shake. The
     // wizard goes straight from the checklist to the library step.)
 
-    // --- step 4: tunarr library --------------------------------------------------
+    // --- step 4: where's your media (#2151 decision 30) ----------------------------
+    // Continue waits for a folder Loomarr can open; until the media server's catalog retires,
+    // Skip is the way past.
+    await expect(page.getByRole("heading", { name: /where's your media/i })).toBeVisible();
+    await expect(page.getByText(/We found these through Emby/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+    await page.getByRole("button", { name: /skip/i }).click();
+
+    // --- step 5: tunarr library --------------------------------------------------
     await shot(page, "step-4-library", /give tunarr your library/i);
     await page.getByRole("button", { name: /wire tunarr to your library/i }).click();
     await expect(page.getByRole("button", { name: /run again/i })).toBeVisible();

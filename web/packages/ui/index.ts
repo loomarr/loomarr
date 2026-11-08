@@ -93,6 +93,7 @@ export type {
   LibraryTitleMatch,
   LibraryTitleProps,
   LibraryTitleSeason,
+  LibraryWizardStepProps,
 } from "./src/library";
 export {
   LibraryCollectionEditor,
@@ -102,6 +103,7 @@ export {
   LibrarySettings,
   LibraryShelf,
   LibraryTitle,
+  LibraryWizardStep,
 } from "./src/library";
 export type {
   OnScreenLogoHoliday,

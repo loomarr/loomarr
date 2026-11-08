@@ -9,6 +9,7 @@ import {
   type LibraryShelfProps,
   type LibraryShelfTitle,
   LibraryTitle,
+  LibraryWizardStep,
 } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
@@ -381,6 +382,54 @@ const NewCollection: Story = {
   ),
 };
 
+// The setup wizard's Library step: one folder found through Emby and Radarr, one Loomarr can't open.
+const wizardFolders = [
+  {
+    path: "/media/movies",
+    inUse: false,
+    readable: true,
+    checkedAt: "2026-10-01T19:55:00Z",
+    addedByHand: false,
+    foundIn: [
+      { authority: "emby" as const, path: "/data/movies" },
+      { authority: "radarr" as const, path: "/movies" },
+    ],
+  },
+  {
+    path: "/mnt/tv",
+    inUse: false,
+    readable: false,
+    addedByHand: false,
+    foundIn: [{ authority: "sonarr" as const, path: "/tv" }],
+  },
+];
+
+const wizardStep = {
+  pathMap: [
+    { authority: "emby" as const, authorityPath: "/data/movies", localPath: "/media/movies", byHand: false },
+    { authority: "radarr" as const, authorityPath: "/movies", localPath: "/media/movies", byHand: false },
+  ],
+  checking: false,
+  onCheckAgain: () => {},
+  onUseFolder: () => {},
+  onAddFolder: () => Promise.resolve(undefined),
+  now: Date.parse("2026-10-01T20:00:00Z"),
+};
+
+const WizardStep: Story = {
+  render: () => <LibraryWizardStep {...wizardStep} folders={wizardFolders} scan={IDLE} />,
+};
+
+const WizardStepAdding: Story = {
+  render: () => (
+    <LibraryWizardStep
+      {...wizardStep}
+      folders={[{ ...wizardFolders[0], inUse: true } as (typeof wizardFolders)[number]]}
+      scan={{ enabled: true, stage: "reading", headersDone: 412, headersTotal: 1200, paused: false }}
+    />
+  ),
+};
+
 export default meta;
 export {
   Adding,
@@ -399,4 +448,6 @@ export {
   NothingNeedsYou,
   Paused,
   Series,
+  WizardStep,
+  WizardStepAdding,
 };

@@ -383,6 +383,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `/library/collections/$id` (and `/new`) edits the name, the description and the titles in order,
   saved together; a row moves by its grip with a pointer or the keyboard, and Add a title searches
   the library. Delete waits, with the reason, while a channel uses the collection.
+- **The wizard's Library step** (step 13, decision 30). "Where's your media?" follows Connections
+  on either playout path. It shows the folders found through the media server, Sonarr and Radarr
+  (the Settings → Library folder cards), with Add a folder and Check again. Choosing one starts
+  the import, and the step shows its progress without waiting for it. Continue needs one folder
+  in use that Loomarr can open (status `ok`). Until the media server's catalog retires (step 16),
+  the step is optional and Skip for now is the way past. On the Tunarr path, Tunarr's own wiring
+  step follows as "Tunarr library".
 
 ## Cached series episodes
 
