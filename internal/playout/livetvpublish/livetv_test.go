@@ -656,3 +656,16 @@ func TestTunerPublishingDisabled_DefaultsToUnchangedBehaviour(t *testing.T) {
 		t.Fatalf("Connect() = %+v; want the default (unset) switch to add as before", res)
 	}
 }
+
+// A household with no media server (#2151) has no tuner to re-scan and no guide to refresh: every
+// reconcile's best-effort poke is nothing to do, not a failure to warn about.
+func TestPokesWithoutAMediaServerAreNothingToDo(t *testing.T) {
+	c := livetvpublish.NewLiveTVConnectorFixed(library.New("", "", "", "dev-1"), tunarr.LiveTVURLsAt("http://tunarr:8000"))
+	ctx := context.Background()
+	if err := c.RescanTuner(ctx); err != nil {
+		t.Fatalf("RescanTuner() with no media server = %v, want nil", err)
+	}
+	if err := c.PokeGuideRefresh(ctx); err != nil {
+		t.Fatalf("PokeGuideRefresh() with no media server = %v, want nil", err)
+	}
+}
