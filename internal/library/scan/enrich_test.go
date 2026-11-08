@@ -332,7 +332,7 @@ func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {
 	for k, version := range map[store.LibraryCatalogKey]int{
 		series: catalogVersions[series.Kind] - 1, movie: catalogVersions[movie.Kind],
 	} {
-		if _, err := h.st.SaveLibraryCatalog(ctx, k, `{"Kind":"`+k.Kind+`"}`, version, time.Now()); err != nil {
+		if _, err := h.st.SaveLibraryCatalog(ctx, k, `{"Kind":"`+k.Kind+`"}`, version, "", time.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -346,6 +346,31 @@ func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {
 	}
 	if err := e.Tick(ctx); err != nil || len(catalog.fetched) != 1 {
 		t.Fatalf("second tick fetched %v, %v; want nothing once it is current", catalog.fetched, err)
+	}
+}
+
+// When the household's language changes, a record cached in the old one is fetched again on the
+// next tick and saved in the language it was read in, so the tick after leaves it be.
+func TestEnricherFetchesARecordInAnotherLanguageAgain(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	movie := store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000201"}
+	if err := h.st.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{movie}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie"}`, catalogVersions[movie.Kind], "en-US", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{"90000201": {Kind: mp.KindMovie, Language: "fr-US"}}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(string, ...string) {},
+		Language: func() string { return "fr-US" }}
+	for range 2 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !slices.Equal(catalog.fetched, []string{"movie:90000201"}) {
+		t.Fatalf("fetched %v over two ticks, want the English record once, read again in French", catalog.fetched)
 	}
 }
 

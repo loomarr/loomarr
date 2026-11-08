@@ -27,7 +27,7 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	if err := st.WantLibraryCatalog(ctx, []LibraryCatalogKey{movie, show, old}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SaveLibraryCatalog(ctx, old, `{"Kind":"movie"}`, 0, at.Add(-100*24*time.Hour)); err != nil {
+	if _, err := st.SaveLibraryCatalog(ctx, old, `{"Kind":"movie"}`, 0, "en-US", at.Add(-100*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	// Wanting a cached key again keeps its record.
@@ -55,10 +55,10 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("count = %d, %v", n, err)
 	}
 
-	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, at); err != nil || !changed {
+	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, "en-US", at); err != nil || !changed {
 		t.Fatalf("first save changed = %v, %v", changed, err)
 	}
-	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, at.Add(time.Minute)); err != nil || changed {
+	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, "en-US", at.Add(time.Minute)); err != nil || changed {
 		t.Fatalf("same record changed = %v, %v", changed, err)
 	}
 
@@ -73,11 +73,23 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	if len(due) != 2 || due[0] != movie || due[1] != old {
 		t.Fatalf("due = %+v, want the outdated movie, then the old one once", due)
 	}
-	if _, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 1, at.Add(2*time.Minute)); err != nil {
+	if _, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 1, "en-US", at.Add(2*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || len(due) != 1 || due[0] != old {
 		t.Fatalf("due = %+v, %v; want only the old movie once the fresh one is read in the new shape", due, err)
+	}
+	// The household's language changes: the fresh movie record, read in English, is due with the
+	// new titles again; read in French, it is not.
+	moviesV1.Language = "fr-US"
+	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || len(due) != 2 || due[0] != movie || due[1] != old {
+		t.Fatalf("due = %+v, %v; want the movie read in another language, then the old one once", due, err)
+	}
+	if _, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 1, "fr-US", at.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || len(due) != 1 || due[0] != old {
+		t.Fatalf("due = %+v, %v; want only the old movie once the fresh one is read in French", due, err)
 	}
 
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{

@@ -38,7 +38,7 @@ var catalogVersions = map[string]int{string(mp.KindMovie): 1, string(mp.KindSeri
 type EnrichStore interface {
 	DueLibraryCatalog(ctx context.Context, due store.LibraryCatalogDue) ([]store.LibraryCatalogKey, error)
 	CountLibraryCatalog(ctx context.Context) (int, error)
-	SaveLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, record string, version int, at time.Time) (bool, error)
+	SaveLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
 	FailLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, retryAt time.Time) error
 	RewriteLibraryCatalogFiles(ctx context.Context, key store.LibraryCatalogKey) ([]store.LibraryFilePath, error)
 }
@@ -53,6 +53,9 @@ type Enricher struct {
 	Provider mp.Provider
 	// Rewrite asks for a pass over folders under a root.
 	Rewrite func(root string, dirs ...string)
+	// Language is the language records are read in now ("en-US"); a record cached in another is
+	// fetched again first (decision 21). Nil, or "", checks none.
+	Language func() string
 	// Enabled is the scanner's kill switch; nil is on. Off, nothing is fetched.
 	Enabled  func() bool
 	Interval time.Duration
@@ -91,7 +94,7 @@ func (e *Enricher) Tick(ctx context.Context) error {
 	}
 	due, err := e.Store.DueLibraryCatalog(ctx, store.LibraryCatalogDue{
 		Now: now, StaleBefore: now.Add(-orDuration(e.Refresh, EnrichRefresh)),
-		New: enrichNewBatch, Stale: e.staleShare(total), Versions: catalogVersions,
+		New: enrichNewBatch, Stale: e.staleShare(total), Versions: catalogVersions, Language: e.language(),
 	})
 	if err != nil {
 		return err
@@ -183,7 +186,12 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 		e.log().Debug("library enrich: fetch failed", "catalog", key.String(), "err", fetchErr)
 		return fetchFailed, nil
 	}
-	changed, err := e.Store.SaveLibraryCatalog(ctx, key, record, catalogVersions[key.Kind], now)
+	// A record says the language it was read in; "the catalog has no such title" holds in any.
+	language := rec.Language
+	if fetchErr != nil {
+		language = e.language()
+	}
+	changed, err := e.Store.SaveLibraryCatalog(ctx, key, record, catalogVersions[key.Kind], language, now)
 	if err != nil || !changed {
 		return fetchDone, err
 	}
@@ -207,6 +215,13 @@ func (e *Enricher) sleep(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
+}
+
+func (e *Enricher) language() string {
+	if e.Language != nil {
+		return e.Language()
+	}
+	return ""
 }
 
 func (e *Enricher) now() time.Time {
