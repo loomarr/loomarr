@@ -65,7 +65,7 @@ apple-compilation-cache-cli	scripts/apple-compilation-cache.sh;scripts/apple-com
 apple-compilation-cache-verifier	web/scripts/test-apple-client-cache-test.sh;web/scripts/apple-compilation-cache.xcconfig;web/scripts/validate-apple-compilation-cache.sh;web/scripts/validate-apple-compilation-cache-test.sh	contracts,apple_mobile,apple_tv
 expo-android-script	web/scripts/build-android-client.sh	contracts,expo_android_mobile,expo_android_tv,android
 visual-web	web/apps/web/src/people/users-page/users-page.tsx	web,visual,tuner,image
-visual-baseline	web/apps/web/tests/visual/gallery.spec.ts-snapshots/ai-approvalhistoryrow--approved-desktop-linux.png	web,visual,image
+visual-baseline	web/apps/web/tests/visual/gallery.spec.ts-snapshots/ai-approvalqueueitem--approving-desktop-linux.png	web,visual,image
 e2e-baseline	web/apps/web/tests/e2e/wizard.spec.ts-snapshots/step-1-bootstrap-desktop-linux.png	web,e2e,image
 wizard-e2e	web/apps/web/src/wizard/steps/steps.ts	web,visual,e2e,tuner,image
 tuner-web	web/apps/web/src/channels/use-watch-player/use-watch-player.ts	web,visual,tuner,image

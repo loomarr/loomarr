@@ -47,8 +47,8 @@ const Collapsed: Story = {
 
 // ⚠ `clipHash` is an inline data: URI, not a real hash, and it lives HERE rather than in the
 // shared fixtures. `clipAssetURL` passes a `data:` value through untouched, which is what lets
-// storybook-static render this offline and deterministically — the trick `clip-player.stories`
-// documents at length. A fixture hash would 404 in the static build.
+// storybook-static render this offline and deterministically. A fixture hash would 404 in the
+// static build.
 //
 // The span is the fixture's nominal two seconds. The file really holds 1.875s, so the player
 // clamps the window to it and reads "0:00 / 0:01".

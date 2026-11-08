@@ -28,10 +28,7 @@ const MEASURES = ["tailwindClasses", "tailwindMerge", "clsx", "cva", "baseUi", "
 const RETIRED = {
   dialog: {
     primitive: "@base-ui/react/dialog",
-    allowed: [
-      "src/components/loomarr/filler/clip-player/clip-player.tsx",
-      "src/palette/command-palette/command-palette.tsx",
-    ],
+    allowed: ["src/palette/command-palette/command-palette.tsx"],
   },
 };
 
