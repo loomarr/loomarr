@@ -450,12 +450,10 @@
       "tailwindClasses": 25
     },
     "src/filler/filler-catalog/composite-catalog-group/composite-catalog-group.tsx": {
-      "tailwindClasses": 13,
-      "legacyUi": 1
+      "tailwindClasses": 13
     },
     "src/filler/filler-catalog/filler-catalog.tsx": {
-      "tailwindClasses": 59,
-      "legacyUi": 1
+      "tailwindClasses": 59
     },
     "src/filler/filler-manage/filler-manage.tsx": {
       "tailwindClasses": 20,

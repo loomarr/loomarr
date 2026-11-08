@@ -3,6 +3,7 @@ import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -106,9 +107,11 @@ const CatalogBulkBar = ({ selected, onClear }: CatalogBulkBarProps) => {
         Remove from catalog
       </Button>
 
-      <Button variant="ghost" size="sm" className="ml-auto" onClick={onClear}>
-        Clear
-      </Button>
+      <div className="ml-auto">
+        <Action onPress={onClear} variant="ghost">
+          Clear
+        </Action>
+      </div>
     </div>
   );
 };
