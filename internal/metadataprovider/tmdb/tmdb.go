@@ -375,8 +375,9 @@ type wireSeries struct {
 	ExternalIDs    wireExternalIDs `json:"external_ids"`
 	Images         wireImages      `json:"images"`
 	Seasons        []struct {
-		SeasonNumber int `json:"season_number"`
-		EpisodeCount int `json:"episode_count"`
+		SeasonNumber int    `json:"season_number"`
+		EpisodeCount int    `json:"episode_count"`
+		PosterPath   string `json:"poster_path"`
 	} `json:"seasons"`
 	// EpisodeGroups are the other orderings TMDB knows; nil when the answer did not carry them.
 	EpisodeGroups *struct {
@@ -434,6 +435,9 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 		if season.SeasonNumber >= 0 && season.EpisodeCount > 0 {
 			rec.Descriptive.Seasons = append(rec.Descriptive.Seasons,
 				mp.SeasonSize{Number: season.SeasonNumber, Episodes: season.EpisodeCount})
+		}
+		if ref := tmdbclient.ImageURL(season.PosterPath); ref != "" && season.SeasonNumber >= 0 {
+			rec.Artwork = append(rec.Artwork, mp.ArtworkRef{Kind: mp.KindSeasonPoster, Season: season.SeasonNumber, Ref: ref})
 		}
 	}
 	if s.EpisodeGroups != nil {

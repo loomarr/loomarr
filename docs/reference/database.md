@@ -591,8 +591,8 @@ A title's artwork references, one row each. Replaced whenever the title is writt
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `item_id` | The title (a library_items id). | `TEXT` · key · → `library_items.id` |
-| `kind` | What the image is, such as poster, fanart or logo. | `TEXT` · key |
-| `season` | The season a season poster belongs to; 0 for the title's own artwork. | `INTEGER` · key |
+| `kind` | What the image is, such as poster, fanart, clearlogo, or season-poster for one season's poster. | `TEXT` · key |
+| `season` | For a season-poster, the season it belongs to (0 is the specials); 0 for every other kind. | `INTEGER` · key |
 | `position` | The order among images of the same kind and season, from 0. | `INTEGER` · key |
 | `ref` | Where the image is, a file beside the media or an address. | `TEXT` |
 

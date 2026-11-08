@@ -217,8 +217,8 @@ tables:
       the title.
     columns:
       item_id: The title (a library_items id).
-      kind: What the image is, such as poster, fanart or logo.
-      season: The season a season poster belongs to; 0 for the title's own artwork.
+      kind: What the image is, such as poster, fanart, clearlogo, or season-poster for one season's poster.
+      season: For a season-poster, the season it belongs to (0 is the specials); 0 for every other kind.
       position: The order among images of the same kind and season, from 0.
       ref: Where the image is, a file beside the media or an address.
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
@@ -125,6 +126,35 @@ func TestSeriesAndEpisodeArtwork(t *testing.T) {
 	got = fetch(t, mp.KindEpisode, filepath.Join(show, "Season 01", "Dune Office S01E01.mkv"))
 	if len(got) != 1 || got[localart.KindThumb] != filepath.Join(show, "Season 01", "Dune Office S01E01-thumb.jpg") {
 		t.Errorf("episode artwork = %v", got)
+	}
+}
+
+// A series folder's season posters are each a season's, the specials' as season 0, one per season
+// by preferred extension; "season-all-poster" is not a season's, and a season banner is not a
+// poster.
+func TestSeasonPosters(t *testing.T) {
+	root := t.TempDir()
+	touch(t, root, "Ember Coast/poster.jpg", "Ember Coast/season01-poster.png", "Ember Coast/Season01-Poster.jpg",
+		"Ember Coast/season12-poster.jpg", "Ember Coast/season-specials-poster.jpg", "Ember Coast/season-all-poster.jpg",
+		"Ember Coast/season02-banner.jpg")
+	show := filepath.Join(root, "Ember Coast")
+	rec, err := localart.New().Fetch(context.Background(), fileRef(mp.KindSeries, show))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seasons []mp.ArtworkRef
+	for _, a := range rec.Artwork {
+		if a.Kind == mp.KindSeasonPoster {
+			seasons = append(seasons, a)
+		}
+	}
+	want := []mp.ArtworkRef{
+		{Kind: mp.KindSeasonPoster, Season: 0, Ref: filepath.Join(show, "season-specials-poster.jpg")},
+		{Kind: mp.KindSeasonPoster, Season: 1, Ref: filepath.Join(show, "Season01-Poster.jpg")},
+		{Kind: mp.KindSeasonPoster, Season: 12, Ref: filepath.Join(show, "season12-poster.jpg")},
+	}
+	if !slices.Equal(seasons, want) {
+		t.Errorf("season posters = %+v, want %+v", seasons, want)
 	}
 }
 

@@ -311,13 +311,19 @@ func resolveTechnical(out *Resolved, records []mp.Record) {
 
 func resolveArtwork(records []mp.Record) []Picked[mp.ArtworkRef] {
 	var out []Picked[mp.ArtworkRef]
-	seen := map[string]bool{}
+	// One image per kind, and per season for season posters.
+	type slot struct {
+		kind   string
+		season int
+	}
+	seen := map[slot]bool{}
 	for _, rec := range records {
 		for _, art := range rec.Artwork {
-			if art.Ref == "" || seen[art.Kind] {
+			s := slot{art.Kind, art.Season}
+			if art.Ref == "" || seen[s] {
 				continue
 			}
-			seen[art.Kind] = true
+			seen[s] = true
 			out = append(out, Picked[mp.ArtworkRef]{Value: art, From: rec.Source})
 		}
 	}

@@ -187,4 +187,10 @@ type Technical struct {
 type ArtworkRef struct {
 	Kind string
 	Ref  string
+	// Season is the season a season poster (KindSeasonPoster) belongs to, 0 for the specials;
+	// zero for any other kind.
+	Season int `json:",omitempty"`
 }
+
+// KindSeasonPoster is a series' poster for one of its seasons (#2151 decisions 45, 61).
+const KindSeasonPoster = "season-poster"

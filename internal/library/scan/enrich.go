@@ -30,7 +30,8 @@ const (
 // again, ahead of the refresh, as if new; a kind not listed is version 0.
 //
 //	series 1: a series counts its other episode orderings (decision 53).
-var catalogVersions = map[string]int{string(mp.KindSeries): 1}
+//	series 2: a series carries each season's poster.
+var catalogVersions = map[string]int{string(mp.KindSeries): 2}
 
 // EnrichStore is the cache the Enricher fills.
 type EnrichStore interface {
