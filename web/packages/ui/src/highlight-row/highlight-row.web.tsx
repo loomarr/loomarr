@@ -1,7 +1,7 @@
 import { Text, useWindowWidth } from "@loomarr/design-system";
 import { cloneElement, type ReactElement, useState } from "react";
 
-import type { HighlightRowProps } from "./list-row.type";
+import type { HighlightRowProps } from "./highlight-row.type";
 
 // The phone breakpoint the legacy row's `sm:` grid used.
 const PHONE_MAX = 640;

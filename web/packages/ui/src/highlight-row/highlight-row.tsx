@@ -1,7 +1,7 @@
 import { Surface, Text } from "@loomarr/design-system";
 import { Pressable } from "react-native";
 
-import type { HighlightRowProps } from "./list-row.type";
+import type { HighlightRowProps } from "./highlight-row.type";
 
 // The native adapter: one pressable row, the show and its reason stacked beside the time and channel
 // number, read once as a single button. `render` is a web router link and has no native meaning.
