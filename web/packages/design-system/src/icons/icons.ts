@@ -102,6 +102,9 @@ const icons = {
   paneOpen: PanelRightOpen,
   pause: Pause,
   people: Users,
+  // A table row's disclosure: closed points at the row's details, open points down into them.
+  rowCollapse: ChevronDown,
+  rowExpand: ChevronRight,
   play: Play,
   // A phone tab header's plain "add" button (#1840's Requests app bar).
   plus: Plus,
