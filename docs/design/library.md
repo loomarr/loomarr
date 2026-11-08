@@ -629,6 +629,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   episode cache (`series_episodes`, its `channel-maintenance` refresh and `episodes.max_age`) is
   deleted (migration 195). The engine's five-second memo still collapses the repeats within one
   layout.
+- **Item metadata reads only the Library** (step 16). The guide's descriptions, a lineup's
+  durations and a proposal's outlook read `LibraryItemFacts` and nothing else; an id that is no
+  library item has none. The guide's descriptions no longer wait on a media server being
+  connected.
 
 ## Search
 

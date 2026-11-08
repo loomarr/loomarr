@@ -169,8 +169,8 @@ type playoutResolver struct {
 	// libraryVideo is a Library item's video format as the scanner read it, for lineup formats and
 	// still tone mapping; nil, or any other id, reads the inventory.
 	libraryVideo libraryVideoReader
-	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil,
-	// or any other id, asks the media server.
+	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
+	// leaves the guide without descriptions, and any other id has none.
 	itemFacts store.LibraryItemFactsReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
@@ -1020,18 +1020,13 @@ func (r *playoutResolver) attachProvenance(ctx context.Context, bs []playout.Bro
 	}
 }
 
-// attachMetadata fills in descriptions, genres, years and ratings from the media server.
-//
-// ONE BULK CALL for the whole channel, which is the only reason this is affordable on a request
-// a media server polls: Emby's `/Items?Ids=` takes a comma-separated list, and 120 episodes came
-// back in 24ms on the dev stack. Per-item lookups would have been a round trip per programme and
-// would have forced a cache.
+// attachMetadata fills in descriptions, genres, years and ratings from the Library's tables, in
+// ONE read for the whole channel (#2151 step 16).
 //
 // BEST-EFFORT BY DESIGN. A failure leaves the broadcasts exactly as they were — titles and times
-// intact — because a guide with thin entries is far better than no guide. The media server is an
-// external dependency on a path that must keep working when it is slow or briefly down.
+// intact — because a guide with thin entries is far better than no guide.
 func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broadcast) {
-	if r.lib == nil || len(bs) == 0 {
+	if r.itemFacts == nil || len(bs) == 0 {
 		return
 	}
 	ids := make([]string, 0, len(bs))
@@ -1044,11 +1039,10 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 		return
 	}
 
-	meta, err := itemMetadata{facts: r.itemFacts, lib: r.lib}.ItemMetadataByID(ctx, ids)
+	meta, err := itemMetadata{facts: r.itemFacts}.ItemMetadataByID(ctx, ids)
 	if err != nil && r.log != nil {
-		// Logged, not returned: the partial map is still applied below. ItemMetadataByID
-		// returns what it gathered alongside the error precisely so a slow page of a large
-		// guide does not cost the whole document its descriptions.
+		// Logged, not returned: the partial map is still applied below, so a failing read does
+		// not cost the whole document its descriptions.
 		r.log.Debug("playout: guide metadata partially unavailable",
 			"err", err, "resolved", len(meta), "wanted", len(ids))
 	}

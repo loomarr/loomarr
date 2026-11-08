@@ -197,15 +197,9 @@ func episodeResolver(st store.LibraryEpisodeReader) channels.EpisodeResolver {
 	}
 }
 
-// bulkDurations adapts the library's BULK metadata call to channels.DurationsResolver.
-//
-// It reuses ItemMetadataByID rather than adding a duration-only endpoint: that call already asks
-// for RunTimeTicks, already batches a comma-separated id list, and already de-duplicates and
-// pages (maxIDsPerRequest). A separate bulk-duration call would be a second way to ask the media
-// server the same question — the §6 one-adapter rule — for no gain.
-//
-// The metadata it also returns is simply unused here; the cost is bytes on a call the guide's own
-// metadata pass makes anyway, against ONE round trip replacing one-per-movie.
+// bulkDurations adapts the Library's BULK item metadata read to channels.DurationsResolver, so a
+// layout reads every runtime in one query rather than one per movie. The metadata it also returns
+// is simply unused here.
 func bulkDurations(lib itemMetadata) channels.DurationsResolver {
 	return func(ctx context.Context, itemIDs []string) (map[string]int64, error) {
 		meta, err := lib.ItemMetadataByID(ctx, itemIDs)
