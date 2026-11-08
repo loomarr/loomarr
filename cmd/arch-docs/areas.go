@@ -129,8 +129,9 @@ var areas = []area{
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
-				"backend transition, start-up configuration, Tunarr's HTTP client and metrics, and the " +
-				"address check that keeps LAN discovery answering only the household's network",
+				"backend transition, start-up configuration, Tunarr's HTTP client and metrics, the " +
+				"address check that keeps LAN discovery answering only the household's network, and the " +
+				"language codes an audio track is chosen by",
 			"channels": "the `channels/schedule` programming a backend plays",
 			"library": "the media server's Live TV API that channels are published to, and `provision` keys " +
 				"naming what a slot plays",
