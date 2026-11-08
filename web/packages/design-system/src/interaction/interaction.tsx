@@ -517,6 +517,15 @@ const Field = ({
               outlineWidth: 0,
               paddingHorizontal: semanticSpace.control,
               paddingRight: secureTextEntry ? semanticTargets[density] : semanticSpace.control,
+              // A multiline Field is a text area: the text starts at the top-left corner, inset as it
+              // is from the sides, rather than centred in a box sized for one line.
+              ...(props.multiline
+                ? {
+                    lineHeight: typography[density].body.lineHeight,
+                    paddingVertical: semanticSpace.inline,
+                    textAlignVertical: "top" as const,
+                  }
+                : {}),
             },
             style,
           ]}
