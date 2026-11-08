@@ -44,7 +44,7 @@ type libraryStore interface {
 	store.LibraryTitleReader
 	store.SettingStore
 	inventory.Repository
-	posterRefs
+	artRefs
 }
 
 // libraryBuild is what Settings → Library needs beyond the store and settings.
@@ -135,7 +135,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		},
 		NFO:      nfo.New(),
 		Art:      localart.New(),
-		Posters:  libraryPostersOf(deps.images, st),
+		Artwork:  libraryArtworkOf(deps.images, st),
 		Catalog:  st,
 		Answers:  st,
 		Resolver: resolver,

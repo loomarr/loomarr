@@ -342,9 +342,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   again. `GET /v1/library/items` pages and searches the list (admin-only);
   `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
   files, or a series' episodes by season.
-- **Posters** (step 10b). When the importer writes a title it hands the resolved poster to the
-  image service, and the title owns it through an `image_refs` row (owner `library_item`, role
-  `poster`); that ref is the one record of which image is its poster. A sidecar file is imported
+- **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
+  the resolved poster, fanart and clear logo to the image service, and the title owns each
+  through an `image_refs` row (owner `library_item`, role `poster`, `backdrop` or `logo`); that
+  ref is the one record of which image it is, and a kind replaces only its own role's ref. Banner,
+  landscape, clearart and discart stay references: nothing shows them. A clear logo's alpha is its
+  shape, so the `logo` role has no JPEG rendition and its `<img>` fallback is WebP; its dominant
+  colour weighs each pixel by its alpha, so the transparent canvas doesn't dim it. A local sidecar
+  outranks TMDB's image of the same kind (decision 19). The item page carries `logoImage` and
+  `backdropImage`, each absent when the title has none. A sidecar file is imported
   then, keyed by its content, opened only as a regular file and never through a symlink, and
   skipped when the service already holds those bytes; it is `extracted`, since the file beside the
   media is its source. A manager's https URL is adopted, and the fetch job moves the ref onto the
