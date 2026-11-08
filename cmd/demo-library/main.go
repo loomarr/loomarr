@@ -6,8 +6,10 @@
 //	demo-library serve      generate if needed, then serve the stand-in on DEMO_LIBRARY_ADDR
 //	demo-library seed       configure a running backend (BASE) against a running stand-in
 //
-// `make demo-library` and `make demo-seed` wrap serve and seed. Nothing here needs the LLM, TMDB
-// or the network: every title is invented and every asset is generated locally with ffmpeg.
+// `make demo-library` and `make demo-seed` wrap serve and seed. By default nothing here needs the
+// LLM, TMDB or the network: every title is invented and every asset is generated locally with
+// ffmpeg. --content open (DEMO_CONTENT=open, the public demo site only) serves the licensed open
+// content pack instead, downloading its pinned files on first run.
 package main
 
 import (
@@ -47,21 +49,24 @@ func main() {
 	base := fs.String("base", os.Getenv("BASE"), "Loomarr backend URL to seed, e.g. http://localhost:18048")
 	libraryURL := fs.String("library-url", os.Getenv("DEMO_LIBRARY_URL"), "stand-in URL as the backend reaches it (default http://<addr>)")
 	dbURL := fs.String("database-url", os.Getenv("DATABASE_URL"), "the backend's store, for the approval gate")
+	content := fs.String("content", envOr("DEMO_CONTENT", string(demolibrary.ContentInvented)), "invented (generated catalogue) or open (the licensed content pack, downloaded)")
 	_ = fs.Parse(os.Args[2:])
 
-	var err error
-	switch os.Args[1] {
-	case "generate":
-		err = demolibrary.Generate(ctx, *dir, *ffmpeg, log)
-	case "serve":
-		err = serve(ctx, *dir, *ffmpeg, *addr, log)
-	case "seed":
-		if *libraryURL == "" {
-			*libraryURL = "http://" + *addr
+	lib, err := loadLibrary(*content)
+	if err == nil {
+		switch os.Args[1] {
+		case "generate":
+			err = demolibrary.Generate(ctx, lib, *dir, *ffmpeg, log)
+		case "serve":
+			err = serve(ctx, lib, *dir, *ffmpeg, *addr, log)
+		case "seed":
+			if *libraryURL == "" {
+				*libraryURL = "http://" + *addr
+			}
+			err = seed(ctx, lib, seedConfig{dir: *dir, ffmpeg: *ffmpeg, base: *base, libraryURL: *libraryURL, databaseURL: *dbURL}, log)
+		default:
+			err = fmt.Errorf("unknown subcommand %q", os.Args[1])
 		}
-		err = seed(ctx, seedConfig{dir: *dir, ffmpeg: *ffmpeg, base: *base, libraryURL: *libraryURL, databaseURL: *dbURL}, log)
-	default:
-		err = fmt.Errorf("unknown subcommand %q", os.Args[1])
 	}
 	if err != nil {
 		log.Error("demo-library failed", "cmd", os.Args[1], "err", err)
@@ -69,22 +74,30 @@ func main() {
 	}
 }
 
-func serve(ctx context.Context, dir, ffmpeg, addr string, log *slog.Logger) error {
-	if err := demolibrary.Generate(ctx, dir, ffmpeg, log); err != nil {
+func loadLibrary(content string) (*demolibrary.Library, error) {
+	c, err := demolibrary.ParseContent(content)
+	if err != nil {
+		return nil, err
+	}
+	return demolibrary.Load(c)
+}
+
+func serve(ctx context.Context, lib *demolibrary.Library, dir, ffmpeg, addr string, log *slog.Logger) error {
+	if err := demolibrary.Generate(ctx, lib, dir, ffmpeg, log); err != nil {
 		return err
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: demolibrary.Server{Layout: demolibrary.Layout{Dir: dir}, Token: DemoToken}, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: demolibrary.Server{Layout: demolibrary.Layout{Dir: dir}, Library: lib, Token: DemoToken}, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdown)
 	}()
-	log.Info("demo library serving", "url", "http://"+ln.Addr().String(), "token", DemoToken, "titles", len(demolibrary.Catalogue))
+	log.Info("demo library serving", "url", "http://"+ln.Addr().String(), "token", DemoToken, "content", lib.Content, "titles", len(lib.Titles))
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

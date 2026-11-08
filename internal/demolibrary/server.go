@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Server is an Emby-compatible stand-in media server for the demo catalogue.
+// Server is an Emby-compatible stand-in media server for a demo Library.
 //
 // Why a server and not an adapter behind the library port: Loomarr talks to its media server
 // through one concrete HTTP client (internal/library) whose whole surface is a handful of Emby
@@ -23,6 +23,8 @@ import (
 // It answers exactly the queries internal/library sends; anything else is 404.
 type Server struct {
 	Layout Layout
+	// Library is what it serves: Invented() or the open pack (Load).
+	Library *Library
 	// Token is the API key clients must present (library.token). Empty accepts any request.
 	Token string
 }
@@ -81,7 +83,7 @@ func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		items, filler := filepath.Join(dir, "items"), filepath.Join(dir, "filler")
+		items, filler := filepath.Join(dir, "items"), s.Library.FillerDir(Layout{Dir: dir})
 		writeJSON(w, []map[string]any{
 			{"Name": "Movies", "ItemId": moviesLibraryID, "CollectionType": "movies", "Locations": []string{items}},
 			{"Name": "Shows", "ItemId": showsLibraryID, "CollectionType": "tvshows", "Locations": []string{items}},
@@ -156,7 +158,7 @@ func (s Server) image(w http.ResponseWriter, r *http.Request, path string) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, ok := ByID(parts[0]); !ok {
+	if _, ok := s.Library.ByID(parts[0]); !ok {
 		http.NotFound(w, r)
 		return
 	}
@@ -165,30 +167,30 @@ func (s Server) image(w http.ResponseWriter, r *http.Request, path string) {
 
 // mediaPath is the local file behind a playable item: a film, an episode or a filler clip.
 func (s Server) mediaPath(id string) (string, bool) {
-	for _, f := range Fillers {
+	for _, f := range s.Library.Fillers {
 		if f.ID == id {
-			return s.Layout.Filler(id), true
+			return s.Library.FillerPath(s.Layout, id), true
 		}
 	}
-	if t, ok := ByID(id); ok && t.Kind == Movie {
+	if t, ok := s.Library.ByID(id); ok && t.Kind == Movie {
 		return s.Layout.Item(id), true
 	}
-	if _, _, ok := episodeByID(id); ok {
+	if _, _, ok := s.episodeByID(id); ok {
 		return s.Layout.Item(id), true
 	}
 	return "", false
 }
 
-func episodeByID(id string) (Title, Episode, bool) {
+func (s Server) episodeByID(id string) (Title, Episode, bool) {
 	seriesID, _, ok := strings.Cut(id, "-s01e")
 	if !ok {
 		return Title{}, Episode{}, false
 	}
-	t, ok := ByID(seriesID)
+	t, ok := s.Library.ByID(seriesID)
 	if !ok {
 		return Title{}, Episode{}, false
 	}
-	for _, e := range EpisodesOf(t) {
+	for _, e := range s.Library.EpisodesOf(t) {
 		if e.ID == id {
 			return t, e, true
 		}
@@ -211,13 +213,13 @@ func (s Server) items(r *http.Request) []map[string]any {
 			}
 		}
 	case q.Get("ParentId") == fillerLibraryID:
-		for _, f := range Fillers {
+		for _, f := range s.Library.Fillers {
 			out = append(out, s.fillerJSON(f))
 		}
 	case q.Get("ParentId") != "" && q.Get("ParentId") != moviesLibraryID && q.Get("ParentId") != showsLibraryID:
-		t, ok := ByID(q.Get("ParentId"))
+		t, ok := s.Library.ByID(q.Get("ParentId"))
 		if ok && t.Kind == Series && wantType("Episode") {
-			for _, e := range EpisodesOf(t) {
+			for _, e := range s.Library.EpisodesOf(t) {
 				out = append(out, s.episodeJSON(t, e))
 			}
 		}
@@ -232,7 +234,7 @@ func (s Server) items(r *http.Request) []map[string]any {
 		}
 		provider := q.Get("AnyProviderIdEquals")
 		term := strings.ToLower(strings.TrimSpace(q.Get("SearchTerm")))
-		for _, t := range Catalogue {
+		for _, t := range s.Library.Titles {
 			if !wantType(string(t.Kind)) {
 				continue
 			}
@@ -285,13 +287,13 @@ func matches(t Title, term string) bool {
 }
 
 func (s Server) itemByID(id string) (map[string]any, bool) {
-	if t, ok := ByID(id); ok {
+	if t, ok := s.Library.ByID(id); ok {
 		return s.titleJSON(t), true
 	}
-	if t, e, ok := episodeByID(id); ok {
+	if t, e, ok := s.episodeByID(id); ok {
 		return s.episodeJSON(t, e), true
 	}
-	for _, f := range Fillers {
+	for _, f := range s.Library.Fillers {
 		if f.ID == id {
 			return s.fillerJSON(f), true
 		}
@@ -300,7 +302,12 @@ func (s Server) itemByID(id string) (map[string]any, bool) {
 }
 
 func (s Server) titleJSON(t Title) map[string]any {
-	f, _ := FormatByID(t.Format)
+	// A series reports its first episode's runtime, as its typical episode length.
+	shapeID := t.ID()
+	if eps := s.Library.EpisodesOf(t); t.Kind == Series && len(eps) > 0 {
+		shapeID = eps[0].ID
+	}
+	f, _ := s.Library.Shape(shapeID)
 	item := map[string]any{
 		"Id": t.ID(), "Name": t.Name, "SortName": t.Name, "Type": string(t.Kind), "ProductionYear": t.Year,
 		"PremiereDate": strconv.Itoa(t.Year) + "-01-01T00:00:00.0000000Z", "Genres": t.Genres,
@@ -321,11 +328,18 @@ func (s Server) titleJSON(t Title) map[string]any {
 }
 
 func (s Server) episodeJSON(t Title, e Episode) map[string]any {
-	f, _ := FormatByID(t.Format)
+	f, _ := s.Library.Shape(e.ID)
+	year, overview := t.Year, t.Overview
+	if e.Year != 0 {
+		year = e.Year
+	}
+	if e.Overview != "" {
+		overview = e.Overview
+	}
 	item := map[string]any{
 		"Id": e.ID, "Name": e.Name, "Type": "Episode", "SeriesId": t.ID(), "SeriesName": t.Name, "ParentId": t.ID(),
 		"ParentIndexNumber": e.Season, "IndexNumber": e.Number, "RunTimeTicks": int64(f.Duration) * ticksPerSecond,
-		"OfficialRating": t.Rating, "ProductionYear": t.Year, "Overview": t.Overview, "Genres": t.Genres,
+		"OfficialRating": t.Rating, "ProductionYear": year, "Overview": overview, "Genres": t.Genres,
 		"DateCreated": dateCreated, "DateLastSaved": dateCreated, "Path": s.abs(s.Layout.Item(e.ID)),
 	}
 	s.addMedia(item, e.ID, f)
@@ -335,9 +349,10 @@ func (s Server) episodeJSON(t Title, e Episode) map[string]any {
 func (s Server) fillerJSON(f Filler) map[string]any {
 	item := map[string]any{
 		"Id": f.ID, "Name": f.Name, "Type": "Video", "ParentId": fillerLibraryID, "RunTimeTicks": int64(f.Duration) * ticksPerSecond,
-		"DateCreated": dateCreated, "DateLastSaved": dateCreated, "Path": s.abs(s.Layout.Filler(f.ID)),
+		"DateCreated": dateCreated, "DateLastSaved": dateCreated, "Path": s.abs(s.Library.FillerPath(s.Layout, f.ID)),
 	}
-	s.addMedia(item, f.ID, Format{Width: 1920, Height: 1080, Codec: "h264", Duration: f.Duration})
+	shape, _ := s.Library.Shape(f.ID)
+	s.addMedia(item, f.ID, shape)
 	return item
 }
 
@@ -354,11 +369,15 @@ func (s Server) addMedia(item map[string]any, id string, f Format) {
 	if f.HDR10 {
 		transfer, primaries, rng = "smpte2084", "bt2020", "HDR10"
 	}
+	audio := f.Audio
+	if audio == "" {
+		audio = "aac"
+	}
 	streams := []map[string]any{
 		{"Index": 0, "Type": "Video", "Codec": f.Codec, "Profile": profile, "Width": f.Width, "Height": f.Height,
 			"RealFrameRate": 24, "PixelFormat": pix, "ColorTransfer": transfer, "ColorPrimaries": primaries,
 			"VideoRangeType": rng, "IsDefault": true},
-		{"Index": 1, "Type": "Audio", "Codec": "aac", "Channels": 2, "ChannelLayout": "stereo", "SampleRate": 48000,
+		{"Index": 1, "Type": "Audio", "Codec": audio, "Channels": 2, "ChannelLayout": "stereo", "SampleRate": 48000,
 			"Language": "eng", "IsDefault": true},
 	}
 	item["MediaStreams"] = streams

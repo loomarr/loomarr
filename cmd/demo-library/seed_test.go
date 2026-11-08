@@ -16,8 +16,21 @@ import (
 
 // `make demo-seed` must be safe to rerun: the docs capture script runs it before every shoot.
 // Running the store half twice must bind each demo channel once, keep its id, and leave every
-// lineup title available through the approval gate.
+// lineup title available through the approval gate. The open pack's channels go through the same
+// gate, so both libraries are checked.
 func TestDemoSeedChannelsAreIdempotent(t *testing.T) {
+	for _, content := range []demolibrary.Content{demolibrary.ContentInvented, demolibrary.ContentOpen} {
+		t.Run(string(content), func(t *testing.T) {
+			lib, err := demolibrary.Load(content)
+			if err != nil {
+				t.Fatal(err)
+			}
+			seedTwice(t, lib)
+		})
+	}
+}
+
+func seedTwice(t *testing.T, lib *demolibrary.Library) {
 	ctx := context.Background()
 	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/demo.db", true)
 	if err != nil {
@@ -32,8 +45,8 @@ func TestDemoSeedChannelsAreIdempotent(t *testing.T) {
 		}
 		approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 		ids := map[int]string{}
-		for _, c := range demolibrary.Channels {
-			id, err := ensureChannel(ctx, st, approver, admin.ID, c)
+		for _, c := range lib.Channels {
+			id, err := ensureChannel(ctx, st, approver, lib, admin.ID, c)
 			if err != nil {
 				t.Fatalf("channel %d: %v", c.Number, err)
 			}
@@ -47,8 +60,8 @@ func TestDemoSeedChannelsAreIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(channels) != len(demolibrary.Channels) {
-		t.Fatalf("channels after two runs = %d, want %d", len(channels), len(demolibrary.Channels))
+	if len(channels) != len(lib.Channels) {
+		t.Fatalf("channels after two runs = %d, want %d", len(channels), len(lib.Channels))
 	}
 	for n, id := range first {
 		if second[n] != id {
@@ -69,12 +82,12 @@ func TestDemoSeedChannelsAreIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list demo-seeded proposal jobs through the workflow: %v", err)
 	}
-	if len(journeys) != len(demolibrary.Channels) {
-		t.Errorf("journeys = %d, want one per demo channel (%d)", len(journeys), len(demolibrary.Channels))
+	if len(journeys) != len(lib.Channels) {
+		t.Errorf("journeys = %d, want one per demo channel (%d)", len(journeys), len(lib.Channels))
 	}
-	for _, c := range demolibrary.Channels {
+	for _, c := range lib.Channels {
 		for _, id := range c.Titles {
-			ti, _ := demolibrary.ByID(id)
+			ti, _ := lib.ByID(id)
 			rec, err := st.GetTitle(ctx, provision.Key(ti.Key()))
 			if err != nil {
 				t.Fatalf("title %s: %v", ti.Key(), err)

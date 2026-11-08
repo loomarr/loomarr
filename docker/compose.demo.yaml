@@ -1,5 +1,8 @@
-# The demo site: real Loomarr beside the invented demo library. No media server, LLM or TMDB key,
-# and nothing here is household data. Staging runs this same stack. Use `make demo-site`.
+# The demo site: real Loomarr beside the demo library. No media server, LLM or TMDB key, and
+# nothing here is household data. Staging runs this same stack. Use `make demo-site`.
+#
+# DEMO_SITE_CONTENT picks the library: invented (the default) or open, the licensed content pack
+# the public site serves. Switching it on a kept store needs `scripts/demo-site.sh down` first.
 #
 # The demo sign-in is public (it is in this repository), so the port binds to loopback by default.
 # Only widen DEMO_SITE_BIND on a private network.
@@ -41,11 +44,15 @@ services:
   demo-library:
     <<: *demo-image
     entrypoint: ["demo-library", "serve", "--dir", "/demo", "--addr", "0.0.0.0:8096"]
+    environment:
+      # invented (generated, the default) or open: the licensed content pack the public site serves
+      # (docs/demo-content-credits.md), downloaded and hash-checked on first start.
+      DEMO_CONTENT: ${DEMO_SITE_CONTENT:-invented}
     volumes:
       - demo-assets:/demo
     cpus: ${DEMO_SITE_CPUS:-4}
-    # The image has no curl. The first start generates every asset before it listens, which is why
-    # this window is long.
+    # The image has no curl. The first start generates (or, for the open pack, downloads) every
+    # asset before it listens, which is why this window is long.
     healthcheck:
       test:
         - CMD
@@ -72,6 +79,7 @@ services:
     environment:
       DATABASE_URL: sqlite:///data/loomarr.db
       DEMO_WEB_URL: ${DEMO_SITE_URL:-http://localhost:8088}
+      DEMO_CONTENT: ${DEMO_SITE_CONTENT:-invented}
     volumes:
       - demo-data:/data
       - demo-assets:/demo

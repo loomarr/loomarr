@@ -1,0 +1,501 @@
+{
+  "version": 1,
+  "titles": [
+    {
+      "n": 1,
+      "kind": "Movie",
+      "name": "Big Buck Bunny",
+      "year": 2008,
+      "rating": "G",
+      "genres": ["Animation", "Comedy"],
+      "overview": "A gentle giant of a rabbit is enjoying a quiet day in the meadow until three bullying rodents spoil it, so he plans a slapstick revenge.",
+      "posterAt": 200,
+      "backdropAt": 380,
+      "media": {
+        "url": "https://archive.org/download/BigBuckBunnyFULLHD60FPS/Big%20Buck%20Bunny%20-%20FULL%20HD%2060FPS.mp4",
+        "sha256": "658cb0019af04f7016b9686a6329e9120f97cb7d0cb67ab5fa0af6dd4f519e40",
+        "size": 339489735,
+        "seconds": 634.583515,
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/by/3.0/",
+        "source": "https://peach.blender.org/about/",
+        "credit": "Big Buck Bunny (2008) © Blender Foundation | peach.blender.org.",
+        "allAges": true
+      }
+    },
+    {
+      "n": 2,
+      "kind": "Movie",
+      "name": "Wing It!",
+      "year": 2023,
+      "rating": "G",
+      "genres": ["Animation", "Comedy"],
+      "overview": "A cat is determined to launch the rocket he built in a barn, and his dog assistant is just as determined to help, whatever the instructions say.",
+      "posterAt": 80,
+      "backdropAt": 160,
+      "media": {
+        "url": "https://archive.org/download/wing_it/wing_it.mp4",
+        "sha256": "6e57e8d0a0d746c04ae1024f1680a53c3b4b24e4cb58ae0bd24e28a9385ee124",
+        "size": 65577790,
+        "seconds": 237.937,
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/by/4.0/",
+        "source": "https://studio.blender.org/projects/wing-it/pages/licensing/",
+        "credit": "Wing It! (2023) (CC) Blender Foundation | studio.blender.org.",
+        "allAges": true
+      }
+    },
+    {
+      "n": 3,
+      "kind": "Movie",
+      "name": "Caminandes: Llamigos",
+      "year": 2016,
+      "rating": "G",
+      "genres": ["Animation", "Comedy"],
+      "overview": "Koro the llama is after the last berries of winter in Patagonia, but a penguin called Oti wants them too.",
+      "posterAt": 115,
+      "backdropAt": 15,
+      "media": {
+        "url": "https://archive.org/download/CaminandesLlamigos/Caminandes_%20Llamigos-1080p.mp4",
+        "sha256": "826513349ecf02d83b22f414514704e3bba10ff28fb45408a6cdf6cc57bacc06",
+        "size": 138945811,
+        "seconds": 150.100998,
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/by/3.0/",
+        "source": "https://video.blender.org/videos/watch/23f3ef79-15dc-44c5-aa45-cf92e78a4509",
+        "credit": "Caminandes: Llamigos (2016) © Blender Foundation | studio.blender.org.",
+        "allAges": true
+      }
+    },
+    {
+      "n": 4,
+      "kind": "Movie",
+      "name": "Popeye the Sailor Meets Sindbad the Sailor",
+      "year": 1936,
+      "rating": "G",
+      "genres": ["Animation", "Adventure"],
+      "overview": "Sindbad boasts that he is the greatest sailor in the world, until Popeye, Olive Oyl and Wimpy land on his island. A two-reel Technicolor special.",
+      "posterAt": 760,
+      "backdropAt": 20,
+      "media": {
+        "url": "https://archive.org/download/popeye-the-sailor-meets-sindbad-the-sailor-1936-1080p/Popeye%20The%20Sailor%20Meets%20Sindbad%20The%20Sailor%20%281936%29%20%5B1080p%5D.mp4",
+        "sha256": "afb05f51113035edd0b37454fcd7708a54504855af3db8f7720cf813b43e14c1",
+        "size": 281611162,
+        "seconds": 943,
+        "width": 1440,
+        "height": 1074,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/publicdomain/mark/1.0/",
+        "source": "https://archive.org/details/popeye-the-sailor-meets-sindbad-the-sailor-1936-1080p",
+        "credit": "Popeye the Sailor Meets Sindbad the Sailor (1936), Fleischer Studios, released by Paramount Pictures. Public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "n": 5,
+      "kind": "Movie",
+      "name": "Design for Dreaming",
+      "year": 1956,
+      "rating": "G",
+      "genres": ["Documentary", "Musical"],
+      "overview": "A woman dances through her dream of the 1956 General Motors Motorama: futuristic dream cars, the latest fashions and a push-button Kitchen of the Future.",
+      "posterAt": 80,
+      "backdropAt": 400,
+      "media": {
+        "url": "https://archive.org/download/Designfo1956/Designfo1956.mp4",
+        "sha256": "b89182df52aa00ee80565c2eaf1fcd2997d4afb1a5f29329f1da3bc838b72b20",
+        "size": 57947878,
+        "seconds": 556.789567,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/Designfo1956",
+        "credit": "Design for Dreaming (1956), MPO Productions for General Motors. Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "n": 1,
+      "kind": "Series",
+      "name": "Superman",
+      "year": 1941,
+      "rating": "TV-G",
+      "genres": ["Animation", "Action"],
+      "overview": "Max Fleischer's Technicolor Superman cartoons: the Man of Steel saves Metropolis from mad scientists, robots and runaway disasters, while Lois Lane chases the story.",
+      "posterAt": 540,
+      "backdropAt": 20,
+      "episodes": [
+        {
+          "name": "The Mad Scientist",
+          "year": 1941,
+          "overview": "A mad scientist turns his ray on Metropolis, and Lois Lane flies out to get the story first.",
+          "media": {
+            "url": "https://archive.org/download/superman-the-complete-collection-fleischerfamous-studios/Superman%20E01%20-%20The%20Mad%20Scientist%20%281941%29.mp4",
+            "sha256": "dc0319bc98321e041ee9147ed0b467d2e9d2425bf3bb2665e85bb7069718c928",
+            "size": 59795507,
+            "seconds": 620.76,
+            "width": 640,
+            "height": 480,
+            "codec": "h264",
+            "audio": "aac",
+            "licence": "https://creativecommons.org/publicdomain/mark/1.0/",
+            "source": "https://archive.org/details/superman-the-complete-collection-fleischerfamous-studios",
+            "credit": "Superman (1941), Fleischer Studios, released by Paramount Pictures. Public domain, via the Internet Archive.",
+            "allAges": true
+          }
+        },
+        {
+          "name": "The Mechanical Monsters",
+          "year": 1941,
+          "overview": "Flying robots are robbing the city's banks, and Lois hitches a ride on one back to its inventor's hideout.",
+          "media": {
+            "url": "https://archive.org/download/superman-the-complete-collection-fleischerfamous-studios/Superman%20E02%20-%20The%20Mechanical%20Monsters%20%281941%29.mp4",
+            "sha256": "5c971019454b50b325057fadace1f532576d5e9861a0dcb388a215ab03c582cf",
+            "size": 58294982,
+            "seconds": 611.28,
+            "width": 640,
+            "height": 480,
+            "codec": "h264",
+            "audio": "aac",
+            "licence": "https://creativecommons.org/publicdomain/mark/1.0/",
+            "source": "https://archive.org/details/superman-the-complete-collection-fleischerfamous-studios",
+            "credit": "Superman (1941), Fleischer Studios, released by Paramount Pictures. Public domain, via the Internet Archive.",
+            "allAges": true
+          }
+        },
+        {
+          "name": "Billion Dollar Limited",
+          "year": 1942,
+          "overview": "Bandits go after a train carrying a fortune in gold, with Lois on board.",
+          "media": {
+            "url": "https://archive.org/download/superman-the-complete-collection-fleischerfamous-studios/Superman%20E03%20-%20Billion%20Dollar%20Limited%20%281942%29.mp4",
+            "sha256": "fbc3974d080f45baff2b7733f6aecd1097358b9e01992cffa0ff78b4d032df54",
+            "size": 48936319,
+            "seconds": 512.92,
+            "width": 640,
+            "height": 480,
+            "codec": "h264",
+            "audio": "aac",
+            "licence": "https://creativecommons.org/publicdomain/mark/1.0/",
+            "source": "https://archive.org/details/superman-the-complete-collection-fleischerfamous-studios",
+            "credit": "Superman (1942), Fleischer Studios, released by Paramount Pictures. Public domain, via the Internet Archive.",
+            "allAges": true
+          }
+        },
+        {
+          "name": "The Arctic Giant",
+          "year": 1942,
+          "overview": "A giant creature frozen in Arctic ice thaws out on display in a Metropolis museum.",
+          "media": {
+            "url": "https://archive.org/download/superman-the-complete-collection-fleischerfamous-studios/Superman%20E04%20-%20The%20Arctic%20Giant%20%281942%29.mp4",
+            "sha256": "859bb9b26c84cefce454600b10e9dc8d3d4c53a9a08057894be441fe32941d5b",
+            "size": 49370588,
+            "seconds": 513.68,
+            "width": 640,
+            "height": 480,
+            "codec": "h264",
+            "audio": "aac",
+            "licence": "https://creativecommons.org/publicdomain/mark/1.0/",
+            "source": "https://archive.org/details/superman-the-complete-collection-fleischerfamous-studios",
+            "credit": "Superman (1942), Fleischer Studios, released by Paramount Pictures. Public domain, via the Internet Archive.",
+            "allAges": true
+          }
+        },
+        {
+          "name": "The Bulleteers",
+          "year": 1942,
+          "overview": "Crooks in a bullet-shaped rocket car threaten to flatten Metropolis unless the city pays up.",
+          "media": {
+            "url": "https://archive.org/download/superman-the-complete-collection-fleischerfamous-studios/Superman%20E05%20-%20The%20Bulleteers%20%281942%29.mp4",
+            "sha256": "b9f9e59abf0052c24de098a90396965892224527b12c3af0a2163d5e822a8da9",
+            "size": 46347151,
+            "seconds": 480.04,
+            "width": 640,
+            "height": 480,
+            "codec": "h264",
+            "audio": "aac",
+            "licence": "https://creativecommons.org/publicdomain/mark/1.0/",
+            "source": "https://archive.org/details/superman-the-complete-collection-fleischerfamous-studios",
+            "credit": "Superman (1942), Fleischer Studios, released by Paramount Pictures. Public domain, via the Internet Archive.",
+            "allAges": true
+          }
+        },
+        {
+          "name": "The Magnetic Telescope",
+          "year": 1942,
+          "overview": "A scientist's giant magnetic telescope drags a comet towards the city.",
+          "media": {
+            "url": "https://archive.org/download/superman-the-complete-collection-fleischerfamous-studios/Superman%20E06%20-%20The%20Magnetic%20Telescope%20%281942%29.mp4",
+            "sha256": "c0574561b2feeb2d0b5cab1df0b651db627e96026b48cb8659ff0ebd96899e93",
+            "size": 44245955,
+            "seconds": 453.32,
+            "width": 640,
+            "height": 480,
+            "codec": "h264",
+            "audio": "aac",
+            "licence": "https://creativecommons.org/publicdomain/mark/1.0/",
+            "source": "https://archive.org/details/superman-the-complete-collection-fleischerfamous-studios",
+            "credit": "Superman (1942), Fleischer Studios, released by Paramount Pictures. Public domain, via the Internet Archive.",
+            "allAges": true
+          }
+        }
+      ]
+    }
+  ],
+  "fillers": [
+    {
+      "id": "trailer-coming-attractions-1940",
+      "name": "Previews of Coming Attractions trailer",
+      "media": {
+        "url": "https://archive.org/download/Previews1940/Previews1940.mp4",
+        "sha256": "8ccb406cdc06d84fe3e89af96f61c7b02bb6704b79ee87b7cec297c5cb002451",
+        "size": 2017418,
+        "seconds": 19.5195,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/Previews1940",
+        "credit": "Previews of Coming Attractions (ca. 1940). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-time-savers-1936",
+      "name": "Time Savers for House Makers screen ad",
+      "media": {
+        "url": "https://archive.org/download/TimeSave1936/TimeSave1936.mp4",
+        "sha256": "77780fceb66490935b9a3647d632ed52381101e3a7fc6e31efb9b077114d3418",
+        "size": 6167517,
+        "seconds": 59.8598,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/TimeSave1936",
+        "credit": "Time Savers for House Makers (ca. 1936). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-cheerios-1960",
+      "name": "Cheerios and V-8 commercial",
+      "media": {
+        "url": "https://archive.org/download/Cheerios1960/Cheerios1960.mp4",
+        "sha256": "a48625c19c49015546c1e91a764f7d73aa6c20db218a3a6a07f52b20870e9760",
+        "size": 6338894,
+        "seconds": 60.927533,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/Cheerios1960",
+        "credit": "Cheerios/V-8 (1960). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-esso-extra-1938",
+      "name": "Esso Extra screen ad",
+      "media": {
+        "url": "https://archive.org/download/ExtraEss1938/ExtraEss1938.mp4",
+        "sha256": "8ae634070b54b57ab435fdfddb533c57b1fa82a82db9bf99e1b16552e8ef8dcf",
+        "size": 6344348,
+        "seconds": 60.927533,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/ExtraEss1938",
+        "credit": "Extra (Esso Screen Ad) (ca. 1938). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-dreft-1937",
+      "name": "A Film Mystery: Dreft screen ad",
+      "media": {
+        "url": "https://archive.org/download/FilmMyst1937/FilmMyst1937.mp4",
+        "sha256": "2982f7586d31cfa3235b65f10a90e15e8c0dbc4160ec1e644267eec1edfedade",
+        "size": 6235717,
+        "seconds": 60.126733,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/FilmMyst1937",
+        "credit": "A Film Mystery (Dreft Screen Ad) (ca. 1937). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-nonesuch-coffee-1934",
+      "name": "Nonesuch Coffee screen ad",
+      "media": {
+        "url": "https://archive.org/download/Nonesuch1934/Nonesuch1934.mp4",
+        "sha256": "3df74dc856951e80c03f8ccc96e762138dd80a08573cdf325fbdd48d89b62a05",
+        "size": 6299627,
+        "seconds": 60.827433,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/Nonesuch1934",
+        "credit": "Nonesuch Coffee Ad (ca. 1934). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-whiz-bar-1938",
+      "name": "Party Magic: Whiz bar screen ad",
+      "media": {
+        "url": "https://archive.org/download/PartyMag1938/PartyMag1938.mp4",
+        "sha256": "116be05f9b6fa61e6c73ce5219c461aeeba04424078348514bb66a24ab1c8cc9",
+        "size": 6345818,
+        "seconds": 61.094367,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/PartyMag1938",
+        "credit": "Party Magic (Beich Screen Ad) (ca. 1938). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "trailer-independence-day-1940",
+      "name": "Independence Day 1940 theatre trailer",
+      "media": {
+        "url": "https://archive.org/download/MovieTra1940/MovieTra1940.mp4",
+        "sha256": "9f1f0e1d1d9b37f6702cce56293843c74b03c5f874bbabc3b713fc1bc97030df",
+        "size": 4292733,
+        "seconds": 41.307933,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/MovieTra1940",
+        "credit": "Movie Trailers (\"Independence Day, 1940\" Promotion) (1940). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "trailer-mothers-day-1934",
+      "name": "Mother's Day 1934 theatre trailer",
+      "media": {
+        "url": "https://archive.org/download/MovieTra1934/MovieTra1934.mp4",
+        "sha256": "fa60d1e79e7e2ba3153e7c9a950f8686a0522f59f57f25d9233c8454ac57f5f4",
+        "size": 5093919,
+        "seconds": 48.915533,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/MovieTra1934",
+        "credit": "Movie Trailers (\"Mother's Day, May 13, 1934\" Promotion) (1934). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-singer-1940",
+      "name": "She Caught On Quick: Singer screen ad",
+      "media": {
+        "url": "https://archive.org/download/SheCaugh1940/SheCaugh1940.mp4",
+        "sha256": "0510deb77783163aaf7520bb84d75d79d40106f035dc994b2fa7d2b195388852",
+        "size": 8286337,
+        "seconds": 79.5795,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/SheCaugh1940",
+        "credit": "She Caught on Quick (Singer Screen Ad) (1940), Jam Handy Organization. Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-chevrolet-1939",
+      "name": "The Trip: Chevrolet screen ad",
+      "media": {
+        "url": "https://archive.org/download/TripThe1939/TripThe1939.mp4",
+        "sha256": "a6e5fb7825f2654755d3526e9bc42b2a531d5239477b310ae8c01f3675fe527c",
+        "size": 5173670,
+        "seconds": 50.183467,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/TripThe1939",
+        "credit": "The Trip (1939), Jam Handy Organization. Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    },
+    {
+      "id": "commercial-oldsmobile-1941",
+      "name": "Oldsmobile Hydra-Matic screen ad",
+      "media": {
+        "url": "https://archive.org/download/Oldsmobi1941/Oldsmobi1941.mp4",
+        "sha256": "c15195953a6b88edcc2f3459741a2b901112ae707fc0b971329b43f3575fe3c5",
+        "size": 5178262,
+        "seconds": 50.216833,
+        "width": 640,
+        "height": 480,
+        "codec": "h264",
+        "audio": "aac",
+        "licence": "https://creativecommons.org/licenses/publicdomain/",
+        "source": "https://archive.org/details/Oldsmobi1941",
+        "credit": "Oldsmobile Presents Motoring's Magic Carpet (1941). Prelinger Archives, public domain, via the Internet Archive.",
+        "allAges": true
+      }
+    }
+  ],
+  "channels": [
+    {
+      "number": 101,
+      "name": "Saturday Morning Cartoons",
+      "group": "Kids",
+      "strategy": "shuffle",
+      "watermark": true,
+      "titles": ["open-series-01", "open-film-04", "open-film-01", "open-film-02", "open-film-03"]
+    },
+    {
+      "number": 102,
+      "name": "Open Movie Night",
+      "group": "Movies & Series",
+      "strategy": "sequential",
+      "watermark": true,
+      "titles": ["open-film-01", "open-film-02", "open-film-03"]
+    },
+    {
+      "number": 103,
+      "name": "Retro Rewind",
+      "group": "Classics",
+      "strategy": "shuffle",
+      "watermark": false,
+      "titles": ["open-series-01", "open-film-04", "open-film-05"]
+    }
+  ]
+}

@@ -39,6 +39,20 @@ sqlite | postgres) ;;
 esac
 
 PUBLIC="${DEMO_SITE_PUBLIC:-0}"
+
+# DEMO_SITE_CONTENT=open serves the licensed open content pack (docs/demo-content-credits.md)
+# instead of the invented library. The public site defaults to it; everything else to invented.
+DEFAULT_CONTENT=invented
+[ "$PUBLIC" = 1 ] && DEFAULT_CONTENT=open
+export DEMO_SITE_CONTENT="${DEMO_SITE_CONTENT:-$DEFAULT_CONTENT}"
+case "$DEMO_SITE_CONTENT" in
+invented | open) ;;
+*)
+	echo "demo-site: DEMO_SITE_CONTENT must be invented or open, not $DEMO_SITE_CONTENT" >&2
+	exit 2
+	;;
+esac
+
 ADMIN_LOGIN='{"username":"demo","password":"loomarr-demo"}'
 GUEST_USER=guest
 GUEST_PASSWORD=loomarr-guest
