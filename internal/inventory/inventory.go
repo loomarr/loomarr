@@ -97,6 +97,11 @@ type ItemFacts struct {
 type Disposition struct {
 	Default bool `json:"default,omitempty"`
 	Forced  bool `json:"forced,omitempty"`
+	// Comment is a commentary track; HearingImpaired one for the deaf and hard of hearing (SDH);
+	// VisualImpaired one that describes the picture.
+	Comment         bool `json:"comment,omitempty"`
+	HearingImpaired bool `json:"hearingImpaired,omitempty"`
+	VisualImpaired  bool `json:"visualImpaired,omitempty"`
 }
 
 // Stream is ordered by Index, the source-global stream index. Audio consumers derive ffmpeg's
@@ -121,8 +126,10 @@ type Stream struct {
 	ColorTransfer  string      `json:"colorTransfer,omitempty"`
 	ColorPrimaries string      `json:"colorPrimaries,omitempty"`
 	HDR            bool        `json:"hdr,omitempty"`
-	Interlaced     bool        `json:"interlaced,omitempty"`
-	SubtitleFormat string      `json:"subtitleFormat,omitempty"`
+	// DolbyVision is a video stream's Dolby Vision profile, 0 for none.
+	DolbyVision    int    `json:"dolbyVision,omitempty"`
+	Interlaced     bool   `json:"interlaced,omitempty"`
+	SubtitleFormat string `json:"subtitleFormat,omitempty"`
 }
 
 type SourceFacts struct {

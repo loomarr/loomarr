@@ -1416,12 +1416,13 @@ func inventoryFactsOf(observed playout.SourceObservation) inventory.SourceFacts 
 		facts.Streams = append(facts.Streams, inventory.Stream{
 			Index: stream.Index, Kind: inventory.StreamKind(stream.Kind), Codec: stream.Codec,
 			Profile: stream.Profile, Level: stream.Level, Language: stream.Language, Title: stream.Title,
-			Disposition: inventory.Disposition{Default: stream.Default, Forced: stream.Forced},
-			Channels:    stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: stream.SampleRate,
+			Disposition: inventory.Disposition{Default: stream.Default, Forced: stream.Forced, Comment: stream.Comment,
+				HearingImpaired: stream.HearingImpaired, VisualImpaired: stream.VisualImpaired},
+			Channels: stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: stream.SampleRate,
 			Width: stream.Width, Height: stream.Height, FrameRate: stream.FrameRate,
 			PixelFormat: stream.PixelFormat, ColorSpace: stream.ColorSpace,
 			ColorTransfer: stream.ColorTransfer, ColorPrimaries: stream.ColorPrimaries,
-			HDR: stream.HDR, Interlaced: stream.Interlaced,
+			HDR: stream.HDR, DolbyVision: stream.DolbyVision, Interlaced: stream.Interlaced,
 			SubtitleFormat: func() string {
 				if stream.Kind == string(inventory.StreamSubtitle) {
 					return stream.Codec

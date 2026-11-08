@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -91,6 +92,9 @@ type Importer struct {
 	// RootReadability hears when a pass finds a root stopped opening, or opens again (decision
 	// 32). Nil hears nothing.
 	RootReadability func(ctx context.Context, root string, readable bool)
+
+	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
+	readerVersion int
 
 	run sync.Mutex
 	// index is the arr index the last listing built, reused by folder passes, and indexPaths the
@@ -584,10 +588,11 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		}
 		b.markWritten(id)
 		snapshot := b.snapshot(ctx, file, id, now)
-		var header *inventory.SourceFacts
+		var read *inventory.SourceFacts
+		var readBy int
 		if sameBytes && old.Header == store.LibraryHeaderRead {
-			header = im.lastHeader(ctx, snapshot.Origin)
-			if header == nil {
+			read, readBy = im.lastHeader(ctx, snapshot.Origin)
+			if read == nil {
 				row.Header = store.LibraryHeaderPending
 			}
 		} else if from, ok := moved[file.Stat]; ok && !sameBytes {
@@ -595,12 +600,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			// opened again.
 			delete(moved, file.Stat)
 			if rel, err := filepath.Rel(root, from.Path); err == nil {
-				if header = im.lastHeader(ctx, fileOrigin(root, filepath.ToSlash(rel))); header != nil {
+				if read, readBy = im.lastHeader(ctx, fileOrigin(root, filepath.ToSlash(rel))); read != nil {
 					row.Header = store.LibraryHeaderRead
 				}
 			}
 		}
-		snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(file, header, now)}
+		// An older reader's facts stand, and the title stays ready, until this reader reads the file
+		// again; till then the file keeps its old identity, so a pass cut short comes back to it.
+		reread := read != nil && readBy < im.reader()
+		snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(file, read, readBy, now)}
 		itemID, problem, err := im.applyFile(ctx, snapshot)
 		if err != nil {
 			return result, nil, err
@@ -617,8 +625,12 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		if id.seriesDir != "" {
 			episodes = append(episodes, episodeRow{at: len(save), seriesDir: id.seriesDir})
 		}
-		save = append(save, row)
-		if row.Header == store.LibraryHeaderPending {
+		saved := row
+		if reread {
+			saved.Identity = old.Identity
+		}
+		save = append(save, saved)
+		if row.Header == store.LibraryHeaderPending || reread {
 			queue = append(queue, pending{row: row, file: file, id: id, b: b})
 		}
 	}
@@ -815,22 +827,26 @@ func (im *Importer) apply(ctx context.Context, snapshot inventory.Snapshot) (inv
 	return im.Inventory.ApplySnapshot(ctx, snapshot)
 }
 
-// lastHeader is the header facts the inventory holds for a file origin, nil when it holds none.
-func (im *Importer) lastHeader(ctx context.Context, origin inventory.OriginKey) *inventory.SourceFacts {
+// lastHeader is the header facts the inventory holds for a file origin and the header.Version that
+// read them; nil when it holds none.
+func (im *Importer) lastHeader(ctx context.Context, origin inventory.OriginKey) (*inventory.SourceFacts, int) {
 	item, ok, err := im.Inventory.Item(ctx, inventory.ItemRef{Origin: &origin})
 	if err != nil || !ok {
-		return nil
+		return nil, 0
 	}
 	for _, src := range item.Sources {
 		for _, o := range src.Origins {
 			if o.Key == origin && o.Observation.Coverage["streams"] == inventory.CoveragePresent {
 				facts := o.Observation.Facts
-				return &facts
+				return &facts, o.Observation.SchemaVersion
 			}
 		}
 	}
-	return nil
+	return nil, 0
 }
+
+// reader is the header.Version this importer's header reads are recorded under.
+func (im *Importer) reader() int { return cmp.Or(im.readerVersion, header.Version) }
 
 func (im *Importer) now() time.Time {
 	if im.Now != nil {

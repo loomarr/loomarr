@@ -40,8 +40,13 @@ func parityCases(dir string) []parityCase {
 				"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
 				"-c:a:0", "aac", "-c:a:1", "ac3", "-ac:a:1", "6", "-c:s", "srt",
 				"-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=fre", "-metadata:s:a:1", "title=Commentary",
-				"-metadata:s:s:0", "language=spa", "-disposition:a:0", "default", "-disposition:a:1", "0",
-				"-disposition:s:0", "forced"),
+				"-metadata:s:s:0", "language=spa", "-disposition:a:0", "default", "-disposition:a:1", "comment",
+				"-disposition:s:0", "forced+hearing_impaired"),
+		},
+		{
+			name: "matroska described audio", file: "described.mkv", mustRead: true,
+			args: append(src("2"), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+				"-c:a", "aac", "-disposition:a:0", "visual_impaired"),
 		},
 		{
 			name: "matroska h264 at 23.976", file: "ntsc.mkv", mustRead: true,
@@ -219,6 +224,10 @@ func compareHeader(t *testing.T, got header.Header, want playout.SourceObservati
 		check("title", g.Title, w.Title)
 		check("default", g.Disposition.Default, w.Default)
 		check("forced", g.Disposition.Forced, w.Forced)
+		check("commentary", g.Disposition.Comment, w.Comment)
+		check("hearing impaired", g.Disposition.HearingImpaired, w.HearingImpaired)
+		check("visual impaired", g.Disposition.VisualImpaired, w.VisualImpaired)
+		check("dolby vision", g.DolbyVision, w.DolbyVision)
 		switch g.Kind {
 		case inventory.StreamVideo:
 			check("width", g.Width, w.Width)

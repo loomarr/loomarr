@@ -41,6 +41,13 @@ func (h Header) SourceFacts() inventory.SourceFacts {
 	}
 }
 
+// Version changes when Read or Probe learns a fact it did not report before, so a header read by
+// an older reader is read once more.
+//
+//	1: containers, durations, streams, colour and chapters.
+//	2: commentary, hearing-impaired and described tracks, and a video track's Dolby Vision profile.
+const Version = 2
+
 // Read returns a file's header facts from its container. ok is false for a container this package
 // does not read (AVI, MPEG-TS, …), one whose header does not parse, or one where a fact playout
 // relies on (pixel format, HDR transfer, field order, frame rate, duration) needs decoding.

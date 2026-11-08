@@ -114,7 +114,7 @@ func (im *Importer) readOne(ctx context.Context, job pending) (store.LibraryFile
 	facts := h.SourceFacts()
 	now := im.now()
 	snapshot := job.b.snapshot(ctx, job.file, job.id, now)
-	snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(job.file, &facts, now)}
+	snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(job.file, &facts, im.reader(), now)}
 	itemID, problem, err := im.applyFile(ctx, snapshot)
 	if err != nil {
 		return row, err

@@ -163,7 +163,7 @@ func (b *builder) identify(file File) identity {
 		}
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
 	}
-	id.digest = identityDigest(file, m, embedded)
+	id.digest = identityDigest(file, m, embedded, b.im.reader())
 	return id
 }
 
