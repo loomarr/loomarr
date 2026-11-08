@@ -5,7 +5,7 @@
 //
 //   - Technical facts: measured, then header, then the manager's summary.
 //   - Identity and numbering: manager, then ids embedded in names, then sidecar, then a confirmed
-//     link.
+//     link, then a search that agreed on name, year and length.
 //   - Descriptive text: a service (catalog or manager) whose text comes from TMDB for movies and
 //     series, or from TVDB for episodes; then any other service; then sidecars. Within each tier,
 //     catalog before manager.
@@ -38,7 +38,7 @@ const ladderCountry = "US"
 
 var (
 	technicalOrder     = []mp.Basis{mp.BasisMeasured, mp.BasisHeader, mp.BasisManager}
-	identityOrder      = []mp.Basis{mp.BasisManager, mp.BasisEmbeddedID, mp.BasisSidecar, mp.BasisLink}
+	identityOrder      = []mp.Basis{mp.BasisManager, mp.BasisEmbeddedID, mp.BasisSidecar, mp.BasisLink, mp.BasisSearch}
 	descriptiveOrder   = []mp.Basis{mp.BasisCatalog, mp.BasisManager, mp.BasisSidecar}
 	certificationOrder = []mp.Basis{mp.BasisCatalog, mp.BasisManager, mp.BasisSidecar}
 	artworkOrder       = []mp.Basis{mp.BasisSidecar, mp.BasisCatalog, mp.BasisManager}

@@ -115,7 +115,7 @@ func (s *Server) checkLibraryItemFiles(ctx context.Context, in *libraryItemIDInp
 
 // libraryMatchDTO says what decides which title an item is, for "Wrong title?" (decision 26).
 type libraryMatchDTO struct {
-	By   string `json:"by" enum:"app,file,you,none" doc:"What says which title this is: the app that manages it, the file itself (an id in its name, or an NFO beside it), your answer, or nothing yet"`
+	By   string `json:"by" enum:"app,file,you,search,none" doc:"What says which title this is: the app that manages it, the file itself (an id in its name, or an NFO beside it), your answer, a TMDB search that agreed on name, year and length, or nothing yet"`
 	App  string `json:"app,omitempty" enum:"sonarr,radarr" doc:"The app, when by is app"`
 	Page string `json:"page,omitempty" format:"uri" doc:"The title's page in that app, when by is app and it has one"`
 }

@@ -95,6 +95,9 @@ const (
 	BasisSidecar Basis = "sidecar"
 	// BasisLink is a link the maintainer confirmed.
 	BasisLink Basis = "link"
+	// BasisSearch is a catalog search the scanner trusted: exactly one result agreed on the
+	// title's name, year and length (decision 56). It ranks last: any id beats it.
+	BasisSearch Basis = "search"
 	// BasisCatalog is a reference catalog queried by id, such as TMDB or TVDB.
 	BasisCatalog Basis = "catalog"
 )

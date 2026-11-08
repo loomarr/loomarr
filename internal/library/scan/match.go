@@ -64,6 +64,9 @@ type Matcher struct {
 	Log      *slog.Logger
 	// Sleep waits between catalog calls, per the provider's rate hint; nil sleeps on the clock.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Match answers a movie a search settled (decision 56): exactly one result agrees on its name,
+	// its year within one, and its length. Nil leaves every title to the maintainer.
+	Match func(ctx context.Context, itemID, tmdbID string) error
 }
 
 // Run matches until ctx ends.
@@ -95,7 +98,12 @@ func (m *Matcher) Tick(ctx context.Context) error {
 	done := 0
 	for _, need := range needs {
 		title, year := searchQuery(need.Name, need.Year)
+		length := m.length(ctx, need)
 		searched := title + "|" + strconv.Itoa(year)
+		if length > 0 {
+			// A movie is searched again once its header is read: its length can settle it.
+			searched += "|length"
+		}
 		if title == "" || need.Searched == searched {
 			continue
 		}
@@ -103,7 +111,7 @@ func (m *Matcher) Tick(ctx context.Context) error {
 			return nil
 		}
 		done++
-		candidates, err := m.candidates(ctx, need, title, year)
+		candidates, settled, err := m.candidates(ctx, need, title, year, length)
 		if errors.Is(err, tmdb.ErrAPIKeyRequired) {
 			return nil
 		}
@@ -117,20 +125,28 @@ func (m *Matcher) Tick(ctx context.Context) error {
 		if err := m.Store.SaveLibraryCandidates(ctx, need.ID, searched, candidates); err != nil {
 			return err
 		}
+		if settled != "" && m.Match != nil {
+			if err := m.Match(ctx, need.ID, settled); err != nil {
+				m.log().Warn("library match: settled title not answered", "item", need.ID, "err", err)
+			}
+		}
 	}
 	return nil
 }
 
-// candidates searches for one title and ranks what it finds.
-func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title string, year int) ([]store.LibraryCandidate, error) {
+// candidates searches for one title and ranks what it finds. settled is the TMDB id of the one
+// candidate that agrees on everything a movie can be checked by (decision 56), or "" when none or
+// more than one does: then the maintainer decides. A series is never settled here (decision 57).
+func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title string, year int, length time.Duration) (
+	_ []store.LibraryCandidate, settled string, _ error,
+) {
 	if err := m.wait(ctx); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	hits, err := m.Search(ctx, title, 20)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	length := m.length(ctx, need)
 	var out []store.LibraryCandidate
 	for _, hit := range hits {
 		if hit.Kind != need.Kind {
@@ -152,11 +168,21 @@ func (m *Matcher) candidates(ctx context.Context, need store.LibraryNeed, title 
 		}
 		out = append(out, c)
 	}
+	agreeing := 0
+	for _, c := range out {
+		if c.Kind == string(mp.KindMovie) && c.NameMatch && c.YearMatch && c.LengthMatch {
+			agreeing++
+			settled = c.TMDBID
+		}
+	}
+	if agreeing != 1 {
+		settled = ""
+	}
 	sort.SliceStable(out, func(i, j int) bool { return agreement(out[i]) > agreement(out[j]) })
 	if len(out) > matchKept {
 		out = out[:matchKept]
 	}
-	return out, nil
+	return out, settled, nil
 }
 
 // agreement ranks a candidate: the name counts most, then the year, then the length.

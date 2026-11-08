@@ -173,6 +173,8 @@ const (
 	DecidedByFile Decider = "file"
 	// DecidedByYou is the maintainer's answer.
 	DecidedByYou Decider = "you"
+	// DecidedBySearch is a catalog search that agreed on name, year and length (decision 56).
+	DecidedBySearch Decider = "search"
 	// DecidedByNothing is nothing yet: the title needs the maintainer.
 	DecidedByNothing Decider = "none"
 )
@@ -186,6 +188,8 @@ func DecidedBy(m store.LibraryMatch) Decider {
 		return DecidedByFile
 	case mp.BasisLink:
 		return DecidedByYou
+	case mp.BasisSearch:
+		return DecidedBySearch
 	default:
 		return DecidedByNothing
 	}

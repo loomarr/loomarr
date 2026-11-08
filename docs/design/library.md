@@ -311,7 +311,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   details, and keeps three in `library_candidates`, best first: the name counts most, then the
   year (a year apart at most), then the length (movies only: within five minutes or 8% of the
   runtime). `library_items.searched` notes what was searched, so a title is searched again only
-  when its name or year changes. With no TMDB key nothing is searched or marked. An answer lives
+  when its name or year changes, or once a movie's length is known. With no TMDB key nothing is
+  searched or marked. A movie is matched by its search (decision 56) when exactly one result
+  agrees on all three, name, year and length; two that agree, or none, wait in Needs you
+  (decision 58). That match is an answer with `answered_by = search`, written as a `search`
+  record ranked below every id and below the maintainer's link, which replaces it. A series is not
+  matched this way yet (decision 57). An answer lives
   in `library_answers` by scan origin, so it outlives rewrites: a link (`POST
   /v1/library/items/{id}/link`) is a `link` record below what the files say, so its details then
   come from the catalog, and an ignore (`…/ignore`) leaves the Library and Needs you. `DELETE
@@ -343,7 +348,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   it is: the basis and provider of its highest-ranked catalog id (`match_basis`, `match_app`), and
   for an arr its page there (`match_page`, from the arr's `titleSlug`). `GET /v1/library/items/{id}`
   says `match.by`: `app` (Sonarr or Radarr), `file` (an id in its name, or an NFO), `you` (an
-  answer) or `none`. Wrong title? follows it: an arr's title opens its page there ("Sonarr decides
+  answer), `search` (the Matcher's match) or `none`. Wrong title? follows it: an arr's title opens its page there ("Sonarr decides
   what this is"); a file's says to rename it or change its NFO, since an answer ranks below what
   the file says; any other opens the same search as Needs you, with Forget my answer when the
   household answered. Update details (`POST …/refresh`) fetches the title's TMDB record at once

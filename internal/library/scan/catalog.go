@@ -21,8 +21,9 @@ type AnswerStore interface {
 	LibraryAnswerFor(ctx context.Context, origin store.LibraryOrigin) (store.LibraryAnswer, bool, error)
 }
 
-// linkRecord is the maintainer's link for a movie or series nothing else grounded, as a record:
-// the TMDB title they said it is. None, an ignore, or an answer that cannot be read says nothing.
+// linkRecord is the answer for a movie or series nothing else grounded, as a record: the TMDB
+// title the maintainer said it is, or the one a search agreed on. None, an ignore, or an answer
+// that cannot be read says nothing.
 func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin inventory.OriginKey) (mp.Record, bool) {
 	if im.Answers == nil || (kind != mp.KindMovie && kind != mp.KindSeries) {
 		return mp.Record{}, false
@@ -35,8 +36,12 @@ func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin invento
 	if !ok || answer.TMDBID == "" || answer.Kind != string(kind) {
 		return mp.Record{}, false
 	}
+	basis := mp.BasisLink
+	if answer.By == store.AnsweredBySearch {
+		basis = mp.BasisSearch
+	}
 	return mp.Record{
-		Source: mp.Source{Basis: mp.BasisLink}, Kind: kind,
+		Source: mp.Source{Basis: basis}, Kind: kind,
 		IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: answer.TMDBID}},
 	}, true
 }
