@@ -12,7 +12,6 @@ package catalog
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -289,7 +288,7 @@ func (c *Catalog) Search(ctx context.Context, term string, scope Scope, limit in
 	// Library first, so its in_library + library item id win on merge.
 	if scopeIncludes(scope, ScopeLibrary) && c.lib != nil {
 		res, err := c.lib.Search(ctx, term, limit)
-		if err != nil && (scope != ScopeAll || !errors.Is(err, library.ErrConnectionRequired)) {
+		if err != nil {
 			return nil, err
 		}
 		for i, r := range res {

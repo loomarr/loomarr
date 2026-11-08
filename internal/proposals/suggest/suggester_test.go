@@ -182,8 +182,7 @@ func (m *toolAvailabilitySensitiveLLM) Chat(_ context.Context, _ []llm.Message, 
 // Quiet Engines 90000100, Lemon Tree Heist 90000101, Marigold Protocol 90000603,
 // Copperline Foundry 90001396), and a scripted LLM.
 func buildSuggester(t *testing.T, llmMock llm.Provider) *suggest.Suggester {
-	ms := marigoldMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	cat := catalog.New(lib, tm)
@@ -528,8 +527,7 @@ func TestGrounding_AcquisitionRevalidatedAgainstTMDB(t *testing.T) {
 // name; the grounded catalog tool must surface TMDB keyword matches so the model
 // can select them without inventing an id.
 func TestSuggest_HolidayKeywordDiscoversTitleWithoutHolidayInName(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.AddKeywordMovie(90002401, "Snowbound Reunion", 2021, []int{35, 10751},
 		"Estranged siblings reunite during Christmas week.", "Christmas")
@@ -562,8 +560,7 @@ func TestSuggest_HolidayKeywordDiscoversTitleWithoutHolidayInName(t *testing.T) 
 // #2030 decision 38: a British household asking for a Thanksgiving channel gets one that plays all
 // year, not one exclusive to a season Britain never reaches, and the proposal says why.
 func TestSuggest_AHolidayTheCountryDoesNotKeepIsNotExclusive(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.AddKeywordMovie(90002402, "Gravy Boat", 2019, []int{35},
 		"A family survives the long weekend.", "Thanksgiving")
@@ -591,8 +588,7 @@ func TestSuggest_AHolidayTheCountryDoesNotKeepIsNotExclusive(t *testing.T) {
 
 // A request naming one kept and one unkept holiday stays exclusive to the kept one.
 func TestSuggest_AnExclusiveChannelKeepsTheHolidaysTheCountryKeeps(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.AddKeywordMovie(90002403, "Snow and Gravy", 2018, []int{35},
 		"Two holidays, one kitchen.", "Christmas")
@@ -619,8 +615,7 @@ func TestSuggest_AnExclusiveChannelKeepsTheHolidaysTheCountryKeeps(t *testing.T)
 // #2030 decision 39: the planner is offered the holidays the household's country keeps, from the
 // loaded definitions, not a fixed five.
 func TestSuggest_PromptListsTheHolidaysTheCountryKeeps(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.AddKeywordMovie(90002404, "Sparks Over Lewes", 2015, []int{18}, "A town lights up.", "Bonfire")
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -647,9 +642,9 @@ func TestSuggest_PromptListsTheHolidaysTheCountryKeeps(t *testing.T) {
 // and refuse a surfaced R-rated title rather than letting a model omission or the
 // adult-default rule silently broaden the channel.
 func TestSuggest_ExplicitRatingLimitIsEnforced(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-r", Name: "Hard Ledger", Type: "Movie", Year: 1993, TMDBID: 90005011, Genres: []string{"Action"}, OfficialRating: "R"},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-r", Name: "Hard Ledger", Type: "Movie", Year: 1993, TMDBID: 90005011, Genres: []string{"Action"}, OfficialRating: "R"},
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -657,7 +652,7 @@ func TestSuggest_ExplicitRatingLimitIsEnforced(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "action"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90005011","name":"Hard Ledger"}],"policy":{"audience":{"ceiling":"PG-13"}}}`),
 	)
-	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Back-to-back action movies, keep it PG-13"})
 	if err != nil {
@@ -672,9 +667,9 @@ func TestSuggest_ExplicitRatingLimitIsEnforced(t *testing.T) {
 }
 
 func TestSuggest_ExplicitFamilySafetyIsEnforcedWhenModelOmitsPolicy(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-r", Name: "Very Scary Night", Type: "Movie", Year: 2020, TMDBID: 90005012, Genres: []string{"Horror"}, OfficialRating: "R"},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-r", Name: "Very Scary Night", Type: "Movie", Year: 2020, TMDBID: 90005012, Genres: []string{"Horror"}, OfficialRating: "R"},
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -682,7 +677,7 @@ func TestSuggest_ExplicitFamilySafetyIsEnforcedWhenModelOmitsPolicy(t *testing.T
 		catalogSearchResponse(map[string]any{"query": "family"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90005012","name":"Very Scary Night"}]}`),
 	)
-	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "family movie night, nothing too scary or mature"})
 	if err != nil {
@@ -697,8 +692,8 @@ func TestSuggest_ExplicitFamilySafetyIsEnforcedWhenModelOmitsPolicy(t *testing.T
 }
 
 func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids", Name: "Kettle Kids",
 		Type: "Series", Year: 1989, TMDBID: 90000456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
 	})
@@ -708,7 +703,7 @@ func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids","seasonMin":1,"seasonMax":10}]}`),
 	)
-	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Kettle Kids classics"})
 	if err != nil {
@@ -726,8 +721,8 @@ func TestSuggest_ClassicSingleSeriesUsesCuratedSyndication(t *testing.T) {
 }
 
 func TestSuggest_BestSingleSeriesSelectsHighlights(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids", Name: "Kettle Kids",
 		Type: "Series", Year: 1989, TMDBID: 90000456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
 	})
@@ -736,7 +731,7 @@ func TestSuggest_BestSingleSeriesSelectsHighlights(t *testing.T) {
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
-	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	), catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Best Kettle Kids episodes"})
 	if err != nil {
@@ -751,8 +746,8 @@ func TestSuggest_BestSingleSeriesSelectsHighlights(t *testing.T) {
 }
 
 func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids", Name: "Kettle Kids",
 		Type: "Series", Year: 1989, TMDBID: 90000456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
 	})
@@ -762,7 +757,7 @@ func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) 
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids","seasonMin":1,"seasonMax":10}]}`),
 	)
-	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Classic Kettle Kids in chronological order from the beginning"})
 	if err != nil {
@@ -777,8 +772,8 @@ func TestSuggest_ExplicitChronologicalSingleSeriesStaysSequential(t *testing.T) 
 }
 
 func TestSuggest_CuratedCueDoesNotMatchInsideAnotherWord(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"concerts"}, LibraryItemID: "lib-concerts", Name: "Great Concerts",
 		Type: "Series", Year: 1990, TMDBID: 90000456,
 	})
@@ -787,7 +782,7 @@ func TestSuggest_CuratedCueDoesNotMatchInsideAnotherWord(t *testing.T) {
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "concerts"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Great Concerts"}]}`),
-	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	), catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Classical concerts"})
 	if err != nil {
@@ -820,8 +815,8 @@ func TestSuggest_EpisodeModeIgnoresNegativeConstraints(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ms := testkit.NewMediaServer(t)
-			ms.SetSearchItems(testkit.SearchStub{
+			lib := catalogfixture.NewScriptedLibrary()
+			lib.SetSearchItems(catalogfixture.SearchStub{
 				Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids", Name: "Kettle Kids",
 				Type: "Series", Year: 1989, TMDBID: 90000456,
 			})
@@ -830,7 +825,7 @@ func TestSuggest_EpisodeModeIgnoresNegativeConstraints(t *testing.T) {
 			s := suggest.New(testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
-			), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+			), catalog.New(lib, tm), tm, 10)
 
 			prop, err := s.Suggest(context.Background(), tt.intent)
 			if err != nil {
@@ -844,15 +839,15 @@ func TestSuggest_EpisodeModeIgnoresNegativeConstraints(t *testing.T) {
 }
 
 func TestSuggest_NamedHolidaySeriesSelectsMatchingEpisodes(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
-	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	), catalog.New(lib, tm), tm, 10)
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Christmas Kettle Kids episodes"})
 	if err != nil {
 		t.Fatal(err)
@@ -866,15 +861,15 @@ func TestSuggest_NamedHolidaySeriesSelectsMatchingEpisodes(t *testing.T) {
 // #2030 decision 38: in Britain a Thanksgiving request still picks the series' Thanksgiving
 // episodes; only the season is Britain's, so the channel plays them all year.
 func TestSuggest_AnUnkeptHolidayStillSelectsItsEpisodes(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
-	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+	), catalog.New(lib, tm), tm, 10).
 		WithCalendar(func() schedule.Calendar { return schedule.Calendar{Country: "GB"} })
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Thanksgiving Kettle Kids episodes"})
 	if err != nil {
@@ -892,8 +887,7 @@ func TestSuggest_AnUnkeptHolidayStillSelectsItsEpisodes(t *testing.T) {
 // The model's own exclusive policy, with no holiday named in the request, is held to the country
 // too.
 func TestSuggest_TheModelsExclusivePolicyIsHeldToTheCountry(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.AddKeywordMovie(90002405, "Long Weekend Pie", 2017, []int{35}, "A family dinner goes sideways.", "Family")
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -947,15 +941,15 @@ func TestSuggest_NamedHolidayEpisodeSelectionUsesAffirmativeWholePhrases(t *test
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ms := testkit.NewMediaServer(t)
-			ms.SetSearchItems(testkit.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
+			lib := catalogfixture.NewScriptedLibrary()
+			lib.SetSearchItems(catalogfixture.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
 				Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			s := suggest.New(testkit.NewLLM(
 				catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
-			), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+			), catalog.New(lib, tm), tm, 10)
 
 			prop, err := s.Suggest(context.Background(), tt.intent)
 			if err != nil {
@@ -973,15 +967,15 @@ func TestSuggest_NamedHolidayEpisodeSelectionUsesAffirmativeWholePhrases(t *test
 }
 
 func TestSuggest_GenericHolidaySeriesSelectsBuiltInHolidayEpisodes(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
-	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	), catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Kettle Kids holiday episodes"})
 	if err != nil {
@@ -994,8 +988,8 @@ func TestSuggest_GenericHolidaySeriesSelectsBuiltInHolidayEpisodes(t *testing.T)
 }
 
 func TestSuggest_ModelSeasonalPolicyCannotChooseHolidayEpisodes(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -1003,7 +997,7 @@ func TestSuggest_ModelSeasonalPolicyCannotChooseHolidayEpisodes(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}],`+
 			`"policy":{"seasonal":{"mode":"exclusive","holidays":["christmas"]}}}`),
-	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	), catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Kettle Kids episodes"})
 	if err != nil {
@@ -1015,15 +1009,15 @@ func TestSuggest_ModelSeasonalPolicyCannotChooseHolidayEpisodes(t *testing.T) {
 }
 
 func TestSuggest_UndeclaredSeasonalCueKeepsCompleteEpisodes(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids",
 		Name: "Kettle Kids", Type: "Series", Year: 1989, TMDBID: 90000456})
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "kettle kids"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90000456","name":"Kettle Kids"}]}`),
-	), catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	), catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Kettle Kids seasonal episodes"})
 	if err != nil {
@@ -1035,8 +1029,8 @@ func TestSuggest_UndeclaredSeasonalCueKeepsCompleteEpisodes(t *testing.T) {
 }
 
 func TestSuggest_RefineAddsDaypartAndHolidayRulesWithoutReplacingChannelIdentity(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids", Name: "Kettle Kids",
 		Type: "Series", Year: 1989, TMDBID: 90000456, Genres: []string{"Animation", "Family"}, OfficialRating: "TV-PG",
 	})
@@ -1052,7 +1046,7 @@ func TestSuggest_RefineAddsDaypartAndHolidayRulesWithoutReplacingChannelIdentity
 			]
 		}}`),
 	)
-	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{
 		Description:   "A classic family sitcom channel",
@@ -1122,8 +1116,8 @@ func TestSuggest_RetriesOnceWhenModelNeverSearches(t *testing.T) {
 // neither they nor the ids are identity evidence until the real Catalog resolves
 // them. Exercise that recovery through the public Suggester seam.
 func TestSuggest_GroundsToolFreeNamedPickThroughCatalog(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"grand oak hotel"}, LibraryItemID: "lib-grand-oak-hotel",
 		Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762,
 		Genres: []string{"Comedy", "Family"},
@@ -1142,7 +1136,7 @@ func TestSuggest_GroundsToolFreeNamedPickThroughCatalog(t *testing.T) {
 				"confidence":0.95
 			}]
 		}`)),
-		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm),
+		catalog.New(lib, tm),
 		tm,
 		10,
 	)
@@ -1276,13 +1270,13 @@ func TestSuggest_GroundsToolFreeNamedPickAsAcquisition(t *testing.T) {
 }
 
 func TestSuggest_GroundsToolFreeNamedPickBySuppliedYear(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{
 			Terms: []string{"grand oak hotel"}, LibraryItemID: "lib-grand-oak-hotel-1987",
 			Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762,
 		},
-		testkit.SearchStub{
+		catalogfixture.SearchStub{
 			Terms: []string{"grand oak hotel"}, LibraryItemID: "lib-grand-oak-hotel-2020",
 			Name: "Grand Oak Hotel", Type: "Series", Year: 2020, TVDBID: 90999762,
 		},
@@ -1294,7 +1288,7 @@ func TestSuggest_GroundsToolFreeNamedPickBySuppliedYear(t *testing.T) {
 			"channelName":"Friday Night",
 			"picks":[{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel","year":1987}]
 		}`, fixtureDateMeaning("series_premiere", "description", 0, 5, 1980, 1989))),
-		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm),
+		catalog.New(lib, tm),
 		tm,
 		10,
 	)
@@ -1339,7 +1333,7 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 	tests := []struct {
 		name  string
 		picks string
-		items []testkit.SearchStub
+		items []catalogfixture.SearchStub
 	}{
 		{
 			name:  "missing exact title",
@@ -1348,7 +1342,7 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 		{
 			name:  "ambiguous title without year",
 			picks: `[{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel"}]`,
-			items: []testkit.SearchStub{
+			items: []catalogfixture.SearchStub{
 				{Terms: []string{"grand oak hotel"}, LibraryItemID: "grand-oak-hotel-1987", Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762},
 				{Terms: []string{"grand oak hotel"}, LibraryItemID: "grand-oak-hotel-2020", Name: "Grand Oak Hotel", Type: "Series", Year: 2020, TVDBID: 90999762},
 			},
@@ -1356,7 +1350,7 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 		{
 			name:  "ambiguous named source with model-only year",
 			picks: `[{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel","year":1987}]`,
-			items: []testkit.SearchStub{
+			items: []catalogfixture.SearchStub{
 				{Terms: []string{"grand oak hotel"}, LibraryItemID: "grand-oak-hotel-1987", Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762},
 				{Terms: []string{"grand oak hotel"}, LibraryItemID: "grand-oak-hotel-2020", Name: "Grand Oak Hotel", Type: "Series", Year: 2020, TVDBID: 90999762},
 			},
@@ -1364,25 +1358,25 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 		{
 			name:  "wrong media type",
 			picks: `[{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel"}]`,
-			items: []testkit.SearchStub{
+			items: []catalogfixture.SearchStub{
 				{Terms: []string{"grand oak hotel"}, LibraryItemID: "grand-oak-hotel-movie", Name: "Grand Oak Hotel", Type: "Movie", Year: 1952, TMDBID: 90000123},
 			},
 		},
 		{
 			name:  "conflicting supplied year",
 			picks: `[{"mediaType":"series","key":"series:tmdb:90012345","name":"Grand Oak Hotel","year":1987}]`,
-			items: []testkit.SearchStub{
+			items: []catalogfixture.SearchStub{
 				{Terms: []string{"grand oak hotel"}, LibraryItemID: "grand-oak-hotel-2020", Name: "Grand Oak Hotel", Type: "Series", Year: 2020, TVDBID: 90999762},
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ms := testkit.NewMediaServer(t)
-			ms.SetSearchItems(tt.items...)
+			lib := catalogfixture.NewScriptedLibrary()
+			lib.SetSearchItems(tt.items...)
 			s := suggest.New(
 				testkit.NewLLM(finalResponseWithNone(`{"channelName":"Friday Night","picks":`+tt.picks+`}`)),
-				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil),
+				catalog.New(lib, nil),
 				nil,
 				10,
 			)
@@ -1396,17 +1390,17 @@ func TestSuggest_ToolFreeNameGroundingRejectsUnprovenIdentity(t *testing.T) {
 }
 
 func TestSuggest_ToolFreeNameGroundingIsBoundedAndDeduplicated(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"grand oak hotel"}, LibraryItemID: "1", Name: "Grand Oak Hotel", Type: "Series", TVDBID: 90000761},
-		testkit.SearchStub{Terms: []string{"crumb street bakery"}, LibraryItemID: "2", Name: "Crumb Street Bakery", Type: "Series", TVDBID: 90000762},
-		testkit.SearchStub{Terms: []string{"bowling alley blues"}, LibraryItemID: "3", Name: "Bowling Alley Blues", Type: "Series", TVDBID: 90000763},
-		testkit.SearchStub{Terms: []string{"hank & delphine"}, LibraryItemID: "4", Name: "Hank & Delphine", Type: "Series", TVDBID: 90000764},
-		testkit.SearchStub{Terms: []string{"cul-de-sac capers"}, LibraryItemID: "5", Name: "Cul-de-Sac Capers", Type: "Series", TVDBID: 90000765},
-		testkit.SearchStub{Terms: []string{"moth"}, LibraryItemID: "6", Name: "Moth & Moonbeam", Type: "Series", TVDBID: 90000766},
-		testkit.SearchStub{Terms: []string{"pellingham"}, LibraryItemID: "7", Name: "Night Shift at Pellingham", Type: "Series", TVDBID: 90000767},
-		testkit.SearchStub{Terms: []string{"snorkelsaurus"}, LibraryItemID: "8", Name: "Snorkelsaurus", Type: "Series", TVDBID: 90000768},
-		testkit.SearchStub{Terms: []string{"quasar"}, LibraryItemID: "9", Name: "Quasar Quartet", Type: "Series", TVDBID: 90000769},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"grand oak hotel"}, LibraryItemID: "1", Name: "Grand Oak Hotel", Type: "Series", TVDBID: 90000761},
+		catalogfixture.SearchStub{Terms: []string{"crumb street bakery"}, LibraryItemID: "2", Name: "Crumb Street Bakery", Type: "Series", TVDBID: 90000762},
+		catalogfixture.SearchStub{Terms: []string{"bowling alley blues"}, LibraryItemID: "3", Name: "Bowling Alley Blues", Type: "Series", TVDBID: 90000763},
+		catalogfixture.SearchStub{Terms: []string{"hank & delphine"}, LibraryItemID: "4", Name: "Hank & Delphine", Type: "Series", TVDBID: 90000764},
+		catalogfixture.SearchStub{Terms: []string{"cul-de-sac capers"}, LibraryItemID: "5", Name: "Cul-de-Sac Capers", Type: "Series", TVDBID: 90000765},
+		catalogfixture.SearchStub{Terms: []string{"moth"}, LibraryItemID: "6", Name: "Moth & Moonbeam", Type: "Series", TVDBID: 90000766},
+		catalogfixture.SearchStub{Terms: []string{"pellingham"}, LibraryItemID: "7", Name: "Night Shift at Pellingham", Type: "Series", TVDBID: 90000767},
+		catalogfixture.SearchStub{Terms: []string{"snorkelsaurus"}, LibraryItemID: "8", Name: "Snorkelsaurus", Type: "Series", TVDBID: 90000768},
+		catalogfixture.SearchStub{Terms: []string{"quasar"}, LibraryItemID: "9", Name: "Quasar Quartet", Type: "Series", TVDBID: 90000769},
 	)
 	s := suggest.New(
 		testkit.NewLLM(finalResponseWithNone(`{
@@ -1424,7 +1418,7 @@ func TestSuggest_ToolFreeNameGroundingIsBoundedAndDeduplicated(t *testing.T) {
 				{"mediaType":"series","key":"series:tmdb:90090010","name":"Quasar Quartet"}
 			]
 		}`)),
-		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil),
+		catalog.New(lib, nil),
 		nil,
 		10,
 	)
@@ -1446,10 +1440,9 @@ func TestSuggest_ToolFreeNameGroundingIsBoundedAndDeduplicated(t *testing.T) {
 // A title the household said never to stays out when the model names it without searching: the
 // name fallback ranks it against the feedback like any surfaced candidate, and keeps the verdict.
 func TestSuggest_ToolFreeNameGroundingHonoursNever(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"grand oak hotel"}, LibraryItemID: "1", Name: "Grand Oak Hotel", Type: "Series", TVDBID: 90000761},
-		testkit.SearchStub{Terms: []string{"crumb street bakery"}, LibraryItemID: "2", Name: "Crumb Street Bakery", Type: "Series", TVDBID: 90000762},
+	lib := catalogfixture.NewScriptedLibrary(
+		catalogfixture.SearchStub{Terms: []string{"grand oak hotel"}, LibraryItemID: "1", Name: "Grand Oak Hotel", Type: "Series", TVDBID: 90000761},
+		catalogfixture.SearchStub{Terms: []string{"crumb street bakery"}, LibraryItemID: "2", Name: "Crumb Street Bakery", Type: "Series", TVDBID: 90000762},
 	)
 	feedback := &scopeFeedbackSource{signals: map[string][]suggest.FeedbackSignal{
 		"": {{Target: "series:tvdb:90000762", Action: suggest.FeedbackNever}},
@@ -1462,7 +1455,7 @@ func TestSuggest_ToolFreeNameGroundingHonoursNever(t *testing.T) {
 				{"mediaType":"series","key":"series:tmdb:90090002","name":"Crumb Street Bakery"}
 			]
 		}`)),
-		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil),
+		catalog.New(lib, nil),
 		nil,
 		10,
 	).WithFeedback(feedback)
@@ -1510,8 +1503,8 @@ func TestSuggest_ToolFreeNameGroundingAcrossPromptShapes(t *testing.T) {
 	}
 	for name, intent := range intents {
 		t.Run(name, func(t *testing.T) {
-			ms := testkit.NewMediaServer(t)
-			ms.SetSearchItems(testkit.SearchStub{
+			lib := catalogfixture.NewScriptedLibrary()
+			lib.SetSearchItems(catalogfixture.SearchStub{
 				Terms: []string{"grand oak hotel"}, LibraryItemID: "lib-grand-oak-hotel",
 				Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762,
 			})
@@ -1527,7 +1520,7 @@ func TestSuggest_ToolFreeNameGroundingAcrossPromptShapes(t *testing.T) {
 			}
 			s := suggest.New(
 				testkit.NewLLM(response),
-				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil),
+				catalog.New(lib, nil),
 				nil,
 				10,
 			)
@@ -1548,8 +1541,7 @@ func TestSuggest_ToolFreeNameGroundingAcrossPromptShapes(t *testing.T) {
 // pending slot — so the suggester enriches its rating from TMDB when a RatingSource
 // is wired. TMDB coverage is sparse, so this is best-effort; here the mock has it.
 func TestGrounding_AcquisitionRatingEnrichedFromTMDB(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.SetRating(provision.Movie, 90000101, "PG-13") // Lemon Tree Heist, an acquisition (not in library)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -1606,8 +1598,7 @@ func TestGrounding_AcquisitionCapPushesToAlternates(t *testing.T) {
 			{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}
 		]}`),
 	)
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	cat := catalog.New(lib, tm)
@@ -1637,13 +1628,13 @@ func TestSuggest_GroundsEpisodeSelectionAcrossSeriesAlternates(t *testing.T) {
 			{"mediaType":"movie","key":"movie:tmdb:90000202","name":"Companion Movie"}
 		]}`),
 	)
-	ms := testkit.NewMediaServer(t)
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.AddSeries(90000200, "Alpha Series", 1990, []int{18}, "")
 	mt.AddSeries(90000201, "Beta Series", 1991, []int{18}, "")
 	mt.AddMovie(90000202, "Companion Movie", 1992, []int{18}, "")
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	s := suggest.New(llmMock, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 1)
+	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 1)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Classic highlights"})
 	if err != nil {
@@ -1866,12 +1857,12 @@ func TestSuggest_ReferenceReadFailureIsDistinctFromMissingResolver(t *testing.T)
 		t.Fatalf("missing resolver = %#v, calls=%d", err, model.Calls)
 	}
 
-	ms := testkit.NewMediaServer(t)
-	ms.Close() // the shared adapter now reports a local catalog transport failure.
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.Err = errors.New("library unavailable") // the shared adapter now reports a local catalog failure.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	model = testkit.NewLLM(finalResponseWithNone(finalWithDateMeaning(t, dateMeaningNone())))
-	_, err = suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+	_, err = suggest.New(model, catalog.New(lib, tm), tm, 10).
 		WithReferences(&testkit.ReferenceResolver{Evidence: webreference.Evidence{TitleAnchors: []string{"Marigold Protocol"}}}).
 		Suggest(context.Background(), intent)
 	if !errors.As(err, &failure) || failure.Trace.Terminal != suggest.TerminalRetrievalFailure || model.Calls != 1 {
@@ -1929,14 +1920,14 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 		"Larkspur Collection",
 	} {
 		t.Run(description, func(t *testing.T) {
-			ms := testkit.NewMediaServer(t)
-			ms.SetSearchItems(
-				testkit.SearchStub{
+			lib := catalogfixture.NewScriptedLibrary()
+			lib.SetSearchItems(
+				catalogfixture.SearchStub{
 					Terms: []string{"ffs", "orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
 					Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 90091001,
 					Genres: []string{"Science Fiction"},
 				},
-				testkit.SearchStub{
+				catalogfixture.SearchStub{
 					Terms: []string{"ffs", "kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit",
 					Name: "Kitchen Circuit", Type: "Series", Year: 1997, TVDBID: 90091002,
 					Genres: []string{"Reality"},
@@ -1951,7 +1942,7 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 					{"mediaType":"series","key":"series:tvdb:90091002","name":"Kitchen Circuit"}
 				]}`),
 			)
-			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+			s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 
 			prop, err := s.Suggest(context.Background(), proposals.Intent{Description: description})
 			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
@@ -1966,14 +1957,14 @@ func TestSuggest_NamedSetRejectsUnsubstantiatedGroundedPicks(t *testing.T) {
 }
 
 func TestSuggest_NamedSetDirectFinalExactIdentityWithoutMembershipIsRecoverable(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
 		Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 90091001,
 	})
 	s := suggest.New(
 		testkit.NewLLM(finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tvdb:90091001","name":"Orbital Detectives"}]}`)),
-		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), nil), nil, 10,
+		catalog.New(lib, nil), nil, 10,
 	)
 
 	_, err := s.Suggest(context.Background(), proposals.Intent{Description: "Larkspur Collection"})
@@ -1984,8 +1975,8 @@ func TestSuggest_NamedSetDirectFinalExactIdentityWithoutMembershipIsRecoverable(
 }
 
 func TestSuggest_NamedSetMembershipIsNotAppliedToMixedOrOrdinaryEmptyFailures(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives",
 		Name: "Orbital Detectives", Type: "Series", Year: 1996, TVDBID: 90091001,
 	})
@@ -2016,7 +2007,7 @@ func TestSuggest_NamedSetMembershipIsNotAppliedToMixedOrOrdinaryEmptyFailures(t 
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			model := testkit.NewLLM(tc.responses...)
-			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+			s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 			_, err := s.Suggest(context.Background(), proposals.Intent{Description: tc.description})
 			var failure *suggest.Failure
 			if !errors.Is(err, suggest.ErrNoGroundedTitles) || !errors.As(err, &failure) || failure.Trace.Terminal == suggest.TerminalNamedSetUnproven {
@@ -2046,8 +2037,8 @@ func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) 
 		{description: "Lantern Parade Highlights", query: "lantern", name: "Lantern Comedy"},
 	} {
 		t.Run(tc.description, func(t *testing.T) {
-			ms := testkit.NewMediaServer(t)
-			ms.SetSearchItems(testkit.SearchStub{
+			lib := catalogfixture.NewScriptedLibrary()
+			lib.SetSearchItems(catalogfixture.SearchStub{
 				Terms: []string{tc.query}, LibraryItemID: "lib-ordinary-theme", Name: tc.name,
 				Type: "Movie", Year: 1999, TMDBID: 90091001, Genres: []string{"Comedy"},
 			})
@@ -2057,7 +2048,7 @@ func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) 
 				catalogSearchResponse(map[string]any{"query": tc.query, "media_type": "movie"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90091001","name":"`+tc.name+`"}]}`),
 			)
-			s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+			s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 
 			prop, err := s.Suggest(context.Background(), proposals.Intent{Description: tc.description})
 			if !errors.Is(err, suggest.ErrNoGroundedTitles) {
@@ -2068,8 +2059,8 @@ func TestSuggest_BareProperConceptRejectsThematicallyMatchingPick(t *testing.T) 
 }
 
 func TestSuggest_CuratedKnownGenreRetainsOrdinaryGroundedDiscovery(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"comedy"}, LibraryItemID: "lib-understudies", Name: "The Understudies",
 		Type: "Series", Year: 1975, TMDBID: 90091002, Genres: []string{"Comedy"},
 	})
@@ -2079,7 +2070,7 @@ func TestSuggest_CuratedKnownGenreRetainsOrdinaryGroundedDiscovery(t *testing.T)
 		catalogSearchResponse(map[string]any{"query": "comedy", "media_type": "series"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"series","key":"series:tmdb:90091002","name":"The Understudies"}]}`),
 	)
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Classic Comedy"})
 	if err != nil {
@@ -2091,8 +2082,8 @@ func TestSuggest_CuratedKnownGenreRetainsOrdinaryGroundedDiscovery(t *testing.T)
 }
 
 func TestSuggest_BareProperTitleUsesExactUserAnchor(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"marigold protocol"}, LibraryItemID: "lib-marigold", Name: "Marigold Protocol",
 		Type: "Movie", Year: 1999, TMDBID: 90000603, Genres: []string{"Science Fiction"},
 	})
@@ -2102,7 +2093,7 @@ func TestSuggest_BareProperTitleUsesExactUserAnchor(t *testing.T) {
 		catalogSearchResponse(map[string]any{"query": "Marigold Protocol", "media_type": "movie"}),
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Marigold Protocol"})
 	if err != nil {
@@ -2114,12 +2105,12 @@ func TestSuggest_BareProperTitleUsesExactUserAnchor(t *testing.T) {
 }
 
 func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives", Name: "Orbital Detectives", Type: "Series", Year: 1988, TVDBID: 90091001},
-		testkit.SearchStub{Terms: []string{"kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit", Name: "Kitchen Circuit", Type: "Series", Year: 1992, TVDBID: 90091002},
-		testkit.SearchStub{Terms: []string{"banished comedy"}, LibraryItemID: "lib-banished-comedy", Name: "Banished Comedy", Type: "Series", Year: 1994, TVDBID: 90091003},
-		testkit.SearchStub{Terms: []string{"forbidden family"}, LibraryItemID: "lib-forbidden-family", Name: "Forbidden Family", Type: "Series", Year: 1995, TVDBID: 90091004},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"orbital detectives"}, LibraryItemID: "lib-orbital-detectives", Name: "Orbital Detectives", Type: "Series", Year: 1988, TVDBID: 90091001},
+		catalogfixture.SearchStub{Terms: []string{"kitchen circuit"}, LibraryItemID: "lib-kitchen-circuit", Name: "Kitchen Circuit", Type: "Series", Year: 1992, TVDBID: 90091002},
+		catalogfixture.SearchStub{Terms: []string{"banished comedy"}, LibraryItemID: "lib-banished-comedy", Name: "Banished Comedy", Type: "Series", Year: 1994, TVDBID: 90091003},
+		catalogfixture.SearchStub{Terms: []string{"forbidden family"}, LibraryItemID: "lib-forbidden-family", Name: "Forbidden Family", Type: "Series", Year: 1995, TVDBID: 90091004},
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -2133,7 +2124,7 @@ func TestSuggest_DescriptionExamplesCanGroundCollectionMembership(t *testing.T) 
 			{"mediaType":"series","key":"series:tvdb:90091004","name":"Forbidden Family"}
 		]}`, meaning),
 	)
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{
 		Description: "90's FFS. Think Orbital Detectives and Kitchen Circuit, but not Banished Comedy.",
@@ -2233,11 +2224,11 @@ func TestSuggest_SoftDescriptionExampleRemainsOptional(t *testing.T) {
 }
 
 func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"alpha lodge"}, LibraryItemID: "lib-alpha", Name: "Alpha Lodge", Type: "Series", Year: 1991, TVDBID: 90092001},
-		testkit.SearchStub{Terms: []string{"alpha lodge"}, LibraryItemID: "lib-alpha-reboot", Name: "Alpha Lodge Reboot", Type: "Series", Year: 2021, TVDBID: 90092003},
-		testkit.SearchStub{Terms: []string{"beta steps"}, LibraryItemID: "lib-beta", Name: "Beta Steps", Type: "Series", Year: 1993, TVDBID: 90092002},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"alpha lodge"}, LibraryItemID: "lib-alpha", Name: "Alpha Lodge", Type: "Series", Year: 1991, TVDBID: 90092001},
+		catalogfixture.SearchStub{Terms: []string{"alpha lodge"}, LibraryItemID: "lib-alpha-reboot", Name: "Alpha Lodge Reboot", Type: "Series", Year: 2021, TVDBID: 90092003},
+		catalogfixture.SearchStub{Terms: []string{"beta steps"}, LibraryItemID: "lib-beta", Name: "Beta Steps", Type: "Series", Year: 1993, TVDBID: 90092002},
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -2253,7 +2244,7 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 			{"mediaType":"series","key":"series:tvdb:90092003","name":"Alpha Lodge Reboot"}
 		]}`
 	model := testkit.NewLLM(finalResponseWithDateMeaning(referenceFinal, meaning), finalResponseWithDateMeaning(referenceFinal, meaning))
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+	s := suggest.New(model, catalog.New(lib, tm), tm, 10).
 		WithReferences(references)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{
@@ -2287,11 +2278,11 @@ func TestSuggest_PastedURLPreseedsBoundedExactTitleCandidates(t *testing.T) {
 }
 
 func TestSuggest_ReferenceTitleAmbiguityDropsOnlyAmbiguousMember(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"alpha lodge"}, LibraryItemID: "alpha-1991", Name: "Alpha Lodge", Type: "Series", Year: 1991, TVDBID: 90092001},
-		testkit.SearchStub{Terms: []string{"alpha lodge"}, LibraryItemID: "alpha-2021", Name: "Alpha Lodge", Type: "Series", Year: 2021, TVDBID: 90092003},
-		testkit.SearchStub{Terms: []string{"beta steps"}, LibraryItemID: "beta", Name: "Beta Steps", Type: "Series", Year: 1993, TVDBID: 90092002},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"alpha lodge"}, LibraryItemID: "alpha-1991", Name: "Alpha Lodge", Type: "Series", Year: 1991, TVDBID: 90092001},
+		catalogfixture.SearchStub{Terms: []string{"alpha lodge"}, LibraryItemID: "alpha-2021", Name: "Alpha Lodge", Type: "Series", Year: 2021, TVDBID: 90092003},
+		catalogfixture.SearchStub{Terms: []string{"beta steps"}, LibraryItemID: "beta", Name: "Beta Steps", Type: "Series", Year: 1993, TVDBID: 90092002},
 	)
 	references := &testkit.ReferenceResolver{Evidence: webreference.Evidence{
 		URL: "https://lineups.example/friday", Title: "Friday Family Showcase",
@@ -2303,7 +2294,7 @@ func TestSuggest_ReferenceTitleAmbiguityDropsOnlyAmbiguousMember(t *testing.T) {
 	],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`
 	model := testkit.NewLLM(finalResponseWithNone(referenceFinal), finalResponseWithNone(referenceFinal))
 	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).WithReferences(references)
+	s := suggest.New(model, catalog.New(lib, tm), tm, 10).WithReferences(references)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "Build a block from https://lineups.example/friday"})
 	if err != nil {
@@ -2321,10 +2312,10 @@ func TestSuggest_ReferenceTitleAmbiguityDropsOnlyAmbiguousMember(t *testing.T) {
 }
 
 func TestSuggest_OrdinaryBroadFamilyComedyRetainsGroundedNeighbors(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "grand-oak-hotel", Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762, Genres: []string{"Comedy", "Family"}},
-		testkit.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "crumb-street-bakery", Name: "Crumb Street Bakery", Type: "Series", Year: 1989, TVDBID: 90000767, Genres: []string{"Comedy", "Family"}},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "grand-oak-hotel", Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762, Genres: []string{"Comedy", "Family"}},
+		catalogfixture.SearchStub{Terms: []string{"family comedy"}, LibraryItemID: "crumb-street-bakery", Name: "Crumb Street Bakery", Type: "Series", Year: 1989, TVDBID: 90000767, Genres: []string{"Comedy", "Family"}},
 	)
 	model := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "family comedy"}),
@@ -2334,7 +2325,7 @@ func TestSuggest_OrdinaryBroadFamilyComedyRetainsGroundedNeighbors(t *testing.T)
 	]}`),
 	)
 	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "90s family comedies like Grand Oak Hotel"})
 	if err != nil {
 		t.Fatal(err)
@@ -2345,14 +2336,8 @@ func TestSuggest_OrdinaryBroadFamilyComedyRetainsGroundedNeighbors(t *testing.T)
 	if model.Calls != 2 {
 		t.Fatalf("model calls = %d, want tool call then final response", model.Calls)
 	}
-	sawSearch := false
-	for _, req := range ms.Requests() {
-		if strings.Contains(req.RawQuery, "SearchTerm=family+comedy") {
-			sawSearch = true
-		}
-	}
-	if !sawSearch {
-		t.Fatalf("broad catalog search did not execute: %+v", ms.Requests())
+	if !slices.Contains(lib.Searches(), "family comedy") {
+		t.Fatalf("broad catalog search did not execute: %+v", lib.Searches())
 	}
 	if strings.Contains(prop.Rationale, "constituent") || strings.Contains(prop.Rationale, "member") {
 		t.Fatalf("ordinary proposal made named-set claims: %q", prop.Rationale)
@@ -2398,8 +2383,7 @@ func TestSuggest_DiscoversByGenre(t *testing.T) {
 }
 
 func TestSuggest_DiscoveryAppliesExplicitScalarQualifiers(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.SetDiscoveryEvidence(provision.Movie, 90000100, "en", []string{"US"}, 116, 7.3, 900)
 	mt.SetDiscoveryEvidence(provision.Movie, 90000101, "en", []string{"US"}, 136, 7.4, 1200)
@@ -2497,8 +2481,7 @@ func TestSuggest_PreservesDirectIncludeInOrdinaryTheme(t *testing.T) {
 }
 
 func TestSuggest_DiscoveryGroundsExplicitMoviePeople(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	mt.AddPerson(90000031, "Ansel Brightwater")
 	mt.AddPerson(90000560, "Odile Marchbank")
@@ -2526,8 +2509,7 @@ func TestSuggest_DiscoveryGroundsExplicitMoviePeople(t *testing.T) {
 func TestSuggest_DiscoveryGroundsExplicitTVNetwork(t *testing.T) {
 	for _, description := range []string{"Harbor Nine series", "shows from network Harbor Nine"} {
 		t.Run(description, func(t *testing.T) {
-			ms := testkit.NewMediaServer(t)
-			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+			lib := catalogfixture.NewScriptedLibrary()
 			mt := testkit.NewTMDB(t)
 			mt.AddNetwork(90000049, "Harbor Nine", "US")
 			mt.SetSeriesNetwork(90001396, 90000049)
@@ -2551,8 +2533,7 @@ func TestSuggest_DiscoveryGroundsExplicitTVNetwork(t *testing.T) {
 }
 
 func TestSuggest_MalformedDiscoveryQualifierDoesNotBroadenOrReachTMDB(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	llmMock := testkit.NewLLM(
@@ -2715,10 +2696,10 @@ func TestProgress_ReasoningIsReportedBeforeTheModelTurn(t *testing.T) {
 // A pick whose KNOWN rating is above the extracted ceiling is moved to Refused, not offered.
 // It must not be deleted either: the operator's usual fix is to raise the ceiling.
 func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toons", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7"},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Midnight Toons", Type: "Movie", Year: 1994, TMDBID: 90005004, Genres: []string{"Animation"}, OfficialRating: "TV-MA"},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toons", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7"},
+		catalogfixture.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Midnight Toons", Type: "Movie", Year: 1994, TMDBID: 90005004, Genres: []string{"Animation"}, OfficialRating: "TV-MA"},
 	)
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "cartoon"}),
@@ -2727,7 +2708,6 @@ func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
 			{"mediaType":"movie","key":"movie:tmdb:90005004","name":"Midnight Toons"}
 		],"policy":{"audience":{"ceiling":"TV-Y7"}}}`),
 	)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	s := suggest.New(llmMock, catalog.New(lib, tmdb.NewWithBase(mt.URL, "key")), tmdb.NewWithBase(mt.URL, "key"), 10)
 
@@ -2749,11 +2729,11 @@ func TestProposal_RefusesPicksItsOwnCeilingCannotAir(t *testing.T) {
 // An explicit child-safety promise refuses unrated content before approval. Metadata healing is
 // not allowed to make unknown content actionable under that promise.
 func TestProposal_ChildSafetyRefusesAnUnratedPick(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toons", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7"},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toons", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7"},
 		// No OfficialRating at all — the media server simply has none for it.
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Mystery Toons", Type: "Movie", Year: 1993, TMDBID: 90005005, Genres: []string{"Animation"}},
+		catalogfixture.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Mystery Toons", Type: "Movie", Year: 1993, TMDBID: 90005005, Genres: []string{"Animation"}},
 	)
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "cartoon"}),
@@ -2762,7 +2742,6 @@ func TestProposal_ChildSafetyRefusesAnUnratedPick(t *testing.T) {
 			{"mediaType":"movie","key":"movie:tmdb:90005005","name":"Mystery Toons"}
 		],"policy":{"audience":{"ceiling":"TV-Y7"}}}`),
 	)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	s := suggest.New(llmMock, catalog.New(lib, tmdb.NewWithBase(mt.URL, "key")), tmdb.NewWithBase(mt.URL, "key"), 10)
 
@@ -2779,8 +2758,8 @@ func TestProposal_ChildSafetyRefusesAnUnratedPick(t *testing.T) {
 }
 
 func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(testkit.SearchStub{
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(catalogfixture.SearchStub{
 		Terms: []string{"kettle kids"}, LibraryItemID: "lib-kettle-kids", Name: "Kettle Kids",
 		Type: "Series", Year: 1989, TMDBID: 90000456, Genres: []string{"Animation"}, OfficialRating: "TV-PG",
 	})
@@ -2791,7 +2770,6 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 			{"mediaType":"series","key":"series:tmdb:90001396","name":"Copperline Foundry"}
 		],"policy":{"audience":{"ceiling":"TV-PG"}}}`),
 	)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	s := suggest.New(llmMock, catalog.New(lib, tm), tm, 10).WithRatings(tm)
@@ -2835,9 +2813,9 @@ func TestProposal_KidSafeIntentCannotBeRelaxedByModelPicks(t *testing.T) {
 // missing ceiling admits everything, and refusing on an unset ceiling would strip an "80s action
 // heroes" channel of the R-rated films it is about.
 func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-1", Name: "Iron Lullaby", Type: "Movie", Year: 1988, TMDBID: 90005010, Genres: []string{"Action"}, OfficialRating: "R"},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-1", Name: "Iron Lullaby", Type: "Movie", Year: 1988, TMDBID: 90005010, Genres: []string{"Action"}, OfficialRating: "R"},
 	)
 	llmMock := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "action"}),
@@ -2845,7 +2823,6 @@ func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
 			{"mediaType":"movie","key":"movie:tmdb:90005010","name":"Iron Lullaby"}
 		],"policy":{"audience":{"ceiling":"TV-PG"}}}`),
 	)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)
 	s := suggest.New(llmMock, catalog.New(lib, tmdb.NewWithBase(mt.URL, "key")), tmdb.NewWithBase(mt.URL, "key"), 10)
 
@@ -2865,12 +2842,12 @@ func TestProposal_NoCeilingRefusesNothing(t *testing.T) {
 }
 
 func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"grand oak hotel"}, LibraryItemID: "grand-oak-hotel", Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762},
-		testkit.SearchStub{Terms: []string{"crumb street bakery"}, LibraryItemID: "crumb-street-bakery", Name: "Crumb Street Bakery", Type: "Series", Year: 1989, TVDBID: 90000767},
-		testkit.SearchStub{Terms: []string{"bowling alley blues"}, LibraryItemID: "bowling-alley-blues", Name: "Bowling Alley Blues", Type: "Series", Year: 1991, TVDBID: 90000760},
-		testkit.SearchStub{Terms: []string{"grand oak hotel", "sitcom"}, LibraryItemID: "neighbor", Name: "Grand Oak Hotel Secrets", Type: "Series", Year: 2020, TVDBID: 90099001},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"grand oak hotel"}, LibraryItemID: "grand-oak-hotel", Name: "Grand Oak Hotel", Type: "Series", Year: 1987, TVDBID: 90000762},
+		catalogfixture.SearchStub{Terms: []string{"crumb street bakery"}, LibraryItemID: "crumb-street-bakery", Name: "Crumb Street Bakery", Type: "Series", Year: 1989, TVDBID: 90000767},
+		catalogfixture.SearchStub{Terms: []string{"bowling alley blues"}, LibraryItemID: "bowling-alley-blues", Name: "Bowling Alley Blues", Type: "Series", Year: 1991, TVDBID: 90000760},
+		catalogfixture.SearchStub{Terms: []string{"grand oak hotel", "sitcom"}, LibraryItemID: "neighbor", Name: "Grand Oak Hotel Secrets", Type: "Series", Year: 2020, TVDBID: 90099001},
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
@@ -2887,7 +2864,7 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 			{"mediaType":"series","key":"series:tvdb:90099001","name":"Grand Oak Hotel Secrets"}
 		]}`, meaning),
 	)
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: "a named Friday-night family sitcom collection", Era: "1990s", MustInclude: []string{"Grand Oak Hotel", "Crumb Street Bakery", "Bowling Alley Blues"}})
 	if err != nil {
 		t.Fatal(err)
@@ -2906,14 +2883,8 @@ func TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers(t *testing.T)
 	if model.Calls != 2 {
 		t.Fatalf("model calls = %d, want broad tool then final", model.Calls)
 	}
-	sawBroadSearch := false
-	for _, request := range ms.Requests() {
-		if strings.Contains(request.RawQuery, "SearchTerm=sitcom") {
-			sawBroadSearch = true
-		}
-	}
-	if !sawBroadSearch {
-		t.Fatalf("broad catalog search did not execute; requests = %+v", ms.Requests())
+	if !slices.Contains(lib.Searches(), "sitcom") {
+		t.Fatalf("broad catalog search did not execute; searches = %+v", lib.Searches())
 	}
 	foundNeighborRejection := false
 	for _, decision := range prop.Trace.Candidates {
@@ -2947,16 +2918,16 @@ func TestSuggestReportsPartialInterpretationOfGroundedFragment(t *testing.T) {
 }
 
 func TestSuggest_ExplicitPGMaximumAndUnratedExclusionReachReview(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-pg", Name: "Family Night", Type: "Movie", Year: 2001, TMDBID: 90006001, Genres: []string{"Family"}, OfficialRating: "PG"},
-		testkit.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-r", Name: "Harder Night", Type: "Movie", Year: 2002, TMDBID: 90006002, Genres: []string{"Family"}, OfficialRating: "R"},
-		testkit.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-unknown", Name: "Unknown Night", Type: "Movie", Year: 2003, TMDBID: 90006003, Genres: []string{"Family"}},
+	lib := catalogfixture.NewScriptedLibrary()
+	lib.SetSearchItems(
+		catalogfixture.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-pg", Name: "Family Night", Type: "Movie", Year: 2001, TMDBID: 90006001, Genres: []string{"Family"}, OfficialRating: "PG"},
+		catalogfixture.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-r", Name: "Harder Night", Type: "Movie", Year: 2002, TMDBID: 90006002, Genres: []string{"Family"}, OfficialRating: "R"},
+		catalogfixture.SearchStub{Terms: []string{"family"}, LibraryItemID: "lib-unknown", Name: "Unknown Night", Type: "Movie", Year: 2003, TMDBID: 90006003, Genres: []string{"Family"}},
 	)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	model := testkit.NewLLM(catalogSearchResponse(map[string]any{"query": "family"}), finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90006001","name":"Family Night"},{"mediaType":"movie","key":"movie:tmdb:90006002","name":"Harder Night"},{"mediaType":"movie","key":"movie:tmdb:90006003","name":"Unknown Night"}]}`))
-	s := suggest.New(model, catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10)
+	s := suggest.New(model, catalog.New(lib, tm), tm, 10)
 	p, err := s.Suggest(context.Background(), proposals.Intent{Description: "Family movies, capped at PG; exclude unrated titles. Keep the audience cap on every scheduled movie."})
 	if err != nil {
 		t.Fatal(err)

@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -31,8 +31,7 @@ func (r *siteRecorder) Chat(ctx context.Context, m []llm.Message, o llm.ChatOpti
 
 func TestSuggest_LLMCallsNameTheirCallSite(t *testing.T) {
 	rec := &siteRecorder{Provider: testkit.NewLLM(finalResponseWithNone(`{"picks":[]}`), finalResponseWithNone(`{"picks":[]}`))}
-	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalogfixture.NewScriptedLibrary()
 	tm := tmdb.NewWithBase(testkit.NewTMDB(t).URL, "key")
 	sug := suggest.New(rec, catalog.New(lib, tm), tm, 10)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

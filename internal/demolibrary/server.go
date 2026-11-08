@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // Server is an Emby-compatible stand-in media server for a demo Library.
@@ -46,8 +45,6 @@ const (
 	dateCreated       = "2026-01-01T00:00:00.0000000Z"
 	ticksPerSecond    = 10_000_000
 )
-
-var libraryCreated = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimSuffix(r.URL.Path, "/")
@@ -92,7 +89,15 @@ func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case path == "/Items" && r.Method == http.MethodGet:
 		items := s.items(r)
-		writeJSON(w, map[string]any{"Items": items, "TotalRecordCount": len(items)})
+		total := len(items)
+		q := r.URL.Query()
+		if start, err := strconv.Atoi(q.Get("StartIndex")); err == nil && start > 0 {
+			items = items[min(start, total):]
+		}
+		if n, err := strconv.Atoi(q.Get("Limit")); err == nil && n > 0 && len(items) > n {
+			items = items[:n]
+		}
+		writeJSON(w, map[string]any{"Items": items, "TotalRecordCount": total})
 	case path == "/LiveTv/TunerHosts" || path == "/LiveTv/ListingProviders" || path == "/ScheduledTasks":
 		// Live TV registration never runs against the demo (lane backends set no public URL);
 		// answer the reads with nothing registered so an accidental call fails soft.
@@ -158,23 +163,6 @@ func (s Server) image(w http.ResponseWriter, r *http.Request, path string) {
 	http.ServeFile(w, r, p)
 }
 
-func (s Server) episodeByID(id string) (Title, Episode, bool) {
-	seriesID, _, ok := strings.Cut(id, "-s01e")
-	if !ok {
-		return Title{}, Episode{}, false
-	}
-	t, ok := s.Library.ByID(seriesID)
-	if !ok {
-		return Title{}, Episode{}, false
-	}
-	for _, e := range s.Library.EpisodesOf(t) {
-		if e.ID == id {
-			return t, e, true
-		}
-	}
-	return Title{}, Episode{}, false
-}
-
 // items answers GET /Items for the query shapes internal/library sends.
 func (s Server) items(r *http.Request) []map[string]any {
 	q := r.URL.Query()
@@ -182,96 +170,34 @@ func (s Server) items(r *http.Request) []map[string]any {
 	wantType := func(t string) bool { return len(types) == 0 || slices.Contains(types, t) }
 	var out []map[string]any
 
-	switch {
-	case q.Get("Ids") != "":
-		for _, id := range splitList(q.Get("Ids")) {
-			if item, ok := s.itemByID(id); ok {
-				out = append(out, item)
+	if slices.Contains(types, "BoxSet") {
+		return []map[string]any{} // no collections in the demo library
+	}
+	// The cutover's id map lists every film and episode in one recursive, paged read.
+	for _, t := range s.Library.Titles {
+		switch q.Get("ParentId") {
+		case moviesLibraryID:
+			if t.Kind != Movie {
+				continue
+			}
+		case showsLibraryID:
+			if t.Kind != Series {
+				continue
 			}
 		}
-	case q.Get("ParentId") != "" && q.Get("ParentId") != moviesLibraryID && q.Get("ParentId") != showsLibraryID:
-		t, ok := s.Library.ByID(q.Get("ParentId"))
-		if ok && t.Kind == Series && wantType("Episode") {
+		if wantType(string(t.Kind)) {
+			out = append(out, s.titleJSON(t))
+		}
+		if t.Kind == Series && wantType("Episode") {
 			for _, e := range s.Library.EpisodesOf(t) {
 				out = append(out, s.episodeJSON(t, e))
 			}
 		}
-	default:
-		if slices.Contains(types, "BoxSet") {
-			return []map[string]any{} // no collections in the demo library
-		}
-		// The incremental scan asks for items saved since its last pass; the demo library never
-		// changes after dateCreated, so only a sweep from before then sees anything.
-		if since, err := time.Parse(time.RFC3339, q.Get("MinDateLastSaved")); err == nil && since.After(libraryCreated) {
-			return []map[string]any{}
-		}
-		provider := q.Get("AnyProviderIdEquals")
-		term := strings.ToLower(strings.TrimSpace(q.Get("SearchTerm")))
-		for _, t := range s.Library.Titles {
-			if !wantType(string(t.Kind)) {
-				continue
-			}
-			switch q.Get("ParentId") {
-			case moviesLibraryID:
-				if t.Kind != Movie {
-					continue
-				}
-			case showsLibraryID:
-				if t.Kind != Series {
-					continue
-				}
-			}
-			if provider != "" && !strings.EqualFold(provider, providerRef(t)) {
-				continue
-			}
-			if term != "" && !matches(t, term) {
-				continue
-			}
-			out = append(out, s.titleJSON(t))
-		}
-	}
-	if n, err := strconv.Atoi(q.Get("Limit")); err == nil && n > 0 && len(out) > n {
-		out = out[:n]
 	}
 	if out == nil {
 		out = []map[string]any{}
 	}
 	return out
-}
-
-func providerRef(t Title) string {
-	if t.Kind == Series {
-		return "tvdb." + strconv.Itoa(t.ProviderID())
-	}
-	return "tmdb." + strconv.Itoa(t.ProviderID())
-}
-
-// matches is the search: a case-insensitive substring of the title, a genre or the synopsis.
-func matches(t Title, term string) bool {
-	if strings.Contains(strings.ToLower(t.Name), term) || strings.Contains(strings.ToLower(t.Overview), term) {
-		return true
-	}
-	for _, g := range t.Genres {
-		if strings.Contains(strings.ToLower(g), term) {
-			return true
-		}
-	}
-	return false
-}
-
-func (s Server) itemByID(id string) (map[string]any, bool) {
-	if t, ok := s.Library.ByID(id); ok {
-		return s.titleJSON(t), true
-	}
-	if t, e, ok := s.episodeByID(id); ok {
-		return s.episodeJSON(t, e), true
-	}
-	for _, f := range s.Library.Fillers {
-		if f.ID == id {
-			return s.fillerJSON(f), true
-		}
-	}
-	return nil, false
 }
 
 func (s Server) titleJSON(t Title) map[string]any {
@@ -316,16 +242,6 @@ func (s Server) episodeJSON(t Title, e Episode) map[string]any {
 		"DateCreated": dateCreated, "DateLastSaved": dateCreated, "Path": s.abs(s.Layout.EpisodeFile(t, e)),
 	}
 	s.addMedia(item, e.ID, f)
-	return item
-}
-
-func (s Server) fillerJSON(f Filler) map[string]any {
-	item := map[string]any{
-		"Id": f.ID, "Name": f.Name, "Type": "Video", "ParentId": fillerLibraryID, "RunTimeTicks": int64(f.Duration) * ticksPerSecond,
-		"DateCreated": dateCreated, "DateLastSaved": dateCreated, "Path": s.abs(s.Library.FillerPath(s.Layout, f.ID)),
-	}
-	shape, _ := s.Library.Shape(f.ID)
-	s.addMedia(item, f.ID, shape)
 	return item
 }
 
