@@ -168,12 +168,12 @@ func buildHandler(
 	calendar := householdCalendar(set, foundation.holidays, log)
 	watermarks := newChannelWatermarks(rootCtx, st, set, calendar, foundation.diagnostics, log)
 
-	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
+	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
 
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
-		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
+		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, fillerLayout, log,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks, calendar,
 	)
 	if err != nil {
