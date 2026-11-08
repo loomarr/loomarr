@@ -1,5 +1,9 @@
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import { toProblem } from "@loomarr/api/mutator";
 import { channelNumber, pluralize } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
 import { ChannelOnScreenLogo } from "@/channels/channel-on-screen-logo";
 import { ChannelBreaks } from "@/components/loomarr/channels/channel-breaks";
@@ -17,6 +21,11 @@ import { useChannelDetail } from "./-channel-detail-context";
 const InfoScreen = () => {
   const { id, channel: ch, isAdmin, air, ready, total, savePolicy, saveLogo } = useChannelDetail();
   const navigate = Route.useNavigate();
+  // Build schedule (#2728) asks the server to converge the channel now. The `channel` SSE frame
+  // refreshes the page when it lands; a failure says so.
+  const reconcile = channelsApi.useReconcileChannel({
+    mutation: { onError: (e) => toast.error(toProblem(e).title ?? "Couldn't build the schedule") },
+  });
 
   return (
     <>
@@ -31,6 +40,16 @@ const InfoScreen = () => {
           </div>
         </div>
         <p className="text-muted-foreground text-sm">{air.detail}</p>
+        {air.buildSchedule && isAdmin ? (
+          <Action
+            style={{ alignSelf: "flex-start" }}
+            disabled={reconcile.isPending}
+            onPress={() => reconcile.mutate({ id })}
+            variant="outline"
+          >
+            {reconcile.isPending ? "Building schedule…" : "Build schedule"}
+          </Action>
+        ) : null}
 
         {/* The viewer's "what's on later" — the program airing now, then the next few,
             with real airtimes from the selected backend (the prototype's "Today's guide", P7). Shown to

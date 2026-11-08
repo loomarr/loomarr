@@ -45,6 +45,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
@@ -696,6 +697,29 @@ describe("feature-gated panels mount when their flag is on", () => {
     const router = renderAt("/channels/ch-1");
     expect(await screen.findByText("Channel icon")).toBeInTheDocument();
     await waitFor(() => expect(at(router)).toContain("/channels/ch-1/info"));
+  });
+
+  // #2728: a live channel the guide has nothing for read "On air" beside "Programme information
+  // isn't available". It says No schedule yet, and an admin can build one.
+  it("/channels/ch-1 with nothing in the guide offers Build schedule, not On air", async () => {
+    stubReachable();
+    let reconciled = "";
+    server.use(
+      getChannelsNowNextMockHandler({ channels: [] }),
+      getGetChannelMockHandler(
+        channel({ id: "ch-1", name: "Cartoons", number: 42, status: "live", inAppPlayable: true }),
+      ),
+      http.post("*/v1/channels/:id/reconcile", ({ params }) => {
+        reconciled = String(params.id);
+        return HttpResponse.json({});
+      }),
+    );
+    renderAt("/channels/ch-1/info");
+
+    expect(await screen.findByRole("heading", { name: "No schedule yet" })).toBeInTheDocument();
+    expect(screen.queryByText("On air")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Build schedule" }));
+    await waitFor(() => expect(reconciled).toBe("ch-1"));
   });
 
   // The channel header carries Watch and the media-server hand-off (#2088), which replaced the Watch
