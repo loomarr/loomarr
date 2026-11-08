@@ -75,11 +75,11 @@ func (s *sqlStore) GetTitle(ctx context.Context, key provision.Key) (provision.R
 }
 
 // ListTitlesAvailableSince returns the titles that arrived at or after `since`, newest first
-// (Home's New this week, #1663). Titles that never arrived (available_at 0) are not listed.
+// (Home's New this week, #1663). Titles that never arrived (arrived_at 0) are not listed.
 func (s *sqlStore) ListTitlesAvailableSince(ctx context.Context, since time.Time) ([]provision.Record, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
 		`SELECT `+titleColumns+` FROM titles
-		 WHERE available_at >= ? AND available_at > 0 ORDER BY available_at DESC, key`), epoch(since))
+		 WHERE arrived_at >= ? AND arrived_at > 0 ORDER BY arrived_at DESC, key`), epoch(since))
 	if err != nil {
 		return nil, err
 	}
@@ -98,13 +98,13 @@ func (s *sqlStore) UpsertTitle(ctx context.Context, rec provision.Record) error 
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO titles
 		   (key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
-		    available_at)
+		    arrived_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(key) DO UPDATE SET
 		   title_json=excluded.title_json, state=excluded.state, library_id=excluded.library_id,
 		   requested_at=excluded.requested_at, deadline=excluded.deadline, attempts=excluded.attempts,
 		   last_error=excluded.last_error, updated_at=excluded.updated_at,
-		   available_at=CASE WHEN excluded.available_at > 0 THEN excluded.available_at ELSE titles.available_at END`),
+		   arrived_at=CASE WHEN excluded.arrived_at > 0 THEN excluded.arrived_at ELSE titles.arrived_at END`),
 		string(rec.Key), string(blob), string(rec.State), rec.LibraryID,
 		epoch(rec.RequestedAt), epoch(rec.Deadline), rec.Attempts, rec.LastError, epoch(rec.UpdatedAt),
 		epoch(rec.AvailableAt))
@@ -457,7 +457,7 @@ type scannable = storedb.Scannable
 // titleColumns is the column list scanTitle reads, in its order. Every titles read uses it; the
 // Postgres claim spells it with its `t.` alias (postgres.go) and must stay in step.
 const titleColumns = `key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
-	progress, eta_text, download_status, available_at, episodes_have, episodes_wanted`
+	progress, eta_text, download_status, arrived_at, episodes_have, episodes_wanted`
 
 func scanTitle(sc scannable) (provision.Record, error) {
 	var (
