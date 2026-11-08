@@ -130,7 +130,7 @@ func TestState_CompleteGeographyRequiresALocation(t *testing.T) {
 }
 
 func TestState_RejectsUnknownKind(t *testing.T) {
-	state := enrichment.State{ClipHash: "clip", Axis: enrichment.AxisKind,
+	state := enrichment.State{ClipHash: "clip", Axis: enrichment.AxisRole,
 		Status: enrichment.StatusComplete, Value: enrichment.Value{Text: "promo"},
 		Evidence: evidence(enrichment.EvidenceInference, 80)}
 	if err := state.Validate(); !errors.Is(err, enrichment.ErrInvalidState) {
@@ -160,9 +160,9 @@ func TestAnalyzeDeterministic_RecognizesRoleFromItemText(t *testing.T) {
 	got := statesByAxis(enrichment.AnalyzeDeterministic(enrichment.Signals{
 		ClipHash: "advert", Kind: "unclassified", Title: "Local Toy Advert", ObservedAt: time.Unix(100, 0).UTC(),
 	}))
-	if got[enrichment.AxisKind].Value.Text != "commercial" ||
-		got[enrichment.AxisKind].Evidence.Reference != "item.title_description_or_original_name" {
-		t.Fatalf("item-text kind = %+v", got[enrichment.AxisKind])
+	if got[enrichment.AxisRole].Value.Text != "commercial" ||
+		got[enrichment.AxisRole].Evidence.Reference != "item.title_description_or_original_name" {
+		t.Fatalf("item-text kind = %+v", got[enrichment.AxisRole])
 	}
 	if tags := got[enrichment.AxisFormat].Value.Tags; len(tags) != 1 || tags[0] != "commercial" {
 		t.Fatalf("item-text format = %+v", got[enrichment.AxisFormat])
@@ -238,7 +238,7 @@ func TestApply_WithdrawalRetractsOnlyItsOwnProducersEarlierAnswer(t *testing.T) 
 }
 
 func TestApply_AnEmptyAnswerNeverErasesAKnownValueWhateverItsConfidence(t *testing.T) {
-	current := enrichment.State{ClipHash: "clip", Axis: enrichment.AxisKind,
+	current := enrichment.State{ClipHash: "clip", Axis: enrichment.AxisRole,
 		Status: enrichment.StatusComplete, Value: enrichment.Value{Text: "commercial"},
 		Evidence: evidence(enrichment.EvidenceInference, 60)}
 	current.Evidence.Producer = "text-model:fixture"

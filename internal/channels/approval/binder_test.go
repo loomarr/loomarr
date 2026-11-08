@@ -380,7 +380,7 @@ func TestPlanApprovedChannelPreservesAnExplicitEmptyFillerSelection(t *testing.T
 	if ch.Policy.Filler == nil {
 		t.Fatal("explicit empty filler selection was replaced with absence")
 	}
-	if ch.Policy.Filler.Audience != "" || ch.Policy.Filler.Era != nil || len(ch.Policy.Filler.Categories) != 0 || len(ch.Policy.Filler.Kinds) != 0 {
+	if ch.Policy.Filler.Audience != "" || ch.Policy.Filler.Era != nil || len(ch.Policy.Filler.Categories) != 0 || len(ch.Policy.Filler.Roles) != 0 {
 		t.Fatalf("approved refresh overwrote operator filler selection: %+v", ch.Policy.Filler)
 	}
 }

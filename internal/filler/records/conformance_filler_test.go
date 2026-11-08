@@ -956,7 +956,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	if _, _, err := s.ApplyFillerEnrichment(ctx, enrichment.State{
-		ClipHash: old.Hash, Axis: enrichment.AxisKind, Status: enrichment.StatusComplete,
+		ClipHash: old.Hash, Axis: enrichment.AxisRole, Status: enrichment.StatusComplete,
 		Value: enrichment.Value{Text: "commercial"},
 		Evidence: enrichment.Evidence{Kind: enrichment.EvidenceItem, Reference: "item.title", Confidence: 100,
 			Producer: enrichment.DeterministicProducer, ProducerVersion: enrichment.DeterministicProducerVersion,

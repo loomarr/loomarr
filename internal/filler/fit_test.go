@@ -183,8 +183,8 @@ func TestFitFor_NamesTheRejectingPredicate(t *testing.T) {
 		{
 			name:   "kind the channel does not use",
 			clip:   Clip{Hash: "b", Path: "b", Role: Bumper, Era: 1992, Audience: Kids, DurationMs: 5_000},
-			window: Window{Era: Year(1992), Audience: Kids, Kinds: []string{"commercial"}},
-			want:   FitKind,
+			window: Window{Era: Year(1992), Audience: Kids, Roles: []string{"commercial"}},
+			want:   FitRole,
 		},
 		{
 			name:   "too long for the break",

@@ -55,12 +55,12 @@ const useProductCategories = (): { slug: string; label: string }[] => {
 // is the Select's own placeholder value, not a listed option (Radix forbids an empty item
 // value). Unclassified is a held lifecycle state rather than a selectable pod role.
 const AUDIENCES = Object.values(ClipDTOAudience).filter((a): a is Exclude<typeof a, ""> => a !== "");
-const KINDS = Object.values(ClipDTORole).filter((kind) => kind !== "unclassified") as Exclude<
+const ROLES = Object.values(ClipDTORole).filter((role) => role !== "unclassified") as Exclude<
   (typeof ClipDTORole)[keyof typeof ClipDTORole],
   "unclassified"
 >[];
 
-const KIND_LABEL: Record<(typeof KINDS)[number], string> = {
+const ROLE_LABEL: Record<(typeof ROLES)[number], string> = {
   commercial: "Commercials",
   bumper: "Bumpers",
   station_id: "Station IDs",
@@ -88,13 +88,13 @@ const toggle = (list: string[] | null | undefined, value: string): string[] | un
   return set.size === 0 ? undefined : [...set];
 };
 
-// toggleKind — toggle a clip kind against what the checklist SHOWS. No kinds chosen shows the
+// toggleRole — toggle a clip role against what the checklist SHOWS. No roles chosen shows the
 // server's default set ticked (#2037), so the first tick starts from it rather than from nothing;
 // a set that matches the default again saves as no choice, so the channel keeps following it.
-const toggleKind = (shown: string[], value: string, defaults: string[]): string[] | undefined => {
+const toggleRole = (shown: string[], value: string, defaults: string[]): string[] | undefined => {
   const next = toggle(shown, value);
   const isDefault =
-    next !== undefined && next.length === defaults.length && defaults.every((kind) => next.includes(kind));
+    next !== undefined && next.length === defaults.length && defaults.every((role) => next.includes(role));
   return isDefault ? undefined : next;
 };
 
@@ -286,7 +286,7 @@ const WindowEditor = ({
   );
 };
 
-// FillerCriteria — the THEME half of the sandbox: era range, audience, categories, kinds.
+// FillerCriteria — the THEME half of the sandbox: era range, audience, categories, roles.
 // Controlled, like ChannelPolicyFields: the parent holds the draft and applies whatever
 // `onChange` hands back. Every control clears to "any" when emptied (undefined, never a
 // zero/empty-array that would read as a real, narrower restriction).
@@ -298,7 +298,7 @@ const FillerCriteria = ({
   scopeEra,
   programmingDates,
   installationGeography,
-  defaultKinds,
+  defaultRoles,
 }: {
   selection: FillerSelection;
   onChange: (next: FillerSelection) => void;
@@ -310,9 +310,9 @@ const FillerCriteria = ({
   scopeEra?: { from?: number; to?: number };
   programmingDates?: DateScope;
   installationGeography?: { country?: string; place?: string };
-  // The kinds a channel that chose none airs, from the server's coverage answer. Until it arrives
+  // The roles a channel that chose none airs, from the server's coverage answer. Until it arrives
   // the checklist cannot show the default, so it stays disabled rather than narrowing from nothing.
-  defaultKinds?: string[];
+  defaultRoles?: string[];
 }) => {
   const installationPlaceLabel = usePlaceLabel(installationGeography?.place);
   const era = selection.era;
@@ -333,9 +333,9 @@ const FillerCriteria = ({
     : undefined;
   const scopeLabel = rangesLabel(inheritedWindows) ?? scalarScopeLabel(scopeEra);
   const categories = selection.categories ?? [];
-  const chosenKinds = selection.kinds ?? [];
-  const kinds = chosenKinds.length > 0 ? chosenKinds : (defaultKinds ?? []);
-  const kindsUnknown = chosenKinds.length === 0 && defaultKinds === undefined;
+  const chosenRoles = selection.roles ?? [];
+  const roles = chosenRoles.length > 0 ? chosenRoles : (defaultRoles ?? []);
+  const rolesUnknown = chosenRoles.length === 0 && defaultRoles === undefined;
   const productCategories = useProductCategories();
   const [choosingCategories, setChoosingCategories] = useState(false);
   const fixedCountry = installationGeography?.country?.trim().toUpperCase();
@@ -662,27 +662,27 @@ const FillerCriteria = ({
         )}
       </div>
 
-      {/* Kinds — checkboxes over the playable clip kinds. A channel that chose none shows the
-          server's default ticked: every kind except political ads and news (#2037). */}
+      {/* Roles — checkboxes over the playable clip roles. A channel that chose none shows the
+          server's default ticked: every role except political ads and news (#2037). */}
       <div className="flex flex-col gap-1.5 sm:col-span-2">
         <FieldLabel help="Which clips a break may use. Political ads and news stay off until you tick them; a nearby station's own news airs with its station IDs.">
           Clip kinds
         </FieldLabel>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
-          {KINDS.map((k) => (
+          {ROLES.map((r) => (
             <Toggle
-              key={k}
-              id={`filler-kind-${k}`}
-              label={KIND_LABEL[k]}
-              checked={kinds.includes(k)}
-              disabled={disabled || kindsUnknown}
+              key={r}
+              id={`filler-role-${r}`}
+              label={ROLE_LABEL[r]}
+              checked={roles.includes(r)}
+              disabled={disabled || rolesUnknown}
               onCheckedChange={() =>
-                onChange({ ...selection, kinds: toggleKind(kinds, k, defaultKinds ?? []) })
+                onChange({ ...selection, roles: toggleRole(roles, r, defaultRoles ?? []) })
               }
             />
           ))}
         </div>
-        {kindsUnknown && (
+        {rolesUnknown && (
           <p className="text-muted-foreground text-xs">
             Clip kinds unlock once this channel's coverage check loads.
           </p>

@@ -30,7 +30,7 @@ const (
 )
 
 var textAxes = []Axis{
-	AxisKind, AxisAudience, AxisBrand, AxisProduct, AxisFormat,
+	AxisRole, AxisAudience, AxisBrand, AxisProduct, AxisFormat,
 	AxisSeasonal, AxisAudienceCue, AxisPresentation,
 }
 
@@ -237,7 +237,7 @@ func unresolvedTextAxes(states []State, producer, producerVersion, taxonomyVersi
 }
 
 type textOutput struct {
-	Kind         scalarString    `json:"kind"`
+	Role         scalarString    `json:"role"`
 	Audience     scalarString    `json:"audience"`
 	Brand        scalarString    `json:"brand"`
 	Product      stringList      `json:"product"`
@@ -369,7 +369,7 @@ func classifyTextBatch(ctx context.Context, provider llm.Provider, forest *taxon
 The object must contain an "items" array with exactly one result per input id, using the same id.
 For each item, fill only its requested axes. Use only taxonomy slugs from the vocabulary. Use an empty string or array when the text does not support an answer.
 Do not guess a year, country, location, safety rating, or facts based only on nostalgia, visual style, or general knowledge.
-Kind must be one of commercial, bumper, station_id, psa, trailer, interstitial, political, news, or empty. Use political for a campaign or issue ad (a candidate, ballot measure or cause asking for a vote or support), not commercial; use news for a news or weather segment, not commercial or interstitial.
+Role must be one of commercial, bumper, station_id, psa, trailer, interstitial, political, news, or empty. Use political for a campaign or issue ad (a candidate, ballot measure or cause asking for a vote or support), not commercial; use news for a news or weather segment, not commercial or interstitial.
 Audience must be one of kids, family, general, late_night, or empty. Brand must appear literally in that item's supplied text.
 Confidence must be an integer percentage from 0 through 80.
 The product, format, seasonal, audienceCue, and presentation values must always be JSON arrays, even for one item.
@@ -433,14 +433,14 @@ func statesFromTextOutput(forest *taxonomy.Forest, requested map[Axis]bool, sign
 			Evidence: evidence(reference, kind)}
 	}
 	var out []State
-	if requested[AxisKind] {
-		kind := strings.ToLower(strings.TrimSpace(string(output.Kind)))
+	if requested[AxisRole] {
+		kind := strings.ToLower(strings.TrimSpace(string(output.Role)))
 		switch kind {
 		case "commercial", "bumper", "station_id", "psa", "trailer", "interstitial", "political", "news":
 		default:
 			kind = ""
 		}
-		out = append(out, state(AxisKind, Value{Text: kind}, "model.text_signals", EvidenceInference))
+		out = append(out, state(AxisRole, Value{Text: kind}, "model.text_signals", EvidenceInference))
 	}
 	if requested[AxisAudience] {
 		audience := strings.ToLower(strings.TrimSpace(string(output.Audience)))

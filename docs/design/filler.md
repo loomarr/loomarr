@@ -166,18 +166,19 @@ Each clip carries the metadata that lets the scheduler place it:
   descriptive, not a lifecycle state, and an unknown filename defaults to it, never to `commercial`.
 - **Political ads and news are opt-in** (#2037). `political` is a campaign or issue ad; `news` is a
   news or weather segment, whose format tag sits under `interstitial`. Both download and pass the
-  defect floor like any clip, so opting in is instant, but a channel that chose no kinds airs every
-  kind except these two, and only a channel that names one airs it. A station's own news is the
+  defect floor like any clip, so opting in is instant, but a channel that chose no roles (its policy's
+  `filler.roles`) airs every role except these two, and only a channel that names one airs it. A station's own news is the
   exception: it is station material, so it airs wherever that station's idents air, and only within
   the channel's radius. The coverage answer carries the default set, so the channel page shows it
-  ticked without a copy of the rule.
+  ticked without a copy of the rule. Migration 00173 renamed the stored `filler.kinds` key and the
+  enrichment axis `kind` to `role` (#2323).
 - Sources file campaign ads and weather reports as commercials. The free pass reads the item's
   wording (sponsor and stand-by-your-ad disclaimers, ballot asks, news and weather segment names) and
   that answer replaces a generic `commercial` or `interstitial`, never a specific role such as a PSA.
   Its rules are scored on a committed labelled corpus (`kind-corpus-v1`): neither may make a false
-  call. Within the generic and opt-in kinds a newer accepted answer replaces an older one, so a
-  corrected rule takes back a wrong label. The text model knows the two kinds but only answers a
-  kind no source or rule recorded, and its precision is not measured; a campaign ad whose wording
+  call. Within the generic and opt-in roles a newer accepted answer replaces an older one, so a
+  corrected rule takes back a wrong label. The text model knows the two roles but only answers a
+  role no source or rule recorded, and its precision is not measured; a campaign ad whose wording
   names no sponsor or office stays a commercial until an operator marks it.
 - `era` (decade or year), `audience` (`kids`, `family`, `general`, `late_night`), `category`,
   and `brand` (free text, grounded).

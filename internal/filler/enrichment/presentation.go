@@ -55,7 +55,7 @@ func ProjectDetails(states []State) DetailProjection {
 		projection.State = DetailAdding
 		return projection
 	}
-	if known(AxisKind) && known(AxisEra) && known(AxisAudience) && known(AxisBrand) &&
+	if known(AxisRole) && known(AxisEra) && known(AxisAudience) && known(AxisBrand) &&
 		known(AxisGeography) && hasTopic {
 		projection.State = DetailComplete
 	}

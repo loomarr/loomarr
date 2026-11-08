@@ -719,7 +719,7 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 	if f != nil {
 		sel.Audience = filler.Audience(f.Audience)
 		sel.Categories = append([]string(nil), f.Categories...)
-		sel.Kinds = append([]string(nil), f.Kinds...)
+		sel.Roles = append([]string(nil), f.Roles...)
 		sel.Pinned = append([]string(nil), f.Pinned...)
 		sel.Excluded = append([]string(nil), f.Excluded...)
 		if f.Geography != nil {

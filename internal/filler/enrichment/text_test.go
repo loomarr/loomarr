@@ -45,7 +45,7 @@ func textStates(t *testing.T, forest *taxonomy.Forest, axes []Axis, signals Sign
 
 func TestTextGrounding_GroundsIndependentAxesAndLiteralBrand(t *testing.T) {
 	content := `{
-		"kind":"commercial","audience":"KIDS","brand":"twirlpop","product":["sweets"],
+		"role":"commercial","audience":"KIDS","brand":"twirlpop","product":["sweets"],
 		"format":["commercial"],"seasonal":["candy"],
 		"audienceCue":["kids-cue"],"presentation":["animated"],"confidence":99
 	}`
@@ -78,8 +78,8 @@ func TestTextGrounding_GroundsIndependentAxesAndLiteralBrand(t *testing.T) {
 	if got := byAxis[AxisAudience].Value.Text; got != "kids" {
 		t.Fatalf("audience = %q", got)
 	}
-	if got := byAxis[AxisKind].Value.Text; got != "commercial" {
-		t.Fatalf("kind = %q", got)
+	if got := byAxis[AxisRole].Value.Text; got != "commercial" {
+		t.Fatalf("role = %q", got)
 	}
 }
 
@@ -88,7 +88,7 @@ func TestClassifyTextBatch_BoundsTheCompleteEightClipResponse(t *testing.T) {
 	inputs := make([]textBatchInput, textModelBatchSize)
 	for index := range inputs {
 		inputs[index] = textBatchInput{
-			Axes: []Axis{AxisKind},
+			Axes: []Axis{AxisRole},
 			Signals: Signals{
 				ClipHash: strings.Repeat(string(rune('a'+index)), 64),
 				Title:    "Fixture",
@@ -176,9 +176,9 @@ func TestGroundedBrandToleratesFilenamePunctuationOnly(t *testing.T) {
 func TestTextGrounding_AnAnswerWithoutConfidenceLosesToAnyScoredAnswer(t *testing.T) {
 	forest := taxonomy.New(nil)
 	signals := Signals{ClipHash: "clip", ObservedAt: time.Unix(500, 0).UTC()}
-	scored := textStates(t, forest, []Axis{AxisKind}, signals, `{"kind":"commercial","confidence":1}`)[0]
-	for _, content := range []string{`{"kind":"psa"}`, `{"kind":"psa","confidence":0}`} {
-		unscored := textStates(t, forest, []Axis{AxisKind}, signals, content)[0]
+	scored := textStates(t, forest, []Axis{AxisRole}, signals, `{"role":"commercial","confidence":1}`)[0]
+	for _, content := range []string{`{"role":"psa"}`, `{"role":"psa","confidence":0}`} {
+		unscored := textStates(t, forest, []Axis{AxisRole}, signals, content)[0]
 		if unscored.Evidence.Confidence != 0 {
 			t.Fatalf("confidence of %s = %d, want the lowest", content, unscored.Evidence.Confidence)
 		}

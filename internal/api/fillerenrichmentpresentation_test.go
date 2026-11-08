@@ -16,7 +16,7 @@ func TestFillerExactClipIncludesServerOwnedEnrichmentPresentation(t *testing.T) 
 	putClip(t, st, filler.Clip{Hash: "details", Path: "details.mp4", Name: "Details", Role: filler.Commercial})
 	now := time.Unix(1_700_000_500, 0).UTC()
 	state := enrichment.State{
-		ClipHash: "details", Axis: enrichment.AxisKind, Status: enrichment.StatusComplete,
+		ClipHash: "details", Axis: enrichment.AxisRole, Status: enrichment.StatusComplete,
 		Value: enrichment.Value{Text: "commercial"},
 		Evidence: enrichment.Evidence{Kind: enrichment.EvidenceItem,
 			Reference: "item.title", Confidence: 100, Producer: "metadata", ProducerVersion: "1", ObservedAt: now},
@@ -53,7 +53,7 @@ func TestFillerExactClipIncludesServerOwnedEnrichmentPresentation(t *testing.T) 
 
 	exact := read("/v1/filler?hashes=details")
 	if len(exact) != 1 || exact[0].Enrichment == nil || exact[0].Enrichment.State != "details_limited" ||
-		len(exact[0].Enrichment.Facts) != 1 || exact[0].Enrichment.Facts[0].Axis != "kind" ||
+		len(exact[0].Enrichment.Facts) != 1 || exact[0].Enrichment.Facts[0].Axis != "role" ||
 		exact[0].Enrichment.Facts[0].Evidence != "item_metadata" {
 		t.Fatalf("exact clip enrichment = %+v", exact)
 	}

@@ -504,26 +504,26 @@ func filterAudienceWithUngrounded(clips []Clip, aud Audience) []Clip {
 	return out
 }
 
-// filterKinds keeps only playable clips matching the selected descriptive roles (§10 per-channel
-// "kinds to include"). Empty selection accepts every playable Placement, including an enrolled
+// filterRoles keeps only playable clips matching the selected descriptive roles (§10 per-channel
+// "roles to include"). Empty selection accepts every playable Placement, including an enrolled
 // clip whose role remains unknown. Applied catalog-wide BEFORE pickBumper/candidatePools, so a
 // "bumpers only" selection empties the commercial pool and a "no bumpers" one leaves
-// pickBumper nothing — the kind choice shapes the whole pod, not just the middle.
+// pickBumper nothing — the role choice shapes the whole pod, not just the middle.
 //
 // Political and news clips are opt-in (#2037): the empty selection leaves them out, and only a
 // selection that names them lets them in. A station's own news is the exception. It is station
 // material like the station's idents, so it airs wherever station idents do, but only from a
 // station in `local`, the channel's resolved radius. The check is here rather than left to
 // GeographicallyEligible, which admits every clip on an installation with no location.
-func filterKinds(clips []Clip, kinds []string, local map[string]bool) []Clip {
+func filterRoles(clips []Clip, roles []string, local map[string]bool) []Clip {
 	allow := map[Role]bool{}
-	if len(kinds) == 0 {
-		for _, k := range defaultKinds {
-			allow[k] = true
+	if len(roles) == 0 {
+		for _, r := range defaultRoles {
+			allow[r] = true
 		}
 	}
-	for _, k := range kinds {
-		allow[Role(k)] = true
+	for _, r := range roles {
+		allow[Role(r)] = true
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
@@ -531,7 +531,7 @@ func filterKinds(clips []Clip, kinds []string, local map[string]bool) []Clip {
 			continue
 		}
 		switch {
-		case len(kinds) == 0 && c.Role == Unclassified, allow[c.Role] && c.Role != Unclassified:
+		case len(roles) == 0 && c.Role == Unclassified, allow[c.Role] && c.Role != Unclassified:
 			out = append(out, c)
 		case c.Role == News && c.GeographicScope == GeographicLocal && local[c.Station] && allow[StationID]:
 			out = append(out, c)
@@ -540,14 +540,14 @@ func filterKinds(clips []Clip, kinds []string, local map[string]bool) []Clip {
 	return out
 }
 
-// defaultKinds is what a channel that chose no kinds airs: every role except the opt-in ones.
-var defaultKinds = []Role{Commercial, Bumper, StationID, PSA, Trailer, Interstitial}
+// defaultRoles is what a channel that chose no roles airs: every role except the opt-in ones.
+var defaultRoles = []Role{Commercial, Bumper, StationID, PSA, Trailer, Interstitial}
 
-// DefaultKinds is defaultKinds as wire strings, for a page that shows the default ticked.
-func DefaultKinds() []string {
-	out := make([]string, len(defaultKinds))
-	for i, k := range defaultKinds {
-		out[i] = string(k)
+// DefaultRoles is defaultRoles as wire strings, for a page that shows the default ticked.
+func DefaultRoles() []string {
+	out := make([]string, len(defaultRoles))
+	for i, r := range defaultRoles {
+		out[i] = string(r)
 	}
 	return out
 }

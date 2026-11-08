@@ -21,16 +21,16 @@ func TestProjectDetails_OwnsTheQuietUserFacingState(t *testing.T) {
 		}
 	}
 	limited := enrichment.ProjectDetails([]enrichment.State{
-		state(enrichment.AxisKind, enrichment.Value{Text: "commercial"}, enrichment.EvidenceItem),
+		state(enrichment.AxisRole, enrichment.Value{Text: "commercial"}, enrichment.EvidenceItem),
 		state(enrichment.AxisBrand, enrichment.Value{}, enrichment.EvidenceInference),
 	})
 	if limited.State != enrichment.DetailLimited || len(limited.Facts) != 1 ||
-		limited.Facts[0].Axis != enrichment.AxisKind || limited.Facts[0].Evidence != enrichment.EvidenceItem {
+		limited.Facts[0].Axis != enrichment.AxisRole || limited.Facts[0].Evidence != enrichment.EvidenceItem {
 		t.Fatalf("limited projection = %+v", limited)
 	}
 
 	complete := enrichment.ProjectDetails([]enrichment.State{
-		state(enrichment.AxisKind, enrichment.Value{Text: "commercial"}, enrichment.EvidenceItem),
+		state(enrichment.AxisRole, enrichment.Value{Text: "commercial"}, enrichment.EvidenceItem),
 		state(enrichment.AxisEra, enrichment.Value{Year: 1999}, enrichment.EvidenceItem),
 		state(enrichment.AxisAudience, enrichment.Value{Text: "family"}, enrichment.EvidenceInference),
 		state(enrichment.AxisBrand, enrichment.Value{Text: "Brambly Sauce"}, enrichment.EvidenceContent),
@@ -48,7 +48,7 @@ func TestProjectDetails_StaleWorkIsAddingRatherThanAUserTask(t *testing.T) {
 	now := time.Unix(901, 0).UTC()
 	projection := enrichment.ProjectDetails([]enrichment.State{
 		{ClipHash: "clip", Axis: enrichment.AxisAudience, Status: enrichment.StatusStale},
-		{ClipHash: "clip", Axis: enrichment.AxisKind, Status: enrichment.StatusComplete,
+		{ClipHash: "clip", Axis: enrichment.AxisRole, Status: enrichment.StatusComplete,
 			Value: enrichment.Value{Text: "commercial"}, Evidence: enrichment.Evidence{
 				Kind: enrichment.EvidenceItem, Producer: "fixture", ProducerVersion: "1", ObservedAt: now,
 			}},

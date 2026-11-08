@@ -277,7 +277,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
 
 // ChannelFiller — the per-channel filler sandbox (§10, §12), the Filler section on the
 // channel page. Three parts over one live draft: the THEME criteria (era/audience/
-// categories/kinds), the OVERRIDES (pin "always include" / exclude "never include"), and a
+// categories/roles), the OVERRIDES (pin "always include" / exclude "never include"), and a
 // live PREVIEW of the actual break the draft would air. Editing anything re-assembles the
 // break in front of you through the SAME assembler reconcile uses — nothing saved until
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
@@ -430,7 +430,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           scopeEra={eraOf(policy?.scope?.dates)}
           programmingDates={policy?.scope?.dates}
           installationGeography={{ country: homeCountry, place: homePlace }}
-          defaultKinds={coverage?.defaultKinds}
+          defaultRoles={coverage?.defaultRoles}
         />
       </section>
 

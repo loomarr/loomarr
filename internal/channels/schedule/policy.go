@@ -252,7 +252,7 @@ type FillerSelection struct {
 	EraWindows []Range          `json:"eraWindows,omitempty"` // explicit union; mutually exclusive with Era
 	Audience   string           `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
 	Categories []string         `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
-	Kinds      []string         `json:"kinds,omitempty"`      // empty = the default kinds (all but political and news); else the chosen subset
+	Roles      []string         `json:"roles,omitempty"`      // empty = the default roles (all but political and news); else the chosen subset
 	Pinned     []string         `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
 	Excluded   []string         `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
 	Geography  *FillerGeography `json:"geography,omitempty"`  // nil = inherit Installation geography
@@ -318,7 +318,7 @@ func fillerAudienceForCeiling(ceiling rating.Rating) string {
 // The closed sets FillerSelection validates against (mirrors internal/filler wire
 // values; kept local so the policy model stays dependency-free).
 var (
-	fillerKinds = map[string]bool{
+	fillerRoles = map[string]bool{
 		"commercial": true, "bumper": true, "station_id": true,
 		"psa": true, "trailer": true, "interstitial": true,
 		"political": true, "news": true,
@@ -346,9 +346,9 @@ func (f *FillerSelection) validate() error {
 	if f.Audience != "" && !fillerAudiences[f.Audience] {
 		return fmt.Errorf("filler: unknown audience %q", f.Audience)
 	}
-	for _, k := range f.Kinds {
-		if !fillerKinds[k] {
-			return fmt.Errorf("filler: unknown kind %q", k)
+	for _, r := range f.Roles {
+		if !fillerRoles[r] {
+			return fmt.Errorf("filler: unknown role %q", r)
 		}
 	}
 	if f.Language != "" && !langcode.Valid(f.Language) {

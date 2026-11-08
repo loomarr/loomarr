@@ -17,7 +17,7 @@ import (
 type Axis string
 
 const (
-	AxisKind         Axis = "kind"
+	AxisRole         Axis = "role"
 	AxisEra          Axis = "era"
 	AxisAudience     Axis = "audience"
 	AxisBrand        Axis = "brand"
@@ -31,7 +31,7 @@ const (
 )
 
 var axes = []Axis{
-	AxisKind, AxisEra, AxisAudience, AxisBrand, AxisGeography, AxisLanguage,
+	AxisRole, AxisEra, AxisAudience, AxisBrand, AxisGeography, AxisLanguage,
 	AxisProduct, AxisFormat, AxisSeasonal, AxisAudienceCue, AxisPresentation,
 }
 
@@ -276,7 +276,7 @@ func (s State) Validate() error {
 
 func validateValue(axis Axis, value Value) error {
 	switch axis {
-	case AxisKind:
+	case AxisRole:
 		switch value.Text {
 		case "", "commercial", "bumper", "station_id", "psa", "trailer", "interstitial", "political", "news":
 		default:

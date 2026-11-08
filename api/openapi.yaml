@@ -1264,7 +1264,7 @@ components:
         reason:
           description: Why the clip is not a candidate; absent when it is one
           enum:
-            - kind
+            - role
             - duration
             - quality
             - category
@@ -2248,7 +2248,7 @@ components:
       properties:
         axis:
           enum:
-            - kind
+            - role
             - era
             - audience
             - brand
@@ -2562,7 +2562,7 @@ components:
             - era
             - audience
             - category
-            - kind
+            - role
             - duration
             - quality
           type: string
@@ -2585,8 +2585,8 @@ components:
           items:
             $ref: "#/components/schemas/CoverageCriterionDTO"
           type: array
-        defaultKinds:
-          description: "The clip kinds a channel that chose none airs: every kind except political and news, which a channel opts into (#2037). A station's own news within the channel's radius airs wherever station idents do."
+        defaultRoles:
+          description: "The clip roles a channel that chose none airs: every role except political and news, which a channel opts into (#2037). A station's own news within the channel's radius airs wherever station idents do."
           items:
             enum:
               - commercial
@@ -2634,7 +2634,7 @@ components:
         - geography
         - language
         - undeterminedLanguage
-        - defaultKinds
+        - defaultRoles
       type: object
     CoverageGeographyDTO:
       additionalProperties: false
@@ -4620,13 +4620,13 @@ components:
           type: array
         geography:
           $ref: "#/components/schemas/FillerGeography"
-        kinds:
-          items:
-            type: string
-          type: array
         language:
           type: string
         pinned:
+          items:
+            type: string
+          type: array
+        roles:
           items:
             type: string
           type: array

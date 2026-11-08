@@ -40,7 +40,7 @@ func TestAnalyzeDeterministic_OptInKindsScoreOnTheLabelledCorpus(t *testing.T) {
 			ClipHash: item.Title, Kind: item.Role, Title: item.Title, Description: item.Description,
 			ObservedAt: time.Unix(100, 0).UTC(),
 		}))
-		got := states[enrichment.AxisKind].Value.Text
+		got := states[enrichment.AxisRole].Value.Text
 		for class, score := range scores {
 			switch {
 			case got == class && item.Want == class:
@@ -77,7 +77,7 @@ func TestAnalyzeDeterministic_OptInWordingDoesNotOverrideASpecificRole(t *testin
 	got := statesByAxis(enrichment.AnalyzeDeterministic(enrichment.Signals{
 		ClipHash: "psa", Kind: "psa", Title: "Severe weather forecast safety PSA", ObservedAt: time.Unix(100, 0).UTC(),
 	}))
-	if kind := got[enrichment.AxisKind].Value.Text; kind != "psa" {
+	if kind := got[enrichment.AxisRole].Value.Text; kind != "psa" {
 		t.Fatalf("kind = %q, want psa", kind)
 	}
 }

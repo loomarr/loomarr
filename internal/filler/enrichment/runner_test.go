@@ -187,10 +187,10 @@ func TestCoordinator_BatchesSeveralClipsIntoOneModelRequest(t *testing.T) {
 	}
 	provider := &textProvider{responses: []string{
 		`{"items":[
-			{"id":"first","kind":"commercial","audience":"general","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70},
-			{"id":"second","kind":"commercial","audience":"family","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70}
+			{"id":"first","role":"commercial","audience":"general","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70},
+			{"id":"second","role":"commercial","audience":"family","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70}
 		]}`,
-		`{"kind":"commercial","audience":"family","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70}`,
+		`{"role":"commercial","audience":"family","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70}`,
 	}}
 	coordinator := enrichment.NewCoordinator(nil, repository, func() enrichment.TextSelection {
 		return enrichment.TextSelection{Provider: provider, ProviderName: "fixture", Model: "model"}

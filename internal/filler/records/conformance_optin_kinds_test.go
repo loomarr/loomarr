@@ -29,7 +29,7 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 	}
 	for hash, kind := range map[string]string{"campaign": "political", "forecast": "news", "safety": "news", "spot": "bumper"} {
 		if _, _, err := s.ApplyFillerEnrichment(ctx, enrichment.State{
-			ClipHash: hash, Axis: enrichment.AxisKind, Status: enrichment.StatusComplete,
+			ClipHash: hash, Axis: enrichment.AxisRole, Status: enrichment.StatusComplete,
 			Value: enrichment.Value{Text: kind},
 			Evidence: enrichment.Evidence{Kind: enrichment.EvidenceItem, Reference: "item.title", Confidence: 100,
 				Producer: enrichment.DeterministicProducer, ProducerVersion: enrichment.DeterministicProducerVersion,
@@ -61,7 +61,7 @@ func testOptInKindProjection(t *testing.T, newStore NewStoreFunc) {
 	} {
 		observed := at.Add(time.Duration(step) * time.Minute)
 		if _, _, err := s.ApplyFillerEnrichment(ctx, enrichment.State{
-			ClipHash: "relabel", Axis: enrichment.AxisKind, Status: enrichment.StatusComplete,
+			ClipHash: "relabel", Axis: enrichment.AxisRole, Status: enrichment.StatusComplete,
 			Value: enrichment.Value{Text: answer.kind},
 			Evidence: enrichment.Evidence{Kind: enrichment.EvidenceItem, Reference: "item.title", Confidence: 100,
 				Producer: enrichment.DeterministicProducer, ProducerVersion: answer.version, ObservedAt: observed},

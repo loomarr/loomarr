@@ -84,6 +84,15 @@ func TestPostgresQuarantineLegacyFillerMigration(t *testing.T) {
 	testQuarantineLegacyFillerMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresFillerRoleNamesMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testFillerRoleNamesMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresRetireFillerRuntimeRightsMigration(t *testing.T) {
 	ctx := context.Background()
 	dsn := startPostgres(t)

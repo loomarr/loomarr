@@ -44,7 +44,7 @@ const canonicalWindows = (windows: FillerSelection["eraWindows"]): FillerSelecti
 const previewSelection = (selection: FillerDraft): FillerSelection => ({
   ...selection,
   categories: selection.categories?.length ? [...selection.categories] : undefined,
-  kinds: selection.kinds?.length ? [...selection.kinds] : undefined,
+  roles: selection.roles?.length ? [...selection.roles] : undefined,
   pinned: selection.pinned?.length ? [...selection.pinned] : undefined,
   excluded: selection.excluded?.length ? [...selection.excluded] : undefined,
   eraWindows: canonicalWindows(selection.eraWindows),
@@ -64,7 +64,7 @@ const canonicalize = (s: FillerDraft): string => {
     eraWindows: eraWindows ?? null,
     audience: s.audience || null,
     categories: list(s.categories),
-    kinds: list(s.kinds),
+    roles: list(s.roles),
     pinned: list(s.pinned),
     excluded: list(s.excluded),
     geography: s.geography ? { country: s.geography.country, place: s.geography.place ?? null } : null,

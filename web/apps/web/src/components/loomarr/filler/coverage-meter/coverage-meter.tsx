@@ -68,7 +68,7 @@ const CRITERION_LABEL: Record<CoverageCriterionDTOCriterion, string> = {
   era: "Era",
   audience: "Audience",
   category: "Categories",
-  kind: "Clip kinds",
+  role: "Clip kinds",
   duration: "Clip length",
   quality: "Quality floor",
 };

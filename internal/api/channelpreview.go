@@ -132,7 +132,7 @@ type CoverageRungDTO struct {
 // order the predicates run in would decide which setting gets the blame. Counted in isolation,
 // `audience: 0` beside `era: 214` names the culprit.
 type CoverageCriterionDTO struct {
-	Criterion string `json:"criterion" enum:"geography,language,era,audience,category,kind,duration,quality" doc:"The channel setting this count is about"`
+	Criterion string `json:"criterion" enum:"geography,language,era,audience,category,role,duration,quality" doc:"The channel setting this count is about"`
 	Clips     int    `json:"clips" doc:"Break-body commercials passing THIS setting alone, ignoring the others"`
 }
 
@@ -152,8 +152,8 @@ type CoverageDTO struct {
 	// Language is the commercial language those clips were limited to (#2030 decision 14).
 	Language             string `json:"language" doc:"The language every counted clip speaks, or wordless: the channel's own commercial language, else the household's. Empty means no language limit."`
 	UndeterminedLanguage int    `json:"undeterminedLanguage" doc:"Commercials whose language could not be determined. They count only on a channel whose commercial language is the household default."`
-	// DefaultKinds lets the page show what "no kinds chosen" airs without its own copy of the rule.
-	DefaultKinds []string `json:"defaultKinds" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news" doc:"The clip kinds a channel that chose none airs: every kind except political and news, which a channel opts into (#2037). A station's own news within the channel's radius airs wherever station idents do."`
+	// DefaultRoles lets the page show what "no roles chosen" airs without its own copy of the rule.
+	DefaultRoles []string `json:"defaultRoles" enum:"commercial,bumper,station_id,psa,trailer,interstitial,political,news" doc:"The clip roles a channel that chose none airs: every role except political and news, which a channel opts into (#2037). A station's own news within the channel's radius airs wherever station idents do."`
 }
 
 // CoverageGeographyDTO is the resolved hard location boundary a coverage answer applied.
@@ -220,7 +220,7 @@ func coverageDTO(report filler.CoverageReport) CoverageDTO {
 		},
 		Language:             report.Language,
 		UndeterminedLanguage: report.UndeterminedLanguage,
-		DefaultKinds:         filler.DefaultKinds(),
+		DefaultRoles:         filler.DefaultRoles(),
 	}
 }
 

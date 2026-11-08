@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { DEFAULT_ROLES } from "@/test/fixtures/filler";
 import { widthFrame, withRouter } from "@/test/story-utils";
 import { CoverageMeter } from "./coverage-meter";
 
@@ -22,7 +22,7 @@ const HEALTHY = [
   { criterion: "era" as const, clips: 9 },
   { criterion: "audience" as const, clips: 9 },
   { criterion: "category" as const, clips: 9 },
-  { criterion: "kind" as const, clips: 9 },
+  { criterion: "role" as const, clips: 9 },
   { criterion: "duration" as const, clips: 9 },
   { criterion: "quality" as const, clips: 9 },
 ];
@@ -31,7 +31,7 @@ const NO_LIMIT = {
   geography: { country: "", place: "" },
   language: "",
   undeterminedLanguage: 0,
-  defaultKinds: DEFAULT_KINDS,
+  defaultRoles: DEFAULT_ROLES,
 };
 
 // The healthy case: era- and audience-matched commercials are available.
@@ -90,7 +90,7 @@ const OneSettingIsEmpty: Story = {
         { criterion: "era", clips: 214 },
         { criterion: "audience", clips: 0 },
         { criterion: "category", clips: 112 },
-        { criterion: "kind", clips: 198 },
+        { criterion: "role", clips: 198 },
         { criterion: "duration", clips: 214 },
         { criterion: "quality", clips: 214 },
       ],

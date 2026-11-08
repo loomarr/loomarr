@@ -380,7 +380,7 @@ type ClipEnrichmentDTO struct {
 }
 
 type ClipEnrichmentFactDTO struct {
-	Axis     string `json:"axis" enum:"kind,era,audience,brand,geography,language,product,format,seasonal,audience-cue,presentation"`
+	Axis     string `json:"axis" enum:"role,era,audience,brand,geography,language,product,format,seasonal,audience-cue,presentation"`
 	Evidence string `json:"evidence" enum:"inference,source_default,trusted_mapping,content_observation,item_metadata,operator"`
 }
 
@@ -885,7 +885,7 @@ func (s *Server) patchFillerClip(ctx context.Context, in *patchClipInput) (*clip
 		return nil, err
 	}
 	if in.Body.Role != "" {
-		if err := evidence.record(ctx, enrichment.AxisKind, enrichment.Value{Text: in.Body.Role}); err != nil {
+		if err := evidence.record(ctx, enrichment.AxisRole, enrichment.Value{Text: in.Body.Role}); err != nil {
 			return nil, err
 		}
 	}
@@ -1171,7 +1171,7 @@ type ChannelFitDTO struct {
 	// ⚠ A CODE, never a sentence: the frontend owns the wording (the §11 refusal-code
 	// precedent), because a server sentence cannot be translated and cannot link to the setting
 	// that caused it.
-	Reason string `json:"reason,omitempty" enum:"kind,duration,quality,category,audience,geography,excluded,season,language" doc:"Why the clip is not a candidate; absent when it is one"`
+	Reason string `json:"reason,omitempty" enum:"role,duration,quality,category,audience,geography,excluded,season,language" doc:"Why the clip is not a candidate; absent when it is one"`
 	// Pinned / Excluded are the operator's explicit override for this clip on this channel.
 	//
 	// ⚠ Both can be true, and EXCLUDED WINS — assembly seeds excluded ids into the used-set

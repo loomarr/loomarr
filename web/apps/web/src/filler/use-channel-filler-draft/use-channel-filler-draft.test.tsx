@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
-import { DEFAULT_KINDS } from "@/test/fixtures/filler";
+import { DEFAULT_ROLES } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { canonicalize, PREVIEW_DEBOUNCE_MS, useChannelFillerDraft } from "./use-channel-filler-draft";
 
@@ -32,12 +32,12 @@ const previewBody: PreviewDraftPodsOutputBody = {
     geography: { country: "", place: "" },
     language: "",
     undeterminedLanguage: 0,
-    defaultKinds: DEFAULT_KINDS,
+    defaultRoles: DEFAULT_ROLES,
     criteria: [
       { criterion: "era", clips: 1 },
       { criterion: "audience", clips: 1 },
       { criterion: "category", clips: 1 },
-      { criterion: "kind", clips: 1 },
+      { criterion: "role", clips: 1 },
       { criterion: "duration", clips: 1 },
       { criterion: "quality", clips: 1 },
     ],
@@ -111,7 +111,7 @@ afterEach(() => {
 
 describe("canonicalize", () => {
   it("folds empty lists while preserving explicit-any as a distinct meaning", () => {
-    expect(canonicalize({})).toBe(canonicalize({ categories: [], kinds: [], pinned: [], excluded: [] }));
+    expect(canonicalize({})).toBe(canonicalize({ categories: [], roles: [], pinned: [], excluded: [] }));
     expect(canonicalize({})).not.toBe(canonicalize({ audience: "", era: {} }));
   });
   it("is order-insensitive within a list (membership, not order, is identity)", () => {
