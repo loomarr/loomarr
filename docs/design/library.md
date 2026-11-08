@@ -390,6 +390,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
   in use that Loomarr can open (status `ok`). Until the media server's catalog retires (step 16),
   the step is optional and Skip for now is the way past. On the Tunarr path, Tunarr's own wiring
   step follows as "Tunarr library".
+- **The parity gate** (step 14, decision 8). `make library-parity` (`eval library-parity`) reads
+  the scanner's files from a Loomarr database and every movie and episode file the media server
+  lists, both read-only, and pairs them by path through the path map. A pair agrees on identity
+  when the two share a TMDB, TVDB or IMDb id and contradict none; an episode agrees by its own
+  ids, or else by its show's ids and its numbering. Durations agree within a second. Expected
+  differences are explained and counted: a path the path map doesn't cover, a folder not in use,
+  a file the scanner skips, an extra, a title waiting in Needs you. The gate passes with no
+  unexplained presence or identity finding and at least 99.5% of durations agreeing; a live
+  channel check follows before the cutover.
 
 ## Cached series episodes
 
