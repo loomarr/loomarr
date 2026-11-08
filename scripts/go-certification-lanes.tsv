@@ -2,7 +2,9 @@
 # -p=1: one package at a time, so its tests own all four vCPUs. Two kinds of package live here:
 #   - media certification: synthetic playout targets with strict latency or capacity assertions;
 #   - CPU-heavy packages whose own parallel tests need a runner to themselves (#1570).
-# Separate runners overlap the two lanes without allowing package concurrency inside either.
+# Separate runners overlap the lanes without allowing package concurrency inside any of them. The
+# highest lane number is the lane count (scripts/go-shard.sh); .github/workflows/ci-go.yml's matrix
+# names each lane as certification-<lane>/<count>.
 1	internal/app
 # internal/integration is here for balance. Its tests are serial, so it gains little from a runner
 # of its own and keeps the lanes balanced when measured at -p=1. Weighed from real runs (#2007),
@@ -14,5 +16,12 @@
 2	internal/playout
 # internal/platform/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel
 # (#1631), and beside three other packages in an ordinary -p=4 lane they only competed for the same
-# cores.
-2	internal/platform/store
+# cores. Its migration tests replay every migration on purpose, and beside api and playout the lane
+# passed the 15-minute timeout (#2716), so it has a runner of its own.
+3	internal/platform/store
+# Both run their own tests in parallel: schedule's seasonal walks are hundreds of CPU-seconds of
+# parallel subtests, demolibrary encodes filler and scans the tree. Locally at -p=1 they take 120s
+# and 72s under -race; sharing an ordinary -p=4 lane they measured 767s and 712s and timed it out
+# (#2716).
+4	internal/channels/schedule
+4	internal/demolibrary
