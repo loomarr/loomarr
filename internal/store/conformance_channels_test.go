@@ -576,6 +576,10 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
+	// An airing belongs to a channel (a foreign key since #2323), so each channel exists first.
+	for i, id := range []string{"ch-1", "ch-2", "ch-bykey", "ch-bykey-other"} {
+		mustSaveChannel(t, st, sampleChannel(id, i+1, time.Time{}))
+	}
 
 	// `opened` plays the start of the window being arranged.
 	opened := time.Now().Truncate(time.Second)

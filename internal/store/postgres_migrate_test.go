@@ -39,6 +39,15 @@ func TestPostgresStateChecksMigration(t *testing.T) {
 	testStateChecksMigration(t, db, DialectPostgres, "migrations/postgres")
 }
 
+func TestPostgresForeignKeyPolicyMigration(t *testing.T) {
+	db, err := sql.Open("pgx", startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	testForeignKeyPolicyMigration(t, db, DialectPostgres, "migrations/postgres")
+}
+
 func TestPostgresInvitationMigrationPreservesExistingContactAddresses(t *testing.T) {
 	db, err := sql.Open("pgx", startPostgres(t))
 	if err != nil {
