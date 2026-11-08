@@ -824,7 +824,7 @@ One row per piece of artwork (posters, channel icons, clip stills and so on). Th
 | `origin` | Where the bytes came from, which decides whether they can be got back after a restore. One of upload (a person uploaded it; not recoverable), remote (downloaded from TMDB or a media server; recoverable from source_url), extracted (made from local media, such as a clip still or a poster beside a file; recoverable), or generated (made by Loomarr; treated as not recoverable). | `TEXT` |
 | `source_url` | The URL a remote image was downloaded from; empty for every other origin. | `TEXT` |
 | `visibility` | Who may fetch it. public needs no sign-in (a channel icon other apps fetch); member needs a signed-in person. | `TEXT` |
-| `role` | What the image is for, which sets its sizes and shape. One of poster, backdrop, icon, thumb (a clip still) or watermark (a channel's on-screen logo). | `TEXT` |
+| `role` | What the image is for, which sets its sizes and shape. One of poster, backdrop, icon, thumb (a clip still), watermark (a channel's on-screen logo) or logo (a title's clear logo, kept with its transparency, so it has no JPEG size). | `TEXT` |
 | `mime` | The original's file type, such as image/png. | `TEXT` |
 | `width` | The original's width in pixels. | `INTEGER` |
 | `height` | The original's height in pixels. | `INTEGER` |
@@ -850,7 +850,7 @@ What each image is used for. An image can serve several owners (the same poster 
 | `image_hash` | The image (an images hash). | `TEXT` · key · → `images.hash` |
 | `owner_kind` | What kind of thing uses it, such as channel, clip, library_item (a title's poster), library_candidate (a Needs you result's poster) or filler_split_proposal. | `TEXT` · key |
 | `owner_id` | The id of the thing that uses it, in that kind's own table. | `TEXT` · key |
-| `role` | What the image is for here, one of poster, backdrop, icon, thumb or watermark. | `TEXT` · key |
+| `role` | What the image is for here, one of poster, backdrop, icon, thumb, watermark or logo. | `TEXT` · key |
 
 ### image_derivatives
 

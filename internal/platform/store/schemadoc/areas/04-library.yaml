@@ -483,7 +483,8 @@ tables:
         signed-in person.
       role: >
         What the image is for, which sets its sizes and shape. One of poster, backdrop, icon, thumb
-        (a clip still) or watermark (a channel's on-screen logo).
+        (a clip still), watermark (a channel's on-screen logo) or logo (a title's clear logo, kept
+        with its transparency, so it has no JPEG size).
       mime: The original's file type, such as image/png.
       width: The original's width in pixels.
       height: The original's height in pixels.
@@ -515,7 +516,7 @@ tables:
         What kind of thing uses it, such as channel, clip, library_item (a title's poster),
         library_candidate (a Needs you result's poster) or filler_split_proposal.
       owner_id: The id of the thing that uses it, in that kind's own table.
-      role: What the image is for here, one of poster, backdrop, icon, thumb or watermark.
+      role: What the image is for here, one of poster, backdrop, icon, thumb, watermark or logo.
 
   - name: image_derivatives
     about: >

@@ -11,29 +11,33 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
-// fakePosters keeps each title's poster file name; fail makes every import fail and change nothing.
-type fakePosters struct {
+// fakeArtwork keeps each title's image file name per kind; fail makes every import fail and
+// change nothing.
+type fakeArtwork struct {
 	fail bool
-	held map[string]string
+	held map[string]map[string]string // kind → item → file name
 }
 
-func (f *fakePosters) Poster(_ context.Context, itemID, ref string) error {
+func (f *fakeArtwork) Art(_ context.Context, itemID, kind, ref string) error {
 	if f.fail {
 		return errors.New("worker down")
 	}
 	if f.held == nil {
-		f.held = map[string]string{}
+		f.held = map[string]map[string]string{}
+	}
+	if f.held[kind] == nil {
+		f.held[kind] = map[string]string{}
 	}
 	if ref == "" {
-		delete(f.held, itemID)
+		delete(f.held[kind], itemID)
 		return nil
 	}
-	f.held[itemID] = filepath.Base(ref)
+	f.held[kind][itemID] = filepath.Base(ref)
 	return nil
 }
 
-// posters is each listed title's poster, by name.
-func (h *harness) posters(f *fakePosters) map[string]string {
+// art is each listed title's image of one kind, by name.
+func (h *harness) art(f *fakeArtwork, kind string) map[string]string {
 	h.t.Helper()
 	page, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{})
 	if err != nil {
@@ -41,9 +45,39 @@ func (h *harness) posters(f *fakePosters) map[string]string {
 	}
 	out := map[string]string{}
 	for _, it := range page.Items {
-		out[it.Name] = f.held[it.ID]
+		out[it.Name] = f.held[kind][it.ID]
 	}
 	return out
+}
+
+// posters is each listed title's poster, by name.
+func (h *harness) posters(f *fakeArtwork) map[string]string {
+	return h.art(f, localart.KindPoster)
+}
+
+// A title's fanart and clear logo are imported beside its poster (#2567); the other kinds the
+// sidecars name (banner, clearart, …) are not, since nothing shows them.
+func TestImportFanartAndLogoBesideThePoster(t *testing.T) {
+	h := newHarness(t)
+	art := &fakeArtwork{}
+	h.im.Art, h.im.Artwork = localart.New(), art
+	h.file("Alpha/Alpha.mkv", 10)
+	h.file("Alpha/poster.jpg", 3)
+	h.file("Alpha/fanart.jpg", 3)
+	h.file("Alpha/clearlogo.png", 3)
+	h.file("Alpha/banner.jpg", 3)
+	h.run()
+
+	for kind, want := range map[string]string{
+		localart.KindPoster: "poster.jpg", localart.KindFanart: "fanart.jpg", localart.KindClearlogo: "clearlogo.png",
+	} {
+		if got := h.art(art, kind)["Alpha"]; got != want {
+			t.Errorf("%s = %q, want %q", kind, got, want)
+		}
+	}
+	if len(art.held[localart.KindBanner]) != 0 {
+		t.Errorf("banner imported: %v", art.held[localart.KindBanner])
+	}
 }
 
 // The scanner imports each title's poster from beside its media: a movie folder's poster, then the
@@ -51,8 +85,8 @@ func (h *harness) posters(f *fakePosters) map[string]string {
 // fails changes nothing and the pass carries on.
 func TestImportPostersFromBesideTheMedia(t *testing.T) {
 	h := newHarness(t)
-	posters := &fakePosters{}
-	h.im.Art, h.im.Posters = localart.New(), posters
+	posters := &fakeArtwork{}
+	h.im.Art, h.im.Artwork = localart.New(), posters
 	h.file("Alpha/Alpha.mkv", 10)
 	h.file("Alpha/poster.jpg", 3)
 	h.file("Bravo Show/Season 01/Bravo Show S01E01.mkv", 10)
@@ -95,8 +129,8 @@ func TestImportPostersFromBesideTheMedia(t *testing.T) {
 // A folder holding several videos says nothing of any one of them: its poster is no one's.
 func TestImportFolderPosterNeedsASoleVideo(t *testing.T) {
 	h := newHarness(t)
-	posters := &fakePosters{}
-	h.im.Art, h.im.Posters = localart.New(), posters
+	posters := &fakeArtwork{}
+	h.im.Art, h.im.Artwork = localart.New(), posters
 	h.file("Mixed/Delta (2001).mkv", 10)
 	h.file("Mixed/Echo (2002).mkv", 10)
 	h.file("Mixed/poster.jpg", 3)

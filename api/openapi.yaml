@@ -5713,10 +5713,10 @@ components:
           description: Base64 ThumbHash for the low-quality placeholder
           type: string
         role:
-          description: poster | backdrop | icon | thumb — decides the width ladder
+          description: poster | backdrop | icon | thumb | logo — decides the width ladder
           type: string
         src:
-          description: A same-origin JPEG path for the <img> fallback
+          description: "A same-origin path for the <img> fallback: JPEG, or WebP for a logo so its transparency survives"
           type: string
         srcSetAvif:
           description: Same-origin srcset for AVIF; empty until the AVIF job has run
@@ -6821,6 +6821,9 @@ components:
           format: uri
           readOnly: true
           type: string
+        backdropImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its fanart; absent when it has none, or while one is still being fetched
         detailsFrom:
           $ref: "#/components/schemas/LibraryDetailsFromDTO"
         files:
@@ -6834,6 +6837,9 @@ components:
           type: array
         item:
           $ref: "#/components/schemas/LibraryItemDTO"
+        logoImage:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Its clear logo; absent when it has none, or while one is still being fetched
         match:
           $ref: "#/components/schemas/LibraryMatchDTO"
         overview:
