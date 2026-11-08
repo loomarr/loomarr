@@ -45,6 +45,8 @@ export type {
   GuideGridProps,
   GuideJourneyProps,
   GuideLogoRenderer,
+  GuideNowNextProps,
+  GuidePhoneHeaderProps,
   GuideProgrammeDetailProps,
   GuideSurfaceProps,
   GuideUnavailableState,
@@ -54,6 +56,8 @@ export {
   GuideExperience,
   GuideGrid,
   GuideJourney,
+  GuideNowNext,
+  GuidePhoneHeader,
   GuideProgrammeDetail,
   GuideSurface,
 } from "./src/guide";
