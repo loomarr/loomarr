@@ -68,7 +68,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 			return libraryPresence{lib: deps.foundation.libraryClient.Snapshot()}
 		}}
 		proposalOutlook = outlook.New(outlook.Config{
-			Titles: st, Library: deps.foundation.libraryClient, Episodes: episodeResolver(deps.foundation.libraryClient),
+			Titles: st, Library: itemMetadata{facts: st, lib: deps.foundation.libraryClient}, Episodes: episodeResolver(deps.foundation.libraryClient),
 			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
 		})
 	}

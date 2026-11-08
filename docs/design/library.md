@@ -536,7 +536,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
 
   Readers learn library item ids before the rewrite turns stored ids into them. Playout reads first:
   a programme keyed by a library item id plays that item's own playing file, with no media-server
-  call (`LibraryPlayingFile`); any other id resolves through the media server as before.
+  call (`LibraryPlayingFile`); any other id resolves through the media server as before. Item
+  metadata follows: the guide's descriptions, a lineup's durations and a proposal's outlook read a
+  library item's overview, genres, year, rating and runtime from the tables (`LibraryItemFacts`).
+  The runtime is the playing file's own duration, and an episode takes its show's genres.
 
   `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
   pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`

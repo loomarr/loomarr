@@ -203,14 +203,17 @@ func buildChannels(
 		// Program duration comes from the media server (§9/§10): give the scheduler
 		// a resolver so program slots carry a real runtime before the Tunarr push,
 		// and an episode resolver so a series entry expands into its episodes (§9).
-		avail := channels.NewStoreAvailability(rootCtx, st, lib.ItemDurationMs, episodeResolver(lib))
+		// A library item id (#2151 step 15) is answered from the Library's tables, any other id by
+		// the media server.
+		meta := itemMetadata{facts: st, lib: lib}
+		avail := channels.NewStoreAvailability(rootCtx, st, meta.ItemDurationMs, episodeResolver(lib))
 		avail = channels.WithEpisodeMaxAge(avail, func() time.Duration { return settings.EpisodesMaxAge.Get(set) })
 		// Bulk duration resolution, so a cycle layout costs ONE media-server call instead of one
 		// per movie (§9 N+1). ItemMetadataByID already asks for RunTimeTicks and already batches
 		// by id list — the bulk answer simply was not wired to the scheduler's duration path, so
 		// a 25-movie channel paid 25 sequential round trips on every cold guide request (~375ms
 		// of GET /v1/guide, measured against the dev Emby).
-		avail = channels.WithBulkDurations(avail, bulkDurations(lib))
+		avail = channels.WithBulkDurations(avail, bulkDurations(meta))
 		// Tests inject an in-process Tunarr double here; production uses the real
 		// URL-built programmer (prog). Either way the engine is a *channels.Engine.
 		pusher := tunarr.Programmer(prog)
