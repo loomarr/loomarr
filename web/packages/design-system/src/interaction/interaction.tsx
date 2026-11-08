@@ -314,7 +314,9 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       // understands `onClick`, so it is bridged here rather than spread through `...props`
       // unchanged, which would silently never fire. `accessibilityRole` is RN's too: it reaches the
       // host as `role`, and spread raw it is an unknown DOM attribute.
+      // `accessibilityLabel` is RN's name for the same thing: the host only reads `aria-label`.
       const {
+        accessibilityLabel,
         accessibilityRole: _role,
         onPress,
         ...restProps
@@ -327,7 +329,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         render,
         mergeRenderProps(
           {
-            "aria-label": iconLabel,
+            "aria-label": accessibilityLabel ?? iconLabel,
             ...restProps,
             "aria-disabled": isDisabled || undefined,
             "aria-pressed": ariaPressed,
