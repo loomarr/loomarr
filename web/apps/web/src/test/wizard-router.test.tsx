@@ -710,7 +710,8 @@ describe("wizard", () => {
       });
       renderAt("/wizard?step=playout");
 
-      expect(await screen.findByLabelText("Loomarr address")).toBeDisabled();
+      // Read-only, not disabled: the pinned value stays at full strength (#2759).
+      expect(await screen.findByLabelText("Loomarr address")).toHaveAttribute("readonly");
       expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
     });
