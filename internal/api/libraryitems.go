@@ -168,15 +168,23 @@ func (s *Server) libraryPosters(ctx context.Context, items []store.LibraryItemSu
 		if _, seen := out[it.Poster]; seen {
 			continue
 		}
-		out[it.Poster] = nil
-		rec, err := s.images.Get(ctx, it.Poster)
-		if err != nil || !rec.HasBytes() {
-			continue
-		}
-		dto := s.imageToDTO(ctx, rec)
-		out[it.Poster] = &dto
+		out[it.Poster] = s.libraryImage(ctx, it.Poster)
 	}
 	return out
+}
+
+// libraryImage renders one of a title's images by hash: nil for none, or while its bytes have not
+// arrived, so a surface draws without it rather than showing a broken image.
+func (s *Server) libraryImage(ctx context.Context, hash string) *ImageDTO {
+	if s.images == nil || hash == "" {
+		return nil
+	}
+	rec, err := s.images.Get(ctx, hash)
+	if err != nil || !rec.HasBytes() {
+		return nil
+	}
+	dto := s.imageToDTO(ctx, rec)
+	return &dto
 }
 
 type listLibraryItemsInput struct {
@@ -273,7 +281,11 @@ type librarySeasonDTO struct {
 
 type libraryItemDetailDTO struct {
 	// Item is a named field: huma leaves an unexported embedded struct out of the schema.
-	Item          libraryItemDTO        `json:"item"`
+	Item libraryItemDTO `json:"item"`
+	// LogoImage and BackdropImage are drawn in place of a typed title and behind the details
+	// (#2567). A logo keeps its transparency: its fallback src is WebP, never JPEG.
+	LogoImage     *ImageDTO             `json:"logoImage,omitempty" doc:"Its clear logo; absent when it has none, or while one is still being fetched"`
+	BackdropImage *ImageDTO             `json:"backdropImage,omitempty" doc:"Its fanart; absent when it has none, or while one is still being fetched"`
 	Overview      string                `json:"overview,omitempty"`
 	Genres        []string              `json:"genres"`
 	Rating        string                `json:"rating,omitempty" doc:"The certification, such as TV-14"`
@@ -305,7 +317,9 @@ func (s *Server) getLibraryItem(ctx context.Context, in *getLibraryItemInput) (*
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
 	posters := s.libraryPosters(ctx, []store.LibraryItemSummary{d.LibraryItemSummary})
-	return &getLibraryItemOutput{Body: libraryItemDetailOf(d, posters)}, nil
+	body := libraryItemDetailOf(d, posters)
+	body.LogoImage, body.BackdropImage = s.libraryImage(ctx, d.Logo), s.libraryImage(ctx, d.Backdrop)
+	return &getLibraryItemOutput{Body: body}, nil
 }
 
 func libraryItemDetailOf(d scan.ItemDetail, posters map[string]*ImageDTO) libraryItemDetailDTO {

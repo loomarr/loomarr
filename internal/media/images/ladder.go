@@ -27,7 +27,26 @@ var (
 	// iconWidthLadder covers channel icons and logos. Small by nature: the largest consumer is a
 	// settings preview, and Tunarr fetches one for a guide tile.
 	iconWidthLadder = []int{92, 185, 500}
+	// logoWidthLadder is a title's clear logo, wide and short. Clear logos top out near 800px wide
+	// (the Kodi convention's size), and the largest consumer is a player overlay.
+	logoWidthLadder = []int{300, 500, 800}
 )
+
+// Formats is the formats a role is rendered in, best first. A logo's alpha is its shape, so it
+// has no JPEG rung: a JPEG would draw it on a black box.
+func (r Role) Formats() []Format {
+	if r == RoleLogo {
+		return []Format{FormatAVIF, FormatWebP}
+	}
+	return DefaultFormats()
+}
+
+// Fallback is the format of the plain <img> fallback: JPEG, the floor every browser decodes, or
+// WebP for a role with no JPEG rung.
+func (r Role) Fallback() Format {
+	formats := r.Formats()
+	return formats[len(formats)-1]
+}
 
 // Widths returns the ladder for a role, smallest first.
 //
@@ -42,6 +61,8 @@ func (r Role) Widths() []int {
 		return slices.Clone(backdropWidthLadder)
 	case RoleIcon:
 		return slices.Clone(iconWidthLadder)
+	case RoleLogo:
+		return slices.Clone(logoWidthLadder)
 	}
 	return slices.Clone(iconWidthLadder)
 }

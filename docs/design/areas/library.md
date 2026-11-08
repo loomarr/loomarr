@@ -24,9 +24,9 @@ One area of the [package map](../package-map.md#start-here).
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 - **`library/arrhook`** · 2 importers · → `platform/httpx`
   Speaks Sonarr's and Radarr's webhooks (#2151 decisions 9 and 10): it reads the events they send, naming the folders each one touched, and registers Loomarr as one of their connections so they send them.
-- **`library/scan`** · 2 importers · → `inventory`, `library`, `library/arrhook`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `platform/store`, `tmdb`
+- **`library/scan`** · 2 importers · → `inventory`, `library`, `library/arrhook`, `media/header`, `metadataprovider`, `metadataprovider/localart`, `metadataprovider/precedence`, `platform/store`, `provision`, `tmdb`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
-- **`metadataprovider`** · 7 importers
+- **`metadataprovider`** · 8 importers
   Contract every metadata provider implements: a system that already knows what a media file is and what to say about it, such as Sonarr and Radarr, a Kodi NFO beside the file, or a reference catalog like TMDB (#2151, decision 0046).
 - **`metadataprovider/arr`** · 1 importer · → `metadataprovider`
   Sonarr and Radarr as metadata providers (#2151 decisions 7, 15, 38).
@@ -42,7 +42,7 @@ One area of the [package map](../package-map.md#start-here).
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
-- **`provision`** · 25 importers
+- **`provision`** · 27 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`provisionbackstop`** · 1 importer · → `channels/schedule`, `library`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `provision`, `requester`
   Provisioning backstop (design §4, §7, §18).

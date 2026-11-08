@@ -6,6 +6,7 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { goDurationMinutes, pluralize } from "@loomarr/core/format";
 import {
+  Action,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,7 +23,6 @@ import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
 import { CoverageMeter } from "@/components/loomarr/filler/coverage-meter";
 import { PodTimeline } from "@/components/loomarr/filler/pod-timeline";
 import { usePlaceLabel } from "@/components/loomarr/settings/installation-location";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraOf } from "@/lib/era-dates";
@@ -506,12 +506,12 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           the seamless commit; Discard throws the draft away. */}
       {isDirty && (
         <div className="border-border bg-background/95 sticky bottom-0 flex items-center gap-2 rounded-lg border p-3 shadow-lg backdrop-blur">
-          <Button variant="suggest" size="sm" disabled={isApplying} onClick={apply}>
+          <Action disabled={isApplying} onPress={apply} variant="suggest">
             {isApplying ? "Applying…" : "Apply filler"}
-          </Button>
-          <Button variant="ghost" size="sm" disabled={isApplying} onClick={discard}>
+          </Action>
+          <Action disabled={isApplying} onPress={discard} variant="ghost">
             Discard
-          </Button>
+          </Action>
           <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
         </div>
       )}

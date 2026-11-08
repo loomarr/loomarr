@@ -1,9 +1,9 @@
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
 import { Text } from "@loomarr/design-system";
+import { CommitField, YearField } from "@loomarr/ui";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraDates, eraOf } from "@/lib/era-dates";
@@ -69,45 +69,32 @@ const DateAxisRow = ({
   // Three axes of rows would otherwise give a screen reader or voice control a list of identical
   // "From year" boxes and "Remove" buttons, so each name carries its axis and range while the
   // visible text stays short (and still starts the name), as PolicyFieldSource does for Reset.
-  const where = <span className="sr-only">{`(${label}, range ${index + 1})`}</span>;
+  const where = `(${label}, range ${index + 1})`;
+  const commitDraft = () => onCommit(index, { from: Number(draft.from), to: Number(draft.to) });
   // The From/To pair never wraps apart: on a phone only Remove drops to the next line, so a
   // range still reads as one row.
   return (
     <div className="flex flex-wrap items-end gap-2">
       <div className="flex gap-2">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`policy-dates-${label}-${index}-from`} className="text-muted-foreground text-xs">
-            From year {where}
-          </Label>
-          <Input
-            id={`policy-dates-${label}-${index}-from`}
-            type="number"
-            min={YEAR_MIN}
-            max={YEAR_MAX}
-            className="w-28"
-            value={draft.from}
-            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-            onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`policy-dates-${label}-${index}-to`} className="text-muted-foreground text-xs">
-            To year {where}
-          </Label>
-          <Input
-            id={`policy-dates-${label}-${index}-to`}
-            type="number"
-            min={YEAR_MIN}
-            max={YEAR_MAX}
-            className="w-28"
-            value={draft.to}
-            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
-            onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
-          />
-        </div>
+        <YearField
+          accessibilityLabel={`From year ${where}`}
+          id={`policy-dates-${label}-${index}-from`}
+          label="From year"
+          onBlur={commitDraft}
+          onChangeText={(from) => setDraft({ ...draft, from })}
+          value={draft.from}
+        />
+        <YearField
+          accessibilityLabel={`To year ${where}`}
+          id={`policy-dates-${label}-${index}-to`}
+          label="To year"
+          onBlur={commitDraft}
+          onChangeText={(to) => setDraft({ ...draft, to })}
+          value={draft.to}
+        />
       </div>
       <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(index)}>
-        Remove {where}
+        Remove <span className="sr-only">{where}</span>
       </Button>
     </div>
   );
@@ -176,25 +163,17 @@ const DateAxisEditor = ({
       )}
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex gap-2">
-          <Input
-            aria-label={`${label} new range from`}
-            type="number"
-            min={YEAR_MIN}
-            max={YEAR_MAX}
-            className="w-28"
-            value={draft.from}
-            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+          <YearField
+            accessibilityLabel={`${label} new range from`}
+            onChangeText={(from) => setDraft({ ...draft, from })}
             placeholder="From"
+            value={draft.from}
           />
-          <Input
-            aria-label={`${label} new range to`}
-            type="number"
-            min={YEAR_MIN}
-            max={YEAR_MAX}
-            className="w-28"
-            value={draft.to}
-            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+          <YearField
+            accessibilityLabel={`${label} new range to`}
+            onChangeText={(to) => setDraft({ ...draft, to })}
             placeholder="To"
+            value={draft.to}
           />
         </div>
         <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add range for ${label}`}>
@@ -514,54 +493,48 @@ const ChannelPolicyFields = ({
         >
           {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would duplicate the visible label row */}
           <div role="group" aria-labelledby="policy-dates-label" className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="policy-era-from" className="text-muted-foreground text-xs">
-                From year
-              </Label>
-              <Input
-                // Uncontrolled, so the stored value is the key: a reset or any outside change
-                // re-seeds the box instead of leaving the old year on screen.
-                key={`from-${era?.from ?? ""}`}
-                id="policy-era-from"
-                type="number"
-                className="w-28"
-                defaultValue={era?.from ?? ""}
-                placeholder="Any"
-                onBlur={(e) => {
-                  const next = e.target.value === "" ? undefined : Number(e.target.value);
-                  if (next === era?.from) return;
-                  const { dates: _dates, ...scope } = policy.scope ?? {};
-                  const nextDates = eraDates({ ...era, from: next });
-                  onChange({
-                    ...policy,
-                    scope: { ...scope, ...(nextDates ? { dates: nextDates } : {}) },
-                  });
-                }}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="policy-era-to" className="text-muted-foreground text-xs">
-                To year
-              </Label>
-              <Input
-                key={`to-${era?.to ?? ""}`}
-                id="policy-era-to"
-                type="number"
-                className="w-28"
-                defaultValue={era?.to ?? ""}
-                placeholder="Any"
-                onBlur={(e) => {
-                  const next = e.target.value === "" ? undefined : Number(e.target.value);
-                  if (next === era?.to) return;
-                  const { dates: _dates, ...scope } = policy.scope ?? {};
-                  const nextDates = eraDates({ ...era, to: next });
-                  onChange({
-                    ...policy,
-                    scope: { ...scope, ...(nextDates ? { dates: nextDates } : {}) },
-                  });
-                }}
-              />
-            </div>
+            {/* Keyed on the stored value: a reset or any outside change re-seeds the box instead
+                of leaving the old year on screen. */}
+            <CommitField
+              id="policy-era-from"
+              initial={String(era?.from ?? "")}
+              key={`from-${era?.from ?? ""}`}
+              keyboardType="number-pad"
+              label="From year"
+              maxLength={4}
+              onCommit={(text) => {
+                const next = text === "" ? undefined : Number(text);
+                if (next === era?.from) return;
+                const { dates: _dates, ...scope } = policy.scope ?? {};
+                const nextDates = eraDates({ ...era, from: next });
+                onChange({
+                  ...policy,
+                  scope: { ...scope, ...(nextDates ? { dates: nextDates } : {}) },
+                });
+              }}
+              placeholder="Any"
+              width={112}
+            />
+            <CommitField
+              id="policy-era-to"
+              initial={String(era?.to ?? "")}
+              key={`to-${era?.to ?? ""}`}
+              keyboardType="number-pad"
+              label="To year"
+              maxLength={4}
+              onCommit={(text) => {
+                const next = text === "" ? undefined : Number(text);
+                if (next === era?.to) return;
+                const { dates: _dates, ...scope } = policy.scope ?? {};
+                const nextDates = eraDates({ ...era, to: next });
+                onChange({
+                  ...policy,
+                  scope: { ...scope, ...(nextDates ? { dates: nextDates } : {}) },
+                });
+              }}
+              placeholder="Any"
+              width={112}
+            />
             <Button
               type="button"
               variant="link"
@@ -645,16 +618,15 @@ const ChannelPolicyFields = ({
           {/* MINUTES in the field, SECONDS on the wire (schedule.ScopePolicy.RuntimeMax is
               seconds, 0 = unbounded). Nobody thinks about programme length in seconds, and
               a raw seconds box would invite "90" meaning a minute and a half. */}
-          <Input
-            key={policy.scope?.runtimeMax ?? 0}
+          <CommitField
             id="policy-runtime-max"
-            className="w-28"
-            type="number"
-            min={0}
-            defaultValue={policy.scope?.runtimeMax ? Math.round(policy.scope.runtimeMax / 60) : ""}
+            initial={policy.scope?.runtimeMax ? String(Math.round(policy.scope.runtimeMax / 60)) : ""}
+            key={policy.scope?.runtimeMax ?? 0}
+            keyboardType="number-pad"
             placeholder="e.g. 90"
-            onBlur={(e) => {
-              const raw = e.target.value.trim();
+            width={112}
+            onCommit={(text) => {
+              const raw = text.trim();
               // Blank and 0 both mean unbounded, and the wire spells that 0 — so a cleared
               // field must send 0, not undefined, or the omitempty drops it and the old
               // value survives the merge.
@@ -673,14 +645,15 @@ const ChannelPolicyFields = ({
       {showOrdering &&
         DURATION_FIELDS.map(({ field, id, label, help }) => (
           <PolicyField key={field} id={id} htmlFor={id} label={label} help={help} {...source(field)}>
-            <Input
-              key={separation?.[field] ?? ""}
+            <CommitField
+              autoCapitalize="none"
               id={id}
-              className="w-28"
-              defaultValue={tidyGoDuration(separation?.[field])}
+              initial={tidyGoDuration(separation?.[field])}
+              key={separation?.[field] ?? ""}
               placeholder="Use built-in"
-              onBlur={(e) => {
-                const next = durationOrUndefined(e.target.value);
+              width={160}
+              onCommit={(text) => {
+                const next = durationOrUndefined(text);
                 if (next === tidyGoDuration(separation?.[field]) || next === separation?.[field]) return;
                 onChange({ ...policy, separation: { ...separation, [field]: next } });
               }}
@@ -696,18 +669,17 @@ const ChannelPolicyFields = ({
           help="How many in a row the same series may hold. Leave blank to use Loomarr's built-in limit."
           {...source("blockMax")}
         >
-          <Input
-            key={separation?.blockMax ?? ""}
+          <CommitField
             id="policy-block-max"
-            className="w-28"
-            type="number"
-            min={0}
-            defaultValue={separation?.blockMax ?? ""}
+            initial={String(separation?.blockMax ?? "")}
+            key={separation?.blockMax ?? ""}
+            keyboardType="number-pad"
             placeholder="Use built-in"
-            onBlur={(e) => {
+            width={160}
+            onCommit={(text) => {
               // Blank clears the authored cap and returns to the built-in limit. `0` is
               // also resolved as built-in here, so there is no separate no-limit state.
-              const raw = e.target.value.trim();
+              const raw = text.trim();
               const next = raw === "" ? undefined : Number(raw);
               if (next === separation?.blockMax) return;
               onChange({ ...policy, separation: { ...separation, blockMax: next } });

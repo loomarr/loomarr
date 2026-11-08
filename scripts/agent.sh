@@ -552,7 +552,8 @@ verify_changed() {
 	while IFS='=' read -r gate enabled; do
 		[ "$enabled" = true ] || continue
 		case "$gate" in
-			go|go_full|rust|web|clients|docs|agent|android|policy)
+			# diagrams always arrives with docs, whose docs-lint runs diagrams-verify.
+			go|go_full|rust|web|clients|docs|diagrams|agent|android|policy)
 				if [ -n "$local_gates" ]; then local_gates="$local_gates,$gate"; else local_gates="$gate"; fi
 				;;
 			contracts|postgres|apple_mobile|apple_tv|expo_android_mobile|expo_android_tv|visual|e2e|tuner|image|playout_bench)

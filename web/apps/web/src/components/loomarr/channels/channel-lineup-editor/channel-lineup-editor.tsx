@@ -18,8 +18,8 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge, Text, Tooltip } from "@loomarr/design-system";
-import { GripVertical, Plus, X } from "lucide-react";
+import { Action, Badge, Text, Tooltip } from "@loomarr/design-system";
+import { GripVertical, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -400,15 +400,19 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               closeAdd();
             }}
           />
-          <Button variant="ghost" size="sm" className="self-start" onClick={closeAdd}>
+          <Action onPress={closeAdd} style={{ alignSelf: "flex-start" }} variant="ghost">
             Cancel
-          </Button>
+          </Action>
         </div>
       ) : (
-        <Button variant="outline" size="sm" className="self-start" onClick={() => setAdding(true)}>
-          <Plus aria-hidden />
+        <Action
+          icon="plus"
+          onPress={() => setAdding(true)}
+          style={{ alignSelf: "flex-start" }}
+          variant="outline"
+        >
           Add a title…
-        </Button>
+        </Action>
       )}
     </section>
   );

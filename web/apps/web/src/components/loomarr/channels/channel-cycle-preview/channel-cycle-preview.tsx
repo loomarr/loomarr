@@ -6,10 +6,9 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge, Disclosure } from "@loomarr/design-system";
+import { Action, Badge, Disclosure } from "@loomarr/design-system";
 import { Clapperboard, Clock, Tv } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -380,9 +379,9 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
         </div>
         <div className="flex flex-wrap gap-1.5 pb-0.5">
           {TIME_PRESETS.map((preset) => (
-            <Button key={preset.label} variant="outline" size="sm" onClick={() => setAt(preset.at())}>
+            <Action key={preset.label} onPress={() => setAt(preset.at())} variant="outline">
               {preset.label}
-            </Button>
+            </Action>
           ))}
         </div>
       </div>

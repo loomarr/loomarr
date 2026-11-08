@@ -1,8 +1,7 @@
 import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import { pluralize } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
+import { Action, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
 
@@ -74,9 +73,9 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
           {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
           {channels.length > 0 ? ` · ${covered}/${channels.length} channels covered` : ""}
         </p>
-        <Button variant="outline" size="sm" aria-expanded={false} onClick={() => setExpanded(true)}>
+        <Action aria-expanded={false} onPress={() => setExpanded(true)} variant="outline">
           Details
-        </Button>
+        </Action>
       </section>
     );
   }
@@ -90,15 +89,11 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
       )}
     >
       {folded ? (
-        <Button
-          variant="outline"
-          size="sm"
-          aria-expanded
-          className="order-last"
-          onClick={() => setExpanded(false)}
-        >
-          Hide details
-        </Button>
+        <div className="order-last">
+          <Action aria-expanded onPress={() => setExpanded(false)} variant="outline">
+            Hide details
+          </Action>
+        </div>
       ) : null}
       <Stat
         label="Clips"

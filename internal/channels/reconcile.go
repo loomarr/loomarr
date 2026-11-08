@@ -252,11 +252,14 @@ func (e *Engine) reconcileOnce(
 	// only: it walks the accepted cycle from the anchor. Tunarr loops the list it was given
 	// from its own clock and has no way to be told where a window starts (#1691).
 	turnAnchor := ch.PlayoutAnchor
+	var accepted []schedule.Slot
 	if playsInternally {
 		window, zone := e.RollingWindow(ch.Policy, e.now())
 		chDomain.WindowOpened, turnAnchor, _ = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, e.now())
+		e.recordScheduled(ctx, ch, e.now()) // #1677: what the accepted cycle aired, watched or not
+		accepted = ch.Desired
 	}
-	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now())
+	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now(), accepted, ch.PlayoutAnchor)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
 	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
@@ -860,7 +863,7 @@ func (e *Engine) ensureChannel(ctx context.Context, localChannelID string, spec 
 			e.log.Warn("channel number already used in Tunarr; moving this channel rather than failing",
 				"channel", spec.Name, "wanted", spec.Number, "using", moved)
 			if e.acts != nil {
-				e.acts.Warn(ctx, "channel.renumbered", spec.Name, fmt.Sprintf(
+				e.acts.Warn(ctx, store.ActivityKindChannel, spec.Name, fmt.Sprintf(
 					"%q moved to channel %d — Tunarr already had a channel on %d. Loomarr never changes a channel it didn't create.",
 					spec.Name, moved, spec.Number))
 			}

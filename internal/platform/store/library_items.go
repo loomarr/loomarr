@@ -202,8 +202,9 @@ const LibraryItemImageOwner = "library_item"
 // LibraryItemSummary is an item with what its present files say about it.
 type LibraryItemSummary struct {
 	LibraryItem
-	// Poster is the image hash its poster ref names; "" for none.
-	Poster string
+	// Poster, Backdrop and Logo are the image hashes its poster, backdrop (fanart) and clear logo
+	// refs name; "" for none.
+	Poster, Backdrop, Logo string
 	// Files counts its present, importable files (a series' episodes); Pending, those whose header is
 	// not read yet. An item with Pending > 0 is still getting ready.
 	Files   int
@@ -292,6 +293,12 @@ func (s *sqlStore) SaveLibraryItems(ctx context.Context, items []LibraryItem, at
 const presentFile = `f.missing_at_ms = 0 AND f.problem = ''`
 
 // countFiles is how many of title i's files hold also, a condition on f ("" for all).
+// itemImage is the image hash a title's ref in role names, or "".
+func itemImage(role string) string {
+	return `COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
+			AND r.owner_id = i.id AND r.role = '` + role + `'), '')`
+}
+
 func countFiles(also string) string {
 	return `((SELECT COUNT(*) FROM library_files f WHERE f.inventory_item_id = i.id AND ` + presentFile + also + `) +
 		(SELECT COUNT(*) FROM library_files f WHERE f.inventory_series_id = i.id AND ` + presentFile + also + `))`
@@ -301,10 +308,9 @@ var (
 	// itemListed keeps a title with a file that counts toward it: only those are listed.
 	itemListed = `(EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_item_id = i.id AND ` + presentFile + `)
 		OR EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_series_id = i.id AND ` + presentFile + `))`
-	// itemColumns is a title, its poster ref and its file counts.
+	// itemColumns is a title, its poster, backdrop and logo refs, and its file counts.
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
-		COALESCE((SELECT MIN(r.image_hash) FROM image_refs r WHERE r.owner_kind = '` + LibraryItemImageOwner + `'
-			AND r.owner_id = i.id AND r.role = 'poster'), ''),
+		` + itemImage("poster") + `, ` + itemImage("backdrop") + `, ` + itemImage("logo") + `,
 		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`) + `,
 		COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0)`
 	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
@@ -389,7 +395,7 @@ func (s *sqlStore) scanLibraryItems(ctx context.Context, query string, args ...a
 		var it LibraryItemSummary
 		var catalog, set string
 		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
-			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraBytes); err != nil {
+			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Backdrop, &it.Logo, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraBytes); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}

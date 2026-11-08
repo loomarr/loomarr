@@ -20,6 +20,7 @@ type Story = StoryObj<typeof meta>;
 const Empty: Story = {};
 const Typed: Story = { args: { value: "Morgan" } };
 const Disabled: Story = { args: { disabled: true, value: "Morgan" } };
+const Clearable: Story = { args: { clearLabel: "Clear search", value: "Morgan" } };
 
 export default meta;
-export { Disabled, Empty, Typed };
+export { Clearable, Disabled, Empty, Typed };

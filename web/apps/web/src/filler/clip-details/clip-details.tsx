@@ -1,10 +1,10 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration } from "@loomarr/core/format";
+import { Action } from "@loomarr/design-system";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
-import { Button } from "@/components/ui/button";
 
 // Inspection only. Corrections and Incoming choices are owned by their callers, not playback.
 const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) => {
@@ -70,9 +70,9 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <p className="text-muted-foreground text-sm">
               This clip is not ready for channels yet. Open the preview when you are ready.
             </p>
-            <Button variant="outline" size="sm" onClick={() => setRevealedHash(clip.hash)}>
+            <Action onPress={() => setRevealedHash(clip.hash)} variant="outline">
               Preview clip
-            </Button>
+            </Action>
           </div>
         )}
       </div>
@@ -140,9 +140,9 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         </p>
       ) : null}
       {onEdit ? (
-        <Button variant="outline" size="sm" onClick={onEdit}>
+        <Action onPress={onEdit} variant="outline">
           Edit details
-        </Button>
+        </Action>
       ) : null}
     </div>
   );

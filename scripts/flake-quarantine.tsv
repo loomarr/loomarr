@@ -5,5 +5,5 @@
 # A test enters quarantine only by a line here, naming its tracking issue. Tab-separated:
 #   suite  project  spec file  test title (as Playwright prints it after the file)  issue
 # Validated by scripts/flake-quarantine.sh; tested by scripts/flake-quarantine-test.sh.
-tuner	webkit	tuner-surf.spec.ts	100-channel tuner meets surf latency and latest-request-wins gates	1443
+tuner	webkit	tuner-surf.spec.ts	100-channel tuner meets surf latency and latest-request-wins gates	2691
 tuner	firefox	tuner-surf.spec.ts	100-channel tuner meets surf latency and latest-request-wins gates	2311

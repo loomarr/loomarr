@@ -112,11 +112,15 @@ func (s *Store) DeleteDevicePairing(ctx context.Context, codeHash string) error 
 	return err
 }
 
-// PurgeExpiredDevicePairings sweeps codes nobody completed.
-func (s *Store) PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error {
-	_, err := s.h.ExecContext(ctx, s.h.Rebind(
+// PurgeExpiredDevicePairings sweeps codes nobody completed (nightly housekeeping).
+func (s *Store) PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error) {
+	res, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`DELETE FROM device_pairings WHERE expires_at <= ?`), epoch(now))
-	return err
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // enabledUserSQL selects the user row only while it is enabled; it takes the user id, then false.

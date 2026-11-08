@@ -37,6 +37,8 @@ var addressPredicateAllowlist = map[string]string{
 	"internal/platform/openroutercatalog/openrouter.go": "permits a plain-HTTP base URL only for loopback; it gates no fetch to a stranger-supplied host",
 	"internal/filler/location/index.go": "geo-IP data-range guard that skips lookup of addresses with no country; " +
 		"not an SSRF gate (follow-up: adopt httpx.IsPublicIP so the two cannot drift)",
+	"internal/playout/landiscovery/broadcast.go": "decides whether the operator's public URL is reachable only on this " +
+		"machine, so LAN discovery stays quiet (#1892); it gates no fetch",
 }
 
 // addressPredicateCalls returns "Method@line" for every zero-argument call of an address-range

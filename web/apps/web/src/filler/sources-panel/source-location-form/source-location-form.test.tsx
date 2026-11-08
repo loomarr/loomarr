@@ -1,10 +1,11 @@
 import { getLocationsSearchMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { fillerSource } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { SourceLocationForm } from "./source-location-form";
 
 const renderForm = (

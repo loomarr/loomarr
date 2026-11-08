@@ -3,17 +3,15 @@ import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
 import { requestAcquisitions, requestFixLabel, requestStatus } from "@loomarr/core/requests";
-import { Badge, Card } from "@loomarr/design-system";
+import { Action, Badge, Card } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { StateBadge } from "@/components/loomarr/channels/state-badge";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { useRequests } from "@/queue/use-requests";
 
 // One request, end to end (#1405) — the Proposal Job journey (GET /v1/proposal-jobs/{jobId}):
@@ -79,27 +77,26 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
         description={`Requested ${when(journey.createdAt)}`}
         actions={
           <>
-            <Link to="/requests" className={buttonVariants({ variant: "ghost", size: "sm" })}>
-              <ArrowLeft aria-hidden />
+            <Action accessibilityRole="link" icon="back" render={<Link to="/requests" />} variant="ghost">
               Requests
-            </Link>
+            </Action>
             {journey.channel && (
-              <Link
-                to="/channels/$id"
-                params={{ id: journey.channel.id }}
-                className={buttonVariants({ variant: "outline", size: "sm" })}
+              <Action
+                accessibilityRole="link"
+                render={<Link to="/channels/$id" params={{ id: journey.channel.id }} />}
+                variant="outline"
               >
                 Open channel
-              </Link>
+              </Action>
             )}
             {fix && (
-              <Link
-                to="/guide"
-                search={{ job: journey.jobId }}
-                className={buttonVariants({ variant: "outline", size: "sm" })}
+              <Action
+                accessibilityRole="link"
+                render={<Link to="/guide" search={{ job: journey.jobId }} />}
+                variant="outline"
               >
                 {fix}
-              </Link>
+              </Action>
             )}
           </>
         }
@@ -204,11 +201,11 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                   {/* Re-enqueue puts a given-up title back in the queue (§4). Admin-only, as is
                       POST /v1/titles — a member would only be offered a button that 403s. */}
                   {isAdmin && title?.state === "unavailable" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <Action
                       disabled={retryTitle.isPending}
-                      onClick={() =>
+                      icon="refresh"
+                      variant="outline"
+                      onPress={() =>
                         retryTitle.mutate({
                           data: {
                             mediaType: title.mediaType,
@@ -220,9 +217,8 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                         })
                       }
                     >
-                      <RotateCw aria-hidden />
                       Try again
-                    </Button>
+                    </Action>
                   )}
                 </li>
               ))}

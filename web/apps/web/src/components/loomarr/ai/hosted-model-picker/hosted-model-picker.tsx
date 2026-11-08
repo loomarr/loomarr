@@ -1,10 +1,8 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
-import { Badge } from "@loomarr/design-system";
+import { Action, Badge } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
-import { Check } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { HostedModelPickerProps } from "./hosted-model-picker.type";
 
@@ -96,15 +94,14 @@ const ModelRow = ({
           </p>
         )}
       </div>
-      <Button
-        variant={isActive ? "outline" : "default"}
-        size="sm"
+      <Action
         disabled={busy || isActive || !provider.keyConfigured || unusable}
-        onClick={() => onSelect({ provider: provider.key, model: model.id, baseUrl: provider.baseUrl })}
+        icon={isActive ? "success" : undefined}
+        onPress={() => onSelect({ provider: provider.key, model: model.id, baseUrl: provider.baseUrl })}
+        variant={isActive ? "outline" : undefined}
       >
-        {isActive ? <Check className="size-4" aria-hidden /> : null}
         {action}
-      </Button>
+      </Action>
     </li>
   );
 };
@@ -275,14 +272,13 @@ const HostedModelPicker = ({
             ) : null}
 
             {models.length > (primary ? GUIDED_ALTERNATIVES + 1 : GUIDED_ALTERNATIVES) && (
-              <Button
+              <Action
+                onPress={() => setSearching((value) => ({ ...value, [hp.key]: !isSearching }))}
+                style={{ alignSelf: "flex-start" }}
                 variant="ghost"
-                size="sm"
-                className="text-muted-foreground self-start text-xs"
-                onClick={() => setSearching((value) => ({ ...value, [hp.key]: !isSearching }))}
               >
                 {isSearching ? "Back to recommendations" : "Find another model"}
-              </Button>
+              </Action>
             )}
           </div>
         );

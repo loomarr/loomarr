@@ -104,6 +104,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
       impact_clients: ${{ steps.impact.outputs.clients }}
       impact_image: ${{ steps.impact.outputs.image }}
       impact_docs: ${{ steps.impact.outputs.docs }}
+      impact_diagrams: ${{ steps.impact.outputs.diagrams }}
       impact_android: ${{ steps.impact.outputs.android }}
       impact_playout_bench: ${{ steps.impact.outputs.playout_bench }}
       impact_visual: ${{ steps.impact.outputs.visual }}
@@ -207,6 +208,7 @@ func TestVerifyCIImpactActivation(t *testing.T) {
 		),
 		"detached tuner output":         strings.Replace(workflow, "steps.impact.outputs.tuner", "steps.filter.outputs.web", 1),
 		"detached playout bench output": strings.Replace(workflow, "steps.impact.outputs.playout_bench", "steps.filter.outputs.go", 1),
+		"detached diagrams output":      strings.Replace(workflow, "steps.impact.outputs.diagrams", "steps.filter.outputs.docs", 1),
 		"legacy playout bench selector": strings.Replace(workflow, "needs.changes.outputs.impact_playout_bench == 'true'", "needs.changes.outputs.go == 'true'", 1),
 		"broadened tuner selector": strings.Replace(
 			workflow,

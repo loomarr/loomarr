@@ -307,7 +307,7 @@ func v8MetadataFS(t *testing.T, mutate func(manifest, base, fixture map[string]a
 		target *map[string]any
 	}{
 		{certificationManifestPath, &manifest},
-		{"testdata/planner-certification-v9-base.json", &base},
+		{"testdata/planner-certification-v10-base.json", &base},
 		{"testdata/planner-catalog-v3.json", &fixture},
 	} {
 		if err := json.Unmarshal(read(item.name), item.target); err != nil {
@@ -322,9 +322,9 @@ func v8MetadataFS(t *testing.T, mutate func(manifest, base, fixture map[string]a
 	baseBlob := marshalMetadata(t, base)
 	manifest["base"].(map[string]any)["sha256"] = metadataSHA256(baseBlob)
 	return fstest.MapFS{
-		certificationManifestPath:                     &fstest.MapFile{Data: marshalMetadata(t, manifest)},
-		"testdata/planner-certification-v9-base.json": &fstest.MapFile{Data: baseBlob},
-		"testdata/planner-catalog-v3.json":            &fstest.MapFile{Data: fixtureBlob},
+		certificationManifestPath:                      &fstest.MapFile{Data: marshalMetadata(t, manifest)},
+		"testdata/planner-certification-v10-base.json": &fstest.MapFile{Data: baseBlob},
+		"testdata/planner-catalog-v3.json":             &fstest.MapFile{Data: fixtureBlob},
 	}
 }
 

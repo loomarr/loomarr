@@ -114,14 +114,9 @@ func buildSyncer(st records.Store, set resolved, layout filler.Layout, log *slog
 		WithStorageGovernor(governor).
 		WithInferiorCopies(st)
 
-	// Keep the library scanner wired while the connection is empty. The adapter treats the
-	// library module's explicit unconfigured result as an empty optional source, then starts
-	// using a newly saved connection on the next scan without rebuilding the syncer.
-	libScanner := filler.NewLibraryScanner(
-		fillerLibraryAdapter{lib},
-		func(msg string, args ...any) { log.Warn(msg, args...) },
-	)
-	return syncer.WithScanSources(fillerScanSourceAdapter{st}, libScanner)
+	libScanner := filler.NewLibraryScanner(func(msg string, args ...any) { log.Warn(msg, args...) })
+	cutover := &fillerLibraryCutover{st: st, roots: st, lib: lib, log: log, now: time.Now, warned: map[string]bool{}}
+	return syncer.WithScanSources(fillerScanSourceAdapter{st: st, cutover: cutover}, libScanner)
 }
 
 // buildFetcher constructs the clip downloader (§10, §16). Nil when ffmpeg is absent, which is a
@@ -270,7 +265,8 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom,
-	playoutRes *playoutResolver, checkReplacement filler.ReplacementCheck) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
+	playoutRes *playoutResolver, checkReplacement filler.ReplacementCheck,
+	interactiveLLM *llm.InteractiveGate) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// Filler encodes on the channels' own hardware (#2121), asked per encode: detection settles
 	// after boot.
 	encodeHost := func() encode.HostProfile {
@@ -321,7 +317,9 @@ func buildPipeline(st records.Store, set resolved, layout filler.Layout, log *sl
 	// `&& settings.LLMURL.Get(set) != ""` — so an install with vision enabled and no reachable endpoint
 	// was indistinguishable from one with vision switched off.
 	h := &hotVisionProvider{set: set, log: log, metrics: recorder}
-	var visionProvider llm.VisionProvider = h
+	// Background vision (the vision rung and split-time grounding) yields each model call to an
+	// interactive suggestion in flight, so Add a channel gets the AI server's slots first (#1508).
+	visionProvider := filler.YieldToInteractive(h, interactiveLLM, filler.DefaultInteractiveYield(), log)
 	if settings.FillerVisionEnabled.Get(set) {
 		// Resolve ONCE at boot purely to report it. A failure here is not fatal — the operator may
 		// fix the setting without restarting, which is the entire point of resolving per call —

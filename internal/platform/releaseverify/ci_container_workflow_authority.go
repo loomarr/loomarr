@@ -372,7 +372,10 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			}),
 		}),
-		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{}),
+		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{
+			// Pulls the digest-pinned D2 image (mk/docs.mk); the render itself runs with --network none.
+			"make diagrams-verify": exactWorkflowStep(7, "Diagrams", workflowStepAuthority{targets: []string{"diagrams-verify"}, condition: "inputs.diagrams", allowsAcquisition: true}),
+		}),
 		"ci-frontend.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"make fe-unit FE_SHARD=${{ matrix.shard }}/6": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-unit"}, condition: "matrix.shard <= 6"}),

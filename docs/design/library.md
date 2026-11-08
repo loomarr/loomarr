@@ -342,9 +342,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
   again. `GET /v1/library/items` pages and searches the list (admin-only);
   `GET /v1/library/items/{id}` is one title: the newest present scan origin's facts, a movie's
   files, or a series' episodes by season.
-- **Posters** (step 10b). When the importer writes a title it hands the resolved poster to the
-  image service, and the title owns it through an `image_refs` row (owner `library_item`, role
-  `poster`); that ref is the one record of which image is its poster. A sidecar file is imported
+- **Posters, backdrops and logos** (step 10b, #2567). When the importer writes a title it hands
+  the resolved poster, fanart and clear logo to the image service, and the title owns each
+  through an `image_refs` row (owner `library_item`, role `poster`, `backdrop` or `logo`); that
+  ref is the one record of which image it is, and a kind replaces only its own role's ref. Banner,
+  landscape, clearart and discart stay references: nothing shows them. A clear logo's alpha is its
+  shape, so the `logo` role has no JPEG rendition and its `<img>` fallback is WebP; its dominant
+  colour weighs each pixel by its alpha, so the transparent canvas doesn't dim it. A local sidecar
+  outranks TMDB's image of the same kind (decision 19). The item page carries `logoImage` and
+  `backdropImage`, each absent when the title has none, and so does every guide airing (the
+  guide, a channel's timeline and Home's highlights): the art of the title its provisioning key
+  names, so an episode carries its show's logo and fanart beside its own still. One batched read
+  per response (`LibraryTitleArt`); an image still being fetched is left off. A sidecar file is imported
   then, keyed by its content, opened only as a regular file and never through a symlink, and
   skipped when the service already holds those bytes; it is `extracted`, since the file beside the
   media is its source. A manager's https URL is adopted, and the fetch job moves the ref onto the
@@ -562,6 +571,41 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is found owned records its library item id. The media server answers only what the Library
   doesn't hold, and a media server that is down no longer holds back what the Library confirms.
   The ids already stored are the rewrite's.
+- **Collection scopes read the household's collections first** (step 15e). The scope.collections
+  picker lists the household's collections, then only the media server's that were never imported
+  (`imported_id`); the reconcile's membership index does the same, so an imported collection is
+  known only by the household's id the rewrite pointed scopes at. With no media server, the
+  household's alone, without an error.
+- **Title search asks the Library first** (step 15e). Library-scope search, which `/v1/search`
+  and the suggester's tools share, answers with the Library's movies and series by name
+  (`SearchLibraryTitles`: an exact name, then one starting with the term, then the rest), under
+  their library item ids and with their facts. The media server adds only titles the Library
+  didn't answer, while it is short of the limit; with none connected, a term the Library has no
+  title for is no results rather than an error.
+- **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
+  stored records name at library items: titles, airings, channels' slots, scopes, rules and
+  lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
+  are history and keep theirs). An id the map doesn't pair still maps when its record names a
+  title (a title's key, a proposal pick's) whose TMDB or TVDB id a Library title carries: a media
+  server that re-added its library left every old id dead, but not the titles. The pass runs in
+  one transaction and drops the media server's episode and path caches.
+
+  There is no all-or-nothing gate: every reader takes either kind of id, so what maps is rewritten
+  at once and the rest is logged and waits for a later pass. An airing names an episode with no
+  key, so one the map can't pair keeps its id and its spacing history lapses.
+
+  The media server's collections become household collections (`library_collections.imported_id`
+  names the one each came from): the hand-made ones once, behind the
+  `migration.library.collections_import.v1` marker so one the household deletes stays deleted, and
+  a TMDB-generated one only when a record names it, since the Library's ready-made sets already
+  hold those. Members come over through the id map.
+- **The filler library source reads a folder** (step 15d, decision 36). A `library` filler source
+  names one of the household library's folders and is copied from, never drained: each clip file
+  under it is copied into the filler watch folder for intake to hash and file, skipping a clip the
+  catalog already holds (#1605), so a re-scan of an unchanged folder copies nothing. A row that
+  still names a media-server library is rewritten on the next filler sync to its folder: the
+  library's folders as the media server reports them, through the path map, with a row for each
+  extra folder. A name with no mapped folder is logged once and does no work.
 
 ## Cached series episodes
 

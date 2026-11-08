@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"strconv"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // The image garbage collector (§22, §18.1 — V52 phase 3b). Four duties, deliberately in one job
@@ -195,7 +197,7 @@ func (g *GC) warnUnrecoverable(ctx context.Context, out *GCResult) error {
 		// database onto an empty image directory has hundreds of these, and hundreds of rows in
 		// the activity feed would bury the single fact they need: uploads did not survive, and
 		// /data is what to back up.
-		g.notify.Warn(ctx, "images", "", pluralUnrecoverable(out.MissingUnrecoverable))
+		g.notify.Warn(ctx, store.ActivityKindSystem, "", pluralUnrecoverable(out.MissingUnrecoverable))
 	}
 	return nil
 }

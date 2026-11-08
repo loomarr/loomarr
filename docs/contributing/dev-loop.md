@@ -101,3 +101,13 @@ save. This is deliberately NOT a declared setting (`internal/platform/settings`)
 the Settings UI saves (#1555). `scripts/dev-env.sh show` reports the current state as "livetv
 tuner publishing". Override with `LOOMARR_AGENT_DISABLE_LIVETV_TUNER=` (empty) only to reproduce
 production behaviour in a lane — never point it at a real household media server.
+
+## A demo lane's TMDB is the demo library
+
+Once a lane has run `make demo-library` (so `.agent-data/demo-library` exists), `scripts/dev-env.sh
+export` sets `LOOMARR_AGENT_TMDB_BASE_URL` to the stand-in the demo library serves at `/tmdb/3`,
+and `make dev-be` hands it to the backend as `LOOMARR_TMDB_BASE_URL` (#1941). Title search, AI
+suggestion grounding and validation then see only the invented catalogue, so the evidence from a
+suggestion flow can go in a public PR. `make demo-seed` sets the TMDB key the feature needs; the
+LLM still comes from your `LLM_*` settings. The primary worktree never gets this.
+`LOOMARR_AGENT_TMDB_BASE_URL=` (empty) sends a demo lane back to the real TMDB.
