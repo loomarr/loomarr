@@ -134,6 +134,23 @@ func TestClassifyTextBatch_InvalidJSONDoesNotProduceACompletedPass(t *testing.T)
 	}
 }
 
+// The prompt vocabulary renders `child (under parent)`; a model that copies the annotation keeps
+// its tag when the parent is right and loses it when the parent is wrong (#1588).
+func TestTextGrounding_KeepsATagCarryingTheVocabAnnotation(t *testing.T) {
+	forest := taxonomy.New([]taxonomy.Taxon{
+		{Slug: "food", Label: "Food", Axis: taxonomy.AxisProduct},
+		{Slug: "drinks", Label: "Drinks", Axis: taxonomy.AxisProduct},
+		{Slug: "candy", Label: "Candy", Parent: "food", Axis: taxonomy.AxisProduct},
+		{Slug: "soda", Label: "Soda", Parent: "drinks", Axis: taxonomy.AxisProduct},
+	})
+	states := textStates(t, forest, []Axis{AxisProduct}, Signals{
+		ClipHash: "annotated", Title: "Twirlpop Classic Commercial", ObservedAt: time.Unix(700, 0).UTC(),
+	}, `{"product":["candy (under food)","soda (under food)"],"confidence":70}`)
+	if len(states) != 1 || len(states[0].Value.Tags) != 1 || states[0].Value.Tags[0] != "candy" {
+		t.Fatalf("annotated product states = %+v, want only candy", states)
+	}
+}
+
 func TestTextGrounding_AcceptsSingleTaxonomyValueFromJSONModeProvider(t *testing.T) {
 	forest := taxonomy.New([]taxonomy.Taxon{
 		{Slug: "candy", Label: "Candy", Axis: taxonomy.AxisProduct},

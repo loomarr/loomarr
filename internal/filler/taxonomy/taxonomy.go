@@ -193,9 +193,38 @@ func New(taxa []Taxon) *Forest {
 // (case-insensitive, trimmed); it returns "" and false for anything off the vocabulary — which the
 // caller DROPS. This is the anti-fabrication gate: an unknown tag never becomes a new taxon (only an
 // operator adds taxa), exactly as an ungrounded era or brand is dropped rather than persisted (§8).
+//
+// A model sometimes copies Vocab's `child (under parent)` annotation into its answer (#1588). That
+// token grounds to the child only when both sides are on the vocabulary and the parent it names is
+// the child's real parent; a contradicted annotation is dropped like any other unknown tag.
 func (f *Forest) Resolve(raw string) (string, bool) {
-	slug, ok := f.resolver[strings.ToLower(strings.TrimSpace(raw))]
-	return slug, ok
+	key := strings.ToLower(strings.TrimSpace(raw))
+	if slug, ok := f.resolver[key]; ok {
+		return slug, true
+	}
+	child, parent, annotated := cutVocabAnnotation(key)
+	if !annotated {
+		return "", false
+	}
+	slug, childOK := f.resolver[child]
+	parentSlug, parentOK := f.resolver[parent]
+	if !childOK || !parentOK || f.bySlug[slug].Parent != parentSlug {
+		return "", false
+	}
+	return slug, true
+}
+
+// cutVocabAnnotation splits a lowercased `child (under parent)` token, the form Vocab renders, into
+// its trimmed child and parent. It reports false for anything else.
+func cutVocabAnnotation(key string) (child, parent string, ok bool) {
+	body, closed := strings.CutSuffix(key, ")")
+	open := strings.LastIndex(body, "(")
+	if !closed || open < 0 {
+		return "", "", false
+	}
+	parent, ok = strings.CutPrefix(strings.TrimSpace(body[open+1:]), "under ")
+	child, parent = strings.TrimSpace(body[:open]), strings.TrimSpace(parent)
+	return child, parent, ok && child != "" && parent != ""
 }
 
 // Ground resolves an operator's whole tag set (§10 V45a): each raw tag through Resolve, duplicates
@@ -339,7 +368,8 @@ func (f *Forest) PrimaryProductLeaf(leaves []string) string {
 // gives the suggester, so the model never guesses a slug blind and every slug it CAN emit is one the
 // grounding will accept. One line per axis uses `child (under parent)` annotations to expose enough
 // of the graph for the model to choose the most-specific applicable taxon. The annotation is prompt
-// guidance, not output syntax: the model still emits only the slug, which Resolve grounds. Without
+// guidance, not output syntax: the model should emit only the slug, which Resolve grounds (a copied
+// annotation still grounds when its parent is the real one, #1588). Without
 // it, `drinks` and `soda` look like unrelated peers and real classifications collapse to the broad
 // parent even though the graph already knows the relationship.
 func (f *Forest) Vocab() string {
