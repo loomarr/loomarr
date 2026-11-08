@@ -1,0 +1,210 @@
+area: Settings and housekeeping
+about: >
+  How this installation is configured and what it remembers about its own running: saved settings
+  and the keys that encrypt their secrets, background tasks, the Dashboard's recent activity, and the
+  Diagnostics and crash-report logs that are cleaned up on a schedule.
+tables:
+  - name: settings
+    about: >
+      One saved setting value. Every setting resolves environment variable, then this table, then the
+      built-in default, so a key with no row uses its default. A row is created when someone saves the
+      setting (or Loomarr records internal state such as its instance id) and deleted when it is reset.
+    columns:
+      key: >
+        The setting's name, such as activity.retention, as listed in the configuration reference.
+        A few keys hold Loomarr's own state, such as instance_id.
+      value: >
+        The stored value as text. Secret settings (API keys, tokens) are stored encrypted, beginning
+        with loomarr-secret:v1:, and can only be read with the installation key.
+      updated_at: When the value was last written, in Unix seconds. 0 means unknown (written before this was tracked).
+      updated_by: >
+        The id of the person who last changed it, pointing at users. Empty for values Loomarr wrote
+        itself.
+      env_override: >
+        1 when an admin has taken the setting back from its environment variable, so the saved value
+        wins even while the variable is still set. 0 means a set environment variable wins.
+
+  - name: secret_protection_metadata
+    about: >
+      A single row that records which installation key encrypts this database's secrets. The key itself
+      is never stored here; it comes from LOOMARR_ENCRYPTION_KEY or the encryption.key file. Loomarr refuses
+      to start if the supplied key doesn't match.
+    columns:
+      singleton: Always 1; the table holds at most one row.
+      installation_key_fingerprint: >
+        A non-secret fingerprint of the installation key (sha256: followed by the start of its hash),
+        used to detect the wrong key. Updated when the installation key is replaced.
+
+  - name: secret_data_keys
+    about: >
+      The data-encryption keys that encrypt secret settings and other stored credentials, each kept
+      encrypted by the installation key. Rotating the key (Security settings) adds a new active key; older
+      keys are kept forever so values they encrypted can still be read.
+    columns:
+      id: Identifies the key. Each encrypted value names the key that sealed it.
+      wrapped_key: The data key, encrypted with the installation key (begins with loomarr-dek:v1:).
+      active: 1 for the one key used to encrypt new secrets; 0 for retired keys kept for reading.
+      created_at: When the key was created, in Unix seconds.
+
+  - name: scheduled_jobs
+    about: >
+      The running state of one recurring background task shown on the Tasks page. Which tasks exist and
+      when they run come from the code and the job schedule settings; a row is created the first time a
+      task is seen and kept forever, even if the task later disappears from the code.
+    columns:
+      name: The task's name, such as housekeeping.
+      last_run: When the task last started, in Unix seconds. 0 means it has never run.
+      last_result: >
+        How the last run ended. ok means it succeeded, error means it failed, empty means it hasn't run yet.
+      last_error: The error message from the last run, or empty if it succeeded.
+      next_run: >
+        When the task is next due, in Unix seconds. Advanced when a run is claimed, so the same run
+        doesn't start twice.
+      updated_at: When the row was last written, in Unix seconds.
+      paused: 1 when an admin has paused the task, so it no longer runs on its schedule until resumed.
+
+  - name: interactive_operations
+    about: >
+      Progress of one long action someone started in the app (downloading an AI model, or detecting
+      where a filler reel should be split), so the page can pick it up again after a reconnect. Rows are
+      not deleted; anything still queued or running when Loomarr restarts is marked as an error.
+    columns:
+      id: Identifies the operation; the app polls it by this id.
+      kind: >
+        What the operation is. llm_pull downloads an AI model; filler_split detects split points in a
+        filler clip.
+      subject: What it acts on. The model name for llm_pull, the filler clip's id for filler_split.
+      status: >
+        queued (accepted, not started), running, success, or error.
+      percent: >
+        How far along it is, 0 to 100. For a model download, -1 means the size isn't known yet.
+      completed: For a model download, bytes downloaded so far of the current layer. 0 otherwise.
+      total: For a model download, total bytes of the current layer. 0 otherwise.
+      result_id: For filler_split, the id of the split proposal it produced. Empty otherwise.
+      error: Why it failed, or empty.
+      started_at: When it was started, in Unix seconds.
+      completed_at: When it finished, in Unix seconds. 0 while it is still queued or running.
+      updated_at: When its progress was last saved, in Unix seconds.
+
+  - name: activity
+    about: >
+      One line in the Dashboard's Recent activity feed, written when something notable happens, such
+      as a title arriving or a channel changing. Purged by the nightly housekeeping task once older than
+      the activity.retention setting (30 days by default).
+    columns:
+      id: Identifies the entry.
+      at: When it happened, in Unix seconds.
+      kind: >
+        Which part of Loomarr wrote it. title, channel, proposal (a suggested lineup), filler, or system.
+      level: >
+        How serious it is, which sets the coloured dot. info, warn, or error.
+      text: The sentence shown in the feed.
+      subject_id: The id of the channel, title or proposal it concerns, or empty.
+
+  - name: diagnostic_events
+    about: >
+      One technical event recorded for Diagnostics, from the server's own logs or reported by the web,
+      TV and phone apps. The nightly housekeeping task deletes events older than the
+      diagnostics.retention setting (7 days by default), then the oldest ones while the total exceeds
+      diagnostics.max_storage_mb (512 MiB by default).
+    columns:
+      id: Identifies the event.
+      occurred_at_ms: When it happened, in Unix milliseconds (by the sender's clock for app events).
+      received_at_ms: When the server recorded it, in Unix milliseconds.
+      level: How serious it is. debug, info, warn, or error.
+      source: >
+        Which program observed it. server, web, android_tv, apple_tv, ios, or android.
+      subsystem: The part of Loomarr it came from, or empty.
+      event: The event's name, such as player.media_error for an app playback error.
+      message: The human-readable message, or empty.
+      request_id: The API request it belongs to, or empty.
+      playback_session_id: The app playback session it belongs to, or empty.
+      channel_id: The channel it concerns, or empty.
+      schedule_block_id: The schedule block it concerns, or empty.
+      job_id: The background job it belongs to, or empty.
+      process_run_id: The process run it belongs to, pointing at diagnostic_process_runs, or empty.
+      actor_id: >
+        Who caused it, usually a user id. App events sent with an API token say api_token. Empty when
+        no one is involved.
+      instance_id: Which Loomarr server recorded it, when known.
+      attributes_json: >
+        Extra details as a JSON object of named values (secrets removed before storage), such as the
+        app version and platform for app events.
+      size_bytes: The event's estimated size, counted toward the Diagnostics storage budget.
+
+  - name: diagnostic_process_runs
+    about: >
+      One run of an external media program, usually ffmpeg (playout, filler transcodes, encoder probes),
+      with its outcome. Its output is kept in a file under the diagnostics folder. The nightly
+      housekeeping task deletes finished runs, and their output files, once they ended longer ago than
+      diagnostics.retention (7 days by default), then the oldest finished ones while Diagnostics is over
+      its storage budget. Runs still going are never deleted.
+    columns:
+      id: Identifies the run.
+      purpose: What the program was run for, such as playout_program, filler_transcode or capacity_probe.
+      parent_run_id: The run that started this one, pointing at another row here, or empty.
+      instance_id: Which Loomarr server ran it.
+      channel_id: The channel it was working for, or empty.
+      target: What it was working on, such as an encoder name or output profile, or empty.
+      schedule_block_id: The schedule block it was playing, or empty.
+      job_id: The background job it belongs to, or empty.
+      executable: The program that ran.
+      executable_version: The program's reported version, or empty if not detected.
+      command_summary: The command line it was run with, shortened and with secrets removed.
+      started_at_ms: When it started, in Unix milliseconds.
+      ended_at_ms: When it ended, in Unix milliseconds. 0 while it is still running.
+      status: >
+        running, succeeded, failed, cancelled, or interrupted (Loomarr stopped before recording how it
+        ended, so the outcome is unknown).
+      exit_code: The program's exit code when it failed with one; empty otherwise.
+      termination_reason: Why the run ended or was stopped, when Loomarr knows, or empty.
+      first_error: The first line the program printed, or the error if it printed nothing.
+      last_error: The last line the program printed, or the error it failed with.
+      output_ref: The name of its output file in the diagnostics folder, or empty if output wasn't saved.
+      output_bytes: The size of the output file, in bytes.
+      discarded_lines: How many output lines were dropped to keep the output file within its size cap.
+      updated_at_ms: When the row was last updated, in Unix milliseconds.
+      size_bytes: >
+        The run's estimated size including its output file, counted toward the Diagnostics storage
+        budget.
+
+  - name: diagnostic_retained_bytes
+    about: >
+      Running totals of how much Diagnostics is keeping, updated with every insert and delete so the
+      storage budget can be checked without adding up the big tables. There are two rows, and they are
+      never deleted.
+    columns:
+      scope: >
+        Which table the total covers. events for diagnostic_events, process_runs for
+        diagnostic_process_runs.
+      bytes: The sum of size_bytes across that table.
+
+  - name: client_crash_reports
+    about: >
+      One crash report sent by the Loomarr TV or phone app, cleaned of secrets before storage. The
+      nightly housekeeping task deletes reports older than 30 days and keeps at most the newest 1,000.
+    columns:
+      id: Identifies the report.
+      received_at_ms: When the server received it, in Unix milliseconds.
+      occurred_at_ms: When the crash happened by the device's clock, in Unix milliseconds.
+      user_id: >
+        The person signed in on the app that sent it, pointing at users. Empty if unknown or the person
+        has been deleted.
+      device_id: >
+        The paired device that sent it, matching device_tokens.token_hash. Empty when not sent from a
+        paired device.
+      device_name: The paired device's name at the time, or empty.
+      kind: >
+        What crashed. js-fatal is an app error that closed the app, js-error is an app error that was
+        caught, native is a crash of the app's native code.
+      platform: Which app sent it. ios, android, tvos (Apple TV), or android-tv.
+      app_version: The app's version.
+      app_build: The app's build number.
+      os_version: The device's operating system version.
+      device_model: The device's model.
+      message: The error message.
+      stack: The stack trace, or empty.
+      breadcrumbs_json: >
+        A JSON list of up to 50 things the app did just before the crash, each with a time, a category
+        (navigation, http, lifecycle or log) and a short message.
+      native_payload: For native crashes, the crash report from Apple's MetricKit as JSON. Empty otherwise.

@@ -1,0 +1,139 @@
+area: Media inventory
+about: >
+  Loomarr's record of every movie, show and episode its importers have reported, and the files that
+  play them. An importer is a library scan of one folder or an Emby or Jellyfin server. When two
+  importers report the same title (they share an id such as a TMDB number), their reports join one
+  item. The measurements Loomarr takes of each file are kept here too.
+tables:
+  - name: inventory_items
+    about: >
+      One row per movie, show or episode, however many importers report it. Created by the first
+      report. Items are kept when an importer stops seeing them (the report is marked missing
+      instead); one is deleted only when its last report moves to another item.
+    columns:
+      id: >
+        Identifies the item. Other inventory tables point here, and the library's tables name it as
+        their inventory item.
+      kind: >
+        What the item is, as the importer names it, lowercased. The library scan writes `movie`,
+        `series` or `episode`, matching the media server's names for them.
+      created_at: When the item was first reported, in Unix seconds.
+      updated_at: When a report last updated the item, in Unix seconds.
+
+  - name: inventory_item_origins
+    about: >
+      One importer's latest report of one item. Replaced each time that importer reports the item
+      again. Kept when the importer no longer sees it, with missing_at set. Deleted with its item.
+    columns:
+      authority_id: >
+        The importer that reported it. `scan:` and a fingerprint of the scanned folder, or
+        `library:emby:` or `library:jellyfin:` and a fingerprint of the server's address.
+      external_item_id: >
+        The importer's own id for the item, unique only within that importer. The media server's
+        item id, or for a library scan a fingerprint of the file's path (`file:`) or the show's
+        folder (`series:dir:`).
+      item_id: The item the report belongs to (inventory_items.id).
+      observation_json: >
+        What the importer reported: names, overview, genres, tags, studios, people, year, season and
+        episode numbers, premiere date, rating, score, runtime, artwork and related ids. A coverage
+        map tells a field that is known to be empty apart from one that was not reported.
+      observed_at: When this report was taken, in Unix seconds.
+      last_seen_at: When the importer last reported the item, in Unix seconds.
+      missing_at: >
+        When the importer stopped seeing the item, in Unix seconds. Empty while it is present.
+        Cleared if the item comes back.
+
+  - name: inventory_external_ids
+    about: >
+      The outside ids one importer's report gives an item, such as its TMDB, TVDB or IMDb number.
+      Matching ids are how reports of the same title from different importers join one item.
+      Replaced with each new report; deleted with the report or the item.
+    columns:
+      item_id: The item the id belongs to (inventory_items.id).
+      authority_id: The importer whose report gave the id (part of inventory_item_origins).
+      external_item_id: The importer's id for the item (part of inventory_item_origins).
+      namespace: Which id system the id comes from, lowercased, such as `tmdb`, `tvdb` or `imdb`.
+      external_id: The id within that system.
+
+  - name: inventory_sources
+    about: >
+      One playable file (or media server version) of an item. Created by the first report that
+      lists it; it moves with its report if the report joins another item. Deleted with its item.
+    columns:
+      id: Identifies the source. Other inventory tables and playout point here.
+      item_id: The item the source plays (inventory_items.id).
+      kind: >
+        `local_file` for a file the library scan found, or `library_original` for a media server's
+        own copy of the item.
+      revision: >
+        Identifies the exact bytes of the source. For a scanned file, its size and modified time
+        (`stat:`); for a media server copy, its ETag (`etag:`) or a fingerprint of its details
+        (`observed:`). When it changes, the source's measurement and analysis are thrown away.
+      created_at: When the source was first reported, in Unix seconds.
+      updated_at: When a report last updated the source, in Unix seconds.
+
+  - name: inventory_source_origins
+    about: >
+      One importer's latest report of one source of an item. Replaced each time that importer
+      reports it again. Kept when the importer no longer sees it, with missing_at set. Deleted with
+      the source or the item's report.
+    columns:
+      authority_id: The importer that reported it (part of inventory_item_origins).
+      external_item_id: The importer's id for the item (part of inventory_item_origins).
+      external_source_id: >
+        The importer's id for this source within the item. The media server's source id, or `file`
+        for a scanned file.
+      source_id: The source the report belongs to (inventory_sources.id).
+      locator_json: >
+        Where to find the source. A scanned file's path, or the media server item and source ids
+        (never a URL or credentials).
+      observation_json: >
+        What the importer reported about the file. Container, size, bitrate, length, modified time
+        and each video, audio and subtitle stream's details, with a coverage map of what was
+        reported.
+      observed_at: When this report was taken, in Unix seconds.
+      last_seen_at: When the importer last reported the source, in Unix seconds.
+      missing_at: >
+        When the importer stopped seeing the source, in Unix seconds. Empty while it is present.
+
+  - name: inventory_source_measurements
+    about: >
+      The stream details Loomarr measured itself by reading the file, for the source's current
+      revision. Written the first time the source plays or by the measurement job, and used instead
+      of what an importer reported when it is newer. Deleted when the source's revision changes or the source goes.
+    columns:
+      source_id: The source measured (inventory_sources.id).
+      source_revision: The source revision that was measured.
+      observation_json: >
+        The measured details. Container, length, bitrate and each stream (codec, language,
+        channels, size, frame rate, colour, HDR), with a coverage map that also says when the file
+        has no audio.
+      observed_at: When it was measured, in Unix seconds.
+
+  - name: inventory_source_analysis
+    about: >
+      Loomarr's deeper analysis of a source's current revision. The seek points, loudness, natural
+      break points and the picture area. Written by the measurement job and read by playout and
+      the schedule. Replaced on re-analysis; deleted when the revision changes or the source goes.
+    columns:
+      source_id: The source analysed (inventory_sources.id).
+      source_revision: The source revision that was analysed.
+      schema_version: >
+        The version of the analysis format. A row written by any other version is treated as not
+        analysed, and an older one is analysed again.
+      keyframes: >
+        The keyframe index (the points playback can start or cut at), packed as binary: each
+        keyframe's time in milliseconds and byte position.
+      keyframe_count: How many keyframes the index holds.
+      integrated_lufs: >
+        The overall loudness of the audio, in LUFS. Empty when the source has no audio.
+      true_peak_dbtp: The loudest audio peak, in dBTP. Empty when the source has no audio or no peak was found.
+      breaks_json: >
+        The places an ad break could go without cutting into a scene. Each has its time, where it
+        came from (`chapter` or `fade`), the nearest keyframe, how long the black and silent stretch
+        lasted, and a confidence from 0 to 1.
+      analyzed_at: When it was analysed, in Unix seconds.
+      active_picture_json: >
+        The part of the frame that is picture, without letterbox or pillarbox bars, as {x, y, w, h}
+        in source pixels. The channel logo is placed by its corner. Empty when unknown (no video, or
+        every sampled frame was black).

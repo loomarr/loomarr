@@ -1,0 +1,126 @@
+area: Notifications
+about: >
+  Messages Loomarr sends outside the app (email, chat services, push apps, Browser Push) and where they go.
+  A notification is recorded once, then sent to each matching destination, with every send attempt kept as
+  a record. Message bodies and plaintext secrets are never stored here.
+tables:
+  - name: notification_destinations
+    about: >
+      One row per place notifications can be sent, such as a Discord webhook, an ntfy topic or one person's
+      browser for Browser Push. Admins set up household-wide destinations; a person can add their own. A row
+      lasts until it is deleted.
+    columns:
+      id: Identifies the destination. Delivery attempts refer to it by this id.
+      means: >
+        The kind of service it sends through. One of email, webhook, discord, ntfy, gotify, apprise,
+        pushover, telegram, mattermost, matrix, web_push (Browser Push), mqtt or slack.
+      label: The name shown for the destination, also shown in delivery history in place of its address.
+      scope: >
+        installation for a destination an admin set up for the whole household; person for one that
+        belongs to a single person.
+      owner_id: The person a person-scoped destination belongs to, from users. Empty for installation scope.
+      audience: >
+        Who the destination is for. person means its owner's own notifications; approvers means the admins
+        who review requests; operators means the admins who look after the server and library.
+      topics_json: >
+        A JSON list of the notification topics the destination receives (the same values as
+        notification_intents.topic). Topics not in the list are never sent here.
+      enabled: 1 when the destination is switched on. A disabled destination receives nothing.
+      configuration_json: >
+        A JSON object of the destination's non-secret settings, such as a server address or topic name.
+      credentials_encrypted: >
+        The destination's secret settings (tokens, passwords, webhook URLs, push keys), encrypted with
+        Loomarr's encryption key. Unreadable without that key.
+      created_at: When the destination was added, in Unix seconds.
+      updated_at: When the destination was last changed, in Unix seconds.
+      credential_keys_json: >
+        A JSON list naming which secret settings are filled in, without their values, so the app can show
+        them as set without decrypting. NULL for rows made before this was recorded.
+      subscription_fingerprint: >
+        For Browser Push, a one-way hash of the browser's push address, so one browser is subscribed only
+        once per person. The address can't be recovered from it. Empty for other kinds.
+
+  - name: notification_intents
+    about: >
+      One row per notification Loomarr decided to send, such as "your request was approved" or "a media
+      folder went offline". Its delivery attempts hang off it. Deleted, with its attempts, 30 days after
+      its last attempt finished.
+    columns:
+      id: Identifies the notification. notification_delivery_attempts point here.
+      topic: >
+        What happened. account_invitation (an invitation email); local_password_recovery (a password-reset
+        email); proposal_submitted, proposal_approved, proposal_denied (a request was made, approved or
+        denied); acquisition_available, acquisition_gave_up (a requested title arrived, or Loomarr stopped
+        trying); channel_live, channel_degraded (a channel went on air or stopped playing properly);
+        delivery_test (a test sent from a destination's settings); library_folder_offline,
+        library_folder_back (a media folder stopped or started opening again); library_changes_degraded
+        (an arr can no longer report new files); library_needs_you (titles in the library need a person's help).
+      recipient_kind: >
+        Who it is for. invitation means the address on a pending invitation; person means one person;
+        approvers means the admins who review requests; operators means the admins who look after the server.
+      recipient_id: >
+        The invitation's id, the person's id, or the literal word approvers or operators. For a delivery
+        test, the destination's id.
+      reference_kind: >
+        The kind of thing it is about. One of invitation, recovery (a password-recovery request),
+        proposal (a request), title, channel, destination or library (a media folder or arr).
+      reference_id: The id of the thing it is about, in the table that reference_kind names.
+      recipient_policy: >
+        mandatory_account for account and security email that always goes out; configurable for
+        everything else, which only reaches destinations that chose the topic.
+      template_json: >
+        A JSON object with the few names the message needs (the recipient's name, the subject's name, a short
+        summary), captured when it happened. Never the rendered message or any link secret.
+      idempotency_key: >
+        A unique key built from the event and recipient, so the same event never makes two notifications for
+        the same recipient.
+      created_at: When the notification was recorded, in Unix seconds.
+      terminal_at: >
+        When its last delivery attempt finished, in Unix seconds. 0 while any attempt is still queued or sending.
+
+  - name: notification_delivery_attempts
+    about: >
+      One row per try at sending a notification to one destination. A failure that may succeed later queues
+      a new row for the next try, up to 5 tries. Deleted with its notification.
+    columns:
+      id: Identifies the attempt.
+      intent_id: The notification being sent, from notification_intents.
+      means: The kind of service used, with the same values as notification_destinations.means.
+      destination_ref: >
+        Which destination it went to. A notification_destinations id, or for account email, invitation: or
+        person: followed by that id. Never the address itself.
+      destination_redacted: >
+        A safe name for the destination to show in delivery history, such as its label. Never the address or a secret.
+      status: >
+        queued waiting to be sent; sending while a worker has it; delivered when the service accepted it;
+        failed when it didn't go through; suppressed when it was deliberately not sent (destination off or
+        gone, or the person turned the topic off).
+      attempt_number: Which try this is, from 1 to 5.
+      available_at: When the attempt may be sent, in Unix seconds. Later for retries, which wait before trying again.
+      lease_owner: Which worker is sending it. Empty unless status is sending.
+      lease_expires_at: >
+        When the worker's hold runs out, in Unix seconds. An attempt still sending after this is closed as
+        failed with an unknown outcome. 0 unless sending.
+      started_at: When a worker started sending it, in Unix seconds. 0 if never started.
+      finished_at: When it was delivered, failed or suppressed, in Unix seconds. 0 while queued or sending.
+      provider_message_id: The id the service gave the sent message, when it gave one. Empty otherwise.
+      failure_class: >
+        Why a failed attempt failed. transient_pre_acceptance (a temporary problem before the service took
+        it, so it is retried); permanent (won't work if tried again); ambiguous_acceptance (the service may
+        or may not have taken it, so it is not retried); cancelled. Empty unless failed.
+      outcome_code: >
+        What went wrong, in terms an admin can act on. delivery_disabled, destination_unavailable,
+        preference_disabled (reasons for suppressing); means_unavailable, recipient_rejected,
+        configuration_invalid, transport_unavailable, acceptance_ambiguous, cancelled, worker_interrupted
+        (reasons for failing). Empty when delivered or still in progress.
+      created_at: When the attempt was queued, in Unix seconds.
+
+  - name: notification_reference_recipients
+    about: >
+      One row per person who asked for a title or channel, recorded when an admin approves their request, so
+      later news about it (the title arrived, the channel went live) reaches them. Rows are kept.
+    columns:
+      reference_kind: What was asked for. title or channel.
+      reference_id: The title's key or the channel's id.
+      person_id: The person who asked for it, from users.
+      created_at: When their request was approved, in Unix seconds.

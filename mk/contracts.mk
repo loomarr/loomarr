@@ -28,6 +28,16 @@ settings-keys: ## regenerate internal/platform/settings/keys_gen.go (typed setti
 config-docs-verify: config-docs ## regenerated config docs must match committed (CI red on drift)
 	@git diff --exit-code docs/reference/settings.md
 
+## ---- database reference (every table and column in plain words) ----------
+
+.PHONY: db-docs
+db-docs: ## generate docs/reference/database.md from the migrations and internal/platform/store/schemadoc
+	$(GO) run ./cmd/db-docs docs/reference/database.md
+
+.PHONY: db-docs-verify
+db-docs-verify: db-docs ## regenerated database reference must match committed (CI red on drift)
+	@git diff --exit-code docs/reference/database.md
+
 ## ---- architecture map (docs/design/package-map.md) -----------------------
 # The same discipline as config-docs, applied to the one section a newcomer reads first.
 # §2's diagram had omitted `filler` (explicitly, "to keep the diagram legible") and `playout`

@@ -1,0 +1,261 @@
+area: How filler clips are checked
+about: >
+  Filler clips (vintage ads, promos and bumpers between shows) are examined by AI models and other
+  checks before and after they air. These tables remember each model call and what it cost, the
+  descriptive facts the checks filled in, web-research allowances, and the spoken-safety and
+  reel-splitting journals.
+tables:
+  - name: filler_inference_evaluations
+    about: >
+      One row per model call made about a filler clip, written before the call (as a spend reservation)
+      and updated once the call finishes with what it actually used and cost. Callers include the
+      defect judge (a vision model ruling on borderline picture defects) and the long-reel structure
+      check. Rows are kept; nothing purges them.
+    columns:
+      id: Identifies the call. Spoken-safety events and the structure call journal point here.
+      cache_key: >
+        SHA-256 of every input that could change the answer (clip, role, model, media sizes and all the
+        version columns), so identical retries can be recognised. Run, times and cost are not part of it.
+      clip_hash: >
+        The filler clip the call was about (clips.hash). For a long-reel structure check it is the
+        SHA-256 of the reel's source file.
+      run_id: The batch run the call belonged to, used for the per-run spend ceiling. Empty when the call was not part of a run.
+      role: >
+        Which check made the call, for example defect_judge or complete_timeline_structure.
+      rung: >
+        The step within that check, for example defects or window_video. Empty when the check has no steps.
+      state: >
+        Where the call stands. reserved means spend is set aside and the call is under way; completed
+        means it answered; failed means it did not; held_budget means a spend ceiling (per clip, per day
+        or per run) stopped it, or the provider charged more than was reserved.
+      requested_provider: The AI provider Loomarr asked, such as ollama or openrouter.
+      requested_model: The model Loomarr asked for.
+      resolved_provider: The provider that actually answered, as reported back. Empty until the call settles.
+      resolved_model: The model that actually answered, as reported back. Empty until the call settles.
+      upstream_provider: The provider behind a routing service (such as OpenRouter) that served the call. Empty when not known.
+      modalities_json: >
+        JSON list of the kinds of input sent, such as text, image, audio or video.
+      derivative_bytes: Size in bytes of the media excerpt sent to the model. 0 when none was sent.
+      derivative_duration_ms: Length of the media excerpt sent, in milliseconds. 0 when none was sent.
+      derivative_pixels: Pixel count of the image or frames sent. 0 when none was sent.
+      prompt_tokens: Input tokens the provider reported.
+      completion_tokens: Output tokens the provider reported.
+      reasoning_tokens: Reasoning tokens the provider reported.
+      cached_tokens: Input tokens served from the provider's prompt cache.
+      cache_write_tokens: Input tokens written into the provider's prompt cache.
+      image_tokens: Tokens the provider counted for images.
+      audio_tokens: Tokens the provider counted for audio.
+      video_tokens: Tokens the provider counted for video.
+      charged_amount: >
+        The charge exactly as the provider reported it, as a decimal string. Empty when no charge was reported.
+      charged_currency: Currency of the reported charge, USD when known. Empty when no charge was reported.
+      charged_nano_usd: The reported charge in billionths of a US dollar. 0 when nothing was charged or reported.
+      estimated_nano_usd: Loomarr's own estimate of the cost, in billionths of a US dollar.
+      reserved_nano_usd: >
+        The amount counted against the spend ceilings, in billionths of a US dollar. It starts as the
+        pre-call reservation and becomes the actual charge when the call settles; a held call counts 0.
+      price_snapshot: >
+        Fingerprint of the provider price list the cost was worked out from. Empty when none was recorded.
+      latency_ms: How long the call took, in milliseconds.
+      attempts: How many times the request was sent to the provider.
+      generation_id: The provider's own ID for the response, for matching against its billing. Empty when none was given.
+      evidence_version: Version of the evidence (measurements or media set) the call was based on.
+      extractor_version: Version of the step that prepared the media excerpt.
+      prompt_version: Version or fingerprint of the prompt sent.
+      schema_version: Version or fingerprint of the answer format the model was asked to follow.
+      taxonomy_version: Version of the vocabulary or bar the answer was judged against.
+      admission_policy_version: Version of the rules that decide what the answer is allowed to unlock.
+      role_policy_version: Version of the check's own rules.
+      capability_snapshot: Identity of the model endpoint and its capabilities at the time of the call.
+      outcome: >
+        A short result code once the call succeeds, such as window_complete. Empty when there is none.
+      failure_reason: >
+        Why the call did not complete, for example a spend ceiling or a failure class such as transport.
+        Empty on success.
+      created_at: When the call was reserved, in Unix seconds. Also decides which day's ceiling it counts against (UTC).
+      updated_at: When the row last changed (reserved or settled), in Unix seconds.
+
+  - name: filler_inference_budget_guards
+    about: >
+      One lock row per spend-ceiling scope. Reserving a model call locks the matching rows first, so two
+      calls cannot both slip under the same ceiling at once. Rows are created on first use and never removed.
+    columns:
+      scope: >
+        The ceiling being guarded, written as clip:<clip hash>, day:<YYYY-MM-DD in UTC> or run:<run id>.
+
+  - name: filler_enrichment_axes
+    about: >
+      The accepted answer for one descriptive fact ("axis") about one filler clip, such as its era,
+      brand or role, with where the answer came from. A stronger or more confident answer replaces a
+      weaker one; no row means the fact is still unknown. Rows are kept and follow the clip if its
+      identity changes.
+    columns:
+      clip_hash: The filler clip described (clips.hash).
+      axis: >
+        Which fact. role (commercial, bumper, station_id, psa, trailer, interstitial, political or news),
+        era, audience, brand, geography, language, product, format, seasonal, audience-cue or presentation.
+      state: >
+        complete means the answer stands (an empty value is an honest "checked, none applies");
+        unsupported means the producer withdrew or has no answer; stale means the answer may be refreshed
+        by a new result of the same strength.
+      value_json: >
+        The answer as JSON, using one of text, year, tags (taxonomy slugs) or geography (scope, country,
+        network, station, airDate), depending on the axis.
+      evidence_kind: >
+        Where the answer came from, weakest to strongest: inference (a model's guess), source_default
+        (the source's usual value), trusted_mapping, content_observation (seen or heard in the clip),
+        item_metadata (the item's own listing) or operator (an admin's edit).
+      evidence_rank: The strength of evidence_kind as a number, 1 (inference) to 6 (operator).
+      evidence_reference: >
+        What the answer was based on, such as the source listing or the admin screen an edit came through.
+      confidence: How sure the producer was, from 0 to 100. Operator edits are 100.
+      producer: >
+        The pass that gave the answer, for example deterministic-metadata, a text-model pass or operator.
+      producer_version: Version of that producer's rules or prompt.
+      taxonomy_version: Version of the tag vocabulary the answer was checked against. Empty when the axis does not use tags.
+      observed_at: When the producer made the observation, in Unix seconds.
+      updated_at: When this answer was accepted into the row, in Unix seconds.
+
+  - name: filler_enrichment_passes
+    about: >
+      Marks that one enrichment producer, at one version, has finished with one clip. It is what stops
+      the same work (and its model spend) being repeated; a clip is picked again when the producer
+      version or taxonomy changes, or, for free passes, when the clip's descriptive inputs change.
+    columns:
+      clip_hash: The filler clip the pass ran on (clips.hash).
+      producer: The pass that ran, for example deterministic-metadata or a text-model pass.
+      producer_version: Version of that pass's rules or prompt.
+      taxonomy_version: Version of the tag vocabulary the pass used. Empty when it used none.
+      completed_at: When the pass finished, in Unix seconds.
+      input_revision: >
+        The clip's enrichment revision (clips.enrichment_revision) the pass saw. When the clip's revision
+        moves past it, free passes run again.
+
+  - name: filler_research_web_attempts
+    about: >
+      One row per web search made to research a filler clip, so the same clip at the same description
+      revision is never searched twice with the same search setup. Rows go when the clip is deleted.
+    columns:
+      clip_hash: The filler clip researched (clips.hash).
+      input_revision: The clip's enrichment revision the search was made for.
+      adapter_version: >
+        Identity of the web-search setup used, including the provider (and, for SearXNG, a short
+        fingerprint of its address).
+      provider: The web-search provider. brave (Brave Search) or searxng (a SearXNG server).
+      reserved_at: When the search was booked, in Unix seconds.
+
+  - name: filler_research_web_usage
+    about: >
+      One row per calendar month counting web searches against the monthly limit set in settings.
+      Searches are refused once the count reaches the limit. Old months are kept.
+    columns:
+      month: The month counted, as YYYY-MM in UTC.
+      request_count: >
+        Web searches made that month, including an admin's connection test.
+      last_provider: The provider used for the most recent search, brave or searxng. Empty before the first.
+      last_success_at: When a search last succeeded that month, in Unix seconds. 0 means none yet.
+      last_failure_at: >
+        When a search last failed that month, in Unix seconds. 0 means none yet. A failure newer than the
+        last success shows web search as degraded.
+
+  - name: filler_spoken_safety_runs
+    about: >
+      One attempt at the spoken-safety check, which listens to everything said in a clip to keep filler
+      suitable for a household. Each run is fixed at creation and its steps are logged in
+      filler_spoken_safety_events. At startup Loomarr closes any run left without a final event; no
+      part of the current app starts new runs.
+    columns:
+      id: Identifies the run. Its events point here.
+      clip_hash: The filler clip checked (clips.hash).
+      authority_sha256: SHA-256 fingerprint of the screening authority the run answers to.
+      source_sha256: SHA-256 of the clip's media file that was checked.
+      source_bytes: Size of that media file in bytes.
+      duration_ms: Length of the media checked, in milliseconds.
+      certification_sha256: SHA-256 fingerprint of the certification the check runs under.
+      policy_sha256: SHA-256 fingerprint of the safety policy applied.
+      proposer_sha256: SHA-256 fingerprint of the step that picks which spoken passages to examine.
+      implementation: Name of the implementation that ran the check.
+      created_at: When the run started, in Unix nanoseconds.
+
+  - name: filler_spoken_safety_events
+    about: >
+      The append-only step log of one spoken-safety run, numbered from 0. A run plans its source,
+      proposes passages to examine, reserves and settles any model calls, and ends with one terminal event.
+    columns:
+      id: Identifies the event.
+      run_id: The run it belongs to (filler_spoken_safety_runs.id).
+      ordinal: Position in the run's log, starting at 0.
+      kind: >
+        The step. source_planned (the audio and video spans to cover), proposal_completed (the passages
+        picked), inference_reserved (a model call booked), inference_settled (that call finished) or
+        terminal (the final evidence and verdict).
+      inference_id: >
+        The model call this step is about (filler_inference_evaluations.id). Set only for
+        inference_reserved and inference_settled.
+      payload_json: >
+        The step's details as JSON, such as spans, passage IDs, model, cost and the final result. It never
+        holds the spoken words, file paths or raw model output.
+      created_at: When the step was logged, in Unix nanoseconds.
+
+  - name: filler_structure_window_call_ledger
+    about: >
+      One row per model call in the long-reel structure check, which sends a reel to a video model in
+      windows to find where each separate clip starts and ends. The row is booked before the call and
+      completed with the answer; a call that got no answer is retried as a new attempt.
+    columns:
+      request_sha256: SHA-256 of the exact request. With attempt, identifies the row.
+      attempt: >
+        Which try of this request, from 1. A retry after a lost answer adds the next attempt; a retry
+        after a budget hold replaces the held row.
+      evaluation_id: The matching cost record (filler_inference_evaluations.id).
+      source_sha256: SHA-256 of the reel's source file.
+      media_set_sha256: SHA-256 of the full set of windows planned for the reel.
+      window_ordinal: Which window of the reel this call covers, from 0.
+      assessor_id: Identity of the model setup that assessed the window.
+      state: >
+        open means the call is booked and has no answer yet; held_budget means a spend ceiling stopped it;
+        settled means the outcome is recorded.
+      reservation_json: >
+        The full booked request as JSON, including the media set, window, model, prompt and schema
+        fingerprints, and the spend requested.
+      record_sha256: SHA-256 of the settled record. Empty until settled.
+      record_json: >
+        The settled record as JSON, including the model that answered, tokens, charge, result state
+        (accepted, failed, unsettled, held_budget or over_reservation) and fingerprints of the response.
+        Empty until settled.
+      requested_at: When the call was booked, in Unix seconds.
+      assessed_at: When the answer was recorded, in Unix seconds. 0 until settled.
+
+  - name: filler_split_proposals
+    about: >
+      A proposed cut list for a compilation reel waiting for an admin's review, one per reel. Confirming
+      it turns the segments into separate clips and removes the proposal; dismissing it also removes it,
+      and it goes when the reel leaves the catalog.
+    columns:
+      id: Identifies the proposal.
+      clip_hash: The compilation reel being split (clips.hash).
+      segments_json: >
+        JSON list of proposed segments, each with its index, start and end in milliseconds, proposed name
+        and where the name came from, and suggested era, audience and tags. The admin's edits are saved here.
+      created_at: When the proposal was made, in Unix seconds.
+      claim_token: >
+        A lock held while a confirm is publishing the segments, so two confirms cannot run at once. Empty
+        when unlocked.
+      claim_expires_at: When the lock lapses if not renewed, in Unix seconds. 0 when unlocked.
+
+  - name: filler_split_shadow_decisions
+    about: >
+      A side-by-side record, made while a new splitting rule is being trialled, of what the current rule
+      and the new certified rule would each do with one split proposal. Kept after the proposal itself is
+      gone; rows are never changed.
+    columns:
+      id: Identifies the decision, derived from its content.
+      proposal_id: The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed.
+      clip_hash: The compilation reel (clips.hash).
+      source_sha256: SHA-256 of the reel's source file. Empty when not known.
+      assessment_sha256: SHA-256 of the structure assessment the new rule used. Empty when there was none.
+      policy_version: Version of the splitting policy compared.
+      decision_json: >
+        The full decision as JSON. For each rule (legacy and certified) it holds a verdict and the spans it
+        would confirm, hold (with a reason) or discard.
+      observed_at: When the comparison was made, in Unix seconds.

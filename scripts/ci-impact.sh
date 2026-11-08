@@ -187,6 +187,15 @@ classify() {
       select_gate rust
       select_gate image
       ;;
+    internal/platform/store/schemadoc/*)
+      # The database reference's words: embedded in the binary, rendered by a store test, stored as
+      # Postgres comments at boot, and diffed against docs/reference/database.md by db-docs-verify.
+      known=true
+      select_gate go
+      select_gate postgres
+      select_gate image
+      select_gate policy
+      ;;
     internal/platform/store/migrations/*)
       known=true
       select_gate contracts

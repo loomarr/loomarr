@@ -433,8 +433,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"ci-policy": {
 					condition: "always()",
 					steps: map[string]workflowStepAuthority{
-						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck": exactWorkflowStep(4, "Workflow, publication, agent harness, and shell policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck"}}),
-						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify":         exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify"}}),
+						"make -j4 --output-sync=target ci-lint release-verify agent-harness-test shellcheck":        exactWorkflowStep(4, "Workflow, publication, agent harness, and shell policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify", "agent-harness-test", "shellcheck"}}),
+						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify db-docs-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "db-docs-verify"}}),
 					},
 				},
 				"ci-ok": {

@@ -1,0 +1,166 @@
+area: Suggestions
+about: >
+  How Loomarr suggests channels and titles: the requests people make, each run of the suggester, the
+  suggestions waiting for an admin, the Keep and Never choices that steer future picks, and the
+  counts and timings that measure how well the suggestion pipeline works.
+tables:
+  - name: proposal_jobs
+    about: >
+      One row per run of the channel suggester: a person's channel request, a refine of an existing
+      channel, or a scheduled re-curation. The job's result is a proposal. Finished (`done` or
+      `failed`) jobs are deleted after the `jobs.retention` setting (30 days by default), unless
+      their proposal is still waiting for a decision.
+    columns:
+      id: Identifies the job. Proposals and channels point here.
+      kind: >
+        `suggest` for a request a person made (including a refine), or `recurate` for a scheduled
+        refresh of a channel that allows automatic curation.
+      status: >
+        `queued` (waiting for a worker), `running`, `done` (produced a proposal), or `failed`.
+      intent_json: >
+        The request: its description and options such as era, tone, titles to include or leave out,
+        and for a refine the change asked for and the channel's current lineup.
+      intent_hash: >
+        A fingerprint of the normalised request. A new identical request can reuse a recent `done`
+        job's result instead of running again.
+      created_by: The person who submitted the request (users.id). Empty when no person did.
+      last_error: The detailed error from the last failure, for the logs. Not shown to the requester.
+      deadline: >
+        When a queued job is due to run, or when a running job's hold expires and another worker may
+        take it over, in Unix seconds.
+      attempts: How many times a worker has started the job.
+      created_at: When the job was submitted, in Unix seconds.
+      updated_at: When the job last changed, in Unix seconds.
+      failure_code: >
+        Why the job failed, when it did. `no_grounded_titles` (nothing matched titles that exist),
+        `generation_failed` (the AI step failed), `selection_empty` (no titles were chosen), or
+        `budget_exhausted` (it ran out of its allowed work). Empty otherwise.
+      workflow_version: >
+        Which version of the job process ran it. 0 is a job from before per-attempt history was
+        kept; 1 is the current process, which records each attempt in proposal_job_attempts.
+      reached_live: >
+        1 once a channel made from this job has gone live. It stays 1 even if the channel is later
+        paused.
+      failure_trace_json: >
+        The bounded record of the candidate titles a failed run considered and why each was kept or
+        dropped, used to explain the failure. Empty when there is none.
+      channel_id: >
+        The existing channel a refine or re-curation job changes (channels.id). Empty for a job
+        that creates a new channel.
+
+  - name: proposal_job_attempts
+    about: >
+      One row each time a worker started a channel suggester job, so a request's history shows
+      every try. Deleted with its job.
+    columns:
+      job_id: The job this attempt ran (proposal_jobs.id).
+      attempt: The attempt's number within its job, counting from 1.
+      workflow_version: Which version of the job process ran the attempt.
+      status: >
+        `running`, `succeeded`, `failed`, or `interrupted` (the worker's hold expired while it was
+        still running and the job was taken over).
+      started_at: When the attempt started, in Unix seconds.
+      completed_at: When the attempt ended, in Unix seconds. 0 while it is running.
+      failure_code: Why the attempt failed, using the same codes as proposal_jobs.failure_code. Empty otherwise.
+
+  - name: proposals
+    about: >
+      A suggested channel lineup produced by a channel suggester job, waiting for an admin to
+      approve or deny it (shown in the app as a request). Approving it creates or changes a
+      channel. Denied proposals are deleted after the `proposals.retention` setting (90 days by
+      default); the others are kept.
+    columns:
+      id: Identifies the proposal.
+      job_id: The job that produced it (proposal_jobs.id).
+      status: >
+        `submitted` (waiting for a decision), `approved`, `denied`, or `superseded` (replaced by a
+        newer proposal from the same job before anyone decided).
+      created_by: The person who asked for it (users.id).
+      decided_by: The admin who approved or denied it (users.id). Empty until decided.
+      deny_reason: The reason given for a denial. Empty otherwise.
+      proposal_json: >
+        The suggestion itself. The request, the proposed channel name, the lineup of titles already
+        in the library, titles to acquire, ranked backups, scores, the rationale and the channel
+        rules.
+      created_at: When the proposal was made, in Unix seconds.
+      updated_at: When the row last changed, in Unix seconds.
+      mod_summary: >
+        What the admin changed before approving, written by Loomarr, such as "dropped 2, added 1".
+        Empty when approved unchanged.
+      note: The admin's message to the requester about the decision. Empty for none.
+      approved_at: When the proposal was approved, in Unix seconds. 0 if it never was.
+
+  - name: discovery_feedback
+    about: >
+      The Keep, Less like this, Never and Surprise me choices people make about titles, for the
+      whole household or for one channel. Each choice is a new row; the newest per title wins, and
+      a channel's choice overrides the household's. The channel suggester and re-curation read
+      them. A channel's rows are deleted with the channel.
+    columns:
+      id: Identifies the choice.
+      actor_id: The person who made it (users.id).
+      scope: >
+        Where it applies. `household` for every channel, or `channel` for one channel.
+      scope_id: The channel it applies to (channels.id) when the scope is `channel`; empty for `household`.
+      target_key: The title it is about, by its key, such as `movie:tmdb:603`.
+      action: >
+        `keep` (favour this title), `less` (less like this, which also lowers titles of its genres),
+        `never` (leave it out), `surprise` (Surprise me, favouring picks unlike it), or `clear`
+        (remove an earlier choice).
+      reason: An optional reason the person gave.
+      created_at_ns: When the choice was made, in Unix nanoseconds.
+
+  - name: quality_receipts
+    about: >
+      One measured step of the pipeline that suggests and adds titles (retrieval, generation,
+      grounding, approval, acquisition, scheduling) and how it went. Holds counts and timings only, no
+      titles or people. Receipts older than 30 days are rolled into quality_daily_aggregates and deleted.
+    columns:
+      idempotency_key: >
+        An opaque hash identifying the step, so the same step is never counted twice.
+      occurred_at: When the step happened, in Unix seconds.
+      stage: >
+        The pipeline step. `retrieval`, `generation`, `grounding`, `approval`, `acquisition` or
+        `scheduling`.
+      outcome: >
+        How it went, from a set fixed per stage. retrieval is succeeded, empty or failed; generation is
+        succeeded, abstained or failed; grounding is accepted or rejected; approval is approved or declined;
+        acquisition is playable or failed; scheduling is scheduled or failed.
+      duration_millis: How long the step took, in milliseconds. 0 when not measured.
+      tool_calls: How many tool calls the model made during the step.
+      candidate_count: How many candidate titles the step surfaced.
+      cost_nanos: What the step cost, in billionths of a US dollar.
+      run_snapshot_id: >
+        The evaluation run it belongs to (quality_run_snapshots.id). Empty for ordinary use of the app.
+
+  - name: quality_daily_aggregates
+    about: >
+      Daily totals of suggestion-quality receipts, one row per day, stage, outcome and evaluation run.
+      Kept for two years. This is what the admin discovery-quality export downloads.
+    columns:
+      day: The UTC day, as YYYY-MM-DD.
+      stage: The pipeline step, with the same values as quality_receipts.stage.
+      outcome: How the steps went, with the same values as quality_receipts.outcome.
+      run_snapshot_id: The evaluation run (quality_run_snapshots.id), or empty for ordinary use.
+      observation_count: How many receipts were rolled into the row.
+      duration_millis: Total time of those steps, in milliseconds.
+      tool_calls: Total tool calls.
+      candidate_count: Total candidate titles surfaced.
+      cost_nanos: Total cost, in billionths of a US dollar.
+
+  - name: quality_run_snapshots
+    about: >
+      The fixed facts about one suggestion-quality evaluation run (the model, provider and test set it
+      used), so receipts and daily totals can be compared across runs. No part of the running app writes
+      rows today. Snapshots no longer referenced are trimmed to the newest 256.
+    columns:
+      id: Identifies the snapshot, derived from its facts (eval-<hash>). Receipts and daily totals point here.
+      schema_version: Version of the snapshot format.
+      corpus_version: Version of the test set the run was scored on.
+      requested_model: The model the run asked for.
+      resolved_model: The model that actually answered, when every call reported the same one. Empty otherwise.
+      provider: The AI provider. `unknown`, `ollama`, `openrouter` or `custom`.
+      budget_profile: The spending profile the run used.
+      application_version: The Loomarr version (and commit) that ran it.
+      accounting_available: 1 when the provider reported costs for the run.
+      created_at: When the run was made, in Unix seconds.

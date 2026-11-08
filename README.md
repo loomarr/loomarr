@@ -42,7 +42,8 @@ Silicon pulls the arm64 image and Intel Macs pull amd64.
 
 → [Get started](docs/get-started.md) · [Docker](docs/guides/install-docker.md) ·
 [Hardware encoding](docs/guides/hardware-encoding.md) · [Upgrading](docs/guides/upgrade.md) ·
-[Monitoring](docs/guides/monitoring.md) · [All settings](docs/reference/settings.md)
+[Monitoring](docs/guides/monitoring.md) · [All settings](docs/reference/settings.md) ·
+[What's in the database](docs/reference/database.md)
 
 ## How it plays
 
