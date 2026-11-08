@@ -638,6 +638,10 @@ const ChoiceRow = ({
         gap: semanticSpace.control,
         minHeight: semanticTargets[density],
         opacity: option.disabled ? 0.55 : 1,
+        // The ring around the dot is the one focus look; the browser would add its own around the
+        // whole row. Chrome's `auto` ring ignores a zero width, so the style is named too.
+        outlineStyle: "solid",
+        outlineWidth: 0,
       }}
     >
       <Surface
