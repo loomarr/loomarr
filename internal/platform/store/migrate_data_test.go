@@ -389,17 +389,17 @@ func TestMigrateToPostgresRollsBackTheWholeDataCopy(t *testing.T) {
 		"operator:keep", "archive", "operator_collection", "Operator source", epoch(time.Now()), true); err != nil {
 		t.Fatal(err)
 	}
-	// SQLite accepts this integer, while the destination BOOLEAN coercion rejects
-	// it. filler_sources sorts before users, so a per-table commit would strand the
-	// operator row in an otherwise failed destination.
+	// SQLite keeps a NUL byte in text, while Postgres text refuses it. filler_sources
+	// sorts before users, so a per-table commit would strand the operator row in an
+	// otherwise failed destination.
 	if _, err := src.(*sqlStore).db.ExecContext(ctx,
-		`UPDATE users SET disabled = 2 WHERE id = 'u-bob'`); err != nil {
+		`UPDATE users SET name = 'Bob' || char(0) WHERE id = 'u-bob'`); err != nil {
 		t.Fatal(err)
 	}
 	dsn := startPostgres(t)
 
 	if _, err := MigrateToPostgres(ctx, "sqlite://"+SQLitePath(src), dsn, nil); err == nil {
-		t.Fatal("migration with an invalid destination boolean unexpectedly succeeded")
+		t.Fatal("migration of text Postgres refuses unexpectedly succeeded")
 	}
 	dst, err := Open(ctx, dsn, false)
 	if err != nil {

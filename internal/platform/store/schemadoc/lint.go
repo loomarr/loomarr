@@ -21,6 +21,8 @@ import (
 //     is a gap until something does.
 //   - unit: a number column documented in milliseconds ends in _ms, one in nanoseconds in _ns,
 //     and a Unix-seconds one in neither, so a reader never multiplies by the wrong thousand.
+//   - json: a column named _json, or one defaulting to a JSON object or array, is declared JSON
+//     (CHECK (json_valid(column)), jsonb in Postgres), so neither engine stores text that isn't.
 //
 // Gaps already in the schema are listed in KnownGaps with the work that removes them. The list may
 // only shrink: a listed gap that no longer exists is itself a problem, so fixing one forces its
@@ -53,6 +55,9 @@ func Lint(doc Doc, live []LiveTable) []string {
 		for _, c := range lt.Columns {
 			if t, ok := described[lt.Name]; ok && !unitNamed(c, t.Columns[c.Name]) {
 				found["unit "+lt.Name+"."+c.Name] = true
+			}
+			if holdsJSON(c) && !c.JSON {
+				found["json "+lt.Name+"."+c.Name] = true
 			}
 			if !stateColumn(c) || c.Checked {
 				continue
@@ -114,6 +119,14 @@ func unitNamed(c LiveColumn, about string) bool {
 	return true
 }
 
+// holdsJSON reports a text column that, by its name or its default, holds a JSON document.
+func holdsJSON(c LiveColumn) bool {
+	if !strings.EqualFold(c.Type, "TEXT") {
+		return false
+	}
+	return strings.HasSuffix(c.Name, "_json") || strings.HasPrefix(c.Default, "'{") || strings.HasPrefix(c.Default, "'[")
+}
+
 func stateColumn(c LiveColumn) bool {
 	if !strings.EqualFold(c.Type, "TEXT") {
 		return false
@@ -133,6 +146,8 @@ func lintFix(gap string) string {
 		return "list the allowed values in a CHECK (column IN (...))"
 	case strings.HasPrefix(gap, "unit "):
 		return unitFix
+	case strings.HasPrefix(gap, "json "):
+		return "declare it JSON: CHECK (json_valid(column)) in SQLite, jsonb in Postgres"
 	case strings.HasPrefix(gap, "unbounded "):
 		return "delete old rows (housekeeping or a retention setting), then say how long they're kept"
 	default:

@@ -8,7 +8,7 @@ import { Action, Field, StatusDot, type StatusTone, Surface, Tooltip } from "@lo
 import { SearchField } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, Check, Clipboard, ListFilter, Radio } from "lucide-react";
+import { AlertTriangle, Check, Clipboard, Radio } from "lucide-react";
 import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
@@ -436,9 +436,9 @@ const ApplicationDiagnostics = ({
             <SelectItem value="oldest">Oldest first</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="ghost" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
-          <ListFilter aria-hidden /> More filters
-        </Button>
+        <Action aria-expanded={advanced} icon="filter" onPress={() => setAdvanced(!advanced)} variant="ghost">
+          More filters
+        </Action>
       </div>
 
       {advanced && (

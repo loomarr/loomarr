@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeDisk answers readability from a fixed set of folders.
@@ -27,7 +28,7 @@ func folders(list ...string) func(context.Context) ([]string, error) {
 
 func openStore(t *testing.T) store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "roots.db"), true)
+	st, err := store.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

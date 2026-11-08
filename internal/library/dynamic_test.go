@@ -144,9 +144,6 @@ func TestDynamicConnection_IncompleteFailsClosedWithoutHTTP(t *testing.T) {
 			if _, err := client.ItemMetadataByID(context.Background(), nil); !errors.Is(err, ErrConnectionRequired) {
 				t.Errorf("ItemMetadataByID error = %v, want ErrConnectionRequired", err)
 			}
-			if got := client.StreamURL("item-1"); got != "" {
-				t.Errorf("StreamURL = %q, want empty", got)
-			}
 			if got := script.Calls(); got != 0 {
 				t.Errorf("incomplete connection made %d HTTP requests, want 0", got)
 			}

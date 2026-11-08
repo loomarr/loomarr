@@ -47,6 +47,9 @@ interface DiscoveryFeedbackControlsProps {
   effective?: DiscoveryFeedbackDTO;
   disabled?: boolean;
   compact?: boolean;
+  // A list that states "affects future suggestions only" once, above its rows, turns the per-row
+  // copy off; the row still says which choice is in effect.
+  effectNote?: boolean;
   onSet: (action: DiscoveryFeedbackAction) => void;
   onClear: () => void;
 }
@@ -63,6 +66,7 @@ const DiscoveryFeedbackControls = ({
   effective,
   disabled,
   compact,
+  effectNote = true,
   onSet,
   onClear,
 }: DiscoveryFeedbackControlsProps) => {
@@ -98,9 +102,12 @@ const DiscoveryFeedbackControls = ({
           </Action>
         )}
       </fieldset>
-      <p className="text-muted-foreground text-xs">
-        {selected ? `${source}: ${actionLabel(selected) ?? selected}. ` : ""}Affects future suggestions only.
-      </p>
+      {(selected || effectNote) && (
+        <p className="text-muted-foreground text-xs">
+          {selected ? `${source}: ${actionLabel(selected) ?? selected}. ` : ""}
+          {effectNote ? "Affects future suggestions only." : ""}
+        </p>
+      )}
     </div>
   );
 };

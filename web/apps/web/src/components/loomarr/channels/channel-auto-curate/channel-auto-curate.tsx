@@ -83,7 +83,6 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
               label={OPT_IN_LABEL}
               overrideLabel="Opted in"
               defaultLabel="Default: off"
-              hideResetWhenDefault
             />
           </div>
           {/* The hint tracks the CURRENT state — it is the sentence that says what is happening

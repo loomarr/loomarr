@@ -4,9 +4,9 @@ import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificat
 import { NotificationProviderFieldDTOKind } from "@loomarr/api/models/notificationProviderFieldDTOKind";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Badge, Card, Field, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Toggle } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { BellRing, Plus, X } from "lucide-react";
+import { BellRing, X } from "lucide-react";
 import { type ComponentProps, useId, useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -120,9 +120,9 @@ const FieldInput = ({
       {field.sensitive && configured ? (
         <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
           <span>{cleared ? "Will be cleared when saved." : "Configured — leave blank to keep it."}</span>
-          <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+          <Action onPress={onClear} variant="ghost">
             {cleared ? "Keep saved value" : `Clear ${field.label}`}
-          </Button>
+          </Action>
         </div>
       ) : null}
       {field.description ? <p className="text-muted-foreground text-xs">{field.description}</p> : null}
@@ -312,14 +312,17 @@ const ProviderForm = ({
         <div className="flex flex-wrap gap-2">
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
-              <Button type="submit" disabled={pending || submitting}>
+              <Action
+                // A real submit button under Action's look, so Enter in a field still submits.
+                render={<button disabled={pending || submitting} type="submit" />}
+              >
                 Save provider
-              </Button>
+              </Action>
             )}
           </form.Subscribe>
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Action onPress={onCancel} variant="outline">
             Cancel
-          </Button>
+          </Action>
         </div>
       </Card>
     </form>
@@ -485,14 +488,17 @@ const WebPushForm = ({
         <div className="flex flex-wrap gap-2">
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
-              <Button type="submit" disabled={pending || enabling || submitting}>
+              <Action
+                // A real submit button under Action's look, so Enter in a field still submits.
+                render={<button disabled={pending || enabling || submitting} type="submit" />}
+              >
                 {provider ? "Save provider" : "Enable this browser"}
-              </Button>
+              </Action>
             )}
           </form.Subscribe>
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Action onPress={onCancel} variant="outline">
             Cancel
-          </Button>
+          </Action>
         </div>
         {message ? (
           <p className="text-sm" role={message.includes("could not") ? "alert" : "status"} aria-live="polite">
@@ -614,33 +620,31 @@ const ProviderRow = ({
           </div>
           {!confirmingDelete ? (
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <Action onPress={() => setEditing(true)} variant="outline">
                 Edit
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
+              </Action>
+              <Action
                 disabled={!provider.enabled || test.isPending}
-                onClick={() => test.mutate({ id: provider.id, data: { requestId: crypto.randomUUID() } })}
+                onPress={() => test.mutate({ id: provider.id, data: { requestId: crypto.randomUUID() } })}
+                variant="outline"
               >
                 Send test
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
+              </Action>
+              <Action
                 disabled={update.isPending}
-                onClick={() =>
+                onPress={() =>
                   update.mutate({
                     id: provider.id,
                     data: { label: provider.label, events: provider.events, enabled: !provider.enabled },
                   })
                 }
+                variant="outline"
               >
                 {provider.enabled ? "Disable" : "Enable"}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmingDelete(true)}>
+              </Action>
+              <Action onPress={() => setConfirmingDelete(true)} variant="ghost">
                 Delete
-              </Button>
+              </Action>
             </div>
           ) : null}
         </div>
@@ -662,25 +666,23 @@ const ProviderRow = ({
               />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant="destructive"
-                size="sm"
+              <Action
                 disabled={deleteConfirmation !== provider.label || remove.isPending}
-                onClick={() => void deleteProvider().catch(() => undefined)}
+                onPress={() => void deleteProvider().catch(() => undefined)}
+                variant="destructive"
               >
                 Delete provider
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
+              </Action>
+              <Action
                 disabled={remove.isPending}
-                onClick={() => {
+                onPress={() => {
                   setConfirmingDelete(false);
                   setDeleteConfirmation("");
                 }}
+                variant="ghost"
               >
                 Cancel
-              </Button>
+              </Action>
             </div>
           </div>
         ) : null}
@@ -737,9 +739,9 @@ const NotificationDestinationsPanel = () => {
           </div>
         </div>
         {!adding ? (
-          <Button onClick={() => setAdding(true)}>
-            <Plus className="size-4" aria-hidden /> Add provider
-          </Button>
+          <Action icon="plus" onPress={() => setAdding(true)}>
+            Add provider
+          </Action>
         ) : null}
       </div>
 

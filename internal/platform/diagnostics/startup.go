@@ -171,6 +171,7 @@ const (
 	StartupCheckTMDB             = "tmdb"
 	StartupCheckPublicURL        = "public_url"
 	StartupCheckPlayoutTonemap   = "playout_tonemap"
+	StartupCheckScheduledTasks   = "scheduled_tasks"
 
 	startupCompleteEvent  = "startup.complete"
 	healthTransitionEvent = "health.transition"

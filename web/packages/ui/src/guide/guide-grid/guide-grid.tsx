@@ -19,20 +19,21 @@ import {
   Text,
   type TextTone,
   useFocusLook,
+  useWindowWidth,
 } from "@loomarr/design-system";
 import { type ComponentRef, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { type LayoutChangeEvent, Pressable, View } from "react-native";
 
 import { ChannelIdent } from "../../channel-ident";
+import { guideRailWidth } from "../guide-rail";
 import type { GuideGridProps } from "./guide-grid.type";
 import { GuideRows } from "./guide-rows";
 
-// The web mock's time grid (#1659, decision N7): a 260 px channel column beside a timeline of
+// The web mock's time grid (#1659, decision N7): a 200–280 px channel column beside a timeline of
 // blocks, one 56 px row per channel. GuideRows virtualises the rows per platform. The keyboard
 // model is a roving tabindex: the selected block is the grid's one Tab stop, arrow keys move it
 // through the guide controller, and typing a channel number or name jumps to that channel.
 
-const RAIL = 260;
 const ROW = 56;
 const RULER = 30;
 const hourMs = 3_600_000;
@@ -281,7 +282,9 @@ const Row = memo(
     focusPending,
     nowRatio,
     onOpenChannel,
+    onOpenChannelInfo,
     onSelect,
+    railWidth,
     renderRowMenu,
     renderPreview,
     tabStop,
@@ -292,7 +295,9 @@ const Row = memo(
     focusPending: RefObject<boolean>;
     nowRatio?: number;
     onOpenChannel?: (channelId: string) => void;
+    onOpenChannelInfo?: (channelId: string) => void;
     onSelect?: (selection: GuideSelection) => void;
+    railWidth: number;
     renderRowMenu?: (channel: GuideChannelLayout["source"]) => ReactNode;
     renderPreview?: (selection: GuideSelection) => ReactNode;
     /** The block that is the grid's Tab stop, when it is in this row. */
@@ -323,15 +328,15 @@ const Row = memo(
           gap={9}
           paddingLeft={12}
           paddingRight={4}
-          width={RAIL}
+          width={railWidth}
         >
           <ChannelIdent name={channel.source.name} number={channel.source.number} />
           <Pressable
             accessibilityRole="button"
-            // Out of the Tab order: Enter on any of the row's blocks opens the same channel, and
+            // The channel's name opens the channel's page; its blocks tune it. Out of the Tab order:
             // a hundred rows must not mean a hundred more Tab stops.
             tabIndex={-1}
-            onPress={() => onOpenChannel?.(channel.source.channelId)}
+            onPress={() => onOpenChannelInfo?.(channel.source.channelId)}
             style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: 9, minWidth: 0 }}
           >
             <Text textRole="guideNumber">{channel.source.number}</Text>
@@ -396,11 +401,13 @@ const GuideGrid = ({
   nowMs,
   onMove,
   onOpenChannel,
+  onOpenChannelInfo,
   onSelect,
   renderRowMenu,
   renderPreview,
   selection,
 }: GuideGridProps) => {
+  const railWidth = guideRailWidth(useWindowWidth());
   const [timelineWidth, setTimelineWidth] = useState(0);
   const focusPending = useRef(false);
   const typed = useRef({ at: 0, query: "" });
@@ -424,7 +431,7 @@ const GuideGrid = ({
         borderColor="borderDecorative"
         borderRightWidth={1}
         borderWidth={0}
-        width={RAIL}
+        width={railWidth}
       />
       <View
         onLayout={(e: LayoutChangeEvent) => setTimelineWidth(e.nativeEvent.layout.width)}
@@ -521,7 +528,9 @@ const GuideGrid = ({
             focusPending={focusPending}
             nowRatio={nowRatio}
             onOpenChannel={onOpenChannel}
+            onOpenChannelInfo={onOpenChannelInfo ?? onOpenChannel}
             onSelect={onSelect}
+            railWidth={railWidth}
             renderRowMenu={renderRowMenu}
             renderPreview={renderPreview}
             tabStop={channel.source.channelId === tabStop?.channelId ? tabStop.scheduleBlockId : undefined}

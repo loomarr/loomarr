@@ -111,3 +111,9 @@ suggestion grounding and validation then see only the invented catalogue, so the
 suggestion flow can go in a public PR. `make demo-seed` sets the TMDB key the feature needs; the
 LLM still comes from your `LLM_*` settings. The primary worktree never gets this.
 `LOOMARR_AGENT_TMDB_BASE_URL=` (empty) sends a demo lane back to the real TMDB.
+
+The demo also plays the way a household's library does (#2151). `make demo-library` lays its films
+and shows out as hard links under `.agent-data/demo-library/library/{movies,shows}`, each folder
+named with its stand-in ids (`Name (Year) {tmdb-N}`). `make demo-seed` puts both folders in use,
+scans them, and waits until the scan has named every title and episode from the stand-in. The
+channels then play those files.
