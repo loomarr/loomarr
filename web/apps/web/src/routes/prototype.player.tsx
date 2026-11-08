@@ -17,6 +17,7 @@ import { TuneChrome } from "@/prototype-direction/player/chrome-tune";
 import { TvChrome } from "@/prototype-direction/player/chrome-tv";
 import { channel } from "@/prototype-direction/player/data";
 import { PlayerStyles } from "@/prototype-direction/player/flat";
+import { pictureSrc, RealFrame } from "@/prototype-direction/player/real-art";
 import {
   DEVICES,
   type PlayerDevice,
@@ -34,10 +35,14 @@ import {
 } from "@/prototype-direction/shared";
 
 // H only: `t` freezes the tune at that many ms into the sequence (for stills), `loop=1` replays it.
-// `frame=bright` swaps the diner for a bright daytime beach, to test legibility over light pictures.
+// `frame=bright` swaps the diner for a bright daytime beach, to test legibility over light pictures;
+// `frame=drawn` keeps the drawn diner even when the gitignored real art is present.
+// `bug=` is the channel watermark's corner (top-right default, top-left, bottom-right, bottom-left, off).
+const BUG_CORNERS = ["top-right", "top-left", "bottom-right", "bottom-left", "off"] as const;
 type PlayerSearch = Omit<ProtoSearch, "device"> & {
+  bug?: (typeof BUG_CORNERS)[number];
   device: PlayerDevice;
-  frame?: "bright";
+  frame?: "bright" | "drawn";
   loop?: boolean;
   t?: number;
 };
@@ -49,7 +54,10 @@ const validateSearch = (raw: Record<string, unknown>): PlayerSearch => {
     device: DEVICES.includes(raw.device as PlayerDevice) ? (raw.device as PlayerDevice) : "desktop",
     ...(raw.t !== undefined && Number.isFinite(t) ? { t } : {}),
     ...(String(raw.loop) === "1" || raw.loop === true ? { loop: true } : {}),
-    ...(raw.frame === "bright" ? { frame: "bright" as const } : {}),
+    ...(raw.frame === "bright" || raw.frame === "drawn" ? { frame: raw.frame } : {}),
+    ...(BUG_CORNERS.includes(raw.bug as PlayerSearch["bug"] & string)
+      ? { bug: raw.bug as (typeof BUG_CORNERS)[number] }
+      : {}),
   };
 };
 
@@ -80,9 +88,19 @@ const PlayerPrototype = () => {
       <ProtoFrame device={search.device}>
         <ThemeScope theme="dark">
           <PlayerStyles />
-          {polished ? search.frame === "bright" ? <BrightFrame /> : <DinerFrame /> : <LivePicture />}
+          {polished ? (
+            search.frame === "bright" ? (
+              <BrightFrame />
+            ) : pictureSrc && search.frame !== "drawn" ? (
+              <RealFrame />
+            ) : (
+              <DinerFrame />
+            )
+          ) : (
+            <LivePicture />
+          )}
           {tune ? (
-            <TuneChrome {...props} freezeAt={search.t} loop={search.loop} />
+            <TuneChrome {...props} bug={search.bug} freezeAt={search.t} loop={search.loop} />
           ) : tv ? (
             <TvChrome {...props} />
           ) : polished ? (

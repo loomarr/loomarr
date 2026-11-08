@@ -1,7 +1,11 @@
 // PROTOTYPE — throwaway (Direction mocks, 2026-11-08)
 // Stub data for the player-chrome prototypes: channel 7 "Coast 90s" and one evening on it. Invented
-// titles only (the repo is public); stills are token-drawn stand-ins, never remote images.
+// titles only (the repo is public); stills are token-drawn stand-ins, never remote images. When the
+// gitignored real-art folder is on this machine, its real titles replace the invented ones.
 import { standInStill } from "../shared";
+import { realChannel, realNext } from "./real-art";
+
+const real7 = realChannel("7");
 
 const MINUTE = 60_000;
 const NOW = Date.UTC(2026, 10, 8, 20, 44);
@@ -114,14 +118,14 @@ const segments: Segment[] = [
       "p2",
       -9,
       13,
-      "The Diner Years",
-      'S2 E4 "Opening Night"',
+      real7?.title ?? "The Diner Years",
+      real7?.line ?? 'S2 E4 "Opening Night"',
       20,
-      ["S2 E4", "TV-PG", "Comedy"],
-      "Two friends open a diner and learn the hard way who their regulars are.",
+      real7?.tags ?? ["S2 E4", "TV-PG", "Comedy"],
+      real7?.synopsis ?? "Two friends open a diner and learn the hard way who their regulars are.",
     ),
-    // Matches the diner picture in art.tsx: warm brown walls, amber light.
-    dominantHex: "#34211a",
+    // Matches the picture: the diner's warm brown walls, or the real still's.
+    dominantHex: real7?.dominantHex ?? "#34211a",
   },
   b2,
   {
@@ -129,11 +133,11 @@ const segments: Segment[] = [
       "p3",
       14,
       126,
-      "A detective film",
-      "1994 · Drama",
+      realNext?.title ?? "A detective film",
+      realNext?.line ?? "1994 · Drama",
       280,
-      ["1994", "TV-PG", "Drama"],
-      "A detective takes one last case.",
+      realNext?.tags ?? ["1994", "TV-PG", "Drama"],
+      realNext?.synopsis ?? "A detective takes one last case.",
     ),
     startMs: b2.stopMs,
   },
@@ -151,10 +155,15 @@ interface ChannelRow {
 }
 
 const channels: ChannelRow[] = [
-  { era: "1980s", name: "Saturday Mornings", nowPlaying: "Cartoon block", number: "3" },
+  {
+    era: "1980s",
+    name: "Saturday Mornings",
+    nowPlaying: realChannel("3")?.title ?? "Cartoon block",
+    number: "3",
+  },
   { era: "1970s", name: "Late Show Reruns", nowPlaying: "A talk show", number: "5" },
-  { era: "1990s", name: "Coast 90s", nowPlaying: "The Diner Years", number: "7" },
-  { era: "1980s", name: "Movie Matinee", nowPlaying: "A heist film", number: "9" },
+  { era: "1990s", name: "Coast 90s", nowPlaying: real7?.title ?? "The Diner Years", number: "7" },
+  { era: "1980s", name: "Movie Matinee", nowPlaying: realChannel("9")?.title ?? "A heist film", number: "9" },
   { era: "1990s", name: "Game Night", nowPlaying: "A quiz show", number: "12" },
   { era: "1970s", name: "Sunday Westerns", nowPlaying: "A cattle drive", number: "14" },
   { era: "1980s", name: "Sports Replay", nowPlaying: "A baseball classic", number: "21" },

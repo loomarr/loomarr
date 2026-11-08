@@ -92,6 +92,7 @@ import {
 } from "./data";
 import { flat, scrimStyle } from "./flat";
 import { Playbar } from "./playbar";
+import { realChannel } from "./real-art";
 import type { Scenario } from "./scenario";
 import { ChannelList, Cover, Row } from "./sheets";
 
@@ -220,7 +221,7 @@ const dimsOf = (device: string): Dims => {
       name: 18,
       nameBig: 64,
       num: 80,
-      rocker: { half: 56, w: 72 },
+      rocker: { half: 48, w: 64 },
       side: 48,
       small: 14,
       strip: 10,
@@ -263,13 +264,18 @@ const dimsOf = (device: string): Dims => {
 // stand-ins. CH 7 has a logo, CH 9 has fanart but no logo (the text fallback), the rest have neither.
 
 const fanartOf = (row: ChannelRow): string => {
+  const real = realChannel(row.number);
+  if (real) return real.fanartSrc;
   if (row.number === channel.number) return dinerFrameUri;
   if (row.number === "9") return heistFanartUri;
   return standInStill(Number(row.number) * 23 + 190);
 };
 
 const logoOf = (row: ChannelRow): { alt: string; ratio: number; src: string } | undefined =>
-  row.number === channel.number ? { alt: current.name, ratio: WORDMARK_RATIO, src: wordmarkUri } : undefined;
+  realChannel(row.number)?.logoOf ??
+  (row.number === channel.number
+    ? { alt: current.name, ratio: WORDMARK_RATIO, src: wordmarkUri }
+    : undefined);
 
 // ---------------------------------------------------------------------------------------------
 // Stylesheet.
@@ -774,10 +780,16 @@ const Remote = ({
   volume?: Volume | undefined;
 }) => {
   const glyph = 24;
-  const col = (children: ReactNode, key: string): ReactNode => (
+  const col = (children: ReactNode, key: string, extra?: CSSProperties): ReactNode => (
     <div
       key={key}
-      style={{ alignItems: "center", display: "flex", flexDirection: "column", gap: dims.legendGap }}
+      style={{
+        alignItems: "center",
+        display: "flex",
+        flexDirection: "column",
+        gap: dims.legendGap,
+        ...extra,
+      }}
     >
       {children}
     </div>
@@ -860,6 +872,8 @@ const Remote = ({
           <Legend pointer={pointer}>Channel</Legend>
         </>,
         "rocker",
+        // The rocker is the tallest key, so it gets its own breathing room on both sides.
+        { marginInline: pointer ? 16 : 8 },
       )}
       {col(
         <>
@@ -1000,6 +1014,7 @@ const TopCluster = ({
   panel,
   subsOn,
   tip,
+  top,
 }: {
   device: string;
   dims: Dims;
@@ -1009,6 +1024,8 @@ const TopCluster = ({
   panel: Panel | null;
   subsOn: boolean;
   tip: boolean;
+  /** Below the channel bug when the bug shares this corner. */
+  top: string;
 }) => {
   const pointer = device === "desktop";
   const landscape = device === "landscape";
@@ -1083,7 +1100,7 @@ const TopCluster = ({
         gap: pointer ? 32 : 16,
         position: "absolute",
         right: dims.side,
-        top: dims.top,
+        top,
       }}
     >
       <div style={{ alignItems: "center", display: "flex", gap: 16 }}>{left.map(key)}</div>
@@ -1744,15 +1761,50 @@ const buildB = (bucket: Animation[], l: Layers, compressed: boolean, bandH: numb
   }
 };
 
+/** The channel's watermark corner, as the channel API reports it; "off" when the bug is disabled. */
+type BugCorner = "top-right" | "top-left" | "bottom-right" | "bottom-left" | "off";
+
 interface TuneProps extends ChromeProps {
+  bug?: BugCorner | undefined;
   freezeAt?: number | undefined;
   loop?: boolean | undefined;
 }
 
+/**
+ * The chrome keeps out of the bug's corner: anything that would sit there moves past the bug's box
+ * (5% inset + 6% tall, playout's defaults) plus a 16 px gap. Container units, so it tracks the frame.
+ */
+const BUG_RESERVE = "calc(11cqh + 16px)";
+
 const SUBS = SUBTITLE_OPTIONS.length;
 
+/**
+ * Stand-in for the channel bug playout burns into the picture (internal/playout/watermark), at its
+ * defaults: top-right, 6% of the frame tall, 5% inset, white letters at 40%. It is part of the
+ * video, so the player can't move or hide it, only place its own chrome around it.
+ */
+const ChannelBug = ({ corner, name }: { corner: Exclude<BugCorner, "off">; name: string }) => (
+  <div aria-hidden style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
+    <span
+      style={ui(0, 800, {
+        color: "rgba(255,255,255,0.4)",
+        fontSize: "4.5cqh",
+        letterSpacing: "0.02em",
+        lineHeight: "6cqh",
+        position: "absolute",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+        [corner.startsWith("top") ? "top" : "bottom"]: "5cqh",
+        [corner.endsWith("right") ? "right" : "left"]: "5cqw",
+      })}
+    >
+      {name}
+    </span>
+  </div>
+);
+
 /** The rating bug: a solid ink backing, so it reads over any picture. */
-const RatingBug = ({ dims, shown, top }: { dims: Dims; shown: boolean; top: number }) => (
+const RatingBug = ({ dims, shown, top }: { dims: Dims; shown: boolean; top: string }) => (
   <div
     aria-hidden
     className="tv-osd"
@@ -1772,7 +1824,15 @@ const RatingBug = ({ dims, shown, top }: { dims: Dims; shown: boolean; top: numb
   </div>
 );
 
-const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProps) => {
+const TuneInner = ({
+  bug: watermark = "top-right",
+  device,
+  freezeAt,
+  loop,
+  scenario,
+  tint,
+  tintFor,
+}: TuneProps) => {
   const pointer = device === "desktop";
   const landscape = device === "landscape";
   const density = pointer ? "pointer" : "touch";
@@ -2250,11 +2310,19 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
               ? "Channels"
               : "More";
   // The readout sits in the corner, or under the cluster when digits are typed with the controls up.
-  const readoutTop = controlsOn ? dims.top + 48 + (pointer ? 24 : 16) : dims.top;
+  // Each top corner's first free line: below the channel watermark when it sits there.
+  const topRight = watermark === "top-right" ? BUG_RESERVE : `${dims.top}px`;
+  const topLeft = watermark === "top-left" ? BUG_RESERVE : `${dims.top}px`;
+  const readoutTop = controlsOn ? `calc(${topRight} + ${48 + (pointer ? 24 : 16)}px)` : topRight;
+  const bugBottom = watermark === "bottom-right" || watermark === "bottom-left";
 
   return (
-    <div className="tn-root" style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
+    <div
+      className="tn-root"
+      style={{ containerType: "size", inset: 0, pointerEvents: "none", position: "absolute" }}
+    >
       <HStyles />
+      {watermark === "off" ? null : <ChannelBug corner={watermark} name={row.name} />}
       {/* The ident card sits on its programme's fanart, heavily dimmed. */}
       <div className="tn-fade" data-shown={card} style={{ inset: 0, position: "absolute" }}>
         <div
@@ -2274,7 +2342,15 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
       </div>
       <div ref={dipRef} style={{ background: "#000", inset: 0, opacity: 0, position: "absolute" }} />
       {/* On a portrait phone the top bar is full, so the bug drops below it. */}
-      <RatingBug dims={dims} shown={bugOn} top={pointer || landscape ? dims.top : dims.top + 64} />
+      <RatingBug
+        dims={dims}
+        shown={bugOn}
+        top={
+          pointer || landscape
+            ? topLeft
+            : `calc(${watermark.startsWith("top") ? BUG_RESERVE : `${dims.top}px`} + 64px)`
+        }
+      />
       {detailsPanel ? <DetailsPanel dims={dims} lagMs={scenario.lagMs} tick={tick} /> : null}
       <div
         ref={readoutRef}
@@ -2432,6 +2508,7 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
             panel={panel}
             subsOn={subs > 0}
             tip={scenario.topTip === true}
+            top={topRight}
           />
         </div>
       </div>
@@ -2445,6 +2522,8 @@ const TuneInner = ({ device, freezeAt, loop, scenario, tint, tintFor }: TuneProp
           gap: dims.gutter,
           left: 0,
           padding: dims.edge,
+          // A bottom-corner bug lifts the band and keys clear of it.
+          ...(bugBottom ? { paddingBottom: BUG_RESERVE } : {}),
           pointerEvents: "none",
           position: "absolute",
           right: 0,
@@ -2512,7 +2591,7 @@ const TuneReadout = ({
   number: string;
   pointer: boolean;
   shown: boolean;
-  top: number;
+  top: string;
 }) => (
   <div
     aria-live="polite"

@@ -1,0 +1,4 @@
+# Real library art for the Direction mocks, pulled from the maintainer's Emby. Never commit it:
+# the repo is public and this is copyrighted artwork. The mocks fall back to drawn stand-ins.
+*
+!.gitignore
