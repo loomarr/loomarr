@@ -14,6 +14,10 @@ const STATES = [
   "error-server",
   "error-not-started",
   "off-air",
+  // G only: flipping channels (the neighbours strip) and the tuner's static. The other variants draw
+  // both as "playing".
+  "surfing",
+  "tuning",
 ] as const;
 type PlayerState = (typeof STATES)[number];
 
@@ -24,6 +28,7 @@ const VARIANTS = [
   { key: "D", name: "Rich flat" },
   { key: "E", name: "Polished flat" },
   { key: "F", name: "Glass" },
+  { key: "G", name: "Loomarr TV" },
 ] as const;
 
 const DEVICES = ["desktop", "portrait", "landscape"] as const;
@@ -51,7 +56,12 @@ interface Scenario {
   /** The same on a phone, where the episode's name has no room. */
   programmeShort: string;
   sheet?: "channels" | "more";
+  state: PlayerState;
+  /** Variant G: the viewer is flipping channels (the strip is up). */
+  surfing?: boolean;
   timeLabel: string;
+  /** Variant G: the tuner is between channels (static locking to the brand bars). */
+  tuning?: boolean;
   /** The title as the on-screen display sets it. */
   title: string;
   /** The line under the title. */
@@ -62,7 +72,9 @@ interface Scenario {
 const diner = segments.find((s) => s.id === "p2");
 if (diner?.kind !== "programme") throw new Error("stub data: p2 is a programme");
 
-const scenarioOf = (state: PlayerState): Scenario => {
+const scenarioOf = (state: PlayerState): Scenario => ({ ...scenarioFor(state), state });
+
+const scenarioFor = (state: PlayerState): Omit<Scenario, "state"> => {
   const programme = (playheadMs: number) => ({
     inBreak: false,
     progress: (playheadMs - diner.startMs) / (diner.stopMs - diner.startMs),
@@ -114,6 +126,10 @@ const scenarioOf = (state: PlayerState): Scenario => {
         title: "Commercials",
       };
     }
+    case "surfing":
+      return { ...base, surfing: true };
+    case "tuning":
+      return { ...base, tuning: true };
     case "channels":
       return { ...base, sheet: "channels" };
     case "more":
