@@ -93,6 +93,8 @@ type LibraryScanResult struct {
 	Found int
 	// Copied counts clips written into the watch folder for intake to file.
 	Copied int
+	// Catalogued counts clips skipped because the catalog already holds them (#1605).
+	Catalogued int
 	// Unreadable counts clips whose media-server path Loomarr could not open. Reported rather
 	// than folded into Skipped: a nonzero count here means a STORAGE problem, which is a
 	// different conversation from a clip that failed for its own reasons.
@@ -117,12 +119,19 @@ func NewLibraryScanner(lister LibraryLister, log func(string, ...any)) *LibraryS
 
 // Scan copies everything in `libraryName` into `watchDir`, ready for intake.
 //
-// ⚠ **A clip already copied is not copied again.** The destination name is derived from the
-// source path, so a re-scan of an unchanged library writes nothing — without this, every scheduled
-// scan would re-copy the entire library into the watch folder, and intake would dutifully hash and
-// discard all of it as duplicates. Correct, but it would read the whole library from disk on a
-// timer forever.
-func (s *LibraryScanner) Scan(ctx context.Context, libraryName, watchDir string) (LibraryScanResult, error) {
+// ⚠ **A clip already copied is not copied again.** Without this, every scheduled scan would
+// re-copy the entire library into the watch folder, reading the whole library from disk on a timer
+// forever. Two checks keep a re-scan of an unchanged library at zero copies:
+//
+//   - a clip still waiting in the watch folder (the destination name derives from the source
+//     path) is left alone;
+//   - a clip the catalog already holds is skipped by its sparse content identity, which reads two
+//     small windows rather than the file. `catalogued` answers that for the identity and the
+//     extension the clip would be filed under. It is the only check that survives intake, which
+//     moves the copy out of the watch folder, and the transcode, which re-keys the filed clip to
+//     its derivative's hash so that intake's own duplicate check no longer sees it (#1605).
+//     nil skips this check.
+func (s *LibraryScanner) Scan(ctx context.Context, libraryName, watchDir string, catalogued func(clipID, ext string) bool) (LibraryScanResult, error) {
 	var res LibraryScanResult
 	if s == nil || s.lister == nil || libraryName == "" || watchDir == "" {
 		return res, nil
@@ -157,6 +166,17 @@ func (s *LibraryScanner) Scan(ctx context.Context, libraryName, watchDir string)
 		if _, err := os.Stat(dst); err == nil {
 			continue // already waiting for intake
 		}
+		if catalogued != nil {
+			id, err := ClipID(c.Path)
+			if err != nil {
+				res.Unreadable++
+				continue
+			}
+			if catalogued(id, filepath.Ext(c.Path)) {
+				res.Catalogued++
+				continue
+			}
+		}
 		if err := copyFile(c.Path, dst); err != nil {
 			res.Unreadable++
 			continue
@@ -172,4 +192,33 @@ func (s *LibraryScanner) Scan(ctx context.Context, libraryName, watchDir string)
 		return res, ErrLibraryUnreachableStorage
 	}
 	return res, nil
+}
+
+// cataloguedClips answers LibraryScanner.Scan's `catalogued` question for the clip folder. A clip
+// is catalogued when it is filed under its own identity, when a filed clip's transcode re-keyed it
+// from that identity, or when it is a known inferior copy that intake would refuse anyway.
+//
+// The re-keyed identities come from the filed clips' sidecars: the transcode records the source
+// master's identity there, and the catalog row keeps only the derivative's hash. Read once per
+// sync, and only when a library source is about to be scanned.
+func cataloguedClips(clipDir string, inferior map[string]bool) func(clipID, ext string) bool {
+	rekeyed := map[string]bool{}
+	if filed, err := collectMedia(clipDir); err == nil {
+		for _, path := range filed {
+			if tags, ok := ReadSidecarTags(path); ok && tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.ClipHash != "" {
+				rekeyed[tags.MediaAssets.SourceMaster.ClipHash] = true
+			}
+		}
+	}
+	return func(clipID, ext string) bool {
+		if rekeyed[clipID] || inferior[clipID] {
+			return true
+		}
+		filed, err := ClipPath(clipDir, clipID, ext)
+		if err != nil {
+			return false
+		}
+		_, err = os.Stat(filed)
+		return err == nil
+	}
 }

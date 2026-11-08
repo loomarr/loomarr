@@ -47,7 +47,7 @@ func TestLibraryScan_CopiesIntoTheWatchFolderForIntake(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
 
 	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
-	res, err := s.Scan(context.Background(), "Commercials", watch)
+	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,15 +72,42 @@ func TestLibraryScan_ReScanDoesNotReCopy(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
 	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
 
-	if _, err := s.Scan(context.Background(), "Commercials", watch); err != nil {
+	if _, err := s.Scan(context.Background(), "Commercials", watch, nil); err != nil {
 		t.Fatal(err)
 	}
-	res, err := s.Scan(context.Background(), "Commercials", watch)
+	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Copied != 0 {
 		t.Errorf("Copied = %d on a re-scan, want 0 — the library is being re-read every pass", res.Copied)
+	}
+}
+
+// A clip the catalog already holds is not copied, and an all-catalogued library is not mistaken for
+// unreachable storage (#1605).
+func TestLibraryScan_SkipsClipsTheCatalogAlreadyHolds(t *testing.T) {
+	_, clips := libraryOnDisk(t, "filed.mp4", "new.mp4")
+	filedID, err := ClipID(clips[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch := filepath.Join(t.TempDir(), "watch")
+	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
+	res, err := s.Scan(context.Background(), "Commercials", watch, func(id, ext string) bool {
+		return id == filedID && ext == ".mp4"
+	})
+	if err != nil || res.Copied != 1 || res.Catalogued != 1 || res.Unreadable != 0 {
+		t.Fatalf("Scan = %+v, %v; want the new clip copied and the filed one skipped", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(watch, "filed.mp4")); err == nil {
+		t.Error("a catalogued clip was copied into the watch folder again")
+	}
+
+	res, err = NewLibraryScanner(&fakeLister{clips: clips[:1]}, nil).Scan(context.Background(), "Commercials",
+		filepath.Join(t.TempDir(), "watch"), func(string, string) bool { return true })
+	if err != nil || res.Catalogued != 1 {
+		t.Errorf("all-catalogued Scan = %+v, %v; want no error", res, err)
 	}
 }
 
@@ -96,7 +123,7 @@ func TestLibraryScan_UnreadableStorageIsNamedNotSilent(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
 
 	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
-	res, err := s.Scan(context.Background(), "Commercials", watch)
+	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
 	if !errors.Is(err, ErrLibraryUnreachableStorage) {
 		t.Errorf("err = %v, want ErrLibraryUnreachableStorage — an operator cannot tell a mount "+
 			"problem from an empty library without it", err)
@@ -112,7 +139,7 @@ func TestLibraryScan_AnEmptyLibraryIsNotAnError(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
 	s := NewLibraryScanner(&fakeLister{}, nil)
 
-	res, err := s.Scan(context.Background(), "Commercials", watch)
+	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
 	if err != nil {
 		t.Errorf("an empty library reported %v, want no error", err)
 	}
@@ -129,7 +156,7 @@ func TestLibraryScan_PartialReadabilityStillCopiesTheRest(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
 
 	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
-	res, err := s.Scan(context.Background(), "Commercials", watch)
+	res, err := s.Scan(context.Background(), "Commercials", watch, nil)
 	if err != nil {
 		t.Fatalf("a partly readable library failed the whole scan: %v", err)
 	}
@@ -144,7 +171,7 @@ func TestLibraryScan_UnreachableServerReportsRatherThanPretending(t *testing.T) 
 	watch := filepath.Join(t.TempDir(), "watch")
 	s := NewLibraryScanner(&fakeLister{err: errors.New("connection refused")}, nil)
 
-	if _, err := s.Scan(context.Background(), "Commercials", watch); err == nil {
+	if _, err := s.Scan(context.Background(), "Commercials", watch, nil); err == nil {
 		t.Error("an unreachable media server reported success — it is indistinguishable from " +
 			"an empty library, which is the wrong thing to tell an operator")
 	}
@@ -159,7 +186,7 @@ func TestLibraryScan_UnconfiguredIsANoOp(t *testing.T) {
 		{"no watch folder", "Commercials", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := s.Scan(context.Background(), tc.lib, tc.watch)
+			res, err := s.Scan(context.Background(), tc.lib, tc.watch, nil)
 			if err != nil || res != (LibraryScanResult{}) {
 				t.Errorf("Scan = %+v, %v; want an empty no-op", res, err)
 			}
@@ -417,4 +444,86 @@ func TestDrainScanSources_NoMediaServerStillDrainsFolders(t *testing.T) {
 func TestDrainScanSources_UnwiredIsANoOp(t *testing.T) {
 	s := &Syncer{dir: t.TempDir()}
 	s.drainScanSources(context.Background(), nil) // must not panic
+}
+
+// #1605: re-syncing an UNCHANGED library must add nothing. Intake moves each copy out of the
+// watch folder, and the transcode then re-keys the filed clip to its normalized derivative's
+// hash, so neither the watch folder nor the raw hash's filed path remembers the clip any more.
+// A second scan that copies the clip again files it as new, and its transcode later collides
+// with the first copy's derivative on clips.hash.
+func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
+	_, clips := libraryOnDisk(t, "Crunchlings 1993.mp4")
+	rawID, err := ClipID(clips[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clipDir := t.TempDir()
+	lister := &countingLister{byName: map[string][]LibraryClip{"Commercials": clips}}
+	s := &Syncer{
+		dir:         clipDir,
+		watch:       filepath.Join(t.TempDir(), "watch"),
+		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "lib:ads", Kind: "library", URI: "Commercials"}}},
+		libraries:   NewLibraryScanner(lister, nil),
+	}
+
+	s.drainScanSources(context.Background(), nil)
+	rawFiled, err := ClipPath(clipDir, rawID, ".mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(rawFiled); err != nil {
+		t.Fatalf("first sync did not file the library clip: %v", err)
+	}
+
+	// The transcode retains the raw bytes as a source master under the media-asset root (keyed by
+	// SHA-256, not by the clip identity), publishes the normalized derivative under its own hash
+	// with a sidecar naming that master, and retires the raw filed path.
+	tags, _ := ReadSidecarTags(rawFiled)
+	master, err := preserveSourceMasterWithStorage(context.Background(), clipDir, rawFiled, rawID, tags, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	derived := make([]byte, 4096)
+	for i := range derived {
+		derived[i] = byte(255 - i%251)
+	}
+	derivedProbe := filepath.Join(t.TempDir(), "derived.mp4")
+	if err := os.WriteFile(derivedProbe, derived, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	derivedID, err := ClipID(derivedProbe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	derivedFiled, err := ClipPath(clipDir, derivedID, ".mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(derivedFiled), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(derivedFiled, derived, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tags.MediaAssets = &MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: master}
+	if err := WriteSidecarTags(derivedFiled, tags, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(sidecarPathFor(rawFiled)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(rawFiled); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := ReadSidecarTags(derivedFiled); !ok || got.MediaAssets == nil || got.MediaAssets.SourceMaster.ClipHash != rawID {
+		t.Fatalf("derivative sidecar = %+v/%v, want it to name the raw source master", got, ok)
+	}
+
+	s.drainScanSources(context.Background(), nil)
+	if _, err := os.Stat(rawFiled); err == nil {
+		t.Fatal("the re-sync filed the unchanged library clip again under its raw hash")
+	}
+	if left, _ := os.ReadDir(s.watch); len(left) != 0 {
+		t.Errorf("the re-sync left %d copies waiting in the watch folder", len(left))
+	}
 }
