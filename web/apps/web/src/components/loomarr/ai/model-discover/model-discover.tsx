@@ -1,9 +1,8 @@
 import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Badge } from "@loomarr/design-system";
-import { Download, Loader2 } from "lucide-react";
+import { Action, Badge } from "@loomarr/design-system";
+import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ModelDiscoverProps } from "./model-discover.type";
 
@@ -103,20 +102,16 @@ const ModelDiscover = ({
                     )}
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={isPulling}
-                  onClick={() => onPull(m.pullRef)}
-                  className="text-muted-foreground shrink-0"
-                >
-                  {isPulling ? (
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Download className="size-4" aria-hidden />
-                  )}
-                  {isPulling ? "Getting…" : "Get"}
-                </Button>
+                <div className="shrink-0">
+                  <Action
+                    disabled={isPulling}
+                    icon={isPulling ? "loading" : "download"}
+                    onPress={() => onPull(m.pullRef)}
+                    variant="ghost"
+                  >
+                    {isPulling ? "Getting…" : "Get"}
+                  </Action>
+                </div>
               </li>
             );
           })}
@@ -124,24 +119,14 @@ const ModelDiscover = ({
       )}
 
       {!expanded && hiddenCount > 0 && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground self-start text-xs"
-          onClick={() => setExpanded(true)}
-        >
-          Show {hiddenCount} more
-        </Button>
+        <Action onPress={() => setExpanded(true)} style={{ alignSelf: "flex-start" }} variant="ghost">
+          {`Show ${hiddenCount} more`}
+        </Action>
       )}
       {expanded && total > DEFAULT_VISIBLE && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground self-start text-xs"
-          onClick={() => setExpanded(false)}
-        >
+        <Action onPress={() => setExpanded(false)} style={{ alignSelf: "flex-start" }} variant="ghost">
           Show fewer
-        </Button>
+        </Action>
       )}
     </div>
   );

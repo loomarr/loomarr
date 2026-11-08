@@ -4,10 +4,8 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
-import { Badge, Field, Toggle } from "@loomarr/design-system";
-import { LoaderCircle, Plus, RotateCcw } from "lucide-react";
+import { Action, Badge, Field, Toggle } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MovieCollectionChoices, movieCollectionKeys } from "@/suggest/movie-collection-choices";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
@@ -133,9 +131,15 @@ const PickRow = ({
         {included && feedback && <div className="mt-2">{feedback}</div>}
       </div>
       {editable && onAdd && (
-        <Button variant="outline" size="sm" disabled={disabled} onClick={onAdd}>
-          <Plus aria-hidden /> Add <span className="sr-only">{pick.item.name}</span>
-        </Button>
+        <Action
+          accessibilityLabel={`Add ${pick.item.name}`}
+          disabled={disabled}
+          icon="plus"
+          onPress={onAdd}
+          variant="outline"
+        >
+          Add
+        </Action>
       )}
     </li>
   );
@@ -319,18 +323,16 @@ const ProposalEdit = (props: ProposalEditProps) => {
           <h3 className="font-medium">Titles</h3>
         </div>
         {edited && editable && (
-          <Button
-            variant="ghost"
-            size="sm"
+          <Action
             disabled={disabled}
-            onClick={() => {
+            onPress={() => {
               if (!controlled) setLocalEdit(undefined);
               onChange(undefined);
             }}
+            variant="ghost"
           >
-            <RotateCcw aria-hidden />
             Reset changes
-          </Button>
+          </Action>
         )}
       </div>
 
@@ -404,42 +406,39 @@ const ProposalEdit = (props: ProposalEditProps) => {
                 if (candidate) addCandidate(candidate);
               }}
             />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="self-start"
-              onClick={() => {
+            <Action
+              onPress={() => {
                 setQuery("");
                 setAdding(false);
               }}
+              style={{ alignSelf: "flex-start" }}
+              variant="ghost"
             >
               Cancel
-            </Button>
+            </Action>
           </div>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className="self-start"
+          <Action
             disabled={disabled}
-            onClick={() => setAdding(true)}
+            icon="plus"
+            onPress={() => setAdding(true)}
+            style={{ alignSelf: "flex-start" }}
+            variant="outline"
           >
-            <Plus aria-hidden />
             Add title
-          </Button>
+          </Action>
         ))}
 
       {suggestions.length === 0 && onFindMore && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="self-start"
+        <Action
           disabled={disabled || findingMore}
-          onClick={onFindMore}
+          icon={findingMore ? "loading" : undefined}
+          onPress={onFindMore}
+          style={{ alignSelf: "flex-start" }}
+          variant="outline"
         >
-          {findingMore && <LoaderCircle aria-hidden className="animate-spin" />}
           {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
-        </Button>
+        </Action>
       )}
 
       {suggestions.length > 0 && (
@@ -466,16 +465,16 @@ const ProposalEdit = (props: ProposalEditProps) => {
             ))}
           </ul>
           {onFindMore && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-2"
-              disabled={disabled || findingMore}
-              onClick={onFindMore}
-            >
-              {findingMore && <LoaderCircle aria-hidden className="animate-spin" />}
-              {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
-            </Button>
+            <div className="mt-2 flex">
+              <Action
+                disabled={disabled || findingMore}
+                icon={findingMore ? "loading" : undefined}
+                onPress={onFindMore}
+                variant="ghost"
+              >
+                {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
+              </Action>
+            </div>
           )}
         </details>
       )}
