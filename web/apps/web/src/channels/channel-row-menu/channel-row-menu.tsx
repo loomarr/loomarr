@@ -3,8 +3,9 @@ import { toProblem } from "@loomarr/api/mutator";
 import { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { MoreVertical, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
+import { Info, MoreVertical, Pause, Pencil, Play, Trash2, Tv } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/auth/use-auth";
 import { Button } from "@/components/ui/button";
 import { ignoreFailure, useChannelSave } from "../use-channel-save";
 import { useDeleteConfirm } from "../use-delete-confirm";
@@ -52,6 +53,8 @@ const swallow = (e: React.MouseEvent) => {
 const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const DetailsGlyph = isAdmin ? Pencil : Info;
   const { confirming, arm, reset: resetConfirm } = useDeleteConfirm();
   const paused = channel.status === "paused";
 
@@ -125,57 +128,66 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           </MenuAction>
 
           {/* Edit channel — the row's own click target opens the channel too, but a menu whose only
-              options are Pause and Delete reads as a destructive-actions menu. */}
+              options are Pause and Delete reads as a destructive-actions menu. A member gets the
+              same page read-only, so their item names it for what it is (#2732). */}
           <MenuAction
-            icon={<Pencil className="text-static-400 size-4" aria-hidden />}
+            icon={<DetailsGlyph className="text-static-400 size-4" aria-hidden />}
             onSelect={() => void navigate({ to: "/channels/$id", params: { id: channel.id } })}
           >
-            Edit channel
+            {isAdmin ? "Edit channel" : "Channel details"}
           </MenuAction>
 
-          {/* Pause / Resume — reversible, single click. */}
-          <MenuAction
-            disabled={busy}
-            icon={paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
-            onSelect={() => void togglePaused()}
-          >
-            {paused ? "Resume" : "Pause"}
-          </MenuAction>
+          {/* Pause / Resume and Delete are admin actions: the API refuses them for a member
+              (PATCH and DELETE /v1/channels/{id} are admin-only), so a member isn't offered them. */}
+          {isAdmin && (
+            <>
+              {/* Pause / Resume — reversible, single click. */}
+              <MenuAction
+                disabled={busy}
+                icon={
+                  paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />
+                }
+                onSelect={() => void togglePaused()}
+              >
+                {paused ? "Resume" : "Pause"}
+              </MenuAction>
 
-          {/* Delete — a FULL removal (purge: the channel leaves the list AND Tunarr), so a deleted
+              {/* Delete — a FULL removal (purge: the channel leaves the list AND Tunarr), so a deleted
               row actually disappears rather than lingering as a "detached" record. Irreversible →
               a two-step confirm, same gate as ChannelDangerZone.
               ⚠ `closeOnSelect={false}`: arming must leave the menu open, or the confirm it arms
               would unmount in the same tick. */}
-          {!confirming ? (
-            <MenuAction
-              closeOnSelect={false}
-              disabled={busy}
-              icon={<Trash2 className="size-4" aria-hidden />}
-              onSelect={arm}
-              tone="danger"
-            >
-              Delete…
-            </MenuAction>
-          ) : (
-            // ⚠ Menu items in a group, not buttons in a panel: a menu may hold only items and groups
-            // (axe aria-required-children, critical), and only items are reached by the arrow keys.
-            <MenuGroup label={`Delete ${channel.name} for good? This can't be undone.`} tone="danger">
-              <MenuAction
-                closeOnSelect={false}
-                disabled={busy}
-                // purge: a Delete from the LIST should remove the channel outright, not leave a
-                // detached record behind (the maintainer's choice). The detail-page danger zone
-                // still offers detach-vs-purge for the finer distinction.
-                onSelect={() => del.mutate({ id: channel.id, params: { purge: true } })}
-                tone="danger"
-              >
-                Delete
-              </MenuAction>
-              <MenuAction closeOnSelect={false} disabled={busy} onSelect={resetConfirm}>
-                Cancel
-              </MenuAction>
-            </MenuGroup>
+              {!confirming ? (
+                <MenuAction
+                  closeOnSelect={false}
+                  disabled={busy}
+                  icon={<Trash2 className="size-4" aria-hidden />}
+                  onSelect={arm}
+                  tone="danger"
+                >
+                  Delete…
+                </MenuAction>
+              ) : (
+                // ⚠ Menu items in a group, not buttons in a panel: a menu may hold only items and groups
+                // (axe aria-required-children, critical), and only items are reached by the arrow keys.
+                <MenuGroup label={`Delete ${channel.name} for good? This can't be undone.`} tone="danger">
+                  <MenuAction
+                    closeOnSelect={false}
+                    disabled={busy}
+                    // purge: a Delete from the LIST should remove the channel outright, not leave a
+                    // detached record behind (the maintainer's choice). The detail-page danger zone
+                    // still offers detach-vs-purge for the finer distinction.
+                    onSelect={() => del.mutate({ id: channel.id, params: { purge: true } })}
+                    tone="danger"
+                  >
+                    Delete
+                  </MenuAction>
+                  <MenuAction closeOnSelect={false} disabled={busy} onSelect={resetConfirm}>
+                    Cancel
+                  </MenuAction>
+                </MenuGroup>
+              )}
+            </>
           )}
         </MenuContent>
       </Menu>
