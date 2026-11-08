@@ -48,6 +48,7 @@ func (d downloader) fetch(ctx context.Context, m PackMedia, dest string) error {
 		}
 	}
 	partial := dest + ".partial"
+	d.log.Info("demo pack file downloading", "url", m.URL, "bytes", m.Size)
 	var last error
 	wait := d.backoff
 	for attempt := 1; attempt <= d.attempts; attempt++ {
