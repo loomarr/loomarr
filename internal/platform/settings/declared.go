@@ -387,14 +387,13 @@ func declared() []Setting {
 			Detail: "It lets Loomarr read your library and set up the TV guide.",
 		},
 		{
-			// Direct play (§9.1 V47): translate the media server's file paths to where Loomarr can
-			// read them, so playout reads the FILE and copies it instead of transcoding the media
-			// server's HTTP stream. Empty = no mapping, so playout falls back to the HTTP stream —
-			// which is what a media server on another host with no shared mount needs.
+			// Translates the media server's folder paths to where Loomarr reads the same mount, so
+			// folder discovery can offer them as library folders (#2151). Playout never uses it: it
+			// plays the files Loomarr's own scan found (step 16).
 			Key: "library.path_map", EnvVar: "LIBRARY_PATH_MAP", Group: GroupMediaServer,
 			Kind: KindString, Default: "", Advanced: true,
-			Doc:    "Where your media server's folders are on this machine, so Loomarr can read the files directly.",
-			Detail: "Path mapping so Loomarr can read your media files directly (much faster, no transcoding when the file already plays). Your media server reports each file by its OWN path (e.g. /data/tv); if that same file is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty if Loomarr and your media server don't share the files — playout will stream from the media server instead.",
+			Doc:    "Where your media server's folders are on this machine, so Loomarr can find your media folders.",
+			Detail: "Your media server names each folder by its OWN path (e.g. /data/tv); if the same folder is mounted somewhere else on the machine running Loomarr (e.g. /mnt/media/tv), map one to the other as \"/data=>/mnt/media\". Multiple rules are separated by commas or newlines. Leave empty when the paths already match, or add your folders by hand in Settings → Library.",
 		},
 		{
 			// The scanner's kill switch (#2151): passes, folder watches and header reads stop.
@@ -1735,12 +1734,6 @@ func declared() []Setting {
 			Key: "job.library_scan.lookback", EnvVar: "JOB_LIBRARY_SCAN_LOOKBACK", Group: GroupAdvanced,
 			Kind: KindDuration, Default: "1h",
 			Doc: "How far back the incremental library scan looks for newly-added titles (should exceed the scan interval).",
-		},
-		{
-			Key: "episodes.max_age", EnvVar: "EPISODES_MAX_AGE", Group: GroupAdvanced,
-			Kind: KindDuration, Default: "24h",
-			Doc:    "How old a saved episode list may get before Loomarr asks the media server again.",
-			Detail: "How stale a cached series episode list may be before it is re-read from the media server. A missing or expired entry still falls back to a live read, so this bounds freshness, never correctness.",
 		},
 		{
 			Key: "job.arr_queue_poll.schedule", EnvVar: "JOB_ARR_QUEUE_POLL_SCHEDULE", Group: GroupAdvanced,

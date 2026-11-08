@@ -479,37 +479,6 @@ tables:
       inventory_item_id: The title (a library_items id).
       position: The title's place in the collection, from 1.
 
-  - name: library_item_paths
-    about: >
-      The media server's own file path for one of its items, remembered so a channel can play the item
-      without asking the media server at airtime. A stale row is harmless; it is rewritten on the next
-      lookup.
-    retention: >
-      Rewritten on its next lookup. A path no title, airing, channel or open request names is
-      deleted by the nightly housekeeping 30 days after it was written; it is looked up again if
-      it is needed.
-    columns:
-      item_id: The media server's id for the item.
-      server_path: >
-        The file's path as the media server names it, not the local one; the path map is applied when
-        it is read.
-      updated_at: When the path was last written, in Unix seconds.
-
-  - name: series_episodes
-    about: >
-      A cached copy of one show's episode list as the media server reports it, so the guide doesn't
-      ask the media server per show on every request. Replaced whole on each refresh.
-    retention: >
-      Refreshed in place. A show no title points at is deleted by the nightly housekeeping once its
-      list is 30 days old; it is fetched again if a title needs it.
-    columns:
-      library_id: The media server's id for the show.
-      episodes_json: >
-        A JSON array of the show's episodes, each with its item id, title, length, season and episode
-        numbers, year and rating. An empty array means the show has no episodes present.
-      episode_count: How many episodes episodes_json holds.
-      fetched_at: When the list was last read from the media server, in Unix seconds; 0 means never.
-
   - name: titles
     about: >
       One row per movie or show a channel wants that has gone through Seerr or the arr apps, tracking

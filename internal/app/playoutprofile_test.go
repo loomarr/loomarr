@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,7 +18,6 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -181,124 +179,6 @@ func TestPlayoutResolver_AudioTrackReadsTheLibraryForAScannedFile(t *testing.T) 
 	}
 }
 
-func TestPlayoutResolver_AudioTrackWarmsInventoryThenPerformsNoIO(t *testing.T) {
-	st := testkit.MigratedSQLiteStore(t)
-	server := testkit.NewMediaServer(t)
-	server.InventoryItems = map[string]json.RawMessage{"item-1": json.RawMessage(`{
-		"Id":"item-1","Type":"Movie","DateLastSaved":"2026-09-04T12:00:00Z",
-		"MediaSources":[{"Id":"source-1","ETag":"rev-1","MediaStreams":[
-			{"Index":0,"Type":"Video","Codec":"h264"},
-			{"Index":2,"Type":"Audio","Language":"jpn"},
-			{"Index":4,"Type":"Audio","Language":"eng"}
-		]}]
-	}`)}
-	probeCalls := 0
-	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
-	r := &playoutResolver{
-		lib: newTestLibraryClient(server), inventory: inventory.New(st), now: func() time.Time { return now },
-		audioLanguage: func() string { return "eng" },
-		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
-			probeCalls++
-			return playout.SourceObservation{}, nil
-		},
-	}
-	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", "movie.mkv"); got != 1 {
-		t.Fatalf("cold metadata-first AudioTrackFor = %d, want audio ordinal 1", got)
-	}
-	firstRequests := len(server.Requests())
-	if firstRequests != 1 || probeCalls != 0 {
-		t.Fatalf("cold metadata-first calls = library %d, ffprobe %d; want 1, 0", firstRequests, probeCalls)
-	}
-	server.InventoryItems = nil
-	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", "movie.mkv"); got != 1 {
-		t.Fatalf("warm inventory AudioTrackFor = %d, want audio ordinal 1", got)
-	}
-	if got := len(server.Requests()); got != firstRequests || probeCalls != 0 {
-		t.Fatalf("warm inventory added calls = library %d→%d, ffprobe %d; want none", firstRequests, got, probeCalls)
-	}
-}
-
-func TestPlayoutResolver_AudioTrackPersistsProbeFallback(t *testing.T) {
-	st := testkit.MigratedSQLiteStore(t)
-	server := testkit.NewMediaServer(t)
-	server.InventoryItems = map[string]json.RawMessage{"item-1": json.RawMessage(`{
-		"Id":"item-1","Type":"Movie","DateLastSaved":"2026-09-04T12:00:00Z",
-		"MediaSources":[{"Id":"source-1","ETag":"rev-1","MediaStreams":[
-			{"Index":2,"Type":"Audio","Language":"jpn"},
-			{"Index":2,"Type":"Audio","Language":"eng"}
-		]}]
-	}`)}
-	probeCalls := 0
-	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
-	r := &playoutResolver{
-		lib: newTestLibraryClient(server), inventory: inventory.New(st), now: func() time.Time { return now },
-		audioLanguage: func() string { return "eng" },
-		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
-			probeCalls++
-			return playout.SourceObservation{Container: "matroska", Streams: []playout.ObservedStream{
-				{Index: 0, Kind: "video", Codec: "h264", Width: 1920, Height: 1080},
-				{Index: 1, Kind: "audio", Codec: "aac", Language: "jpn", Channels: 2},
-				{Index: 3, Kind: "audio", Codec: "aac", Language: "eng", Channels: 2},
-			}}, nil
-		},
-	}
-	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", "movie.mkv"); got != 1 {
-		t.Fatalf("probe fallback AudioTrackFor = %d, want ordinal 1", got)
-	}
-	firstRequests := len(server.Requests())
-	server.InventoryItems = nil
-	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", "movie.mkv"); got != 1 {
-		t.Fatalf("measured inventory AudioTrackFor = %d, want ordinal 1", got)
-	}
-	if len(server.Requests()) != firstRequests || probeCalls != 1 {
-		t.Fatalf("measured warm calls = library %d→%d, ffprobe %d; want no second I/O", firstRequests, len(server.Requests()), probeCalls)
-	}
-}
-
-func TestPlayoutResolver_AudioTrackPersistsFullProbeWhenLibraryUnavailable(t *testing.T) {
-	st := testkit.MigratedSQLiteStore(t)
-	server := testkit.NewMediaServer(t)
-	probeCalls := 0
-	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
-	r := &playoutResolver{
-		lib: newTestLibraryClient(server), inventory: inventory.New(st), now: func() time.Time { return now },
-		audioLanguage: func() string { return "eng" },
-		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
-			probeCalls++
-			return playout.SourceObservation{Container: "matroska", DurationMillis: 90_000, Bitrate: 4_000_000,
-				UnsafePreroll: true,
-				Streams: []playout.ObservedStream{
-					{Index: 0, Kind: "video", Codec: "h264", Width: 1920, Height: 1080},
-					{Index: 1, Kind: "audio", Codec: "aac", Language: "jpn", Channels: 2},
-					{Index: 2, Kind: "audio", Codec: "aac", Language: "eng", Channels: 2},
-				}}, nil
-		},
-	}
-	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", server.URL+"/video"); got != 1 {
-		t.Fatalf("cold fallback AudioTrackFor = %d, want ordinal 1", got)
-	}
-	firstRequests := len(server.Requests())
-	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", server.URL+"/video"); got != 1 {
-		t.Fatalf("warm fallback AudioTrackFor = %d, want ordinal 1", got)
-	}
-	if len(server.Requests()) != firstRequests || probeCalls != 1 {
-		t.Fatalf("warm fallback added I/O: library %d→%d, probes %d", firstRequests, len(server.Requests()), probeCalls)
-	}
-	origin, err := r.lib.InventoryOrigin("item-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	item, ok, err := r.inventory.Item(context.Background(), inventory.ItemRef{Origin: &origin})
-	if err != nil || !ok || len(item.Sources) != 1 || item.Sources[0].Measurement == nil {
-		t.Fatalf("persisted fallback = (%+v, %v, %v)", item, ok, err)
-	}
-	facts := item.Sources[0].Measurement.Observation.Facts
-	if facts.Container != "matroska" || facts.DurationMillis != 90_000 || !facts.UnsafePreroll || len(facts.Streams) != 3 ||
-		facts.Streams[0].Width != 1920 {
-		t.Fatalf("persisted probe lost superset facts: %+v", facts)
-	}
-}
-
 func TestPlayoutResolver_LocalFileRevisionInvalidatesMeasuredAudio(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	path := t.TempDir() + "/movie.mkv"
@@ -373,11 +253,11 @@ func TestPlayoutResolver_LocalAudioProbeFeedsCopyPlanWithoutSecondProbe(t *testi
 	}
 }
 
-func TestPlayoutResolver_EmptyAudioPreferenceSkipsInventoryLibraryAndProbe(t *testing.T) {
-	server := testkit.NewMediaServer(t)
+func TestPlayoutResolver_EmptyAudioPreferenceSkipsTheLibraryAndProbe(t *testing.T) {
 	probeCalls := 0
 	r := &playoutResolver{
-		lib: newTestLibraryClient(server), audioLanguage: func() string { return "  " },
+		audioLanguage: func() string { return "  " },
+		libraryAudio:  libraryAudioPanics{t},
 		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
 			probeCalls++
 			return playout.SourceObservation{}, nil
@@ -386,13 +266,16 @@ func TestPlayoutResolver_EmptyAudioPreferenceSkipsInventoryLibraryAndProbe(t *te
 	if got := r.AudioTrackFor(context.Background(), "channel-1", "item-1", "movie.mkv"); got != 0 {
 		t.Fatalf("AudioTrackFor = %d, want first track", got)
 	}
-	if len(server.Requests()) != 0 || probeCalls != 0 {
-		t.Fatalf("empty preference performed I/O: requests=%d probes=%d", len(server.Requests()), probeCalls)
+	if probeCalls != 0 {
+		t.Fatalf("empty preference probed %d times", probeCalls)
 	}
 }
 
-func newTestLibraryClient(server *testkit.MediaServer) *library.Client {
-	return library.New(library.Emby, strings.TrimRight(server.URL, "/"), server.AdminToken, "inventory-test-device")
+type libraryAudioPanics struct{ t *testing.T }
+
+func (f libraryAudioPanics) LibraryAudioTracks(context.Context, string, int64, int64) ([]store.LibraryStream, bool, error) {
+	f.t.Fatal("an empty preference read the Library")
+	return nil, false, nil
 }
 
 // ⚠ **THE QUALITY LADDER'S DEPENDENCIES ARE CALLED UNGUARDED.**

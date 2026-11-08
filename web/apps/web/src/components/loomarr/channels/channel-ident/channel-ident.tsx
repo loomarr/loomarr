@@ -41,7 +41,10 @@ const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdent
         height: size,
         // color-mix keeps the tint tied to the same variable as the text, so a palette change
         // moves both together rather than leaving a mismatched pair.
-        backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)`,
+        // ⚠ 6% is the most tint the hue's own letters keep AA (4.5:1) over: the pink (suggest)
+        // monogram fell to 4.24 at 14%, and to 4.49 even at 8%. The old hatch was a background
+        // image, which axe cannot measure, so it never checked this.
+        backgroundColor: `color-mix(in srgb, ${color} 6%, transparent)`,
         borderColor: `color-mix(in srgb, ${color} 30%, transparent)`,
       }}
       className={cn("flex shrink-0 items-center justify-center rounded-[5px] border", className)}
