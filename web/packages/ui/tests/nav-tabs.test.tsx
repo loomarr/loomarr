@@ -70,6 +70,23 @@ describe("NavTabs (web)", () => {
     expect(nav().style.flexWrap).toBe("");
   });
 
+  // #2738: the underline tab's -1px margin lets it overlap the bar's rule, which overflows the bar
+  // by a pixel; with `overflow-x: auto` that drew the bar its own vertical scrollbar. The bar still
+  // scrolls sideways (the active tab is revealed), with no scrollbar drawn.
+  it("draws no scrollbar of its own", async () => {
+    await mount(
+      <NavTabs
+        activeId="flight"
+        label="Queue sections"
+        linkComponent={anchorLink}
+        tabs={tabs}
+        variant="underline"
+      />,
+    );
+
+    expect(nav().getAttribute("style")).toContain("scrollbar-width: none");
+  });
+
   it("scrolls the active destination into view, sideways only", async () => {
     // jsdom has no layout: a 200 px bar whose third tab sits at 260–340 px of its content.
     let scrollLeft = 0;

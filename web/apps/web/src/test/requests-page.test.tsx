@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { failed, journey, MEMBER, renderAt, stub } from "@/test/requests-harness";
+import { ADMIN, failed, journey, MEMBER, renderAt, stub } from "@/test/requests-harness";
 
 // #1405 — the Requests page's own entry points (its landing tab and first-request empty state).
 // The lists, the detail and the nav badge have colocated specs under queue/.
@@ -23,6 +23,19 @@ describe("Requests landing", () => {
     stub({ me: MEMBER, journeys: [journey("j-gen", { milestone: "generating" })] });
     const router = renderAt("/requests");
     await waitFor(() => expect(router.state.location.pathname).toBe("/requests/in-progress"));
+  });
+
+  // #2738: /requests never opens an empty tab while another has items.
+  it("opens on Done when that is the only tab with requests", async () => {
+    stub({ me: MEMBER, journeys: [journey("j-done")] });
+    const router = renderAt("/requests");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/done"));
+  });
+
+  it("opens on Done for an admin when the only request is finished", async () => {
+    stub({ me: ADMIN, journeys: [journey("j-done")] });
+    const router = renderAt("/requests");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/done"));
   });
 
   it("offers the one next action when you have never requested a channel", async () => {

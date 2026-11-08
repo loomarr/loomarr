@@ -158,6 +158,8 @@ const pullRowFor = (pull: PullDTO) => {
               <When at={pull.decidedAt} verb="Decided" />
             </>
           )}
+          {/* Pulls of one kind share a title; what each was for is what tells the rows apart (#2738). */}
+          {pull.reason && ` · ${pull.reason}`}
           {pull.note && ` · ${pull.note}`}
         </>
       }

@@ -1,6 +1,9 @@
+import { getApproveProposalMockHandler, getDenyProposalMockHandler } from "@loomarr/api/msw";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ADMIN, approved, MEMBER, renderAt, stub, title } from "@/test/requests-harness";
+import { server } from "@/test/msw/server";
+import { ADMIN, approved, journey, MEMBER, proposal, renderAt, stub, title } from "@/test/requests-harness";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -73,6 +76,63 @@ describe("RequestDetail", () => {
 
     expect(await screen.findAllByText("Twice")).toHaveLength(2);
     expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+  });
+
+  // #2738: the list rows say "25d ago"; the detail printed "10/13/2026, 4:12:19 PM". One style.
+  it("dates a request the way the lists do, relative", async () => {
+    stub({ me: MEMBER, journeys: [approved("j-d", "building")] });
+    renderAt("/requests/j-d");
+
+    expect(await screen.findByText(/Requested \d+d ago/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/);
+  });
+
+  // #2738: a request waiting on approval can be decided from its own page, by an admin.
+  describe("a request waiting for approval", () => {
+    const waiting = () =>
+      journey("j-w", {
+        milestone: "awaiting_approval",
+        proposal: { ...proposal, id: "p-w", jobId: "j-w" },
+      });
+
+    it("lets an admin approve it from the detail page", async () => {
+      let approvedId: string | undefined;
+      stub({ me: ADMIN, journeys: [waiting()] });
+      server.use(
+        getApproveProposalMockHandler(({ params }) => {
+          approvedId = String(params.id);
+          return { channelId: "ch-new" } as never;
+        }),
+      );
+      renderAt("/requests/j-w");
+
+      await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+      await waitFor(() => expect(approvedId).toBe("p-w"));
+    });
+
+    it("lets an admin deny it from the detail page", async () => {
+      let denied: { id: string } | undefined;
+      stub({ me: ADMIN, journeys: [waiting()] });
+      server.use(
+        getDenyProposalMockHandler(({ params }) => {
+          denied = { id: String(params.id) };
+          return {} as never;
+        }),
+      );
+      renderAt("/requests/j-w");
+
+      await userEvent.click(await screen.findByRole("button", { name: "Deny" }));
+      await waitFor(() => expect(denied).toEqual({ id: "p-w" }));
+    });
+
+    it("offers a member no decision, only the wait", async () => {
+      stub({ me: MEMBER, journeys: [waiting()] });
+      renderAt("/requests/j-w");
+
+      expect(await screen.findByText("Waiting for an admin to approve this request.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Deny" })).not.toBeInTheDocument();
+    });
   });
 
   it("names who approved it", async () => {

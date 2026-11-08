@@ -1,11 +1,13 @@
 import * as proposalJobsApi from "@loomarr/api/endpoints/proposal-jobs";
+import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
+import { formatRelative } from "@loomarr/core/format";
 import { requestAcquisitions, requestFixLabel, requestStatus } from "@loomarr/core/requests";
 import { Action, Badge, Card } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { StateBadge } from "@/components/loomarr/channels/state-badge";
@@ -29,11 +31,13 @@ const Section = ({ title, children }: { title: string; children: ReactNode }) =>
   </section>
 );
 
-const when = (iso?: string): string | undefined => (iso ? new Date(iso).toLocaleString() : undefined);
+// Dates read relative here as they do in the lists ("25d ago"), never as a locale timestamp (#2738).
+const when = (iso?: string): string | undefined => (iso ? formatRelative(iso) : undefined);
 
 const RequestDetail = ({ jobId }: { jobId: string }) => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const query = proposalJobsApi.useGetProposalJob(jobId, {
     query: {
       // A generating request streams its progress; the SSE frame refetches sooner, this is the floor.
@@ -54,6 +58,24 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
         ),
     },
   });
+
+  // The decision moves the request on: its journey, the approval list and the Requests tabs refetch.
+  const decided = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: proposalJobsApi.getGetProposalJobQueryKey(jobId) }),
+      queryClient.invalidateQueries({ queryKey: proposalJobsApi.getListProposalJobsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: proposalsApi.getListProposalsQueryKey() }),
+    ]);
+  const approve = proposalsApi.useApproveProposal({
+    mutation: {
+      onSuccess: async (res) => {
+        await decided();
+        if (res.status === 200) void navigate({ to: "/channels/$id", params: { id: res.data.channelId } });
+      },
+    },
+  });
+  const deny = proposalsApi.useDenyProposal({ mutation: { onSuccess: decided } });
+  const deciding = approve.isPending || deny.isPending;
 
   const journey = unwrap(query.data, (body) => body);
   if (query.error != null) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
@@ -127,10 +149,31 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
             {proposal.status === "submitted" && (
               <p className="text-muted-foreground text-sm">Waiting for an admin to approve this request.</p>
             )}
+            {/* Deciding is admin-only (§11); a member only sees the wait. Approving creates the
+                channel, so it ends on that channel, as it does from the approval queue. */}
+            {proposal.status === "submitted" && isAdmin && (
+              <div className="flex gap-2">
+                <Action
+                  disabled={deciding}
+                  onPress={() => approve.mutate({ id: proposal.id, data: {} })}
+                  tone="primary"
+                >
+                  {approve.isPending ? "Approving…" : "Approve"}
+                </Action>
+                <Action
+                  disabled={deciding}
+                  onPress={() => deny.mutate({ id: proposal.id, data: {} })}
+                  tone="secondary"
+                >
+                  Deny
+                </Action>
+              </div>
+            )}
+            {(approve.error ?? deny.error) != null && <ErrorState error={approve.error ?? deny.error} />}
             {proposal.status === "approved" && (
               <p className="text-sm">
                 {proposal.approvedByName ? `Approved by ${proposal.approvedByName}` : "Approved"}
-                {approvedAt ? ` on ${approvedAt}` : ""}
+                {approvedAt ? ` ${approvedAt}` : ""}
                 {proposal.modSummary ? `, with changes: ${proposal.modSummary}` : ""}
               </p>
             )}
