@@ -1,5 +1,5 @@
 import { Toggle } from "@loomarr/design-system";
-import { Input } from "@/components/ui/input";
+import { CommitField } from "@loomarr/ui";
 import { Label } from "@/components/ui/label";
 import { isThresholdOverridden, resetField, resetThreshold } from "@/lib/policy-overrides";
 import { cn } from "@/lib/utils";
@@ -119,18 +119,17 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 label="Quality bar"
               />
             </div>
-            <Input
-              // Uncontrolled, so the stored value is the key: a reset re-seeds the box.
+            <CommitField
+              // Keyed on the stored value, so a reset re-seeds the box.
               key={auto?.minScorePct ?? 0}
               id="policy-auto-curate-score"
-              className="w-28"
-              type="number"
-              min={0}
-              max={100}
-              defaultValue={auto?.minScorePct ? auto.minScorePct : ""}
+              initial={auto?.minScorePct ? String(auto.minScorePct) : ""}
+              keyboardType="number-pad"
+              maxLength={3}
               placeholder="Default"
-              onBlur={(e) => {
-                const next = Math.min(100, overrideOrInherit(e.target.value));
+              width={112}
+              onCommit={(text) => {
+                const next = Math.min(100, overrideOrInherit(text));
                 if (next === (auto?.minScorePct ?? 0)) return;
                 onChange({ ...policy, autoCurate: { ...auto, minScorePct: next } });
               }}
@@ -147,16 +146,15 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 label="Title cap"
               />
             </div>
-            <Input
+            <CommitField
               key={auto?.maxTitles ?? 0}
               id="policy-auto-curate-cap"
-              className="w-28"
-              type="number"
-              min={0}
-              defaultValue={auto?.maxTitles ? auto.maxTitles : ""}
+              initial={auto?.maxTitles ? String(auto.maxTitles) : ""}
+              keyboardType="number-pad"
               placeholder="Default"
-              onBlur={(e) => {
-                const next = overrideOrInherit(e.target.value);
+              width={112}
+              onCommit={(text) => {
+                const next = overrideOrInherit(text);
                 if (next === (auto?.maxTitles ?? 0)) return;
                 onChange({ ...policy, autoCurate: { ...auto, maxTitles: next } });
               }}

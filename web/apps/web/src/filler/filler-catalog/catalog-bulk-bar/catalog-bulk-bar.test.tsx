@@ -1,9 +1,10 @@
 import { getBulkRemoveFillerMockHandler, getBulkTagFillerMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { BULK_TAG_FIELDS, CatalogBulkBar } from "./catalog-bulk-bar";
 
 const renderBar = (onClear = vi.fn(), selected = new Set(["hash-a", "hash-b"])) =>

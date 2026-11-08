@@ -88,7 +88,7 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	// without spending the tests' one admin bootstrap.
 	t.Setenv("API_TOKEN", harnessAPIToken)
 
-	st, err := records.Open(context.Background(), "sqlite://"+t.TempDir()+"/e2e.db", true)
+	st, err := records.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

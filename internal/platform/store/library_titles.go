@@ -92,6 +92,44 @@ func (s *sqlStore) LibraryTitleByProviderID(ctx context.Context, kind, namespace
 	return t, true, nil
 }
 
+// LibraryTitleSearcher finds the Library's titles by name: the library half of title search
+// (#2151 step 15e), what the media server's search answered until the cutover.
+type LibraryTitleSearcher interface {
+	// SearchLibraryTitles is up to limit movies and series with a present file whose name holds
+	// term (case-insensitive, LIKE's wildcards taken literally): an exact name first, then one
+	// starting with it, then the rest, each by sort name. Genres are not filled.
+	SearchLibraryTitles(ctx context.Context, term string, limit int) ([]LibraryTitle, error)
+}
+
+func (s *sqlStore) SearchLibraryTitles(ctx context.Context, term string, limit int) ([]LibraryTitle, error) {
+	term = strings.ToLower(strings.TrimSpace(term))
+	if term == "" || limit <= 0 {
+		return nil, nil
+	}
+	escaped := likeEscape(term)
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+libraryTitleColumns+`
+		WHERE i.kind IN ('movie', 'series') AND LOWER(i.name) LIKE ? ESCAPE '\' AND `+itemListed+`
+		ORDER BY CASE WHEN LOWER(i.name) = ? THEN 0 WHEN LOWER(i.name) LIKE ? ESCAPE '\' THEN 1 ELSE 2 END,
+			i.sort_name, i.id
+		LIMIT ?`), "%"+escaped+"%", term, escaped+"%", limit)
+	if err != nil {
+		return nil, fmt.Errorf("search library titles: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []LibraryTitle
+	for rows.Next() {
+		var t LibraryTitle
+		if err := rows.Scan(&t.ID, &t.Kind, &t.Name, &t.TMDBID, &t.TVDBID, &t.Rating, &t.SizeBytes); err != nil {
+			return nil, fmt.Errorf("search library titles: %w", err)
+		}
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("search library titles: %w", err)
+	}
+	return out, nil
+}
+
 // LibraryProviderID names a movie or series (Kind) by one provider id (Namespace tmdb or tvdb):
 // how an airing's provisioning key names the title it plays.
 type LibraryProviderID struct {

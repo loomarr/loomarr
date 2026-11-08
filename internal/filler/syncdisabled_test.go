@@ -28,6 +28,7 @@ func (r *recordingStore) UpsertClip(context.Context, filler.StoreClip) error { r
 func (r *recordingStore) GetClip(context.Context, string) (filler.StoreClip, bool, error) {
 	return filler.StoreClip{}, false, nil
 }
+func (r *recordingStore) LiveClipPaths(context.Context) (map[string]string, error) { return nil, nil }
 func (r *recordingStore) DeleteClipsNotIn(context.Context, []string) (int, error) {
 	r.prunes++
 	return 0, nil

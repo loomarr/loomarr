@@ -1,8 +1,7 @@
 import { pluralize } from "@loomarr/core/format";
-import { Badge, Card, Field, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PullCardProps } from "./pull-card.type";
 
@@ -89,18 +88,17 @@ const PullCard = ({
         </div>
 
         <div className="flex shrink-0 gap-2">
-          <Button variant="outline" size="sm" disabled={deciding} onClick={onDismiss}>
+          <Action disabled={deciding} onPress={onDismiss} variant="outline">
             Not now
-          </Button>
-          <Button
-            size="sm"
+          </Action>
+          <Action
             // Nothing left to fetch is refused by the server rather than recorded as an
             // approval that fetched nothing; disabling here says so before the round trip.
             disabled={deciding || kept.length === 0}
-            onClick={() => onApprove({ dropCandidateIds: [...dropped], note })}
+            onPress={() => onApprove({ dropCandidateIds: [...dropped], note })}
           >
             {deciding ? "Starting…" : "Approve pull"}
-          </Button>
+          </Action>
         </div>
       </div>
 
@@ -139,15 +137,14 @@ const PullCard = ({
                   ~{row.estimateClips} clips
                 </Text>
               )}
-              <Button
-                variant="ghost"
-                size="sm"
+              <Action
+                accessibilityLabel={isDropped ? `Put back ${row.name}` : `Leave out ${row.name}`}
                 disabled={deciding}
-                onClick={() => toggleDropped(id)}
-                aria-label={isDropped ? `Put back ${row.name}` : `Leave out ${row.name}`}
+                onPress={() => toggleDropped(id)}
+                variant="ghost"
               >
                 {isDropped ? "Put back" : "Leave out"}
-              </Button>
+              </Action>
             </li>
           );
         })}

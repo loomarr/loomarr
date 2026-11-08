@@ -363,7 +363,7 @@ func TestPlayoutResolver_LocalAudioProbeFeedsCopyPlanWithoutSecondProbe(t *testi
 	if got := r.AudioTrackFor(t.Context(), "channel-1", "item-1", path); got != 1 {
 		t.Fatalf("AudioTrackFor = %d, want English audio ordinal 1", got)
 	}
-	format := r.FormatOf(t.Context(), path)
+	format := r.FormatOf(t.Context(), "", path)
 	if format.VideoCodec != "h264" || format.AudioCodec != "aac" ||
 		format.Width != 1920 || format.Height != 1080 || format.FrameRate != 25 {
 		t.Fatalf("inventory-backed FormatOf = %+v, want 1080p25 h264/aac", format)
@@ -511,7 +511,7 @@ func TestPlayoutResolver_FirstPlayMeasuresFactsOnceAndActivatesMinimalProbe(t *t
 	}
 	r.measurer = r.newMeasurer(measure.Tools{}, st)
 
-	format := r.FormatOf(t.Context(), path)
+	format := r.FormatOf(t.Context(), "", path)
 	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) != 0 || !slices.Contains(pipe.PreInput, "-fpsprobesize") {
 		t.Fatalf("first-play pipeline = %+v, err %v; want measured facts to activate the minimal probe", pipe, err)
@@ -519,7 +519,7 @@ func TestPlayoutResolver_FirstPlayMeasuresFactsOnceAndActivatesMinimalProbe(t *t
 	if sourceProbes != 1 || formatProbes != 0 {
 		t.Fatalf("first play probes = source %d, format %d; want exactly one source probe", sourceProbes, formatProbes)
 	}
-	if format2 := r.FormatOf(t.Context(), path); format2.VideoCodec != "h264" || sourceProbes != 1 || formatProbes != 0 {
+	if format2 := r.FormatOf(t.Context(), "", path); format2.VideoCodec != "h264" || sourceProbes != 1 || formatProbes != 0 {
 		t.Fatalf("second tune: format %+v, probes source %d format %d; want stored facts and no probe", format2, sourceProbes, formatProbes)
 	}
 }
@@ -545,7 +545,7 @@ func TestPlayoutResolver_AirtimeFormatCarriesTheMeasuredActivePicture(t *testing
 		},
 	}
 	r.measurer = r.newMeasurer(measure.Tools{}, st)
-	if format := r.FormatOf(t.Context(), path); format.Active != (playout.Rect{}) {
+	if format := r.FormatOf(t.Context(), "", path); format.Active != (playout.Rect{}) {
 		t.Fatalf("unmeasured source: active %+v, want unknown", format.Active)
 	}
 	origin, ok := r.ensureLocalInventorySource(t.Context(), path)
@@ -561,7 +561,7 @@ func TestPlayoutResolver_AirtimeFormatCarriesTheMeasuredActivePicture(t *testing
 		AnalyzedAt: time.Now(), ActivePicture: &inventory.PictureArea{Y: 140, W: 1920, H: 800}}); err != nil {
 		t.Fatal(err)
 	}
-	if format := r.FormatOf(t.Context(), path); format.Active != (playout.Rect{Y: 140, W: 1920, H: 800}) {
+	if format := r.FormatOf(t.Context(), "", path); format.Active != (playout.Rect{Y: 140, W: 1920, H: 800}) {
 		t.Fatalf("measured source: active %+v, want the stored letterbox picture", format.Active)
 	}
 }
@@ -580,7 +580,7 @@ func TestPlayoutResolver_UnmeasurableSourceKeepsFullProbe(t *testing.T) {
 		probeFormat: func(context.Context, string) (playout.MediaFormat, error) { return playout.MediaFormat{}, nil },
 	}
 	r.measurer = r.newMeasurer(measure.Tools{}, st)
-	format := r.FormatOf(t.Context(), path)
+	format := r.FormatOf(t.Context(), "", path)
 	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) == 0 || slices.Contains(pipe.PreInput, "-fpsprobesize") {
 		t.Fatalf("pipeline without facts = %+v, err %v; want no minimal probe", pipe, err)
@@ -609,7 +609,7 @@ func TestPlayoutResolver_FirstPlayWithRealFFprobeActivatesMinimalProbeAndStoresA
 	defer cancel()
 	go m.Run(ctx)
 
-	format := r.FormatOf(ctx, path)
+	format := r.FormatOf(ctx, "", path)
 	pipe, err := playout.Build(encode.HostFor(encode.EncoderSoftware, false, encode.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) != 0 || !slices.Contains(pipe.PreInput, "-fpsprobesize") {
 		t.Fatalf("real-ffprobe facts %+v left MissingFacts %v (err %v)", format, pipe.MissingFacts, err)

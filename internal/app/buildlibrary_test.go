@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // The app starts the scanner once it is built: a file in an in-use folder reaches the scanner's
@@ -26,7 +27,7 @@ func TestBuildLibrary_StartsTheScanner(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "library.db"), true)
+			st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 			if err != nil {
 				t.Fatal(err)
 			}

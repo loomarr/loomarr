@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Action } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { EmptyStateProps } from "./empty-state.type";
 
@@ -13,11 +13,7 @@ const EmptyState = ({ icon, title, description, action, className }: EmptyStateP
       <p className="text-static-400 font-mono text-sm tracking-wide uppercase">{title}</p>
       {description && <p className="text-muted-foreground mt-1 max-w-sm text-sm">{description}</p>}
     </div>
-    {action && (
-      <Button size="sm" onClick={action.onClick}>
-        {action.label}
-      </Button>
-    )}
+    {action && <Action onPress={action.onClick}>{action.label}</Action>}
   </div>
 );
 

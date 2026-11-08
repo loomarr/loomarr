@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type modeProbePlayout struct {
@@ -29,7 +30,7 @@ type modeProbePlayout struct {
 
 func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Server {
 	t.Helper()
-	st, err := records.Open(context.Background(), "sqlite://"+t.TempDir()+"/mode.db", true)
+	st, err := records.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

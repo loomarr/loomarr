@@ -3,11 +3,10 @@ import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Card } from "@loomarr/design-system";
+import { Action, Card } from "@loomarr/design-system";
 import { seasonalModeLabel } from "@loomarr/ui";
-import { Check, Download, Minus } from "lucide-react";
+import { Check, Minus } from "lucide-react";
 import { seasonalModeOf } from "@/components/loomarr/channels/channel-seasonal";
-import { Button } from "@/components/ui/button";
 import { eraOf } from "@/lib/era-dates";
 import { playOrderLabel } from "@/lib/play-order-copy";
 import { datesMode } from "@/lib/policy-overrides";
@@ -288,14 +287,13 @@ const RefineReview = ({
       )}
 
       <footer className="border-border flex justify-end gap-2 border-t pt-4">
-        <Button variant="ghost" onClick={onDiscard} disabled={busy}>
+        <Action disabled={busy} onPress={onDiscard} variant="ghost">
           Discard
-        </Button>
+        </Action>
         {!noChanges && (
-          <Button variant="suggest" onClick={onApply} disabled={busy}>
-            <Download aria-hidden />
+          <Action disabled={busy} icon="download" onPress={onApply} variant="suggest">
             Apply changes
-          </Button>
+          </Action>
         )}
       </footer>
     </Card>

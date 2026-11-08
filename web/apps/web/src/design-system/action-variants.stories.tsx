@@ -23,6 +23,23 @@ const ActionVariantsWorkshop = () => (
       </Surface>
     </Surface>
     <Surface gap="control" padding="section">
+      <Text textRole="title">Icon only</Text>
+      <Surface backgroundColor="transparent" borderWidth={0} flexDirection="row" gap="control">
+        <Action icon="success" layout="icon" onPress={() => undefined} variant="suggest">
+          Save
+        </Action>
+        <Action icon="close" layout="icon" onPress={() => undefined} variant="ghost">
+          Cancel
+        </Action>
+        <Action icon="delete" layout="icon" onPress={() => undefined} variant="outline">
+          Remove
+        </Action>
+        <Action disabled icon="pageOlder" layout="icon" onPress={() => undefined} variant="outline">
+          Back an hour
+        </Action>
+      </Surface>
+    </Surface>
+    <Surface gap="control" padding="section">
       <Text textRole="title">Composed as a link (web `render` escape hatch)</Text>
       <Action render={<a href="#action-variants-story" />} variant="outline">
         Go to channels

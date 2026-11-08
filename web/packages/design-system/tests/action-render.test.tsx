@@ -15,6 +15,21 @@ import {
 } from "../index";
 import { stylesOfText } from "./support/atomic-css";
 
+describe("Action composed onto a link", () => {
+  it("names the link with its accessibilityLabel", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action accessibilityLabel="Open Quality" accessibilityRole="link" render={<a href="#quality" />}>
+          Open
+        </Action>
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain('aria-label="Open Quality"');
+    expect(markup).not.toContain("accessibilitylabel");
+  });
+});
+
 describe("Action variants", () => {
   // react-native-web flattens the Pressable's own style object to inline rgba() (not hex, and
   // "transparent" becomes rgba(0,0,0,0.00)) — only the Tamagui-rendered Text child keeps literal
@@ -435,6 +450,26 @@ describe("Action render composition", () => {
     const link = host.querySelector("a");
     expect(link?.getAttribute("role")).toBe("link");
     expect(link?.hasAttribute("accessibilityrole")).toBe(false);
+  });
+
+  it("names a composed link by `aria-label`, never the RN-only `accessibilityLabel` attribute", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action
+            accessibilityLabel="Open Quality"
+            accessibilityRole="link"
+            render={<a href="/filler/quality" />}
+          >
+            Open
+          </Action>
+        </LoomarrProvider>,
+      );
+    });
+
+    const link = host.querySelector("a");
+    expect(link?.getAttribute("aria-label")).toBe("Open Quality");
+    expect(link?.hasAttribute("accessibilitylabel")).toBe(false);
   });
 
   it("pads a composed link as CSS, the same inset a Pressable gets", () => {

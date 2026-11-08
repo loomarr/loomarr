@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // #1534: seedLibraryChannels (SEED_LIBRARY_PICKS) hit the same bug as the
@@ -21,7 +22,7 @@ import (
 // failed with ErrInvalidState instead of 200.
 func TestSeedLibraryChannelsProposalJobsAreListableThroughTheProposalWorkflow(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/seed.db", true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

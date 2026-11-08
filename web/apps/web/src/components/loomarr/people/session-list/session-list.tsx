@@ -1,7 +1,5 @@
 import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
-import { Badge } from "@loomarr/design-system";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action, Badge } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { SessionListProps } from "./session-list.type";
 
@@ -40,9 +38,9 @@ const SessionList = ({
           {`${pluralize(sessions.length, "active session")} for ${userName}`}
         </p>
         {onRevokeAll && (
-          <Button variant="outline" size="sm" onClick={onRevokeAll}>
+          <Action onPress={onRevokeAll} variant="outline">
             Sign out everywhere
-          </Button>
+          </Action>
         )}
       </div>
 
@@ -63,10 +61,14 @@ const SessionList = ({
               </p>
               <p className="text-static-400 text-xs">{`Expires ${formatUntil(s.expiresAt, now)}`}</p>
             </div>
-            <Button variant="ghost" size="sm" disabled={revoking === s.id} onClick={() => onRevoke?.(s.id)}>
-              {revoking === s.id ? <Loader2 className="animate-spin" aria-hidden /> : null}
+            <Action
+              disabled={revoking === s.id}
+              icon={revoking === s.id ? "loading" : undefined}
+              onPress={() => onRevoke?.(s.id)}
+              variant="ghost"
+            >
               {s.current ? "Sign out (this device)" : "Sign out"}
-            </Button>
+            </Action>
           </li>
         ))}
       </ul>

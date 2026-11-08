@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // ⚠ THE GATE FOR §9.2. Restarting in place is only correct if Build/Run/Shutdown can
@@ -57,7 +58,7 @@ func TestBuild_RepeatsWithoutLeaking(t *testing.T) {
 func buildServeShutdown(t *testing.T, generation int) {
 	t.Helper()
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/gen.db", true)
+	st, err := store.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatalf("generation %d: open store: %v", generation, err)
 	}

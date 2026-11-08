@@ -3,11 +3,10 @@ import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO"
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Badge, type BadgeTone, Card } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Card } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
 import type { FillerSettingsSection } from "../filler-settings-section";
 
 type ActionBase = {
@@ -16,7 +15,7 @@ type ActionBase = {
   label: string;
 };
 
-type Action = ActionBase &
+type ReadinessAction = ActionBase &
   (
     | {
         to: "/filler/settings/$section";
@@ -30,7 +29,7 @@ type Action = ActionBase &
 
 // This maps the readiness projection's server-owned action enum to presentation only. Priority
 // and whole-workspace health are never reconstructed from subsystem counts in the browser (§10).
-const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
+const readinessAction = (readiness: FillerReadinessDTO): ReadinessAction | undefined => {
   switch (readiness.nextAction) {
     case "none":
       return undefined;
@@ -176,7 +175,8 @@ const FillerOverview = () => {
               )}
             </div>
             {isAdmin ? (
-              <Button
+              <Action
+                accessibilityRole="link"
                 render={
                   action.section ? (
                     <Link to="/filler/settings/$section" params={{ section: action.section }} />
@@ -186,7 +186,7 @@ const FillerOverview = () => {
                 }
               >
                 {action.label}
-              </Button>
+              </Action>
             ) : null}
           </div>
         </Card>
@@ -212,9 +212,9 @@ const FillerOverview = () => {
               See how much filler each channel has ready to play.
             </p>
           </div>
-          <Button variant="outline" size="sm" render={<Link to="/filler/library" />}>
+          <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
             Browse library
-          </Button>
+          </Action>
         </div>
         {readiness?.pool.channels.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">

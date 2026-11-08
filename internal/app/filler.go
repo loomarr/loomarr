@@ -134,6 +134,9 @@ func (a fillerStoreAdapter) GetClip(ctx context.Context, id string) (filler.Stor
 	}
 	return fillerClip(c), true, nil
 }
+func (a fillerStoreAdapter) LiveClipPaths(ctx context.Context) (map[string]string, error) {
+	return a.st.LiveClipPaths(ctx)
+}
 func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string) (int, error) {
 	return a.st.DeleteClipsNotIn(ctx, keep)
 }

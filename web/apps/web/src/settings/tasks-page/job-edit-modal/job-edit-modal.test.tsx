@@ -80,13 +80,13 @@ describe("JobEditModal", () => {
     });
 
     // The choices are exactly the setting's presets, then Custom.
-    await user.click(await screen.findByRole("combobox", { name: "Frequency" }));
-    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual([
+    await user.click(await screen.findByRole("button", { name: "Frequency, Every 5 minutes" }));
+    expect((await screen.findAllByRole("radio")).map((option) => option.textContent)).toEqual([
       "Every 5 minutes",
       "Every hour",
       "Custom (advanced)…",
     ]);
-    await user.click(await screen.findByRole("option", { name: "Every hour" }));
+    await user.click(await screen.findByRole("radio", { name: "Every hour" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(patches).toHaveLength(1));
@@ -104,8 +104,8 @@ describe("JobEditModal", () => {
     // No advanced field until Custom is chosen.
     expect(screen.queryByRole("textbox", { name: "Cron expression" })).not.toBeInTheDocument();
 
-    await user.click(await screen.findByRole("combobox", { name: "Frequency" }));
-    await user.click(await screen.findByRole("option", { name: /Custom/ }));
+    await user.click(await screen.findByRole("button", { name: "Frequency, Every 5 minutes" }));
+    await user.click(await screen.findByRole("radio", { name: /Custom/ }));
 
     const cronField = await screen.findByRole("textbox", { name: "Cron expression" });
     await user.clear(cronField);

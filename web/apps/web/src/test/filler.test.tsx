@@ -361,11 +361,11 @@ describe("Filler page", () => {
 
     // Scoped to the editor's region: the page's own Kind/Audience FILTERS share those
     // visible names, which is why the editor is a labelled region in the first place.
-    // Open the editor's Kind select, then pick "trailer" — the listbox portals to the
-    // body (outside the region), so its option is found at the screen level.
+    // Open the editor's Type select, then pick "Trailer": its choices are radios inside the
+    // select's own group, so both are found within the region.
     const editor = await screen.findByRole("region", { name: /edit details: some trailer/i });
-    await userEvent.click(within(editor).getByLabelText("Type"));
-    await userEvent.click(await screen.findByRole("option", { name: "Trailer" }));
+    await userEvent.click(within(editor).getByRole("button", { name: /^Type/ }));
+    await userEvent.click(await within(editor).findByRole("radio", { name: "Trailer" }));
     await userEvent.clear(within(editor).getByLabelText("Advertiser"));
     await userEvent.type(within(editor).getByLabelText("Advertiser"), "Larkspur Bros.");
     await userEvent.click(within(editor).getByRole("button", { name: /save details/i }));
@@ -581,8 +581,8 @@ describe("Filler page", () => {
     await userEvent.click(await screen.findByRole("button", { name: /view details for crunchlings/i }));
     await userEvent.click(await screen.findByRole("button", { name: /^edit details$/i }));
     const editor = await screen.findByRole("region", { name: /edit details: crunchlings/i });
-    await userEvent.click(within(editor).getByLabelText("Audience"));
-    await userEvent.click(await screen.findByRole("option", { name: "Family" }));
+    await userEvent.click(within(editor).getByRole("button", { name: /^Audience/ }));
+    await userEvent.click(await within(editor).findByRole("radio", { name: "Family" }));
     expect(tagPatches).toEqual([]);
     await userEvent.click(within(editor).getByRole("button", { name: /save details/i }));
     await expect.poll(() => tagPatches).toHaveLength(1);
