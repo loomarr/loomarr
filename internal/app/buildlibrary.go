@@ -120,16 +120,20 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Inventory: inv,
 		Disk:      scan.OSDisk{},
 		Managers:  func() []scan.Manager { return managers },
-		NFO:       nfo.New(),
-		Art:       localart.New(),
-		Posters:   libraryPostersOf(deps.images, st),
-		Catalog:   st,
-		Answers:   st,
-		Resolver:  resolver,
-		Header:    libraryHeader(playout.FFprobeSourceNextTo(deps.ffmpegPath, deps.processes)),
-		Enabled:   func() bool { return settings.LibraryScannerEnabled.Get(set) },
-		Now:       time.Now,
-		Log:       deps.log,
+		Discover: func(ctx context.Context) error {
+			_, _, err := roots.Discover(ctx)
+			return err
+		},
+		NFO:      nfo.New(),
+		Art:      localart.New(),
+		Posters:  libraryPostersOf(deps.images, st),
+		Catalog:  st,
+		Answers:  st,
+		Resolver: resolver,
+		Header:   libraryHeader(playout.FFprobeSourceNextTo(deps.ffmpegPath, deps.processes)),
+		Enabled:  func() bool { return settings.LibraryScannerEnabled.Get(set) },
+		Now:      time.Now,
+		Log:      deps.log,
 	}
 	if deps.budget != nil {
 		im.Busy = func() bool { return deps.budget.Sessions() > 0 }

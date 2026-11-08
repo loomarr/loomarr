@@ -341,6 +341,37 @@ func TestImportSidecarChangeRewritesIdentityOnly(t *testing.T) {
 	}
 }
 
+// An arr connected after the folders were set up has none of its folders recorded: the next full
+// pass asks for them first, so its files meet its records without anyone pressing "Check again".
+// Once they are recorded it does not ask again, and an arr with no connection is never asked.
+func TestImportAsksForANewlyConnectedArrsFolders(t *testing.T) {
+	radarr := &fakeLister{records: []mp.Record{{
+		Source: mp.Source{Provider: mp.IDRadarr, Basis: mp.BasisManager}, Kind: mp.KindMovie,
+		IDs:   []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000613"}},
+		Files: []mp.FileRef{{Path: "/movies/Echo (2001)/Echo.mkv"}},
+	}}}
+	h := newHarness(t,
+		Manager{Authority: "radarr", Lister: radarr, Address: func() string { return "http://radarr.invalid" }},
+		Manager{Authority: "sonarr", Lister: &fakeLister{}, Address: func() string { return "" }},
+	)
+	h.file("Echo (2001)/Echo.mkv", 10)
+	var asked int
+	h.im.Discover = func(ctx context.Context) error {
+		asked++
+		return h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
+			Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+		}, time.Now())
+	}
+	h.run()
+	if item := h.item(fileOrigin(h.root, "Echo (2001)/Echo.mkv")); asked != 1 || !hasID(item.ExternalIDs, "tmdb", "90000613") {
+		t.Fatalf("asked %d times, ids %+v; want one ask and Radarr's identity", asked, item.ExternalIDs)
+	}
+	h.run()
+	if asked != 1 {
+		t.Errorf("asked %d times; an arr whose folders are recorded is not asked again", asked)
+	}
+}
+
 // An arr's file is identified by the arr, through the path map; an arr that fails to list leaves
 // the last identity in place rather than demoting the file.
 func TestImportArrIdentityThroughPathMap(t *testing.T) {

@@ -160,7 +160,9 @@ that rating, whether it is stricter or not.
   the `library.path_map` translation, else the one mount whose folder carries the same trailing
   names. A root is always absolute; an ambiguous or missing folder stays unmapped. A discovered
   folder waits for the maintainer's **Use this folder**; one typed by hand is in use at once and
-  must open.
+  must open. The pass runs when Settings → Library or the wizard first finds no folders, on Check
+  again, and before a full scan when a connected arr has none of its folders recorded (an arr
+  connected after the folders were set up).
 - **One path map.** `library_root_paths` holds every authority's name for every folder. A row the
   maintainer edits under "Folders have different names in other apps" is never rewritten by
   discovery; clearing it hands it back.
