@@ -92,22 +92,19 @@ func checkpointSQLite(s Store) error {
 
 type sqliteConformanceOpenFunc func(context.Context, string, bool) (Store, error)
 
-// newSQLiteConformanceStoreFactory gives every conformance assertion a private copy of one
-// migrated, boot-seeded SQLite database (storetest.SQLiteClones).
-func newSQLiteConformanceStoreFactory(t *testing.T) NewStoreFunc {
-	return newSQLiteConformanceStoreFactoryWithOpen(t, Open)
-}
-
+// newSQLiteConformanceStoreFactoryWithOpen gives every conformance assertion a private copy of one
+// migrated, boot-seeded SQLite database (storetest.SQLiteClones), each opened with open.
 func newSQLiteConformanceStoreFactoryWithOpen(t *testing.T, open sqliteConformanceOpenFunc) NewStoreFunc {
 	t.Helper()
 	return storetest.SQLiteClones(t, storetest.OpenFunc[Store](open), checkpointSQLite)
 }
 
-// TestSQLiteConformance runs the shared suite against SQLite. Phase 4 adds the
-// identical call for Postgres.
+// TestSQLiteConformance runs the shared suite against SQLite, then proves every statement it made
+// the store run finds its rows through an index (checkQueryPlans, #2793).
 func TestSQLiteConformance(t *testing.T) {
 	t.Parallel()
-	RunConformance(t, newSQLiteConformanceStoreFactory(t))
+	t.Cleanup(func() { checkQueryPlans(t) })
+	RunConformance(t, newSQLiteConformanceStoreFactoryWithOpen(t, openRecordingSQLite))
 }
 
 func TestNotificationWorkSurvivesStoreRestart(t *testing.T) {
