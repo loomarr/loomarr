@@ -287,9 +287,32 @@ const languageLabel = (code: string): string => {
   return c.toUpperCase();
 };
 
+// countryLabel spells out an ISO 3166 country code ("CA" → "Canada") from the platform's region
+// data, localized to the viewer. Anything that is not a two-letter code (a name already) is shown
+// as written; an unresolvable code is shown upper-cased.
+const countryLabel = (code: string): string => {
+  const c = code.trim();
+  if (!/^[A-Za-z]{2}$/.test(c)) return c;
+  try {
+    const name = new Intl.DisplayNames(undefined, { type: "region" }).of(c.toUpperCase());
+    if (name && name.toLowerCase() !== c.toLowerCase()) return name;
+  } catch {
+    // unresolvable code — fall through
+  }
+  return c.toUpperCase();
+};
+
+// topicLabel turns a taxonomy slug into words: "family-cue" → "Family cue", "fast_food" →
+// "Fast food". Slugs are identifiers, never display text.
+const topicLabel = (slug: string): string => {
+  const words = slug.trim().replace(/[-_]+/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
 export type { Instant };
 export {
   channelNumber,
+  countryLabel,
   formatAgo,
   formatBytes,
   formatClipDuration,
@@ -311,4 +334,5 @@ export {
   parseMmSs,
   pluralize,
   tidyGoDuration,
+  topicLabel,
 };

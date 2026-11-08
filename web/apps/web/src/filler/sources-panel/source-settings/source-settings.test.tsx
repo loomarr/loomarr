@@ -46,6 +46,10 @@ describe("SourceSettings", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /source settings/i }));
     await userEvent.click(screen.getByRole("button", { name: "Remove Ads" }));
+    // The first press only asks, like Delete channel.
+    expect(actions.removeSource).not.toHaveBeenCalled();
+    expect(screen.getByText(/Remove Ads\? Loomarr stops looking here/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Remove source" }));
 
     expect(actions.removeSource).toHaveBeenCalledWith("library:ads");
     expect(screen.getByText("Clips already downloaded stay in your library.")).toBeVisible();

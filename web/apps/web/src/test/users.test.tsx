@@ -388,6 +388,8 @@ describe("Users page", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Manage Grace/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(state.revokes).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(state.revokes).toEqual(["opaque-session-hash"]);
   });
 
@@ -510,6 +512,10 @@ describe("Your account", () => {
 
     const phone = screen.getByText("Safari on iPhone").closest("li") as HTMLElement;
     expect(phone).toHaveTextContent("3h ago");
+    await userEvent.click(within(phone).getByRole("button", { name: "Sign out" }));
+    // The first press only asks; the session ends on the confirm.
+    expect(within(phone).getByText(/that device has to sign in again/i)).toBeInTheDocument();
+    expect(revokes).toEqual([]);
     await userEvent.click(within(phone).getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(revokes).toEqual(["phone"]));
   });
