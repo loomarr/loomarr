@@ -3,28 +3,38 @@
 // hairline on its left edge, no blur, no shadow), and the full-picture covers (error, off-air).
 import { Action, Icon, type IconName, icons, Text } from "@loomarr/design-system";
 import { ArrowLeftRight } from "lucide-react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { type ChannelRow, channel, channels, formatTime, segments, WINDOW } from "./data";
 import { type Density, flat, Tool } from "./flat";
 import { Playbar } from "./playbar";
 
 const Sheet = ({
   children,
+  className,
   density,
+  dimClassName,
   icon,
+  panelStyle,
   title,
 }: {
   children: ReactNode;
+  /** Motion hooks for variants E and F; the earlier variants draw the sheet without them. */
+  className?: string;
   density: Density;
+  dimClassName?: string;
   icon: IconName;
+  /** Overrides on the panel: E tints its surface, F makes it a translucent material. */
+  panelStyle?: CSSProperties;
   title: string;
 }) => (
   <>
     <div
+      className={dimClassName}
       style={{ background: flat.dim, inset: 0, pointerEvents: "none", position: "absolute", zIndex: 39 }}
     />
     <div
       aria-label={title}
+      className={className}
       role="dialog"
       style={{
         background: flat.raised,
@@ -38,6 +48,7 @@ const Sheet = ({
         top: 0,
         width: density === "touch" ? 384 : 416,
         zIndex: 40,
+        ...panelStyle,
       }}
     >
       <div
@@ -218,15 +229,25 @@ const SettingsBody = ({ density }: { density: Density }) => (
 );
 
 // Variant C's More sheet: everything the four-control screen leaves out, the strip included.
-const MoreBody = ({ density, behind }: { behind: boolean; density: Density }) => (
+const MoreBody = ({
+  density,
+  behind,
+  plain = false,
+}: {
+  behind: boolean;
+  density: Density;
+  /** Sentence-case section labels (variants E and F). */
+  plain?: boolean;
+}) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
     <div>
-      <Text density={density} shout textRole="cardMeta" tone="muted">
+      <Text density={density} shout={!plain} strong={plain} textRole="cardMeta" tone="muted">
         Schedule
       </Text>
       <div style={{ marginTop: 14 }}>
         <Playbar
           density="touch"
+          plain={plain}
           playheadMs={behind ? WINDOW.nowMs - 134_000 : WINDOW.nowMs}
           pointer={false}
           segments={segments}

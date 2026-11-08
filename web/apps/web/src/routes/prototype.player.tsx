@@ -1,12 +1,15 @@
 // PROTOTYPE — throwaway (Direction mocks, 2026-11-08)
 // /prototype/player — the video player's on-screen chrome, flat. A: today's structure, flattened.
 // B: A plus a tuner (channel down / up). C: a television's on-screen display (the design review's
-// structure). D: C's structure with the content and type of a shipped player. Switch with [ ] variant, , . state, D device, T tint.
+// structure). D: C's structure with the content and type of a shipped player. E: D polished (logo,
+// artwork tint, motion, scrub preview), flat. F: E in Apple-style glass. Switch with [ ] variant, , . state, D device, T tint.
 import { ThemeScope } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
+import { DinerFrame } from "@/prototype-direction/player/art";
 import { ClassicChrome } from "@/prototype-direction/player/chrome-classic";
-import { RichChrome } from "@/prototype-direction/player/chrome-rich";
 import { OsdChrome } from "@/prototype-direction/player/chrome-osd";
+import { PolishedChrome } from "@/prototype-direction/player/chrome-polished";
+import { RichChrome } from "@/prototype-direction/player/chrome-rich";
 import { channel } from "@/prototype-direction/player/data";
 import { PlayerStyles } from "@/prototype-direction/player/flat";
 import {
@@ -36,6 +39,7 @@ const PlayerPrototype = () => {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const scenario = scenarioOf(search.state as (typeof STATES)[number]);
+  const polished = search.variant === "E" || search.variant === "F";
   const props = {
     device: search.device,
     scenario,
@@ -56,8 +60,10 @@ const PlayerPrototype = () => {
       <ProtoFrame device={search.device}>
         <ThemeScope theme="dark">
           <PlayerStyles />
-          <LivePicture />
-          {search.variant === "D" ? (
+          {polished ? <DinerFrame /> : <LivePicture />}
+          {polished ? (
+            <PolishedChrome {...props} material={search.variant === "F" ? "glass" : "flat"} />
+          ) : search.variant === "D" ? (
             <RichChrome {...props} />
           ) : search.variant === "C" ? (
             <OsdChrome {...props} />

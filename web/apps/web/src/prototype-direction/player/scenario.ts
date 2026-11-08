@@ -22,6 +22,8 @@ const VARIANTS = [
   { key: "B", name: "Flat B2 + tuner" },
   { key: "C", name: "On-screen display" },
   { key: "D", name: "Rich flat" },
+  { key: "E", name: "Polished flat" },
+  { key: "F", name: "Glass" },
 ] as const;
 
 const DEVICES = ["desktop", "portrait", "landscape"] as const;

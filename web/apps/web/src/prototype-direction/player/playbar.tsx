@@ -158,11 +158,13 @@ interface PlaybarProps {
   /** Programme or break id drawn as hovered, with its preview card open. */
   hovered?: string;
   playheadMs: number;
+  /** Sentence-case labels: "Live", not "LIVE" (variants E and F). */
+  plain?: boolean;
   pointer: boolean;
   segments: readonly Segment[];
 }
 
-const Playbar = ({ density, hovered, playheadMs, pointer, segments }: PlaybarProps) => {
+const Playbar = ({ density, hovered, plain = false, playheadMs, pointer, segments }: PlaybarProps) => {
   const { ref, width } = useWidth();
   const { boxes, xAt } = layout(segments, width);
   const head = xAt(Math.min(playheadMs, WINDOW.nowMs));
@@ -265,7 +267,7 @@ const Playbar = ({ density, hovered, playheadMs, pointer, segments }: PlaybarPro
               </Text>
             </span>
             <span style={{ left: liveX, position: "absolute", transform: "translateX(-50%)" }}>
-              <Text density={density} shout strong textRole="cardMeta" tone="live">
+              <Text density={density} shout={!plain} strong textRole="cardMeta" tone="live">
                 Live
               </Text>
             </span>

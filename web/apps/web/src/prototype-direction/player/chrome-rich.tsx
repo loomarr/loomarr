@@ -7,7 +7,7 @@
 import { Text } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import type { ChromeProps } from "./chrome-classic";
-import { b1, channel, formatTime, lastChannel, MINUTE, NOW, nowMeta, segments } from "./data";
+import { b1, channel, formatTime, lastChannel, MINUTE, NOW, nowMeta, type Programme, segments } from "./data";
 import { type Density, flat, GoLive, LastChannel, PlayDisc, scrimStyle, Tool } from "./flat";
 import { useWidth } from "./playbar";
 import type { Scenario } from "./scenario";
@@ -506,4 +506,9 @@ const RichChrome = ({ device, scenario, tint, tintFor }: ChromeProps) => {
   );
 };
 
-export { RichChrome };
+// Variants E and F build on D's data, its time-true timeline and its small parts. Re-bound here so
+// the guard above narrows them for the importer too.
+const nowProgramme: Programme = current;
+const nextProgramme: Programme = next;
+
+export { BreakBadge, nextProgramme, nowProgramme, RatingBadge, RichChrome, SPAN, timeline };

@@ -21,6 +21,8 @@ interface Spot {
 
 interface Programme {
   chips: string[];
+  /** The artwork's average colour, as the real ImageDTO carries it. Variants E and F tint from it. */
+  dominantHex: string;
   id: string;
   kind: "programme";
   line: string;
@@ -60,6 +62,7 @@ const programme = (
   synopsis: string,
 ): Programme => ({
   chips,
+  dominantHex: "#222222",
   id,
   kind: "programme",
   line,
@@ -106,16 +109,20 @@ const segments: Segment[] = [
     "A night crew bluffs through inspection day.",
   ),
   b1,
-  programme(
-    "p2",
-    -9,
-    13,
-    "The Diner Years",
-    'S2 E4 "Opening Night"',
-    20,
-    ["S2 E4", "TV-PG", "Comedy"],
-    "Two friends open a diner and learn the hard way who their regulars are.",
-  ),
+  {
+    ...programme(
+      "p2",
+      -9,
+      13,
+      "The Diner Years",
+      'S2 E4 "Opening Night"',
+      20,
+      ["S2 E4", "TV-PG", "Comedy"],
+      "Two friends open a diner and learn the hard way who their regulars are.",
+    ),
+    // Matches the diner picture in art.tsx: warm brown walls, amber light.
+    dominantHex: "#34211a",
+  },
   b2,
   {
     ...programme(
