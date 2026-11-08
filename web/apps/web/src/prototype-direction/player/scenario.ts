@@ -21,7 +21,14 @@ const STATES = [
   // H only: the signature tune playing once (CH 7 to CH 9), and the same with a slow stream, which
   // holds on the bars until the picture arrives. Other variants draw both as "playing".
   "tune",
+  "cold-tune",
   "slow-tune",
+  // H only: the top-right utility cluster with a tooltip showing, and its panels. The other variants
+  // draw all four as "playing".
+  "chrome-top",
+  "subtitles",
+  "audio",
+  "details",
 ] as const;
 type PlayerState = (typeof STATES)[number];
 
@@ -61,8 +68,14 @@ interface Scenario {
   /** The same on a phone, where the episode's name has no room. */
   programmeShort: string;
   sheet?: "channels" | "more";
+  /** Variant H: a cold start, so the tune is paced by a real wait (about two seconds). */
+  cold?: boolean;
+  /** Variant H: the panel open from the top cluster. */
+  panel?: "audio" | "details" | "subtitles";
   /** Variant H: the stream is slow, so the tune holds on the bars until the picture arrives. */
   slow?: boolean;
+  /** Variant H: keep the Leave tooltip showing, for the still. */
+  topTip?: boolean;
   state: PlayerState;
   /** Variant G: the viewer is flipping channels (the strip is up). */
   surfing?: boolean;
@@ -141,8 +154,16 @@ const scenarioFor = (state: PlayerState): Omit<Scenario, "state"> => {
       return { ...base, tuning: true };
     case "tune":
       return { ...base, tune: true };
+    case "cold-tune":
+      return { ...base, cold: true, tune: true };
     case "slow-tune":
       return { ...base, slow: true, tune: true };
+    case "chrome-top":
+      return { ...base, topTip: true };
+    case "subtitles":
+    case "audio":
+    case "details":
+      return { ...base, panel: state };
     case "channels":
       return { ...base, sheet: "channels" };
     case "more":

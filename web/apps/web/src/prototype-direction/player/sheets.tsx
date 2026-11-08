@@ -22,7 +22,7 @@ const Sheet = ({
   className?: string;
   density: Density;
   dimClassName?: string;
-  icon: IconName;
+  icon?: IconName;
   /** Overrides on the panel: E tints its surface, F makes it a translucent material. */
   panelStyle?: CSSProperties;
   title: string;
@@ -60,7 +60,7 @@ const Sheet = ({
           padding: "6px 8px 6px 16px",
         }}
       >
-        <Icon color={flat.textSecondary} decorative glyph={icons[icon]} size="compact" />
+        {icon ? <Icon color={flat.textSecondary} decorative glyph={icons[icon]} size="compact" /> : null}
         <div style={{ flex: 1 }}>
           <Text as="h2" density={density} textRole="label" tone="primary">
             {title}
@@ -347,4 +347,4 @@ const Cover = ({ density, kind }: { density: Density; kind: keyof typeof copy })
 };
 
 export type { ChannelRow };
-export { ChannelList, Cover, MoreBody, NumberBlock, SettingsBody, Sheet };
+export { ChannelList, Cover, MoreBody, NumberBlock, Row, SettingsBody, Sheet };

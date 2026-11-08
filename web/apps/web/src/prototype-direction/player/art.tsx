@@ -142,6 +142,34 @@ const posterSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="3
 const detectivePosterUri = toUri(posterSvg);
 
 // ---------------------------------------------------------------------------------------------
+// Fanart (a programme's backdrop) for "A heist film", CH 9: a night vault job drawn in a few shapes,
+// a steel door behind laser lines and a skyline. Landscape, 16:9, dark enough to dim further. The
+// real app takes backdrops from the library (#2567 imports them as RoleBackdrop with dominantHex).
+
+const heistFanartSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+<defs>
+  <linearGradient id="h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1a2c"/><stop offset="1" stop-color="#05080f"/></linearGradient>
+  <radialGradient id="g" cx="0.62" cy="0.5" r="0.5"><stop offset="0" stop-color="#4fa3b5" stop-opacity="0.55"/><stop offset="1" stop-color="#4fa3b5" stop-opacity="0"/></radialGradient>
+  <filter id="b"><feGaussianBlur stdDeviation="3"/></filter>
+</defs>
+<rect width="1600" height="900" fill="url(#h)"/>
+<rect width="1600" height="900" fill="url(#g)"/>
+<g fill="#07101b">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => `<rect x="${i * 170 - 20}" y="${560 - ((i * 53) % 150)}" width="${120 + ((i * 29) % 50)}" height="400"/>`).join("")}</g>
+<g transform="translate(990 440)">
+  <circle r="300" fill="#16293b" stroke="#0a1420" stroke-width="14"/>
+  <circle r="236" fill="#1d3448" stroke="#0a1420" stroke-width="8"/>
+  <circle r="150" fill="#16293b" stroke="#6fb5c4" stroke-opacity="0.45" stroke-width="3"/>
+  ${[0, 45, 90, 135].map((d) => `<rect x="-6" y="-236" width="12" height="472" fill="#0a1420" transform="rotate(${d})"/>`).join("")}
+  <circle r="34" fill="#0a1420"/><circle r="14" fill="#6fb5c4" opacity="0.8"/>
+</g>
+<g stroke="#ff5a5f" stroke-width="3" filter="url(#b)" opacity="0.7"><path d="M0 250 L1600 470"/><path d="M0 700 L1600 310"/><path d="M300 0 L900 900"/></g>
+<g stroke="#ffb3b6" stroke-width="1.2" opacity="0.85"><path d="M0 250 L1600 470"/><path d="M0 700 L1600 310"/><path d="M300 0 L900 900"/></g>
+<rect width="1600" height="900" fill="#000" opacity="0.18"/>
+</svg>`;
+
+const heistFanartUri = toUri(heistFanartSvg);
+
+// ---------------------------------------------------------------------------------------------
 // The artwork's dominant colour, and what the chrome takes from it. The real ImageDTO carries
 // `dominantHex`; a hue and a few fixed saturations/lightnesses turn it into a scrim, a set of solid
 // surfaces and an accent, so each programme's chrome is its own and never louder than the picture.
@@ -185,4 +213,4 @@ const tintOf = (hex: string): Tint => {
 };
 
 export type { Tint };
-export { DinerFrame, detectivePosterUri, dinerFrameUri, tintOf, WORDMARK_RATIO, wordmarkUri };
+export { DinerFrame, detectivePosterUri, dinerFrameUri, heistFanartUri, tintOf, WORDMARK_RATIO, wordmarkUri };
