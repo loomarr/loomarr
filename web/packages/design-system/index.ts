@@ -71,8 +71,14 @@ export {
 } from "./src/loading";
 export type { LogoSceneKind, LogoSceneProps } from "./src/logo-scene";
 export { LogoScene } from "./src/logo-scene";
-export type { MenuActionProps, MenuContentProps, MenuProps, MenuTriggerProps } from "./src/menu";
-export { Menu, MenuAction, MenuContent, MenuTrigger } from "./src/menu";
+export type {
+  MenuActionProps,
+  MenuContentProps,
+  MenuGroupProps,
+  MenuProps,
+  MenuTriggerProps,
+} from "./src/menu";
+export { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "./src/menu";
 export type { ModalLayerProps } from "./src/modal-layer";
 export { ModalLayer } from "./src/modal-layer";
 export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";

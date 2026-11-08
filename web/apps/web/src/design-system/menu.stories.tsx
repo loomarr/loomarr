@@ -1,4 +1,4 @@
-import { Action, Menu, MenuAction, MenuContent, MenuTrigger, Text } from "@loomarr/design-system";
+import { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MoreVertical, Pause, Pencil, Trash2, Tv } from "lucide-react";
 
@@ -32,26 +32,14 @@ const MenuWorkshop = ({ armed = false }: MenuWorkshopProps) => (
           Pause
         </MenuAction>
         {armed ? (
-          <div
-            style={{
-              backgroundColor: "var(--stateDangerSurface)",
-              borderRadius: 6,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-              padding: 8,
-            }}
-          >
-            <Text textRole="caption">Delete Morning Cartoons for good? This can't be undone.</Text>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Action density="pointer" onPress={() => {}} variant="destructive">
-                Delete
-              </Action>
-              <Action density="pointer" onPress={() => {}} variant="ghost">
-                Cancel
-              </Action>
-            </div>
-          </div>
+          <MenuGroup label="Delete Morning Cartoons for good? This can't be undone." tone="danger">
+            <MenuAction closeOnSelect={false} onSelect={() => {}} tone="danger">
+              Delete
+            </MenuAction>
+            <MenuAction closeOnSelect={false} onSelect={() => {}}>
+              Cancel
+            </MenuAction>
+          </MenuGroup>
         ) : (
           <MenuAction
             closeOnSelect={false}
