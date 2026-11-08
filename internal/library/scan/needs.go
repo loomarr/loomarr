@@ -70,6 +70,19 @@ func (l *Library) Link(ctx context.Context, itemID, tmdbID string) error {
 	return l.answer(ctx, itemID, store.LibraryAnswer{TMDBID: tmdbID})
 }
 
+// MatchBySearch answers a title for the Matcher: a search agreed it is the TMDB title tmdbID
+// (decision 56). A title the maintainer answered meanwhile keeps their answer.
+func (l *Library) MatchBySearch(ctx context.Context, itemID, tmdbID string) error {
+	_, origin, err := l.origin(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if _, answered, err := l.NeedStore.LibraryAnswerFor(ctx, origin); err != nil || answered {
+		return err
+	}
+	return l.answer(ctx, itemID, store.LibraryAnswer{TMDBID: tmdbID, By: store.AnsweredBySearch})
+}
+
 // Ignore answers a title: it is not one. It leaves the Library and Needs you.
 func (l *Library) Ignore(ctx context.Context, itemID string) error {
 	return l.answer(ctx, itemID, store.LibraryAnswer{Ignored: true})

@@ -46,6 +46,7 @@ const MATCH_WORDS: Record<LibraryTitleMatch["by"], (app?: string) => string> = {
   app: (app) => `Recognised from ${app ?? "the app that manages it"}`,
   file: () => "Recognised from the file",
   you: () => "You picked it",
+  search: () => "Recognised by its name, year and length",
   none: () => "Not recognised yet",
 };
 

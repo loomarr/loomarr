@@ -152,6 +152,73 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 	}
 }
 
+// A movie nothing grounds is matched by its search when exactly one result agrees on its name,
+// year and length (decision 56): it leaves Needs you, decided by the search. Two agreeing results
+// are a guess, and wait for the maintainer (58). The maintainer's answer replaces the search's.
+func TestMatcherSettlesAMovieOnlyWhenOneResultAgrees(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name    string
+		hits    []SearchHit
+		settled string
+	}{
+		{"one agrees", []SearchHit{
+			{Kind: "movie", TMDBID: "90000311", Name: "Mystery Film", Year: 2002},
+			{Kind: "movie", TMDBID: "90000312", Name: "Mystery Film", Year: 1971},
+		}, "90000311"},
+		{"two agree", []SearchHit{
+			{Kind: "movie", TMDBID: "90000311", Name: "Mystery Film", Year: 2002},
+			{Kind: "movie", TMDBID: "90000313", Name: "Mystery Film", Year: 2003},
+		}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.im.Answers = h.st
+			h.file("Mystery Film (2002)/Mystery Film (2002).mkv", 10)
+			h.run()
+			lib := &Library{NeedStore: h.st, ItemStore: h.st, Inventory: h.inv}
+			// Every candidate runs 22 minutes, as long as the harness's file.
+			catalog := &fakeCatalog{records: map[string]mp.Record{}}
+			for _, hit := range tc.hits {
+				catalog.records[hit.TMDBID] = mp.Record{Kind: mp.KindMovie, Descriptive: &mp.Descriptive{Runtime: 22 * time.Minute}}
+			}
+			search := &fakeSearch{hits: tc.hits}
+			m := &Matcher{Store: h.st, Search: search.search, Provider: catalog, Inventory: h.inv, Match: lib.MatchBySearch}
+			if err := m.Tick(ctx); err != nil {
+				t.Fatal(err)
+			}
+			h.run()
+			origin := fileOrigin(h.root, "Mystery Film (2002)/Mystery Film (2002).mkv")
+			item := h.item(origin)
+			needs, _ := lib.Needs(ctx)
+			if tc.settled == "" {
+				if len(needs) != 1 || hasID(item.ExternalIDs, "tmdb", "90000311") {
+					t.Fatalf("needs %d, ids %+v; want it left to the maintainer", len(needs), item.ExternalIDs)
+				}
+				return
+			}
+			listed, err := h.st.LibraryItem(ctx, string(item.ID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(needs) != 0 || !hasID(item.ExternalIDs, "tmdb", tc.settled) || DecidedBy(listed.Match) != DecidedBySearch {
+				t.Fatalf("needs %d, ids %+v, decided by %q; want it matched by the search",
+					len(needs), item.ExternalIDs, DecidedBy(listed.Match))
+			}
+
+			if err := lib.Link(ctx, string(item.ID), "90000312"); err != nil {
+				t.Fatal(err)
+			}
+			h.run()
+			item = h.item(origin)
+			listed, _ = h.st.LibraryItem(ctx, string(item.ID))
+			if !hasID(item.ExternalIDs, "tmdb", "90000312") || DecidedBy(listed.Match) != DecidedByYou {
+				t.Fatalf("ids %+v, decided by %q; want the maintainer's answer", item.ExternalIDs, DecidedBy(listed.Match))
+			}
+		})
+	}
+}
+
 // Linking a title to one already in the library makes its file a copy of that title; taking the
 // link back, by the id the maintainer answered, finds the file there and splits it out again.
 func TestTakingBackALinkSplitsTheCopyOut(t *testing.T) {

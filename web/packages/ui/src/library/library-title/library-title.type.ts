@@ -66,10 +66,11 @@ interface LibraryTitleDetail {
 
 /**
  * What decides which title this is, for "Wrong title?" (decision 26): the app that manages it, the
- * file itself (an id in its name, or an NFO), the household's answer, or nothing yet.
+ * file itself (an id in its name, or an NFO), the household's answer, a TMDB search that agreed on
+ * its name, year and length (decision 56), or nothing yet.
  */
 interface LibraryTitleMatch {
-  by: "app" | "file" | "you" | "none";
+  by: "app" | "file" | "you" | "search" | "none";
   /** The app's name, such as Sonarr, when by is app. */
   app?: string;
 }

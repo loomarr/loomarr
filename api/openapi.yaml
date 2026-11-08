@@ -6897,11 +6897,12 @@ components:
             - radarr
           type: string
         by:
-          description: "What says which title this is: the app that manages it, the file itself (an id in its name, or an NFO beside it), your answer, or nothing yet"
+          description: "What says which title this is: the app that manages it, the file itself (an id in its name, or an NFO beside it), your answer, a TMDB search that agreed on name, year and length, or nothing yet"
           enum:
             - app
             - file
             - you
+            - search
             - none
           type: string
         page:
