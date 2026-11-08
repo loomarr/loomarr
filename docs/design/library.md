@@ -519,6 +519,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
   a file the scanner skips, a title waiting in Needs you. The gate passes with no
   unexplained presence or identity finding and at least 99.5% of durations agreeing; a live
   channel check follows before the cutover.
+- **The id map** (step 15a). The cutover rewrites every stored media-server item id into a library
+  item id. Media-server origins in the inventory exist only for what playout has played, so the
+  ids are paired the same way the parity gate pairs files:
+  - A movie or episode maps to the library item its file was written as, matched by path.
+  - A series maps to the one show its paired episodes were written under.
+  - An id that doesn't pair keeps the reason: the path map doesn't cover it, the scanner hasn't
+    found the file, the scanner skips it, the file isn't a title yet, or versions or episodes
+    disagree.
+
+  `scan.IDMapper` replaces `library_id_map` every six hours while a media server is connected. A
+  pass that can't list the catalog, or lists nothing, leaves the last map. `eval library-parity`
+  prints the map's coverage.
 
 ## Cached series episodes
 

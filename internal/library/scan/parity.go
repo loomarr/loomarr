@@ -305,23 +305,9 @@ type ParityStore interface {
 // ParityFiles reads every present file under the folders in use, with what its inventory item
 // says; the folders in use; and the path map discovery derived, the media server's rows first.
 func ParityFiles(ctx context.Context, st ParityStore, inv inventory.Service) ([]ParityFile, []string, library.PathMap, error) {
-	all, err := st.LibraryRoots(ctx)
+	roots, pathMap, err := rootsInUse(ctx, st)
 	if err != nil {
 		return nil, nil, nil, err
-	}
-	var roots []string
-	for _, r := range all.Roots {
-		if r.InUse {
-			roots = append(roots, r.Path)
-		}
-	}
-	paths := slices.Clone(all.Paths)
-	slices.SortStableFunc(paths, func(a, b store.LibraryRootPath) int {
-		return cmp.Compare(appRank(a.Authority), appRank(b.Authority))
-	})
-	var rules []string
-	for _, p := range paths {
-		rules = append(rules, p.AuthorityPath+"=>"+p.RootPath)
 	}
 	var out []ParityFile
 	for _, root := range roots {
@@ -342,7 +328,31 @@ func ParityFiles(ctx context.Context, st ParityStore, inv inventory.Service) ([]
 			out = append(out, file)
 		}
 	}
-	return out, roots, library.ParsePathMap(strings.Join(rules, "\n")), nil
+	return out, roots, pathMap, nil
+}
+
+// rootsInUse is the folders in use and the path map discovery derived, the media server's rows
+// first: they are the paths a media-server file names.
+func rootsInUse(ctx context.Context, st ParityStore) ([]string, library.PathMap, error) {
+	all, err := st.LibraryRoots(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	var roots []string
+	for _, r := range all.Roots {
+		if r.InUse {
+			roots = append(roots, r.Path)
+		}
+	}
+	paths := slices.Clone(all.Paths)
+	slices.SortStableFunc(paths, func(a, b store.LibraryRootPath) int {
+		return cmp.Compare(appRank(a.Authority), appRank(b.Authority))
+	})
+	var rules []string
+	for _, p := range paths {
+		rules = append(rules, p.AuthorityPath+"=>"+p.RootPath)
+	}
+	return roots, library.ParsePathMap(strings.Join(rules, "\n")), nil
 }
 
 // appRank puts the media server's own folder names first: they are the paths the report maps.

@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -75,10 +77,43 @@ func runLibraryParity(ctx context.Context, args []string, getenv func(string) st
 		}
 	}
 	writeParitySummary(stdout, result)
+	var rows []store.LibraryFile
+	for _, root := range roots {
+		got, err := st.LibraryFiles(ctx, root)
+		if err != nil {
+			return commandError(stderr, libraryParityName, "read the scanner's files", err)
+		}
+		rows = append(rows, got...)
+	}
+	writeIDMapSummary(stdout, scan.IDMap(server, rows, paths))
 	if !result.Passed() {
 		return 1
 	}
 	return 0
+}
+
+// writeIDMapSummary prints how many of the media server's ids the cutover's id map pairs (#2151
+// step 15a), per kind, and how many fail to pair for each reason.
+func writeIDMapSummary(w io.Writer, mappings []store.LibraryIDMapping) {
+	paired, total, reasons := map[string]int{}, map[string]int{}, map[string]int{}
+	for _, m := range mappings {
+		total[m.Kind]++
+		if m.ItemID != "" {
+			paired[m.Kind]++
+		} else {
+			reasons[m.Kind+": "+m.Reason]++
+		}
+	}
+	var b strings.Builder
+	b.WriteString("\nid map:\n")
+	for _, kind := range []string{"movie", "episode", "series"} {
+		fmt.Fprintf(&b, "  %-8s paired %d of %d\n", kind, paired[kind], total[kind])
+	}
+	keys := slices.Sorted(maps.Keys(reasons))
+	for _, key := range keys {
+		fmt.Fprintf(&b, "  %6d  unpaired %s\n", reasons[key], key)
+	}
+	_, _ = io.WriteString(w, b.String())
 }
 
 // writeParitySummary prints the counts, each explained group's size, and every unexplained finding.

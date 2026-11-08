@@ -204,6 +204,19 @@ tables:
       role: What they did on it, one of actor, creator, director or writer.
       character_name: An actor's part; empty for crew or when unknown.
 
+  - name: library_id_map
+    about: >
+      The cutover's id map: each media-server item id Loomarr may have stored, and the library item
+      it names. Movies and episodes pair by file path through the derived path map; a series pairs
+      through its episodes. Replaced whole on each pass while the media server still lists the
+      catalog, and read once by the cutover's rewrite.
+    columns:
+      media_id: The media server's item id.
+      kind: movie, episode or series.
+      item_id: The library item it names (a library_items id); empty when it did not pair.
+      reason: Why it did not pair; empty when it did.
+      mapped_at_ms: When the pass that wrote it ran, in Unix milliseconds.
+
   - name: library_credits
     about: >
       A title's credits: its cast in billing order, then its key crew (creators, directors, writers).
