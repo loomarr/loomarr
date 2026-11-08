@@ -120,11 +120,11 @@ func TestSeriesAndEpisodeArtwork(t *testing.T) {
 	root := fixture(t)
 	show := filepath.Join(root, "tv", "Dune Office")
 	got := fetch(t, mp.KindSeries, show)
-	if got[mp.KindPoster] != filepath.Join(show, "poster.jpg") || got[mp.KindFanart] !=filepath.Join(show, "backdrop.webp") || len(got) != 2 {
+	if got[mp.KindPoster] != filepath.Join(show, "poster.jpg") || got[mp.KindFanart] != filepath.Join(show, "backdrop.webp") || len(got) != 2 {
 		t.Errorf("series artwork = %v", got)
 	}
 	got = fetch(t, mp.KindEpisode, filepath.Join(show, "Season 01", "Dune Office S01E01.mkv"))
-	if len(got) != 1 || got[mp.KindThumb] !=filepath.Join(show, "Season 01", "Dune Office S01E01-thumb.jpg") {
+	if len(got) != 1 || got[mp.KindThumb] != filepath.Join(show, "Season 01", "Dune Office S01E01-thumb.jpg") {
 		t.Errorf("episode artwork = %v", got)
 	}
 }

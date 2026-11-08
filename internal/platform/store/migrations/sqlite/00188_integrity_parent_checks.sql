@@ -15,9 +15,11 @@ DROP INDEX idx_user_favourite_channels_channel;
 DROP INDEX idx_user_recent_channels_channel;
 DROP INDEX idx_user_recent_channels_user_tuned;
 DROP INDEX idx_airings_channel;
+DROP INDEX idx_scheduled_airings_channel;
 ALTER TABLE user_favourite_channels RENAME TO user_favourite_channels_old;
 ALTER TABLE user_recent_channels RENAME TO user_recent_channels_old;
 ALTER TABLE airings RENAME TO airings_old;
+ALTER TABLE scheduled_airings RENAME TO scheduled_airings_old;
 ALTER TABLE channels RENAME TO channels_old;
 CREATE TABLE channels (
     id                 TEXT   PRIMARY KEY,
@@ -69,6 +71,14 @@ CREATE TABLE airings (
     key             TEXT   NOT NULL DEFAULT '',
     PRIMARY KEY (channel_id, library_item_id, aired_at)
 );
+CREATE TABLE scheduled_airings (
+    channel_id      TEXT   NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    library_item_id TEXT   NOT NULL,
+    aired_at        BIGINT NOT NULL,
+    recorded_at     BIGINT NOT NULL,
+    key             TEXT   NOT NULL DEFAULT '',
+    PRIMARY KEY (channel_id, library_item_id, aired_at)
+);
 INSERT INTO channels (id, intent_ref, name, number, grp, logo, strategy, tunarr_id, status, shuffle_seed,
     lineup_json, desired_json, reconcile_deadline, updated_at, policy_json, broadcast_codec, revision,
     playout_anchor, created_at, intent_json, requested_by)
@@ -82,9 +92,12 @@ INSERT INTO user_recent_channels (user_id, channel_id, tuned_at_ms)
 SELECT user_id, channel_id, tuned_at_ms FROM user_recent_channels_old;
 INSERT INTO airings (channel_id, library_item_id, aired_at, recorded_at, key)
 SELECT channel_id, library_item_id, aired_at, recorded_at, key FROM airings_old;
+INSERT INTO scheduled_airings (channel_id, library_item_id, aired_at, recorded_at, key)
+SELECT channel_id, library_item_id, aired_at, recorded_at, key FROM scheduled_airings_old;
 DROP TABLE user_favourite_channels_old;
 DROP TABLE user_recent_channels_old;
 DROP TABLE airings_old;
+DROP TABLE scheduled_airings_old;
 DROP TABLE channels_old;
 CREATE UNIQUE INDEX idx_channels_number ON channels (number);
 CREATE INDEX idx_channels_status_deadline ON channels (status, reconcile_deadline);
@@ -93,6 +106,7 @@ CREATE INDEX idx_user_favourite_channels_channel ON user_favourite_channels (cha
 CREATE INDEX idx_user_recent_channels_channel ON user_recent_channels (channel_id);
 CREATE INDEX idx_user_recent_channels_user_tuned ON user_recent_channels (user_id, tuned_at_ms DESC);
 CREATE INDEX idx_airings_channel ON airings (channel_id, recorded_at);
+CREATE INDEX idx_scheduled_airings_channel ON scheduled_airings (channel_id, recorded_at);
 
 -- filler_acquisition_runs and filler_pulls, and the children they share -------------------------
 DROP INDEX idx_filler_acquisition_runs_recent;

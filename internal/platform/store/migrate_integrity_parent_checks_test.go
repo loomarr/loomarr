@@ -10,10 +10,10 @@ import (
 
 // integrityParentChecksMigration rebuilds the referenced tables, with every descendant, so their
 // state columns carry CHECKs (#2528).
-const integrityParentChecksMigration = 185
+const integrityParentChecksMigration = 188
 
 var integrityParentRebuilt = []string{
-	"channels", "user_favourite_channels", "user_recent_channels", "airings",
+	"channels", "user_favourite_channels", "user_recent_channels", "airings", "scheduled_airings",
 	"filler_acquisition_runs", "filler_pulls", "filler_acquisition_artifacts", "filler_pull_commits",
 	"filler_sources", "filler_source_check_outcomes",
 	"inventory_sources", "inventory_source_origins", "inventory_source_measurements", "inventory_source_analysis",
@@ -51,6 +51,7 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 	for _, stmt := range []string{
 		`INSERT INTO channels (id, name, number, strategy, status) VALUES ('ch1', 'Cartoons', 3, 'shuffle', 'live')`,
 		`INSERT INTO airings (channel_id, library_item_id, aired_at, recorded_at) VALUES ('ch1', 'ep1', 1, 1)`,
+		`INSERT INTO scheduled_airings (channel_id, library_item_id, aired_at, recorded_at) VALUES ('ch1', 'ep1', 1, 1)`,
 		`INSERT INTO library_items (id, kind, name, sort_name, updated_at_ms) VALUES ('m1', 'movie', 'Film', 'film', 1)`,
 		`INSERT INTO library_sources (item_id, path) VALUES ('m1', '/m/film.mkv')`,
 		`INSERT INTO library_streams (item_id, path, stream_index, kind) VALUES ('m1', '/m/film.mkv', 0, 'video')`,
@@ -92,6 +93,7 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 	}
 	for query, want := range map[string]int{
 		`SELECT count(*) FROM airings WHERE channel_id = 'ch1'`:                      1,
+		`SELECT count(*) FROM scheduled_airings WHERE channel_id = 'ch1'`:            1,
 		`SELECT count(*) FROM library_streams WHERE item_id = 'm1'`:                  1,
 		`SELECT count(*) FROM library_art WHERE kind = 'poster'`:                     1,
 		`SELECT count(*) FROM library_art WHERE kind = 'headshot'`:                   0,
@@ -124,7 +126,8 @@ func TestIntegrityParentChecksMigration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n := count(`SELECT (SELECT count(*) FROM airings) + (SELECT count(*) FROM library_streams)`); n != 0 {
+	if n := count(`SELECT (SELECT count(*) FROM airings) + (SELECT count(*) FROM scheduled_airings)
+		+ (SELECT count(*) FROM library_streams)`); n != 0 {
 		t.Errorf("%d child rows outlived their deleted parents", n)
 	}
 }

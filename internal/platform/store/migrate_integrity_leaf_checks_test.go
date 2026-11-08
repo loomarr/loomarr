@@ -11,7 +11,7 @@ import (
 
 // integrityLeafChecksMigration rebuilds the unreferenced tables with CHECKs on their state columns
 // and indexes the foreign keys that lacked one (#2528).
-const integrityLeafChecksMigration = 184
+const integrityLeafChecksMigration = 187
 
 var integrityLeafRebuilt = []string{
 	"activity", "diagnostic_process_runs", "filler_acquisition_artifacts", "filler_clip_defects",
