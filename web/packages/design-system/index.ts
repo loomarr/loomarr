@@ -17,6 +17,8 @@ export {
 export { Card } from "./src/card";
 export type { CompactSelectOption, CompactSelectProps } from "./src/compact-select";
 export { CompactSelect } from "./src/compact-select";
+export type { DateFieldProps } from "./src/date-field";
+export { DateField } from "./src/date-field";
 export type {
   DialogActionProps,
   DialogContentProps,
