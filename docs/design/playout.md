@@ -267,7 +267,10 @@ its name, dates and an "In effect now" badge, then its picture chips (a small pi
 holiday with one picture shows it inline, with no choice), and the chosen picture is written to
 `policy.watermark.motifs`. `GET /v1/channels/{id}/watermark/preview` returns the PNG that airs for a
 given look, holiday and picture (query parameters, all optional), and carries the host's overlay state in
-`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. It
+`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. The
+preview is white whenever any working encoder airs the logo white, since the channel may air on that
+one. Previews render under their own lock, never the one a tune's bug renders under, into a preview
+cache pruned to the 64 most recently used files (#1949). It
 refuses with 422, rather than drawing a default, a look, colour, holiday or picture it does not know
 and a picture that is not one of the named holiday's own. With
 `motifOnly=1` (and a holiday) it returns that holiday's picture alone as a 48 px square, drawn by the
