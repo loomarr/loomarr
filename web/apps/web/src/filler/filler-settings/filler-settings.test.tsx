@@ -1,4 +1,5 @@
 import type { FillerSourceDTO, SettingEntry } from "@loomarr/api";
+import type { FillerStorageStatusDTO } from "@loomarr/api/models/fillerStorageStatusDTO";
 import {
   getFillerReadinessMockHandler,
   getListFillerProvidersMockHandler,
@@ -7,6 +8,7 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
 import { fillerProviders, fillerSource } from "@/test/fixtures/filler";
@@ -21,6 +23,7 @@ const renderSettings = (
   section: FillerSettingsSection = "downloads",
   sources: FillerSourceDTO[] = [],
   fetchEvery: Partial<SettingEntry> = {},
+  storage: Partial<FillerStorageStatusDTO> = {},
 ) => {
   server.use(
     getListFillerSourcesMockHandler({ sources, total: sources.length }),
@@ -40,6 +43,7 @@ const renderSettings = (
         softBudgetBytes: 20 * 1024 ** 3,
         hardReserveBytes: 10 * 1024 ** 3,
         availableBytes: 18 * 1024 ** 3,
+        ...storage,
       },
       pipeline: {
         runnable: 0,
@@ -190,6 +194,33 @@ describe("focused Filler settings", () => {
     expect(screen.queryByRole("textbox", { name: "Catalog limit" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show advanced (1)" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "New clips" })).not.toBeInTheDocument();
+  });
+
+  // #2737: "50.0 GB used · 49.8 MB available" rendered as ordinary body text.
+  it("shows a nearly full allowance as a warning with a Raise allowance action", async () => {
+    renderSettings(
+      "storage",
+      [],
+      {},
+      {
+        state: "approaching",
+        softBudgetBytes: 50 * 1000 ** 3,
+        managedBytes: 50 * 1000 ** 3,
+        availableBytes: 49.8 * 1000 ** 2,
+      },
+    );
+    const field = await screen.findByRole("textbox", { name: "Filler storage allowance" });
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(/available to Loomarr/);
+    expect(status.className).toContain("border-caution");
+    await userEvent.click(screen.getByRole("button", { name: "Raise allowance" }));
+    expect(field).toHaveFocus();
+  });
+
+  it("keeps a healthy allowance calm", async () => {
+    renderSettings("storage");
+    await screen.findByText("Automatic 20.0 GB allowance");
+    expect(screen.queryByRole("button", { name: "Raise allowance" })).not.toBeInTheDocument();
   });
 
   it("opens the Incoming history task with one human duration control", async () => {
