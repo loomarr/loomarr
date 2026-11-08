@@ -497,6 +497,9 @@ type ClipStore interface {
 	// DeleteClipsNotIn removes clips whose id isn't in the given set — the sync's
 	// prune step (a clip removed from the media server's filler library is gone).
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
+	// LiveClipPaths maps each clip DeleteClipsNotIn can delete to its location under the clip
+	// folder, so the sync can weigh a listing against the catalog before it prunes (#2673).
+	LiveClipPaths(ctx context.Context) (map[string]string, error)
 	// DeleteClip removes ONE clip by identity — the split-confirm path drops the
 	// compilation row it just cut into segments (§10 V34). ErrNotFound if absent.
 	DeleteClip(ctx context.Context, libraryItemID string) error
