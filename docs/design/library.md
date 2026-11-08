@@ -272,7 +272,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   transaction as each inventory write that touches it (a snapshot, an origin marked unseen),
   through a projector the scanner installs, since only the scanner reads its origins' extension
   (0047). The row comes from the newest present scan origin; an origin written before it carried
-  how its title is listed leaves the row as it was. Each `library_files` row records
+  how its title is listed leaves the row as it was. Episodes have rows too (Items lists movies
+  and series). Each resolved fact is a column with the provider that supplied it in a `_from`
+  column (`rating`, `rating_from`; decision 40): original title, overview, premiere date,
+  rating, community score, runtime, and an episode's numbering. `library_ids`,
+  `library_genres`, `library_studios` and `library_tags` are rows in the source's order. An
+  episode names its series' scan origin, and the store fills `series_id` whichever of the two
+  is written second. An episode with no rating takes its show's (`rating_from = 'show'`); its
+  genres and studios are its show's only (decision 42). Each `library_files` row records
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
   headers is unread. A file row from before these columns has no item, so the next pass writes it

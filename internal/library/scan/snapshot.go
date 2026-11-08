@@ -60,7 +60,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	8: extras are not titles (0047); the digest drops what only an extra used.
 //	9: NFOs are read in full (decision 59): older id tags, tags, ratings, people and sets.
 //	10: a movie's or series' origin carries how it is listed; the store projects its row (0047).
-const writeVersion = 10
+//	12: every title, episodes too, is listed with its facts and who supplied each (decision 40).
+const writeVersion = 12
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item.
@@ -99,6 +100,11 @@ type DetailsFrom struct {
 	Name        mp.ID `json:"name,omitempty"`
 	Description mp.ID `json:"description,omitempty"`
 	Rating      mp.ID `json:"rating,omitempty"`
+	// Year, Premiere, Score and Runtime feed the library_items `_from` columns (decision 40).
+	Year     mp.ID `json:"year,omitempty"`
+	Premiere mp.ID `json:"premiere,omitempty"`
+	Score    mp.ID `json:"score,omitempty"`
+	Runtime  mp.ID `json:"runtime,omitempty"`
 }
 
 // originExtension is what the scanner keeps in an origin's Observation.Extension.
@@ -107,8 +113,9 @@ type originExtension struct {
 	// Managed is true for a file its arr lists: the arr's current file, the one that plays when a
 	// title has several (decision 37).
 	Managed bool `json:"managed,omitempty"`
-	// Listed is how a movie or series is listed in the Library; nil for an episode, and for an
-	// origin written before write version 10, whose row stays as it was until it is written again.
+	// Listed is how a title is listed in the Library; nil for an origin written before it carried
+	// one (a movie or series before write version 10, an episode before 12), whose row stays as it
+	// was until it is written again.
 	Listed *listedExtension `json:"listed,omitempty"`
 }
 
@@ -116,26 +123,34 @@ type originExtension struct {
 type listedExtension struct {
 	Catalog store.LibraryCatalogKey `json:"catalog,omitzero"`
 	Match   store.LibraryMatch      `json:"match,omitzero"`
+	// Series is an episode's series by its scan origin.
+	Series store.LibraryOrigin `json:"series,omitzero"`
 }
 
-// originExtensionOf is r's provenance, whether an arr lists the file, and for a movie or series
-// how it is listed (m is what said which title it is), as an origin's Observation.Extension.
-func originExtensionOf(kind mp.Kind, r precedence.Resolved, managed bool, m store.LibraryMatch) json.RawMessage {
+// originExtensionOf is r's provenance, whether an arr lists the file, and how the title is listed
+// (m is what said which title it is; series an episode's series origin), as an origin's
+// Observation.Extension.
+func originExtensionOf(kind mp.Kind, r precedence.Resolved, managed bool, m store.LibraryMatch, series inventory.OriginKey) json.RawMessage {
 	ext := originExtension{From: DetailsFrom{
 		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
+		Year: r.Year.From.Provider, Premiere: r.PremiereDate.From.Provider,
+		Score: r.CommunityRating.From.Provider, Runtime: r.Runtime.From.Provider,
 	}, Managed: managed}
-	if kind == mp.KindMovie || kind == mp.KindSeries {
+	switch kind {
+	case mp.KindMovie, mp.KindSeries:
 		ext.Listed = &listedExtension{Catalog: catalogKey(kind, pickedIDs(r.IDs)), Match: m}
+	case mp.KindEpisode:
+		ext.Listed = &listedExtension{Catalog: catalogKey(kind, pickedIDs(r.IDs)), Series: libraryOrigin(series)}
 	}
 	raw, _ := json.Marshal(ext)
 	return raw
 }
 
-// ProjectLibraryItem is the scanner's store.LibraryProjector: a movie's or series' library row,
-// from its newest present scanner origin (or, with none present, its newest scanner origin). An
-// item with no scanner origin, or whose origin predates write version 10, is not listed by it.
+// ProjectLibraryItem is the scanner's store.LibraryProjector: a title's library row, from its
+// newest present scanner origin (or, with none present, its newest scanner origin). An item with
+// no scanner origin, or whose origin predates its listing, is not listed by it.
 func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
-	if item.Kind != kindMovie && item.Kind != kindSeries {
+	if item.Kind != kindMovie && item.Kind != kindSeries && item.Kind != kindEpisode {
 		return store.LibraryItem{}, false
 	}
 	// Present beats missing, then newer beats older; the key breaks a tie, so the pick is stable.
@@ -157,17 +172,35 @@ func ProjectLibraryItem(item inventory.Item) (store.LibraryItem, bool) {
 	if best == nil {
 		return store.LibraryItem{}, false
 	}
-	listed := readOriginExtension(best.Observation.Extension).Listed
+	ext := readOriginExtension(best.Observation.Extension)
+	listed := ext.Listed
 	if listed == nil {
 		return store.LibraryItem{}, false
 	}
 	facts := best.Observation.Facts
-	return store.LibraryItem{
+	it := store.LibraryItem{
 		ID: string(item.ID), Kind: string(item.Kind), Name: facts.Name,
 		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
 		Catalog: listed.Catalog, Set: setKey(facts.Relationships),
 		Origin: libraryOrigin(best.Key), Match: listed.Match,
-	}, true
+		OriginalTitle: facts.OriginalTitle, Overview: facts.Overview, PremiereDate: facts.PremiereDate,
+		Rating: facts.OfficialRating, Score: facts.CommunityScore, RuntimeMs: facts.RuntimeMillis,
+		Season: facts.SeasonNumber, Episode: facts.EpisodeNumber, EpisodeEnd: facts.EpisodeEnd,
+		Series: listed.Series, Tags: facts.Tags,
+		From: store.LibraryFrom{
+			Name: string(ext.From.Name), Year: string(ext.From.Year), Overview: string(ext.From.Description),
+			Premiere: string(ext.From.Premiere), Rating: string(ext.From.Rating), Score: string(ext.From.Score),
+			Runtime: string(ext.From.Runtime),
+		},
+	}
+	// An episode's genres and studios are its show's (decision 42).
+	if item.Kind != kindEpisode {
+		it.Genres, it.Studios = facts.Genres, facts.Studios
+	}
+	for _, id := range item.ExternalIDs {
+		it.IDs = append(it.IDs, store.LibraryID{Namespace: id.Namespace, Value: id.Value})
+	}
+	return it, true
 }
 
 // readOriginExtension reads originExtensionOf back; an origin written before it says nothing.

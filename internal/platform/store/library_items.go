@@ -8,9 +8,10 @@ import (
 	"time"
 )
 
-// LibraryItem is a movie or series the scanner wrote, as Library → Items lists it (#2151 step 10).
+// LibraryItem is a movie, series or episode the scanner wrote (#2151 step 10, decisions 40–45).
+// Library → Items lists movies and series.
 type LibraryItem struct {
-	// ID is the inventory item id; Kind is movie or series.
+	// ID is the inventory item id; Kind is movie, series or episode.
 	ID   string
 	Kind string
 	// Name, SortName and Year are the resolved title, the key it sorts by and its year (0 unknown).
@@ -28,6 +29,44 @@ type LibraryItem struct {
 	// Match is what says which title it is; the zero value when nothing does, which puts it in
 	// Needs you.
 	Match LibraryMatch
+
+	// The resolved facts (decision 40), each with who supplied it in From.
+	OriginalTitle string
+	Overview      string
+	// PremiereDate is as the source gave it, such as "2013-05-01"; "" unknown.
+	PremiereDate string
+	// Rating is the content rating, such as "TV-PG". An episode with none takes its show's, and
+	// From.Rating says "show" (decision 42).
+	Rating string
+	// Score is the community score, 0–10; 0 unknown.
+	Score     float64
+	RuntimeMs int64
+	// Season, Episode and EpisodeEnd number an episode (EpisodeEnd for a multi-episode file).
+	Season, Episode, EpisodeEnd int
+	// Series is an episode's series by its scan origin; the store fills SeriesID from it once the
+	// series is written.
+	Series   LibraryOrigin
+	SeriesID string
+	From     LibraryFrom
+	// IDs are the item's external ids; Genres, Studios and Tags in the source's order. An episode
+	// has no genres or studios of its own: they are its show's (decision 42).
+	IDs     []LibraryID
+	Genres  []string
+	Studios []string
+	Tags    []string
+}
+
+// LibraryFrom names the provider each resolved fact came from ("" unknown; RatingFromShow).
+type LibraryFrom struct {
+	Name, Year, Overview, Premiere, Rating, Score, Runtime string
+}
+
+// RatingFromShow is LibraryFrom.Rating for an episode whose rating is its show's.
+const RatingFromShow = "show"
+
+// LibraryID is one external id of an item.
+type LibraryID struct {
+	Namespace, Value string
 }
 
 // LibraryMatch is what said which title an item is (#2151 decision 26): "Wrong title?" sends the

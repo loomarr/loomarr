@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -67,7 +68,7 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 		{LibraryItem: LibraryItem{ID: "s1", Kind: "series", Name: "A Show", SortName: "show", Year: 2001}, Files: 2, Pending: 1},
 	}
 	for i, it := range page.Items {
-		if it != want[i] {
+		if !reflect.DeepEqual(it, want[i]) {
 			t.Errorf("item %d = %+v, want %+v", i, it, want[i])
 		}
 	}
