@@ -707,32 +707,25 @@
       "legacyUi": 1
     },
     "src/wizard/bootstrap-step/bootstrap-step.tsx": {
-      "tailwindClasses": 26,
-      "legacyUi": 1
+      "tailwindClasses": 24
     },
     "src/wizard/checklist-step/checklist-step.tsx": {
-      "tailwindClasses": 9,
-      "legacyUi": 1
+      "tailwindClasses": 9
     },
     "src/wizard/connect-step/connect-step.tsx": {
-      "tailwindClasses": 7,
-      "legacyUi": 1
+      "tailwindClasses": 5
     },
     "src/wizard/first-channel-step/first-channel-step.tsx": {
-      "tailwindClasses": 40,
-      "legacyUi": 1
+      "tailwindClasses": 39
     },
     "src/wizard/playout-step/playout-step.tsx": {
-      "tailwindClasses": 55,
-      "legacyUi": 1
+      "tailwindClasses": 55
     },
     "src/wizard/users-step/users-step.tsx": {
-      "tailwindClasses": 38,
-      "legacyUi": 1
+      "tailwindClasses": 36
     },
     "src/wizard/wizard-ai-block/wizard-ai-block.tsx": {
-      "tailwindClasses": 19,
-      "legacyUi": 1
+      "tailwindClasses": 18
     }
   }
 }
