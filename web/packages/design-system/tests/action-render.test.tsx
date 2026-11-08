@@ -472,6 +472,23 @@ describe("Action render composition", () => {
     expect(link?.hasAttribute("accessibilitylabel")).toBe(false);
   });
 
+  // The web forms' submit pattern: the real button holds `disabled` so Enter cannot submit
+  // through it, and the Action must not draw an enabled look over a button that will not fire.
+  it("greys a composed submit button that its own `disabled` turns off", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider>
+          <Action render={<button disabled type="submit" />}>Suggest changes</Action>
+        </LoomarrProvider>,
+      );
+    });
+
+    const button = host.querySelector("button");
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute("aria-disabled")).toBe("true");
+    expect(button?.style.opacity).toBe("0.55");
+  });
+
   it("pads a composed link as CSS, the same inset a Pressable gets", () => {
     act(() => {
       root.render(

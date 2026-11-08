@@ -152,7 +152,10 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     const theme = useTheme();
     const focusLook = useFocusLook({ onBlur, onFocus });
     const focused = focusLook.focused;
-    const isDisabled = disabled === true;
+    // A composed submit button carries its own `disabled` (it must, so Enter in a field cannot
+    // submit through it); the Action greys to match rather than drawing an enabled look over it.
+    const isDisabled =
+      disabled === true || (isWeb && isValidElement(render) && render.props.disabled === true);
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
     const stacked = layout === "stacked" && icon !== undefined;
