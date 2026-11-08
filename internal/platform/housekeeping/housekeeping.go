@@ -46,6 +46,7 @@ type Store interface {
 	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
 	PurgeSpentFillerRecords(ctx context.Context, now time.Time) (int, error)
 	PurgeUnusedTitles(ctx context.Context, before time.Time) (int, error)
+	PurgeSpentCatalog(ctx context.Context, now time.Time) (int, error)
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
@@ -207,9 +208,9 @@ const UnusedTitleRetention = 180 * 24 * time.Hour
 
 // PurgeSpent removes rows nothing will read again (#2528): pairing codes past their expiry,
 // finished interactive operations past FinishedOperationRetention, discovery choices a newer one
-// replaced, requesters of a title or channel that is gone, spent filler records, and titles
-// nothing has named for UnusedTitleRetention. Each returns its own count; the total is what the
-// pass reports.
+// replaced, requesters of a title or channel that is gone, spent filler records, titles nothing
+// has named for UnusedTitleRetention, and the catalog's gone titles, files and caches. Each
+// returns its own count; the total is what the pass reports.
 func (s *Service) PurgeSpent(ctx context.Context) (int, error) {
 	now := s.now()
 	var errs []error
@@ -228,6 +229,8 @@ func (s *Service) PurgeSpent(ctx context.Context) (int, error) {
 		}},
 		{"filler records", func() (int, error) { return s.store.PurgeSpentFillerRecords(ctx, now) }},
 		{"unused titles", func() (int, error) { return s.store.PurgeUnusedTitles(ctx, now.Add(-UnusedTitleRetention)) }},
+		// After the titles: a title purged tonight releases its episode list and paths.
+		{"spent catalog", func() (int, error) { return s.store.PurgeSpentCatalog(ctx, now) }},
 	} {
 		n, err := purge.run()
 		if err != nil {

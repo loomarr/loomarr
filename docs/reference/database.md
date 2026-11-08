@@ -23,10 +23,32 @@ Change things in the app, or open an issue if the app can't do what you need.
 On Postgres, these descriptions are also stored as table and column comments, so most SQL
 clients show them beside the data.
 
+## Which table answers "what titles do we have"
+
+`library_items`. A title is in the library when one of its `library_files` rows is present
+(`missing_at_ms` is 0). The other title tables are layers around it, each with one job:
+
+1. **`inventory_*`: what each importer reported.** One item per movie, show or episode, however
+   many importers (a folder scan, an Emby or Jellyfin server) report it, with the files that play
+   it. An item's id is fixed by its first report, so a title that comes back gets the same id.
+2. **`library_*`: the answer.** One `library_items` row per title, with the same id as its
+   inventory item, written in the same transaction as each inventory write, plus its details,
+   files, artwork and collections. When the sources disagree, this is the one answer the app shows.
+3. **`titles`: what channels asked for.** A movie or show a channel wants, tracked from wanted to
+   available through Seerr or the arr apps. Once it arrives, `titles.library_id` says which item it
+   became. Until the switch to Loomarr's own scanner (#2151) that is the media server's id, which
+   the switch rewrites to the library's.
+4. **`series_episodes` and `library_item_paths`: the media server's caches.** Copies of what Emby or
+   Jellyfin says, so channels don't ask it on every request. They exist only until the #2151
+   switch, which moves channels onto `library_*` and deletes them.
+
+Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
+and caches nothing names (each table's retention says when).
+
 ## Reading the values
 
-- **Times** are whole numbers counting from 1 January 1970 UTC. Some columns count seconds and
-  some count milliseconds; each one says which. In SQLite,
+- **Times** are whole numbers counting from 1 January 1970 UTC. The name says the unit: a column
+  ending in `_ms` counts milliseconds, `_ns` nanoseconds, and any other counts seconds. In SQLite,
   `datetime(col, 'unixepoch')` turns seconds into a date and `datetime(col / 1000, 'unixepoch')`
   does the same for milliseconds.
 - **Yes/no** columns hold `1` for yes and `0` for no.
@@ -505,7 +527,7 @@ The path map. One row per folder a media server or arr reports, saying which loc
 
 One row per media file the scanner found under an in-use folder. A file the scanner no longer finds keeps its row with a missing time; all of a folder's rows go when the folder is forgotten.
 
-**Kept:** Kept while its folder is in use, missing files included, so rows for files deleted from disk pile up; every row of a folder is deleted when the folder stops being in use.
+**Kept:** Kept while its folder is in use. A file a walk stopped finding is deleted by the nightly housekeeping 180 days later, unless its removal is still waiting for a person; every row of a folder is deleted when the folder stops being in use.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -527,7 +549,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 
 One row per movie, show and episode the scanner wrote, with the details shown on the Library pages. Rewritten each time the title is written; a title whose files have gone keeps its row, so it finds its collections and answer again if it comes back. Whether it is present comes from library_files.
 
-**Kept:** Unbounded: nothing deletes these rows; a title that leaves the library keeps its row on purpose, so every title ever scanned stays.
+**Kept:** A title that leaves the library keeps its row, so it finds its details and collections again if it comes back. The nightly housekeeping deletes a row a year after it last changed once nothing is left of it: no importer report, no file, no episode, no collection, and no title, airing, channel or open request naming it. Its candidates and images go with it; a person's answer for it is kept.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -802,7 +824,7 @@ A title's artwork references, one row each. Replaced whenever the title is writt
 
 What TMDB says about a title or a TMDB collection, cached so a scan never has to ask it. A row is added when a title names it, and refreshed in the background.
 
-**Kept:** Unbounded: nothing deletes these rows; a cached record stays after its title leaves the library or is matched to a different TMDB entry.
+**Kept:** Kept while a library title names it. One no title names is deleted by the nightly housekeeping a year after it was fetched, or after a year of failed fetches; one asked for and not yet tried is kept until it is.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -883,7 +905,7 @@ The titles in a collection, in order. A member whose title has left the library 
 
 The media server's own file path for one of its items, remembered so a channel can play the item without asking the media server at airtime. A stale row is harmless; it is rewritten on the next lookup.
 
-**Kept:** Unbounded: nothing deletes these rows; a stale path is rewritten on its next lookup, but an item the media server drops keeps its row.
+**Kept:** Rewritten on its next lookup. A path no title, airing, channel or open request names is deleted by the nightly housekeeping 30 days after it was written; it is looked up again if it is needed.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -895,7 +917,7 @@ The media server's own file path for one of its items, remembered so a channel c
 
 A cached copy of one show's episode list as the media server reports it, so the guide doesn't ask the media server per show on every request. Replaced whole on each refresh.
 
-**Kept:** Unbounded: nothing deletes these rows; each show's row is refreshed in place, but a show the media server drops keeps its row.
+**Kept:** Refreshed in place. A show no title points at is deleted by the nightly housekeeping once its list is 30 days old; it is fetched again if a title needs it.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -994,9 +1016,9 @@ Loomarr's record of every movie, show and episode its importers have reported, a
 
 ### inventory_items
 
-One row per movie, show or episode, however many importers report it. Created by the first report. Items are kept when an importer stops seeing them (the report is marked missing instead); one is deleted only when its last report moves to another item.
+One row per movie, show or episode, however many importers report it. Created by the first report. Items are kept when an importer stops seeing them (the report is marked missing instead).
 
-**Kept:** Deleted only when its last report moves to another item; an item no importer sees any more is kept, so the table grows as files come and go.
+**Kept:** Deleted when its last report moves to another item, or by the nightly housekeeping once its last report was deleted for being missing 180 days.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1009,7 +1031,7 @@ One row per movie, show or episode, however many importers report it. Created by
 
 One importer's latest report of one item. Replaced each time that importer reports the item again. Kept when the importer no longer sees it, with missing_at set.
 
-**Kept:** Unbounded: nothing deletes these rows; a report the importer stops seeing is only marked missing, and its item is never deleted while it has a report.
+**Kept:** Marked missing when the importer stops seeing it, and cleared if it comes back. The nightly housekeeping deletes it 180 days after it went missing, with its source reports.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1039,7 +1061,7 @@ The outside ids one importer's report gives an item, such as its TMDB, TVDB or I
 
 One playable file (or media server version) of an item. Created by the first report that lists it; it moves with its report if the report joins another item.
 
-**Kept:** Unbounded: nothing deletes these rows; a file that disappears keeps its row, because its item is never deleted while the item has a source.
+**Kept:** Goes with its item. A source left with no report is deleted by the nightly housekeeping, with its measurement and analysis, once it is 180 days old.
 
 | Column | What it holds | Type |
 | --- | --- | --- |
@@ -1054,7 +1076,7 @@ One playable file (or media server version) of an item. Created by the first rep
 
 One importer's latest report of one source of an item. Replaced each time that importer reports it again. Kept when the importer no longer sees it, with missing_at set. Deleted with the source or the item's report.
 
-**Kept:** Unbounded: nothing deletes these rows; a source the importer stops seeing is only marked missing, and neither its source nor its item's report is ever deleted.
+**Kept:** Marked missing when the importer stops seeing it. The nightly housekeeping deletes it 180 days after it went missing; it also goes with its source or its item's report.
 
 | Column | What it holds | Type |
 | --- | --- | --- |

@@ -46,8 +46,9 @@ tables:
       One row per media file the scanner found under an in-use folder. A file the scanner no longer
       finds keeps its row with a missing time; all of a folder's rows go when the folder is forgotten.
     retention: >
-      Kept while its folder is in use, missing files included, so rows for files deleted from disk
-      pile up; every row of a folder is deleted when the folder stops being in use.
+      Kept while its folder is in use. A file a walk stopped finding is deleted by the nightly
+      housekeeping 180 days later, unless its removal is still waiting for a person; every row of a
+      folder is deleted when the folder stops being in use.
     columns:
       path: The file as Loomarr opens it, an absolute path.
       root: The folder it was found under (a library_roots path).
@@ -81,8 +82,11 @@ tables:
       it finds its collections and answer again if it comes back. Whether it is present comes from
       library_files.
     retention: >
-      Unbounded: nothing deletes these rows; a title that leaves the library keeps its row on purpose,
-      so every title ever scanned stays.
+      A title that leaves the library keeps its row, so it finds its details and collections again
+      if it comes back. The nightly housekeeping deletes a row a year after it last changed once
+      nothing is left of it: no importer report, no file, no episode, no collection, and no title,
+      airing, channel or open request naming it. Its candidates and images go with it; a person's
+      answer for it is kept.
     columns:
       id: Identifies the title. library_files, collections and the rows below point here.
       kind: One of movie, series or episode.
@@ -369,8 +373,9 @@ tables:
       What TMDB says about a title or a TMDB collection, cached so a scan never has to ask it. A row is
       added when a title names it, and refreshed in the background.
     retention: >
-      Unbounded: nothing deletes these rows; a cached record stays after its title leaves the
-      library or is matched to a different TMDB entry.
+      Kept while a library title names it. One no title names is deleted by the nightly housekeeping
+      a year after it was fetched, or after a year of failed fetches; one asked for and not yet
+      tried is kept until it is.
     columns:
       provider: The catalog, tmdb for a movie or show, tmdb_collection for a collection.
       kind: What the record is fetched as, one of movie, series or collection.
@@ -457,8 +462,9 @@ tables:
       without asking the media server at airtime. A stale row is harmless; it is rewritten on the next
       lookup.
     retention: >
-      Unbounded: nothing deletes these rows; a stale path is rewritten on its next lookup, but an
-      item the media server drops keeps its row.
+      Rewritten on its next lookup. A path no title, airing, channel or open request names is
+      deleted by the nightly housekeeping 30 days after it was written; it is looked up again if
+      it is needed.
     columns:
       item_id: The media server's id for the item.
       server_path: >
@@ -471,8 +477,8 @@ tables:
       A cached copy of one show's episode list as the media server reports it, so the guide doesn't
       ask the media server per show on every request. Replaced whole on each refresh.
     retention: >
-      Unbounded: nothing deletes these rows; each show's row is refreshed in place, but a show the
-      media server drops keeps its row.
+      Refreshed in place. A show no title points at is deleted by the nightly housekeeping once its
+      list is 30 days old; it is fetched again if a title needs it.
     columns:
       library_id: The media server's id for the show.
       episodes_json: >
