@@ -1,10 +1,11 @@
 import { LoomarrProvider } from "@loomarr/design-system";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type ErrorComponentProps, RouterProvider } from "@tanstack/react-router";
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
+import { createQueryClient } from "@/lib/query-client";
 import { routeTree } from "@/routeTree.gen";
 // Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
 import "@fontsource-variable/geist";
@@ -13,14 +14,9 @@ import "@/styles.css";
 
 installGlobalClientDiagnostics();
 
-// Server state is TanStack Query, SSE-invalidated (no global store, §4.3). Retries
-// are conservative — most failures here are 401/403/501 that a retry won't fix.
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 15_000 },
-    mutations: { retry: 0 },
-  },
-});
+// Server state is TanStack Query, SSE-invalidated (no global store, §4.3); its defaults, retry
+// backoff included, live in lib/query-client.
+const queryClient = createQueryClient();
 
 // The router shares the Query client via context so route guards (the _authed gate,
 // login) can ensureQueryData without prop-drilling (design §14). Register makes every

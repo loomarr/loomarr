@@ -38,7 +38,6 @@ const SignInFirst = ({ code }: { code: string }) => {
           accessibilityRole="link"
           density="touch"
           render={<a href={`/login?redirect=${encodeURIComponent(here)}`} />}
-          variant="suggest"
         >
           Sign in
         </Action>
@@ -152,7 +151,6 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
               density="touch"
               render={<button disabled={!userCode.trim() || approve.isPending} type="submit" />}
               style={{ width: "100%" }}
-              variant="suggest"
             >
               {approve.isPending ? "Checking…" : "Add device"}
             </Action>

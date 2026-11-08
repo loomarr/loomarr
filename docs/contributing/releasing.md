@@ -55,8 +55,11 @@ its exact commit. Run it where the household backup lives, so the data stays the
 make migration-rehearsal BACKUP=<backup directory> IMAGE=ghcr.io/loomarr/loomarr-staging:<full commit id> RECORD=1
 ```
 
-It boots the candidate on a copy of the backup and reports whether it came up. The backup is only
-read, and the container has no network, because the database names the household's real services.
+It boots the candidate on a copy of the backup and reports whether it came up. Then it stops the
+candidate and checks the migrated copy. SQLite's integrity check and foreign-key check must both
+come back clean. It also lists every table whose row count changed. Compare that list with what this
+release's migrations meant to delete before you tag. It needs `sqlite3`. The backup is only read,
+and the container has no network, because the database names the household's real services.
 `RECORD=1` then sets the `loomarr/migration-rehearsal` commit status, which `release.yml` checks.
 The status says how long the migration took and nothing about the backup. Dispatching
 `staging.yml` from a commit builds that commit's image.

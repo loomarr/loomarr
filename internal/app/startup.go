@@ -147,6 +147,23 @@ type currentHealthRunner struct {
 	}
 	set    resolved
 	probes map[string]func(context.Context) (bool, string)
+	tasks  starvedTaskSource
+}
+
+// starvedTaskSource is the scheduler's reading of tasks a worker has not got to (#2721).
+type starvedTaskSource interface {
+	Starved(context.Context) ([]jobs.JobStatus, error)
+}
+
+// watchTasks attaches the scheduler once it exists: it is built after this runner's job is
+// registered, so it cannot be a constructor argument.
+func (r *currentHealthRunner) watchTasks(tasks starvedTaskSource) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.tasks = tasks
+	r.mu.Unlock()
 }
 
 func newCurrentHealthRunner(
@@ -234,9 +251,42 @@ func (r *currentHealthRunner) Run(parent context.Context) error {
 			})
 		}()
 	}
+	r.observeTasks(parent, freshFor)
 	wg.Wait()
 	return parent.Err()
 }
+
+// observeTasks turns starved scheduled tasks into a warning that names them, so Current Health is
+// Degraded rather than Healthy while work is days overdue.
+func (r *currentHealthRunner) observeTasks(ctx context.Context, freshFor time.Duration) {
+	if r.tasks == nil {
+		return
+	}
+	starved, err := r.tasks.Starved(ctx)
+	if err != nil {
+		r.health.Observe(diagnostics.StartupCheckScheduledTasks, diagnostics.HealthObservation{
+			Status: diagnostics.HealthFailed, Detail: "could not read the task schedule",
+			RemediationRoute: scheduledTasksRoute, FreshFor: freshFor,
+		})
+		return
+	}
+	if len(starved) == 0 {
+		r.health.Observe(diagnostics.StartupCheckScheduledTasks, diagnostics.HealthObservation{
+			Status: diagnostics.HealthPassed, Detail: "on schedule", FreshFor: freshFor,
+		})
+		return
+	}
+	titles := make([]string, 0, len(starved))
+	for _, task := range starved {
+		titles = append(titles, task.Title)
+	}
+	r.health.Observe(diagnostics.StartupCheckScheduledTasks, diagnostics.HealthObservation{
+		Status: diagnostics.HealthWarning, Detail: "Overdue: " + strings.Join(titles, ", "),
+		RemediationRoute: scheduledTasksRoute, FreshFor: freshFor,
+	})
+}
+
+const scheduledTasksRoute = "/settings/system/tasks"
 
 func currentHealthFreshness(expression string, now time.Time) time.Duration {
 	if expression == "" {
