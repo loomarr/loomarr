@@ -14,7 +14,8 @@ import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator"
 //
 // ⚠ The layout (`route.tsx`) gates loading/error BEFORE rendering `<Outlet/>`, so every
 // consumer of this context can assume `channel` is the loaded ChannelDTO, never undefined.
-type AirState = { dot: OnAirState; label: string; detail: string };
+// `buildSchedule` marks the No schedule yet state, which offers an admin Build schedule (#2728).
+type AirState = { dot: OnAirState; label: string; detail: string; buildSchedule?: boolean };
 
 type ChannelDetailValue = {
   id: string;
@@ -49,5 +50,5 @@ const useChannelDetail = (): ChannelDetailValue => {
   return ctx;
 };
 
-export type { ChannelDetailValue };
+export type { AirState, ChannelDetailValue };
 export { ChannelDetailProvider, useChannelDetail };

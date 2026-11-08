@@ -16,17 +16,17 @@ import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelIdentityField } from "@/channels/channel-identity-field";
 import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
-import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
-import { ChannelDetailProvider } from "./-channel-detail-context";
+import { type AirState, ChannelDetailProvider } from "./-channel-detail-context";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
 // what's playing, what's next, how full is it — in plain words. Editing (rename/renumber,
-// the programming rules, pause/delete) is admin-only and lives inline (§7 PATCH). There is
-// NO manual "rebuild" button: an edit auto-reconciles server-side and the page updates live
-// via the `channel` SSE frame (§9 self-maintaining). The scheduler internals stay tucked in
+// the programming rules, pause/delete) is admin-only and lives inline (§7 PATCH). An edit
+// auto-reconciles server-side and the page updates live via the `channel` SSE frame (§9
+// self-maintaining); the one manual Build schedule is offered only when a live channel has
+// nothing in the guide (#2728). The scheduler internals stay tucked in
 // an admin-only "Advanced" disclosure so the viewer surface reads plainly.
 //
 // ⚠ Split into a layout + one route per section (V-nav-paths): `/channels/$id/info`,
@@ -46,8 +46,6 @@ const SECTIONS = [
 
 const FLAVOR_NAMES: Record<string, string> = { emby: "Emby", jellyfin: "Jellyfin" };
 
-type AirState = { dot: OnAirState; label: string; detail: string };
-
 // How often the header's minutes-left moves on.
 const NOW_TICK_MS = 30_000;
 
@@ -66,7 +64,9 @@ const headerAirLine = (
   return { onAir: false, text: air.label };
 };
 
-const airStateOf = (ch: ChannelDTO): AirState => {
+// `scheduled` is whether now/next has anything for the channel: undefined until it answers, so the
+// channel's own status stands until then.
+const airStateOf = (ch: ChannelDTO, scheduled?: boolean): AirState => {
   // "Broadcasting" is backend-agnostic. Tunarr channels signal it with a pushed projection
   // (`tunarrId`); internal-playout channels — the DEFAULT backend, which never gets a
   // `tunarrId` — signal it with `inAppPlayable`, the server-resolved surfability truth
@@ -90,6 +90,16 @@ const airStateOf = (ch: ChannelDTO): AirState => {
       dot: "reconciling",
       label: "On air (catching up)",
       detail: "Something changed in your library. Loomarr is bringing the lineup back in line.",
+    };
+  }
+  if (ch.status === "live" && broadcasting && scheduled === false) {
+    // Live, but the guide has nothing for it now or next (#2728): On air here sat beside an empty
+    // guide row and "Programme information isn't available".
+    return {
+      dot: "off",
+      label: "No schedule yet",
+      detail: "Nothing is in the guide for this channel yet.",
+      buildSchedule: true,
     };
   }
   if (ch.status === "live" && broadcasting) {
@@ -185,8 +195,10 @@ const ChannelDetailLayout = () => {
   const ch = unwrap(channel.data);
   if (!ch) return <p className="text-muted-foreground p-6 text-sm">Loading channel…</p>;
 
-  const air = airStateOf(ch);
-  const onNow = nowNextBody?.channels.find((entry) => entry.channelId === id)?.now;
+  // The header state comes from now/next (#2728): a channel the guide has nothing for is not On air.
+  const nowNext = nowNextBody?.channels.find((entry) => entry.channelId === id);
+  const air = airStateOf(ch, nowNextBody ? Boolean(nowNext?.now || nowNext?.next) : undefined);
+  const onNow = nowNext?.now;
   const airLine = headerAirLine(air, onNow, nowMs);
 
   // Count TITLES, not slots: slotCount includes commercial-break gaps (§10), so it would
