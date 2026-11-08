@@ -184,6 +184,45 @@ describe("Dialog", () => {
     expect(document.activeElement).toBe(modify);
   });
 
+  // A side panel opens from a row and can outlive it, so focus goes where the caller says on close.
+  it("docks a side panel to the right edge and returns focus to the caller's target", async () => {
+    const SidePanel = () => {
+      const [open, setOpen] = useState(false);
+      const [target, setTarget] = useState<HTMLButtonElement | null>(null);
+      return (
+        <>
+          <button ref={setTarget} type="button">
+            Back to the list
+          </button>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open details
+          </button>
+          <Dialog onOpenChange={setOpen} open={open}>
+            <DialogContent finalFocus={{ current: target }} placement="side">
+              <DialogHeader>
+                <DialogTitle>Clip details</DialogTitle>
+              </DialogHeader>
+              <p>Body</p>
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    };
+    const user = userEvent.setup();
+    render(<SidePanel />);
+    await user.click(screen.getByRole("button", { name: "Open details" }));
+
+    const panel = await screen.findByRole("dialog", { name: "Clip details" });
+    expect(panel.style.right).toBe("0px");
+    expect(panel.style.top).toBe("0px");
+    expect(panel.style.bottom).toBe("0px");
+    expect(panel.style.transform).toBe("");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Back to the list" }));
+  });
+
   // jsdom never matches `:focus-visible`, so it stands in for the browser here: focus that arrives by
   // the keyboard is visible, the way Chrome, Firefox and Safari decide it.
   it("rings the corner button while the browser marks its focus visible", async () => {

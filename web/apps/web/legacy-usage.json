@@ -235,7 +235,7 @@
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
       "tailwindClasses": 182,
-      "legacyUi": 4
+      "legacyUi": 3
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "tailwindClasses": 14
@@ -388,7 +388,7 @@
       "baseUi": 1
     },
     "src/components/ui/index.ts": {
-      "legacyUi": 12
+      "legacyUi": 11
     },
     "src/components/ui/input/input.tsx": {
       "tailwindClasses": 12
@@ -410,13 +410,6 @@
       "baseUi": 1
     },
     "src/components/ui/select/select.type.ts": {
-      "baseUi": 1
-    },
-    "src/components/ui/sheet/sheet.tsx": {
-      "tailwindClasses": 51,
-      "baseUi": 1
-    },
-    "src/components/ui/sheet/sheet.type.ts": {
       "baseUi": 1
     },
     "src/components/ui/video-player/fullscreen-button/fullscreen-button.tsx": {
@@ -482,7 +475,7 @@
     },
     "src/filler/channel-filler/channel-filler.tsx": {
       "tailwindClasses": 118,
-      "legacyUi": 5
+      "legacyUi": 4
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
       "tailwindClasses": 48,
@@ -498,7 +491,7 @@
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
       "tailwindClasses": 146,
-      "legacyUi": 4
+      "legacyUi": 3
     },
     "src/filler/clip-details/clip-details.tsx": {
       "tailwindClasses": 62,
@@ -521,8 +514,7 @@
       "legacyUi": 1
     },
     "src/filler/filler-catalog/clip-inspector-sheet/clip-inspector-sheet.tsx": {
-      "tailwindClasses": 4,
-      "legacyUi": 1
+      "tailwindClasses": 4
     },
     "src/filler/filler-catalog/clip-more-details/clip-more-details.tsx": {
       "tailwindClasses": 25
@@ -560,7 +552,7 @@
     },
     "src/filler/incoming/incoming.tsx": {
       "tailwindClasses": 113,
-      "legacyUi": 2
+      "legacyUi": 1
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
       "tailwindClasses": 39,
@@ -579,8 +571,7 @@
       "legacyUi": 1
     },
     "src/filler/sources-panel/source-detail-sheet/source-detail-sheet.tsx": {
-      "tailwindClasses": 4,
-      "legacyUi": 1
+      "tailwindClasses": 4
     },
     "src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
       "tailwindClasses": 15,
@@ -667,8 +658,7 @@
       "baseUi": 1
     },
     "src/people/users-page/users-page.tsx": {
-      "tailwindClasses": 14,
-      "legacyUi": 1
+      "tailwindClasses": 14
     },
     "src/queue/request-detail/request-detail.tsx": {
       "tailwindClasses": 65,

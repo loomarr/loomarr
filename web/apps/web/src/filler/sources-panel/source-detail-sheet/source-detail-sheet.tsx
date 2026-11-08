@@ -1,6 +1,6 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
 import type { RefObject } from "react";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useFillerProviders } from "../../use-filler-providers";
 import { SourceClipSearch } from "../source-clip-search";
 import { SourcePreviewSection } from "../source-preview-section";
@@ -23,19 +23,18 @@ interface SourceDetailSheetProps {
 const SourceDetailSheet = ({ source, actions, finalFocus, onClose }: SourceDetailSheetProps) => {
   const providers = useFillerProviders();
   return (
-    <Sheet
+    <Dialog
       open={Boolean(source)}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      swipeDirection="right"
     >
       {source && (
-        <SheetContent finalFocus={finalFocus}>
-          <SheetHeader>
-            <SheetTitle>{source.id === "folder" ? "Drop folder" : source.target}</SheetTitle>
-            <SheetDescription>{providers.find(source.kind)?.sourceNoun}</SheetDescription>
-          </SheetHeader>
+        <DialogContent finalFocus={finalFocus} placement="side">
+          <DialogHeader>
+            <DialogTitle>{source.id === "folder" ? "Drop folder" : source.target}</DialogTitle>
+            <DialogDescription>{providers.find(source.kind)?.sourceNoun}</DialogDescription>
+          </DialogHeader>
 
           <div key={source.id} className="flex flex-col gap-6 p-6">
             <SourceStatus
@@ -48,9 +47,9 @@ const SourceDetailSheet = ({ source, actions, finalFocus, onClose }: SourceDetai
             {source.actions.includes("search") && <SourceClipSearch source={source} />}
             <SourceSettings source={source} actions={actions} />
           </div>
-        </SheetContent>
+        </DialogContent>
       )}
-    </Sheet>
+    </Dialog>
   );
 };
 

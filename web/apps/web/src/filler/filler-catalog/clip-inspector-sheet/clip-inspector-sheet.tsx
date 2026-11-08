@@ -1,8 +1,8 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
 import { type RefObject, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ClipDetails } from "../../clip-details";
 import { ClipDetailsEditor } from "../../clip-details-editor";
 import { useFillerInvalidate } from "../../use-filler-invalidate";
@@ -29,12 +29,12 @@ const ClipInspectorBody = ({ hash, isAdmin }: ClipInspectorBodyProps) => {
 
   return (
     <>
-      <SheetHeader>
-        <SheetTitle>{clip?.name ?? "Clip details"}</SheetTitle>
-        <SheetDescription>
+      <DialogHeader>
+        <DialogTitle>{clip?.name ?? "Clip details"}</DialogTitle>
+        <DialogDescription>
           {editing ? "Edit details" : clip?.held ? "Preparing" : clip?.isComposite ? "Recording" : "Ready"}
-        </SheetDescription>
-      </SheetHeader>
+        </DialogDescription>
+      </DialogHeader>
       <div className="space-y-5 p-6">
         {inspection.error ? (
           <ErrorState error={inspection.error} onRetry={() => inspection.refetch()} />
@@ -76,19 +76,18 @@ interface ClipInspectorSheetProps {
 
 // The right-hand panel that opens from a catalog card or row.
 const ClipInspectorSheet = ({ hash, isAdmin, finalFocus, onClose }: ClipInspectorSheetProps) => (
-  <Sheet
+  <Dialog
     open={Boolean(hash)}
     onOpenChange={(open) => {
       if (!open) onClose();
     }}
-    swipeDirection="right"
   >
     {hash ? (
-      <SheetContent finalFocus={finalFocus}>
+      <DialogContent finalFocus={finalFocus} placement="side">
         <ClipInspectorBody key={hash} hash={hash} isAdmin={isAdmin} />
-      </SheetContent>
+      </DialogContent>
     ) : null}
-  </Sheet>
+  </Dialog>
 );
 
 export { ClipInspectorSheet };

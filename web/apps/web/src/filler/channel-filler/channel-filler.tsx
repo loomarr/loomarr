@@ -5,6 +5,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { goDurationMinutes, pluralize } from "@loomarr/core/format";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -17,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { eraOf } from "@/lib/era-dates";
 import { cn } from "@/lib/utils";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
@@ -513,21 +513,21 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         </div>
       )}
 
-      <Sheet open={Boolean(previewingClip)} onOpenChange={(open) => !open && setPreviewingClip(undefined)}>
+      <Dialog open={Boolean(previewingClip)} onOpenChange={(open) => !open && setPreviewingClip(undefined)}>
         {previewingClip?.hash ? (
-          <SheetContent>
-            <SheetHeader>
-              <SheetTitle>{previewingClip.name}</SheetTitle>
-              <SheetDescription>Preview from this assembled break</SheetDescription>
-            </SheetHeader>
+          <DialogContent placement="side">
+            <DialogHeader>
+              <DialogTitle>{previewingClip.name}</DialogTitle>
+              <DialogDescription>Preview from this assembled break</DialogDescription>
+            </DialogHeader>
             <div className="p-6">
               <div className="border-border overflow-hidden rounded-lg border">
                 <ClipPreview clip={{ hash: previewingClip.hash, name: previewingClip.name }} />
               </div>
             </div>
-          </SheetContent>
+          </DialogContent>
         ) : null}
-      </Sheet>
+      </Dialog>
     </div>
   );
 };
