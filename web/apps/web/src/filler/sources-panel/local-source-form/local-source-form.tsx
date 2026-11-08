@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { addFillerSourceSchema } from "@loomarr/core/schemas";
-import { Text } from "@loomarr/design-system";
+import { Field, Surface, Text } from "@loomarr/design-system";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -9,7 +9,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 // are labelled by the provider's own address label plus `aria-label` — a static visible label above
 // an input whose meaning changes with the kind would contradict it.
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFillerProviders } from "../../use-filler-providers";
 
@@ -76,16 +75,18 @@ const LocalSourceForm = () => {
         </form.Field>
         <form.Field name="uri">
           {(field) => (
-            <Input
-              id="new-source-uri"
-              className="min-w-64 flex-1 font-mono"
-              name={field.name}
-              value={field.state.value}
-              placeholder={provider.addressHint}
-              aria-label={provider.addressLabel}
-              onBlur={field.handleBlur}
-              onChange={(event) => field.handleChange(event.target.value)}
-            />
+            <Surface backgroundColor="transparent" borderWidth={0} flexBasis={256} flexGrow={1} minWidth={0}>
+              <Field
+                accessibilityLabel={provider.addressLabel}
+                autoCapitalize="none"
+                autoCorrect={false}
+                id="new-source-uri"
+                onBlur={field.handleBlur}
+                onChangeText={field.handleChange}
+                placeholder={provider.addressHint}
+                value={field.state.value}
+              />
+            </Surface>
           )}
         </form.Field>
         <form.Subscribe selector={(state) => state.values.uri}>

@@ -3,6 +3,7 @@ import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ClipGeographyDTO } from "@loomarr/api/models/clipGeographyDTO";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
+import { Field } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { LocationPicker } from "@/components/loomarr/settings/installation-location";
@@ -141,17 +142,15 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       {patch.error != null && <ErrorState error={patch.error} />}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="tag-name">Name</Label>
-          <Input
-            id="tag-name"
-            maxLength={120}
-            placeholder="Clip name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <p className="text-muted-foreground mt-1 text-xs">The name viewers see during a break.</p>
-        </div>
+        <Field
+          description="The name viewers see during a break."
+          id="tag-name"
+          label="Name"
+          maxLength={120}
+          onChangeText={setName}
+          placeholder="Clip name"
+          value={name}
+        />
         <div>
           <Label htmlFor="tag-kind">Type</Label>
           <Select value={role} onValueChange={(v) => setRole(v as ClipDTO["role"])}>
@@ -173,16 +172,15 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             </SelectContent>
           </Select>
         </div>
-        <div>
-          <Label htmlFor="tag-era">Year</Label>
-          <Input
-            id="tag-era"
-            type="number"
-            placeholder="e.g. 1977"
-            value={era}
-            onChange={(e) => setEra(e.target.value)}
-          />
-        </div>
+        <Field
+          id="tag-era"
+          keyboardType="number-pad"
+          label="Year"
+          maxLength={4}
+          onChangeText={setEra}
+          placeholder="e.g. 1977"
+          value={era}
+        />
         <div>
           <Label htmlFor="tag-audience">Audience</Label>
           {/* Radix reserves "" for clearing, so an "unset" sentinel stands in for the
@@ -200,17 +198,15 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             </SelectContent>
           </Select>
         </div>
-        <div>
-          <Label htmlFor="tag-brand">Advertiser</Label>
-          <Input
-            id="tag-brand"
-            maxLength={120}
-            placeholder="Advertiser or sponsor"
-            value={brand}
-            onChange={(event) => setBrand(event.target.value)}
-          />
-          <p className="text-muted-foreground mt-1 text-xs">The advertiser or sponsor shown in the clip.</p>
-        </div>
+        <Field
+          description="The advertiser or sponsor shown in the clip."
+          id="tag-brand"
+          label="Advertiser"
+          maxLength={120}
+          onChangeText={setBrand}
+          placeholder="Advertiser or sponsor"
+          value={brand}
+        />
       </div>
 
       <details className="border-border rounded-lg border p-3">
@@ -243,30 +239,25 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               }}
             />
           </div>
-          <div>
-            <Label htmlFor="tag-network">Network (optional)</Label>
-            <Input
-              id="tag-network"
-              maxLength={120}
-              value={network}
-              onChange={(event) => setNetwork(event.target.value)}
-              placeholder="Fox"
-            />
-          </div>
+          <Field
+            id="tag-network"
+            label="Network (optional)"
+            maxLength={120}
+            onChangeText={setNetwork}
+            placeholder="Fox"
+            value={network}
+          />
+          {/* A national clip keeps the station it was recorded off; a local one airs near it. */}
           {geoScope !== "unknown" && (
-            <div>
-              {/* A national clip keeps the station it was recorded off; a local one airs near it. */}
-              <Label htmlFor="tag-station">
-                {geoScope === "local" ? "Station call sign" : "Station call sign (optional)"}
-              </Label>
-              <Input
-                id="tag-station"
-                maxLength={120}
-                value={station}
-                onChange={(event) => setStation(event.target.value)}
-                placeholder="WEWS"
-              />
-            </div>
+            <Field
+              autoCapitalize="characters"
+              id="tag-station"
+              label={geoScope === "local" ? "Station call sign" : "Station call sign (optional)"}
+              maxLength={120}
+              onChangeText={setStation}
+              placeholder="WEWS"
+              value={station}
+            />
           )}
           <div>
             <Label htmlFor="tag-air-date">Air date (optional)</Label>

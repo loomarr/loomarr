@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { fillerSource } from "@/test/fixtures/filler";
+import { render } from "@/test/render";
 import {
   AutomaticDownloadsForm,
   downloadIntervalMaximum,
@@ -63,7 +64,7 @@ describe("AutomaticDownloadsForm", () => {
     await userEvent.click(await screen.findByRole("option", { name: "Use a different schedule" }));
 
     expect(screen.getByRole("combobox", { name: "Source check schedule" })).toBeVisible();
-    expect(screen.getByLabelText("Clips per source check")).toHaveValue(10);
+    expect(screen.getByLabelText("Clips per source check")).toHaveValue("10");
   });
 
   it("saves a custom schedule with the source's enabled flag", async () => {
@@ -126,6 +127,8 @@ describe("AutomaticDownloadsForm", () => {
     const { container } = render(
       <AutomaticDownloadsForm source={fillerSource()} actions={{ ...idle, updateSource: vi.fn() }} />,
     );
-    expect(container).toBeEmptyDOMElement();
+    // The theme provider's wrapper spans stay; the form itself renders nothing.
+    expect(container.textContent).toBe("");
+    expect(container.querySelector("input, button")).toBeNull();
   });
 });

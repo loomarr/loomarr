@@ -4,14 +4,19 @@ import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Field,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Search, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 type Provider = "brave" | "searxng";
 
@@ -341,32 +346,32 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
             </fieldset>
 
             {provider === "brave" ? (
-              <div className="space-y-2">
-                <Label htmlFor="filler-research-brave-key">Brave Search API key</Label>
-                <Input
-                  id="filler-research-brave-key"
-                  type="password"
-                  autoComplete="off"
-                  value={apiKey}
-                  placeholder={
-                    configured && currentProvider === "brave"
-                      ? "Leave blank to keep the saved key"
-                      : "Paste API key"
-                  }
-                  onChange={(event) => setAPIKey(event.target.value)}
-                />
-              </div>
+              <Field
+                autoCapitalize="none"
+                autoComplete="off"
+                autoCorrect={false}
+                id="filler-research-brave-key"
+                label="Brave Search API key"
+                onChangeText={setAPIKey}
+                placeholder={
+                  configured && currentProvider === "brave"
+                    ? "Leave blank to keep the saved key"
+                    : "Paste API key"
+                }
+                secureTextEntry
+                value={apiKey}
+              />
             ) : (
-              <div className="space-y-2">
-                <Label htmlFor="filler-research-searxng-url">SearXNG address</Label>
-                <Input
-                  id="filler-research-searxng-url"
-                  type="url"
-                  value={endpoint}
-                  placeholder="https://search.example.com"
-                  onChange={(event) => setEndpoint(event.target.value)}
-                />
-              </div>
+              <Field
+                autoCapitalize="none"
+                autoCorrect={false}
+                id="filler-research-searxng-url"
+                keyboardType="url"
+                label="SearXNG address"
+                onChangeText={setEndpoint}
+                placeholder="https://search.example.com"
+                value={endpoint}
+              />
             )}
 
             {message ? (

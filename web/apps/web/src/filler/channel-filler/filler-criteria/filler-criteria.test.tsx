@@ -122,8 +122,8 @@ describe("FillerCriteria era", () => {
         { from: 2011, to: 2014 },
       ],
     });
-    expect(screen.getAllByLabelText("From year")[0]).toHaveValue(2005);
-    expect(screen.getAllByLabelText("To year")[0]).toHaveValue(2009);
+    expect(screen.getAllByLabelText("From year")[0]).toHaveValue("2005");
+    expect(screen.getAllByLabelText("To year")[0]).toHaveValue("2009");
   });
 
   it("commits a recovered date pair after an invalid To edit", async () => {

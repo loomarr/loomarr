@@ -1,12 +1,13 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { getListTaxonomyMockHandler, getTagFillerClipMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { ClipDetailsEditor } from "./clip-details-editor";
 
 const clip: ClipDTO = {

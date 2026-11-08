@@ -273,7 +273,7 @@ describe("ChannelFiller", () => {
     await user.click(spacing);
     await user.click(await screen.findByRole("option", { name: "Custom spacing" }));
     const input = await screen.findByLabelText("Custom commercial repeat spacing in hours");
-    expect(input).toHaveValue(4);
+    expect(input).toHaveValue("4");
     await user.clear(input);
     await user.type(input, "6");
 
@@ -285,7 +285,7 @@ describe("ChannelFiller", () => {
   it("reads back a saved spacing in the server's duration format", async () => {
     stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" policy={{ ...policy(), commercialSpacing: "1h30m0s" }} />);
-    expect(await screen.findByLabelText("Custom commercial repeat spacing in hours")).toHaveValue(1.5);
+    expect(await screen.findByLabelText("Custom commercial repeat spacing in hours")).toHaveValue("1.5");
   });
 
   it("names what the saved pool is limited to from the server's coverage", async () => {

@@ -9,13 +9,12 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Field,
 } from "@loomarr/design-system";
 import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
@@ -580,48 +579,32 @@ const SegmentInspector = ({
           <Pencil aria-hidden className="size-3.5" /> Rename or adjust timing
         </summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
-          <div>
-            <Label htmlFor={`seg-name-${position}`}>Name</Label>
-            <Input
-              id={`seg-name-${position}`}
-              value={segment.name}
-              onChange={(event) => onChange({ name: event.target.value, ...nameNowOwnedByOperator })}
-            />
-          </div>
-          <div>
-            <Label htmlFor={`seg-start-${position}`}>Starts</Label>
-            <Input
-              id={`seg-start-${position}`}
-              aria-label="Start (mm:ss)"
-              className="font-mono tabular-nums"
-              value={segment.startText}
-              onChange={(event) =>
-                onChange({
-                  startText: event.target.value,
-                  artwork: undefined,
-                  ...languageNeedsRecheck,
-                  ...nameNowOwnedByOperator,
-                })
-              }
-            />
-          </div>
-          <div>
-            <Label htmlFor={`seg-end-${position}`}>Ends</Label>
-            <Input
-              id={`seg-end-${position}`}
-              aria-label="End (mm:ss)"
-              className="font-mono tabular-nums"
-              value={segment.endText}
-              onChange={(event) =>
-                onChange({
-                  endText: event.target.value,
-                  artwork: undefined,
-                  ...languageNeedsRecheck,
-                  ...nameNowOwnedByOperator,
-                })
-              }
-            />
-          </div>
+          <Field
+            id={`seg-name-${position}`}
+            label="Name"
+            onChangeText={(name) => onChange({ name, ...nameNowOwnedByOperator })}
+            value={segment.name}
+          />
+          <Field
+            accessibilityLabel="Start (mm:ss)"
+            id={`seg-start-${position}`}
+            keyboardType="numbers-and-punctuation"
+            label="Starts"
+            onChangeText={(startText) =>
+              onChange({ startText, artwork: undefined, ...languageNeedsRecheck, ...nameNowOwnedByOperator })
+            }
+            value={segment.startText}
+          />
+          <Field
+            accessibilityLabel="End (mm:ss)"
+            id={`seg-end-${position}`}
+            keyboardType="numbers-and-punctuation"
+            label="Ends"
+            onChangeText={(endText) =>
+              onChange({ endText, artwork: undefined, ...languageNeedsRecheck, ...nameNowOwnedByOperator })
+            }
+            value={segment.endText}
+          />
         </div>
       </details>
 
