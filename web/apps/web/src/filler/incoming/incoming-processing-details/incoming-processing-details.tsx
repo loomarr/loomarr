@@ -1,9 +1,8 @@
 import type { IncomingProcessingDTO } from "@loomarr/api/models/incomingProcessingDTO";
 import type { IncomingProcessingStageDTO } from "@loomarr/api/models/incomingProcessingStageDTO";
 import { formatRelative, formatUntil } from "@loomarr/core/format";
-import { ProgressTrack } from "@loomarr/design-system";
+import { Action, ProgressTrack } from "@loomarr/design-system";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 
 const visibleByDefault = (stage: IncomingProcessingStageDTO) => stage.outcome !== "not_needed";
 
@@ -80,11 +79,13 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
           <p className="text-muted-foreground">No processing steps recorded yet.</p>
         )}
         {skipped ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setShowSkipped((open) => !open)}>
-            {showSkipped
-              ? "Hide skipped steps"
-              : `Show ${skipped === 1 ? "skipped step" : `${skipped} skipped steps`}`}
-          </Button>
+          <div className="flex">
+            <Action onPress={() => setShowSkipped((open) => !open)} variant="ghost">
+              {showSkipped
+                ? "Hide skipped steps"
+                : `Show ${skipped === 1 ? "skipped step" : `${skipped} skipped steps`}`}
+            </Action>
+          </div>
         ) : null}
       </div>
     </details>

@@ -6,6 +6,7 @@ import type { IncomingStatusDTO } from "@loomarr/api/models/incomingStatusDTO";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatRelative, pluralize } from "@loomarr/core/format";
 import {
+  Action,
   Card,
   Dialog,
   DialogContent,
@@ -20,7 +21,6 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
-import { Button } from "@/components/ui/button";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { ClipDetails } from "../clip-details";
 import { IncomingPreparationSummary } from "./incoming-preparation-summary";
@@ -83,9 +83,9 @@ const StatusRows = ({
     ))}
     {group.nextCursor ? (
       <div className="p-2">
-        <Button className="w-full" variant="ghost" size="sm" disabled={loading} onClick={onMore}>
+        <Action disabled={loading} onPress={onMore} variant="ghost">
           {loading ? "Loading…" : moreLabel}
-        </Button>
+        </Action>
       </div>
     ) : null}
   </div>
@@ -205,9 +205,11 @@ const Incoming = () => {
             title="Incoming is clear"
             description="New clips will appear here after you add a source."
           />
-          <Button className="-mt-7" render={<Link to="/filler/sources" />} size="sm">
-            Add a source
-          </Button>
+          <div className="-mt-7">
+            <Action accessibilityRole="link" render={<Link to="/filler/sources" />}>
+              Add a source
+            </Action>
+          </div>
         </div>
       </section>
     );
@@ -286,28 +288,26 @@ const Incoming = () => {
                   <p className="text-sm font-medium break-words">{helpTask.name}</p>
                   <p className="text-muted-foreground mt-1 text-sm">{helpTask.question}</p>
                 </div>
-                <Button render={<a href={helpTask.actionHref} />} size="sm">
+                <Action accessibilityRole="link" render={<a href={helpTask.actionHref} />}>
                   {helpTask.actionLabel}
-                </Button>
+                </Action>
               </div>
               {view.needsHelp.total > 1 ? (
                 <div className="border-border flex justify-end gap-2 border-t pt-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <Action
                     disabled={helpIndex === 0}
-                    onClick={() => setHelpIndex((current) => Math.max(0, current - 1))}
+                    onPress={() => setHelpIndex((current) => Math.max(0, current - 1))}
+                    variant="ghost"
                   >
                     Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                  </Action>
+                  <Action
                     disabled={loadingGroup === "needsHelp" || helpIndex + 1 >= view.needsHelp.total}
-                    onClick={() => void showNextHelp()}
+                    onPress={() => void showNextHelp()}
+                    variant="outline"
                   >
                     {loadingGroup === "needsHelp" ? "Loading…" : "Next"}
-                  </Button>
+                  </Action>
                 </div>
               ) : null}
             </Card>
@@ -333,9 +333,9 @@ const Incoming = () => {
                 </Link>
               </p>
             </div>
-            <Button render={<Link to="/filler/library" />} variant="outline" size="sm">
+            <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
               Open Library
-            </Button>
+            </Action>
           </div>
           <StatusRows
             group={view.recentlyReady}

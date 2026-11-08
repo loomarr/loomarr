@@ -3,11 +3,10 @@ import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ClipGeographyDTO } from "@loomarr/api/models/clipGeographyDTO";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Field } from "@loomarr/design-system";
+import { Action, Field } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { LocationPicker } from "@/components/loomarr/settings/installation-location";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -335,12 +334,12 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       ) : null}
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onClose}>
+        <Action onPress={onClose} variant="outline">
           Cancel
-        </Button>
-        <Button size="sm" disabled={patch.isPending} onClick={save}>
+        </Action>
+        <Action disabled={patch.isPending} onPress={save}>
           {patch.isPending ? "Saving…" : "Save details"}
-        </Button>
+        </Action>
       </div>
     </section>
   );
