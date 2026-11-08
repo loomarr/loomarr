@@ -66,6 +66,34 @@ func Read(r io.ReaderAt, size int64) (Header, bool) {
 	return Header{}, false
 }
 
+// ChannelLayout is the layout ffmpeg's decoder states for an audio codec's channel count, which
+// neither container records, so this reader leaves a stream's ChannelLayout empty: "" where it
+// depends on the bitstream.
+func ChannelLayout(codec string, channels int) string {
+	switch channels {
+	case 1:
+		return "mono"
+	case 2:
+		return "stereo"
+	}
+	switch codec {
+	case "ac3", "eac3", "dts", "truehd":
+		switch channels {
+		case 6:
+			return "5.1(side)"
+		case 7:
+			return "6.1"
+		case 8:
+			return "7.1"
+		}
+	case "aac", "opus", "flac", "vorbis":
+		if channels == 6 {
+			return "5.1"
+		}
+	}
+	return ""
+}
+
 // Keyframes reads a file's keyframe index from its container's own index: Matroska Cues or the
 // MP4 sample tables. ok is false when the container has none for a video track; err reports an
 // index that is present but does not parse.

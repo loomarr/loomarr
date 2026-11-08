@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/media/header"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -66,7 +68,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	14: every title's files, tracks and artwork are listed with it (decisions 41, 44).
 //	15: an episode with no TVDB id takes TMDB's entry for its season and number, when TMDB numbers
 //	    the series as the disk does (decision 53).
-const writeVersion = 15
+//	16: an audio track whose container states no channel layout is labelled as ffmpeg states it.
+const writeVersion = 16
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -277,6 +280,7 @@ func libraryStream(st inventory.Stream) store.LibraryStream {
 		out.Resolution, out.HDR = resolutionLabel(st.Width, st.Height), hdrLabel(st.ColorTransfer, st.HDR, st.DolbyVision)
 	case inventory.StreamAudio:
 		out.AudioFormat = audioFormatLabel(st.Codec, st.Profile)
+		out.ChannelLayout = cmp.Or(st.ChannelLayout, header.ChannelLayout(st.Codec, st.Channels))
 	}
 	return out
 }

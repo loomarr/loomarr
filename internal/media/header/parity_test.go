@@ -1,6 +1,7 @@
 package header_test
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -47,6 +48,13 @@ func parityCases(dir string) []parityCase {
 			name: "matroska described audio", file: "described.mkv", mustRead: true,
 			args: append(src("2"), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
 				"-c:a", "aac", "-disposition:a:0", "visual_impaired"),
+		},
+		{
+			name: "matroska 5.1 aac, opus and flac, and stereo ac-3", file: "surround.mkv", mustRead: true,
+			args: append(src("2"), "-map", "0:v", "-map", "1:a", "-map", "1:a", "-map", "1:a", "-map", "1:a",
+				"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+				"-c:a:0", "aac", "-ac:a:0", "6", "-c:a:1", "libopus", "-ac:a:1", "6", "-mapping_family:a:1", "1",
+				"-c:a:2", "flac", "-ac:a:2", "6", "-c:a:3", "ac3", "-ac:a:3", "2"),
 		},
 		{
 			name: "matroska h264 at 23.976", file: "ntsc.mkv", mustRead: true,
@@ -247,6 +255,7 @@ func compareHeader(t *testing.T, got header.Header, want playout.SourceObservati
 			}
 		case inventory.StreamAudio:
 			check("channels", g.Channels, w.Channels)
+			check("channel layout", cmp.Or(g.ChannelLayout, header.ChannelLayout(g.Codec, g.Channels)), w.ChannelLayout)
 			check("sample rate", g.SampleRate, w.SampleRate)
 			if g.Profile != "" {
 				check("profile", g.Profile, w.Profile)

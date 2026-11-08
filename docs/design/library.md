@@ -290,7 +290,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   file, with the copy that plays marked (`plays`, decision 37's rule, shared with the title page).
   `library_streams` has one row per track, with labels computed once from the raw header values
   (decision 44): resolution by height or, for a picture wider than 16:9, by width; HDR type from
-  the transfer; audio format; the ISO 639-1 language code and its English name. `library_art` has
+  the transfer; audio format; the channel layout where the container states none (neither
+  Matroska nor MP4 does), as ffmpeg's decoder states it for the codec and channel count, checked
+  against ffprobe in the header parity test; the ISO 639-1 language code and its English name.
+  `library_art` has
   one row per artwork reference. Each `library_files` row records
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
