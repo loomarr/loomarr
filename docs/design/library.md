@@ -636,6 +636,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is never asked. Approval additions and the proposal outlook no longer need one connected. The
   availability scan (`LibraryTitles`), channel ideas and the collection picker and index read only
   the Library and the household's collections too.
+- **Stream facts read only the Library** (step 16). A channel's derived format, a still's tone
+  mapping and audio selection read the playing file's header as the scanner read it
+  (`LibraryPlayingVideo`, `LibraryAudioTracks`). The media-server importer that filled the
+  inventory from an item's media information, with its 24-hour re-import, is deleted: an id that
+  is no library item is unknown, which is SDR and the first audio track. A local file the Library
+  has not read is probed once and the measurement kept under its stat revision, as before.
 
 ## Search
 
