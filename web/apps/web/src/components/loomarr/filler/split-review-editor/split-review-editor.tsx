@@ -2,6 +2,7 @@ import type { SplitReviewSegmentDTO } from "@loomarr/api/models/splitReviewSegme
 import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
 import {
+  Action,
   Badge,
   Card,
   Dialog,
@@ -269,16 +270,16 @@ const SplitReviewEditor = ({
       )}
 
       <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
-        <Button variant="outline" size="sm" onClick={onBack}>
+        <Action onPress={onBack} variant="outline">
           Back
-        </Button>
+        </Action>
         <div className="flex items-center gap-3">
           <span className="text-muted-foreground font-mono text-sm tabular-nums">
             {pluralize(draft.length, "clip")}
           </span>
-          <Button size="sm" disabled={!confirmable || confirming} onClick={() => onConfirm(toWire(draft))}>
+          <Action disabled={!confirmable || confirming} onPress={() => onConfirm(toWire(draft))}>
             {confirming ? "Keeping clips…" : "Keep clips"}
-          </Button>
+          </Action>
         </div>
       </div>
 
@@ -561,16 +562,15 @@ const SegmentInspector = ({
       {segment.suggestedEra ? (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span>Loomarr thinks this may be from around {segment.suggestedEra}.</span>
-          <Button
+          <Action
+            onPress={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
             variant="outline"
-            size="sm"
-            onClick={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
           >
             {`Use ${segment.suggestedEra}`}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => onChange({ suggestedEra: undefined })}>
+          </Action>
+          <Action onPress={() => onChange({ suggestedEra: undefined })} variant="ghost">
             Not right
-          </Button>
+          </Action>
         </div>
       ) : null}
 
