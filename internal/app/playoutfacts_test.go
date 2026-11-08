@@ -166,7 +166,7 @@ func (f libraryVideoFake) LibraryPlayingVideo(_ context.Context, itemID string) 
 	return v, ok, nil
 }
 
-// An HDR10 Matroska file whose Colour element carries only the matrix signals PQ in the HEVC
+// An HDR10 Matroska file whose Colour element carries only its matrix coefficients signals PQ in the HEVC
 // parameter set alone, so ffprobe's stream summary reads its transfer as unknown and the airing
 // skipped tone mapping (#2173). The scanner's header read takes the parameter set's transfer, so a
 // library item's airtime format takes its colour transfer from there; any other id keeps the probe's.
