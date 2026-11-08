@@ -230,16 +230,16 @@
       "tailwindClasses": 14
     },
     "src/components/loomarr/people/create-local-dialog/create-local-dialog.tsx": {
-      "tailwindClasses": 9,
-      "legacyUi": 3
+      "tailwindClasses": 6,
+      "legacyUi": 1
     },
     "src/components/loomarr/people/import-dialog/import-dialog.tsx": {
-      "tailwindClasses": 119,
-      "legacyUi": 4
+      "tailwindClasses": 105,
+      "legacyUi": 2
     },
     "src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
-      "tailwindClasses": 99,
-      "legacyUi": 4
+      "tailwindClasses": 89,
+      "legacyUi": 2
     },
     "src/components/loomarr/people/invitation-join/invitation-join.tsx": {
       "tailwindClasses": 64,
@@ -250,12 +250,11 @@
       "legacyUi": 1
     },
     "src/components/loomarr/people/people-roster/people-roster.tsx": {
-      "tailwindClasses": 146,
-      "legacyUi": 3
+      "tailwindClasses": 129
     },
     "src/components/loomarr/people/person-detail/person-detail.tsx": {
-      "tailwindClasses": 150,
-      "legacyUi": 4
+      "tailwindClasses": 145,
+      "legacyUi": 1
     },
     "src/components/loomarr/people/session-list/session-list.tsx": {
       "tailwindClasses": 33,

@@ -1,5 +1,5 @@
 import type { CreateInvitationInputBodyKind } from "@loomarr/api/models/createInvitationInputBodyKind";
-import type { CreateInvitationInputBodyRole } from "@loomarr/api/models/createInvitationInputBodyRole";
+import { CreateInvitationInputBodyRole } from "@loomarr/api/models/createInvitationInputBodyRole";
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueInvitationGrantOutputBody";
 import { createInvitationSchema } from "@loomarr/core/schemas";
@@ -13,19 +13,23 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  FieldHint,
   Toggle,
 } from "@loomarr/design-system";
 import { QrCode } from "@loomarr/design-system/qr-code-web";
-import { useForm, useStore } from "@tanstack/react-form";
+import { useStore } from "@tanstack/react-form";
 import { Copy, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { FieldError } from "@/components/loomarr/feedback/field-error";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAppForm } from "@/lib/app-form";
 import type { InvitationDialogProps } from "./invitation-dialog.type";
+
+const ROLE_OPTIONS = [
+  { label: "Member", value: CreateInvitationInputBodyRole.member },
+  { label: "Administrator", value: CreateInvitationInputBodyRole.admin },
+] as const;
 
 const invitationName = (value: InvitationBody) =>
   value.displayName || value.username || value.libraryUserId || "this person";
@@ -51,10 +55,6 @@ const InvitationDialog = ({
   onRevoke,
   onSendEmail,
 }: InvitationDialogProps) => {
-  const usernameId = useId();
-  const contactId = useId();
-  const accountId = useId();
-  const roleId = useId();
   const emailId = useId();
   const operation = useRef(0);
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
@@ -66,13 +66,13 @@ const InvitationDialog = ({
   const [emailProblem, setEmailProblem] = useState(false);
   const open = controlledOpen ?? internalOpen;
 
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       kind: "local" as CreateInvitationInputBodyKind,
       username: "",
       libraryUserId: "",
       contactEmail: "",
-      role: "member" as CreateInvitationInputBodyRole,
+      role: CreateInvitationInputBodyRole.member as CreateInvitationInputBodyRole,
       sendEmail: false,
     },
     validators: { onSubmit: createInvitationSchema },
@@ -222,114 +222,74 @@ const InvitationDialog = ({
             </form.Field>
 
             {kind === "local" ? (
-              <form.Field name="username">
+              <form.AppField name="username">
                 {(field) => (
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={usernameId}>Reserved username</Label>
-                    <Input
-                      id={usernameId}
-                      name={field.name}
-                      value={field.state.value}
-                      maxLength={200}
-                      disabled={busy}
-                      aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </div>
+                  <field.TextField
+                    autoComplete="off"
+                    disabled={busy}
+                    label="Reserved username"
+                    maxLength={200}
+                  />
                 )}
-              </form.Field>
+              </form.AppField>
             ) : (
-              <form.Field name="libraryUserId">
+              <form.AppField name="libraryUserId">
                 {(field) => {
                   const selectedCandidate = candidates?.find(
                     (candidate) => candidate.id === field.state.value,
                   );
                   return (
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor={accountId}>Library account</Label>
-                      <Select
-                        value={field.state.value}
+                      <field.SelectField
                         disabled={busy}
-                        onValueChange={(value) => field.handleChange(value)}
-                      >
-                        <SelectTrigger
-                          id={accountId}
-                          aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                        >
-                          <SelectValue placeholder="Choose one account" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(candidates ?? []).map((candidate) => (
-                            <SelectItem
-                              key={candidate.id}
-                              value={candidate.id}
-                              disabled={candidate.imported || candidate.disabled}
-                            >
-                              {candidate.name}
-                              {candidate.imported
-                                ? " · already imported"
-                                : candidate.disabled
-                                  ? " · disabled"
-                                  : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        label="Library account"
+                        options={(candidates ?? []).map((candidate) => ({
+                          disabled: candidate.imported || candidate.disabled,
+                          label: `${candidate.name}${
+                            candidate.imported
+                              ? " · already imported"
+                              : candidate.disabled
+                                ? " · disabled"
+                                : ""
+                          }`,
+                          value: candidate.id,
+                        }))}
+                        placeholder="Choose one account"
+                      />
                       {selectedCandidate && (
-                        <p className="text-muted-foreground text-xs">
+                        <FieldHint>
                           Media-server role: {selectedCandidate.isAdmin ? "Administrator" : "Member"}
-                        </p>
+                        </FieldHint>
                       )}
-                      <FieldError errors={field.state.meta.errors} />
                     </div>
                   );
                 }}
-              </form.Field>
+              </form.AppField>
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <form.Field name="contactEmail">
+              <form.AppField name="contactEmail">
+                {(field) => (
+                  <field.TextField
+                    autoComplete="email"
+                    disabled={busy}
+                    label="Contact email (optional)"
+                    maxLength={320}
+                    type="email"
+                  />
+                )}
+              </form.AppField>
+              <form.AppField name="role">
                 {(field) => (
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={contactId}>Contact email (optional)</Label>
-                    <Input
-                      id={contactId}
-                      name={field.name}
-                      type="email"
-                      value={field.state.value}
-                      maxLength={320}
-                      disabled={busy}
-                      aria-invalid={field.state.meta.errors.length > 0 ? "true" : undefined}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                    />
-                    <FieldError errors={field.state.meta.errors} />
+                    <field.SelectField disabled={busy} label="Initial role" options={ROLE_OPTIONS} />
+                    <FieldHint>
+                      Initial Loomarr role:{" "}
+                      {field.state.value === CreateInvitationInputBodyRole.admin ? "Administrator" : "Member"}
+                    </FieldHint>
                   </div>
                 )}
-              </form.Field>
-              <form.Field name="role">
-                {(field) => (
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={roleId}>Initial role</Label>
-                    <Select
-                      value={field.state.value}
-                      disabled={busy}
-                      onValueChange={(value) => field.handleChange(value as CreateInvitationInputBodyRole)}
-                    >
-                      <SelectTrigger id={roleId}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="member">Member</SelectItem>
-                        <SelectItem value="admin">Administrator</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-muted-foreground text-xs">
-                      Initial Loomarr role: {field.state.value === "admin" ? "Administrator" : "Member"}
-                    </p>
-                  </div>
-                )}
-              </form.Field>
+              </form.AppField>
             </div>
 
             {onSendEmail && (

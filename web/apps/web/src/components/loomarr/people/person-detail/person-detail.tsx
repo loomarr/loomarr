@@ -1,16 +1,20 @@
+import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
-import { Badge, FieldHint, Toggle } from "@loomarr/design-system";
+import { Badge, Field, FieldHint, Toggle } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { KeyRound, Mail, Server } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { BrowserSelectControl } from "@/client-adapters";
 import { SessionList } from "@/components/loomarr/people/session-list";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAppForm } from "@/lib/app-form";
 import type { PersonDetailProps } from "./person-detail.type";
+
+const ROLE_OPTIONS = [
+  { label: "Member", value: UserBodyRole.member },
+  { label: "Admin", value: UserBodyRole.admin },
+];
 
 const PersonDetail = ({
   user,
@@ -29,9 +33,8 @@ const PersonDetail = ({
   onRemoveContactAddress,
   onCancelContactReplacement,
 }: PersonDetailProps) => {
-  const roleId = useId();
-  const quotaId = useId();
   const autoId = useId();
+  const quotaDraft = useRef<string>(undefined);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetError, setResetError] = useState("");
   const [contactOpen, setContactOpen] = useState(false);
@@ -252,21 +255,15 @@ const PersonDetail = ({
           <p className="text-muted-foreground text-sm">Role changes take effect immediately.</p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={roleId}>Role</Label>
-          <Select
-            value={user.role}
+          <BrowserSelectControl
+            appearance="field"
             disabled={busy || isSelf}
-            onValueChange={(value) => onRoleChange?.(value as "admin" | "member")}
-          >
-            <SelectTrigger id={roleId} title={isSelf ? "You cannot change your own role" : undefined}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="member">Member</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-            </SelectContent>
-          </Select>
-          {isSelf && <p className="text-static-400 text-xs">You cannot change your own role.</p>}
+            label="Role"
+            onValueChange={(value) => onRoleChange?.(value)}
+            options={ROLE_OPTIONS}
+            value={user.role}
+          />
+          {isSelf && <FieldHint>You cannot change your own role.</FieldHint>}
         </div>
       </section>
 
@@ -287,22 +284,24 @@ const PersonDetail = ({
             <p className="text-sm">Pending acquisitions</p>
             <p className="text-muted-foreground font-mono text-sm tabular-nums">{`${user.pendingAcquisitions} of ${user.effectiveQuota}`}</p>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={quotaId}>Quota</Label>
-            <Input
-              key={`${user.id}-${user.quota}`}
-              id={quotaId}
-              type="number"
-              min={0}
-              defaultValue={user.quota}
-              placeholder={String(user.effectiveQuota)}
-              disabled={busy}
-              onBlur={(event) => {
-                const next = Number(event.target.value);
-                if (Number.isFinite(next) && next !== user.quota) onQuotaChange?.(next);
-              }}
-            />
-          </div>
+          <Field
+            key={`${user.id}-${user.quota}`}
+            defaultValue={String(user.quota)}
+            disabled={busy}
+            keyboardType="numeric"
+            label="Quota"
+            placeholder={String(user.effectiveQuota)}
+            onChangeText={(text) => {
+              quotaDraft.current = text;
+            }}
+            onBlur={() => {
+              // Saved on leaving the box, not per keystroke; untouched, there is nothing to save.
+              if (quotaDraft.current === undefined) return;
+              const next = Number(quotaDraft.current);
+              quotaDraft.current = undefined;
+              if (Number.isInteger(next) && next >= 0 && next !== user.quota) onQuotaChange?.(next);
+            }}
+          />
         </div>
         <Toggle
           id={autoId}

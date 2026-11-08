@@ -19,8 +19,8 @@ describe("PersonDetail", () => {
     const onToggleAutoApprove = vi.fn();
     renderDetail({ onRoleChange, onQuotaChange, onToggleAutoApprove });
 
-    await userEvent.click(screen.getByLabelText("Role"));
-    await userEvent.click(await screen.findByRole("option", { name: "Member" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Role,/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: /^Member/ }));
     expect(onRoleChange).toHaveBeenCalledWith("member");
     const quota = screen.getByLabelText("Quota");
     await userEvent.clear(quota);
@@ -34,7 +34,7 @@ describe("PersonDetail", () => {
 
   it("refuses self-demotion and self-disable", () => {
     renderDetail({ isSelf: true });
-    expect(screen.getByLabelText("Role")).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Role,/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Disable account" })).toBeDisabled();
   });
 

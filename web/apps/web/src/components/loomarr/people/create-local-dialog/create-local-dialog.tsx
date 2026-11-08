@@ -1,4 +1,4 @@
-import type { CreateLocalUserInputBodyRole } from "@loomarr/api/models/createLocalUserInputBodyRole";
+import { CreateLocalUserInputBodyRole } from "@loomarr/api/models/createLocalUserInputBodyRole";
 import { createLocalUserSchema } from "@loomarr/core/schemas";
 import {
   Dialog,
@@ -10,13 +10,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@loomarr/design-system";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAppForm } from "@/lib/app-form";
 import type { CreateLocalDialogProps } from "./create-local-dialog.type";
+
+const ROLE_OPTIONS = [
+  { label: "Member", value: CreateLocalUserInputBodyRole.member },
+  { label: "Admin", value: CreateLocalUserInputBodyRole.admin },
+] as const;
 
 const CreateLocalDialog = ({
   creating = false,
@@ -25,10 +28,13 @@ const CreateLocalDialog = ({
   portalContainer,
   onCreate,
 }: CreateLocalDialogProps) => {
-  const roleId = useId();
   const [open, setOpen] = useState(defaultOpen);
   const form = useAppForm({
-    defaultValues: { username: "", password: "", role: "member" as CreateLocalUserInputBodyRole },
+    defaultValues: {
+      username: "",
+      password: "",
+      role: CreateLocalUserInputBodyRole.member as CreateLocalUserInputBodyRole,
+    },
     validators: { onSubmit: createLocalUserSchema },
     onSubmit: async ({ value }) => {
       try {
@@ -77,26 +83,9 @@ const CreateLocalDialog = ({
               <field.TextField className="gap-1.5" disabled={creating} label="Password" type="password" />
             )}
           </form.AppField>
-          <form.Field name="role">
-            {(field) => (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor={roleId}>Role</Label>
-                <Select
-                  value={field.state.value}
-                  disabled={creating}
-                  onValueChange={(value) => field.handleChange(value as CreateLocalUserInputBodyRole)}
-                >
-                  <SelectTrigger id={roleId}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </form.Field>
+          <form.AppField name="role">
+            {(field) => <field.SelectField disabled={creating} label="Role" options={ROLE_OPTIONS} />}
+          </form.AppField>
 
           {error != null && <ErrorState error={error} className="p-4" />}
 

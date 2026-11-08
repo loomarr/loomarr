@@ -9,17 +9,25 @@ import {
   DialogTrigger,
   Toggle,
 } from "@loomarr/design-system";
-import { Search, Server, ShieldCheck } from "lucide-react";
+import { SearchField } from "@loomarr/ui";
+import { Server, ShieldCheck } from "lucide-react";
 import { useId, useMemo, useState } from "react";
+import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ImportDialogProps } from "./import-dialog.type";
 
 type CandidateFilter = "all" | "available" | "imported" | "disabled" | "admin";
+
+const CANDIDATE_FILTERS: { label: string; value: CandidateFilter }[] = [
+  { label: "All accounts", value: "all" },
+  { label: "Available to import", value: "available" },
+  { label: "Already imported", value: "imported" },
+  { label: "Disabled on server", value: "disabled" },
+  { label: "Server admins", value: "admin" },
+];
 
 const ImportDialog = ({
   available,
@@ -35,7 +43,6 @@ const ImportDialog = ({
   onSync,
 }: ImportDialogProps) => {
   const searchId = useId();
-  const filterId = useId();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CandidateFilter>("all");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -129,37 +136,19 @@ const ImportDialog = ({
           <>
             <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-6">
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={searchId}>Search accounts</Label>
-                  <div className="relative">
-                    <Search
-                      className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 size-4"
-                      aria-hidden
-                    />
-                    <Input
-                      id={searchId}
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      className="pl-9"
-                      placeholder="Name"
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={filterId}>Show</Label>
-                  <Select value={filter} onValueChange={(value) => setFilter(value as CandidateFilter)}>
-                    <SelectTrigger id={filterId}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All accounts</SelectItem>
-                      <SelectItem value="available">Available to import</SelectItem>
-                      <SelectItem value="imported">Already imported</SelectItem>
-                      <SelectItem value="disabled">Disabled on server</SelectItem>
-                      <SelectItem value="admin">Server admins</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <SearchField
+                  label="Search accounts"
+                  onChangeText={setQuery}
+                  placeholder="Name"
+                  value={query}
+                />
+                <BrowserSelectControl
+                  appearance="field"
+                  label="Show"
+                  onValueChange={setFilter}
+                  options={CANDIDATE_FILTERS}
+                  value={filter}
+                />
               </div>
 
               {mutationError != null && <ErrorState error={mutationError} className="p-4" />}
