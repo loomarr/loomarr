@@ -1,9 +1,9 @@
 import type { RequestTab } from "@loomarr/core/requests";
+import { NavTabs } from "@loomarr/ui";
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRequests } from "@/queue/use-requests";
 

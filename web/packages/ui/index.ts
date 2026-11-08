@@ -109,6 +109,8 @@ export {
 } from "./src/library";
 export type { ListGroupProps, ListRowProgress, ListRowProps } from "./src/list-row";
 export { ListGroup, ListRow } from "./src/list-row";
+export type { LinkLike, NavTab, NavTabsProps } from "./src/nav-tabs";
+export { NavTabs } from "./src/nav-tabs";
 export type {
   OnScreenLogoHoliday,
   OnScreenLogoPolicy,

@@ -1,40 +1,22 @@
+import { type LinkLike, NavTabs } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { ReactNode } from "react";
 import { widthFrame } from "@/test/story-utils";
-import { NavTabs } from "./nav-tabs";
 
 // THE tab bar for this app — Settings, Filler and Queue all render through it, so "you are here"
-// looks the same everywhere.
-//
-// The pill treatment came from Settings (maintainer's pick, 2026-08-02) and replaced an
-// underline bar on the other two. Every tab is a real `<Link>`: all three bars already kept their
-// position in the URL, so each tab was a destination all along — two of them just rendered as
-// buttons calling `navigate()`, which looks identical but cannot be middle-clicked, copied as a
-// link, or announced to assistive tech as a place rather than an action.
+// looks the same everywhere. Every tab is a real link: each tab is a destination, so it can be
+// middle-clicked, copied, and announced as a place rather than an action.
 //
 // ⚠ `linkComponent` is injected rather than imported so the component stays router-agnostic —
 // Storybook has no TanStack Router, and neither will the native shell. Here it is a plain anchor;
 // the app passes the real `Link`.
-const storyLink = ({
-  to,
-  className,
-  children,
-  activeOptions: _activeOptions,
-  ...rest
-}: {
-  to: string;
-  className?: string;
-  children?: ReactNode;
-  activeOptions?: { exact: boolean; includeSearch?: boolean };
-  [key: string]: unknown;
-}) => (
-  <a href={to} className={className} {...rest}>
+const storyLink: LinkLike = ({ activeOptions: _activeOptions, children, search: _search, to, ...rest }) => (
+  <a href={to} {...rest}>
     {children}
   </a>
 );
 
 const meta = {
-  title: "UI/NavTabs",
+  title: "Loomarr Components/NavTabs",
   component: NavTabs,
   decorators: [widthFrame(720)],
   args: { linkComponent: storyLink },
@@ -56,8 +38,7 @@ const WithCounts: Story = {
   },
 };
 
-// The active pill can be any tab — here the last, which is also the case where the amber fill
-// has to survive a tab that has no count pill beside it.
+// The active pill can be any tab — here the last, which has no count beside it.
 const ActiveWithoutCount: Story = {
   args: {
     label: "Filler sections",
@@ -86,9 +67,7 @@ const NoCounts: Story = {
   },
 };
 
-// A member's Queue: one tab. Approving is admin-only (§11) and a history of other people's
-// decisions is not theirs to read — the bar keeps its shape rather than vanishing for half the
-// users.
+// A member's Queue: one tab. The bar keeps its shape rather than vanishing for half the users.
 const SingleTab: Story = {
   args: {
     label: "Queue sections",
@@ -115,9 +94,8 @@ const Overflowing: Story = {
   },
 };
 
-// The v2 mock's Queue tab bar, used by Requests: transparent tabs with a 2px `signal` underline
-// on the active one. The count on a tab that holds work waiting on the viewer takes the `suggest`
-// tint, as the mock's pending count does.
+// The v2 mock's Queue tab bar, used by Requests: transparent tabs with a 2px underline on the
+// active one. The count on a tab that holds work waiting on the viewer takes the `suggest` tint.
 const Underline: Story = {
   args: {
     label: "Requests sections",
