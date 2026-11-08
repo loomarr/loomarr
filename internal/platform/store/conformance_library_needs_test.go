@@ -114,8 +114,11 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 	if err := st.SaveLibraryAnswer(ctx, link); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok, err := st.LibraryAnswerFor(ctx, link.Origin); err != nil || !ok || got != link {
-		t.Fatalf("answer = %+v, %v, %v", got, ok, err)
+	// An answer that doesn't say who gave it is the maintainer's.
+	want := link
+	want.By = AnsweredByYou
+	if got, ok, err := st.LibraryAnswerFor(ctx, link.Origin); err != nil || !ok || got != want {
+		t.Fatalf("answer = %+v, %v, %v; want %+v", got, ok, err, want)
 	}
 	ignore := LibraryAnswer{Origin: origin("/media/show"), Kind: "series", Ignored: true, AnsweredAt: at}
 	if err := st.SaveLibraryAnswer(ctx, ignore); err != nil {
