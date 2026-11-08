@@ -433,10 +433,19 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 // carrying both provider ids must be findable under whichever key the lineup entry was born
 // with — the same parity problem the availability scan solves, and the same solution.
 //
-// The cache is refreshed on a TTL: a collection edited in Emby takes effect within it, which
-// is consistent with the stamp only being read at reconcile anyway.
+// The household's own collections (#2151 step 12) are indexed beside the media server's, under
+// their Loomarr ids, so a scope can name either until the cutover imports the media server's.
+// With no media server configured at all, the household's alone are the whole answer; a media
+// server that is configured but can't be read still fails the pass open.
+//
+// The cache is refreshed on a TTL: a collection edited in Emby or in the Library takes effect
+// within it, which is consistent with the stamp only being read at reconcile anyway.
 type libraryBoxSets struct {
 	lib *library.Client
+	// own lists the household's collections' members; nil leaves them out.
+	own interface {
+		LibraryCollectionMemberIDs(ctx context.Context) ([]store.LibraryCollectionMember, error)
+	}
 	ttl time.Duration
 
 	mu         sync.Mutex
@@ -459,18 +468,35 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	lib := a.lib.Snapshot()
-	generation, err := lib.Connection().Generation()
-	if err != nil {
+	connection := lib.Connection()
+	generation, err := connection.Generation()
+	noServer := connection == (library.Connection{})
+	if err != nil && (a.own == nil || !noServer) {
 		return nil, err
 	}
 	if index, ok := a.cachedIndex(generation, time.Now()); ok {
 		return index, nil
 	}
+	idx := make(map[provision.Key][]string)
+	if a.own != nil {
+		members, err := a.own.LibraryCollectionMemberIDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range members {
+			for _, k := range provisionbackstop.ScanItemKeys(ownMember(m)) {
+				idx[k] = append(idx[k], m.CollectionID)
+			}
+		}
+	}
+	if noServer {
+		a.index, a.fetched, a.generation = idx, time.Now(), generation
+		return idx, nil
+	}
 	colls, err := lib.Collections(ctx)
 	if err != nil {
 		return nil, err
 	}
-	idx := make(map[provision.Key][]string)
 	for _, c := range colls {
 		members, err := lib.CollectionMembers(ctx, c.ID)
 		if err != nil {
@@ -486,6 +512,18 @@ func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]s
 	}
 	a.index, a.fetched, a.generation = idx, time.Now(), generation
 	return idx, nil
+}
+
+// ownMember reads a household collection's title as the media server's search result, so its keys
+// come from the one derivation the BoxSet members use.
+func ownMember(m store.LibraryCollectionMember) library.SearchResult {
+	r := library.SearchResult{MediaType: library.Movie}
+	if m.Kind == "series" {
+		r.MediaType = library.Series
+	}
+	r.TMDBID, _ = strconv.Atoi(m.TMDBID)
+	r.TVDBID, _ = strconv.Atoi(m.TVDBID)
+	return r
 }
 
 func (a *libraryBoxSets) cachedIndex(

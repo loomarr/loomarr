@@ -37,6 +37,42 @@ type LibraryCollectionStore interface {
 	UpdateLibraryCollection(ctx context.Context, c LibraryCollection, at time.Time) error
 	// DeleteLibraryCollection deletes a collection and its members; ErrNotFound when there is none.
 	DeleteLibraryCollection(ctx context.Context, id string) error
+	// LibraryCollectionMemberIDs lists each collection's members still in the library, with the
+	// provider ids a channel's lineup knows them by.
+	LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error)
+}
+
+// LibraryCollectionMember is one title of a collection, by its provider ids ("" when it has none).
+type LibraryCollectionMember struct {
+	CollectionID string
+	// Kind is the title's library kind: movie or series.
+	Kind   string
+	TMDBID string
+	TVDBID string
+}
+
+func (s *sqlStore) LibraryCollectionMemberIDs(ctx context.Context) ([]LibraryCollectionMember, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT m.collection_id, i.kind,
+		COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tmdb'), ''),
+		COALESCE((SELECT MIN(d.value) FROM library_ids d WHERE d.item_id = i.id AND d.namespace = 'tvdb'), '')
+		FROM library_collection_members m JOIN library_items i ON i.id = m.inventory_item_id
+		ORDER BY m.collection_id, m.position`)
+	if err != nil {
+		return nil, fmt.Errorf("library collection members: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []LibraryCollectionMember
+	for rows.Next() {
+		var m LibraryCollectionMember
+		if err := rows.Scan(&m.CollectionID, &m.Kind, &m.TMDBID, &m.TVDBID); err != nil {
+			return nil, fmt.Errorf("library collection members: %w", err)
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("library collection members: %w", err)
+	}
+	return out, nil
 }
 
 func (s *sqlStore) ListLibraryCollections(ctx context.Context) ([]LibraryCollection, error) {
