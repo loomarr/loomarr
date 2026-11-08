@@ -38,6 +38,27 @@ describe("Requests tabs", () => {
     expect(screen.queryByText("Request j-done")).not.toBeInTheDocument();
   });
 
+  // #2738: an admin's own request waiting on approval is already a card in Needs you; listing it in
+  // In progress too made one request two rows in two tabs.
+  it("keeps a request an admin has to approve out of In progress", async () => {
+    stub({
+      me: ADMIN,
+      journeys: [
+        journey("j1", {
+          milestone: "awaiting_approval",
+          proposal: { ...proposal, id: "p1", jobId: "j1", proposal: proposal.proposal },
+        }),
+        journey("j-gen", { milestone: "generating" }),
+      ],
+      proposals: [proposal],
+    });
+    renderAt("/requests/in-progress");
+
+    expect(await screen.findByText("Request j-gen")).toBeInTheDocument();
+    expect(screen.queryByText("Request j1")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /In progress/ })).toHaveTextContent(/In progress\s*1\b/);
+  });
+
   it("describes a given-up title as given up, not as queued", async () => {
     stub({
       me: MEMBER,
@@ -260,6 +281,22 @@ describe("Decided filler pulls in Done (#1430)", () => {
     expect(screen.getByText("Declined")).toBeInTheDocument();
     expect(screen.queryByText("Still waiting")).not.toBeInTheDocument();
   });
+
+  // #2738: four pulls with one title read as four identical rows. What each was for tells them apart.
+  it("tells decided pulls with the same title apart by what each was for", async () => {
+    stub({
+      me: ADMIN,
+      journeys: [journey("j-done")],
+      pulls: [
+        { ...decidedPull("pull-a", "Pull filler from your sources", "approved"), reason: "No 1950s ads yet" },
+        { ...decidedPull("pull-b", "Pull filler from your sources", "approved"), reason: "No 1980s ads yet" },
+      ],
+    });
+    renderAt("/requests/done");
+
+    expect(await screen.findByText(/No 1950s ads yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No 1980s ads yet/)).toBeInTheDocument();
+  }, 20_000);
 
   // Filler pulls are an admin-only list server-side (§10 V35); a member's Done tab must not
   // show one even if it is decided.

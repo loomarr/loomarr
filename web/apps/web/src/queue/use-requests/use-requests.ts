@@ -6,7 +6,7 @@ import type { ProposalJourneyDTO } from "@loomarr/api/models/proposalJourneyDTO"
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
-import { type RequestStatus, requestNeedsYou, requestStatus } from "@loomarr/core/requests";
+import { type RequestStatus, type RequestTab, requestNeedsYou, requestStatus } from "@loomarr/core/requests";
 import { type QueryClient, useQueries } from "@tanstack/react-query";
 import { useAuth } from "@/auth/use-auth";
 import { usePendingApprovals } from "@/queue/pending-approvals";
@@ -20,6 +20,11 @@ interface RequestEntry {
   journey: ProposalJourneyDTO;
   status: RequestStatus;
 }
+
+// A request an admin has to approve is a card in Needs you (the approval queue lists every submitted
+// proposal), so it is not also a row in In progress: one request is in one tab (#2738).
+const awaitsThisAdmin = (journey: ProposalJourneyDTO, isAdmin: boolean): boolean =>
+  isAdmin && journey.milestone === "awaiting_approval";
 
 // Everything the Requests page and the nav badge read, from ONE place, so the badge, the tab
 // counts and the lists cannot disagree.
@@ -52,7 +57,8 @@ const useRequests = () => {
     status: requestStatus(journey, titles),
   }));
 
-  const inTab = (tab: RequestStatus["tab"]) => entries.filter((e) => e.status.tab === tab);
+  const inTab = (tab: RequestStatus["tab"]) =>
+    entries.filter((e) => e.status.tab === tab && !awaitsThisAdmin(e.journey, isAdmin));
   return {
     entries,
     inTab,
@@ -105,5 +111,23 @@ const fetchNeedsYouCount = async (queryClient: QueryClient, isAdmin: boolean): P
   );
 };
 
+// The tab /requests opens on, read imperatively for its `beforeLoad`: the first of Needs you, In
+// progress and Done that has something in it, so the page never opens on an empty tab while another
+// has items (#2738). Needs you is answered first and alone: when it has items nothing else is read.
+// With nothing anywhere it is In progress, and the page's own empty state takes over.
+const fetchLandingTab = async (queryClient: QueryClient, isAdmin: boolean): Promise<RequestTab> => {
+  if ((await fetchNeedsYouCount(queryClient, isAdmin)) > 0) return "needs-you";
+  const [jobs, ...titleAnswers] = await Promise.all([
+    queryClient.ensureQueryData(proposalJobsApi.getListProposalJobsQueryOptions({ mine: true })),
+    ...STATES.map((state) => queryClient.ensureQueryData(titlesApi.getListTitlesQueryOptions({ state }))),
+  ]);
+  const titles = titleAnswers.flatMap((answer) => (answer.status === 200 ? answer.data.titles : []) ?? []);
+  const journeys = ((jobs.status === 200 ? jobs.data.journeys : undefined) ?? []).filter(
+    (journey) => !awaitsThisAdmin(journey, isAdmin),
+  );
+  const tabs = journeys.map((journey) => requestStatus(journey, titles).tab);
+  return !tabs.includes("in-progress") && tabs.includes("done") ? "done" : "in-progress";
+};
+
 export type { RequestEntry };
-export { fetchNeedsYouCount, useNeedsYouCount, useRequests };
+export { fetchLandingTab, useNeedsYouCount, useRequests };
