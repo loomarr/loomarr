@@ -337,23 +337,13 @@ func Extend(core store.Store) Store {
 	return extended{Store: core, sqlStore: &sqlStore{db: h, dialect: h.Dialect(), ph: h.Rebind, core: core}}
 }
 
-// Open opens the core store (store.Open) and extends it. With autoMigrate it then runs this
-// half's boot backfill, after the core's own boot seeds, as store.Open did while enrichment lived
-// there. Every opener that migrates opens here, or the backfill would run late, on clips a seed
-// tool wrote before the server first opened the database.
+// Open opens the core store (store.Open) and extends it.
 func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, error) {
 	core, err := store.Open(ctx, databaseURL, autoMigrate)
 	if err != nil {
 		return nil, err
 	}
-	st := Extend(core)
-	if autoMigrate {
-		if err := st.(extended).backfillFillerEnrichment(ctx, time.Now()); err != nil {
-			_ = core.Close()
-			return nil, err
-		}
-	}
-	return st, nil
+	return Extend(core), nil
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's style.
