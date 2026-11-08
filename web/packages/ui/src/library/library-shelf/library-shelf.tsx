@@ -32,7 +32,7 @@ const StatusLine = ({
   onRescan,
   onOpenSettings,
 }: Pick<LibraryShelfProps, "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings">) => {
-  const scan = scanHeadline(status.scan);
+  const scan = scanHeadline(status.scan, status.needsYou);
   const held = status.held[0];
   const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
   const [tone, text]: [ComponentProps<typeof StatusDot>["tone"], string] =
