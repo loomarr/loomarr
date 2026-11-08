@@ -596,7 +596,7 @@ step 5). Nothing reads the scanner's origins until the cutover.
   are history and keep theirs). An id the map doesn't pair still maps when its record names a
   title (a title's key, a proposal pick's) whose TMDB or TVDB id a Library title carries: a media
   server that re-added its library left every old id dead, but not the titles. The pass runs in
-  one transaction and drops the media server's episode and path caches.
+  one transaction and drops the media server's episode cache.
 
   There is no all-or-nothing gate: every reader takes either kind of id, so what maps is rewritten
   at once and the rest is logged and waits for a later pass. An airing names an episode with no
@@ -616,8 +616,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   extra folder. A name with no mapped folder is logged once and does no work.
 - **Playout reads only the Library's files** (step 16). A programme, its still, its first-play
   measurement and its channel's codec vote all read the library item's playing file
-  (`LibraryPlayingFile`). The media server's stream, the `library.path_map` translation of its
-  paths and its path cache no longer play anything. An item whose file is gone airs the offline card.
+  (`LibraryPlayingFile`). An item whose file is gone airs the offline card. The media server's
+  stream URL, its per-item path lookup and the `library_item_paths` cache are deleted (migration
+  193). `library.path_map` now only helps folder discovery.
 
 ## Cached series episodes
 

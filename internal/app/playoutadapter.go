@@ -31,7 +31,7 @@ import (
 //
 //	store.Channel.Desired  → the accepted cycle reconciliation committed for broadcast
 //	playout.AiringAt       → which program that puts on right now, and at what offset
-//	library.StreamURL      → the URL ffmpeg can actually read
+//	LibraryPlayingFile     → the library item's file, which ffmpeg reads directly
 //
 // It lives in internal/app rather than internal/playout on purpose. playout is the mechanism
 // (encoders, args, sessions) and must not know about stores, media servers, or settings; this is
@@ -257,15 +257,15 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 
 	// Resolve the input ffmpeg reads: the library item's file, directly. This is where direct play
 	// begins — reading the file lets the encoder `-c copy` it.
-	src := r.itemInput(ctx, airing.LibraryItemID)
-	if src.URL == "" {
+	input := r.itemInput(ctx, airing.LibraryItemID)
+	if input == "" {
 		// The lineup names an item whose file is gone or unreadable, or an id the Library does
 		// not hold. Reporting it as "nothing airing" rather than an error means the channel shows
 		// the offline card instead of failing to tune — the same outcome the viewer would get
 		// from an error, minus the retry storm.
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
-	return airing, src.URL, nil
+	return airing, input, nil
 }
 
 // RecordAiringServed records that a viewer received segments of an airing AiringAt resolved at
@@ -340,12 +340,12 @@ func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (pl
 		Offset: airing.Offset,
 		At:     airing.StartedAt,
 		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
-			src := r.itemInput(ctx, itemID)
-			if src.URL == "" {
+			input := r.itemInput(ctx, itemID)
+			if input == "" {
 				return playout.StillSource{}, false, nil
 			}
-			source := playout.StillSource{Input: src.URL, HDR: r.inventoryHDR(ctx, itemID)}
-			source.Keyframe, source.Indexed = r.indexedKeyframe(ctx, src.URL, airing.Offset)
+			source := playout.StillSource{Input: input, HDR: r.inventoryHDR(ctx, itemID)}
+			source.Keyframe, source.Indexed = r.indexedKeyframe(ctx, input, airing.Offset)
 			return source, true, nil
 		},
 	}, true, nil
@@ -464,7 +464,7 @@ func (r *playoutResolver) airingCycle(ctx context.Context, ch store.Channel, at 
 //
 // Called at CURATION (after a bind writes the lineup), not on the play hot path: the codec is
 // stored (Q1) so the session start reads a column, not a probe. It reuses the SAME resolve+probe
-// path AiringNow uses (CyclePreview → ResolveInput → probeFormat), so the codec we store is
+// path AiringNow uses (CyclePreview → itemInput → probeFormat), so the codec we store is
 // measured from the very files we broadcast — it cannot drift from what actually plays.
 //
 // Returns BroadcastCodecH264 as the safe answer whenever it cannot measure (no probe wired, no
@@ -652,11 +652,11 @@ func (r *playoutResolver) measureChannelCodec(ctx context.Context, channelID str
 		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" {
 			continue
 		}
-		src := r.itemInput(ctx, sl.LibraryItemID)
-		if src.URL == "" {
+		input := r.itemInput(ctx, sl.LibraryItemID)
+		if input == "" {
 			continue
 		}
-		fmtInfo, perr := r.probeFormat(ctx, src.URL)
+		fmtInfo, perr := r.probeFormat(ctx, input)
 		if perr != nil {
 			if r.log != nil {
 				r.log.Debug("codec: probe failed; skipping title", "channel", channelID, "item", sl.LibraryItemID, "err", perr)
@@ -1230,19 +1230,34 @@ type libraryFileReader interface {
 
 // itemInput is the input ffmpeg reads for a programme: the library item's own playing file, while
 // it is readable. Playout reads only files Loomarr's scan found (#2151 step 16); an id the Library
-// does not hold, or a file that is gone, has nothing to play.
-func (r *playoutResolver) itemInput(ctx context.Context, itemID string) library.InputSource {
+// does not hold, or a file that is gone, has nothing to play: "".
+func (r *playoutResolver) itemInput(ctx context.Context, itemID string) string {
 	if r.libraryFile == nil {
-		return library.InputSource{}
+		return ""
 	}
 	path, ok, err := r.libraryFile.LibraryPlayingFile(ctx, itemID)
 	if err != nil && r.log != nil {
 		r.log.Debug("playout: library file unavailable", "item", itemID, "err", err)
 	}
-	if !ok || !library.StatReadableFile(path) {
-		return library.InputSource{}
+	if !ok || !readableFile(path) {
+		return ""
 	}
-	return library.InputSource{URL: path, Kind: library.InputFile}
+	return path
+}
+
+// readableFile reports whether path is a regular file this process can open. A directory, a
+// missing path or an unreadable file is false.
+func readableFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
 
 // libraryVideoReader is the store's read of the video a Library item plays.
@@ -1606,7 +1621,7 @@ func (r *playoutResolver) probedFormat(ctx context.Context, input string) playou
 	f, err := r.probeFormat(ctx, input)
 	if err != nil {
 		if r.log != nil {
-			r.log.Debug("playout: format not probed, transcoding", "input", library.RedactStreamURL(input), "err", err)
+			r.log.Debug("playout: format not probed, transcoding", "input", input, "err", err)
 		}
 		return playout.MediaFormat{}
 	}

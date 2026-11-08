@@ -592,14 +592,6 @@ type ScheduledAiring struct {
 	AiredAt       time.Time
 }
 
-// LibraryPathStore caches the media server's file path per library item (#1456) so playout
-// resolves a direct-play input without a media-server request at airtime.
-type LibraryPathStore interface {
-	// LibraryItemPath returns the cached SERVER path (never the mapped local one); ok=false on a miss.
-	LibraryItemPath(ctx context.Context, itemID string) (path string, ok bool, err error)
-	// SetLibraryItemPath upserts the server path for an item.
-	SetLibraryItemPath(ctx context.Context, itemID, serverPath string) error
-}
 
 // ActivityStore is the Dashboard feed (§5, §12, V32).
 type ActivityStore interface {
@@ -786,7 +778,6 @@ type Store interface {
 	ClipStore
 	InteractiveOperationStore
 	AiringStore
-	LibraryPathStore
 	ActivityStore
 	InvitationStore
 	PasswordRecoveryStore
