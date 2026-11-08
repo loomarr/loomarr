@@ -211,6 +211,8 @@ func buildHandler(
 	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)
 	healthRunner := newCurrentHealthRunner(foundation.startup, st, set, healthProbes)
 	jobReg.Add(healthRunner.Job())
+	foundation.startup.Complete(diagnostics.StartupCheckScheduledTasks, diagnostics.StartupSkipped,
+		"checked by Current Health once the scheduler is running", scheduledTasksRoute, "")
 
 	operations, err := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
@@ -220,6 +222,9 @@ func buildHandler(
 	)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if operations.scheduler != nil {
+		healthRunner.watchTasks(operations.scheduler)
 	}
 	emitter.setNotifications(operations.productNotifications)
 	if playoutRes != nil {

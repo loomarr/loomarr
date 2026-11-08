@@ -37,10 +37,10 @@ func TestRegistry_TMDBHelpNamesEveryEnabledSurface(t *testing.T) {
 	if !ok {
 		t.Fatal("tmdb.api_key is not declared")
 	}
-	help := strings.ToLower(setting.Doc)
+	help := strings.ToLower(setting.Doc + " " + setting.Detail)
 	for _, surface := range []string{"search", "icon", "suggestion"} {
 		if !strings.Contains(help, surface) {
-			t.Errorf("tmdb.api_key help %q does not mention %s", setting.Doc, surface)
+			t.Errorf("tmdb.api_key help %q does not mention %s", help, surface)
 		}
 	}
 }

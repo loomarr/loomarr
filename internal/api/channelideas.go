@@ -157,7 +157,7 @@ func (s *Server) listChannelIdeas(ctx context.Context, _ *struct{}) (*listChanne
 // buildChannelIdeas builds the caller's ideas (their hides left out) and returns the seasonal
 // calendar's display labels by holiday id, which names and pitches read.
 func (s *Server) buildChannelIdeas(ctx context.Context, userID string) ([]ideas.Idea, map[string]string, error) {
-	if s.ideaLibrary == nil || s.libraryUnconfigured() {
+	if s.ideaLibrary == nil {
 		return nil, nil, errNotImplemented("Channel ideas aren't available", "Connect your media library in Settings to get channel ideas.")
 	}
 	items, err := s.ideaLibrary.IdeaItems(ctx)

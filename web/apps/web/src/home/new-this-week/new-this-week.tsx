@@ -13,6 +13,9 @@ const POSTERS = 5;
 // renders (the same reason the guide window is quantised).
 const newSince = (nowMs: number) => Math.floor((nowMs - WEEK_MS) / HOUR_MS) * HOUR_MS;
 
+// A stable number from a title's key, so a title with no channel keeps the same colour.
+const seedOf = (key: string) => [...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 // "Requested by Maya · added Tuesday" (the mock). The requester is the server's name for the
@@ -26,20 +29,20 @@ const addedLine = (channel: ChannelDTO, viewerName: string | undefined, timeZone
   return day ? `${who} · added ${day}` : who;
 };
 
-// The newest channel made this week, if any, for the card that leads the row.
-const newestChannel = (channels: readonly ChannelDTO[], since: number) =>
+// The channels made this week, newest first. Each gets a row: the header counts them, so the
+// list must show every one (#2763).
+const freshChannels = (channels: readonly ChannelDTO[], since: number) =>
   channels
     .filter((c) => (c.createdAtMs ?? 0) >= since)
     .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0));
 
-// NewThisWeek — Home's "New this week" (#1822 evidence): the channel that arrived this week, then
+// NewThisWeek — Home's "New this week" (#1822 evidence): the channels that arrived this week, then
 // the newest titles and the channel each landed on (#1663). Titles carry no poster yet, so every
 // poster is the restrained line motif, with the landing channel's monogram when one is known
 // (#1822 evidence: "a restrained line motif with a channel monogram where available").
 const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisWeekProps) => {
-  const fresh = newestChannel(channels, since);
-  const lead = fresh[0];
-  if (titles.length === 0 && !lead) return null;
+  const fresh = freshChannels(channels, since);
+  if (titles.length === 0 && fresh.length === 0) return null;
   const meta = [
     titles.length > 0 ? plural(titles.length, "title", "titles") : undefined,
     fresh.length > 0 ? plural(fresh.length, "new channel", "new channels") : undefined,
@@ -56,8 +59,9 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
       {/* A separate row, never a grid column beside the posters (#1822 evidence geometry table):
           sharing a track with five poster columns is what left phone poster slivers in the first
           place. It wraps its own text and action instead. */}
-      {lead && (
+      {fresh.map((lead) => (
         <Link
+          key={lead.id}
           to="/watch/$id"
           params={{ id: lead.id }}
           className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring flex flex-wrap items-center gap-3 rounded-md border p-3.5 focus-visible:ring-2 focus-visible:outline-none"
@@ -76,7 +80,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
             Watch
           </span>
         </Link>
-      )}
+      ))}
       {titles.length > 0 && (
         // Two columns at phone width; one below 284px of content width — the geometry table's rule,
         // as a container query so it holds whatever chrome shares the viewport.
@@ -91,6 +95,8 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   channel={
                     t.channels?.[0] ? { name: t.channels[0].name, number: t.channels[0].number } : undefined
                   }
+                  label={t.name ?? t.key}
+                  seed={seedOf(t.key)}
                 />
               </div>
               <span className="text-sm font-medium break-words">{t.name ?? t.key}</span>

@@ -59,7 +59,7 @@ func TestSearch_ParsesOfficialRatingAndRuntime(t *testing.T) {
 func TestSearch_ParsesEmbySize(t *testing.T) {
 	c, demo := demoClient(t, Emby)
 	film, show := testkit.FirstMovie(), testkit.FirstSeries()
-	path := demo.Layout.Item(film.ID())
+	path := demo.Layout.FilmFile(film)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}

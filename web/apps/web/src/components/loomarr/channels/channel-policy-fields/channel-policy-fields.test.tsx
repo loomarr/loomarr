@@ -475,14 +475,12 @@ describe("ChannelPolicyFields", () => {
 // The source badges and Reset (#1817 item 4). Reset writes the same sentinel the summary counts
 // as a default (lib/policy-overrides covers the full table).
 describe("ChannelPolicyFields defaults and overrides", () => {
-  it("badges every field Default on a fresh channel, with Reset disabled", () => {
+  it("badges every field Default on a fresh channel, with nothing to reset", () => {
     render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
     // ceiling, unrated, dates, runtime, ordering, three spacing windows, block cap.
     expect(screen.getAllByText("Default")).toHaveLength(9);
     expect(screen.queryByText("Channel override")).not.toBeInTheDocument();
-    const resets = screen.getAllByRole("button", { name: /^Reset to default/ });
-    expect(resets).toHaveLength(9);
-    for (const reset of resets) expect(reset).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /^Reset to default/ })).not.toBeInTheDocument();
   });
 
   it("badges an overridden field and resets it to its sentinel", async () => {

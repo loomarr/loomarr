@@ -42,7 +42,7 @@ func testChannelOutlivesItsPurgedJob(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.IntentJSON != `{"description":"90s action"}` || got.RequestedBy != "u-member" {
+	if intent := `{"description":"90s action"}`; asWritten(got.IntentJSON, intent) != intent || got.RequestedBy != "u-member" {
 		t.Errorf("channel lost its request: intent=%q requestedBy=%q", got.IntentJSON, got.RequestedBy)
 	}
 	requesters, err := s.ChannelRequesters(ctx)
@@ -113,7 +113,7 @@ func testApprovalOfJobNamingAChannel(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.IntentRef != "job-origin" || got.IntentJSON != `{"description":"second"}` || got.RequestedBy != "u-member" {
+	if intent := `{"description":"second"}`; got.IntentRef != "job-origin" || asWritten(got.IntentJSON, intent) != intent || got.RequestedBy != "u-member" {
 		t.Errorf("channel after refine approval = ref %q intent %q requestedBy %q", got.IntentRef, got.IntentJSON, got.RequestedBy)
 	}
 
