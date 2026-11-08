@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -265,6 +266,7 @@ func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) 
 func connectionTests(
 	set resolved, libraryClient *library.Client, tmdbClient *tmdb.Client,
 ) map[string]func(ctx context.Context) (bool, string) {
+	hostedModels := &hostedModelCheck{list: checkHostedModels, now: time.Now}
 	return map[string]func(ctx context.Context) (bool, string){
 		"media_server": func(ctx context.Context) (bool, string) {
 			lib := libraryClient.Snapshot()
@@ -336,9 +338,9 @@ func connectionTests(
 			return settings.RadarrURL.Get(set), settings.RadarrAPIKey.Get(set)
 		}),
 		// llm (§8/§8.1): local Ollama is probed live (reachable + the selected model
-		// pulled). Hosted providers (openrouter/custom) aren't reachability-probed
-		// here — their key is validated via POST /v1/system/llm/test; the checklist
-		// only confirms a provider + key are configured, and points at the picker.
+		// pulled). A hosted provider must list its models (#2735): when that list cannot be
+		// read the model picker shows "No models returned", and the connection is not OK either.
+		// Its key is validated when a model is selected.
 		"llm": func(ctx context.Context) (bool, string) {
 			sel := resolveSelection(set)
 			provider := sel.Provider
@@ -349,7 +351,17 @@ func connectionTests(
 				if sel.Model == "" {
 					return false, "choose a model for " + provider + " (AI settings)"
 				}
-				return true, "" // key present; live validation is the §8.1 Test button
+				base := sel.URL
+				if hp, ok := llm.HostedProviderByKey(provider); ok && base == "" {
+					base = hp.BaseURL
+				}
+				if base == "" {
+					return false, "set the AI service address (AI settings)"
+				}
+				if err := hostedModels.check(ctx, base, sel.APIKey); err != nil {
+					return false, "no models came back from " + base + "; check the key and address: " + err.Error()
+				}
+				return true, ""
 			}
 			base := sel.URL
 			if base == "" {
@@ -402,6 +414,40 @@ func connectionTests(
 			return true, ""
 		},
 	}
+}
+
+// checkHostedModels lists a hosted provider's models; a variable so tests never dial out.
+var checkHostedModels = llm.CheckModels
+
+// hostedModelReuse is how long a successful model listing is reused. Current Health runs this
+// probe every 30 seconds by default, and OpenRouter's catalog is large; a changed key or address
+// is a new listing, so a fix is still checked at once.
+const hostedModelReuse = 10 * time.Minute
+
+// hostedModelCheck remembers the last successful listing for one address and key. A failure is
+// never remembered, so a broken provider is re-checked on every probe.
+type hostedModelCheck struct {
+	mu        sync.Mutex
+	base, key string
+	at        time.Time
+	list      func(ctx context.Context, baseURL, apiKey string) error
+	now       func() time.Time
+}
+
+func (h *hostedModelCheck) check(ctx context.Context, base, key string) error {
+	h.mu.Lock()
+	fresh := h.base == base && h.key == key && !h.at.IsZero() && h.now().Sub(h.at) < hostedModelReuse
+	h.mu.Unlock()
+	if fresh {
+		return nil
+	}
+	if err := h.list(ctx, base, key); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.base, h.key, h.at = base, key, h.now()
+	h.mu.Unlock()
+	return nil
 }
 
 // arrCheck is one arr's Test: its address and key answer, nothing else is touched.

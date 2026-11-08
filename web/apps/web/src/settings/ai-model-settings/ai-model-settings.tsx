@@ -23,8 +23,11 @@ import {
   visionChoiceSettings,
 } from "@/settings/vision-choice";
 
-// A hosted provider's lineup: test its credentials, then pick a tool-capable model from its
-// live /models list.
+// A hosted provider's lineup: pick a tool-capable model from its live /models list.
+//
+// ⚠ No test button of its own (#2735). The connection block's check is the one test: it fails
+// when this list cannot be read, so the card never says "Connection OK" above "No models
+// returned". The key itself is validated when a model is selected.
 const HostedLineup = ({
   status,
   provider,
@@ -35,11 +38,6 @@ const HostedLineup = ({
   onModelChange: () => void;
 }) => {
   const select = systemApi.useSystemLlmSelect({ mutation: { onSuccess: onModelChange } });
-  const testProvider = systemApi.useSystemLlmTest();
-  const testResult = unwrap(testProvider.data);
-  const modelReady = Boolean(
-    status.model && provider?.models?.some((model) => model.id === status.model && model.tools),
-  );
   const providers = provider
     ? [{ ...provider, models: provider.models?.filter((model) => model.tools) }]
     : [];
@@ -47,37 +45,6 @@ const HostedLineup = ({
   return (
     <div className="flex flex-col gap-3">
       {select.error != null && <ErrorState error={select.error} />}
-      {provider?.keyConfigured && (
-        <div className="flex flex-wrap items-center gap-3">
-          <Action
-            disabled={testProvider.isPending}
-            onPress={() =>
-              testProvider.mutate({
-                data: {
-                  provider: provider.key,
-                  ...(provider.key === "custom" ? { baseUrl: provider.baseUrl } : {}),
-                },
-              })
-            }
-            variant="outline"
-          >
-            {testProvider.isPending ? "Testing credentials…" : "Test provider credentials"}
-          </Action>
-          {testResult?.ok && (
-            <p role="status" className="text-lock text-sm">
-              {provider.label} credentials authorized.{" "}
-              {modelReady
-                ? `${status.model} is selected as the lineup model.`
-                : "Choose a tool-capable lineup model to finish AI setup."}
-            </p>
-          )}
-          {testResult && !testResult.ok && (
-            <p role="status" className="text-onair-300 text-sm">
-              {testResult.error ?? `${provider.label} rejected these credentials.`}
-            </p>
-          )}
-        </div>
-      )}
       <HostedModelPicker
         providers={providers}
         activeModel={status.model}
