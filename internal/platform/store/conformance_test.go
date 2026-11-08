@@ -232,6 +232,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
 		t.Run("SpentRowPurges", func(t *testing.T) { testSpentRowPurges(t, newStore) })
 		t.Run("UnusedTitlePurge", func(t *testing.T) { testUnusedTitlePurge(t, newStore) })
+		t.Run("CatalogRetention", func(t *testing.T) { testCatalogRetention(t, newStore) })
 		t.Run("ClientCrashReports", func(t *testing.T) { testClientCrashReports(t, newStore) })
 		t.Run("ClientCrashRetention", func(t *testing.T) { testClientCrashRetention(t, newStore) })
 	})

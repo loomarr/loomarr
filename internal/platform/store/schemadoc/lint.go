@@ -143,26 +143,9 @@ func lintFix(gap string) string {
 // Unbounded opens the retention of a table nothing prunes yet; Lint reports each one as a gap.
 const Unbounded = "Unbounded:"
 
-// mediaServerCache is a cache of the media server's catalog, deleted whole with the Emby catalog
-// code once the scanner is the catalog.
-const mediaServerCache = "#2151: the media server's cache; deleted with the Emby catalog after the cutover"
-
-// scannerCatalog is the scanner's own catalog. It keeps a title whose files have gone on purpose,
-// behind the mass-disappearance guard, so what removes a title for good is the scanner's to decide
-// as the one catalog lands.
-const scannerCatalog = "#2151/#2528: the scanner's catalog; retention lands with the one catalog at the cutover"
-
 // KnownGaps are the lint problems the schema had when the lint arrived, each with the work that
-// removes it. Add nothing here: fix the schema instead.
-var KnownGaps = map[string]string{
-	"unbounded inventory_item_origins":   scannerCatalog,
-	"unbounded inventory_source_origins": scannerCatalog,
-	"unbounded inventory_sources":        scannerCatalog,
-	"unbounded library_catalog":          scannerCatalog,
-	"unbounded library_item_paths":       mediaServerCache,
-	"unbounded library_items":            scannerCatalog,
-	"unbounded series_episodes":          mediaServerCache,
-}
+// removes it. Every one has been fixed (#2528); add nothing here: fix the schema instead.
+var KnownGaps = map[string]string{}
 
 // FreeForm are state-named columns that hold another system's words as it sent them, so a CHECK
 // would refuse whatever that system adds next. Each says whose words they are.
