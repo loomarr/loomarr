@@ -157,8 +157,7 @@
       "tailwindClasses": 23
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "tailwindClasses": 108,
-      "legacyUi": 1
+      "tailwindClasses": 108
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
       "tailwindClasses": 67
@@ -389,8 +388,7 @@
       "tailwindClasses": 62
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
-      "tailwindClasses": 24,
-      "legacyUi": 1
+      "tailwindClasses": 24
     },
     "src/filler/filler-catalog/catalog-bulk-bar/catalog-bulk-bar.tsx": {
       "tailwindClasses": 15,
@@ -447,8 +445,7 @@
       "legacyUi": 1
     },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
-      "tailwindClasses": 77,
-      "legacyUi": 1
+      "tailwindClasses": 76
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
       "tailwindClasses": 41
