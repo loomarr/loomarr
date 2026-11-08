@@ -129,6 +129,9 @@ const (
 	// icon rung's JPEG has none, so the bug renderer reads the stored ORIGINAL (Service.Original),
 	// never a rendition; the upload accepts only alpha-capable PNG and WebP.
 	RoleWatermark Role = "watermark"
+	// RoleLogo is a title's clear logo (#2567): a wide transparent PNG drawn over artwork in
+	// place of a typed title. Its alpha is the shape, so it has no JPEG rendition (Formats).
+	RoleLogo Role = "logo"
 )
 
 // Image is one logical image: an original plus everything derived from or known about it.

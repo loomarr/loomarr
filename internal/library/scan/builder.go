@@ -46,11 +46,11 @@ type seriesSeen struct {
 }
 
 // listed finishes a movie or series the pass wrote: its library row came with the write (the
-// store's LibraryProjection); its poster and its set's record are asked for here.
+// store's LibraryProjection); its artwork and its set's record are asked for here.
 func (b *builder) listed(ctx context.Context, id string, snapshot inventory.Snapshot) {
 	facts := snapshot.Observation.Facts
 	set := setKey(facts.Relationships)
-	b.poster(ctx, id, facts.Artwork)
+	b.artwork(ctx, id, facts.Artwork)
 	// The set's own record names it and every movie in it; the Enricher fetches it once asked.
 	if set.String() != "" && b.im.Catalog != nil {
 		if err := b.im.Catalog.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{set}); err != nil {
@@ -103,21 +103,25 @@ func libraryOrigin(o inventory.OriginKey) store.LibraryOrigin {
 	return store.LibraryOrigin{Authority: string(o.Authority), Key: o.ExternalItemID}
 }
 
-// poster hands the title's resolved poster, or none, to the image service. One that cannot be
-// imported leaves the title as it was until it is written again; the grid shows its name.
-func (b *builder) poster(ctx context.Context, id string, art []inventory.ArtworkRef) {
-	if b.im.Posters == nil {
+// artwork hands the title's resolved poster, fanart and clear logo, or none of each, to the image
+// service. Precedence already put a local sidecar ahead of a provider's image (decision 19), so
+// the first of a kind is the one. One that cannot be imported leaves the title's image of that
+// kind as it was until it is written again.
+func (b *builder) artwork(ctx context.Context, id string, art []inventory.ArtworkRef) {
+	if b.im.Artwork == nil {
 		return
 	}
-	ref := ""
-	for _, a := range art {
-		if a.Kind == localart.KindPoster {
-			ref = a.Ref
-			break
+	for _, kind := range ImportedArt {
+		ref := ""
+		for _, a := range art {
+			if a.Kind == kind && a.Season == 0 {
+				ref = a.Ref
+				break
+			}
 		}
-	}
-	if err := b.im.Posters.Poster(ctx, id, ref); err != nil {
-		b.im.log().Warn("library scan: poster not imported", "item", id, "err", err)
+		if err := b.im.Artwork.Art(ctx, id, kind, ref); err != nil {
+			b.im.log().Warn("library scan: artwork not imported", "item", id, "kind", kind, "err", err)
+		}
 	}
 }
 
