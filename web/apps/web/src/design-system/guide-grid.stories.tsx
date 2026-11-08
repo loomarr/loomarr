@@ -161,6 +161,32 @@ type Story = StoryObj<typeof meta>;
 
 const Evening: Story = {};
 
+// A channel still downloading its titles, with nothing but breaks in the window, is one labelled
+// block, not hours of unlabelled pod slivers (#2727).
+const DownloadingChannel: Story = {
+  args: {
+    layout: layoutGuide(
+      {
+        ...evening,
+        channels: [
+          evening.channels[0] as GuideChannelTimeline,
+          {
+            ...channel(
+              31,
+              "Rainy Day Movies",
+              "live",
+              Array.from({ length: 16 }, (_, i) => pod(at(20, i * 15), at(20, (i + 1) * 15))),
+              9,
+            ),
+            programCount: 3,
+          },
+        ],
+      },
+      now,
+    ),
+  },
+};
+
 const viewportTall: Story["decorators"] = [
   (Story) => (
     <div style={{ display: "flex", flexDirection: "column", height: 720 }}>
@@ -219,4 +245,4 @@ const JumpToAFarChannel: Story = {
 };
 
 export default meta;
-export { Evening, HundredChannels, JumpToAFarChannel, Keyboard };
+export { DownloadingChannel, Evening, HundredChannels, JumpToAFarChannel, Keyboard };

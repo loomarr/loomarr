@@ -5199,6 +5199,9 @@ components:
         pendingCount:
           format: int64
           type: integer
+        programCount:
+          format: int64
+          type: integer
         status:
           enum:
             - building
