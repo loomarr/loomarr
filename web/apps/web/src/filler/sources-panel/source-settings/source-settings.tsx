@@ -1,7 +1,7 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
+import { Disclosure } from "@loomarr/design-system";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Disclosure } from "@/components/ui/disclosure";
 import { AutomaticDownloadsForm } from "../automatic-downloads-form";
 import { SourceLocationForm } from "../source-location-form";
 import type { SourceActions } from "../use-source-actions";
@@ -27,37 +27,34 @@ const SourceSettings = ({ source, actions }: SourceSettingsProps) => {
   }
 
   return (
-    <Disclosure open={open} onOpenChange={setOpen} className="border-border border-t pt-5">
-      <Disclosure.SectionTrigger
-        title="Source settings"
-        description="Automatic downloads, location, and removal"
-      />
-      <Disclosure.Panel className="pt-4">
-        <div className="flex flex-col gap-3">
-          {source.automaticDownloads && <AutomaticDownloadsForm source={source} actions={actions} />}
+    <Disclosure
+      label="Source settings"
+      description="Automatic downloads, location, and removal"
+      expanded={open}
+      onExpandedChange={setOpen}
+    >
+      <div className="flex flex-col gap-3">
+        {source.automaticDownloads && <AutomaticDownloadsForm source={source} actions={actions} />}
 
-          {source.actions.includes("edit_location") && (
-            <SourceLocationForm source={source} actions={actions} />
-          )}
+        {source.actions.includes("edit_location") && <SourceLocationForm source={source} actions={actions} />}
 
-          {source.actions.includes("remove") && (
-            <div className="border-border border-t pt-3">
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={actions.removing}
-                onClick={() => actions.removeSource(source.id)}
-                aria-label={`Remove ${source.target}`}
-              >
-                {actions.removingSourceID === source.id ? "Removing…" : "Remove source"}
-              </Button>
-              <p className="text-muted-foreground mt-1 text-xs">
-                Clips already downloaded stay in your library.
-              </p>
-            </div>
-          )}
-        </div>
-      </Disclosure.Panel>
+        {source.actions.includes("remove") && (
+          <div className="border-border border-t pt-3">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={actions.removing}
+              onClick={() => actions.removeSource(source.id)}
+              aria-label={`Remove ${source.target}`}
+            >
+              {actions.removingSourceID === source.id ? "Removing…" : "Remove source"}
+            </Button>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Clips already downloaded stay in your library.
+            </p>
+          </div>
+        )}
+      </div>
     </Disclosure>
   );
 };

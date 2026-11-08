@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { fillerSource } from "@/test/fixtures/filler";
+import { render } from "@/test/render";
 import type { SourceActions } from "../use-source-actions";
 import { SourceSettings } from "./source-settings";
 
@@ -26,8 +27,8 @@ const renderSettings = (source: ReturnType<typeof fillerSource>, actions = actio
 
 describe("SourceSettings", () => {
   it("renders nothing when the source offers no settings", () => {
-    const { container } = renderSettings(fillerSource({ actions: ["fetch", "disable"] }));
-    expect(container).toBeEmptyDOMElement();
+    renderSettings(fillerSource({ actions: ["fetch", "disable"] }));
+    expect(screen.queryByRole("button", { name: /source settings/i })).not.toBeInTheDocument();
   });
 
   it("removes the source it is open on, naming it for assistive tech", async () => {

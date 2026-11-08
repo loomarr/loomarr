@@ -2,10 +2,10 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Disclosure } from "@loomarr/design-system";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { SourceSearch } from "@/components/loomarr/filler/source-search";
-import { Disclosure } from "@/components/ui/disclosure";
 import { useFillerProviders } from "../../use-filler-providers";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 import { useQueuedClipJobs } from "../use-queued-clip-jobs";
@@ -61,44 +61,43 @@ const SourceClipSearch = ({ source }: SourceClipSearchProps) => {
 
   return (
     <>
-      <Disclosure open={open} onOpenChange={setOpen} className="border-border border-t pt-5">
-        <Disclosure.SectionTrigger
-          title="Find a specific clip"
-          description={`Search this ${provider?.sourceNoun ?? "source"} by title or keyword.`}
+      <Disclosure
+        label="Find a specific clip"
+        description={`Search this ${provider?.sourceNoun ?? "source"} by title or keyword.`}
+        expanded={open}
+        onExpandedChange={setOpen}
+      >
+        <SourceSearch
+          results={unwrap(discover.data, (b) => b.items) ?? []}
+          total={unwrap(discover.data, (body) => body.total) ?? undefined}
+          stats={stats}
+          onVisible={(visible) =>
+            setStatIds((previous) => {
+              const next = visible.filter((id) => !previous.includes(id));
+              return next.length > 0 ? [...previous, ...next] : previous;
+            })
+          }
+          loadingStats={statsQuery.isFetching ? statIds : []}
+          query={query}
+          onQueryChange={setQuery}
+          onSearch={() => {
+            setSubmittedQuery(query);
+            setStatIds([]);
+          }}
+          onPreview={(clip) =>
+            setPreview({
+              title: clip.title || clip.id,
+              url: clip.url,
+              embedUrl: clip.embedUrl,
+              durationMs: stats[clip.id]?.durationMs ?? clip.durationMs,
+            })
+          }
+          onQueue={queuedJobs.queue}
+          queueStatus={queuedJobs.queueStatus}
+          queueing={queuedJobs.queueing ?? null}
+          searching={discover.isFetching}
+          error={discover.error?.detail ?? queuedJobs.error ?? null}
         />
-        <Disclosure.Panel className="pt-4">
-          <SourceSearch
-            results={unwrap(discover.data, (b) => b.items) ?? []}
-            total={unwrap(discover.data, (body) => body.total) ?? undefined}
-            stats={stats}
-            onVisible={(visible) =>
-              setStatIds((previous) => {
-                const next = visible.filter((id) => !previous.includes(id));
-                return next.length > 0 ? [...previous, ...next] : previous;
-              })
-            }
-            loadingStats={statsQuery.isFetching ? statIds : []}
-            query={query}
-            onQueryChange={setQuery}
-            onSearch={() => {
-              setSubmittedQuery(query);
-              setStatIds([]);
-            }}
-            onPreview={(clip) =>
-              setPreview({
-                title: clip.title || clip.id,
-                url: clip.url,
-                embedUrl: clip.embedUrl,
-                durationMs: stats[clip.id]?.durationMs ?? clip.durationMs,
-              })
-            }
-            onQueue={queuedJobs.queue}
-            queueStatus={queuedJobs.queueStatus}
-            queueing={queuedJobs.queueing ?? null}
-            searching={discover.isFetching}
-            error={discover.error?.detail ?? queuedJobs.error ?? null}
-          />
-        </Disclosure.Panel>
       </Disclosure>
       {provider && (
         <SourceItemPreviewDialog

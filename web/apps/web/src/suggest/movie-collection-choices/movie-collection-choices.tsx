@@ -1,9 +1,26 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
+import { Disclosure } from "@loomarr/design-system";
 import { Check, LoaderCircle, Plus } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Disclosure } from "@/components/ui/disclosure";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
+
+// One per collection, so each list opens on its own. The collection's name rides in the
+// description, which keeps every header's accessible name distinct.
+const ChooseFilms = ({ collectionName, children }: { collectionName: string; children: ReactNode }) => {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <Disclosure
+      label="Choose films"
+      description={`From ${collectionName}`}
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+    >
+      {children}
+    </Disclosure>
+  );
+};
 
 const MAX_MOVIE_COLLECTION_KEYS = 24;
 
@@ -94,49 +111,42 @@ const MovieCollectionChoices = ({
               )}
             </div>
 
-            <Disclosure>
-              <Disclosure.SectionTrigger
-                className="mt-1 py-1.5 text-sm"
-                title="Choose films"
-                context={`from ${collection.name}`}
-              />
-              <Disclosure.Panel className="pt-1">
-                <ul className="divide-border border-border divide-y border-t">
-                  {members.map((member) => {
-                    const key = provisionKey(member);
-                    const selected = selectedKeys.has(key);
-                    return (
-                      <li key={key} className="flex items-center gap-3 py-2.5">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm">{member.name}</p>
-                          <p className="text-muted-foreground mt-0.5 text-xs">
-                            {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        </div>
-                        {selected ? (
-                          <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-                            <Check className="size-3.5" aria-hidden /> Selected
-                          </span>
-                        ) : (
-                          editable && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={disabled}
-                              onClick={() => onAddMember(member)}
-                            >
-                              <Plus aria-hidden /> Add <span className="sr-only">{member.name}</span>
-                            </Button>
-                          )
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Disclosure.Panel>
-            </Disclosure>
+            <ChooseFilms collectionName={collection.name}>
+              <ul className="divide-border border-border divide-y border-t">
+                {members.map((member) => {
+                  const key = provisionKey(member);
+                  const selected = selectedKeys.has(key);
+                  return (
+                    <li key={key} className="flex items-center gap-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm">{member.name}</p>
+                        <p className="text-muted-foreground mt-0.5 text-xs">
+                          {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      {selected ? (
+                        <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+                          <Check className="size-3.5" aria-hidden /> Selected
+                        </span>
+                      ) : (
+                        editable && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={disabled}
+                            onClick={() => onAddMember(member)}
+                          >
+                            <Plus aria-hidden /> Add <span className="sr-only">{member.name}</span>
+                          </Button>
+                        )
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </ChooseFilms>
           </div>
         );
       })}

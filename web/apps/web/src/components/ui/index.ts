@@ -1,7 +1,6 @@
 // Barrel for the shadcn/ui primitives (frontend-design §3, Layer 1).
 export * from "./button";
 export * from "./caption";
-export * from "./disclosure";
 export * from "./dropdown-menu";
 export * from "./highlight-row";
 export * from "./input";
