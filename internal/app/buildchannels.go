@@ -144,7 +144,6 @@ func buildChannels(
 	// binder is assembled. Nil until assigned, which numbering treats as "Loomarr's store only".
 	var chanNumbers approval.NumberSource
 	if st != nil {
-		lib := libraryClient
 		prog := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
@@ -254,7 +253,7 @@ func buildChannels(
 		// Stamp media-server collection membership so scope.collections enforces with no
 		// library I/O on the scheduling path (programming-design §2.2). Shares the library
 		// client; the reverse index is built once and cached behind a TTL.
-		channelEngine.WithBoxSets(&libraryBoxSets{lib: lib, own: st, ttl: 15 * time.Minute})
+		channelEngine.WithBoxSets(&libraryBoxSets{own: st, ttl: 15 * time.Minute})
 		// Emit a `channel` SSE frame after each reconcile so the UI updates live — the
 		// "no manual rebuild" model (§9). The emitter already fans to the event bus.
 		channelEngine.WithNotifier(emitter)

@@ -8,7 +8,6 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type libraryTitlesFake []store.LibraryTitle
@@ -35,32 +34,20 @@ var testLibraryTitles = libraryTitlesFake{
 	{ID: "lib-show", Kind: "series", Name: "Show", TMDBID: "90000003", TVDBID: "90000002", Rating: "TV-Y"},
 }
 
-// The availability scan reads the Library's titles first, so a title confirms with its library
-// item id; the media server's items follow. With no media server configured, the Library's alone.
-func TestLibraryTitleScannerListsTheLibraryFirst(t *testing.T) {
-	none := libraryTitleScanner{titles: testLibraryTitles,
-		server: library.NewDynamic(func() library.Connection { return library.Connection{} }, "device-1")}
-	got, err := none.AllItems(context.Background())
+// The availability scan reads the Library's titles, so a title confirms with its library item id
+// (#2151 step 16).
+func TestLibraryTitleScannerListsTheLibrary(t *testing.T) {
+	scanner := libraryTitleScanner{titles: testLibraryTitles}
+	got, err := scanner.AllItems(context.Background())
 	if err != nil || len(got) != 2 {
-		t.Fatalf("no media server: %+v, %v; want the Library's two titles", got, err)
+		t.Fatalf("all items = %+v, %v; want the Library's two titles", got, err)
 	}
 	if got[1].LibraryItemID != "lib-show" || got[1].MediaType != library.Series || got[1].TVDBID != 90000002 || got[1].TMDBID != 90000003 {
 		t.Errorf("show = %+v", got[1])
 	}
-
-	server := testkit.NewMediaServer(t)
-	t.Cleanup(server.Close)
-	server.SearchItems = []testkit.SearchStub{{LibraryItemID: "emby-9", Name: "Other", Type: "Movie", TMDBID: 90000009}}
-	both := libraryTitleScanner{titles: testLibraryTitles, server: newTestLibraryClient(server)}
-	got, err = both.RecentlyAdded(context.Background(), time.Now().Add(-time.Hour))
-	if err != nil || len(got) != 3 || got[0].LibraryItemID != "lib-film" || got[2].LibraryItemID != "emby-9" {
-		t.Errorf("with a media server: %+v, %v; want the Library's titles, then the server's", got, err)
-	}
-
-	down := libraryTitleScanner{titles: testLibraryTitles,
-		server: library.New(library.Emby, "http://127.0.0.1:1", "token", "device-1")}
-	if got, err := down.AllItems(context.Background()); err == nil || len(got) != 2 {
-		t.Errorf("a media server that is down: %+v, %v; want the Library's titles with the error", got, err)
+	if got, err := scanner.RecentlyAdded(context.Background(), time.Now().Add(-time.Hour)); err != nil || len(got) != 2 ||
+		got[0].LibraryItemID != "lib-film" {
+		t.Errorf("recently added = %+v, %v; want the Library's titles", got, err)
 	}
 }
 
