@@ -11,6 +11,11 @@ import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { cn } from "@/lib/utils";
 import { useSettingsEdits } from "../settings-edits";
+import {
+  announceSettingsChange,
+  announceSettingsFailure,
+  announceSettingsResults,
+} from "../settings-feedback";
 import type { SettingsPageProps } from "./settings-page.type";
 
 // One Settings page: several blocks, ONE save bar (config-design §5). The page owns the
@@ -62,7 +67,9 @@ const SettingsPage = ({
               .map((result) => result.key),
           );
         }
+        if (response.status === 200) announceSettingsResults(response.data.results ?? []);
       },
+      onError: (error) => announceSettingsFailure(error),
     },
   });
   // Taking a key back from the environment (config-design §3.1). One of §9's inline-commit
@@ -72,7 +79,13 @@ const SettingsPage = ({
   // The claim changes provenance and lock state, and unlocking seeds a stored value the field
   // must render, so the list refetches through the `settings` row.
   const envOverride = settingsApi.useSettingsEnvOverride({
-    mutation: { onSuccess: () => invalidateSettings(queryClient) },
+    mutation: {
+      onSuccess: async (_response, { data }) => {
+        await invalidateSettings(queryClient);
+        announceSettingsChange(data.enabled ? "Now editable here" : "Handed back to the environment");
+      },
+      onError: (error) => announceSettingsFailure(error, "Couldn't change who manages this setting"),
+    },
   });
   const onEnvOverride = (key: string, enabled: boolean) => {
     envOverride.mutate({ key, data: { enabled } });

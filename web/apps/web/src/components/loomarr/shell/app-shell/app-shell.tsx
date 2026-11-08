@@ -110,6 +110,10 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
 
 const MAIN_ID = "main-content";
 
+// The one focus style: the amber ring the design system's controls draw. Without it a rail
+// control gets the browser's white rectangular outline.
+const FOCUS_RING = "focus-visible:ring-signal focus-visible:ring-2 focus-visible:outline-none";
+
 const AppShell = ({
   children,
   isAdmin = true,
@@ -164,7 +168,10 @@ const AppShell = ({
             type="button"
             onClick={onOpenCommand}
             aria-keyshortcuts={commandShortcutAria()}
-            className="border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors"
+            className={cn(
+              "border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+              FOCUS_RING,
+            )}
           >
             <Search className="size-4" aria-hidden />
             <span>Search…</span>
@@ -188,6 +195,7 @@ const AppShell = ({
             // text at 500 and a 2px foreground edge. Amber is focus only.
             const linkClassName = cn(
               "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              FOCUS_RING,
               forcedActive === undefined
                 ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:font-medium data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
                 : forcedActive &&
@@ -233,7 +241,10 @@ const AppShell = ({
               <Link
                 to="/settings/system/about"
                 aria-label={`Loomarr ${serverVersion} — About`}
-                className="text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors"
+                className={cn(
+                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors",
+                  FOCUS_RING,
+                )}
               >
                 {versionLabel}
               </Link>
@@ -253,7 +264,10 @@ const AppShell = ({
               NAV item: it isn't a section of the app, it's you. */}
           <Link
             to="/account"
-            className="hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors"
+            className={cn(
+              "hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors",
+              FOCUS_RING,
+            )}
             // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
             aria-label={`Your account: ${accountInitials} ${userName}`}
           >
@@ -270,7 +284,10 @@ const AppShell = ({
                 type="button"
                 onClick={onLogout}
                 aria-label="Sign out"
-                className="text-static-400 hover:bg-accent hover:text-foreground shrink-0 cursor-pointer rounded-md p-1.5 transition-colors"
+                className={cn(
+                  "text-static-400 hover:bg-accent hover:text-foreground shrink-0 cursor-pointer rounded-md p-1.5 transition-colors",
+                  FOCUS_RING,
+                )}
               >
                 <LogOut className="size-4" aria-hidden />
               </button>

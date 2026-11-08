@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // TestScanAvailability_NoWebhook is the retirement safety proof (design §4, build plan): a
@@ -28,11 +27,9 @@ func TestScanAvailability_NoWebhook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The media server now reports it present (an import landed) — discoverable ONLY via the
-	// bulk scan, never via a webhook to Loomarr.
-	h.ms.SetSearchItems(
-		testkit.SearchStub{LibraryItemID: "lib-603", Name: "Marigold Protocol", Type: "Movie", TMDBID: 90000603},
-	)
+	// The Library now holds it (an import landed) — discoverable ONLY via the bulk scan, never
+	// via a webhook to Loomarr.
+	seedLibraryMovies(t, h.store, libraryMovie{ID: "lib-603", Name: "Marigold Protocol", TMDBID: 90000603})
 
 	// Run the scan on demand through the admin jobs API — the same path the scheduler drives.
 	// Trigger is async (202 now; the heartbeat runs the job on its own goroutine), exactly as

@@ -53,6 +53,7 @@ const WithRefused: Story = {
     requestedBy: "ada",
     acquisitions: 1,
     status: "pending",
+    audienceLimit: "TV-Y7",
     refused: [
       {
         item: {
