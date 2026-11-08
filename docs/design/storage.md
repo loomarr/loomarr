@@ -29,6 +29,30 @@ code path is shared through `database/sql`.
   `TRUE`/`FALSE`, never `1`/`0`, which both dialects read. A time column is `BIGINT`; a 32-bit
   `INTEGER` of unix seconds runs out in 2038.
 
+### Foreign keys
+
+SQLite enforces foreign keys (`foreign_keys(on)` in every DSN), so both backends behave alike.
+
+- **A child row gets a foreign key when its parent is hard-deleted and never rebuilt**, and the key
+  always says its `ON DELETE`: `CASCADE` when the child means nothing without the parent (a channel's
+  airings and favourites, a user's sessions), `SET NULL` when the child outlives it (a crash report
+  keeps its device and stack after the account goes).
+- **No foreign key, on purpose:**
+  - `clip_hash` columns. `clips` is a cache of the drop folder that has been dropped and rebuilt
+    (00044), so pipeline state, split proposals and feedback must outlive a rebuild. The filler sync's
+    prune removes them instead (00051).
+  - A column whose "none" is `''`, such as `proposal_jobs.channel_id`, because `''` cannot reference a
+    row.
+  - A polymorphic id, such as `discovery_feedback.scope_id` (a channel, or nothing for the household).
+    Its owner deletes it in the same transaction, as `DeleteChannel` does.
+  - `proposals.job_id`, because retention purges jobs and keeps the approved proposal as the audit trail.
+- **Keys without `ON DELETE` restrict the delete.** The older ones on filler evaluation, acquisition,
+  quality snapshot and holiday tables do so deliberately: the parent may only go once nothing records
+  against it.
+- **Rebuilding a parent on SQLite rebuilds its children.** `ALTER TABLE … RENAME` rewrites the
+  children's keys to the renamed table, and dropping it then cascades. Rename the children too, copy
+  parent before child, and drop child before parent (00152, 00166).
+
 ## Concurrency on PostgreSQL
 
 SQLite means exactly one instance. PostgreSQL permits replicas, which changes what correctness needs:
