@@ -175,9 +175,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		}
 	})
 	playoutRes = &playoutResolver{
-		// The library client with the server-path cache (#1456): airtime input resolution reads
-		// the remembered path locally and only asks the media server on a cold or stale entry.
-		engine: channelEngine, lib: lib.WithPathCache(libraryPathCache{st}), now: time.Now,
+		engine: channelEngine, lib: lib, now: time.Now,
 		metrics:       deps.metrics,
 		detectContext: rootCtx,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
@@ -236,10 +234,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		probeTracks:        playout.FFprobeTracksNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
 		probeFormat:        playout.FFprobeFormatNextTo(settings.PlayoutFFmpegPath.Get(set), deps.processDiagnostics),
 		processDiagnostics: deps.processDiagnostics,
-		// Live read of `library.path_map` (§15, V47), parsed each call so a mapping edit
-		// applies without a restart — the same hot-apply posture as audioLanguage.
-		pathMap: func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) },
-		log:     log,
+		log:                log,
 	}
 	// Loomarr measures each source itself, once per revision, so playout never asks the media
 	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to

@@ -576,8 +576,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   (`imported_id`); the reconcile's membership index does the same, so an imported collection is
   known only by the household's id the rewrite pointed scopes at. With no media server, the
   household's alone, without an error.
-- **Title search asks the Library first** (step 15e). Library-scope search, which `/v1/search`
-  and the suggester's tools share, answers with the Library's movies and series by name
+- **Title search asks the Library first** (step 15e). Like the collections picker and channel
+  ideas, it needs no media server: only TMDB search waits on its key. Library-scope search, which
+  `/v1/search` and the suggester's tools share, answers with the Library's movies and series by name
   (`SearchLibraryTitles`: an exact name, then one starting with the term, then the rest), under
   their library item ids and with their facts. The media server adds only titles the Library
   didn't answer, while it is short of the limit; with none connected, a term the Library has no
@@ -585,13 +586,17 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **The provisioning backstop asks the Library first** (step 15e). Its last look before a title is
   given up as unavailable confirms one the Library holds, under its library item id; the media
   server answers only what the Library doesn't hold.
+- **Channel ideas ask the Library first** (step 15e). Home's channel ideas draw from the Library's
+  movies and series with their year and genres (`LibraryTitles`, `LibraryItemFacts`), then only the
+  media server's titles the Library doesn't hold, by provider id, so no title counts twice in a
+  facet. With no media server, the Library's alone.
 - **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
   stored records name at library items: titles, airings, channels' slots, scopes, rules and
   lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
   are history and keep theirs). An id the map doesn't pair still maps when its record names a
   title (a title's key, a proposal pick's) whose TMDB or TVDB id a Library title carries: a media
   server that re-added its library left every old id dead, but not the titles. The pass runs in
-  one transaction and drops the media server's episode and path caches.
+  one transaction and drops the media server's episode cache.
 
   There is no all-or-nothing gate: every reader takes either kind of id, so what maps is rewritten
   at once and the rest is logged and waits for a later pass. An airing names an episode with no
@@ -609,6 +614,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   still names a media-server library is rewritten on the next filler sync to its folder: the
   library's folders as the media server reports them, through the path map, with a row for each
   extra folder. A name with no mapped folder is logged once and does no work.
+- **Playout reads only the Library's files** (step 16). A programme, its still, its first-play
+  measurement and its channel's codec vote all read the library item's playing file
+  (`LibraryPlayingFile`). An item whose file is gone airs the offline card. The media server's
+  stream URL, its per-item path lookup and the `library_item_paths` cache are deleted (migration
+  194). `library.path_map` now only helps folder discovery.
 
 ## Cached series episodes
 

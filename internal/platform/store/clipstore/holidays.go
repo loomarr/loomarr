@@ -30,7 +30,7 @@ func listHolidaysFrom(ctx context.Context, q taxonomyQueryer) ([]holidayvocab.Ho
 	for rows.Next() {
 		var h holidayvocab.Holiday
 		var words, kept, airWindow, members string
-		if err := rows.Scan(&h.ID, &h.Label, &words, &kept, &airWindow, &members, &h.NameNeedsCorroboration); err != nil {
+		if err := rows.Scan(&h.ID, &h.Label, &words, &kept, (*storedb.OptionalJSON)(&airWindow), &members, &h.NameNeedsCorroboration); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(words), &h.Words); err != nil {
@@ -78,7 +78,7 @@ func (s *Store) insertHolidayTx(ctx context.Context, tx storedb.Tx, h holidayvoc
 		`INSERT INTO holidays (id, label, position, words, kept, air_window, members, name_needs_corroboration, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO NOTHING`),
-		h.ID, h.Label, position, string(words), string(kept), airWindow, string(members), h.NameNeedsCorroboration, epoch(at))
+		h.ID, h.Label, position, string(words), string(kept), storedb.OptionalJSON(airWindow), string(members), h.NameNeedsCorroboration, epoch(at))
 	if err != nil {
 		return fmt.Errorf("insert holiday %s: %w", h.ID, err)
 	}

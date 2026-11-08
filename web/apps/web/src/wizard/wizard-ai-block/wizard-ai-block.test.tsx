@@ -4,11 +4,9 @@ import {
   getSettingsListMockHandler,
   getSystemLlmDiscoverMockHandler,
   getSystemLlmStatusMockHandler,
-  getSystemLlmTestMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -107,8 +105,8 @@ describe("WizardAiBlock", () => {
     expect(screen.queryByText(/LLM api key/i)).not.toBeInTheDocument();
   });
 
-  it("reports valid hosted credentials separately from missing model readiness", async () => {
-    const requests: unknown[] = [];
+  // #2735: the checklist block's own check is the one AI test; the hosted picker adds none.
+  it("shows the hosted model picker without a second credentials test", async () => {
     server.use(
       getSystemLlmStatusMockHandler({
         provider: "openrouter",
@@ -135,19 +133,12 @@ describe("WizardAiBlock", () => {
         ),
         features: {},
       }),
-      getSystemLlmTestMockHandler(async ({ request }) => {
-        requests.push(await request.json());
-        return { ok: true };
-      }),
       getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
     );
 
     renderBlock();
-    await userEvent.click(await screen.findByRole("button", { name: "Test provider credentials" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "OpenRouter credentials authorized. Choose a tool-capable lineup model to finish AI setup.",
-    );
-    expect(requests).toEqual([{ provider: "openrouter" }]);
+    expect((await screen.findAllByText(/GPT-4o mini/)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /test provider credentials/i })).not.toBeInTheDocument();
   });
 });

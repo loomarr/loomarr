@@ -38,9 +38,9 @@ clients show them beside the data.
    available through Seerr or the arr apps. Once it arrives, `titles.library_id` says which item it
    became. Until the switch to Loomarr's own scanner (#2151) that is the media server's id, which
    the switch rewrites to the library's.
-4. **`series_episodes` and `library_item_paths`: the media server's caches.** Copies of what Emby or
-   Jellyfin says, so channels don't ask it on every request. They exist only until the #2151
-   switch, which moves channels onto `library_*` and deletes them.
+4. **`series_episodes`: the media server's cache.** A copy of what Emby or Jellyfin says, so
+   channels don't ask it on every request. It exists only until the #2151 switch, which moves
+   channels onto `library_*` and deletes it.
 
 Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
 and caches nothing names (each table's retention says when).
@@ -62,7 +62,7 @@ and caches nothing names (each table's retention says when).
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas)
 - [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
-- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`library_item_paths`](#library_item_paths), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
+- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_id_map`](#library_id_map), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`series_episodes`](#series_episodes), [`titles`](#titles), [`images`](#images), [`image_refs`](#image_refs), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
@@ -85,9 +85,9 @@ One row per person allowed into Loomarr. Rows are made by the first-admin setup,
 | `id` | Identifies the person. For a media-server account it is that server's user id; for a local account Loomarr makes one up. Other tables point here. | `TEXT` · key |
 | `name` | The person's name, which is also the username a local account signs in with. | `TEXT` |
 | `role` | What the person may do. admin manages the household (people, settings, approvals); member watches and makes requests. | `TEXT` |
-| `disabled` | 1 when an admin has turned the account off. A disabled person can't sign in, and their sign-ins and paired devices are deleted. | `INTEGER` |
+| `disabled` | 1 when an admin has turned the account off. A disabled person can't sign in, and their sign-ins and paired devices are deleted. | `BOOLEAN` |
 | `quota` | How many of the person's approved requests may be waiting to arrive in the library at once. 0 means use the household default setting. | `INTEGER` |
-| `auto_approve` | 1 when the person's requests skip the admin queue, as long as they stay within their quota. | `INTEGER` |
+| `auto_approve` | 1 when the person's requests skip the admin queue, as long as they stay within their quota. | `BOOLEAN` |
 | `created_at` | When the account was made, in Unix seconds. | `BIGINT` |
 | `updated_at` | When the account was last changed, in Unix seconds. | `BIGINT` |
 | `password_hash` | A one-way Argon2id hash of the local password, used only to check a password at sign-in; the password can't be recovered from it. Empty or NULL when the person has no local password. | `TEXT` · may be empty |
@@ -291,7 +291,7 @@ One row per channel. A channel is created by approving a channel request or by h
 | `revision` | Counts changes to the row, starting at 1. A change is only saved if it was made from the latest revision, so two edits can't overwrite each other. | `BIGINT` |
 | `playout_anchor` | When the channel's current broadcast cycle started, in Unix seconds. The schedule is laid out from this moment. 0 for a channel that has not gone on air yet. | `BIGINT` |
 | `created_at` | When the channel was created, in Unix seconds. Never changes. 0 when unknown (a hand-made channel older than the column). | `BIGINT` |
-| `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` |
+| `intent_json` | The approved channel request the channel was made from (description, era, tone, titles to include or leave out, the chosen name), without one-off refinements. A refine or a scheduled re-curation starts from it. Empty for a hand-made channel. | `TEXT` · may be empty |
 | `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Empty when no member asked. | `TEXT` |
 
 ### airings
@@ -335,9 +335,9 @@ One row per holiday: when each country keeps it and the words that show a title 
 | `position` | The display order. It also settles ties when two holidays are in season at once. | `INTEGER` |
 | `words` | JSON with the phrases that tie a title to the holiday. Words that name it in a channel request, its names, look-alike phrases that are not about it (such as "santa monica"), mood words, and genre sets that back up a mood word. | `TEXT` |
 | `kept` | JSON list of when countries keep the holiday. Each entry lists countries, the day rule (fixed date, nth or last weekday, or relative to Easter) and the season window around it. `[]` means undated, so its clips air all year. | `TEXT` |
-| `air_window` | JSON rule for the time of year when a TV episode first airing then was made for the holiday. Empty when there is none. | `TEXT` |
+| `air_window` | JSON rule for the time of year when a TV episode first airing then was made for the holiday. Empty when there is none. | `TEXT` · may be empty |
 | `members` | JSON list of holiday ids for a group holiday (such as "happy holidays"), which is in season whenever any member is. `[]` for an ordinary holiday. | `TEXT` |
-| `name_needs_corroboration` | 1 when the holiday's name alone is not enough to tie a title to it, because the name is also an ordinary title word. | `INTEGER` |
+| `name_needs_corroboration` | 1 when the holiday's name alone is not enough to tie a title to it, because the name is also an ordinary title word. | `BOOLEAN` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 
 ### holiday_seed_revisions
@@ -377,7 +377,7 @@ One row per run of the channel suggester: a person's channel request, a refine o
 | `failure_code` | Why the job failed, when it did. `no_grounded_titles` (nothing matched titles that exist), `generation_failed` (the AI step failed), `selection_empty` (no titles were chosen), or `budget_exhausted` (it ran out of its allowed work). Empty otherwise. | `TEXT` |
 | `workflow_version` | Which version of the job process ran it. 0 is a job from before per-attempt history was kept; 1 is the current process, which records each attempt in proposal_job_attempts. | `INTEGER` |
 | `reached_live` | 1 once a channel made from this job has gone live. It stays 1 even if the channel is later paused. | `BOOLEAN` |
-| `failure_trace_json` | The bounded record of the candidate titles a failed run considered and why each was kept or dropped, used to explain the failure. Empty when there is none. | `TEXT` |
+| `failure_trace_json` | The bounded record of the candidate titles a failed run considered and why each was kept or dropped, used to explain the failure. Empty when there is none. | `TEXT` · may be empty |
 | `channel_id` | The existing channel a refine or re-curation job changes (channels.id). Empty for a job that creates a new channel. | `TEXT` |
 
 ### proposal_job_attempts
@@ -502,10 +502,10 @@ One row per local folder Loomarr may walk for media. A folder is added when a me
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `path` | The folder as Loomarr opens it, an absolute path. | `TEXT` · key |
-| `in_use` | 1 when the folder is confirmed for scanning. A discovered folder starts at 0; one typed by hand starts at 1. | `INTEGER` |
-| `readable` | 1 when the last check could open the folder. | `INTEGER` |
+| `in_use` | 1 when the folder is confirmed for scanning. A discovered folder starts at 0; one typed by hand starts at 1. | `BOOLEAN` |
+| `readable` | 1 when the last check could open the folder. | `BOOLEAN` |
 | `checked_at_ms` | When the folder was last checked for readability, in Unix milliseconds; 0 means never. | `INTEGER` |
-| `by_hand` | 1 when someone typed the folder in rather than a media server or arr reporting it. | `INTEGER` |
+| `by_hand` | 1 when someone typed the folder in rather than a media server or arr reporting it. | `BOOLEAN` |
 | `added_at_ms` | When the folder was added, in Unix milliseconds. | `INTEGER` |
 | `scanned_at_ms` | When a walk of the folder last completed, in Unix milliseconds; 0 means never. | `INTEGER` |
 
@@ -520,7 +520,7 @@ The path map. One row per folder a media server or arr reports, saying which loc
 | `authority` | The app that reported the folder, one of emby, jellyfin, sonarr or radarr. | `TEXT` · key |
 | `authority_path` | The folder as that app names it. | `TEXT` · key |
 | `root_path` | The local folder it maps to (a library_roots path), or empty when no local folder was found for it. | `TEXT` |
-| `by_hand` | 1 when someone set the mapping by hand. Discovery never rewrites such a row. | `INTEGER` |
+| `by_hand` | 1 when someone set the mapping by hand. Discovery never rewrites such a row. | `BOOLEAN` |
 | `seen_at_ms` | When the app last reported the folder, or the mapping was last set, in Unix milliseconds. | `INTEGER` |
 
 ### library_files
@@ -539,7 +539,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `kind` | What the file was last written as, one of movie, episode or extra; empty for a problem file. | `TEXT` |
 | `header` | Whether the file's container header has been read. One of pending (not yet), read, or failed (it can't be read, so the file can't be played). | `TEXT` |
 | `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), or invalid_facts (the library refused what was read from it). | `TEXT` |
-| `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `INTEGER` |
+| `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
 | `inventory_item_id` | The title the file was last written as (a library_items id); empty until known. | `TEXT` |
@@ -551,6 +551,8 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 
 **Kept:** A title that leaves the library keeps its row, so it finds its details and collections again if it comes back. The nightly housekeeping deletes a row a year after it last changed once nothing is left of it: no importer report, no file, no episode, no collection, and no title, airing, channel or open request naming it. Its candidates and images go with it; a person's answer for it is kept.
 
+**The title.** What every list and search shows for a title.
+
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the title. library_files, collections and the rows below point here. | `TEXT` · key |
@@ -559,28 +561,55 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 | `sort_name` | The lower-case name it sorts by. | `TEXT` |
 | `year` | The year, or 0 when unknown. | `INTEGER` |
 | `updated_at_ms` | When the row was last written, in Unix milliseconds. | `INTEGER` |
-| `catalog` | The library_catalog row its details come from, written provider:kind:id (for example tmdb:movie:603); empty for none. | `TEXT` |
+
+**Where it was found.** One scan origin per title, which a person's answer is kept against.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `origin_authority` | The scanned folder the title was found in, as scan: followed by a digest of the folder's path. With origin_key it is the title's scan origin, which a person's answer is kept against. | `TEXT` |
 | `origin_key` | Where in that folder the title was found, a digest of a movie's file (file:...) or a show's folder (series:dir:...). | `TEXT` |
-| `grounded` | 1 when something gives the title an id (match_basis is not empty). A movie or show at 0 with no answer is listed in Needs you. | `INTEGER` |
+
+**Which title it is.** The one match the library settled on and how. Candidates and answers that compete for it live in library_candidates and library_answers.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `catalog` | The library_catalog row its details come from, written provider:kind:id (for example tmdb:movie:603); empty for none. | `TEXT` |
+| `grounded` | 1 when something gives the title an id (match_basis is not empty). A movie or show at 0 with no answer is listed in Needs you. | `BOOLEAN` |
 | `searched` | The name, year and evidence the title was last searched for on TMDB to find candidates; empty when never searched. A title is searched again only when this would change. | `TEXT` |
 | `match_basis` | What said which title it is. One of manager (an arr tracks it), embedded_id (an id in the file or folder name), sidecar (an NFO file), link (a person's answer), or search (one TMDB result agreed); empty for nothing. Set for movies and shows only. | `TEXT` |
 | `match_app` | The app that said it, one of sonarr, radarr, nfo or tmdb; empty for evidence Loomarr finds itself. | `TEXT` |
 | `match_page` | The title's page in that app, for a person to open; empty when it has none. | `TEXT` |
-| `needs_noticed` | 1 once a daily Needs you notice has counted the title as new, so a restart neither repeats nor loses a notice. | `INTEGER` |
+| `needs_noticed` | 1 once a daily Needs you notice has counted the title as new, so a restart neither repeats nor loses a notice. | `BOOLEAN` |
 | `set_key` | For a movie, the library_catalog row of the TMDB collection it belongs to (for example tmdb_collection:collection:10); empty for none. Lets the Collections page say "you have 3 of 4". | `TEXT` |
+
+**Details.** The single value shown for each detail. Lists (genres, people, artwork) live in their own tables.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `original_title` | The title in its original language, or empty. | `TEXT` |
 | `overview` | The description, or empty. | `TEXT` |
 | `premiere_date` | The release or first-air date as the source gave it, such as 2013-05-01; empty when unknown. | `TEXT` |
 | `rating` | The content rating, such as TV-PG; empty when unknown. An episode with no rating of its own takes its show's. | `TEXT` |
 | `score` | The community score from 0 to 10; 0 when unknown. | `REAL` |
 | `runtime_ms` | The running time in milliseconds; 0 when unknown. | `INTEGER` |
+| `tagline` | The one-line pitch printed on a poster; empty when unknown. | `TEXT` |
+| `trailer` | The web page that plays the title's trailer; empty when it has none. | `TEXT` |
+
+**An episode's place.** An episode belongs to one show at one season and number; movies and shows leave these empty.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `season` | An episode's season number; 0 for movies and shows. | `INTEGER` |
 | `episode` | An episode's episode number; 0 for movies and shows. | `INTEGER` |
 | `episode_end` | The last episode number a multi-episode file covers; 0 for a single episode. | `INTEGER` |
 | `series_authority` | An episode's show, by the scan folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_key` | An episode's show, by the folder part of the show's scan origin; empty otherwise. | `TEXT` |
 | `series_id` | An episode's show (a library_items id), filled once both the episode and the show are written; empty otherwise. | `TEXT` |
+
+**Which app supplied each detail.** One source per detail above, so the detail page can say where each one came from.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `name_from` | The app that supplied the name (sonarr, radarr, nfo or tmdb); empty when unknown. | `TEXT` |
 | `year_from` | The app that supplied the year; empty when unknown. | `TEXT` |
 | `overview_from` | The app that supplied the description; empty when unknown. | `TEXT` |
@@ -588,8 +617,7 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 | `rating_from` | The app that supplied the rating, or show when an episode's rating is its show's; empty when unknown. | `TEXT` |
 | `score_from` | The app that supplied the score; empty when unknown. | `TEXT` |
 | `runtime_from` | The app that supplied the running time; empty when unknown. | `TEXT` |
-| `tagline` | The one-line pitch printed on a poster; empty when unknown. | `TEXT` |
-| `trailer` | The web page that plays the title's trailer; empty when it has none. | `TEXT` |
+
 
 ### library_ids
 
@@ -853,9 +881,9 @@ The TMDB search results for a movie or show Loomarr can't identify, offered in N
 | `year` | The result's year, or 0 when unknown. | `INTEGER` |
 | `overview` | The result's description, or empty. | `TEXT` |
 | `poster` | The result's poster URL at TMDB, or empty. | `TEXT` |
-| `name_match` | 1 when the result's name agrees with what is on disk. | `INTEGER` |
-| `year_match` | 1 when the result's year agrees with what is on disk. | `INTEGER` |
-| `length_match` | 1 when the rest of what is on disk agrees: a movie's running time, or a show's seasons and episodes. | `INTEGER` |
+| `name_match` | 1 when the result's name agrees with what is on disk. | `BOOLEAN` |
+| `year_match` | 1 when the result's year agrees with what is on disk. | `BOOLEAN` |
+| `length_match` | 1 when the rest of what is on disk agrees: a movie's running time, or a show's seasons and episodes. | `BOOLEAN` |
 
 ### library_answers
 
@@ -869,7 +897,7 @@ The answer for a movie or show nothing else identifies, either the TMDB title it
 | `origin_key` | Where in that folder the title is, as in library_items. | `TEXT` · key |
 | `kind` | One of movie or series. | `TEXT` |
 | `tmdb_id` | The TMDB title it is linked to; empty when ignored. | `TEXT` |
-| `ignored` | 1 when a person said it is not a title. | `INTEGER` |
+| `ignored` | 1 when a person said it is not a title. | `BOOLEAN` |
 | `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
 | `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one TMDB result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
 
@@ -900,18 +928,6 @@ The titles in a collection, in order. A member whose title has left the library 
 | `collection_id` | The collection (a library_collections id). | `TEXT` · key |
 | `inventory_item_id` | The title (a library_items id). | `TEXT` · key |
 | `position` | The title's place in the collection, from 1. | `INTEGER` |
-
-### library_item_paths
-
-The media server's own file path for one of its items, remembered so a channel can play the item without asking the media server at airtime. A stale row is harmless; it is rewritten on the next lookup.
-
-**Kept:** Rewritten on its next lookup. A path no title, airing, channel or open request names is deleted by the nightly housekeeping 30 days after it was written; it is looked up again if it is needed.
-
-| Column | What it holds | Type |
-| --- | --- | --- |
-| `item_id` | The media server's id for the item. | `TEXT` · key |
-| `server_path` | The file's path as the media server names it, not the local one; the path map is applied when it is read. | `TEXT` |
-| `updated_at` | When the path was last written, in Unix seconds. | `BIGINT` |
 
 ### series_episodes
 
@@ -967,7 +983,7 @@ One row per piece of artwork (posters, channel icons, clip stills and so on). Th
 | `width` | The original's width in pixels. | `INTEGER` |
 | `height` | The original's height in pixels. | `INTEGER` |
 | `bytes` | The original's size in bytes. | `INTEGER` |
-| `animated` | 1 when the original moves (a clip's hover loop). | `INTEGER` |
+| `animated` | 1 when the original moves (a clip's hover loop). | `BOOLEAN` |
 | `placeholder` | A tiny blurred preview (a ThumbHash, base64) shown while the image loads. | `TEXT` |
 | `dominant_hex` | The image's average colour, as | `TEXT` |
 | `meta` | A JSON object of free-form notes about the image, such as attribution, licence or upstream ids. {} when there are none. | `TEXT` |
@@ -1007,7 +1023,7 @@ One resized copy of an image in one format, stored as a file on disk. Made on de
 | `bytes` | The copy's size in bytes. | `INTEGER` |
 | `output_hash` | The SHA-256 of the copy's bytes, in hex; empty for copies made before it was recorded. | `TEXT` |
 | `path` | Where the copy's file is on disk. | `TEXT` |
-| `animated` | 1 when the copy keeps the original's motion. | `INTEGER` |
+| `animated` | 1 when the copy keeps the original's motion. | `BOOLEAN` |
 | `created_at` | When the copy was made, in Unix seconds. | `INTEGER` |
 
 ## Media inventory
@@ -1132,45 +1148,78 @@ One row per filler clip, identified by a hash of its bytes. The folder scan and 
 
 **Kept:** Kept while its file is in a clip folder; the folder scan deletes the rest, except reclaimed compilations, which stay. A copy merged into a better copy is deleted too.
 
+**The file.** One file per clip, and every read of a clip needs it; the hash is the clip's identity.
+
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `hash` | The clip's identity: a 64-character hex hash sampled from its bytes. Two copies of the same file are one clip. Other filler tables point here. | `TEXT` · key |
 | `path` | Where the file is, relative to the clip folder (for example a3/f9/<hash>.mp4). A location, not an identity. | `TEXT` |
 | `tunarr_program_id` | The Tunarr program id for this clip when Tunarr knows it; NULL on installs without Tunarr. | `TEXT` · may be empty |
-| `name` | Display name: a title from the source or its sidecar file, a name built from grounded evidence, one a person wrote, or the filename. | `TEXT` |
-| `role` | What the clip is: unclassified (not yet known), commercial, bumper, station_id, psa, trailer, interstitial, political or news. | `TEXT` |
-| `era` | The year the clip is from, such as 1994; a year ending in 0 means the decade. 0 means not known. | `INTEGER` |
-| `audience` | Who the clip suits: kids, family, general or late_night. Empty when not yet tagged. | `TEXT` |
 | `duration_ms` | Length of the clip in milliseconds, measured from the file. | `INTEGER` |
 | `source` | Where the clip came from: the id of the registered filler source that downloaded it (such as archive:<collection>), or filler-dir for a file dropped into the clip folder. | `TEXT` |
 | `quality` | Resolution label such as 1080p or 480p, from the measured video height. Empty for an audio-only clip. Shown only; it does not affect selection by default. | `TEXT` |
 | `license` | The licence URL the source declared for the clip. Empty means unknown, never public domain. | `TEXT` |
-| `thumbnail` | Still image file, relative to the thumbnail cache folder. Empty when not generated yet. | `TEXT` |
-| `play_count` | How many times Loomarr's own playout has aired the clip. Channels played through Tunarr never report plays, so their clips stay at 0. | `INTEGER` |
-| `last_played_at` | When Loomarr's playout last aired the clip, in Unix seconds; 0 means never. | `INTEGER` |
-| `removed_at` | When the clip was removed from the catalog, in Unix seconds; 0 means present. The file is kept; a removed clip is not listed or aired. | `INTEGER` |
-| `held` | 1 while the clip is recorded but not yet playable: every new clip starts held and is released when its preparation finishes and it is ready. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
-| `preview` | Short animated preview shown on hover, relative to the preview cache folder. Empty when not generated yet. | `TEXT` |
+| `created_at` | When the clip was first added to the catalog, in Unix seconds. | `INTEGER` |
+
+**What it is.** The facts selection and research read for every clip, one value each. Repeated facts (product tags, defects, research) already live in their own tables.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `name` | Display name: a title from the source or its sidecar file, a name built from grounded evidence, one a person wrote, or the filename. | `TEXT` |
+| `role` | What the clip is: unclassified (not yet known), commercial, bumper, station_id, psa, trailer, interstitial, political or news. | `TEXT` |
+| `era` | The year the clip is from, such as 1994; a year ending in 0 means the decade. 0 means not known. | `INTEGER` |
+| `audience` | Who the clip suits: kids, family, general or late_night. Empty when not yet tagged. | `TEXT` |
 | `language` | Spoken language detected in the clip, as a language code such as en. Empty means not checked yet; none means checked and there is no speech. | `TEXT` |
 | `transcript` | The clip's spoken words, once transcribed. Empty when not transcribed or wordless. | `TEXT` |
 | `brand` | The advertiser the clip is for, such as a cereal or car maker. Kept only when the name appears in the clip's text, transcript or on-screen text; empty otherwise. | `TEXT` |
 | `visible_text` | Text a vision model read off the clip's frames, such as a logo, product name or year. Brands and eras from vision are kept only when supported by this text. | `TEXT` |
-| `is_composite` | 1 when the file is a recorded break holding many ads. A composite never airs itself; the clips split out of it do. | `BOOLEAN` |
-| `parent_hash` | The composite clip this clip was split out of. Empty for a clip that was not split from one. | `TEXT` |
-| `created_at` | When the clip was first added to the catalog, in Unix seconds. | `INTEGER` |
-| `thumb_image_hash` | The image service's id for the still image. Empty when not stored there yet. | `TEXT` |
-| `hover_image_hash` | The image service's id for the hover preview. Empty when not stored there yet. | `TEXT` |
-| `reaped_at` | When the clip's file was deleted on purpose while its row was kept, in Unix seconds: a composite whose recording was reclaimed after splitting, or a copy retired for failing the defect check. NULL means the file is still there. | `INTEGER` · may be empty |
+| `enrichment_revision` | A counter that goes up when the clip's name, role, source, transcript or on-screen text changes. Research and tagging results record the revision they were made from, so a change makes them run again. | `INTEGER` |
+| `name_source` | Where the name came from: source (a title inside the media), sidecar (the downloaded info file), grounded (built from evidence such as the brand), curated (written by a person), filename (never shown to viewers), or unknown. | `TEXT` |
+
+**Where and when it aired.** One place and date per clip, filtered on together with the clip when channels pick filler for their region.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `geographic_scope` | How widely the clip aired: national, local (one station's own material) or unknown. | `TEXT` |
 | `country` | The country the clip aired in, as a two-letter ISO code. Empty when not known. | `TEXT` |
 | `network` | The broadcast network the clip is tied to, when known from evidence. | `TEXT` |
 | `station` | The broadcast station the clip belongs to, as an id in Loomarr's station directory. A local clip is local to this station. | `TEXT` |
 | `air_date` | The date the clip was broadcast, as YYYY-MM-DD, when known from evidence. | `TEXT` |
 | `geo_evidence` | The source text that supports the clip's geography, or operator when a person set it. | `TEXT` |
+
+**Whether it can air.** Every read of the pool checks these first, so they stay beside the clip rather than behind a join.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `removed_at` | When the clip was removed from the catalog, in Unix seconds; 0 means present. The file is kept; a removed clip is not listed or aired. | `INTEGER` |
+| `held` | 1 while the clip is recorded but not yet playable: every new clip starts held and is released when its preparation finishes and it is ready. | `BOOLEAN` |
+| `reaped_at` | When the clip's file was deleted on purpose while its row was kept, in Unix seconds: a composite whose recording was reclaimed after splitting, or a copy retired for failing the defect check. NULL means the file is still there. | `INTEGER` · may be empty |
 | `placement` | Where a ready clip may be scheduled: break_body (inside a break), bookend (opening or closing a break) or not_playable. Set when the clip becomes ready. | `TEXT` |
-| `enrichment_revision` | A counter that goes up when the clip's name, role, source, transcript or on-screen text changes. Research and tagging results record the revision they were made from, so a change makes them run again. | `INTEGER` |
-| `name_source` | Where the name came from: source (a title inside the media), sidecar (the downloaded info file), grounded (built from evidence such as the brand), curated (written by a person), filename (never shown to viewers), or unknown. | `TEXT` |
+
+**Composites.** A clip cut from a longer recording names that one recording; a recording names none.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `is_composite` | 1 when the file is a recorded break holding many ads. A composite never airs itself; the clips split out of it do. | `BOOLEAN` |
+| `parent_hash` | The composite clip this clip was split out of. Empty for a clip that was not split from one. | `TEXT` |
+
+**Rotation totals.** Running totals rotation reads with the pool. Each airing itself is kept in filler_airings.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `play_count` | How many times Loomarr's own playout has aired the clip. Channels played through Tunarr never report plays, so their clips stay at 0. | `INTEGER` |
+| `last_played_at` | When Loomarr's playout last aired the clip, in Unix seconds; 0 means never. | `INTEGER` |
+
+**Pictures.** One still and one hover preview per clip, shown wherever the clip is listed.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `thumbnail` | Still image file, relative to the thumbnail cache folder. Empty when not generated yet. | `TEXT` |
+| `preview` | Short animated preview shown on hover, relative to the preview cache folder. Empty when not generated yet. | `TEXT` |
+| `thumb_image_hash` | The image service's id for the still image. Empty when not stored there yet. | `TEXT` |
+| `hover_image_hash` | The image service's id for the hover preview. Empty when not stored there yet. | `TEXT` |
+
 
 ### clip_tags
 
@@ -1237,7 +1286,7 @@ The remote collections clips are downloaded from: archive.org collections and Yo
 | `license` | The licence URL the source declares. Empty means unknown, never public domain. | `TEXT` |
 | `last_fetched_at` | When the source last had at least one item queued for download, in Unix seconds; 0 means never. | `INTEGER` |
 | `created_at` | When the source was added, in Unix seconds. | `INTEGER` |
-| `enabled` | 1 when the source is switched on. A switched-off source is not checked, searched or downloaded from. | `INTEGER` |
+| `enabled` | 1 when the source is switched on. A switched-off source is not checked, searched or downloaded from. | `BOOLEAN` |
 | `fetch_every_seconds` | How often to check this source for new clips, in seconds. NULL uses the global setting; 0 means never check it automatically. | `INTEGER` · may be empty |
 | `fetch_max_per_run` | The most items to download from this source in one check. NULL uses the global setting. | `INTEGER` · may be empty |
 | `country` | The country the source serves, as a two-letter ISO code. Empty means it follows the install's own location. | `TEXT` |
@@ -1258,7 +1307,7 @@ One on/off switch per provider. A remote source downloads only when both it and 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `kind` | The provider, archive or youtube. | `TEXT` · key |
-| `enabled` | 1 when the provider is switched on. | `INTEGER` |
+| `enabled` | 1 when the provider is switched on. | `BOOLEAN` |
 
 ### filler_source_check_outcomes
 
@@ -1349,7 +1398,7 @@ One row per file a download produced, tracking it from download to the clip fold
 | `completed_at` | When the download finished, in Unix seconds. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 | `provider_archive_entry` | The line the downloader records so it never downloads this item again. Empty when the provider gives none. | `TEXT` |
-| `provider_archive_committed` | 1 once that line has been saved to the downloader's record. | `INTEGER` |
+| `provider_archive_committed` | 1 once that line has been saved to the downloader's record. | `BOOLEAN` |
 | `remote_id` | The provider's id for the item. Empty for older downloads and typed URLs. | `TEXT` |
 | `gap` | The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not chosen for a gap. | `TEXT` |
 
@@ -1373,7 +1422,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `stages_json` | JSON array of the finished steps, each with its status, an explanatory note for a skip or failure, attempts, and start and finish times. | `TEXT` |
 | `enrolled_at` | When the clip entered preparation, in Unix seconds. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
-| `force_run` | 1 when a person asked to re-run the current step, so it runs even if it would normally be skipped. Cleared once the step runs. | `INTEGER` |
+| `force_run` | 1 when a person asked to re-run the current step, so it runs even if it would normally be skipped. Cleared once the step runs. | `BOOLEAN` |
 | `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips dropped into the folder by hand. | `TEXT` |
 | `preparation_attempt` | Which attempt at preparing the clip this is, counting from 1. 0 for clips enrolled before this was tracked. | `INTEGER` |
 | `preparation_started_at` | When the current preparation attempt began, in Unix seconds. | `INTEGER` |
@@ -1421,7 +1470,7 @@ Each clip's latest picture and sound defect check, against a quality bar set by 
 | `readings_json` | JSON document of the raw measurements, such as blockiness, blur, dropouts, interlacing, upscaling and audio clipping. | `TEXT` |
 | `assessment_json` | JSON document of the era bar used and each check's outcome, measured value and bar. | `TEXT` |
 | `measured_at` | When the clip was measured, in Unix seconds. | `INTEGER` |
-| `judgement_json` | JSON document of a vision model's ruling on a borderline clip and its reason. Empty until there is one. | `TEXT` |
+| `judgement_json` | JSON document of a vision model's ruling on a borderline clip and its reason. Empty until there is one. | `TEXT` · may be empty |
 | `judge_failures` | How many times asking the vision model brought back no ruling since the last one. | `INTEGER` |
 | `verdict` | The final standing: pass, fail, undecided (too little picture; allowed to air) or pending (a borderline clip waiting for a ruling). | `TEXT` |
 | `verdict_reason` | What decided the verdict, such as the detectors or the judge's reason. | `TEXT` |
@@ -1551,6 +1600,8 @@ One row per model call made about a filler clip, written before the call (as a s
 
 **Kept:** Settled calls are deleted by the nightly housekeeping task after 180 days, once no structure-window call points at them; reserved ones (in flight) are kept. An unused budget hold is removed at once so its retry can take its place.
 
+**The call.** One row is one call to a model; these say which check made it and how it ended.
+
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the call. Spoken-safety events and the structure call journal point here. | `TEXT` · key |
@@ -1560,15 +1611,38 @@ One row per model call made about a filler clip, written before the call (as a s
 | `role` | Which check made the call, for example defect_judge or complete_timeline_structure. | `TEXT` |
 | `rung` | The step within that check, for example defects or window_video. Empty when the check has no steps. | `TEXT` |
 | `state` | Where the call stands. reserved means spend is set aside and the call is under way; completed means it answered; failed means it did not; held_budget means a spend ceiling (per clip, per day or per run) stopped it, or the provider charged more than was reserved. | `TEXT` |
+| `latency_ms` | How long the call took, in milliseconds. | `INTEGER` |
+| `attempts` | How many times the request was sent to the provider. | `INTEGER` |
+| `outcome` | window_complete once a structure-window call has answered; empty for every other call. | `TEXT` |
+| `failure_reason` | Why the call did not complete, for example a spend ceiling or a failure class such as transport. Empty on success. | `TEXT` |
+| `created_at` | When the call was reserved, in Unix seconds. Also decides which day's ceiling it counts against (UTC). | `INTEGER` |
+| `updated_at` | When the row last changed (reserved or settled), in Unix seconds. | `INTEGER` |
+
+**Who answered.** One provider and model asked, and one that answered, per call. Comparing them is how a routing service's substitutions show up.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `requested_provider` | The AI provider Loomarr asked, such as ollama or openrouter. | `TEXT` |
 | `requested_model` | The model Loomarr asked for. | `TEXT` |
 | `resolved_provider` | The provider that actually answered, as reported back. Empty until the call settles. | `TEXT` |
 | `resolved_model` | The model that actually answered, as reported back. Empty until the call settles. | `TEXT` |
 | `upstream_provider` | The provider behind a routing service (such as OpenRouter) that served the call. Empty when not known. | `TEXT` |
+| `generation_id` | The provider's own ID for the response, for matching against its billing. Empty when none was given. | `TEXT` |
+| `capability_snapshot` | Identity of the model endpoint and its capabilities at the time of the call. | `TEXT` |
+
+**What was sent.** One media excerpt per call; its size is what the cost estimate is worked out from.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `modalities_json` | JSON list of the kinds of input sent, such as text, image, audio or video. | `TEXT` |
 | `derivative_bytes` | Size in bytes of the media excerpt sent to the model. 0 when none was sent. | `INTEGER` |
 | `derivative_duration_ms` | Length of the media excerpt sent, in milliseconds. 0 when none was sent. | `INTEGER` |
 | `derivative_pixels` | Pixel count of the image or frames sent. 0 when none was sent. | `INTEGER` |
+
+**Tokens.** The usage the provider reported for this call, one count per kind, kept to check its bill against.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `prompt_tokens` | Input tokens the provider reported. | `INTEGER` |
 | `completion_tokens` | Output tokens the provider reported. | `INTEGER` |
 | `reasoning_tokens` | Reasoning tokens the provider reported. | `INTEGER` |
@@ -1577,15 +1651,22 @@ One row per model call made about a filler clip, written before the call (as a s
 | `image_tokens` | Tokens the provider counted for images. | `INTEGER` |
 | `audio_tokens` | Tokens the provider counted for audio. | `INTEGER` |
 | `video_tokens` | Tokens the provider counted for video. | `INTEGER` |
+
+**Cost.** The spend ceilings (per clip, per day, per run) add up reserved_nano_usd across calls in one statement, which needs it on the call's own row.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `charged_amount` | The charge exactly as the provider reported it, as a decimal string. Empty when no charge was reported. | `TEXT` |
 | `charged_currency` | Currency of the reported charge, USD when known. Empty when no charge was reported. | `TEXT` |
 | `charged_nano_usd` | The reported charge in billionths of a US dollar. 0 when nothing was charged or reported. | `INTEGER` |
 | `estimated_nano_usd` | Loomarr's own estimate of the cost, in billionths of a US dollar. | `INTEGER` |
 | `reserved_nano_usd` | The amount counted against the spend ceilings, in billionths of a US dollar. It starts as the pre-call reservation and becomes the actual charge when the call settles; a held call counts 0. | `INTEGER` |
 | `price_snapshot` | Fingerprint of the provider price list the cost was worked out from. Empty when none was recorded. | `TEXT` |
-| `latency_ms` | How long the call took, in milliseconds. | `INTEGER` |
-| `attempts` | How many times the request was sent to the provider. | `INTEGER` |
-| `generation_id` | The provider's own ID for the response, for matching against its billing. Empty when none was given. | `TEXT` |
+
+**Versions.** The cache key hashes every one of these, so an answer is reused only when nothing that shaped it changed; they describe this call and no other.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
 | `evidence_version` | Version of the evidence (measurements or media set) the call was based on. | `TEXT` |
 | `extractor_version` | Version of the step that prepared the media excerpt. | `TEXT` |
 | `prompt_version` | Version or fingerprint of the prompt sent. | `TEXT` |
@@ -1593,11 +1674,7 @@ One row per model call made about a filler clip, written before the call (as a s
 | `taxonomy_version` | Version of the vocabulary or bar the answer was judged against. | `TEXT` |
 | `admission_policy_version` | Version of the rules that decide what the answer is allowed to unlock. | `TEXT` |
 | `role_policy_version` | Version of the check's own rules. | `TEXT` |
-| `capability_snapshot` | Identity of the model endpoint and its capabilities at the time of the call. | `TEXT` |
-| `outcome` | window_complete once a structure-window call has answered; empty for every other call. | `TEXT` |
-| `failure_reason` | Why the call did not complete, for example a spend ceiling or a failure class such as transport. Empty on success. | `TEXT` |
-| `created_at` | When the call was reserved, in Unix seconds. Also decides which day's ceiling it counts against (UTC). | `INTEGER` |
-| `updated_at` | When the row last changed (reserved or settled), in Unix seconds. | `INTEGER` |
+
 
 ### filler_inference_budget_guards
 
@@ -1692,7 +1769,7 @@ One row per model call in the long-reel structure check, which sends a reel to a
 | `state` | open means the call is booked and has no answer yet; held_budget means a spend ceiling stopped it; settled means the outcome is recorded. | `TEXT` |
 | `reservation_json` | The full booked request as JSON, including the media set, window, model, prompt and schema fingerprints, and the spend requested. | `TEXT` |
 | `record_sha256` | SHA-256 of the settled record. Empty until settled. | `TEXT` |
-| `record_json` | The settled record as JSON, including the model that answered, tokens, charge, result state (accepted, failed, unsettled, held_budget or over_reservation) and fingerprints of the response. Empty until settled. | `TEXT` |
+| `record_json` | The settled record as JSON, including the model that answered, tokens, charge, result state (accepted, failed, unsettled, held_budget or over_reservation) and fingerprints of the response. Empty until settled. | `TEXT` · may be empty |
 | `requested_at` | When the call was booked, in Unix seconds. | `INTEGER` |
 | `assessed_at` | When the answer was recorded, in Unix seconds. 0 until settled. | `INTEGER` |
 
@@ -1747,7 +1824,7 @@ One row per place notifications can be sent, such as a Discord webhook, an ntfy 
 | `owner_id` | The person a person-scoped destination belongs to, from users. Empty for installation scope. | `TEXT` |
 | `audience` | Who the destination is for. person means its owner's own notifications; approvers means the admins who review requests; operators means the admins who look after the server and library. | `TEXT` |
 | `topics_json` | A JSON list of the notification topics the destination receives (the same values as notification_intents.topic). Topics not in the list are never sent here. | `TEXT` |
-| `enabled` | 1 when the destination is switched on. A disabled destination receives nothing. | `INTEGER` |
+| `enabled` | 1 when the destination is switched on. A disabled destination receives nothing. | `BOOLEAN` |
 | `configuration_json` | A JSON object of the destination's non-secret settings, such as a server address or topic name. | `TEXT` |
 | `credentials_encrypted` | The destination's secret settings (tokens, passwords, webhook URLs, push keys), encrypted with Loomarr's encryption key. Unreadable without that key. | `TEXT` |
 | `created_at` | When the destination was added, in Unix seconds. | `BIGINT` |
@@ -1852,7 +1929,7 @@ The data-encryption keys that encrypt secret settings and other stored credentia
 | --- | --- | --- |
 | `id` | Identifies the key. Each encrypted value names the key that sealed it. | `TEXT` · key |
 | `wrapped_key` | The data key, encrypted with the installation key (begins with loomarr-dek:v1:). | `TEXT` |
-| `active` | 1 for the one key used to encrypt new secrets; 0 for retired keys kept for reading. | `INTEGER` |
+| `active` | 1 for the one key used to encrypt new secrets; 0 for retired keys kept for reading. | `BOOLEAN` |
 | `created_at` | When the key was created, in Unix seconds. | `BIGINT` |
 
 ### scheduled_jobs

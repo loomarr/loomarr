@@ -114,6 +114,10 @@ describe("PairedDevices", () => {
 
     await screen.findByText("Living Room Shield");
     await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    // The first press only asks: a removed device has to pair again.
+    expect(screen.getByText(/Remove Living Room Shield\?/)).toBeInTheDocument();
+    expect(revoked).toHaveLength(0);
+    await userEvent.click(screen.getByRole("button", { name: "Remove device" }));
 
     await waitFor(() => expect(revoked).toHaveLength(1));
     expect(revoked[0]).toContain("hash-living-room");

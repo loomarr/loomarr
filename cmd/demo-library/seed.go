@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,13 +112,17 @@ func seed(ctx context.Context, lib *demolibrary.Library, cfg seedConfig, log *sl
 	}
 
 	l := demolibrary.Layout{Dir: cfg.dir}
+	items, err := api.scanLibrary(ctx, st, lib, l, log)
+	if err != nil {
+		return err
+	}
 	out := SeedResult{Backend: cfg.base, Web: os.Getenv("DEMO_WEB_URL"), AdminUser: demoAdminUser, AdminName: admin.Name, Library: cfg.libraryURL}
 	if created || admin.Name == demoAdminUser {
 		out.AdminPassword = demoAdminPassword
 	}
 	approver := suggest.NewApprover(st, approval.New(st, nil, nil, slog.New(slog.DiscardHandler)), time.Now)
 	for _, c := range lib.Channels {
-		id, err := ensureChannel(ctx, st, approver, lib, admin.ID, c)
+		id, err := ensureChannel(ctx, st, approver, lib, items, admin.ID, c)
 		if err != nil {
 			return fmt.Errorf("channel %d %q: %w", c.Number, c.Name, err)
 		}
@@ -176,8 +181,9 @@ func ensureAdmin(ctx context.Context, st store.Store) (identitystore.User, bool,
 }
 
 // ensureChannel approves the channel's proposal once, keyed by deterministic job and proposal
-// ids, and returns the channel the approval bound.
-func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approver, lib *demolibrary.Library, adminID string, c demolibrary.Channel) (string, error) {
+// ids, and returns the channel the approval bound. items is each title's library item id by its
+// stand-in id (scanLibrary).
+func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approver, lib *demolibrary.Library, items map[string]string, adminID string, c demolibrary.Channel) (string, error) {
 	// The open pack keys its channels apart from the invented library's, so a store seeded with one
 	// never mistakes the other's channel for its own: switching content on a kept store fails on the
 	// taken channel number instead of renaming an invented channel over the pack's name.
@@ -193,7 +199,7 @@ func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approv
 		return "", err
 	}
 	if _, err := st.GetProposal(ctx, propID); errors.Is(err, store.ErrNotFound) {
-		if err := createProposal(ctx, st, lib, adminID, jobID, propID, c); err != nil {
+		if err := createProposal(ctx, st, lib, items, adminID, jobID, propID, c); err != nil {
 			return "", err
 		}
 	} else if err != nil {
@@ -210,7 +216,7 @@ func ensureChannel(ctx context.Context, st store.Store, approver *suggest.Approv
 	return approved.ChannelID, nil
 }
 
-func createProposal(ctx context.Context, st store.Store, lib *demolibrary.Library, adminID, jobID, propID string, c demolibrary.Channel) error {
+func createProposal(ctx context.Context, st store.Store, lib *demolibrary.Library, items map[string]string, adminID, jobID, propID string, c demolibrary.Channel) error {
 	intent := proposals.Intent{Description: c.Name}
 	var lineup []proposals.ProposalItem
 	for _, id := range c.Titles {
@@ -218,7 +224,11 @@ func createProposal(ctx context.Context, st store.Store, lib *demolibrary.Librar
 		if !ok {
 			return fmt.Errorf("unknown demo title %q", id)
 		}
-		item := proposals.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: t.ID()}
+		itemID, ok := items[id]
+		if !ok {
+			return fmt.Errorf("demo title %q is not in the library", t.Name)
+		}
+		item := proposals.ProposalItem{Name: t.Name, Year: t.Year, InLibrary: true, LibraryItemID: itemID}
 		if t.Kind == demolibrary.Series {
 			item.MediaType, item.TVDBID = provision.Series, t.ProviderID()
 		} else {
@@ -280,6 +290,100 @@ func (b *backend) seedFiller(ctx context.Context, log *slog.Logger, folder strin
 		log.Info("demo filler job finished", "job", job)
 	}
 	return nil
+}
+
+// scanWait bounds the wait for the demo's first scan: a few hundred hard links, every header read,
+// and the Enricher's two passes a minute apart (titles, then seasons).
+const scanWait = 10 * time.Minute
+
+// scanLibrary puts the demo's two media folders in use and scans them, because playout plays only
+// the files Loomarr's own scan found (#2151 step 16). It waits until every demo title is a library
+// item named from its catalog record (TMDB's stand-in, through the Enricher) and every file's header
+// is read (a programme's runtime is its file's duration), and returns
+// each title's library item id by its stand-in id.
+func (b *backend) scanLibrary(ctx context.Context, st store.Store, lib *demolibrary.Library, l demolibrary.Layout, log *slog.Logger) (map[string]string, error) {
+	for _, dir := range []string{l.Movies(), l.Shows()} {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return nil, err
+		}
+		if err := b.expectOK(ctx, http.MethodPost, "/v1/library/roots", map[string]string{"path": abs}, nil); err != nil {
+			return nil, fmt.Errorf("put %s in use: %w", abs, err)
+		}
+	}
+	if err := b.expectOK(ctx, http.MethodPost, "/v1/library/scan", map[string]any{}, nil); err != nil {
+		return nil, fmt.Errorf("start the scan: %w", err)
+	}
+	deadline := time.Now().Add(scanWait)
+	for {
+		items, missing, err := demoLibraryItems(ctx, st, lib)
+		if err != nil {
+			return nil, err
+		}
+		var status struct {
+			HeadersPending int `json:"headersPending"`
+		}
+		if err := b.expectOK(ctx, http.MethodGet, "/v1/library/status", nil, &status); err != nil {
+			return nil, err
+		}
+		if missing == "" && status.HeadersPending == 0 {
+			log.Info("demo library scanned", "titles", len(items))
+			return items, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("after %s the scan has not found or named %q, or has %d files left to read",
+				scanWait, missing, status.HeadersPending)
+		}
+		log.Info("waiting for the demo library's scan", "next title", missing, "files to read", status.HeadersPending)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// demoLibraryItems maps each demo title's stand-in id to its library item id, or names the first
+// title the scan has not written yet, or written but not yet named from its catalog record.
+func demoLibraryItems(ctx context.Context, st store.Store, lib *demolibrary.Library) (map[string]string, string, error) {
+	items := make(map[string]string, len(lib.Titles))
+	for _, t := range lib.Titles {
+		kind, namespace := "movie", "tmdb"
+		if t.Kind == demolibrary.Series {
+			kind, namespace = "series", "tvdb"
+		}
+		title, ok, err := st.LibraryTitleByProviderID(ctx, kind, namespace, strconv.Itoa(t.ProviderID()))
+		if err != nil {
+			return nil, "", err
+		}
+		if !ok || title.Name != t.Name {
+			return nil, t.Name, nil
+		}
+		if t.Kind == demolibrary.Series {
+			named, err := firstEpisodeNamed(ctx, st, title.ID, lib.EpisodesOf(t))
+			if err != nil {
+				return nil, "", err
+			}
+			if !named {
+				return nil, t.Name, nil
+			}
+		}
+		items[t.ID()] = title.ID
+	}
+	return items, "", nil
+}
+
+// firstEpisodeNamed reports whether a show's first episode carries its catalog name. The Enricher
+// fetches a season a pass after its show, so until then the guide would list file names.
+func firstEpisodeNamed(ctx context.Context, st store.Store, seriesID string, want []demolibrary.Episode) (bool, error) {
+	if len(want) == 0 {
+		return true, nil
+	}
+	eps, _, err := st.LibraryEpisodes(ctx, seriesID)
+	if err != nil {
+		return false, err
+	}
+	return len(eps) > 0 && eps[0].Name == want[0].Name, nil
 }
 
 // runJob starts a job now and waits for that manual run to finish.

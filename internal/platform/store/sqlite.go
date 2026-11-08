@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	_ "modernc.org/sqlite" // pure-Go driver, no cgo (§5, §16)
@@ -77,7 +78,26 @@ func optimizeSQLite(ctx context.Context, db *sql.DB) error {
 // openSQLite opens the DB file with WAL + busy_timeout (§5) and returns a store
 // wired with the SQLite claim SQL. dsn is the path after the sqlite:// scheme.
 func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
-	db, err := sql.Open("sqlite", sqliteDSN(path))
+	return openSQLiteDriver(ctx, "sqlite", path)
+}
+
+// OpenSQLiteDriver opens an already-migrated SQLite database ("sqlite://path") through the named
+// database/sql driver, which must wrap "sqlite". It exists for tests that watch the statements the
+// store sends (storetest.Recorder, whose query-plan check proves lookups use indexes); production
+// opens with Open.
+func OpenSQLiteDriver(ctx context.Context, driverName, databaseURL string) (Store, error) {
+	s, err := openSQLiteDriver(ctx, driverName, strings.TrimPrefix(databaseURL, "sqlite://"))
+	if err != nil {
+		return nil, err
+	}
+	_ = optimizeSQLite(ctx, s.db)
+	return s, nil
+}
+
+// openSQLiteDriver is openSQLite over a named database/sql driver. Production always passes
+// "sqlite".
+func openSQLiteDriver(ctx context.Context, driverName, path string) (*sqlStore, error) {
+	db, err := sql.Open(driverName, sqliteDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
