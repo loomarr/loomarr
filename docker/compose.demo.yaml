@@ -62,6 +62,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 240
+      # The open pack's first download can outlast the retries on a slow link. Failures inside
+      # this window don't count, and the first success still marks it healthy at once.
+      start_period: 60m
     restart: unless-stopped
 
   # One-shot and idempotent: rerunning it finds its channels already in place.

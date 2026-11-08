@@ -52,6 +52,8 @@ invented | open) ;;
 	exit 2
 	;;
 esac
+# The open pack downloads about 1.3 GB on its first start, so its seeder gets an hour.
+[ "$DEMO_SITE_CONTENT" = open ] && [ -z "${DEMO_SITE_SEED_TIMEOUT:-}" ] && SEED_TIMEOUT_SECONDS=3600
 
 ADMIN_LOGIN='{"username":"demo","password":"loomarr-demo"}'
 GUEST_USER=guest
