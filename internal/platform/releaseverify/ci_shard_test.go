@@ -664,14 +664,18 @@ echo 'ok  example.invalid/fast  0.001s'
 		return strings.TrimSpace(string(args))
 	}
 
-	if got, want := run("race", "GO_TEST_COMPILE_ONLY=1"), "test -timeout 25m -race -exec true example.invalid/fast"; got != want {
+	// -race turns on checkptr everywhere. modernc's SQLite is C translated to Go, unsafe pointer
+	// arithmetic on nearly every line, and checkptr there doubled every migration under -race (#2716):
+	// the race detector stays on for it, only checkptr is off, and only for modernc.
+	const race = "-race -gcflags=modernc.org/...=-d=checkptr=0"
+	if got, want := run("race", "GO_TEST_COMPILE_ONLY=1"), "test -timeout 25m "+race+" -exec true example.invalid/fast"; got != want {
 		t.Fatalf("compile-only race args = %q, want %q", got, want)
 	}
 	if got, want := run("plain", "GO_TEST_COMPILE_ONLY=1"), "test -timeout 25m -exec true example.invalid/fast"; got != want {
 		t.Fatalf("compile-only plain args = %q, want %q", got, want)
 	}
-	if got := run("race"); strings.Contains(got, "-exec") {
-		t.Fatalf("a real test run must execute its tests: args = %q", got)
+	if got, want := run("race"), "test -timeout 25m "+race+" example.invalid/fast"; got != want {
+		t.Fatalf("a real race run must execute its tests with the lane flags: args = %q, want %q", got, want)
 	}
 }
 

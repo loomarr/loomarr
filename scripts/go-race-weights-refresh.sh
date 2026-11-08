@@ -13,8 +13,10 @@
 # are left to go-shard.sh's one-second floor, so the file lists only material costs.
 #
 # Pass runs with the same package set and test code you want to model (e.g. every merge_group run
-# since the last change that moved a heavy package's cost). Failed or cancelled lane jobs are
-# skipped: a package that failed early has no representative time.
+# since the last change that moved a heavy package's cost). Every lane job counts, whatever its
+# conclusion: an `ok` line is printed only when a package's tests finished, so it is a whole
+# measurement even in a lane that later timed out, and a package cut off mid-run prints none. A lane
+# over its timeout is exactly the one that needs re-measuring (#2716).
 set -euo pipefail
 
 gh_bin="${GO_RACE_WEIGHTS_GH:-gh}"
@@ -35,7 +37,7 @@ for run in "$@"; do
     exit 2
   fi
   jobs="$("$gh_bin" run view "$run" --json jobs --jq '.jobs[] | [.databaseId, .conclusion, .name] | @tsv' |
-    awk -F '\t' '$2 == "success" && $3 ~ /race-policy tests \(/ { print $1 }')"
+    awk -F '\t' '$2 ~ /^(success|failure|cancelled)$/ && $3 ~ /race-policy tests \(/ { print $1 }')"
   for job in $jobs; do
     jobs_seen=$((jobs_seen + 1))
     "$gh_bin" run view "$run" --job "$job" --log |
@@ -46,12 +48,12 @@ for run in "$@"; do
 done
 
 if [[ "$jobs_seen" -eq 0 || ! -s "$samples" ]]; then
-  echo "go-race-weights-refresh: no successful race-policy lane timings in runs: $*" >&2
+  echo "go-race-weights-refresh: no race-policy lane timings in runs: $*" >&2
   exit 1
 fi
 
-echo "# Measured \`go test\` seconds per package in the Go race-policy lanes: the median over successful"
-echo "# lane jobs of merge-group runs $*, rounded up. Regenerate with"
+echo "# Measured \`go test\` seconds per package in the Go race-policy lanes: the median over the"
+echo "# finished packages of the lane jobs in merge-group runs $*, rounded up. Regenerate with"
 echo "# \`make go-race-weights RUNS=\"...\"\` (scripts/go-race-weights-refresh.sh); never edit by hand."
 echo "# Packages below five seconds use the one-second floor in go-shard.sh."
 sort -t $'\t' -k1,1 -k2,2n "$samples" | awk -F '\t' '
