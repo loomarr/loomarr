@@ -345,6 +345,31 @@ func TestFetchEpisode_BridgesByItsOwnTVDBID(t *testing.T) {
 	}
 }
 
+// One language is spelled one way: a bare code takes the country as its region, none is English,
+// and the record says the language it was read in.
+func TestFetch_ReadsInTheHouseholdLanguage(t *testing.T) {
+	f := newFakeTMDB(t)
+	for _, tc := range []struct{ language, country, want, images string }{
+		{"fr", "", "fr-US", "fr,null"},
+		{"PT-br", "us", "pt-BR", "pt,null"},
+		{"", "", "en-US", "en,null"},
+	} {
+		p := f.provider(func() (string, string) { return tc.language, tc.country })
+		rec, err := p.Fetch(context.Background(), movieRef)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q := f.last(t).URL.Query()
+		if q.Get("language") != tc.want || q.Get("include_image_language") != tc.images || rec.Language != tc.want {
+			t.Errorf("%q, %q: asked language=%q images=%q, record says %q; want %q", tc.language, tc.country,
+				q.Get("language"), q.Get("include_image_language"), rec.Language, tc.want)
+		}
+		if got, err := p.Language(); err != nil || got != tc.want {
+			t.Errorf("%q, %q: Language() = %q, %v; want %q", tc.language, tc.country, got, err, tc.want)
+		}
+	}
+}
+
 func TestFetch_RefusesWhatItCannotAnswer(t *testing.T) {
 	f := newFakeTMDB(t)
 	ctx := context.Background()

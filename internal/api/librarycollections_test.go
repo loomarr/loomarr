@@ -78,7 +78,7 @@ func TestReadyMadeSets(t *testing.T) {
 	if err := h.Store.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{set}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.Store.SaveLibraryCatalog(ctx, set, record, 0, at); err != nil {
+	if _, err := h.Store.SaveLibraryCatalog(ctx, set, record, 0, "en-US", at); err != nil {
 		t.Fatal(err)
 	}
 

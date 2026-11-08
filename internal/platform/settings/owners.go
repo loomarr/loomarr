@@ -13,6 +13,11 @@ func ownerFor(setting Setting) Owner {
 	if setting.Key == "access.public_url" {
 		return OwnerSharing
 	}
+	// The household's metadata language and country (#2151 decision 21) are edited in Advanced
+	// settings until the Location page has a mock for them.
+	if setting.Key == "metadata.language" || setting.Key == "metadata.country" {
+		return OwnerAdvanced
+	}
 	if setting.Group == GroupAdvanced {
 		switch setting.Key {
 		case "diagnostics.dir", "diagnostics.retention", "diagnostics.max_storage_mb":

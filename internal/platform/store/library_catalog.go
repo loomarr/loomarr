@@ -47,6 +47,9 @@ type LibraryCatalogDue struct {
 	// Versions is the record shape each kind is read in now. A record saved in an older one is
 	// due with the titles never fetched; a kind not listed is version 0.
 	Versions map[string]int
+	// Language is the language records are read in now ("en-US"). A record saved in another is
+	// due with the titles never fetched; empty checks none.
+	Language string
 }
 
 // LibraryFilePath is one file the scanner keeps, by its root and absolute path.
@@ -67,9 +70,9 @@ type LibraryCatalogStore interface {
 	DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([]LibraryCatalogKey, error)
 	// CountLibraryCatalog counts every cached key.
 	CountLibraryCatalog(ctx context.Context) (int, error)
-	// SaveLibraryCatalog stores a fetched record, in the shape version it was read in, and reports
-	// whether it differs from the one held.
-	SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, at time.Time) (bool, error)
+	// SaveLibraryCatalog stores a fetched record, in the shape version and language it was read
+	// in, and reports whether it differs from the one held.
+	SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
 	// FailLibraryCatalog holds a key back from fetching until retryAt.
 	FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, retryAt time.Time) error
 	// RewriteLibraryCatalogFiles forgets the identity digest of every present file of each title
@@ -109,11 +112,16 @@ func (s *sqlStore) LibraryCatalogRecord(ctx context.Context, key LibraryCatalogK
 func (s *sqlStore) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([]LibraryCatalogKey, error) {
 	now := due.Now.UnixMilli()
 	var out []LibraryCatalogKey
-	// outdated is a record saved in an older shape than its kind is read in now.
+	// outdated is a record saved in an older shape than its kind is read in now, or in another
+	// language.
 	outdated, args := "", []any{}
 	for _, kind := range slices.Sorted(maps.Keys(due.Versions)) {
 		outdated += ` OR (kind = ? AND version < ?)`
 		args = append(args, kind, due.Versions[kind])
+	}
+	if due.Language != "" {
+		outdated += ` OR language <> ?`
+		args = append(args, due.Language)
 	}
 	if due.New > 0 {
 		keys, err := s.catalogKeys(ctx, `SELECT provider, kind, external_id FROM library_catalog
@@ -168,7 +176,7 @@ func (s *sqlStore) CountLibraryCatalog(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-func (s *sqlStore) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, at time.Time) (bool, error) {
+func (s *sqlStore) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error) {
 	if key.String() == "" {
 		return false, fmt.Errorf("save library catalog: provider, kind and id are required")
 	}
@@ -184,11 +192,12 @@ func (s *sqlStore) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_catalog (provider, kind, external_id, record,
-		fetched_at_ms, retry_at_ms, version)
-		VALUES (?, ?, ?, ?, ?, 0, ?)
+		fetched_at_ms, retry_at_ms, version, language)
+		VALUES (?, ?, ?, ?, ?, 0, ?, ?)
 		ON CONFLICT (provider, kind, external_id) DO UPDATE SET record = excluded.record,
-		fetched_at_ms = excluded.fetched_at_ms, retry_at_ms = 0, version = excluded.version`),
-		key.Provider, key.Kind, key.ExternalID, record, at.UnixMilli(), version); err != nil {
+		fetched_at_ms = excluded.fetched_at_ms, retry_at_ms = 0, version = excluded.version,
+		language = excluded.language`),
+		key.Provider, key.Kind, key.ExternalID, record, at.UnixMilli(), version, language); err != nil {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

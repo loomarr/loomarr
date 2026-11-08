@@ -100,24 +100,35 @@ func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	if !p.Capabilities().CanResolve(ref) {
 		return mp.Record{}, fmt.Errorf("tmdb: %s by %s: %w", ref.Kind, ref.ID.Namespace, mp.ErrUnsupported)
 	}
+	loc, err := p.resolveLocale()
+	if err != nil {
+		return mp.Record{}, err
+	}
+	rec, err := p.fetch(ctx, loc, ref)
+	if err != nil {
+		return mp.Record{}, err
+	}
+	rec.Language = loc.language
+	return rec, nil
+}
+
+// Language is the language a record fetched now is in, as TMDB takes it ("en-US").
+func (p *Provider) Language() (string, error) {
+	loc, err := p.resolveLocale()
+	return loc.language, err
+}
+
+func (p *Provider) fetch(ctx context.Context, loc locale, ref mp.Ref) (mp.Record, error) {
 	if ref.Kind == mp.KindSeason {
 		series, number, ok := SeasonRef(ref.ID.Value)
 		if !ok {
 			return mp.Record{}, fmt.Errorf("tmdb: season %q is not <series id>/<season>: %w", ref.ID.Value, mp.ErrUnsupported)
-		}
-		loc, err := p.resolveLocale()
-		if err != nil {
-			return mp.Record{}, err
 		}
 		return p.season(ctx, loc, series, number)
 	}
 	id, err := strconv.Atoi(strings.TrimSpace(ref.ID.Value))
 	if err != nil || id <= 0 {
 		return mp.Record{}, fmt.Errorf("tmdb: %s id %q is not a positive integer: %w", ref.ID.Namespace, ref.ID.Value, mp.ErrUnsupported)
-	}
-	loc, err := p.resolveLocale()
-	if err != nil {
-		return mp.Record{}, err
 	}
 	switch ref.Kind {
 	case mp.KindMovie:
@@ -142,10 +153,6 @@ func (p *Provider) resolveLocale() (locale, error) {
 	if p.locale != nil {
 		language, country = p.locale()
 	}
-	language = strings.TrimSpace(language)
-	if language == "" {
-		language = "en-US"
-	}
 	country = strings.ToUpper(strings.TrimSpace(country))
 	if country == "" {
 		country = usCountry
@@ -153,8 +160,17 @@ func (p *Provider) resolveLocale() (locale, error) {
 	if country != usCountry {
 		return locale{}, fmt.Errorf("tmdb: no rating ladder for country %q: %w", country, mp.ErrUnsupported)
 	}
-	base, _, _ := strings.Cut(language, "-")
-	return locale{language: language, base: strings.ToLower(base)}, nil
+	// A bare language takes the country as its region ("fr" is "fr-US"), so one language is
+	// always spelled one way.
+	base, region, _ := strings.Cut(strings.TrimSpace(language), "-")
+	base, region = strings.ToLower(base), strings.ToUpper(region)
+	if base == "" {
+		base, region = "en", ""
+	}
+	if region == "" {
+		region = country
+	}
+	return locale{language: base + "-" + region, base: base}, nil
 }
 
 // detailQuery is the query shared by the movie and series detail calls. images are limited to the

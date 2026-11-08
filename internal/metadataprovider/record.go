@@ -17,6 +17,9 @@ type Source struct {
 type Record struct {
 	Source Source
 	Kind   Kind
+	// Language is the language a catalog answered in ("en-US"); empty for a source that has
+	// one language.
+	Language string
 	// IDs are the item's own grounded ids: an episode's are its own episode ids, never its
 	// series' (decision 15).
 	IDs []ExternalID

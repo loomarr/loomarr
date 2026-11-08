@@ -105,6 +105,8 @@ To replace the installation key, supply the new current key and provide the old 
 | Setting (env) | Owner task | Kind | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `tmdb.api_key` (`TMDB_API_KEY`) | Connections | secret | (secret) | Your own TMDB API key, if you have one. Loomarr comes with its own, so most households can leave this empty. TMDB powers title search, channel icon suggestions, and grounding for AI channel suggestions. _(required for suggestions)_ |
+| `metadata.language` (`METADATA_LANGUAGE`) | Advanced settings | string | — | The language titles, overviews and trailers are shown in, as a language code (en, fr, pt-BR). Empty uses your media server's metadata language, or English. Changing it fetches every title's details again. _(advanced)_ |
+| `metadata.country` (`METADATA_COUNTRY`) | Advanced settings | string | — | The country whose content ratings Loomarr uses. Only US ratings are supported for now, so this can be empty or US. _(advanced)_ |
 
 ## AI
 

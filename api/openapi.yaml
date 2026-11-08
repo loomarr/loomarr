@@ -11199,6 +11199,8 @@ components:
         - images.remote_fetch_enabled
         - images.cache_budget_mb
         - tmdb.api_key
+        - metadata.language
+        - metadata.country
         - llm.provider
         - llm.url
         - llm.model
@@ -11359,6 +11361,8 @@ components:
         - ImagesRemoteFetchEnabled
         - ImagesCacheBudgetMb
         - TMDBAPIKey
+        - MetadataLanguage
+        - MetadataCountry
         - LLMProvider
         - LLMURL
         - LLMModel

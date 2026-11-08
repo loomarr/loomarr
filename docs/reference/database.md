@@ -662,6 +662,7 @@ What TMDB says about a title or a TMDB collection, cached so a scan never has to
 | `fetched_at_ms` | When the record was last fetched, in Unix milliseconds; 0 means never. | `INTEGER` |
 | `retry_at_ms` | After a failed fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none. | `INTEGER` |
 | `version` | The shape of record it was fetched in. A record of an older shape than its kind is read in now is fetched again first, as if it had never been fetched. | `INTEGER` |
+| `language` | The language the record was fetched in, such as en-US; empty before languages were noted. A record in another language than the household's is fetched again first. | `TEXT` |
 
 ### library_candidates
 

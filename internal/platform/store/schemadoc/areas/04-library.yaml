@@ -289,6 +289,9 @@ tables:
       version: >
         The shape of record it was fetched in. A record of an older shape than its kind is read in now
         is fetched again first, as if it had never been fetched.
+      language: >
+        The language the record was fetched in, such as en-US; empty before languages were noted. A
+        record in another language than the household's is fetched again first.
 
   - name: library_candidates
     about: >

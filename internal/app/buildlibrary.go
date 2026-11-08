@@ -172,9 +172,16 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
 		CollectionStore: st, SetRecords: st}
 	if deps.tmdb != nil {
-		provider := mptmdb.New(deps.tmdb, nil)
+		provider := mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
 		enricher := &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
+			Language: func() string {
+				language, err := provider.Language()
+				if err != nil {
+					return ""
+				}
+				return language
+			},
 			Enabled: im.Enabled, Log: deps.log,
 		}
 		deps.owner.goRunAfterBuild(enricher.Run)
