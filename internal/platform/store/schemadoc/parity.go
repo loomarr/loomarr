@@ -6,36 +6,9 @@ import (
 	"strings"
 )
 
-// noFlagCheck is the work that removes a KnownParityGaps entry.
-const noFlagCheck = "#2793: SQLite flag without a CHECK (col IN (0, 1)); needs a table rebuild"
-
-// noJSONCheck is the work that removes a JSON column's KnownParityGaps entry.
-const noJSONCheck = "#2793: Postgres jsonb, SQLite without a CHECK (json_valid(col)); needs a table rebuild"
-
-// KnownParityGaps are the differences the engines had when the parity test arrived, each with the
-// work that removes it. Like KnownGaps it only shrinks: a listed difference that is gone fails too.
-var KnownParityGaps = map[string]string{
-	"column clips.held":                        noFlagCheck,
-	"column filler_clip_pipeline.force_run":    noFlagCheck,
-	"column filler_sources.enabled":            noFlagCheck,
-	"column holidays.name_needs_corroboration": noFlagCheck,
-	"column image_derivatives.animated":        noFlagCheck,
-	"column images.animated":                   noFlagCheck,
-	"column images.meta":                       noJSONCheck,
-	"column library_answers.ignored":           noFlagCheck,
-	"column library_candidates.length_match":   noFlagCheck,
-	"column library_candidates.name_match":     noFlagCheck,
-	"column library_candidates.year_match":     noFlagCheck,
-	"column library_files.held":                noFlagCheck,
-	"column library_items.grounded":            noFlagCheck,
-	"column library_items.needs_noticed":       noFlagCheck,
-	"column library_root_paths.by_hand":        noFlagCheck,
-	"column library_roots.by_hand":             noFlagCheck,
-	"column library_roots.in_use":              noFlagCheck,
-	"column library_roots.readable":            noFlagCheck,
-	"column users.auto_approve":                noFlagCheck,
-	"column users.disabled":                    noFlagCheck,
-}
+// KnownParityGaps are differences between the engines allowed to stand, each with the work that
+// removes it. Like KnownGaps it only shrinks: a listed difference that is gone fails too.
+var KnownParityGaps = map[string]string{}
 
 // Parity compares the schema SQLite and Postgres were migrated to (#2793): the same tables and
 // columns, each with the same type, nullability, key, reference and CHECK, and the same foreign
@@ -140,9 +113,10 @@ func tableParity(s, p LiveTable) []string {
 
 // SameType reports whether a Postgres column stores what its SQLite twin stores. SQLite keeps
 // every integer in 64 bits and every REAL in 8 bytes, so the Postgres twin is bigint and double
-// precision: an integer or real there would overflow or round what SQLite keeps whole. A 0/1
-// flag (BOOLEAN, or an INTEGER CHECKed to its values) is boolean. JSON is jsonb, declared in
-// SQLite by CHECK (json_valid(column)); any other text is text.
+// precision: an integer or real there would overflow or round what SQLite keeps whole. Each of
+// the other kinds is declared one way: a flag is BOOLEAN with CHECK (column IN (0, 1)) in SQLite
+// and boolean in Postgres, and JSON is TEXT with CHECK (json_valid(column)) in SQLite and jsonb
+// in Postgres; any other text is text.
 func SameType(sqlite LiveColumn, postgres string) bool {
 	pg := strings.ToLower(postgres)
 	switch strings.ToUpper(sqlite.Type) {
@@ -152,9 +126,9 @@ func SameType(sqlite LiveColumn, postgres string) bool {
 		}
 		return pg == "text"
 	case "BOOLEAN":
-		return pg == "boolean"
+		return pg == "boolean" && sqlite.Flag
 	case "INTEGER", "BIGINT":
-		return pg == "bigint" || (pg == "boolean" && sqlite.Checked)
+		return pg == "bigint"
 	case "REAL", "DOUBLE PRECISION":
 		return pg == "double precision"
 	case "BLOB":

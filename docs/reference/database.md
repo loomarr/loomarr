@@ -85,9 +85,9 @@ One row per person allowed into Loomarr. Rows are made by the first-admin setup,
 | `id` | Identifies the person. For a media-server account it is that server's user id; for a local account Loomarr makes one up. Other tables point here. | `TEXT` · key |
 | `name` | The person's name, which is also the username a local account signs in with. | `TEXT` |
 | `role` | What the person may do. admin manages the household (people, settings, approvals); member watches and makes requests. | `TEXT` |
-| `disabled` | 1 when an admin has turned the account off. A disabled person can't sign in, and their sign-ins and paired devices are deleted. | `INTEGER` |
+| `disabled` | 1 when an admin has turned the account off. A disabled person can't sign in, and their sign-ins and paired devices are deleted. | `BOOLEAN` |
 | `quota` | How many of the person's approved requests may be waiting to arrive in the library at once. 0 means use the household default setting. | `INTEGER` |
-| `auto_approve` | 1 when the person's requests skip the admin queue, as long as they stay within their quota. | `INTEGER` |
+| `auto_approve` | 1 when the person's requests skip the admin queue, as long as they stay within their quota. | `BOOLEAN` |
 | `created_at` | When the account was made, in Unix seconds. | `BIGINT` |
 | `updated_at` | When the account was last changed, in Unix seconds. | `BIGINT` |
 | `password_hash` | A one-way Argon2id hash of the local password, used only to check a password at sign-in; the password can't be recovered from it. Empty or NULL when the person has no local password. | `TEXT` · may be empty |
@@ -337,7 +337,7 @@ One row per holiday: when each country keeps it and the words that show a title 
 | `kept` | JSON list of when countries keep the holiday. Each entry lists countries, the day rule (fixed date, nth or last weekday, or relative to Easter) and the season window around it. `[]` means undated, so its clips air all year. | `TEXT` |
 | `air_window` | JSON rule for the time of year when a TV episode first airing then was made for the holiday. Empty when there is none. | `TEXT` |
 | `members` | JSON list of holiday ids for a group holiday (such as "happy holidays"), which is in season whenever any member is. `[]` for an ordinary holiday. | `TEXT` |
-| `name_needs_corroboration` | 1 when the holiday's name alone is not enough to tie a title to it, because the name is also an ordinary title word. | `INTEGER` |
+| `name_needs_corroboration` | 1 when the holiday's name alone is not enough to tie a title to it, because the name is also an ordinary title word. | `BOOLEAN` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 
 ### holiday_seed_revisions
@@ -502,10 +502,10 @@ One row per local folder Loomarr may walk for media. A folder is added when a me
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `path` | The folder as Loomarr opens it, an absolute path. | `TEXT` · key |
-| `in_use` | 1 when the folder is confirmed for scanning. A discovered folder starts at 0; one typed by hand starts at 1. | `INTEGER` |
-| `readable` | 1 when the last check could open the folder. | `INTEGER` |
+| `in_use` | 1 when the folder is confirmed for scanning. A discovered folder starts at 0; one typed by hand starts at 1. | `BOOLEAN` |
+| `readable` | 1 when the last check could open the folder. | `BOOLEAN` |
 | `checked_at_ms` | When the folder was last checked for readability, in Unix milliseconds; 0 means never. | `INTEGER` |
-| `by_hand` | 1 when someone typed the folder in rather than a media server or arr reporting it. | `INTEGER` |
+| `by_hand` | 1 when someone typed the folder in rather than a media server or arr reporting it. | `BOOLEAN` |
 | `added_at_ms` | When the folder was added, in Unix milliseconds. | `INTEGER` |
 | `scanned_at_ms` | When a walk of the folder last completed, in Unix milliseconds; 0 means never. | `INTEGER` |
 
@@ -520,7 +520,7 @@ The path map. One row per folder a media server or arr reports, saying which loc
 | `authority` | The app that reported the folder, one of emby, jellyfin, sonarr or radarr. | `TEXT` · key |
 | `authority_path` | The folder as that app names it. | `TEXT` · key |
 | `root_path` | The local folder it maps to (a library_roots path), or empty when no local folder was found for it. | `TEXT` |
-| `by_hand` | 1 when someone set the mapping by hand. Discovery never rewrites such a row. | `INTEGER` |
+| `by_hand` | 1 when someone set the mapping by hand. Discovery never rewrites such a row. | `BOOLEAN` |
 | `seen_at_ms` | When the app last reported the folder, or the mapping was last set, in Unix milliseconds. | `INTEGER` |
 
 ### library_files
@@ -539,7 +539,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `kind` | What the file was last written as, one of movie, episode or extra; empty for a problem file. | `TEXT` |
 | `header` | Whether the file's container header has been read. One of pending (not yet), read, or failed (it can't be read, so the file can't be played). | `TEXT` |
 | `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), or invalid_facts (the library refused what was read from it). | `TEXT` |
-| `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `INTEGER` |
+| `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
 | `inventory_item_id` | The title the file was last written as (a library_items id); empty until known. | `TEXT` |
@@ -562,12 +562,12 @@ One row per movie, show and episode the scanner wrote, with the details shown on
 | `catalog` | The library_catalog row its details come from, written provider:kind:id (for example tmdb:movie:603); empty for none. | `TEXT` |
 | `origin_authority` | The scanned folder the title was found in, as scan: followed by a digest of the folder's path. With origin_key it is the title's scan origin, which a person's answer is kept against. | `TEXT` |
 | `origin_key` | Where in that folder the title was found, a digest of a movie's file (file:...) or a show's folder (series:dir:...). | `TEXT` |
-| `grounded` | 1 when something gives the title an id (match_basis is not empty). A movie or show at 0 with no answer is listed in Needs you. | `INTEGER` |
+| `grounded` | 1 when something gives the title an id (match_basis is not empty). A movie or show at 0 with no answer is listed in Needs you. | `BOOLEAN` |
 | `searched` | The name, year and evidence the title was last searched for on TMDB to find candidates; empty when never searched. A title is searched again only when this would change. | `TEXT` |
 | `match_basis` | What said which title it is. One of manager (an arr tracks it), embedded_id (an id in the file or folder name), sidecar (an NFO file), link (a person's answer), or search (one TMDB result agreed); empty for nothing. Set for movies and shows only. | `TEXT` |
 | `match_app` | The app that said it, one of sonarr, radarr, nfo or tmdb; empty for evidence Loomarr finds itself. | `TEXT` |
 | `match_page` | The title's page in that app, for a person to open; empty when it has none. | `TEXT` |
-| `needs_noticed` | 1 once a daily Needs you notice has counted the title as new, so a restart neither repeats nor loses a notice. | `INTEGER` |
+| `needs_noticed` | 1 once a daily Needs you notice has counted the title as new, so a restart neither repeats nor loses a notice. | `BOOLEAN` |
 | `set_key` | For a movie, the library_catalog row of the TMDB collection it belongs to (for example tmdb_collection:collection:10); empty for none. Lets the Collections page say "you have 3 of 4". | `TEXT` |
 | `original_title` | The title in its original language, or empty. | `TEXT` |
 | `overview` | The description, or empty. | `TEXT` |
@@ -853,9 +853,9 @@ The TMDB search results for a movie or show Loomarr can't identify, offered in N
 | `year` | The result's year, or 0 when unknown. | `INTEGER` |
 | `overview` | The result's description, or empty. | `TEXT` |
 | `poster` | The result's poster URL at TMDB, or empty. | `TEXT` |
-| `name_match` | 1 when the result's name agrees with what is on disk. | `INTEGER` |
-| `year_match` | 1 when the result's year agrees with what is on disk. | `INTEGER` |
-| `length_match` | 1 when the rest of what is on disk agrees: a movie's running time, or a show's seasons and episodes. | `INTEGER` |
+| `name_match` | 1 when the result's name agrees with what is on disk. | `BOOLEAN` |
+| `year_match` | 1 when the result's year agrees with what is on disk. | `BOOLEAN` |
+| `length_match` | 1 when the rest of what is on disk agrees: a movie's running time, or a show's seasons and episodes. | `BOOLEAN` |
 
 ### library_answers
 
@@ -869,7 +869,7 @@ The answer for a movie or show nothing else identifies, either the TMDB title it
 | `origin_key` | Where in that folder the title is, as in library_items. | `TEXT` · key |
 | `kind` | One of movie or series. | `TEXT` |
 | `tmdb_id` | The TMDB title it is linked to; empty when ignored. | `TEXT` |
-| `ignored` | 1 when a person said it is not a title. | `INTEGER` |
+| `ignored` | 1 when a person said it is not a title. | `BOOLEAN` |
 | `answered_at_ms` | When the answer was given, in Unix milliseconds. | `INTEGER` |
 | `answered_by` | Who gave it. you is a person, in Needs you or Wrong title?; search is Loomarr itself, when exactly one TMDB result agreed on name, year and length. A person's answer replaces a search answer. | `TEXT` |
 
@@ -967,7 +967,7 @@ One row per piece of artwork (posters, channel icons, clip stills and so on). Th
 | `width` | The original's width in pixels. | `INTEGER` |
 | `height` | The original's height in pixels. | `INTEGER` |
 | `bytes` | The original's size in bytes. | `INTEGER` |
-| `animated` | 1 when the original moves (a clip's hover loop). | `INTEGER` |
+| `animated` | 1 when the original moves (a clip's hover loop). | `BOOLEAN` |
 | `placeholder` | A tiny blurred preview (a ThumbHash, base64) shown while the image loads. | `TEXT` |
 | `dominant_hex` | The image's average colour, as | `TEXT` |
 | `meta` | A JSON object of free-form notes about the image, such as attribution, licence or upstream ids. {} when there are none. | `TEXT` |
@@ -1007,7 +1007,7 @@ One resized copy of an image in one format, stored as a file on disk. Made on de
 | `bytes` | The copy's size in bytes. | `INTEGER` |
 | `output_hash` | The SHA-256 of the copy's bytes, in hex; empty for copies made before it was recorded. | `TEXT` |
 | `path` | Where the copy's file is on disk. | `TEXT` |
-| `animated` | 1 when the copy keeps the original's motion. | `INTEGER` |
+| `animated` | 1 when the copy keeps the original's motion. | `BOOLEAN` |
 | `created_at` | When the copy was made, in Unix seconds. | `INTEGER` |
 
 ## Media inventory
@@ -1149,7 +1149,7 @@ One row per filler clip, identified by a hash of its bytes. The folder scan and 
 | `play_count` | How many times Loomarr's own playout has aired the clip. Channels played through Tunarr never report plays, so their clips stay at 0. | `INTEGER` |
 | `last_played_at` | When Loomarr's playout last aired the clip, in Unix seconds; 0 means never. | `INTEGER` |
 | `removed_at` | When the clip was removed from the catalog, in Unix seconds; 0 means present. The file is kept; a removed clip is not listed or aired. | `INTEGER` |
-| `held` | 1 while the clip is recorded but not yet playable: every new clip starts held and is released when its preparation finishes and it is ready. | `INTEGER` |
+| `held` | 1 while the clip is recorded but not yet playable: every new clip starts held and is released when its preparation finishes and it is ready. | `BOOLEAN` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 | `preview` | Short animated preview shown on hover, relative to the preview cache folder. Empty when not generated yet. | `TEXT` |
 | `language` | Spoken language detected in the clip, as a language code such as en. Empty means not checked yet; none means checked and there is no speech. | `TEXT` |
@@ -1237,7 +1237,7 @@ The remote collections clips are downloaded from: archive.org collections and Yo
 | `license` | The licence URL the source declares. Empty means unknown, never public domain. | `TEXT` |
 | `last_fetched_at` | When the source last had at least one item queued for download, in Unix seconds; 0 means never. | `INTEGER` |
 | `created_at` | When the source was added, in Unix seconds. | `INTEGER` |
-| `enabled` | 1 when the source is switched on. A switched-off source is not checked, searched or downloaded from. | `INTEGER` |
+| `enabled` | 1 when the source is switched on. A switched-off source is not checked, searched or downloaded from. | `BOOLEAN` |
 | `fetch_every_seconds` | How often to check this source for new clips, in seconds. NULL uses the global setting; 0 means never check it automatically. | `INTEGER` · may be empty |
 | `fetch_max_per_run` | The most items to download from this source in one check. NULL uses the global setting. | `INTEGER` · may be empty |
 | `country` | The country the source serves, as a two-letter ISO code. Empty means it follows the install's own location. | `TEXT` |
@@ -1258,7 +1258,7 @@ One on/off switch per provider. A remote source downloads only when both it and 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `kind` | The provider, archive or youtube. | `TEXT` · key |
-| `enabled` | 1 when the provider is switched on. | `INTEGER` |
+| `enabled` | 1 when the provider is switched on. | `BOOLEAN` |
 
 ### filler_source_check_outcomes
 
@@ -1349,7 +1349,7 @@ One row per file a download produced, tracking it from download to the clip fold
 | `completed_at` | When the download finished, in Unix seconds. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 | `provider_archive_entry` | The line the downloader records so it never downloads this item again. Empty when the provider gives none. | `TEXT` |
-| `provider_archive_committed` | 1 once that line has been saved to the downloader's record. | `INTEGER` |
+| `provider_archive_committed` | 1 once that line has been saved to the downloader's record. | `BOOLEAN` |
 | `remote_id` | The provider's id for the item. Empty for older downloads and typed URLs. | `TEXT` |
 | `gap` | The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not chosen for a gap. | `TEXT` |
 
@@ -1373,7 +1373,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `stages_json` | JSON array of the finished steps, each with its status, an explanatory note for a skip or failure, attempts, and start and finish times. | `TEXT` |
 | `enrolled_at` | When the clip entered preparation, in Unix seconds. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
-| `force_run` | 1 when a person asked to re-run the current step, so it runs even if it would normally be skipped. Cleared once the step runs. | `INTEGER` |
+| `force_run` | 1 when a person asked to re-run the current step, so it runs even if it would normally be skipped. Cleared once the step runs. | `BOOLEAN` |
 | `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips dropped into the folder by hand. | `TEXT` |
 | `preparation_attempt` | Which attempt at preparing the clip this is, counting from 1. 0 for clips enrolled before this was tracked. | `INTEGER` |
 | `preparation_started_at` | When the current preparation attempt began, in Unix seconds. | `INTEGER` |
@@ -1747,7 +1747,7 @@ One row per place notifications can be sent, such as a Discord webhook, an ntfy 
 | `owner_id` | The person a person-scoped destination belongs to, from users. Empty for installation scope. | `TEXT` |
 | `audience` | Who the destination is for. person means its owner's own notifications; approvers means the admins who review requests; operators means the admins who look after the server and library. | `TEXT` |
 | `topics_json` | A JSON list of the notification topics the destination receives (the same values as notification_intents.topic). Topics not in the list are never sent here. | `TEXT` |
-| `enabled` | 1 when the destination is switched on. A disabled destination receives nothing. | `INTEGER` |
+| `enabled` | 1 when the destination is switched on. A disabled destination receives nothing. | `BOOLEAN` |
 | `configuration_json` | A JSON object of the destination's non-secret settings, such as a server address or topic name. | `TEXT` |
 | `credentials_encrypted` | The destination's secret settings (tokens, passwords, webhook URLs, push keys), encrypted with Loomarr's encryption key. Unreadable without that key. | `TEXT` |
 | `created_at` | When the destination was added, in Unix seconds. | `BIGINT` |
@@ -1852,7 +1852,7 @@ The data-encryption keys that encrypt secret settings and other stored credentia
 | --- | --- | --- |
 | `id` | Identifies the key. Each encrypted value names the key that sealed it. | `TEXT` · key |
 | `wrapped_key` | The data key, encrypted with the installation key (begins with loomarr-dek:v1:). | `TEXT` |
-| `active` | 1 for the one key used to encrypt new secrets; 0 for retired keys kept for reading. | `INTEGER` |
+| `active` | 1 for the one key used to encrypt new secrets; 0 for retired keys kept for reading. | `BOOLEAN` |
 | `created_at` | When the key was created, in Unix seconds. | `BIGINT` |
 
 ### scheduled_jobs
