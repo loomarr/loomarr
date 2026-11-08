@@ -371,7 +371,10 @@ INSERT INTO library_files (path, root, size_bytes, modified_ns, identity, kind, 
     seen_at_ms, missing_at_ms, inventory_item_id, inventory_series_id)
 SELECT path, root, size_bytes, modified_ns, identity, kind, header, problem, held,
     seen_at_ms, missing_at_ms, inventory_item_id, inventory_series_id
-  FROM library_files_old;
+  FROM library_files_old
+ -- An `extra` row is a file a scan from before #2151 decision 60 recorded; the scan skips extras
+ -- now and writes no row, so the row goes rather than failing the CHECK.
+ WHERE kind IN ('', 'movie', 'episode', 'series');
 DROP TABLE library_files_old;
 CREATE INDEX idx_library_files_root ON library_files (root);
 CREATE INDEX idx_library_files_inventory_item ON library_files (inventory_item_id);

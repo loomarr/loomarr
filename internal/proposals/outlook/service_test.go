@@ -3,7 +3,6 @@ package outlook_test
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,7 +24,7 @@ import (
 // estimate must still cover the same three library picks it covered before the revision (#1943).
 func TestOutlookAfterFindMoreRevisionKeepsTheSelectedLibraryPicks(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "outlook.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +97,7 @@ func TestOutlookAfterFindMoreRevisionKeepsTheSelectedLibraryPicks(t *testing.T) 
 
 func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *testing.T) {
 	ctx := context.Background()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "outlook.db"), true)
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

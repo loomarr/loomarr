@@ -5,6 +5,8 @@ export type {
   ProgressTone,
   ScreenProps,
   StatusTone,
+  StatusWordKind,
+  StatusWordProps,
   TextProps,
   TextTone,
 } from "./primitives";
@@ -16,6 +18,7 @@ export {
   ProgressTrack,
   Screen,
   StatusDot,
+  StatusWord,
   Surface,
   Text,
 } from "./primitives";

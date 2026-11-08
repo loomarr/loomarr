@@ -3,19 +3,19 @@ package filler_test
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // realShadowStore is the production adapter: the decision crosses a JSON column, so empty span
 // groups (omitempty) come back as nil slices, unlike the in-memory adapter.
 func realShadowStore(t *testing.T) records.Store {
 	t.Helper()
-	st, err := records.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "shadow.db"), true)
+	st, err := records.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}

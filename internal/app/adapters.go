@@ -158,81 +158,48 @@ func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 	return nil
 }
 
-// episodeResolver expands a series lineup entry into its episodes (§9), mapping each to a
-// schedule.ResolvedProgram so the schedule domain stays free of a library dependency. A library
-// series id reads the Library's own tables (#2151 step 15); any other id lists the media server's
-// episodes, as before the cutover. lib may be nil when no media server is connected.
-func episodeResolver(st store.LibraryEpisodeReader, lib *library.Client) channels.EpisodeResolver {
+// episodeResolver expands a series lineup entry into the Library's episodes (§9, #2151 step 16),
+// mapping each to a schedule.ResolvedProgram so the schedule domain stays free of a library
+// dependency. An episode that could not play is dropped and its editorial evidence is bounded. An
+// id that is no library series expands to nothing: the media server is never asked.
+func episodeResolver(st store.LibraryEpisodeReader) channels.EpisodeResolver {
 	return func(ctx context.Context, showItemID string) ([]schedule.ResolvedProgram, error) {
-		eps, found, err := libraryEpisodes(ctx, st, showItemID)
+		rows, _, err := st.LibraryEpisodes(ctx, showItemID)
 		if err != nil {
 			return nil, err
 		}
-		if !found && lib != nil {
-			if eps, err = lib.ListEpisodes(ctx, showItemID); err != nil {
-				return nil, err
+		out := make([]schedule.ResolvedProgram, 0, len(rows))
+		for _, r := range rows {
+			if episodeevidence.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
+				continue
 			}
-		}
-		out := make([]schedule.ResolvedProgram, 0, len(eps))
-		for _, e := range eps {
+			evidence := episodeevidence.Sanitize(r.Score, r.Overview, r.Tags)
+			// The catalog's premiere date is a calendar day; anything else is unknown, not an error.
+			airDate, _ := time.Parse(time.DateOnly, r.PremiereDate)
 			out = append(out, schedule.ResolvedProgram{
-				LibraryItemID: e.LibraryItemID,
-				Title:         e.Name,
-				DurationMs:    e.DurationMs,
-				Season:        e.Season,
-				Year:          e.ProductionYear,
-				AirDate:       e.AirDate,
-				Episode:       e.Episode,
-				EpisodeEnd:    e.EpisodeEnd, // §5 multi-part: single-file span end
+				LibraryItemID: r.ItemID,
+				Title:         r.Name,
+				DurationMs:    r.DurationMs,
+				Season:        r.Season,
+				Year:          r.Year,
+				AirDate:       airDate,
+				Episode:       r.Episode,
+				EpisodeEnd:    r.EpisodeEnd, // §5 multi-part: single-file span end
 				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
 				// so the schedule domain only ever compares ladder values (§4).
-				OfficialRating:  rating.Normalize(e.OfficialRating),
-				CommunityRating: e.CommunityRating,
-				Overview:        e.Overview,
-				Tags:            append([]string(nil), e.Tags...),
+				OfficialRating:  rating.Normalize(r.Rating),
+				CommunityRating: evidence.CommunityRating,
+				Overview:        evidence.Overview,
+				Tags:            evidence.Tags,
 			})
 		}
 		return out, nil
 	}
 }
 
-// libraryEpisodes reads a library series' episodes under the media server's own listing rules:
-// an episode that could not play is dropped, and its editorial evidence is bounded.
-func libraryEpisodes(ctx context.Context, st store.LibraryEpisodeReader, seriesID string) ([]library.Episode, bool, error) {
-	if st == nil {
-		return nil, false, nil
-	}
-	rows, found, err := st.LibraryEpisodes(ctx, seriesID)
-	if err != nil || !found {
-		return nil, found, err
-	}
-	eps := make([]library.Episode, 0, len(rows))
-	for _, r := range rows {
-		if episodeevidence.ValidatePlayable(r.ItemID, r.DurationMs, r.Season, r.Episode, r.EpisodeEnd) != nil {
-			continue
-		}
-		evidence := episodeevidence.Sanitize(r.Score, r.Overview, r.Tags)
-		// The catalog's premiere date is a calendar day; anything else is unknown, not an error.
-		airDate, _ := time.Parse(time.DateOnly, r.PremiereDate)
-		eps = append(eps, library.Episode{
-			LibraryItemID: r.ItemID, Name: r.Name, DurationMs: r.DurationMs,
-			Season: r.Season, Episode: r.Episode, EpisodeEnd: r.EpisodeEnd,
-			ProductionYear: r.Year, AirDate: airDate, OfficialRating: r.Rating,
-			CommunityRating: evidence.CommunityRating, Overview: evidence.Overview, Tags: evidence.Tags,
-		})
-	}
-	return eps, true, nil
-}
-
-// bulkDurations adapts the library's BULK metadata call to channels.DurationsResolver.
-//
-// It reuses ItemMetadataByID rather than adding a duration-only endpoint: that call already asks
-// for RunTimeTicks, already batches a comma-separated id list, and already de-duplicates and
-// pages (maxIDsPerRequest). A separate bulk-duration call would be a second way to ask the media
-// server the same question — the §6 one-adapter rule — for no gain.
-//
-// The metadata it also returns is simply unused here; the cost is bytes on a call the guide's own
-// metadata pass makes anyway, against ONE round trip replacing one-per-movie.
+// bulkDurations adapts the Library's BULK item metadata read to channels.DurationsResolver, so a
+// layout reads every runtime in one query rather than one per movie. The metadata it also returns
+// is simply unused here.
 func bulkDurations(lib itemMetadata) channels.DurationsResolver {
 	return func(ctx context.Context, itemIDs []string) (map[string]int64, error) {
 		meta, err := lib.ItemMetadataByID(ctx, itemIDs)
@@ -393,14 +360,11 @@ func (a tunarrNumbers) TakenChannelNumbers(ctx context.Context) (map[int]bool, e
 	return used, nil
 }
 
-// libraryRatings adapts library.Client to channels.RatingResolver: it resolves an
-// approved lineup entry's content rating by the entry's Key, for the reconcile-time
-// heal of unrated entries (§389 amendment). The Library's own title answers first (#2151 step
-// 15); otherwise it reuses LookupDetail — the same query the presence backfill uses — so the
-// rating comes from the media server, not a guess.
+// libraryRatings adapts the Library's titles to channels.RatingResolver: it resolves an approved
+// lineup entry's content rating by the entry's Key, for the reconcile-time heal of unrated entries
+// (§389 amendment), from the Library's own title (#2151 step 16), so the rating is never a guess.
 type libraryRatings struct {
 	titles store.LibraryTitleReader
-	lib    *library.Client
 }
 
 func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, bool, error) {
@@ -416,50 +380,31 @@ func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, 
 	if mt == provision.Series {
 		lmt = library.Series
 	}
-	if t, ok, err := libraryTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt); err != nil || ok {
-		return t.Rating, ok, err
-	}
-	if a.lib == nil {
-		return "", false, nil
-	}
-	d, present, err := a.lib.LookupDetail(ctx, kind, strconv.Itoa(id), lmt)
-	if err != nil || !present {
+	t, ok, err := libraryTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
+	if err != nil || !ok {
 		return "", false, err
 	}
-	return d.OfficialRating, true, nil
+	return t.Rating, true, nil
 }
 
-// libraryBoxSets adapts library.Client to channels.BoxSetResolver: it answers "which
-// media-server collections is this title in?" for the reconcile-time stamp backing
-// scope.collections (programming-design §2.2).
+// libraryBoxSets adapts the household's collections to channels.BoxSetResolver: it answers "which
+// collections is this title in?" for the reconcile-time stamp backing scope.collections
+// (programming-design §2.2), from the household's collections alone (#2151 step 16).
 //
-// ⚠ It builds a REVERSE INDEX once and caches it, rather than querying per key. The obvious
-// per-key implementation does not exist on the wire — the media server answers "what is in
-// collection X", never "what collections is item Y in" — so a per-entry resolve would mean
-// re-listing every collection's members for every entry, which is the N+1 the whole stamping
-// design exists to avoid. One pass over the collections costs 1 + N(collections) calls total.
+// It builds a REVERSE INDEX in one read and caches it, rather than querying per key. Membership is
+// indexed under EVERY key form via provisionbackstop.ScanItemKeys, because a member carrying both
+// provider ids must be findable under whichever key the lineup entry was born with — the same
+// parity problem the availability scan solves, and the same solution.
 //
-// Membership is indexed under EVERY key form via provisionbackstop.ScanItemKeys, because a member
-// carrying both provider ids must be findable under whichever key the lineup entry was born
-// with — the same parity problem the availability scan solves, and the same solution.
-//
-// The household's own collections (#2151 step 12) are indexed beside the media server's, under
-// their Loomarr ids, so a scope can name either until the cutover imports the media server's.
-// With no media server configured at all, the household's alone are the whole answer; a media
-// server that is configured but can't be read still fails the pass open.
-//
-// The cache is refreshed on a TTL: a collection edited in Emby or in the Library takes effect
-// within it, which is consistent with the stamp only being read at reconcile anyway.
+// The cache is refreshed on a TTL: a collection edited in the Library takes effect within it,
+// which is consistent with the stamp only being read at reconcile anyway.
 type libraryBoxSets struct {
-	lib *library.Client
-	// own is the household's collections; nil leaves them out.
 	own ownCollections
 	ttl time.Duration
 
-	mu         sync.Mutex
-	index      map[provision.Key][]string
-	fetched    time.Time
-	generation library.ConnectionGeneration
+	mu      sync.Mutex
+	index   map[provision.Key][]string
+	fetched time.Time
 }
 
 func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]string, bool, error) {
@@ -475,62 +420,26 @@ func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]stri
 func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	lib := a.lib.Snapshot()
-	connection := lib.Connection()
-	generation, err := connection.Generation()
-	noServer := connection == (library.Connection{})
-	if err != nil && (a.own == nil || !noServer) {
-		return nil, err
+	now := time.Now()
+	if a.index != nil && now.Sub(a.fetched) < a.ttl {
+		return a.index, nil
 	}
-	if index, ok := a.cachedIndex(generation, time.Now()); ok {
-		return index, nil
-	}
-	idx := make(map[provision.Key][]string)
-	imported := map[string]bool{}
-	if a.own != nil {
-		members, err := a.own.LibraryCollectionMemberIDs(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range members {
-			for _, k := range provisionbackstop.ScanItemKeys(ownMember(m)) {
-				idx[k] = append(idx[k], m.CollectionID)
-			}
-		}
-		if imported, err = importedCollections(ctx, a.own); err != nil {
-			return nil, err
-		}
-	}
-	if noServer {
-		a.index, a.fetched, a.generation = idx, time.Now(), generation
-		return idx, nil
-	}
-	colls, err := lib.Collections(ctx)
+	members, err := a.own.LibraryCollectionMemberIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, c := range colls {
-		if imported[c.ID] {
-			continue // the household's copy stands for it; scopes were rewritten to that (step 15b)
-		}
-		members, err := lib.CollectionMembers(ctx, c.ID)
-		if err != nil {
-			// One unreadable collection must not discard the whole index — the rest is still
-			// true, and a missing membership only ever admits a title (§2.2 fail-open).
-			continue
-		}
-		for _, m := range members {
-			for _, k := range provisionbackstop.ScanItemKeys(m) {
-				idx[k] = append(idx[k], c.ID)
-			}
+	idx := make(map[provision.Key][]string)
+	for _, m := range members {
+		for _, k := range provisionbackstop.ScanItemKeys(ownMember(m)) {
+			idx[k] = append(idx[k], m.CollectionID)
 		}
 	}
-	a.index, a.fetched, a.generation = idx, time.Now(), generation
+	a.index, a.fetched = idx, now
 	return idx, nil
 }
 
-// ownMember reads a household collection's title as the media server's search result, so its keys
-// come from the one derivation the BoxSet members use.
+// ownMember reads a household collection's title as a search result, so its keys come from the
+// one derivation every title uses.
 func ownMember(m store.LibraryCollectionMember) library.SearchResult {
 	r := library.SearchResult{MediaType: library.Movie}
 	if m.Kind == "series" {
@@ -541,15 +450,6 @@ func ownMember(m store.LibraryCollectionMember) library.SearchResult {
 	return r
 }
 
-func (a *libraryBoxSets) cachedIndex(
-	generation library.ConnectionGeneration, now time.Time,
-) (map[provision.Key][]string, bool) {
-	if a.index == nil || a.generation != generation || now.Sub(a.fetched) >= a.ttl {
-		return nil, false
-	}
-	return a.index, true
-}
-
 // ownCollections is the household's collections (#2151 step 12), as the collection scope reads
 // them.
 type ownCollections interface {
@@ -557,34 +457,16 @@ type ownCollections interface {
 	ListLibraryCollections(ctx context.Context) ([]store.LibraryCollection, error)
 }
 
-// importedCollections is the media server's id of each collection the household's were imported
-// from at the cutover (step 15b).
-func importedCollections(ctx context.Context, own ownCollections) (map[string]bool, error) {
-	colls, err := own.ListLibraryCollections(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]bool{}
-	for _, c := range colls {
-		if c.ImportedID != "" {
-			out[c.ImportedID] = true
-		}
-	}
-	return out, nil
-}
-
 // libraryCollections is api.CollectionService: the read-only list behind the scope.collections
-// picker (programming-design §2.2). The household's collections come first (#2151 step 15e); the
-// media server adds only the ones not imported from it, and its absence or failure leaves the
-// household's.
+// picker (programming-design §2.2): the household's collections (#2151 step 16). The media
+// server's hand-made collections were imported by the cutover rewrite, and its TMDB ones are the
+// Library's ready-made sets, so it is never asked.
 //
 // Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
 // lookups and is TTL-stale by design (membership is only read at reconcile), whereas an
-// operator who just made a collection and opened the picker expects to see it. The list is one
-// cheap call; the index is the expensive one.
+// operator who just made a collection and opened the picker expects to see it.
 type libraryCollections struct {
 	own ownCollections
-	lib *library.Client
 }
 
 func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryCollection, error) {
@@ -593,27 +475,8 @@ func (a libraryCollections) Collections(ctx context.Context) ([]api.LibraryColle
 		return nil, err
 	}
 	out := make([]api.LibraryCollection, 0, len(own))
-	imported := map[string]bool{}
 	for _, c := range own {
 		out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: len(c.Members)})
-		if c.ImportedID != "" {
-			imported[c.ImportedID] = true
-		}
-	}
-	if a.lib == nil {
-		return out, nil
-	}
-	colls, err := a.lib.Collections(ctx)
-	if err != nil {
-		if len(out) > 0 || errors.Is(err, library.ErrConnectionRequired) {
-			return out, nil
-		}
-		return nil, err
-	}
-	for _, c := range colls {
-		if !imported[c.ID] {
-			out = append(out, api.LibraryCollection{ID: c.ID, Name: c.Name, ChildCount: c.ChildCount})
-		}
 	}
 	return out, nil
 }
@@ -643,14 +506,12 @@ func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int,
 	return cid, true, nil // ok=true (resolved); cid 0 means "standalone", a settled answer
 }
 
-// libraryPresence adapts library.Client.Lookup to catalog.LibraryPresence, so
-// discovery can mark titles the library already owns as in-library. Prefers the
-// TMDB id (the discovery id space); falls back to TVDB for a series with no tmdb. The Library's own
-// title answers first (#2151 step 15), so an owned title reads with its library item id; the media
-// server answers the rest.
+// libraryPresence adapts the Library's titles to catalog.LibraryPresence, so discovery can mark
+// titles the household already owns as in-library, with their library item id and rating
+// (#2151 step 16). Prefers the TMDB id (the discovery id space); falls back to TVDB for a series
+// with no tmdb.
 type libraryPresence struct {
 	titles store.LibraryTitleReader
-	lib    *library.Client
 }
 
 func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (catalog.Presence, bool, error) {
@@ -662,25 +523,12 @@ func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tm
 	if mt == provision.Series {
 		lmt = library.Series
 	}
-	if t, ok, err := libraryTitle(ctx, a.titles, kind, id, lmt); err != nil || ok {
-		return catalog.Presence{
-			LibraryItemID: t.ID, OfficialRating: t.Rating, Genres: t.Genres, SizeBytes: t.SizeBytes,
-		}, ok, err
-	}
-	if a.lib == nil {
-		return catalog.Presence{}, false, nil
-	}
-	// LookupDetail, not Lookup: discovery needs the rating too, or a kids channel of
-	// owned-but-unrated titles resolves to nothing (§9 dead air).
-	d, present, err := a.lib.LookupDetail(ctx, kind, id, lmt)
-	if err != nil || !present {
+	t, ok, err := libraryTitle(ctx, a.titles, kind, id, lmt)
+	if err != nil || !ok {
 		return catalog.Presence{}, false, err
 	}
 	return catalog.Presence{
-		LibraryItemID:  d.ID,
-		OfficialRating: d.OfficialRating,
-		Genres:         d.Genres,
-		SizeBytes:      d.SizeBytes,
+		LibraryItemID: t.ID, OfficialRating: t.Rating, Genres: t.Genres, SizeBytes: t.SizeBytes,
 	}, true, nil
 }
 

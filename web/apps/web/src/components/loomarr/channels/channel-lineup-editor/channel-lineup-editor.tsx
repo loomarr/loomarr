@@ -18,8 +18,8 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge, Text, Tooltip } from "@loomarr/design-system";
-import { GripVertical, Plus, X } from "lucide-react";
+import { Action, Badge, Text, Tooltip } from "@loomarr/design-system";
+import { GripVertical, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -321,37 +321,44 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           Nothing in the lineup yet. Add a title below.
         </p>
       ) : (
-        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-          <SortableContext items={shown.map((e) => e.key)} strategy={verticalListSortingStrategy}>
-            {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
+        <>
+          {/* The rows' Keep / Less / Never / Surprise share one note here, not one per row (#2744). */}
+          <Text textRole="caption" tone="secondary">
+            Keep, Less, Never and Surprise affect future suggestions only.
+          </Text>
+          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+            <SortableContext items={shown.map((e) => e.key)} strategy={verticalListSortingStrategy}>
+              {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
                 channel with many titles otherwise runs the page off. max-height means a short
                 lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
                 (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
                 dnd-kit auto-scrolls this container during a drag toward its edges. */}
-            <ul className="scroll-thin @container flex max-h-128 flex-col gap-2 overflow-y-auto">
-              {shown.map((entry) => (
-                <SortableLineupRow
-                  key={entry.key}
-                  entry={entry}
-                  disabled={!dragEnabled}
-                  onRemove={() => remove(entry.key)}
-                  onSeasonChange={(patch) => updateEntry(entry.key, patch)}
-                  feedback={
-                    <DiscoveryFeedbackControls
-                      compact
-                      name={entry.name}
-                      scope={feedbackScope}
-                      effective={feedback.feedbackFor(entry.key)}
-                      disabled={feedback.isPending}
-                      onSet={(action) => feedback.setFeedback(entry.key, action)}
-                      onClear={() => feedback.clearFeedback(entry.key)}
-                    />
-                  }
-                />
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+              <ul className="scroll-thin @container flex max-h-128 flex-col gap-2 overflow-y-auto">
+                {shown.map((entry) => (
+                  <SortableLineupRow
+                    key={entry.key}
+                    entry={entry}
+                    disabled={!dragEnabled}
+                    onRemove={() => remove(entry.key)}
+                    onSeasonChange={(patch) => updateEntry(entry.key, patch)}
+                    feedback={
+                      <DiscoveryFeedbackControls
+                        compact
+                        effectNote={false}
+                        name={entry.name}
+                        scope={feedbackScope}
+                        effective={feedback.feedbackFor(entry.key)}
+                        disabled={feedback.isPending}
+                        onSet={(action) => feedback.setFeedback(entry.key, action)}
+                        onClear={() => feedback.clearFeedback(entry.key)}
+                      />
+                    }
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        </>
       )}
 
       {adding ? (
@@ -400,15 +407,19 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               closeAdd();
             }}
           />
-          <Button variant="ghost" size="sm" className="self-start" onClick={closeAdd}>
+          <Action onPress={closeAdd} style={{ alignSelf: "flex-start" }} variant="ghost">
             Cancel
-          </Button>
+          </Action>
         </div>
       ) : (
-        <Button variant="outline" size="sm" className="self-start" onClick={() => setAdding(true)}>
-          <Plus aria-hidden />
+        <Action
+          icon="plus"
+          onPress={() => setAdding(true)}
+          style={{ alignSelf: "flex-start" }}
+          variant="outline"
+        >
           Add a title…
-        </Button>
+        </Action>
       )}
     </section>
   );

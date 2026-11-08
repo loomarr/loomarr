@@ -117,6 +117,33 @@ func testLibraryTitles(t *testing.T, newStore NewStoreFunc) {
 	if none, err := st.LibraryTitleArt(ctx, nil); err != nil || len(none) != 0 {
 		t.Errorf("no ids = %+v, %v; want an empty map", none, err)
 	}
+
+	// Search by name (#2151 step 15e): an exact name before one that only holds the term, the
+	// missing film never, LIKE's wildcards taken literally, and the limit kept.
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{
+		{ID: "showtime", Kind: "movie", Name: "Showtime 100%", IDs: []LibraryID{{"tmdb", "90000005"}},
+			Sources: []LibrarySource{{Path: "/m/showtime.mkv", Plays: true}}},
+	}, recent); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{file("/m/showtime.mkv", "showtime", "")}); err != nil {
+		t.Fatal(err)
+	}
+	found, err := st.SearchLibraryTitles(ctx, " SHOW ", 10)
+	if err != nil || len(found) != 2 || found[0].ID != "show" || found[1].ID != "showtime" || found[1].TMDBID != "90000005" {
+		t.Errorf("search show = %+v, %v; want Show, then Showtime 100%%", found, err)
+	}
+	if one, err := st.SearchLibraryTitles(ctx, "show", 1); err != nil || len(one) != 1 || one[0].ID != "show" {
+		t.Errorf("search show, limit 1 = %+v, %v", one, err)
+	}
+	if lit, err := st.SearchLibraryTitles(ctx, "0%", 10); err != nil || len(lit) != 1 || lit[0].ID != "showtime" {
+		t.Errorf("search 0%% = %+v, %v; want the percent taken literally", lit, err)
+	}
+	for _, term := range []string{"gone", "_", ""} {
+		if got, err := st.SearchLibraryTitles(ctx, term, 10); err != nil || len(got) != 0 {
+			t.Errorf("search %q = %+v, %v; want nothing", term, got, err)
+		}
+	}
 }
 
 func sameTitle(a, b LibraryTitle) bool {

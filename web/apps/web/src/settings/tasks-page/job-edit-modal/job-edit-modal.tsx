@@ -2,6 +2,7 @@ import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { invalidateSettings } from "@loomarr/core/events";
 import {
+  Action,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -13,9 +14,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CUSTOM_VALUE, isPreset } from "../cron-presets";
 import type { JobEditModalProps } from "./job-edit-modal.type";
 
@@ -63,22 +63,16 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Frequency</span>
-            <Select value={choice} onValueChange={setChoice}>
-              <SelectTrigger aria-label="Frequency">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {presets.map((preset) => (
-                  <SelectItem key={preset.value} value={preset.value}>
-                    {preset.label}
-                  </SelectItem>
-                ))}
-                <SelectItem value={CUSTOM_VALUE}>Custom (advanced)…</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <BrowserSelectControl
+            appearance="field"
+            label="Frequency"
+            onValueChange={setChoice}
+            options={[
+              ...presets.map((preset) => ({ label: preset.label, value: preset.value })),
+              { label: "Custom (advanced)…", value: CUSTOM_VALUE },
+            ]}
+            value={choice}
+          />
 
           {/* Advanced: the raw cron field, revealed only for the Custom choice. */}
           {advanced && (
@@ -102,12 +96,12 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={patch.isPending}>
+          <Action disabled={patch.isPending} onPress={() => onOpenChange(false)} variant="ghost">
             Cancel
-          </Button>
-          <Button onClick={save} disabled={patch.isPending}>
+          </Action>
+          <Action disabled={patch.isPending} onPress={save}>
             {patch.isPending ? "Saving…" : "Save"}
-          </Button>
+          </Action>
         </DialogFooter>
       </DialogContent>
     </Dialog>

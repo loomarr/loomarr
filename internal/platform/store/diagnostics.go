@@ -161,7 +161,7 @@ func diagnosticEventQuery(query diagnostics.EventStoreQuery) (string, []any) {
 		literal := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(query.Text))
 		pattern := "%" + literal + "%"
 		clauses = append(clauses, `(LOWER(event) LIKE ? ESCAPE '\' OR LOWER(message) LIKE ? ESCAPE '\' OR
-			LOWER(subsystem) LIKE ? ESCAPE '\' OR LOWER(attributes_json) LIKE ? ESCAPE '\')`)
+			LOWER(subsystem) LIKE ? ESCAPE '\' OR LOWER(CAST(attributes_json AS TEXT)) LIKE ? ESCAPE '\')`)
 		args = append(args, pattern, pattern, pattern, pattern)
 	}
 	args = append(args, query.Limit)

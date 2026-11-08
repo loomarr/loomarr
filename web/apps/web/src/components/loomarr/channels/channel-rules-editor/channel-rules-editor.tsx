@@ -16,8 +16,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
-import { Tooltip } from "@loomarr/design-system";
-import { GripVertical, Plus, X } from "lucide-react";
+import { Action, Tooltip } from "@loomarr/design-system";
+import { GripVertical, X } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -314,10 +314,11 @@ const ChannelRulesEditor = ({
           <p className="text-muted-foreground text-sm">
             No rules yet. This channel always follows its base policy above.
           </p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={addRule}>
-            <Plus aria-hidden />
-            Add rule
-          </Button>
+          <div className="mt-3 flex justify-center">
+            <Action icon="plus" onPress={addRule} variant="outline">
+              Add rule
+            </Action>
+          </div>
         </div>
       ) : (
         <>
@@ -338,10 +339,9 @@ const ChannelRulesEditor = ({
               </ul>
             </SortableContext>
           </DndContext>
-          <Button variant="outline" size="sm" className="self-start" onClick={addRule}>
-            <Plus aria-hidden />
+          <Action icon="plus" onPress={addRule} style={{ alignSelf: "flex-start" }} variant="outline">
             Add rule
-          </Button>
+          </Action>
         </>
       )}
     </section>

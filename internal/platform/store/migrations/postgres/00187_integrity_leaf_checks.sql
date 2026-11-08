@@ -33,6 +33,9 @@ ALTER TABLE library_candidates ADD CONSTRAINT library_candidates_kind_check
     CHECK (kind IN ('movie', 'series'));
 ALTER TABLE library_catalog ADD CONSTRAINT library_catalog_kind_check
     CHECK (kind IN ('movie', 'series', 'episode', 'season', 'collection'));
+-- An `extra` row is a file a scan from before #2151 decision 60 recorded; the scan skips extras
+-- now and writes no row, so the row goes rather than failing the CHECK.
+DELETE FROM library_files WHERE kind NOT IN ('', 'movie', 'episode', 'series');
 ALTER TABLE library_files ADD CONSTRAINT library_files_kind_check
     CHECK (kind IN ('', 'movie', 'episode', 'series'));
 ALTER TABLE library_filmography ADD CONSTRAINT library_filmography_kind_check

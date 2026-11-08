@@ -4,16 +4,14 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Badge, Card, Field } from "@loomarr/design-system";
+import { Action, Badge, Card, Field } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { BrowserSelectControl } from "@/client-adapters";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { TAXONOMY_AXES as AXES, type TaxonomyAxis as Axis } from "../taxonomy-axes";
 
@@ -289,53 +287,35 @@ const TaxonEditor = ({
           value={slug}
         />
         <div>
-          <Label htmlFor="taxon-axis">Axis</Label>
-          <Select
-            value={axis}
+          <BrowserSelectControl
+            appearance="field"
             disabled={Boolean(current && nodeHasDescendants)}
+            label="Axis"
             onValueChange={(value) => {
               edit(() => {
-                setAxis(value as Axis);
+                setAxis(value);
                 setParent("");
               });
             }}
-          >
-            <SelectTrigger id="taxon-axis">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {AXES.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {AXIS_COPY[value].label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={AXES.map((value) => ({ label: AXIS_COPY[value].label, value }))}
+            value={axis}
+          />
           {current && nodeHasDescendants ? (
             <p className="text-muted-foreground mt-1 text-xs">
               Move this tag&rsquo;s children before changing its axis.
             </p>
           ) : null}
         </div>
-        <div>
-          <Label htmlFor="taxon-parent">Parent</Label>
-          <Select
-            value={parent || "root"}
-            onValueChange={(value) => edit(() => setParent(value === "root" ? "" : value))}
-          >
-            <SelectTrigger id="taxon-parent">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="root">Top level</SelectItem>
-              {parentOptions.map((taxon) => (
-                <SelectItem key={taxon.slug} value={taxon.slug}>
-                  {taxon.label} ({taxon.slug})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <BrowserSelectControl
+          appearance="field"
+          label="Parent"
+          onValueChange={(value) => edit(() => setParent(value))}
+          options={[
+            { label: "Top level", value: "" },
+            ...parentOptions.map((taxon) => ({ label: `${taxon.label} (${taxon.slug})`, value: taxon.slug })),
+          ]}
+          value={parent}
+        />
         <Field
           autoCapitalize="none"
           id="taxon-synonyms"
@@ -423,27 +403,25 @@ const TaxonEditor = ({
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {current ? (
-          <Button
-            variant="ghost"
-            size="sm"
+          <Action
             disabled={busy}
-            onClick={() => requestReview("delete", { operation: "delete", slug: current.slug })}
+            onPress={() => requestReview("delete", { operation: "delete", slug: current.slug })}
+            variant="ghost"
           >
             Review removal
-          </Button>
+          </Action>
         ) : (
           <span className="mr-auto" />
         )}
         {review ? (
           <>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => setReview(undefined)}>
+            <Action disabled={busy} onPress={() => setReview(undefined)} variant="outline">
               Back
-            </Button>
-            <Button
-              variant={review.action === "delete" ? "destructive" : "default"}
-              size="sm"
+            </Action>
+            <Action
               disabled={busy || review.impact.deleteBlocked}
-              onClick={applyReview}
+              onPress={applyReview}
+              variant={review.action === "delete" ? "destructive" : undefined}
             >
               {busy
                 ? "Applying…"
@@ -452,20 +430,19 @@ const TaxonEditor = ({
                   : editor.mode === "create"
                     ? "Confirm add"
                     : "Confirm update"}
-            </Button>
+            </Action>
           </>
         ) : (
           <>
-            <Button variant="outline" size="sm" disabled={busy} onClick={onClose}>
+            <Action disabled={busy} onPress={onClose} variant="outline">
               Cancel
-            </Button>
-            <Button
-              size="sm"
+            </Action>
+            <Action
               disabled={busy || !label.trim() || (editor.mode === "create" && !slug.trim())}
-              onClick={() => requestReview("save", saveCommand())}
+              onPress={() => requestReview("save", saveCommand())}
             >
               {busy ? "Checking impact…" : "Review changes"}
-            </Button>
+            </Action>
           </>
         )}
       </div>
@@ -614,9 +591,13 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                       <p className="text-muted-foreground mt-1 text-xs">{AXIS_COPY[axis].example}</p>
                     </div>
                     {isAdmin ? (
-                      <Button variant="outline" size="sm" onClick={() => setEditor({ mode: "create", axis })}>
-                        <Plus className="size-4" aria-hidden /> Add
-                      </Button>
+                      <Action
+                        icon="plus"
+                        onPress={() => setEditor({ mode: "create", axis })}
+                        variant="outline"
+                      >
+                        Add
+                      </Action>
                     ) : null}
                   </div>
                   {byAxis[axis].length === 0 ? (
