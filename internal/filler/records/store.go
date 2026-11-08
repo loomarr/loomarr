@@ -290,6 +290,9 @@ type Store interface {
 	FillerSplitProposalStore
 	FillerPipelineStore
 
+	// PurgeSpentFillerRecords is the filler tables' nightly retention (#2528).
+	PurgeSpentFillerRecords(ctx context.Context, now time.Time) (int, error)
+
 	// Core returns the store this one extends, for the core functions that need its adapter
 	// (backups, migration, schema version); store.Store's own methods are already promoted.
 	Core() store.Store

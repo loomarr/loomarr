@@ -119,25 +119,14 @@ const needsPrune = "#2528: nothing prunes it yet"
 // KnownGaps are the lint problems the schema had when the lint arrived, each with the work that
 // removes it. Add nothing here: fix the schema instead.
 var KnownGaps = map[string]string{
-	"unbounded filler_acquisition_artifacts":        needsPrune,
-	"unbounded filler_acquisition_runs":             needsPrune,
-	"unbounded filler_context_reports":              needsPrune,
-	"unbounded filler_enrichment_passes":            needsPrune,
-	"unbounded filler_inference_evaluations":        needsPrune,
-	"unbounded filler_pull_commits":                 needsPrune,
-	"unbounded filler_pulls":                        needsPrune,
-	"unbounded filler_ready_events":                 needsPrune,
-	"unbounded filler_research_web_usage":           needsPrune,
-	"unbounded filler_split_shadow_decisions":       needsPrune,
-	"unbounded filler_structure_window_call_ledger": needsPrune,
-	"unbounded inventory_item_origins":              needsPrune,
-	"unbounded inventory_source_origins":            needsPrune,
-	"unbounded inventory_sources":                   needsPrune,
-	"unbounded library_catalog":                     needsPrune,
-	"unbounded library_item_paths":                  needsPrune,
-	"unbounded library_items":                       needsPrune,
-	"unbounded series_episodes":                     needsPrune,
-	"unbounded titles":                              needsPrune,
+	"unbounded inventory_item_origins":   needsPrune,
+	"unbounded inventory_source_origins": needsPrune,
+	"unbounded inventory_sources":        needsPrune,
+	"unbounded library_catalog":          needsPrune,
+	"unbounded library_item_paths":       needsPrune,
+	"unbounded library_items":            needsPrune,
+	"unbounded series_episodes":          needsPrune,
+	"unbounded titles":                   needsPrune,
 }
 
 // FreeForm are state-named columns that hold another system's words as it sent them, so a CHECK

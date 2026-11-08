@@ -44,6 +44,7 @@ type Store interface {
 	PurgeFinishedInteractiveOperations(ctx context.Context, before time.Time) (int, error)
 	PurgeSupersededDiscoveryFeedback(ctx context.Context) (int, error)
 	PurgeOrphanNotificationReferenceRecipients(ctx context.Context, before time.Time) (int, error)
+	PurgeSpentFillerRecords(ctx context.Context, now time.Time) (int, error)
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)
 	PurgeActivity(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalInvitations(ctx context.Context, before time.Time) (int, error)
@@ -219,6 +220,7 @@ func (s *Service) PurgeSpent(ctx context.Context) (int, error) {
 		{"orphan notification recipients", func() (int, error) {
 			return s.store.PurgeOrphanNotificationReferenceRecipients(ctx, now.Add(-RecipientGrace))
 		}},
+		{"filler records", func() (int, error) { return s.store.PurgeSpentFillerRecords(ctx, now) }},
 	} {
 		n, err := purge.run()
 		if err != nil {

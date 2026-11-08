@@ -57,6 +57,9 @@ func (s *retentionStore) PurgeFinishedInteractiveOperations(_ context.Context, b
 	return 0, nil
 }
 func (*retentionStore) PurgeSupersededDiscoveryFeedback(context.Context) (int, error) { return 0, nil }
+func (*retentionStore) PurgeSpentFillerRecords(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
 func (s *retentionStore) PurgeOrphanNotificationReferenceRecipients(_ context.Context, before time.Time) (int, error) {
 	s.recipientsBefore = before
 	return 0, nil
