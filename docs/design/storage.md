@@ -28,6 +28,13 @@ code path is shared through `database/sql`.
 - **A yes/no column is BOOLEAN on PostgreSQL** (SQLite stores it as INTEGER 0/1), and SQL writes
   `TRUE`/`FALSE`, never `1`/`0`, which both dialects read. A time column is `BIGINT`; a 32-bit
   `INTEGER` of unix seconds runs out in 2038.
+- **Names for new tables.** A table is a plural noun for what one row is (`proposal_jobs`, not
+  `jobs`). A time names its event (`arrived_at`, not `available_at`). The next time work is due is
+  `due_at`, and a claim's lease ends at `lease_expires_at`. Older tables keep `deadline`,
+  `next_run` and their variants, because renaming them all is churn for no reader.
+- **An index is `idx_<table>_<purpose>`** (`idx_proposal_jobs_status_deadline`), the same name on
+  both dialects. An index whose leading columns a primary key or `UNIQUE` already covers is
+  redundant: drop it. SQLite cannot rename an index, so a rename there is a drop and re-create.
 
 ### Foreign keys
 
