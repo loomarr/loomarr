@@ -2,7 +2,7 @@ import * as helpApi from "@loomarr/api/endpoints/help";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Card } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
@@ -74,18 +74,20 @@ const HelpPage = () => {
             <ul className="flex flex-col gap-1">
               {visible.map((d) => (
                 <li key={d.slug}>
-                  <button
-                    type="button"
+                  {/* A link, not a button: each page is a place with its own URL, so it opens in a new
+                      tab and reads as navigation to assistive tech (#2751). */}
+                  <Link
+                    to="/help"
+                    search={{ page: d.slug }}
                     aria-current={d.slug === active ? "page" : undefined}
-                    onClick={() => navigate({ to: "/help", search: { page: d.slug } })}
                     className={
                       d.slug === active
-                        ? "bg-static-800 w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm"
-                        : "text-muted-foreground hover:bg-static-900 w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm"
+                        ? "bg-static-800 block w-full rounded-md px-2 py-1.5 text-left text-sm"
+                        : "text-muted-foreground hover:bg-static-900 block w-full rounded-md px-2 py-1.5 text-left text-sm"
                     }
                   >
                     {d.title}
-                  </button>
+                  </Link>
                 </li>
               ))}
               {visible.length === 0 && (

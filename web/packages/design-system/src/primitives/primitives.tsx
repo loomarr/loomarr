@@ -7,6 +7,7 @@ import { useNativeAnimationDriver } from "../motion/animation-driver";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
 import { TamaguiText } from "../text-base";
 import { brandChroma, type Density, type TextRole, typography } from "../tokens";
+import { Tooltip } from "../tooltip";
 import { resolveViewportInsets, useViewportInsets } from "../viewport";
 
 const ScreenFrame = styled(View, {
@@ -738,6 +739,57 @@ const StatusDot = ({ label, reducedMotion, size = "default", tone }: StatusDotPr
   );
 };
 
+/**
+ * The five states a Settings row can be in, and nothing else. Every surface that reports a service,
+ * a task or a credential picks one of these rather than writing its own word, so the same state
+ * reads the same on the index, Connections, Diagnostics and Tasks.
+ */
+type StatusWordKind = "attention" | "expired" | "notSetUp" | "ok" | "overdue";
+
+const statusWords: Record<
+  StatusWordKind,
+  { dot: StatusTone; label: string; text: TextTone; explanation?: string }
+> = {
+  ok: { dot: "ok", label: "OK", text: "success" },
+  attention: { dot: "error", label: "Needs attention", text: "danger" },
+  notSetUp: { dot: "off", label: "Not set up", text: "muted" },
+  overdue: { dot: "warn", label: "Overdue", text: "warning" },
+  expired: {
+    dot: "progress",
+    label: "Expired",
+    text: "info",
+    explanation: "This is no longer valid. Sign in or enter it again to keep it working.",
+  },
+};
+
+type StatusWordProps = {
+  kind: StatusWordKind;
+};
+
+/**
+ * A status as a coloured dot and a plain word. The word is the meaning and the colour backs it up,
+ * so it reads without colour vision. `expired` is the one word that needs explaining, so it carries
+ * a tooltip.
+ */
+const StatusWord = ({ kind }: StatusWordProps) => {
+  const { dot, explanation, label, text } = statusWords[kind];
+  const word = (
+    <View
+      alignItems="center"
+      flexDirection="row"
+      gap={6}
+      {...(isWeb ? ({ display: "inline-flex", render: "span" } as const) : {})}
+      {...(explanation ? { focusable: true } : {})}
+    >
+      <StatusDot label="" tone={dot} />
+      <Text textRole="compact" tone={text} strong>
+        {label}
+      </Text>
+    </View>
+  );
+  return explanation ? <Tooltip content={explanation}>{word}</Tooltip> : word;
+};
+
 export type {
   ArtworkState,
   BadgeShape,
@@ -745,7 +797,20 @@ export type {
   ProgressTone,
   ScreenProps,
   StatusTone,
+  StatusWordKind,
+  StatusWordProps,
   TextProps,
   TextTone,
 };
-export { ArtworkFrame, Badge, FocusSurface, lineHeightPx, ProgressTrack, Screen, StatusDot, Surface, Text };
+export {
+  ArtworkFrame,
+  Badge,
+  FocusSurface,
+  lineHeightPx,
+  ProgressTrack,
+  Screen,
+  StatusDot,
+  StatusWord,
+  Surface,
+  Text,
+};

@@ -48,6 +48,19 @@ describe.each(Object.entries(semanticThemes))("%s theme", (_name, theme) => {
     }
   });
 
+  // The amber (`action.primary`) and magenta (`accent.suggest`) text stops: the brand's #FFB020 is
+  // 1.8:1 on white, so the light theme carries its own darker text variants (#2782).
+  it("keeps amber and magenta text at WCAG AA contrast on every ordinary surface", () => {
+    const magentaTint = "#F9E2F1"; // the suggest badge's 15% brand-magenta wash over white
+    for (const surface of [theme.surface.canvas, theme.surface.raised]) {
+      expect(contrast(theme.action.primary, surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(theme.accent.suggest, surface)).toBeGreaterThanOrEqual(4.5);
+    }
+    if (theme === semanticThemes.light) {
+      expect(contrast(theme.accent.suggest, magentaTint)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it("keeps every semantic badge pairing at WCAG AA contrast", () => {
     for (const state of Object.keys(theme.state) as (keyof typeof theme.state)[]) {
       expect(contrast(theme.state[state], theme.stateSurface[state])).toBeGreaterThanOrEqual(4.5);

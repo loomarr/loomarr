@@ -207,7 +207,13 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
         onRescan={() => rescan.mutate()}
         onSearchChange={setTyped}
         search={typed}
-        status={{ health: current.health, scan: current.scan, held: current.held, offline }}
+        status={{
+          health: current.health,
+          scan: current.scan,
+          held: current.held,
+          offline,
+          needsYou: needs.needs.length + needs.problems.length > 0,
+        }}
         titles={titles}
       />
       <div aria-hidden ref={end} />

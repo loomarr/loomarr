@@ -133,6 +133,10 @@ describe("OnScreenLogoSection", () => {
   it("explains colour does not apply to a white style, and offers swatches for a coloured one", () => {
     const white = render({ policy: { look: "plate" } });
     expect(white.container.textContent).toContain("This style is white, so colour does not apply.");
+    // A palette that can't apply is not left live (#2744).
+    expect(white.radio("Cyan").getAttribute("aria-disabled")).toBe("true");
+    act(() => white.radio("Cyan").click());
+    expect(white.props.onChange).not.toHaveBeenCalled();
     white.unmount();
     const coloured = render({ policy: { look: "tint", color: "cyan" } });
     expect(coloured.radio("Cyan").getAttribute("aria-checked")).toBe("true");

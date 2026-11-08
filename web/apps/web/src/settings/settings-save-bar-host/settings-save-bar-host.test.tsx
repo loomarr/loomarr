@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
 import { SettingsEditsProvider, useSettingsEdits } from "../settings-edits";
@@ -8,6 +9,7 @@ import { SettingsSaveBarHost } from "./settings-save-bar-host";
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
+  onError: undefined as undefined | ((error: unknown) => void),
   onSuccess: undefined as
     | undefined
     | ((response: {
@@ -22,8 +24,11 @@ vi.mock(import("@loomarr/api/endpoints/settings"), async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    useSettingsPatch: ((options: { mutation?: { onSuccess?: typeof mocks.onSuccess } }) => {
+    useSettingsPatch: ((options: {
+      mutation?: { onSuccess?: typeof mocks.onSuccess; onError?: (error: unknown) => void };
+    }) => {
       mocks.onSuccess = options.mutation?.onSuccess;
+      mocks.onError = options.mutation?.onError;
       return {
         error: null,
         isPending: false,
@@ -140,5 +145,21 @@ describe("SettingsSaveBarHost", () => {
 
     expect(client.getQueryState(["/v1/system/llm"])?.isInvalidated).toBe(true);
     expect(client.getQueryState(["/v1/settings"])?.isInvalidated).toBe(true);
+  });
+
+  it("confirms a save with a toast, and says so when the save fails", async () => {
+    renderHost();
+    await userEvent.click(screen.getByRole("button", { name: "Stage edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await act(async () => {
+      await mocks.onSuccess?.({
+        status: 200,
+        data: { results: [{ key: "guide.timezone", status: "saved" }] },
+      });
+    });
+    expect(toast.success).toHaveBeenCalledWith("Change saved");
+
+    mocks.onError?.(new Error("offline"));
+    expect(toast.error).toHaveBeenCalledWith("Couldn't save your changes", { description: "offline" });
   });
 });
