@@ -57,8 +57,8 @@ var areas = []area{
 			"the GPU encoder, and the one pipeline every image goes through. It also holds the checks " +
 			"that judge a clip's picture, sound and level, and whether two adverts are the same one.",
 		Packages: []string{
-			"media", "media/header", "media/measure", "media/tools", "media/images", "media/images/rustgen",
-			"media/encode", "media/bgexec", "media/proctree", "media/loudness", "media/creative",
+			"media/header", "media/measure", "media/tools", "media/images", "media/images/rustgen",
+			"media/encode", "media/bgexec", "media/proctree", "media/creative",
 			"media/defects",
 		},
 		MayImport: map[string]string{

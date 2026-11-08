@@ -7,8 +7,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/media"
 )
 
 const gib = int64(1) << 30
@@ -25,8 +23,8 @@ func (h *fakeHost) available() (int64, bool) {
 	return h.base - h.running.Load()*h.cost, h.known
 }
 
-func (h *fakeHost) gate(reserve int64) media.MemoryGate {
-	return media.MemoryGate{
+func (h *fakeHost) gate(reserve int64) MemoryGate {
+	return MemoryGate{
 		Available: h.available,
 		Reserve:   func() int64 { return reserve },
 		PerEncode: func() int64 { return h.cost },

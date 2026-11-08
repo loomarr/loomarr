@@ -1,5 +1,6 @@
-// Package media owns host-wide resource facts shared by media work: host memory.
-package media
+package playout
+
+// Host memory: the fact the resource budget's hardware encode admission is bounded by.
 
 import (
 	"bufio"

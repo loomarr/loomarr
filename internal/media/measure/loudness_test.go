@@ -1,4 +1,4 @@
-package loudness
+package measure
 
 import (
 	"math"
@@ -9,7 +9,7 @@ func peak(v float64) *float64 { return &v }
 
 // The rows are the household clips that motivated #2032: a beer ad at -12.2 LUFS that aired 11 dB
 // hot under the old ±6 dB clamp, and a snack ad at -33.7 that no gain can rescue.
-func TestCorrection(t *testing.T) {
+func TestLoudnessCorrection(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		measured  float64
@@ -28,9 +28,9 @@ func TestCorrection(t *testing.T) {
 		{"exactly the boost limit is reachable", -29, peak(-20), MaxBoostDB, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			gain, reachable := Correction(-23, tc.measured, tc.peak)
+			gain, reachable := LoudnessCorrection(-23, tc.measured, tc.peak)
 			if math.Abs(gain-tc.gain) > 1e-9 || reachable != tc.reachable {
-				t.Fatalf("Correction(-23, %v) = %v, %v; want %v, %v", tc.measured, gain, reachable, tc.gain, tc.reachable)
+				t.Fatalf("LoudnessCorrection(-23, %v) = %v, %v; want %v, %v", tc.measured, gain, reachable, tc.gain, tc.reachable)
 			}
 		})
 	}

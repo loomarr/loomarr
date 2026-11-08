@@ -8,8 +8,6 @@ import (
 	"math"
 	"sync"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/media"
 )
 
 // StreamClass is a source's cost class: what one stream of it costs this host to transcode into the
@@ -326,7 +324,7 @@ func NewResourceBudget(facts func() BudgetFacts) *ResourceBudget {
 
 // WithMemoryGate bounds hardware transcode admission by host memory. Call before the budget is
 // shared.
-func (b *ResourceBudget) WithMemoryGate(gate media.MemoryGate) *ResourceBudget {
+func (b *ResourceBudget) WithMemoryGate(gate MemoryGate) *ResourceBudget {
 	b.memory = &hostMemory{gate: gate}
 	return b
 }

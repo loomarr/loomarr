@@ -1,4 +1,4 @@
-package media
+package playout
 
 import (
 	"strings"

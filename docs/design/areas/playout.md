@@ -9,13 +9,13 @@ One area of the [package map](../package-map.md#start-here).
 ## Imports from other areas
 
 - **platform** · 6 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, Tunarr's HTTP client and metrics, and the address check that keeps LAN discovery answering only the household's network
-- **media** · 5 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
+- **media** · 4 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
 - **channels** · 4 imports — the `channels/schedule` programming a backend plays
 - **library** · 2 imports — the media server's Live TV API that channels are published to, and `provision` keys naming what a slot plays
 
 ## Packages
 
-- **`playout`** · 5 importers · → `channels/schedule`, `media`, `media/encode`, `media/loudness`, `media/proctree`, `platform/config`, `platform/diagnostics`, `playout/packager`, `provision`
+- **`playout`** · 5 importers · → `channels/schedule`, `media/encode`, `media/measure`, `media/proctree`, `platform/config`, `platform/diagnostics`, `playout/packager`, `provision`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.

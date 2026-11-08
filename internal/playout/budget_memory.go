@@ -3,8 +3,6 @@ package playout
 import (
 	"sync"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/media"
 )
 
 // memoryRampWindow is how long a newly admitted encode is assumed not yet to show in the host's
@@ -19,7 +17,7 @@ const memoryRampWindow = 30 * time.Second
 // evaluated per admission rather than folded into capacity: available memory already excludes what
 // running encodes hold, so a capacity derived from it would count them twice.
 type hostMemory struct {
-	gate media.MemoryGate
+	gate MemoryGate
 	now  func() time.Time
 
 	mu sync.Mutex

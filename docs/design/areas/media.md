@@ -13,8 +13,6 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`media`** · 2 importers
-  Owns host-wide resource facts shared by media work: host memory.
 - **`media/bgexec`** · 5 importers · → `media/proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`media/creative`** · 6 importers
@@ -29,9 +27,7 @@ One area of the [package map](../package-map.md#start-here).
   One pipeline every image in Loomarr travels (§22).
 - **`media/images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
-- **`media/loudness`** · 2 importers
-  One rule for correcting a filler clip's level (#2032).
-- **`media/measure`** · 1 importer · → `inventory`, `media/bgexec`, `media/header`, `media/tools`
+- **`media/measure`** · 3 importers · → `inventory`, `media/bgexec`, `media/header`, `media/tools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
 - **`media/proctree`** · 2 importers
   Supervises one child process and every descendant it starts.

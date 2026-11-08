@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/loomarr/loomarr/internal/media/encode"
-	"github.com/loomarr/loomarr/internal/media/loudness"
+	"github.com/loomarr/loomarr/internal/media/measure"
 )
 
 // ffmpeg argument construction for internal playout (§9.1).
@@ -70,7 +70,7 @@ func FillerGain(a Airing, targetLUFS string) (gainDB float64, note string) {
 	case a.MeasuredLUFS == nil:
 		return 0, "filler clip has no ingest loudness measurement"
 	}
-	gain, _ := loudness.Correction(target, *a.MeasuredLUFS, a.MeasuredTruePeak)
+	gain, _ := measure.LoudnessCorrection(target, *a.MeasuredLUFS, a.MeasuredTruePeak)
 	return gain, ""
 }
 
