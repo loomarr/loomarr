@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,10 +109,33 @@ type FillerSource interface {
 	ListLocalClips(ctx context.Context) ([]RawClip, error)
 }
 
+// LocalScan is one listing of the clip folder: the clips found and the subtrees that could not be
+// read, which the listing says nothing about (#2673).
+type LocalScan struct {
+	Clips []RawClip
+	// Unread are subtrees the scan could not read, as slash paths relative to the clip folder, in
+	// the same form as RawClip.Path. A catalog row under one is neither confirmed nor gone.
+	Unread []string
+}
+
+// ScanningSource is a FillerSource that also reports the subtrees it could not read. The sync
+// prefers it, so a clip under an unreadable subfolder is kept rather than pruned. A source that
+// does not implement it reports no unreadable subtrees, which is only true of one that cannot
+// have any; DirSource implements it.
+type ScanningSource interface {
+	FillerSource
+	ScanLocalClips(ctx context.Context) (LocalScan, error)
+}
+
+var _ ScanningSource = DirSource{}
+
 // Store is the slice of the store the sync needs.
 type Store interface {
 	UpsertClip(ctx context.Context, c StoreClip) error
 	GetClip(ctx context.Context, id string) (StoreClip, bool, error)
+	// LiveClipPaths is every clip the prune can delete, as identity to location. The prune guard
+	// weighs a listing against it (#2673).
+	LiveClipPaths(ctx context.Context) (map[string]string, error)
 	DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error)
 }
 
@@ -161,7 +185,8 @@ type Syncer struct {
 	storage      *storagegovernor.Governor
 	// inferior names copies of an ad that lost to a better copy (#2033). nil ⇒ none.
 	inferior InferiorCopyStore
-	// quarantined suppresses the repeated per-pass "remains quarantined" warning for one file.
+	// quarantined suppresses a warning that repeats every pass until its cause clears: one file's
+	// "remains quarantined", and the held prune.
 	quarantined *logchange.Throttle
 }
 
@@ -379,7 +404,10 @@ type SyncResult struct {
 	Updated  int // existing clips whose server-derived fields changed
 	Repaired int // legacy stale-hash paths moved to the bytes' canonical identity
 	Pruned   int // clips removed (gone from the source)
-	Inferior int // files skipped as known inferior copies of an ad already in the catalog
+	// PruneHeld is how many clips the sync would have pruned but did not, because the listing
+	// found no clips while the catalog holds some (#2673). Nothing was removed.
+	PruneHeld int
+	Inferior  int // files skipped as known inferior copies of an ad already in the catalog
 }
 
 // Sync ensures the Tunarr local source exists, then reconciles the catalog (§10):
@@ -437,10 +465,19 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			"taken", taken.Taken, "duplicates", taken.Duplicates, "skipped", taken.Skipped)
 	}
 
-	raw, err := s.source.ListLocalClips(ctx)
+	var (
+		scan LocalScan
+		err  error
+	)
+	if scanning, ok := s.source.(ScanningSource); ok {
+		scan, err = scanning.ScanLocalClips(ctx)
+	} else {
+		scan.Clips, err = s.source.ListLocalClips(ctx)
+	}
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("list filler clips: %w", err)
 	}
+	raw := scan.Clips
 
 	rawByID := make(map[string]int, len(raw))
 	for i := range raw {
@@ -628,15 +665,89 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		}
 	}
 
-	pruned, err := s.store.DeleteClipsNotIn(ctx, keep)
+	keep, held, err := s.guardPrune(ctx, keep, scan.Unread)
 	if err != nil {
-		return res, fmt.Errorf("prune clips: %w", err)
+		return res, err
 	}
-	res.Pruned = pruned
+	if held > 0 {
+		res.PruneHeld = held
+	} else {
+		pruned, err := s.store.DeleteClipsNotIn(ctx, keep)
+		if err != nil {
+			return res, fmt.Errorf("prune clips: %w", err)
+		}
+		res.Pruned = pruned
+	}
 	if s.log != nil {
-		s.log.Info("filler catalog synced", "total", res.Total, "added", res.Added, "updated", res.Updated, "repaired", res.Repaired, "pruned", res.Pruned)
+		s.log.Info("filler catalog synced", "total", res.Total, "added", res.Added, "updated", res.Updated, "repaired", res.Repaired, "pruned", res.Pruned, "prune_held", res.PruneHeld)
 	}
 	return res, nil
+}
+
+// pruneHeldKey is the log throttle's key for the held-prune warning.
+const pruneHeldKey = "prune-held"
+
+// guardPrune decides what this pass may prune (#2673). It returns keep widened by every catalog
+// clip under a subtree the scan could not read, and how many clips the prune would remove if it
+// ran. held > 0 means it must not run.
+//
+// ⚠ Two different absences. A clip under an unreadable subtree was never looked at, so nothing is
+// known about its file and it stays, whatever the rest of the listing says. A clip the readable
+// part of the scan did not list is gone, unless the listing found no clips at all while the
+// catalog holds some: an existing but empty folder (a share that is not mounted) lists nothing
+// without an error, and pruning on it deletes every clip's review state, play counters and
+// placement. They come back as new held clips, not as the old ones.
+//
+// ⚠ Only an EMPTY listing is held, not a partial drop. Filler has no surface where an operator
+// confirms a held prune, so a share threshold like the library scanner's would keep a deliberate
+// deletion in the catalog forever.
+//
+// The held prune is a warning and a count on the result, not an error: the sync's other work
+// (new clips, updated rows) already happened and is not undone by it.
+func (s *Syncer) guardPrune(ctx context.Context, keep, unread []string) (kept []string, held int, err error) {
+	catalog, err := s.store.LiveClipPaths(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read the catalog before pruning: %w", err)
+	}
+	listed := make(map[string]bool, len(keep))
+	for _, id := range keep {
+		listed[id] = true
+	}
+	kept = keep
+	unseen := 0
+	for id, path := range catalog {
+		if listed[id] {
+			continue
+		}
+		if underAny(path, unread) {
+			kept = append(kept, id)
+			continue
+		}
+		unseen++
+	}
+	if len(unread) > 0 && s.log != nil {
+		s.log.Warn("filler: some folders could not be read; their clips are kept",
+			"unreadable", len(unread), "kept", len(kept)-len(keep))
+	}
+	if len(keep) > 0 || unseen == 0 {
+		s.quarantined.Forget(pruneHeldKey)
+		return kept, 0, nil
+	}
+	s.quarantined.Warn(s.log, pruneHeldKey, strconv.Itoa(unseen),
+		"filler: the clip folder lists no clips but the catalog holds some; no clips were pruned",
+		"catalog", len(catalog), "would_prune", unseen,
+		"hint", "check the clip folder is mounted and readable; it prunes again once it lists a clip")
+	return kept, unseen, nil
+}
+
+// underAny reports whether path (slash-separated, relative) is one of the subtrees or inside one.
+func underAny(path string, subtrees []string) bool {
+	for _, sub := range subtrees {
+		if path == sub || strings.HasPrefix(path, sub+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error {

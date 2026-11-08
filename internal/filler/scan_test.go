@@ -679,3 +679,30 @@ func TestScanDir_SkipsANestedWatchFolderToo(t *testing.T) {
 		t.Errorf("scanned %d clips, want only ads/filed.mp4", len(clips))
 	}
 }
+
+// #2673: a subdirectory the scan cannot read is reported by its location under the clip folder, so
+// the sync can leave the clips it already holds there alone. The readable rest is still listed.
+func TestDirSource_ReportsAnUnreadableSubdirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every directory")
+	}
+	dir := t.TempDir()
+	writeFile(t, dir, "open/ad.mp4")
+	writeFile(t, dir, "shut/deep/ad.mp4")
+	shut := filepath.Join(dir, "shut")
+	if err := os.Chmod(shut, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(shut, 0o750) })
+
+	scan, err := (filler.DirSource{Layout: testLayout(dir), Probe: fakeProbe(30000)}).ScanLocalClips(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scan.Clips) != 1 || scan.Clips[0].Path != "open/ad.mp4" {
+		t.Errorf("clips = %+v, want only open/ad.mp4", scan.Clips)
+	}
+	if len(scan.Unread) != 1 || scan.Unread[0] != "shut" {
+		t.Errorf("unread = %v, want [shut]", scan.Unread)
+	}
+}

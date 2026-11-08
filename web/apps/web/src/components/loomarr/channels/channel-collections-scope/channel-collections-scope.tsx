@@ -2,10 +2,9 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryCollection } from "@loomarr/api/models/libraryCollection";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Text } from "@loomarr/design-system";
-import { Plus, X } from "lucide-react";
+import { Action, Text } from "@loomarr/design-system";
+import { X } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
@@ -164,17 +163,16 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                   setAdding(false);
                 }}
               />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start"
-                onClick={() => {
+              <Action
+                onPress={() => {
                   setQuery("");
                   setAdding(false);
                 }}
+                style={{ alignSelf: "flex-start" }}
+                variant="ghost"
               >
                 Cancel
-              </Button>
+              </Action>
             </div>
           ) : collections.length === 0 && !q.isPending ? (
             // A real answer, not a failure: a library is connected but nothing is shelved.
@@ -182,10 +180,14 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               You have no collections yet. Make one in your media server and it will show up here.
             </p>
           ) : (
-            <Button variant="outline" size="sm" className="self-start" onClick={() => setAdding(true)}>
-              <Plus aria-hidden />
+            <Action
+              icon="plus"
+              onPress={() => setAdding(true)}
+              style={{ alignSelf: "flex-start" }}
+              variant="outline"
+            >
               Add a collection…
-            </Button>
+            </Action>
           )}
         </fieldset>
       )}

@@ -1,10 +1,9 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
-import { Field, Surface, Text } from "@loomarr/design-system";
-import { Check, Loader2, Play, Search } from "lucide-react";
+import { Action, Field, Surface, Text } from "@loomarr/design-system";
+import { Check, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SourceSearchProps } from "./source-search.type";
 
@@ -138,10 +137,13 @@ const SourceSearch = ({
             value={query}
           />
         </Surface>
-        <Button type="submit" disabled={searching || query.trim().length < 2}>
-          <Search className="size-4" aria-hidden />
+        <Action
+          icon="search"
+          // A real submit button under Action's look, so Enter in a field still submits.
+          render={<button disabled={searching || query.trim().length < 2} type="submit" />}
+        >
           {searching ? "Searching…" : "Search"}
-        </Button>
+        </Action>
       </form>
 
       {error && <p className="text-onair-300 text-sm">{error}</p>}
@@ -202,16 +204,14 @@ const SourceSearch = ({
 
                   <div className="ml-auto flex shrink-0 items-center gap-1">
                     {onPreview && (
-                      <Button
-                        type="button"
+                      <Action
+                        accessibilityLabel={`Preview: ${clip.title || clip.id}`}
+                        icon="play"
+                        onPress={() => onPreview(clip)}
                         variant="ghost"
-                        size="sm"
-                        onClick={() => onPreview(clip)}
-                        aria-label={`Preview: ${clip.title || clip.id}`}
                       >
-                        <Play aria-hidden />
                         Preview
-                      </Button>
+                      </Action>
                     )}
                     {acquisition === "queued" || acquisition === "running" ? (
                       <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
@@ -226,21 +226,21 @@ const SourceSearch = ({
                     ) : acquisition === "error" ? (
                       <div className="flex shrink-0 items-center gap-2">
                         <span className="text-onair-300 text-sm">Couldn’t add</span>
-                        <Button variant="ghost" onClick={() => onQueue(clip)} disabled={queueing != null}>
+                        <Action disabled={queueing != null} onPress={() => onQueue(clip)} variant="ghost">
                           {queueing === clip.id ? "Queueing…" : "Try again"}
-                        </Button>
+                        </Action>
                       </div>
                     ) : (
-                      <Button
-                        variant="ghost"
-                        onClick={() => onQueue(clip)}
-                        disabled={queueing != null}
+                      <Action
                         // The row's own link carries the title, so the button names what it acts on
                         // or a screen-reader user hears a list of identical "Queue download"s.
-                        aria-label={`Queue download: ${clip.title || clip.id}`}
+                        accessibilityLabel={`Queue download: ${clip.title || clip.id}`}
+                        disabled={queueing != null}
+                        onPress={() => onQueue(clip)}
+                        variant="ghost"
                       >
                         {queueing === clip.id ? "Queueing…" : "Queue download"}
-                      </Button>
+                      </Action>
                     )}
                   </div>
                 </li>
@@ -249,18 +249,17 @@ const SourceSearch = ({
           </ul>
 
           {remaining > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
+            <Action
+              onPress={() =>
                 setReveal({
                   key: resultKey,
                   count: Math.min(visibleResults.length + RESULT_STEP, results.length),
                 })
               }
+              variant="outline"
             >
               {`Show ${Math.min(RESULT_STEP, remaining)} more`}
-            </Button>
+            </Action>
           )}
         </>
       )}

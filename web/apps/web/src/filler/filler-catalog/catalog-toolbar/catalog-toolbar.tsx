@@ -1,4 +1,4 @@
-import { Card } from "@loomarr/design-system";
+import { Action, Card } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -59,15 +59,14 @@ const CatalogToolbar = ({
         />
       </div>
       {phone ? (
-        <Button
-          variant="outline"
-          size="sm"
-          aria-expanded={filtersOpen}
+        <Action
           aria-controls="clip-filters"
-          onClick={() => setFiltersOpen((open) => !open)}
+          aria-expanded={filtersOpen}
+          onPress={() => setFiltersOpen((open) => !open)}
+          variant="outline"
         >
           Filters
-        </Button>
+        </Action>
       ) : null}
       <CatalogViewToggle view={view} phone={phone} onChange={onViewChange} />
       {!phone || filtersOpen ? (

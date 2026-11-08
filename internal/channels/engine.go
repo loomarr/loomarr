@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -53,6 +54,8 @@ type EngineStore interface {
 	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
+	RecordScheduledAirings(ctx context.Context, channelID string, airings []store.ScheduledAiring, recordedAt time.Time) error
+	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
 // AvailabilityStore is the title and episode cache used to resolve scheduled
@@ -780,7 +783,14 @@ func (e *Engine) CarriesOver(ctx context.Context, policy schedule.ChannelPolicy)
 //
 // Called from BOTH reconcile and CyclePreview, through this one helper, so the preview cannot
 // disagree with what actually ships (§8.1's one-code-path rule).
-func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy schedule.ChannelPolicy, at time.Time) map[string]time.Time {
+//
+// "Aired" means both (#1677, #1678 decision 1): what was watched (the airings playout records) and
+// what the schedule put on air (the scheduled ledger reconcile records, plus the accepted cycle's
+// own programmes that started before the window opened). Each unit takes its latest of the two, so
+// a channel nobody watches still knows what the window before it aired. The accepted cycle is read
+// in memory as well as from the ledger, so a window arranged before reconcile has recorded the old
+// cycle's last programmes (the playout resolver's turn) is arranged exactly as reconcile will.
+func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy schedule.ChannelPolicy, at time.Time, accepted []schedule.Slot, acceptedAnchor time.Time) map[string]time.Time {
 	if e.store == nil {
 		return nil
 	}
@@ -801,5 +811,67 @@ func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy s
 			"channel", ch.ID, "err", err)
 		return nil
 	}
+	scheduled, err := e.store.LastScheduledByChannel(ctx, ch.ID, opened)
+	if err != nil {
+		e.log.Debug("recency: scheduled ledger unavailable; using watched airings only", "channel", ch.ID, "err", err)
+	}
+	for _, b := range scheduledPrograms(accepted, acceptedAnchor, opened) {
+		if scheduled == nil {
+			scheduled = map[string]time.Time{}
+		}
+		scheduled[b.LibraryItemID] = latest(scheduled[b.LibraryItemID], b.Start)
+	}
+	for unit, at := range scheduled {
+		if hist == nil {
+			hist = map[string]time.Time{}
+		}
+		hist[unit] = latest(hist[unit], at)
+	}
 	return hist
+}
+
+func latest(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
+}
+
+// scheduledPrograms is every programme the accepted cycle, walked from its anchor, started before
+// `until` (#1677). An empty cycle or no anchor aired nothing.
+func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []playout.Broadcast {
+	if len(slots) == 0 || anchor.IsZero() || !anchor.Before(until) {
+		return nil
+	}
+	var out []playout.Broadcast
+	for _, b := range playout.BroadcastsBetween(slots, anchor, anchor, until) {
+		if b.Kind == schedule.SlotProgram && b.LibraryItemID != "" && b.Start.Before(until) {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// recordScheduled writes the scheduled ledger (#1677): every programme the accepted cycle has
+// started by now, up to the instant it hands over at the rolling-window boundary. Each row is
+// stamped as known from the programme's start, so a window arranged later reads every programme
+// that started before it opened, however late the reconcile that records it runs. Idempotent, and
+// best-effort: a ledger write never fails a reconcile.
+func (e *Engine) recordScheduled(ctx context.Context, ch store.Channel, now time.Time) {
+	if e.store == nil || len(ch.Desired) == 0 || ch.PlayoutAnchor.IsZero() {
+		return
+	}
+	until := now.Add(time.Nanosecond) // a programme starting at now has started
+	if window, zone := e.RollingWindow(ch.Policy, now); window > 0 {
+		if end := playout.CarryOverEnd(ch.Desired, ch.PlayoutAnchor, schedule.NextWindowStart(ch.PlayoutAnchor, window, zone)); end.Before(until) {
+			until = end // past the hand-over the next window airs, not this cycle
+		}
+	}
+	for _, b := range scheduledPrograms(ch.Desired, ch.PlayoutAnchor, until) {
+		airing := store.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
+		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []store.ScheduledAiring{airing}, b.Start); err != nil {
+			e.log.Debug("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
+			return
+		}
+	}
 }

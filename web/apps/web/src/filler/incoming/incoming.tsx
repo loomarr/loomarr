@@ -83,7 +83,7 @@ const StatusRows = ({
     ))}
     {group.nextCursor ? (
       <div className="p-2">
-        <Action disabled={loading} onPress={onMore} variant="ghost">
+        <Action disabled={loading} onPress={onMore} style={{ width: "100%" }} variant="ghost">
           {loading ? "Loading…" : moreLabel}
         </Action>
       </div>

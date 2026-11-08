@@ -130,7 +130,11 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 	chDomain.DefaultWindow = e.defaultWindowFor()
 	chDomain = chDomain.WithCalendar(e.Calendar())
 	chDomain.DealOrigin = schedule.ResolveDealOrigin(ch.CreatedAt, ch.PlayoutAnchor) // #1676
-	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, at)
+	var accepted []schedule.Slot
+	if playsInternally {
+		accepted = ch.Desired // #1677: the accepted cycle's programmes count as aired, as in reconcile
+	}
+	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, at, accepted, ch.PlayoutAnchor)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, at)
 

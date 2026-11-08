@@ -1,11 +1,11 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Field, Surface } from "@loomarr/design-system";
 import { ImageOff, Loader2, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
@@ -288,25 +288,29 @@ const ChannelIconField = ({
                 Paste an image URL
               </Label>
               <div className="mt-2 flex items-center gap-2">
-                <Input
-                  id={urlInputId}
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://example.com/icon.png"
-                  value={urlDraft}
-                  disabled={savingUrl}
-                  onChange={(e) => {
-                    setUrlDraft(e.target.value);
-                    setUrlError(undefined);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void setUrl();
-                    }
-                  }}
-                  className="max-w-sm"
-                />
+                <Surface
+                  backgroundColor="transparent"
+                  borderWidth={0}
+                  flexGrow={1}
+                  flexShrink={1}
+                  maxWidth={384}
+                  minWidth={0}
+                >
+                  <Field
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    disabled={savingUrl}
+                    id={urlInputId}
+                    keyboardType="url"
+                    onChangeText={(text) => {
+                      setUrlDraft(text);
+                      setUrlError(undefined);
+                    }}
+                    onSubmitEditing={() => void setUrl()}
+                    placeholder="https://example.com/icon.png"
+                    value={urlDraft}
+                  />
+                </Surface>
                 <Button
                   type="button"
                   size="sm"

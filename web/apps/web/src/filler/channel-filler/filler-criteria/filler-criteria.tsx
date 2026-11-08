@@ -4,8 +4,9 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Action, Field, Surface, Toggle } from "@loomarr/design-system";
-import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
+import { Action, Toggle } from "@loomarr/design-system";
+import { CommitField, YearField } from "@loomarr/ui";
+import { useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Label } from "@/components/ui/label";
@@ -100,32 +101,6 @@ const YEAR_MIN = 1900;
 const YEAR_MAX = 2099;
 const MAX_ERA_WINDOWS = 8;
 
-// Narrow enough that a From/To pair and its button share a row.
-const Narrow = ({ children }: { children: ReactNode }) => (
-  <Surface backgroundColor="transparent" borderWidth={0} width={112}>
-    {children}
-  </Surface>
-);
-
-const YearBox = (props: ComponentProps<typeof Field>) => (
-  <Narrow>
-    <Field keyboardType="number-pad" maxLength={4} {...props} />
-  </Narrow>
-);
-
-// A box that edits a draft and hands it over only on blur. Remount it (key) to reseed it.
-const CommitField = ({
-  initial,
-  onCommit,
-  ...field
-}: Omit<ComponentProps<typeof Field>, "onBlur" | "onChangeText" | "value"> & {
-  initial: string;
-  onCommit: (text: string) => void;
-}) => {
-  const [text, setText] = useState(initial);
-  return <Field {...field} onBlur={() => onCommit(text)} onChangeText={setText} value={text} />;
-};
-
 const isValidWindow = (range: Range): range is Range & { from: number; to: number } =>
   Number.isInteger(range.from) &&
   Number.isInteger(range.to) &&
@@ -182,7 +157,7 @@ const WindowRow = ({
 
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <YearBox
+      <YearField
         disabled={disabled}
         id={`filler-window-${index}-from`}
         label="From year"
@@ -190,7 +165,7 @@ const WindowRow = ({
         onChangeText={(from) => setDraft({ ...draft, from })}
         value={draft.from}
       />
-      <YearBox
+      <YearField
         disabled={disabled}
         id={`filler-window-${index}-to`}
         label="To year"
@@ -251,14 +226,14 @@ const WindowEditor = ({
       ))}
       {windows.length < MAX_ERA_WINDOWS && (
         <div className="flex flex-wrap items-end gap-2">
-          <YearBox
+          <YearField
             accessibilityLabel="New date range from"
             disabled={disabled}
             onChangeText={(from) => setDraft({ ...draft, from })}
             placeholder="From"
             value={draft.from}
           />
-          <YearBox
+          <YearField
             accessibilityLabel="New date range to"
             disabled={disabled}
             onChangeText={(to) => setDraft({ ...draft, to })}
@@ -366,27 +341,25 @@ const FillerCriteria = ({
         ) : (
           <>
             <div className="flex flex-wrap items-end gap-3">
-              <Narrow>
-                <CommitField
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  disabled={disabled || Boolean(fixedCountry)}
-                  id="filler-country"
-                  initial={fixedCountry ?? selection.geography.country ?? ""}
-                  key={`country-${fixedCountry ?? selection.geography.country}`}
-                  label="Country code"
-                  maxLength={2}
-                  onCommit={(text) =>
-                    onChange({
-                      ...selection,
-                      geography: {
-                        ...selection.geography!,
-                        country: fixedCountry ?? text.trim().toUpperCase(),
-                      },
-                    })
-                  }
-                />
-              </Narrow>
+              <CommitField
+                autoCapitalize="characters"
+                disabled={disabled || Boolean(fixedCountry)}
+                id="filler-country"
+                initial={fixedCountry ?? selection.geography.country ?? ""}
+                key={`country-${fixedCountry ?? selection.geography.country}`}
+                label="Country code"
+                maxLength={2}
+                onCommit={(text) =>
+                  onChange({
+                    ...selection,
+                    geography: {
+                      ...selection.geography!,
+                      country: fixedCountry ?? text.trim().toUpperCase(),
+                    },
+                  })
+                }
+                width={112}
+              />
               <div className="min-w-52 flex-1">
                 <LocationPicker
                   value={{
@@ -486,42 +459,40 @@ const FillerCriteria = ({
           </>
         ) : (
           <div className="flex items-center gap-3">
-            <Narrow>
-              <CommitField
-                disabled={disabled}
-                id="filler-era-from"
-                initial={String(era?.from ?? "")}
-                key={`from-${era?.from ?? ""}`}
-                keyboardType="number-pad"
-                label="From year"
-                maxLength={4}
-                onCommit={(text) => {
-                  const from = text === "" ? undefined : Number(text);
-                  if (from === era?.from) return;
-                  const { eraWindows: _windows, ...rest } = selection;
-                  onChange({ ...rest, era: { ...era, from } });
-                }}
-                placeholder="Any"
-              />
-            </Narrow>
-            <Narrow>
-              <CommitField
-                disabled={disabled}
-                id="filler-era-to"
-                initial={String(era?.to ?? "")}
-                key={`to-${era?.to ?? ""}`}
-                keyboardType="number-pad"
-                label="To year"
-                maxLength={4}
-                onCommit={(text) => {
-                  const to = text === "" ? undefined : Number(text);
-                  if (to === era?.to) return;
-                  const { eraWindows: _windows, ...rest } = selection;
-                  onChange({ ...rest, era: { ...era, to } });
-                }}
-                placeholder="Any"
-              />
-            </Narrow>
+            <CommitField
+              disabled={disabled}
+              id="filler-era-from"
+              initial={String(era?.from ?? "")}
+              key={`from-${era?.from ?? ""}`}
+              keyboardType="number-pad"
+              label="From year"
+              maxLength={4}
+              onCommit={(text) => {
+                const from = text === "" ? undefined : Number(text);
+                if (from === era?.from) return;
+                const { eraWindows: _windows, ...rest } = selection;
+                onChange({ ...rest, era: { ...era, from } });
+              }}
+              placeholder="Any"
+              width={112}
+            />
+            <CommitField
+              disabled={disabled}
+              id="filler-era-to"
+              initial={String(era?.to ?? "")}
+              key={`to-${era?.to ?? ""}`}
+              keyboardType="number-pad"
+              label="To year"
+              maxLength={4}
+              onCommit={(text) => {
+                const to = text === "" ? undefined : Number(text);
+                if (to === era?.to) return;
+                const { eraWindows: _windows, ...rest } = selection;
+                onChange({ ...rest, era: { ...era, to } });
+              }}
+              placeholder="Any"
+              width={112}
+            />
           </div>
         )}
         {eraWindows === undefined && (
@@ -560,7 +531,7 @@ const FillerCriteria = ({
             style={{ alignSelf: "flex-start" }}
             variant="ghost"
           >
-            {`Follow the channel’s era (${scopeLabel})`}
+            Follow the channel&rsquo;s era ({scopeLabel})
           </Action>
         )}
       </div>

@@ -224,22 +224,17 @@ func assertLibrarySearchStatus(t *testing.T, h *harness, admin *http.Cookie, wan
 
 func assertFillerLibraryScanned(t *testing.T, requests []testkit.MediaServerRequest, token string) {
 	t.Helper()
-	foundFolder, foundItems := false, false
+	// A row still naming a media-server library resolves it to folders once, through the library's
+	// folder listing; the scan itself walks those folders on disk, not the media server (#2552).
+	foundFolder := false
 	for _, request := range requests {
-		isFolder := request.Path == "/Library/VirtualFolders"
-		isItems := request.Path == "/Items" && strings.Contains(request.RawQuery, "ParentId=")
-		if isFolder {
+		if request.Path == "/Library/VirtualFolders" {
 			foundFolder = true
-		}
-		if isItems {
-			foundItems = true
-		}
-		if isFolder || isItems {
 			assertJellyfinAuthorization(t, "filler library request", request.Authorization, token)
 		}
 	}
-	if !foundFolder || !foundItems {
-		t.Fatalf("filler library scanner did not issue both lookup requests: %+v", requests)
+	if !foundFolder {
+		t.Fatalf("filler library sync did not resolve the library's folders: %+v", requests)
 	}
 }
 

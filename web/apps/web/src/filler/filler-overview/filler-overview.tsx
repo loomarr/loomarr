@@ -15,7 +15,7 @@ type ActionBase = {
   label: string;
 };
 
-type Action = ActionBase &
+type ReadinessAction = ActionBase &
   (
     | {
         to: "/filler/settings/$section";
@@ -29,7 +29,7 @@ type Action = ActionBase &
 
 // This maps the readiness projection's server-owned action enum to presentation only. Priority
 // and whole-workspace health are never reconstructed from subsystem counts in the browser (§10).
-const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
+const readinessAction = (readiness: FillerReadinessDTO): ReadinessAction | undefined => {
   switch (readiness.nextAction) {
     case "none":
       return undefined;

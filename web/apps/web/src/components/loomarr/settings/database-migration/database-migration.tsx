@@ -1,7 +1,6 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Badge, Field, FieldHint } from "@loomarr/design-system";
+import { Action, Badge, Field, FieldHint } from "@loomarr/design-system";
 import { AlertTriangle, Check, Database, Lock } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
@@ -131,7 +130,11 @@ const DatabaseMigration = ({
           </ol>
 
           <div className="p-4">
-            {step === null && <Button onClick={() => onStepChange("connect")}>Move to PostgreSQL</Button>}
+            {step === null && (
+              <div className="flex">
+                <Action onPress={() => onStepChange("connect")}>Move to PostgreSQL</Action>
+              </div>
+            )}
 
             {step === "connect" && (
               <div className="flex max-w-xl flex-col gap-3">
@@ -153,13 +156,13 @@ const DatabaseMigration = ({
                     require for a database across the internet.
                   </FieldHint>
                 </div>
-                <Button
-                  onClick={onPreflight}
+                <Action
                   disabled={dsn.trim() === "" || pending === "preflight"}
-                  className="self-start"
+                  onPress={onPreflight}
+                  style={{ alignSelf: "flex-start" }}
                 >
                   {pending === "preflight" ? "Running preflight…" : "Run preflight"}
-                </Button>
+                </Action>
               </div>
             )}
 
@@ -187,12 +190,12 @@ const DatabaseMigration = ({
                   ))}
                 </ul>
                 <div className="flex gap-2">
-                  <Button onClick={() => onStepChange("backup")} disabled={!preflightPassed}>
+                  <Action disabled={!preflightPassed} onPress={() => onStepChange("backup")}>
                     Continue
-                  </Button>
-                  <Button variant="ghost" onClick={() => onStepChange("connect")}>
+                  </Action>
+                  <Action onPress={() => onStepChange("connect")} variant="ghost">
                     Back
-                  </Button>
+                  </Action>
                 </div>
                 {!preflightPassed && checks.length > 0 && (
                   <FieldHint>Every check has to pass. Fix the target and run preflight again.</FieldHint>
@@ -212,14 +215,14 @@ const DatabaseMigration = ({
                     : "no backup yet for this migration"}
                 </p>
                 <div className="flex gap-2">
-                  <Button onClick={onBackup} disabled={pending === "backup"}>
+                  <Action disabled={pending === "backup"} onPress={onBackup}>
                     {pending === "backup" ? "Writing backup…" : "Back up now"}
-                  </Button>
+                  </Action>
                   {/* Disabled until the backup exists. The SERVER refuses regardless — this
                       only stops a click that could not have worked. */}
-                  <Button onClick={onMigrate} disabled={!backup || pending === "migrate"}>
+                  <Action disabled={!backup || pending === "migrate"} onPress={onMigrate}>
                     {pending === "migrate" ? "Requesting restart…" : "Migrate and restart"}
-                  </Button>
+                  </Action>
                 </div>
                 <p className="text-muted-foreground text-xs">
                   Loomarr will acknowledge the request, drain connections, close SQLite, copy and verify the

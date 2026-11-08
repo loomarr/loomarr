@@ -1326,8 +1326,32 @@ func (s *Store) ListWantedCopies(ctx context.Context) ([]WantedCopy, error) {
 	return out, nil
 }
 
+// LiveClipPaths maps every clip DeleteClipsNotIn can delete (not reaped, held and removed ones
+// included) to its location under the clip folder. The sync weighs a listing against it before it
+// prunes (#2673).
+func (s *Store) LiveClipPaths(ctx context.Context) (map[string]string, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT hash, path FROM clips WHERE reaped_at IS NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("list live clip paths: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]string{}
+	for rows.Next() {
+		var hash, path string
+		if err := rows.Scan(&hash, &path); err != nil {
+			return nil, fmt.Errorf("scan live clip path: %w", err)
+		}
+		out[hash] = path
+	}
+	return out, rows.Err()
+}
+
 // DeleteClipsNotIn prunes clips absent from the given id set (the sync reconcile).
-// With an empty keep set it deletes all clips. Returns the count removed.
+//
+// ⚠ An empty keep set deletes EVERY live clip, with no question asked: this is the primitive, not
+// the policy. The sync (internal/filler) is where a listing is weighed against the catalog, so it
+// never hands an empty or shrunken keep set to this on the strength of a folder that merely
+// looked empty (#2673). Returns the count removed.
 func (s *Store) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
 	// Pruning by "no matching clip" rather than by the keep-set means one statement covers both
 	// branches below and cannot disagree with whichever DELETE ran.
@@ -1337,9 +1361,10 @@ func (s *Store) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, er
 	// store's: its DeleteClipsNotIn runs this one and then prunes them (internal/filler/records).
 
 	if len(keepIDs) == 0 {
-		// ⚠ Reaped composites survive an EMPTY scan too. This branch fires when the drop folder is
-		// empty or unreadable, which is exactly when a swept reel looks most like a deleted one —
-		// and taking the tombstones here would dangle their children just as surely.
+		// ⚠ Reaped composites survive an EMPTY keep set too, which is exactly when a swept reel
+		// looks most like a deleted one — taking the tombstones here would dangle their children
+		// just as surely. (An unreadable clip folder never reaches this: the scan errors first,
+		// and the sync holds a prune that would empty a non-empty catalog.)
 		res, err := s.h.ExecContext(ctx, `DELETE FROM clips WHERE reaped_at IS NULL`)
 		if err != nil {
 			return 0, err

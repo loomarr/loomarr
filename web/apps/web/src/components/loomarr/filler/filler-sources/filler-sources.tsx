@@ -1,9 +1,8 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Badge, Surface, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Surface, Toggle } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { FillerSourcesProps } from "./filler-sources.type";
 
@@ -86,26 +85,26 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
       )}
 
       {remaining > 0 && (
-        <Button
-          type="button"
-          variant="ghost"
-          className="mt-2"
-          aria-label={`Show ${remaining} more under ${sectionLabel}`}
-          onClick={() => setExpanded(true)}
-        >
-          Show {remaining} more
-        </Button>
+        <div className="mt-2 flex">
+          <Action
+            accessibilityLabel={`Show ${remaining} more under ${sectionLabel}`}
+            onPress={() => setExpanded(true)}
+            variant="ghost"
+          >
+            {`Show ${remaining} more`}
+          </Action>
+        </div>
       )}
       {scalable && expanded && !normalizedFilter && (
-        <Button
-          type="button"
-          variant="ghost"
-          className="mt-2"
-          aria-label={`Show fewer under ${sectionLabel}`}
-          onClick={() => setExpanded(false)}
-        >
-          Show fewer
-        </Button>
+        <div className="mt-2 flex">
+          <Action
+            accessibilityLabel={`Show fewer under ${sectionLabel}`}
+            onPress={() => setExpanded(false)}
+            variant="ghost"
+          >
+            Show fewer
+          </Action>
+        </div>
       )}
     </div>
   );
@@ -277,9 +276,9 @@ const FillerSources = ({
               Loomarr uses it to choose sources that fit your area.
             </p>
           </div>
-          <a className={buttonVariants({ variant: "outline" })} href="/settings/access">
+          <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
             Set location
-          </a>
+          </Action>
         </div>
       )}
 
