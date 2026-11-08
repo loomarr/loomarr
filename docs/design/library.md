@@ -571,6 +571,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   is found owned records its library item id. The media server answers only what the Library
   doesn't hold, and a media server that is down no longer holds back what the Library confirms.
   The ids already stored are the rewrite's.
+- **Collection scopes read the household's collections first** (step 15e). The scope.collections
+  picker lists the household's collections, then only the media server's that were never imported
+  (`imported_id`); the reconcile's membership index does the same, so an imported collection is
+  known only by the household's id the rewrite pointed scopes at. With no media server, the
+  household's alone, without an error.
 - **The rewrite** (step 15b). After each id map pass, `scan.ReferenceRewriter` points the ids
   stored records name at library items: titles, airings, channels' slots, scopes, rules and
   lineup membership, and open proposals' picks and policies (a decided proposal and a run's trace
