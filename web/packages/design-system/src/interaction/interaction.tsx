@@ -35,6 +35,8 @@ import {
 type ActionVariant = "destructive" | "ghost" | "link" | "outline" | "secondary" | "suggest";
 
 type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & {
+  /** A toggle's state when it is off as well as on; `selected` alone only ever announces pressed. */
+  "aria-pressed"?: boolean;
   children: ReactNode;
   density?: Density;
   icon?: IconName;
@@ -128,6 +130,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
   (
     {
       accessibilityState,
+      "aria-pressed": ariaPressed,
       children,
       density = "pointer",
       disabled = false,
@@ -327,6 +330,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             "aria-label": iconLabel,
             ...restProps,
             "aria-disabled": isDisabled || undefined,
+            "aria-pressed": ariaPressed,
             onBlur: focusLook.onBlur,
             onClick: onPress,
             onFocus: focusLook.onFocus,
@@ -355,7 +359,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
         accessibilityState={{ ...accessibilityState, disabled: isDisabled, selected }}
         accessibilityRole={role}
         aria-disabled={isDisabled || undefined}
-        aria-pressed={role === "button" && selected ? true : undefined}
+        aria-pressed={role === "button" && selected ? true : ariaPressed}
         aria-selected={role === "tab" ? selected : undefined}
         disabled={isDisabled}
         onBlur={focusLook.onBlur}
