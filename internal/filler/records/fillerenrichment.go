@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
@@ -14,8 +13,6 @@ import (
 	"github.com/loomarr/loomarr/internal/store/catalogstore"
 	"github.com/loomarr/loomarr/internal/store/storedb"
 )
-
-const catalogProjectionBackfillVersion = 2
 
 const enrichmentColumns = `clip_hash, axis, state, value_json, evidence_kind,
        evidence_rank, evidence_reference, confidence, producer, producer_version,
@@ -376,104 +373,4 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass enrichmen
 		return 0, fmt.Errorf("apply filler enrichment pass: commit: %w", err)
 	}
 	return changed, nil
-}
-
-// backfillFillerEnrichment captures pre-axis catalog facts once so the new rank-aware module cannot
-// mistake a real operator/item/content fact for an empty axis. It is restart-idempotent and records
-// only the current projection; the old clip-wide origin flags are not used after this conversion.
-// Open runs it after the core's own boot seeds, so the taxonomy it reads is already converged.
-func (s *sqlStore) backfillFillerEnrichment(ctx context.Context, completedAt time.Time) error {
-	var applied int
-	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM filler_enrichment_backfills WHERE version = ?`), catalogProjectionBackfillVersion).Scan(&applied); err != nil {
-		return fmt.Errorf("backfill filler enrichment: read marker: %w", err)
-	}
-	if applied > 0 {
-		return nil
-	}
-	clips, err := s.core.ListClips(ctx, catalogstore.ClipFilter{IncludeHeld: true, IncludeRemoved: true, IncludeComposites: true})
-	if err != nil {
-		return fmt.Errorf("backfill filler enrichment: list clips: %w", err)
-	}
-	taxa, err := s.core.ListTaxa(ctx)
-	if err != nil {
-		return fmt.Errorf("backfill filler enrichment: list taxonomy: %w", err)
-	}
-	taxonAxes := make(map[string]enrichment.Axis, len(taxa))
-	for _, taxon := range taxa {
-		taxonAxes[taxon.Slug] = enrichment.Axis(taxon.Axis)
-	}
-	for _, clip := range clips {
-		observedAt := clip.UpdatedAt
-		if observedAt.IsZero() {
-			observedAt = completedAt
-		}
-		base := func(axis enrichment.Axis, value enrichment.Value, kind enrichment.EvidenceKind, reference string) enrichment.State {
-			confidence := clip.Confidence
-			if confidence == 0 && kind != enrichment.EvidenceInference {
-				confidence = 100
-			}
-			return enrichment.State{ClipHash: clip.Hash, Axis: axis, Status: enrichment.StatusComplete, Value: value,
-				Evidence: enrichment.Evidence{Kind: kind, Reference: reference, Confidence: confidence,
-					Producer: "catalog-projection", ProducerVersion: "1", ObservedAt: observedAt}}
-		}
-		textKind := enrichment.EvidenceItem
-		if clip.AITagged {
-			textKind = enrichment.EvidenceInference
-		}
-		var states []enrichment.State
-		if clip.Kind != filler.Unclassified {
-			states = append(states, base(enrichment.AxisKind, enrichment.Value{Text: string(clip.Kind)}, textKind, "catalog.kind"))
-		}
-		if clip.Era > 0 {
-			states = append(states, base(enrichment.AxisEra, enrichment.Value{Year: clip.Era}, textKind, "catalog.era"))
-		}
-		if clip.Audience != "" {
-			states = append(states, base(enrichment.AxisAudience, enrichment.Value{Text: string(clip.Audience)}, textKind, "catalog.audience"))
-		}
-		if clip.Brand != "" {
-			kind := textKind
-			if clip.VisionTagged {
-				kind = enrichment.EvidenceContent
-			}
-			states = append(states, base(enrichment.AxisBrand, enrichment.Value{Text: clip.Brand}, kind, "catalog.brand"))
-		}
-		if clip.Language != "" {
-			states = append(states, base(enrichment.AxisLanguage, enrichment.Value{Text: clip.Language}, enrichment.EvidenceContent, "catalog.language"))
-		}
-		if clip.Country != "" || clip.Network != "" || clip.Station != "" {
-			kind := enrichment.EvidenceItem
-			if strings.EqualFold(clip.GeoEvidence, "operator") {
-				kind = enrichment.EvidenceOperator
-			}
-			states = append(states, base(enrichment.AxisGeography, enrichment.Value{Geography: enrichment.Geography{
-				Scope: string(clip.GeographicScope), Country: clip.Country,
-				Network: clip.Network, Station: clip.Station, AirDate: clip.AirDate,
-			}}, kind, "catalog.geography"))
-		}
-		byAxis := make(map[enrichment.Axis][]string)
-		for _, tag := range clip.AssertedTags {
-			if axis := taxonAxes[tag]; axis.Valid() && taxonomyEnrichmentAxis(axis) {
-				byAxis[axis] = append(byAxis[axis], tag)
-			}
-		}
-		for axis, tags := range byAxis {
-			kind := textKind
-			if clip.VisionTagged {
-				kind = enrichment.EvidenceContent
-			}
-			state := base(axis, enrichment.Value{Tags: tags}, kind, "catalog.taxonomy")
-			state.Evidence.TaxonomyVersion = enrichment.ControlledTaxonomyVersion
-			states = append(states, state)
-		}
-		for _, state := range states {
-			if _, _, err := s.ApplyFillerEnrichment(ctx, state, completedAt); err != nil {
-				return fmt.Errorf("backfill filler enrichment %s/%s: %w", clip.Hash, state.Axis, err)
-			}
-		}
-	}
-	if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO filler_enrichment_backfills (version, completed_at)
-		VALUES (?, ?) ON CONFLICT(version) DO NOTHING`), catalogProjectionBackfillVersion, epoch(completedAt)); err != nil {
-		return fmt.Errorf("backfill filler enrichment: record marker: %w", err)
-	}
-	return nil
 }

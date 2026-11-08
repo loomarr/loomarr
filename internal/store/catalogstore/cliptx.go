@@ -184,38 +184,38 @@ func (c ClipTx) RecordVision(ctx context.Context, hash, visibleText string, sugg
 
 // Admit files a held, present, classified clip into the playable catalog.
 func (c ClipTx) Admit(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ?
+	return c.affectedOne(ctx, `UPDATE clips SET held = ?, updated_at = ?
 		WHERE hash = ? AND held = ? AND removed_at = 0 AND kind <> ?`,
-		false, false, epoch(at), hash, true, string(clips.Unclassified))
+		false, epoch(at), hash, true, string(clips.Unclassified))
 }
 
 // Unfile takes a filed clip out of the catalog and holds it for review again.
 func (c ClipTx) Unfile(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ? WHERE hash = ? AND held = ?`,
-		true, false, epoch(at), hash, false)
+	return c.affectedOne(ctx, `UPDATE clips SET held = ?, updated_at = ? WHERE hash = ? AND held = ?`,
+		true, epoch(at), hash, false)
 }
 
 // Reject holds the clip and removes it from the catalog.
 func (c ClipTx) Reject(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, removed_at = ?, updated_at = ? WHERE hash = ?`,
-		true, false, epoch(at), epoch(at), hash)
+	return c.affectedOne(ctx, `UPDATE clips SET held = ?, removed_at = ?, updated_at = ? WHERE hash = ?`,
+		true, epoch(at), epoch(at), hash)
 }
 
 // RestoreHeld brings a held or removed clip back as present and held, for review. A reaped clip
 // has no file and is never restored.
 func (c ClipTx) RestoreHeld(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, removed_at = 0, updated_at = ?
+	return c.affectedOne(ctx, `UPDATE clips SET held = ?, removed_at = 0, updated_at = ?
 		WHERE hash = ? AND (held = ? OR removed_at <> 0) AND reaped_at IS NULL`,
-		true, false, epoch(at), hash, true)
+		true, epoch(at), hash, true)
 }
 
 // RestoreForRetry brings the clip back as present and held whatever state it is in, for a pipeline
 // retry of a rejected clip. Unlike RestoreHeld it does not require the clip to be held or removed.
 // A reaped clip has no file and is never restored.
 func (c ClipTx) RestoreForRetry(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE clips SET removed_at = 0, held = ?, auto_filed = ?, updated_at = ?
+	return c.affectedOne(ctx, `UPDATE clips SET removed_at = 0, held = ?, updated_at = ?
 		WHERE hash = ? AND reaped_at IS NULL`,
-		true, false, epoch(at), hash)
+		true, epoch(at), hash)
 }
 
 // ClipPublication is what terminal readiness checks about a clip before publishing it.
@@ -241,16 +241,16 @@ func (c ClipTx) LockPublication(ctx context.Context, hash string) (ClipPublicati
 // PublishReady sets the placement of a held, present, non-composite clip and releases it into the
 // playable catalog.
 func (c ClipTx) PublishReady(ctx context.Context, hash, placement string, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE clips SET placement = ?, held = ?, auto_filed = ?, updated_at = ?
+	return c.affectedOne(ctx, `UPDATE clips SET placement = ?, held = ?, updated_at = ?
 		WHERE hash = ? AND held = ? AND removed_at = 0 AND is_composite = ?`,
-		placement, false, false, epoch(at), hash, true, false)
+		placement, false, epoch(at), hash, true, false)
 }
 
 // ReleaseSplitParent makes a held reel a released composite once its cuts are confirmed. It
 // reports false for a clip that is not held.
 func (c ClipTx) ReleaseSplitParent(ctx context.Context, hash string, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE clips SET is_composite = ?, held = ?, auto_filed = ?, updated_at = ? WHERE hash = ? AND held = ?`,
-		true, false, false, epoch(at), hash, true)
+	return c.affectedOne(ctx, `UPDATE clips SET is_composite = ?, held = ?, updated_at = ? WHERE hash = ? AND held = ?`,
+		true, false, epoch(at), hash, true)
 }
 
 // ReplaceSplitChildren is ReplaceSplitChildren inside the caller's transaction.
