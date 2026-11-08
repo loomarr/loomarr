@@ -2,7 +2,7 @@ import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenan
 import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
 import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
-import { formatRelative, humanizeSettingKey } from "@loomarr/core/format";
+import { formatAgo, humanizeSettingKey } from "@loomarr/core/format";
 import { Badge, Field, FieldHint, Surface, Toggle } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { Lock, LockOpen, TriangleAlert } from "lucide-react";
@@ -493,8 +493,12 @@ const SettingField = ({
             inlineSwitch && "col-span-2",
           )}
         >
-          {entry.updatedBy ? `Changed by ${entry.updatedBy} · ` : "Changed "}
-          {formatRelative(entry.updatedAt)}
+          {/* The server sends a name (never a raw id) and marks the caller's own change (#2736). */}
+          {entry.updatedByYou
+            ? `Changed by you, ${formatAgo(entry.updatedAt)}`
+            : entry.updatedBy
+              ? `Changed by ${entry.updatedBy}, ${formatAgo(entry.updatedAt)}`
+              : `Changed ${formatAgo(entry.updatedAt)}`}
         </p>
       )}
 

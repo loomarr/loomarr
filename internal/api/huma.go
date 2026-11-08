@@ -398,7 +398,8 @@ type SettingEntry struct {
 	RequiredFor  string              `json:"requiredFor,omitempty"`
 	Doc          string              `json:"doc" doc:"One plain sentence, shown under the field."`
 	Detail       string              `json:"detail,omitempty" doc:"The rest of the help: trade-offs, units and edge cases, shown behind the field's info icon. Absent when the sentence says it all."`
-	UpdatedBy    string              `json:"updatedBy,omitempty"`
+	UpdatedBy    string              `json:"updatedBy,omitempty" doc:"Display name of the person who last changed it. Empty when that person is unknown; never a raw user id (#2736)."`
+	UpdatedByYou bool                `json:"updatedByYou,omitempty" doc:"The signed-in caller made the last change, so the UI can say 'you'."`
 	UpdatedAt    string              `json:"updatedAt,omitempty" doc:"RFC3339; empty for env/system writes."`
 }
 

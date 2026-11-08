@@ -11145,7 +11145,11 @@ components:
           description: RFC3339; empty for env/system writes.
           type: string
         updatedBy:
+          description: Display name of the person who last changed it. Empty when that person is unknown; never a raw user id (#2736).
           type: string
+        updatedByYou:
+          description: The signed-in caller made the last change, so the UI can say 'you'.
+          type: boolean
         value:
           description: Resolved value (non-secret). Empty for secrets.
           type: string

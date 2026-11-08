@@ -71,9 +71,36 @@ func (s *Server) settingsList(ctx context.Context, _ *struct{}) (*settingsListOu
 		return nil, errNotImplemented("Settings unavailable", "The settings service isn't running, so this can't be changed right now.")
 	}
 	out := &settingsListOutput{}
-	out.Body.Settings = s.settings.List(ctx)
+	entries, err := s.withAuditNames(ctx, s.settings.List(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out.Body.Settings = entries
 	out.Body.Features = s.settings.Features(ctx)
 	return out, nil
+}
+
+// withAuditNames turns each entry's stored author (a user id) into that person's name, and marks
+// the caller's own changes, so the audit line reads "Changed by Sam" or "you" and never shows a
+// 32-character id (#2736). An author no account matches is left unnamed rather than shown raw.
+func (s *Server) withAuditNames(ctx context.Context, entries []SettingEntry) ([]SettingEntry, error) {
+	if s.store == nil {
+		for i := range entries {
+			entries[i].UpdatedBy = ""
+		}
+		return entries, nil
+	}
+	names, err := s.personNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	caller := auditActor(ctx)
+	for i := range entries {
+		id := entries[i].UpdatedBy
+		entries[i].UpdatedByYou = id != "" && id == caller
+		entries[i].UpdatedBy = names[id]
+	}
+	return entries, nil
 }
 
 type settingsPatchInput struct {
