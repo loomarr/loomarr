@@ -25,11 +25,18 @@ const (
 	enrichRetry = 6 * time.Hour
 )
 
+// catalogVersions is the shape of record each kind is read in now. Raising a kind's version when
+// the scanner starts reading something a cached record lacks fetches every record of that kind
+// again, ahead of the refresh, as if new; a kind not listed is version 0.
+//
+//	series 1: a series counts its other episode orderings (decision 53).
+var catalogVersions = map[string]int{string(mp.KindSeries): 1}
+
 // EnrichStore is the cache the Enricher fills.
 type EnrichStore interface {
 	DueLibraryCatalog(ctx context.Context, due store.LibraryCatalogDue) ([]store.LibraryCatalogKey, error)
 	CountLibraryCatalog(ctx context.Context) (int, error)
-	SaveLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, record string, at time.Time) (bool, error)
+	SaveLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, record string, version int, at time.Time) (bool, error)
 	FailLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, retryAt time.Time) error
 	RewriteLibraryCatalogFiles(ctx context.Context, key store.LibraryCatalogKey) ([]store.LibraryFilePath, error)
 }
@@ -82,7 +89,7 @@ func (e *Enricher) Tick(ctx context.Context) error {
 	}
 	due, err := e.Store.DueLibraryCatalog(ctx, store.LibraryCatalogDue{
 		Now: now, StaleBefore: now.Add(-orDuration(e.Refresh, EnrichRefresh)),
-		New: enrichNewBatch, Stale: e.staleShare(total),
+		New: enrichNewBatch, Stale: e.staleShare(total), Versions: catalogVersions,
 	})
 	if err != nil {
 		return err
@@ -174,7 +181,7 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 		e.log().Debug("library enrich: fetch failed", "catalog", key.String(), "err", fetchErr)
 		return fetchFailed, nil
 	}
-	changed, err := e.Store.SaveLibraryCatalog(ctx, key, record, now)
+	changed, err := e.Store.SaveLibraryCatalog(ctx, key, record, catalogVersions[key.Kind], now)
 	if err != nil || !changed {
 		return fetchDone, err
 	}

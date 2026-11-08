@@ -27,7 +27,7 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	if err := st.WantLibraryCatalog(ctx, []LibraryCatalogKey{movie, show, old}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SaveLibraryCatalog(ctx, old, `{"Kind":"movie"}`, at.Add(-100*24*time.Hour)); err != nil {
+	if _, err := st.SaveLibraryCatalog(ctx, old, `{"Kind":"movie"}`, 0, at.Add(-100*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	// Wanting a cached key again keeps its record.
@@ -55,11 +55,29 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("count = %d, %v", n, err)
 	}
 
-	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, at); err != nil || !changed {
+	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, at); err != nil || !changed {
 		t.Fatalf("first save changed = %v, %v", changed, err)
 	}
-	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, at.Add(time.Minute)); err != nil || changed {
+	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, at.Add(time.Minute)); err != nil || changed {
 		t.Fatalf("same record changed = %v, %v", changed, err)
+	}
+
+	// A movie read in a newer shape: the fresh movie record saved in the old one is due with the
+	// new titles, ahead of the stale one, and listed once; saved in the new shape, it is not due.
+	moviesV1 := LibraryCatalogDue{Now: at, StaleBefore: at.Add(-90 * 24 * time.Hour), New: 10, Stale: 10,
+		Versions: map[string]int{"movie": 1}}
+	due, err = st.DueLibraryCatalog(ctx, moviesV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 2 || due[0] != movie || due[1] != old {
+		t.Fatalf("due = %+v, want the outdated movie, then the old one once", due)
+	}
+	if _, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 1, at.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || len(due) != 1 || due[0] != old {
+		t.Fatalf("due = %+v, %v; want only the old movie once the fresh one is read in the new shape", due, err)
 	}
 
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{

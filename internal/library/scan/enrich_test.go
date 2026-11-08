@@ -319,6 +319,34 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 	}
 }
 
+// A series record cached before series records counted their orderings is fetched again on the
+// next tick, fresh as it is; a movie record of the same age is left until its refresh.
+func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	series := store.LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000701"}
+	movie := store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000201"}
+	if err := h.st.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{series, movie}); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []store.LibraryCatalogKey{series, movie} {
+		if _, err := h.st.SaveLibraryCatalog(ctx, k, `{"Kind":"`+k.Kind+`"}`, 0, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{"90000701": {Kind: mp.KindSeries}}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(string, ...string) {}}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(catalog.fetched, []string{"series:90000701"}) {
+		t.Fatalf("fetched %v, want only the series record, read in its new shape", catalog.fetched)
+	}
+	if err := e.Tick(ctx); err != nil || len(catalog.fetched) != 1 {
+		t.Fatalf("second tick fetched %v, %v; want nothing once it is current", catalog.fetched, err)
+	}
+}
+
 // countingCatalog counts the cached records the walk reads, by key.
 type countingCatalog struct {
 	CatalogStore
