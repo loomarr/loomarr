@@ -682,6 +682,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 								"STAGING_HOURS":       "${{ inputs.hours || '4' }}",
 								"STAGING_DATABASE":    "${{ inputs.database || 'sqlite' }}",
 								"STAGING_PUBLIC_URL":  "${{ inputs.public_url }}",
+								"STAGING_GPU":         "${{ inputs.gpu || 'none' }}",
 								"VERSION":             "${{ inputs.version }}",
 								"STAGING_COMMIT":      "${{ inputs.action == 'up' && inputs.version == '' && github.sha || '' }}",
 								"STAGING_IMAGE":       "${{ inputs.action == 'up' && inputs.version == '' && format('ghcr.io/{0}-staging:{1}', github.repository, github.sha) || '' }}",

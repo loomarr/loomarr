@@ -49,6 +49,11 @@ often `renderD129` or higher. A single-GPU host can skip this section.
 
 ## NVIDIA
 
+Loomarr needs **NVIDIA driver 610 or newer** on the host. Check with `nvidia-smi`. An older driver
+still runs Loomarr, but without NVENC, so playout encodes on the CPU. The 580 branch that many
+distributions and cloud images ship is too old. NVIDIA's repository names newer branches without a
+number, as `nvidia-open` or `nvidia-headless-open`.
+
 Install the NVIDIA container toolkit on the host, then add the NVIDIA overlay:
 
 ```bash
@@ -69,7 +74,8 @@ docker logs loomarr 2>&1 | grep -i 'encoder\|capability'
 ```
 
 If the encoder you expect is missing, check the device or overlay above; on a multi-GPU host, the
-render node. `scripts/playout-diag.sh` gives a fuller read-only snapshot: ffmpeg processes per
+render node. On NVIDIA, a message naming "the minimum required Nvidia driver" means the host
+driver is too old. `scripts/playout-diag.sh` gives a fuller read-only snapshot: ffmpeg processes per
 channel, GPU state, and whether each airing is direct-playing or transcoding.
 
 ## Choose an HDR tone curve
