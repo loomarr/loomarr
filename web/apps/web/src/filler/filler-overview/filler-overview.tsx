@@ -1,10 +1,12 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO";
+import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
 import { Action, Badge, type BadgeTone, Card } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import type { FillerSettingsSection } from "../filler-settings-section";
@@ -133,6 +135,44 @@ const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: BadgeTo
   bumper_card: { label: "Bumpers only", tone: "onair" },
 };
 
+// The numbers a coverage card shows. Channels whose numbers all match share one pool.
+const coverageKey = (channel: PoolChannelDTO) =>
+  [channel.level, channel.durationMs, channel.total, channel.categories, channel.brands].join("|");
+
+const sharedPool = (channels: PoolChannelDTO[]): PoolChannelDTO | undefined => {
+  const [first] = channels;
+  return first &&
+    channels.length > 1 &&
+    channels.every((channel) => coverageKey(channel) === coverageKey(first))
+    ? first
+    : undefined;
+};
+
+const CoverageCard = ({ coverage, title }: { coverage: PoolChannelDTO; title: ReactNode }) => {
+  const badge = COVERAGE_BADGE[coverage.level];
+  return (
+    <Card padding={16}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          {title}
+          <p className="text-muted-foreground mt-1 text-sm">
+            {coverage.level === "bumper_card"
+              ? "Only a bumper card"
+              : `${formatDuration(coverage.durationMs)} playable · ${pluralize(coverage.total, "clip")}`}
+          </p>
+        </div>
+        <Badge shape="square" tone={badge.tone} flexShrink={0} className="whitespace-nowrap">
+          {badge.label}
+        </Badge>
+      </div>
+      <p className="text-muted-foreground mt-3 text-xs">
+        {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
+        {pluralize(coverage.brands, "brand")}
+      </p>
+    </Card>
+  );
+};
+
 const FillerOverview = () => {
   const { isAdmin } = useAuth();
   const readinessQuery = fillerApi.useFillerReadiness();
@@ -151,6 +191,7 @@ const FillerOverview = () => {
   }
 
   const action = readinessAction(readiness);
+  const shared = sharedPool(readiness.pool.channels);
 
   return (
     <div className="flex flex-col gap-6">
@@ -218,37 +259,31 @@ const FillerOverview = () => {
         </div>
         {readiness?.pool.channels.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
-            {readiness.pool.channels.map((channel) => {
-              const badge = COVERAGE_BADGE[channel.level];
-              return (
-                <Card key={channel.channelId} padding={16}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <Link
-                        className="font-medium hover:underline"
-                        to="/channels/$id/filler"
-                        params={{ id: channel.channelId }}
-                        search={{ from: "filler" }}
-                      >
-                        {channel.number} · {channel.name}
-                      </Link>
-                      <p className="text-muted-foreground mt-1 text-sm">
-                        {channel.level === "bumper_card"
-                          ? "Only a bumper card"
-                          : `${formatDuration(channel.durationMs)} playable · ${pluralize(channel.total, "clip")}`}
-                      </p>
-                    </div>
-                    <Badge shape="square" tone={badge.tone} flexShrink={0} className="whitespace-nowrap">
-                      {badge.label}
-                    </Badge>
-                  </div>
-                  <p className="text-muted-foreground mt-3 text-xs">
-                    {channel.categories} {channel.categories === 1 ? "category" : "categories"} ·{" "}
-                    {pluralize(channel.brands, "brand")}
-                  </p>
-                </Card>
-              );
-            })}
+            {shared ? (
+              // Every channel draws the same pool, so one card says it once instead of repeating
+              // identical numbers per channel (#2733).
+              <CoverageCard
+                coverage={shared}
+                title={<p className="font-medium">All {readiness.pool.channels.length} channels</p>}
+              />
+            ) : (
+              readiness.pool.channels.map((channel) => (
+                <CoverageCard
+                  key={channel.channelId}
+                  coverage={channel}
+                  title={
+                    <Link
+                      className="font-medium hover:underline"
+                      to="/channels/$id/filler"
+                      params={{ id: channel.channelId }}
+                      search={{ from: "filler" }}
+                    >
+                      {channel.number} · {channel.name}
+                    </Link>
+                  }
+                />
+              ))
+            )}
           </div>
         ) : (
           <Card className="text-muted-foreground text-sm" padding={16}>

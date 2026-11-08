@@ -97,12 +97,14 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   }
 
   // The web mock's watch line: "3 of 4 sources on · 1,284 clips · 3 need you · checked 12m ago".
-  // `held` is the clips waiting for review in Incoming, which is what "need you" counts.
+  // "getting ready" and "need you" are Incoming's own totals (#2733), so this line, Manage and
+  // Incoming always say the same numbers.
   const statusLine = watch
     ? [
         `${watch.sourcesOn} of ${watch.sourcesTotal} sources on`,
         pluralize(watch.clips, "clip"),
-        ...(watch.held > 0 ? [`${watch.held} need you`] : []),
+        ...(watch.preparing > 0 ? [`${watch.preparing} getting ready`] : []),
+        ...(watch.needsYou > 0 ? [`${watch.needsYou} need you`] : []),
         ...(watch.lastScanAt ? [`checked ${formatRelative(watch.lastScanAt)}`] : []),
       ].join(" · ")
     : "";

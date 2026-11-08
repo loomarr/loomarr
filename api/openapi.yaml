@@ -5032,13 +5032,17 @@ components:
             - attention
             - unconfigured
           type: string
-        held:
-          description: Downloaded clips awaiting review in Incoming; NOT included in clips
-          format: int64
-          type: integer
         lastScanAt:
           description: RFC3339; absent if nothing has ever been fetched
           type: string
+        needsYou:
+          description: Choices Incoming lists as needing help
+          format: int64
+          type: integer
+        preparing:
+          description: Clips Incoming lists as getting ready; NOT included in clips
+          format: int64
+          type: integer
         sourcesOn:
           format: int64
           type: integer
@@ -5054,7 +5058,8 @@ components:
         - sourcesReady
         - sourcesTotal
         - clips
-        - held
+        - preparing
+        - needsYou
       type: object
     GenreFilter:
       additionalProperties: false

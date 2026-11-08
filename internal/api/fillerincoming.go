@@ -154,19 +154,21 @@ func (s *Server) fillerIncoming(ctx context.Context, in *fillerIncomingInput) (*
 	return out, nil
 }
 
+// incomingPreparingFilter is the one predicate for "getting ready": Incoming's Preparing group and
+// the watch header's preparing count both read it (#2733).
+func incomingPreparingFilter() filler.PipelineFilter {
+	return filler.PipelineFilter{Dispositions: []filler.Disposition{filler.DispositionRunning}}
+}
+
 func (s *Server) incomingPipelineGroup(ctx context.Context, at time.Time, readyWindow time.Duration, cursorValue string, ready bool, estimates map[string]filler.ReadyEstimate) (IncomingClipGroupDTO, error) {
 	beforeAt, beforeID, err := decodeIncomingCursor(cursorValue)
 	if err != nil {
 		return IncomingClipGroupDTO{}, err
 	}
-	disposition := filler.DispositionRunning
-	filter := filler.PipelineFilter{
-		Dispositions:    []filler.Disposition{disposition},
-		BeforeUpdatedAt: beforeAt, BeforeClipHash: beforeID, Limit: incomingPageLimit + 1,
-	}
+	filter := incomingPreparingFilter()
+	filter.BeforeUpdatedAt, filter.BeforeClipHash, filter.Limit = beforeAt, beforeID, incomingPageLimit+1
 	if ready {
-		disposition = filler.DispositionReady
-		filter.Dispositions = []filler.Disposition{disposition}
+		filter.Dispositions = []filler.Disposition{filler.DispositionReady}
 		filter.UpdatedAtOrAfter = at.Add(-readyWindow)
 	}
 	rows, err := s.store.ListClipPipelines(ctx, filter)

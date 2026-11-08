@@ -21,7 +21,7 @@ type HubRow = {
 const FillerManage = () => {
   const { isAdmin } = useAuth();
   const watch = unwrap(fillerApi.useFillerWatch().data, (body) => body);
-  const readiness = unwrap(fillerApi.useFillerReadiness().data, (body) => body);
+  const taxonomy = unwrap(fillerApi.useListTaxonomy().data, (body) => body);
   // The same page of the report the Quality queue opens on, so the two counts agree.
   const quality = unwrap(
     fillerApi.useFillerDefectReport(
@@ -31,11 +31,12 @@ const FillerManage = () => {
     (body) => body,
   );
 
-  // "Need a choice" is the watch line's `held` (clips waiting for review in Incoming), so the hub
-  // and the header's "N need you" are always the same number.
-  const needsChoice = watch?.held ?? 0;
-  const preparing = readiness?.pipeline.inProgress ?? 0;
-  const untagged = readiness?.pool.untagged ?? 0;
+  // Each row repeats the number on the page it opens (#2733). "Need a choice" and "preparing" are
+  // Incoming's own totals, which the header reads too; "not tagged" is the Tags page's count of
+  // unclassified clips.
+  const needsChoice = watch?.needsYou ?? 0;
+  const preparing = watch?.preparing ?? 0;
+  const untagged = taxonomy?.unclassifiedClips ?? 0;
 
   const rows: HubRow[] = [
     ...(isAdmin

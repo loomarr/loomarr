@@ -827,6 +827,7 @@ type fillerReadinessStore interface {
 	PipelineOverview(context.Context, time.Time) (filler.PipelineOverview, error)
 	ListAcquisitionRuns(context.Context, int, time.Time) ([]filler.AcquisitionRun, error)
 	AcquisitionRepairSummary(context.Context) (filler.AcquisitionRepairSummary, error)
+	CountReadySplitProposals(context.Context) (int, error)
 }
 
 // Readiness composes existing authoritative projections and delegates prioritisation to the
@@ -876,8 +877,14 @@ func (a fillerServiceAdapter) Readiness(ctx context.Context) (filler.Readiness, 
 			storage.Automatic = a.storageAutomatic()
 		}
 	}
+	// Incoming's needs-help total, from the same store count Incoming and the watch header use.
+	needsYou, err := a.readiness.CountReadySplitProposals(ctx)
+	if err != nil {
+		return filler.Readiness{}, err
+	}
 	return filler.ProjectReadiness(filler.ReadinessInput{
 		Fetch: fetch, Storage: storage, Pipeline: pipeline, Pool: pool, Runs: runs, Repairs: repairs,
+		NeedsYou: needsYou,
 	}), nil
 }
 

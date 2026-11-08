@@ -1026,7 +1026,8 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
           sourcesReady: 2,
           sourcesTotal: 2,
           clips: 0,
-          held: 0,
+          preparing: 0,
+          needsYou: 0,
         });
       }
       // Manage › Quality reads the defect floor's report (#2034); the `{}` fallback would throw on `verdicts`.
