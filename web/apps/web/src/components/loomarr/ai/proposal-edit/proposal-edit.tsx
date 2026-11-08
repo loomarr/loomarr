@@ -4,11 +4,10 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
-import { Badge } from "@loomarr/design-system";
+import { Badge, Toggle } from "@loomarr/design-system";
 import { LoaderCircle, Plus, RotateCcw } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -90,12 +89,12 @@ const PickRow = ({
       )}
     >
       {editable && onToggle && pick.key !== "" && (
-        <Checkbox
-          className="mt-0.5 shrink-0"
+        <Toggle
+          label={`Include ${pick.item.name}`}
+          labelHidden
           checked={included}
           disabled={disabled}
-          aria-label={`Include ${pick.item.name}`}
-          onChange={onToggle}
+          onCheckedChange={onToggle}
         />
       )}
       <div className="min-w-0 flex-1">

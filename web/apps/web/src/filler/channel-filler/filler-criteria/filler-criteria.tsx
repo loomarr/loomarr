@@ -4,11 +4,11 @@ import { ClipDTOKind } from "@loomarr/api/models/clipDTOKind";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
+import { Toggle } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -670,19 +670,16 @@ const FillerCriteria = ({
         </FieldLabel>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {KINDS.map((k) => (
-            <label
+            <Toggle
               key={k}
-              htmlFor={`filler-kind-${k}`}
-              className="flex cursor-pointer items-center gap-2 text-sm"
-            >
-              <Checkbox
-                id={`filler-kind-${k}`}
-                checked={kinds.includes(k)}
-                disabled={disabled || kindsUnknown}
-                onChange={() => onChange({ ...selection, kinds: toggleKind(kinds, k, defaultKinds ?? []) })}
-              />
-              {KIND_LABEL[k]}
-            </label>
+              id={`filler-kind-${k}`}
+              label={KIND_LABEL[k]}
+              checked={kinds.includes(k)}
+              disabled={disabled || kindsUnknown}
+              onCheckedChange={() =>
+                onChange({ ...selection, kinds: toggleKind(kinds, k, defaultKinds ?? []) })
+              }
+            />
           ))}
         </div>
         {kindsUnknown && (

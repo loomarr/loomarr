@@ -21,10 +21,12 @@ const POPULATED: ChannelPolicy = {
   applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
 };
 
+const optIn = () => screen.getByRole("checkbox", { name: OPT_IN });
+
 describe("ChannelAutoCurate", () => {
   it("is off when the policy carries no autoCurate object", () => {
     render(<ChannelAutoCurate policy={POPULATED} onChange={vi.fn()} />);
-    expect(screen.getByLabelText(OPT_IN)).not.toBeChecked();
+    expect(optIn()).not.toBeChecked();
   });
 
   // THE structural case (programming-design.md §8.2): the opt-in IS the object's presence, so a
@@ -32,14 +34,14 @@ describe("ChannelAutoCurate", () => {
   // policy field editor could ever reach it: there is no boolean to bind to.
   it("is on for a zero-value autoCurate object", () => {
     render(<ChannelAutoCurate policy={{ ...POPULATED, autoCurate: {} }} onChange={vi.fn()} />);
-    expect(screen.getByLabelText(OPT_IN)).toBeChecked();
+    expect(optIn()).toBeChecked();
   });
 
   it("opting in CONSTRUCTS the object, preserving every other section", async () => {
     const onChange = vi.fn();
     render(<ChannelAutoCurate policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.click(screen.getByLabelText(OPT_IN));
+    await userEvent.click(optIn());
 
     expect(onChange).toHaveBeenCalledWith({ ...POPULATED, autoCurate: {} });
     expect(onChange.mock.lastCall?.[0].applied).toBe(POPULATED.applied);
@@ -57,7 +59,7 @@ describe("ChannelAutoCurate", () => {
       <ChannelAutoCurate policy={{ ...POPULATED, autoCurate: { maxTitles: 40 } }} onChange={onChange} />,
     );
 
-    await userEvent.click(screen.getByLabelText(OPT_IN));
+    await userEvent.click(optIn());
 
     const next = onChange.mock.lastCall?.[0];
     expect(next).not.toHaveProperty("autoCurate");
@@ -142,7 +144,7 @@ describe("ChannelAutoCurate", () => {
   it("is disabled, and explains why, for a hand-made channel", () => {
     render(<ChannelAutoCurate policy={POPULATED} onChange={vi.fn()} intentBacked={false} />);
 
-    expect(screen.getByLabelText(OPT_IN)).toBeDisabled();
+    expect(optIn()).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText(/made by hand/)).toBeInTheDocument();
   });
 

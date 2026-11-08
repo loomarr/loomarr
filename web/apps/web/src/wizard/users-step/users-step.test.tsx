@@ -1,11 +1,12 @@
 import { getImportCandidatesMockHandler, getImportUsersMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { UsersStep } from "./users-step";
 
 const CANDIDATES = [
@@ -51,10 +52,10 @@ describe("UsersStep", () => {
     stubUsers();
     render(<UsersStep />, { wrapper });
 
-    expect(await screen.findByLabelText("Ada")).toBeEnabled();
+    expect(await screen.findByRole("checkbox", { name: "Ada" })).not.toHaveAttribute("aria-disabled");
     // Imported people stay visible but locked — "where did they go?" is worse.
-    const bo = screen.getByLabelText("Bo");
-    expect(bo).toBeDisabled();
+    const bo = screen.getByRole("checkbox", { name: "Bo" });
+    expect(bo).toHaveAttribute("aria-disabled", "true");
     expect(bo).toBeChecked();
   });
 
@@ -62,17 +63,17 @@ describe("UsersStep", () => {
     const { imports } = stubUsers();
     render(<UsersStep />, { wrapper });
 
-    await userEvent.click(await screen.findByLabelText("Ada"));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Ada" }));
     await userEvent.click(screen.getByRole("button", { name: /import/i }));
 
-    await screen.findByLabelText("Ada");
+    await screen.findByRole("checkbox", { name: "Ada" });
     expect(imports).toEqual([{ ids: ["u-ada"] }]);
   });
 
   it("cannot import nobody", async () => {
     stubUsers();
     render(<UsersStep />, { wrapper });
-    await screen.findByLabelText("Ada");
+    await screen.findByRole("checkbox", { name: "Ada" });
     expect(screen.getByRole("button", { name: /import/i })).toBeDisabled();
   });
 

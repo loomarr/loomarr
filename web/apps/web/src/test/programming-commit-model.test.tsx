@@ -158,7 +158,7 @@ describe("the Programming surface's commit model", () => {
     await user.click(await screen.findByRole("radio", { name: "Holiday-only channel" }));
     await waitFor(() => expect(patches.at(-1)?.policy?.seasonal).toBeDefined());
 
-    await user.click(screen.getByLabelText("Add new titles without asking"));
+    await user.click(screen.getByRole("checkbox", { name: "Add new titles without asking" }));
     await waitFor(() => expect(patches.at(-1)?.policy?.autoCurate).toBeDefined());
 
     expect(screen.queryByRole("button", { name: "Apply rules" })).not.toBeInTheDocument();

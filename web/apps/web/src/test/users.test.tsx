@@ -289,7 +289,7 @@ describe("Users page", () => {
     await userEvent.tab();
     await waitFor(() => expect(patches).toHaveLength(2));
 
-    await userEvent.click(within(detail).getByLabelText("Auto-approve requests"));
+    await userEvent.click(within(detail).getByRole("checkbox", { name: "Auto-approve requests" }));
     await waitFor(() => expect(patches).toHaveLength(3));
     await userEvent.click(within(detail).getByRole("button", { name: "Disable account" }));
 
@@ -350,7 +350,7 @@ describe("Users page", () => {
     // Already-imported accounts stay visible, checked and locked — hiding them reads as
     // "missing", and re-offering them implies a no-op does something.
     expect(screen.getByText(/already imported/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/hale/i)).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /hale/i })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("imports selected ids without asking the caller to reinterpret server roles", async () => {
@@ -360,7 +360,7 @@ describe("Users page", () => {
     renderAt("/people");
 
     await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
-    await userEvent.click(await screen.findByLabelText(/^Finch/));
+    await userEvent.click(await screen.findByRole("checkbox", { name: /^Finch/ }));
     expect(screen.queryByLabelText(/grant admin to server admins/i)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /import 1 account/i }));
 

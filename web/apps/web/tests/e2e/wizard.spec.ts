@@ -78,7 +78,7 @@ test.describe("operator first-run wizard", () => {
 
     // --- step 4: import users -----------------------------------------------------
     await expect(page.getByRole("heading", { name: /import media-server users/i })).toBeVisible();
-    await page.getByLabel("Ada").check();
+    await page.getByRole("checkbox", { name: "Ada" }).check();
     await shot(page, "step-5-users", /import media-server users/i);
     await page.getByRole("button", { name: /^import/i }).click();
     // Only the picked account is allowlisted — signing in is not self-provisioning (§11).

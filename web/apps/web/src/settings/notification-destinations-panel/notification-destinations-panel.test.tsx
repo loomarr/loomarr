@@ -160,7 +160,7 @@ describe("NotificationDestinationsPanel", () => {
       screen.getByLabelText("Slack webhook URL *"),
       "https://hooks.slack.com/services/secret",
     );
-    await userEvent.click(screen.getByLabelText("Channel Degraded"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Channel Degraded" }));
     await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
 
     await waitFor(() =>
@@ -194,7 +194,7 @@ describe("NotificationDestinationsPanel", () => {
     const caInput = screen.getByLabelText("TLS CA certificate");
     expect(caInput.tagName).toBe("TEXTAREA");
     await userEvent.type(caInput, caCertificate);
-    await userEvent.click(screen.getByLabelText("Channel Degraded"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Channel Degraded" }));
     await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
 
     await waitFor(() =>
@@ -229,7 +229,7 @@ describe("NotificationDestinationsPanel", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
     await userEvent.clear(screen.getByLabelText("Label *"));
     await userEvent.type(screen.getByLabelText("Label *"), "On-call Slack");
-    await userEvent.click(screen.getByLabelText("Acquisition Gave Up"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Acquisition Gave Up" }));
     await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
 
     await waitFor(() => expect(update?.label).toBe("On-call Slack"));
@@ -258,9 +258,7 @@ describe("NotificationDestinationsPanel", () => {
     expect(labelInputs).toHaveLength(2);
     expect(new Set(labelInputs.map((input) => input.id)).size).toBe(2);
 
-    const eventInputs = screen.getAllByLabelText("Channel Degraded");
-    expect(eventInputs).toHaveLength(2);
-    expect(new Set(eventInputs.map((input) => input.id)).size).toBe(2);
+    expect(screen.getAllByRole("checkbox", { name: "Channel Degraded" })).toHaveLength(2);
   });
 
   it("validates provider fields on submit and renders provider-safe API problem details", async () => {
@@ -292,7 +290,7 @@ describe("NotificationDestinationsPanel", () => {
       screen.getByLabelText("Slack webhook URL *"),
       "https://hooks.slack.com/services/secret",
     );
-    await userEvent.click(screen.getByLabelText("Channel Degraded"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Channel Degraded" }));
     await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Provider settings rejected");
@@ -329,7 +327,7 @@ describe("NotificationDestinationsPanel", () => {
     await userEvent.selectOptions(screen.getByLabelText("Provider"), "web_push");
     expect(requestPermission).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("Push endpoint *")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByLabelText("Proposal Approved"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Proposal Approved" }));
     await userEvent.click(screen.getByRole("button", { name: "Enable this browser" }));
 
     await waitFor(() => expect(created).toBeDefined());

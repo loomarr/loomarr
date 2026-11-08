@@ -3,14 +3,13 @@ import type { NotificationProviderDTO } from "@loomarr/api/models/notificationPr
 import type { NotificationProviderFieldDTO } from "@loomarr/api/models/notificationProviderFieldDTO";
 import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificationProviderTypeDTO";
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
-import { Badge, Card } from "@loomarr/design-system";
+import { Badge, Card, Toggle } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, Plus, X } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -48,14 +47,12 @@ const FieldInput = ({
   const errorId = `${inputId}-error`;
   if (field.kind === "toggle") {
     return (
-      <label className="flex items-center gap-2 text-sm" htmlFor={inputId}>
-        <Checkbox
-          id={inputId}
-          checked={value === "true"}
-          onChange={(event) => onChange(event.target.checked ? "true" : "false")}
-        />
-        {field.label}
-      </label>
+      <Toggle
+        id={inputId}
+        label={field.label}
+        checked={value === "true"}
+        onCheckedChange={(checked) => onChange(String(checked))}
+      />
     );
   }
   return (
@@ -281,20 +278,19 @@ const ProviderForm = ({
               {definition.events.map((event) => {
                 const inputId = `${idPrefix}-provider-event-${event}`;
                 return (
-                  <label className="flex items-center gap-2 text-sm" key={event} htmlFor={inputId}>
-                    <Checkbox
-                      id={inputId}
-                      checked={field.state.value.includes(event)}
-                      onChange={(input) =>
-                        field.handleChange(
-                          input.target.checked
-                            ? [...field.state.value, event]
-                            : field.state.value.filter((item) => item !== event),
-                        )
-                      }
-                    />
-                    {words(event)}
-                  </label>
+                  <Toggle
+                    key={event}
+                    id={inputId}
+                    label={words(event)}
+                    checked={field.state.value.includes(event)}
+                    onCheckedChange={(checked) =>
+                      field.handleChange(
+                        checked
+                          ? [...field.state.value, event]
+                          : field.state.value.filter((item) => item !== event),
+                      )
+                    }
+                  />
                 );
               })}
               {field.state.meta.errors[0] ? (
@@ -310,14 +306,12 @@ const ProviderForm = ({
           {(field) => {
             const inputId = `${idPrefix}-provider-enabled`;
             return (
-              <label className="flex items-center gap-2 text-sm" htmlFor={inputId}>
-                <Checkbox
-                  id={inputId}
-                  checked={field.state.value}
-                  onChange={(event) => field.handleChange(event.target.checked)}
-                />
-                Enable provider
-              </label>
+              <Toggle
+                id={inputId}
+                label="Enable provider"
+                checked={field.state.value}
+                onCheckedChange={field.handleChange}
+              />
             );
           }}
         </form.Field>
@@ -488,20 +482,19 @@ const WebPushForm = ({
               {definition.events.map((event) => {
                 const inputId = `${idPrefix}-provider-event-${event}`;
                 return (
-                  <label className="flex items-center gap-2 text-sm" key={event} htmlFor={inputId}>
-                    <Checkbox
-                      id={inputId}
-                      checked={field.state.value.includes(event)}
-                      onChange={(input) =>
-                        field.handleChange(
-                          input.target.checked
-                            ? [...field.state.value, event]
-                            : field.state.value.filter((item) => item !== event),
-                        )
-                      }
-                    />
-                    {words(event)}
-                  </label>
+                  <Toggle
+                    key={event}
+                    id={inputId}
+                    label={words(event)}
+                    checked={field.state.value.includes(event)}
+                    onCheckedChange={(checked) =>
+                      field.handleChange(
+                        checked
+                          ? [...field.state.value, event]
+                          : field.state.value.filter((item) => item !== event),
+                      )
+                    }
+                  />
                 );
               })}
               {field.state.meta.errors[0] ? (
