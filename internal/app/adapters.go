@@ -198,7 +198,7 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 //
 // The metadata it also returns is simply unused here; the cost is bytes on a call the guide's own
 // metadata pass makes anyway, against ONE round trip replacing one-per-movie.
-func bulkDurations(lib *library.Client) channels.DurationsResolver {
+func bulkDurations(lib itemMetadata) channels.DurationsResolver {
 	return func(ctx context.Context, itemIDs []string) (map[string]int64, error) {
 		meta, err := lib.ItemMetadataByID(ctx, itemIDs)
 		// Partial results ride WITH the error (ItemMetadataByID's contract), so convert whatever

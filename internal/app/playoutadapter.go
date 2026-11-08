@@ -169,6 +169,9 @@ type playoutResolver struct {
 	// item id reads it directly, with no media server. nil, or any other id, resolves through the
 	// media server.
 	libraryFile libraryFileReader
+	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil,
+	// or any other id, asks the media server.
+	itemFacts store.LibraryItemFactsReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
@@ -1038,7 +1041,7 @@ func (r *playoutResolver) attachMetadata(ctx context.Context, bs []playout.Broad
 		return
 	}
 
-	meta, err := r.lib.ItemMetadataByID(ctx, ids)
+	meta, err := itemMetadata{facts: r.itemFacts, lib: r.lib}.ItemMetadataByID(ctx, ids)
 	if err != nil && r.log != nil {
 		// Logged, not returned: the partial map is still applied below. ItemMetadataByID
 		// returns what it gathered alongside the error precisely so a slow page of a large
