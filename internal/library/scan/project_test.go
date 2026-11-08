@@ -10,6 +10,47 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
+// A title's present files are listed in path order with labelled tracks; the copy its arr lists
+// plays over a sharper one, and a missing or other authority's file is left out.
+func TestLibrarySourcesMarksTheCopyThatPlays(t *testing.T) {
+	scan := inventory.AuthorityID(authorityPrefix + "a")
+	managedExt, _ := json.Marshal(originExtension{Managed: true})
+	source := func(key, path string, w, h int, size int64, missing bool, authority inventory.AuthorityID) inventory.Source {
+		o := inventory.SourceOrigin{Key: inventory.OriginKey{Authority: authority, ExternalItemID: key},
+			Locator: inventory.Locator{Path: path},
+			Observation: inventory.Observation[inventory.SourceFacts]{Facts: inventory.SourceFacts{
+				Container: "matroska", SizeBytes: size, DurationMillis: 1000, Streams: []inventory.Stream{
+					{Index: 0, Kind: inventory.StreamVideo, Codec: "hevc", Width: w, Height: h, ColorTransfer: "smpte2084"},
+					{Index: 1, Kind: inventory.StreamAudio, Codec: "eac3", Channels: 6, Language: "eng"},
+				}}}}
+		if missing {
+			o.MissingAt = time.Unix(1, 0)
+		}
+		return inventory.Source{Origins: []inventory.SourceOrigin{o}}
+	}
+	item := inventory.Item{ID: "m1", Kind: kindMovie,
+		Origins: []inventory.ItemOrigin{
+			{Key: inventory.OriginKey{Authority: scan, ExternalItemID: "file:b"}, Observation: inventory.Observation[inventory.ItemFacts]{Extension: managedExt}},
+		},
+		Sources: []inventory.Source{
+			source("file:c", "/m/c.mkv", 3840, 1600, 9, false, scan),
+			source("file:b", "/m/b.mkv", 1920, 800, 5, false, scan),
+			source("file:a", "/m/a.mkv", 3840, 2160, 9, true, scan),
+			source("x", "/emby/x.mkv", 3840, 2160, 9, false, "emby"),
+		}}
+	got := librarySources(item)
+	if len(got) != 2 || got[0].Path != "/m/b.mkv" || got[1].Path != "/m/c.mkv" {
+		t.Fatalf("sources = %+v, want the two present scanned files in path order", got)
+	}
+	if !got[0].Plays || got[1].Plays {
+		t.Errorf("plays = %v, %v; want the arr's copy over the sharper one", got[0].Plays, got[1].Plays)
+	}
+	v, a := got[0].Streams[0], got[0].Streams[1]
+	if v.Resolution != "1080p" || v.HDR != "HDR10" || a.AudioFormat != "Dolby Digital Plus" || a.Language != "en" || a.LanguageName != "English" {
+		t.Errorf("labels = %+v / %+v", v, a)
+	}
+}
+
 // A title is listed from its present scanner origin over a newer missing one, never from another
 // authority's, and not at all by an origin written before it carried how it is listed.
 func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {

@@ -279,7 +279,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `library_genres`, `library_studios` and `library_tags` are rows in the source's order. An
   episode names its series' scan origin, and the store fills `series_id` whichever of the two
   is written second. An episode with no rating takes its show's (`rating_from = 'show'`); its
-  genres and studios are its show's only (decision 42). Each `library_files` row records
+  genres and studios are its show's only (decision 42). `library_sources` has one row per present
+  file, with the copy that plays marked (`plays`, decision 37's rule, shared with the title page).
+  `library_streams` has one row per track, with labels computed once from the raw header values
+  (decision 44): resolution by height or, for a picture wider than 16:9, by width; HDR type from
+  the transfer; audio format; the ISO 639-1 language code and its English name. `library_art` has
+  one row per artwork reference. Each `library_files` row records
   the item it was written as (`item_id`) and an episode's series (`series_id`). A title is listed
   while it has a present, importable file, and is "getting ready" while any of those files'
   headers is unread. A file row from before these columns has no item, so the next pass writes it

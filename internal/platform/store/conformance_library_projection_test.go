@@ -169,3 +169,64 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("ids = %d, %v; want 2", ids, err)
 	}
 }
+
+// A title's files, tracks and artwork are rows of their own, replaced whole on each write.
+func testLibraryFilesAndTracks(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	sqlSt, ok := st.(*sqlStore)
+	if !ok {
+		t.Skip("reads rows directly")
+	}
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	video := LibraryStream{Index: 0, Kind: "video", Codec: "hevc", Width: 3840, Height: 1600,
+		ColorTransfer: "smpte2084", Resolution: "4K", HDR: "HDR10"}
+	audio := LibraryStream{Index: 1, Kind: "audio", Codec: "eac3", Channels: 6, Language: "en",
+		LanguageName: "English", AudioFormat: "Dolby Digital Plus", Default: true}
+	item := LibraryItem{ID: "m1", Kind: "movie", Name: "Film",
+		Sources: []LibrarySource{
+			{Path: "/m/a.mkv", Container: "matroska", SizeBytes: 9, DurationMs: 1000, Plays: true, Streams: []LibraryStream{video, audio}},
+			{Path: "/m/b.mkv", SizeBytes: 5, Streams: []LibraryStream{audio}},
+		},
+		Art: []LibraryArt{{Kind: "poster", Ref: "/m/poster.jpg"}, {Kind: "fanart", Ref: "/m/fanart.jpg"}},
+	}
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+		t.Fatal(err)
+	}
+	count := func(query string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(query), args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := count(`SELECT COUNT(*) FROM library_sources WHERE item_id = 'm1' AND plays = TRUE AND path = '/m/a.mkv'`); n != 1 {
+		t.Fatalf("playing copy rows = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE item_id = 'm1' AND resolution = '4K' AND hdr = 'HDR10'`); n != 1 {
+		t.Fatalf("labelled video rows = %d", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE kind = 'audio' AND language = 'en' AND is_default = TRUE`); n != 2 {
+		t.Fatalf("English audio rows = %d, want one per file", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 2 {
+		t.Fatalf("art rows = %d", n)
+	}
+
+	// Written again with one file: the other file and its tracks go.
+	item.Sources = item.Sources[:1]
+	item.Art = nil
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{item}, at); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_sources WHERE item_id = 'm1'`); n != 1 {
+		t.Fatalf("sources after a rewrite = %d, want 1", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_streams WHERE path = '/m/b.mkv'`); n != 0 {
+		t.Fatalf("a gone file's tracks = %d, want 0", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_art WHERE item_id = 'm1'`); n != 0 {
+		t.Fatalf("art after a rewrite = %d, want 0", n)
+	}
+}
