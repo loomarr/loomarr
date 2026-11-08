@@ -56,6 +56,9 @@ func newFakeTMDB(t *testing.T) *fakeTMDB {
 		serve(w, "provider_movie_changes_page1.json")
 	})
 	mux.HandleFunc("/tv/changes", func(w http.ResponseWriter, _ *http.Request) { serve(w, "provider_tv_changes.json") })
+	mux.HandleFunc("/person/90003001/combined_credits", func(w http.ResponseWriter, _ *http.Request) {
+		serve(w, "provider_person_90003001_combined_credits.json")
+	})
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.requests = append(f.requests, r.Clone(context.Background()))
@@ -360,6 +363,32 @@ func TestFetchEpisode_BridgesByItsOwnTVDBID(t *testing.T) {
 	}
 	if want := []mp.ArtworkRef{{Kind: "thumb", Ref: "https://image.tmdb.org/t/p/original/episode-still-90001301.jpg"}}; !reflect.DeepEqual(rec.Artwork, want) {
 		t.Errorf("artwork = %+v, want the episode's own still", rec.Artwork)
+	}
+}
+
+// A person's filmography is every part they played and every title they directed, newest first
+// (undated last), each once a role; appearing as themselves, other crew jobs and rows that are
+// not movies or series are left out.
+func TestFilmography(t *testing.T) {
+	f := newFakeTMDB(t)
+	got, err := f.provider(func() (string, string) { return "fr", "" }).Filmography(context.Background(), "90003001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q := f.last(t).URL.Query(); q.Get("language") != "fr-US" {
+		t.Errorf("language = %q, want the household's", q.Get("language"))
+	}
+	want := []mp.FilmCredit{
+		{Kind: mp.KindMovie, TMDB: "90000602", Title: "Copper Ledger", Year: 2023, Role: mp.PersonDirector},
+		{Kind: mp.KindSeries, TMDB: "90000701", Title: "Tidewater Station", Year: 2021, Role: mp.PersonActor, Character: "Keeper"},
+		{Kind: mp.KindMovie, TMDB: "90000601", Title: "The Lantern Archive", Year: 2019, Role: mp.PersonActor, Character: "Night Clerk"},
+		{Kind: mp.KindMovie, TMDB: "90000603", Title: "Unreleased Lamp", Role: mp.PersonActor},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filmography =\n%+v\nwant\n%+v", got, want)
+	}
+	if _, err := f.provider(nil).Filmography(context.Background(), "abc"); !errors.Is(err, mp.ErrUnsupported) {
+		t.Errorf("a person id that is not a number: err = %v, want ErrUnsupported", err)
 	}
 }
 

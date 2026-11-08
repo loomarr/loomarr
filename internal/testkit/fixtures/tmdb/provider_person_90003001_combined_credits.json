@@ -1,0 +1,15 @@
+{
+  "id": 90003001,
+  "cast": [
+    { "id": 90000601, "media_type": "movie", "title": "The Lantern Archive", "release_date": "2019-06-14", "character": "Night Clerk" },
+    { "id": 90000701, "media_type": "tv", "name": "Tidewater Station", "first_air_date": "2021-03-02", "character": "Keeper" },
+    { "id": 90000702, "media_type": "tv", "name": "Evening Talk", "first_air_date": "2015-01-05", "character": "Self" },
+    { "id": 90000603, "media_type": "movie", "title": "Unreleased Lamp", "release_date": "", "character": "" },
+    { "id": 90000604, "media_type": "person", "name": "Not a title" }
+  ],
+  "crew": [
+    { "id": 90000602, "media_type": "movie", "title": "Copper Ledger", "release_date": "2023-09-01", "job": "Director" },
+    { "id": 90000602, "media_type": "movie", "title": "Copper Ledger", "release_date": "2023-09-01", "job": "Director" },
+    { "id": 90000602, "media_type": "movie", "title": "Copper Ledger", "release_date": "2023-09-01", "job": "Producer" }
+  ]
+}

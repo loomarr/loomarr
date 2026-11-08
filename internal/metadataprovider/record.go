@@ -137,6 +137,17 @@ type Descriptive struct {
 	Orderings *int
 }
 
+// FilmCredit is one title in a person's filmography (#2151 decision 50): a movie or series by its
+// TMDB id, what they did on it, and an actor's character.
+type FilmCredit struct {
+	Kind      Kind
+	TMDB      string
+	Title     string
+	Year      int
+	Role      PersonRole
+	Character string
+}
+
 // SeasonSize is one season of a series and how many episodes it has.
 type SeasonSize struct {
 	Number   int

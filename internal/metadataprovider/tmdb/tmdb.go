@@ -249,6 +249,7 @@ type wireCrew struct {
 // crewRoles are the jobs kept as key crew, by TMDB's job name.
 var crewRoles = map[string]mp.PersonRole{
 	"Director": mp.PersonDirector, "Screenplay": mp.PersonWriter, "Writer": mp.PersonWriter,
+	"Creator": mp.PersonCreator,
 }
 
 // people is a title's main cast in billing order (at most maxCast), then its creators, then its
@@ -394,6 +395,82 @@ func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, er
 	}
 	rec.Certification = strictest(ratings)
 	return rec, nil
+}
+
+// ---- person ----
+
+// maxFilmography bounds the titles kept per person, newest first.
+const maxFilmography = 300
+
+// wireFilmCredit is one row of a person's combined credits: a movie (title, release_date) or a
+// series (name, first_air_date).
+type wireFilmCredit struct {
+	ID           int    `json:"id"`
+	MediaType    string `json:"media_type"`
+	Title        string `json:"title"`
+	Name         string `json:"name"`
+	ReleaseDate  string `json:"release_date"`
+	FirstAirDate string `json:"first_air_date"`
+	Character    string `json:"character"`
+	Job          string `json:"job"`
+}
+
+// selfParts are the characters TMDB gives a person appearing as themselves: talk shows and
+// documentaries, not roles.
+var selfParts = map[string]bool{"self": true, "himself": true, "herself": true, "themselves": true}
+
+// Filmography is a person's movies and series by their TMDB person id (#2151 decision 50): every
+// part they played, other than appearing as themselves, and every title they created, directed
+// or wrote, newest first, at most maxFilmography.
+func (p *Provider) Filmography(ctx context.Context, person string) ([]mp.FilmCredit, error) {
+	id, err := strconv.Atoi(strings.TrimSpace(person))
+	if err != nil || id <= 0 {
+		return nil, fmt.Errorf("tmdb: person id %q is not a positive integer: %w", person, mp.ErrUnsupported)
+	}
+	loc, err := p.resolveLocale()
+	if err != nil {
+		return nil, err
+	}
+	var credits struct {
+		Cast []wireFilmCredit `json:"cast"`
+		Crew []wireFilmCredit `json:"crew"`
+	}
+	q := url.Values{}
+	q.Set("language", loc.language)
+	if err := p.get(ctx, "/person/"+strconv.Itoa(id)+"/combined_credits?"+q.Encode(), &credits); err != nil {
+		return nil, err
+	}
+	var out []mp.FilmCredit
+	seen := map[string]bool{}
+	add := func(c wireFilmCredit, role mp.PersonRole, character string) {
+		kind := map[string]mp.Kind{"movie": mp.KindMovie, "tv": mp.KindSeries}[c.MediaType]
+		title := strings.TrimSpace(firstNonEmpty(c.Title, c.Name))
+		key := string(kind) + "\x00" + strconv.Itoa(c.ID) + "\x00" + string(role)
+		if kind == "" || c.ID <= 0 || title == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, mp.FilmCredit{Kind: kind, TMDB: strconv.Itoa(c.ID), Title: title,
+			Year: yearOf(firstNonEmpty(c.ReleaseDate, c.FirstAirDate)), Role: role, Character: character})
+	}
+	for _, c := range credits.Cast {
+		character := strings.TrimSpace(c.Character)
+		if !selfParts[strings.ToLower(character)] {
+			add(c, mp.PersonActor, character)
+		}
+	}
+	for _, c := range credits.Crew {
+		if role, ok := crewRoles[c.Job]; ok {
+			add(c, role, "")
+		}
+	}
+	slices.SortStableFunc(out, func(a, b mp.FilmCredit) int {
+		return cmp.Or(cmp.Compare(b.Year, a.Year), strings.Compare(a.Title, b.Title))
+	})
+	if len(out) > maxFilmography {
+		out = out[:maxFilmography]
+	}
+	return out, nil
 }
 
 // ---- collection ----
