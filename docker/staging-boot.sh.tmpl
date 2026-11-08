@@ -92,6 +92,15 @@ if [ "$STAGING_GPU" = nvidia ]; then
 		"${APT[@]}" install -y nvidia-container-toolkit
 	fi
 	nvidia-ctk runtime configure --runtime=docker
+	# Vultr's driver comes without the video-encode library, so NVENC cannot load. Add the encode and
+	# decode packages that match the installed driver branch (libnvidia-compute-<branch>).
+	compute="$(dpkg-query -W -f='${Package}\n' 'libnvidia-compute-*' 2>/dev/null | head -1 || true)"
+	if [ -n "$compute" ]; then
+		"${APT[@]}" install -y "${compute/compute/encode}" "${compute/compute/decode}"
+	else
+		dpkg -l | grep -i nvidia || true
+		find / -xdev -name 'libnvidia-ml.so*' 2>/dev/null | head -5
+	fi
 	# The tailnet container restarts with Docker and keeps its identity in /var/lib/tailscale.
 	systemctl restart docker
 	# Evidence for the log: NVENC needs libnvidia-encode on the host and mounted into the container.
